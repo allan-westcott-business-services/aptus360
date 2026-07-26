@@ -80,3 +80,19 @@ export async function saveScopes(projectId, scopes) {
   }
   return http.patch(`/projects/${projectId}/scopes`, { scopes });
 }
+
+export async function setPriority(projectId, isPriority) {
+  if (USE_MOCKS) {
+    await delay(200);
+    return { Project_ID: projectId, Is_Priority: isPriority };
+  }
+  return http.patch(`/projects/${projectId}`, { Is_Priority: isPriority });
+}
+
+export async function deleteProject(projectId) {
+  if (USE_MOCKS) {
+    await delay(250);
+    return { deleted: true };
+  }
+  return http.del(`/projects/${projectId}`);
+}

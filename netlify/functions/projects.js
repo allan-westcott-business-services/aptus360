@@ -136,6 +136,15 @@ export default async function handler(req, context) {
       return json(updated);
     }
 
+    if (req.method === "DELETE" && id) {
+      const { error } = await db.from("Project").delete().eq("Project_ID", id);
+      if (error && error.code === "23503") {
+        return json({ error: "This project has plots or designs attached. Remove those first." }, 409);
+      }
+      if (error) throw error;
+      return json({ deleted: true });
+    }
+
     return json({ error: "Method not allowed" }, 405);
   } catch (e) {
     return fail(e, 400);

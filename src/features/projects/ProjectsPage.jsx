@@ -9,6 +9,7 @@ import AddProjectPage from "./AddProjectPage.jsx";
 export default function ProjectsPage() {
   const [mode, setMode] = useState("list");
   const [selected, setSelected] = useState(null);
+  const [initialTab, setInitialTab] = useState("details");
   const [refresh, setRefresh] = useState(0);
 
   function backToList() {
@@ -19,14 +20,16 @@ export default function ProjectsPage() {
 
   if (mode === "new") return <AddProjectPage onBack={backToList} />;
 
-  if (mode === "edit") return <ProjectDetail project={selected} onBack={backToList} />;
+  if (mode === "edit") return <ProjectDetail project={selected} initialTab={initialTab} onBack={backToList} />;
 
   return (
     <ProjectsList
       key={refresh}
       onNew={() => setMode("new")}
-      onOpen={(project) => {
+      onRefresh={() => setRefresh((n) => n + 1)}
+      onOpen={(project, tab = "details") => {
         setSelected(project);
+        setInitialTab(tab);
         setMode("edit");
       }}
     />

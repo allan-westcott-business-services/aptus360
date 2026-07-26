@@ -6,6 +6,7 @@ import { updateScope, createScope, deleteScope } from "../../api/scopes.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
 import { peopleWithRole, ROLE, isDesignComplete } from "../../lib/constants.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
+import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
 /* Outline designs as an editable table — one row per scope.
 
@@ -20,21 +21,24 @@ const EDITABLE = [
 ];
 
 const OD_COLS = [
-  { key: "scope",   label: "Scope",         width: 200 },
-  { key: "designer",label: "Designer",      width: 150 },
-  { key: "status",  label: "Design status", width: 150 },
-  { key: "rev",     label: "Rev",           width: 64 },
-  { key: "target",  label: "Target",        width: 138 },
-  { key: "actual",  label: "Actual",        width: 138 },
-  { key: "poc",     label: "POC status",    width: 140 },
-  { key: "checked", label: "Checked by",    width: 150 },
-  { key: "ext",     label: "Ext",           width: 48, align: "center" },
-  { key: "cf",      label: "C/F",           width: 48, align: "center" },
-  { key: "act",     label: "",              width: 42, align: "center" },
+  { key: "scope",   label: "Scope",         width: 200, type: "multi", raw: (s) => s.Utility_ID },
+  { key: "designer",label: "Designer",      width: 150, type: "multi", raw: (s) => s.Designer_ID },
+  { key: "status",  label: "Design status", width: 150, type: "multi", raw: (s) => s.Design_Status_ID },
+  { key: "rev",     label: "Rev",           width: 64,  type: "num",   raw: (s) => s.Revision ?? 0 },
+  { key: "target",  label: "Target",        width: 138, type: "date",  raw: (s) => s.Target_Date },
+  { key: "actual",  label: "Actual",        width: 138, type: "date",  raw: (s) => s.Actual_Date },
+  { key: "poc",     label: "POC status",    width: 140, type: "multi", raw: (s) => s.POC_Status_ID },
+  { key: "checked", label: "Checked by",    width: 150, type: "multi", raw: (s) => s.Design_Checked_By },
+  { key: "ext",     label: "Ext",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.External_Design },
+  { key: "cf",      label: "C/F",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.Carried_Forward },
+  { key: "act",     label: "",              width: 42,  type: "none",  align: "center", raw: () => "" },
 ];
 
 export default function OutlineDesignsTab({ projectId }) {
   const layout = useTableLayout("designs", OD_COLS);
+  const [filters, setFilters] = useState({});
+  const [openFilter, setOpenFilter] = useState(null);
+  const [sort, setSort] = useState({ key: "scope", dir: "asc" });
   const [lookups, setLookups] = useState(null);
   const [scopes, setScopes] = useState([]);
   const [original, setOriginal] = useState({});
@@ -116,6 +120,37 @@ export default function OutlineDesignsTab({ projectId }) {
 
   const isDirty = (id) => dirty.some((d) => d.Project_Scope_ID === id);
 
+  const filterOptions = (key) => {
+    if (key === "scope") return UTILITIES.map((u) => ({ id: u.id, label: u.name }));
+    if (key === "designer") return designers.map((p) => ({ id: p.Person_ID, label: p.Person_Name }));
+    if (key === "checked") return (checkers.length ? checkers : lookups.people).map((p) => ({ id: p.Person_ID, label: p.Person_Name }));
+    if (key === "status") return (lookups.designStatuses || []).map((d) => ({ id: d.Design_Status_ID, label: d.Status }));
+    if (key === "poc") return (lookups.pocStatuses || []).map((x) => ({ id: x.POC_Status_ID, label: x.POC_Status }));
+    return [];
+  };
+
+  const filterCols = OD_COLS.filter((c) => c.type !== "none");
+  const shown = (() => {
+    const out = scopes.filter((s) => rowPasses(s, filterCols, filters));
+    const col = OD_COLS.find((c) => c.key === sort.key);
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...out].sort((a, b) => {
+      if (!col) return 0;
+      if (col.key === "scope") {
+        return String(utilityById(a.Utility_ID)?.name ?? "").localeCompare(String(utilityById(b.Utility_ID)?.name ?? "")) * dir;
+      }
+      const va = col.raw(a), vb = col.raw(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), undefined, { numeric: true }) * dir;
+    });
+  })();
+
+  const toggleSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+
   return (
     <div onClick={() => setAdding(false)}>
       <style>{CSS}</style>
@@ -174,15 +209,32 @@ export default function OutlineDesignsTab({ projectId }) {
             <thead>
               <tr>
                 {OD_COLS.map((c) => (
-                  <th key={c.key} style={{ textAlign: c.align || "left" }}>
+                  <th key={c.key} style={{ textAlign: c.align || "left" }}
+                      onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.label}
+                    {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                     <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                  </th>
+                ))}
+              </tr>
+              <tr className="od-filter-row" onClick={(e) => e.stopPropagation()}>
+                {OD_COLS.map((c) => (
+                  <th key={c.key}>
+                    {c.type !== "none" && (
+                      <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
+                        onChange={(v) => setFilters((f) => ({ ...f, [c.key]: v }))}
+                        options={c.type === "multi" ? filterOptions(c.key) : null}
+                        open={openFilter === c.key}
+                        setOpen={(o) => setOpenFilter(o ? c.key : null)} />
+                    )}
                   </th>
                 ))}
               </tr>
             </thead>
             <tbody>
-              {scopes.map((s) => {
+              {shown.length === 0 ? (
+                <tr><td colSpan={OD_COLS.length} className="no-rows">No designs match these filters.</td></tr>
+              ) : shown.map((s) => {
                 const u = utilityById(s.Utility_ID);
                 const done = isDesignComplete(lookups.designStatuses, s.Design_Status_ID);
                 const overdue = s.Target_Date && !s.Actual_Date && String(s.Target_Date).slice(0, 10) < today;
@@ -269,7 +321,7 @@ export default function OutlineDesignsTab({ projectId }) {
   );
 }
 
-const CSS = `
+const CSS = FILTER_CSS + `
 .od-tools { display: flex; gap: 8px; align-items: flex-start; }
 .add-wrap { position: relative; }
 .add-menu {
@@ -285,9 +337,15 @@ const CSS = `
 .add-menu button:hover { background: var(--bg); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
 
-.od-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; }
+.od-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; max-height: 62vh; }
 .od-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
-.od-table th { position: relative; }
+.od-table th { position: relative; cursor: pointer; user-select: none; }
+.od-table .arrow { margin-left: 4px; font-size: 8px; }
+.od-filter-row th {
+  position: sticky; top: 29px; z-index: 2; background: #eef0f4; cursor: default;
+  border-bottom: 1px solid var(--border); padding: 4px 5px; overflow: visible;
+}
+.od-table .no-rows { text-align: center; padding: 34px; color: var(--muted); }
 .od-table .resizer { position: absolute; right: 0; top: 0; height: 100%; width: 7px;
   cursor: col-resize; z-index: 4; }
 .od-table .resizer:hover { background: rgba(255,255,255,.35); }

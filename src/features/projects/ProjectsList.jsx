@@ -1,7 +1,8 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
-import { listProjects } from "../../api/projects.js";
+import { listProjects, setPriority, deleteProject } from "../../api/projects.js";
+import BurgerMenu, { BURGER_CSS } from "../../components/BurgerMenu.jsx";
 import { UTILITIES } from "../../lib/utilities.js";
 
 /* Projects table.
@@ -12,6 +13,7 @@ import { UTILITIES } from "../../lib/utilities.js";
    drag-resizable and persist alongside column order and visibility. */
 
 const COLUMNS = [
+  { key: "menu",     label: "",              width: 44,  type: "none", raw: () => "" },
   { key: "ref",      label: "Project Ref",   width: 118, type: "text",  raw: (p) => p.Project_Ref },
   { key: "rev",      label: "Rev",           width: 56,  type: "text",  align: "center", raw: (p) => (p.Revision ? `r${p.Revision}` : "") },
   { key: "sitename", label: "Site Name",     width: 200, type: "text",  raw: (p) => p.Site_Name },
@@ -77,7 +79,7 @@ const isActive = (f, type) => {
   return f !== "";
 };
 
-export default function ProjectsList({ onOpen, onNew }) {
+export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -228,6 +230,50 @@ export default function ProjectsList({ onOpen, onNew }) {
     setSearch("");
   };
 
+  async function togglePriority(p) {
+    try {
+      await setPriority(p.Project_ID, !p.Is_Priority);
+      setRows((r) => r.map((x) => (x.Project_ID === p.Project_ID ? { ...x, Is_Priority: !p.Is_Priority } : x)));
+    } catch (e) { setError(e.message); }
+  }
+
+  async function removeProject(p) {
+    if (!window.confirm(`Delete project ${p.Project_Ref}? This cannot be undone.`)) return;
+    try {
+      await deleteProject(p.Project_ID);
+      setRows((r) => r.filter((x) => x.Project_ID !== p.Project_ID));
+      onRefresh && onRefresh();
+    } catch (e) { setError(e.message); }
+  }
+
+  /* Mirrors the tender row menu in the original: jump straight to a tab,
+     flag priority, then history/comments, then delete. Revisions and the
+     history/comment logs aren't migrated yet, so they're shown disabled
+     rather than hidden — the menu doubles as a to-do list. */
+  const menuFor = (p) => {
+    const siblings = rows.filter((x) => x.Project_Ref === p.Project_Ref);
+    const highestRev = Math.max(...siblings.map((x) => x.Revision ?? 0));
+    const isHighest = (p.Revision ?? 0) === highestRev;
+    return [
+      isHighest
+        ? { icon: "\u270F\uFE0F", label: "Edit Project", fn: () => onOpen(p, "details") }
+        : { icon: "\uD83D\uDD12", label: `Locked \u2014 rev ${highestRev} exists`, disabled: true },
+      isHighest && { icon: "\uD83D\uDD04", label: "Create New Revision", disabled: true },
+      { icon: "\uD83C\uDFE0", label: "Plots", fn: () => onOpen(p, "plots") },
+      { icon: "\uD83D\uDCD0", label: "Outline Designs", fn: () => onOpen(p, "designs") },
+      isHighest && {
+        icon: p.Is_Priority ? "\u2B50" : "\u2606",
+        label: p.Is_Priority ? "Remove Priority" : "Set Priority",
+        fn: () => togglePriority(p),
+      },
+      { divider: true },
+      { icon: "\uD83D\uDCCB", label: "Change History", disabled: true },
+      { icon: "\uD83D\uDCAC", label: "Comments", disabled: true },
+      { divider: true },
+      { icon: "\uD83D\uDDD1\uFE0F", label: "Delete Project", danger: true, fn: () => removeProject(p) },
+    ];
+  };
+
   function toggleSort(key) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
@@ -296,7 +342,8 @@ export default function ProjectsList({ onOpen, onNew }) {
           <thead>
             <tr className="head-row">
               {visible.map((c) => (
-                <th key={c.key} style={{ textAlign: c.align || "left" }} onClick={() => toggleSort(c.key)}>
+                <th key={c.key} style={{ textAlign: c.align || "left" }}
+                    onClick={() => c.type !== "none" && toggleSort(c.key)}>
                   <span className="th-label">{c.label}</span>
                   {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                   <span className="resizer" onMouseDown={(e) => startResize(e, c.key)} />
@@ -306,14 +353,14 @@ export default function ProjectsList({ onOpen, onNew }) {
             <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
               {visible.map((c) => (
                 <th key={c.key}>
-                  <FilterControl
+                  {c.type !== "none" && <FilterControl
                     col={c}
                     value={filters[c.key]}
                     onChange={(v) => setFilter(c.key, v)}
                     options={c.type === "multi" ? optionsFor(c) : null}
                     open={openFilter === c.key}
                     setOpen={(o) => setOpenFilter(o ? c.key : null)}
-                  />
+                  />}
                 </th>
               ))}
             </tr>
@@ -322,11 +369,12 @@ export default function ProjectsList({ onOpen, onNew }) {
             {filtered.length === 0 ? (
               <tr><td colSpan={visible.length} className="no-rows">No projects match these filters.</td></tr>
             ) : filtered.map((p) => (
-              <tr key={p.Project_ID} onClick={() => onOpen && onOpen(p)} className={p.Is_Priority ? "priority" : ""}>
+              <tr key={p.Project_ID} onClick={() => onOpen && onOpen(p, "details")} className={p.Is_Priority ? "priority" : ""}>
                 {visible.map((c) => (
                   <td key={c.key} style={{ textAlign: c.align || "left" }}>
                     {c.key === "ref" && p.Is_Priority && <span className="pri" title="Priority">&#9733;</span>}
-                    {c.key === "status" ? <span className="pill">{display.status(p)}</span>
+                    {c.key === "menu" ? <BurgerMenu items={menuFor(p)} />
+                      : c.key === "status" ? <span className="pill">{display.status(p)}</span>
                       : c.key === "scopes" ? <ScopeDots scopes={p.scopes} />
                       : c.key === "kpi" ? (<>{display.kpi(p)}{kpiReached(p.KPI_Date) && <span className="clock" title="KPI date reached">&#9200;</span>}</>)
                       : display[c.key](p)}
@@ -476,7 +524,7 @@ function ScopeDots({ scopes = [] }) {
   );
 }
 
-const CSS = `
+const CSS = BURGER_CSS + `
 body.resizing { cursor: col-resize; user-select: none; }
 .list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .list-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
@@ -520,6 +568,7 @@ body.resizing { cursor: col-resize; user-select: none; }
   border-bottom: 1px solid var(--border); padding: 4px 5px; overflow: visible;
 }
 .proj-table td { padding: 7px 10px; border-top: 1px solid var(--border); }
+.proj-table td:has(.burger-wrap) { padding: 3px 6px; overflow: visible; }
 .proj-table tbody tr { cursor: pointer; }
 .proj-table tbody tr:nth-child(even) { background: #fafbfc; }
 .proj-table tbody tr:hover { background: var(--accent-light); }

@@ -12,8 +12,8 @@ const TABS = [
   { id: "plots", label: "Plots" },
 ];
 
-export default function ProjectDetail({ project, onBack }) {
-  const [tab, setTab] = useState("details");
+export default function ProjectDetail({ project, initialTab = "details", onBack }) {
+  const [tab, setTab] = useState(initialTab);
   if (!project) return null;
 
   return (

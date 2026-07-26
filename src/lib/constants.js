@@ -1,40 +1,40 @@
-/* Stage-scoped statuses. Replaces the separate Tender_Status and
-   Contract_Status tables — one list, filtered by stage. */
+/* Status IDs are NOT defined here.
+
+   They live in the database (Project_Status, Scope_Status, Design_Status)
+   and arrive via GET /api/lookups. Hardcoding them meant a reseeded status
+   table would silently write wrong values — no error, just bad data.
+
+   What lives here instead: stage names, and helpers that answer questions
+   about a status by looking it up in the fetched list. */
+
 export const STAGES = { TENDER: "Tender", CONTRACT: "Contract" };
 
-export const STATUSES = [
-  { id: 1, stage: "Tender", label: "New" },
-  { id: 2, stage: "Tender", label: "Tendering" },
-  { id: 3, stage: "Tender", label: "Peer Check" },
-  { id: 4, stage: "Tender", label: "Awaiting Approval" },
-  { id: 5, stage: "Tender", label: "Pending" },
-  { id: 6, stage: "Tender", label: "On Hold" },
-  { id: 7, stage: "Tender", label: "Secured" },
-  { id: 8, stage: "Tender", label: "Lost" },
-  { id: 9, stage: "Tender", label: "Withdrawn" },
-  { id: 20, stage: "Contract", label: "Mobilising" },
-  { id: 21, stage: "Contract", label: "On Site" },
-  { id: 22, stage: "Contract", label: "Commercially Complete" },
-];
+/* ── Project status ─────────────────────────────────────────────── */
+export const statusesForStage = (projectStatuses = [], stage) =>
+  projectStatuses.filter((s) => s.Stage === stage);
 
-export const statusesForStage = (stage) => STATUSES.filter((s) => s.stage === stage);
-export const statusById = (id) => STATUSES.find((s) => s.id === +id);
+export const firstStatusForStage = (projectStatuses = [], stage) => {
+  const list = statusesForStage(projectStatuses, stage);
+  return list.length ? list[0].Project_Status_ID : "";
+};
 
-export const SCOPE_STATUSES = [
-  { id: 1, label: "Quoting" },
-  { id: 2, label: "Quoted" },
-  { id: 3, label: "Secured" },
-  { id: 4, label: "Lost" },
-  { id: 5, label: "Withdrawn" },
-];
+/* ── Scope status ───────────────────────────────────────────────── */
+const scopeStatusName = (scopeStatuses = [], id) =>
+  scopeStatuses.find((s) => s.Scope_Status_ID === Number(id))?.Status ?? "";
 
-export const DESIGN_STATUSES = [
-  { id: 1, label: "Not started" },
-  { id: 2, label: "In progress" },
-  { id: 3, label: "Peer check" },
-  { id: 4, label: "Completed" },
-];
+export const isScopeSecured = (scopeStatuses, id) =>
+  scopeStatusName(scopeStatuses, id) === "Secured";
 
-export const SCOPE_STATUS_SECURED = 3;
-export const SCOPE_STATUS_LOST = 4;
-export const DESIGN_STATUS_COMPLETE = 4;
+export const isScopeLost = (scopeStatuses, id) => {
+  const name = scopeStatusName(scopeStatuses, id);
+  return name === "Lost" || name === "Withdrawn";
+};
+
+/* ── Design status ──────────────────────────────────────────────── */
+/* Uses the Is_Complete flag rather than matching on a name, so renaming
+   "Completed" in the lookup table doesn't break Good To Go. */
+export const isDesignComplete = (designStatuses = [], id) =>
+  designStatuses.find((d) => d.Design_Status_ID === Number(id))?.Is_Complete === true;
+
+/* ── People ─────────────────────────────────────────────────────── */
+export const peopleWithRole = (people = [], flag) => people.filter((p) => p[flag]);

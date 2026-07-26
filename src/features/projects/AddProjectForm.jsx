@@ -8,8 +8,7 @@ import StagePill from "../../components/StagePill.jsx";
 import ScopePicker from "./ScopePicker.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { createProject, nextProjectRef } from "../../api/projects.js";
-import { statusesForStage, STAGES } from "../../lib/constants.js";
-import { isBudget } from "../../lib/utilities.js";
+import { statusesForStage, firstStatusForStage, peopleWithRole, STAGES } from "../../lib/constants.js";
 
 const REQUIRED = [
   ["Date_Received", "Date received"],
@@ -29,7 +28,7 @@ const blank = () => ({
   Region_ID: "",
   Sub_Region_ID: "",
   Quote_Type_ID: "1",
-  Project_Status_ID: "1",
+  Project_Status_ID: "",
   BDD_KAM_ID: "",
   Estimator_ID: "",
   Site_Name: "",
@@ -55,7 +54,12 @@ export default function AddProjectForm() {
       .then(([lk, ref]) => {
         if (!live) return;
         setLookups(lk);
-        setF((p) => (p.Project_Ref ? p : { ...p, Project_Ref: ref }));
+        setF((p) => ({
+          ...p,
+          Project_Ref: p.Project_Ref || ref,
+          Project_Status_ID: p.Project_Status_ID || firstStatusForStage(lk.projectStatuses, STAGES.TENDER),
+          Quote_Type_ID: p.Quote_Type_ID || (lk.quoteTypes[0]?.Quote_Type_ID ?? ""),
+        }));
       })
       .catch((e) => live && setLoadError(e.message));
     return () => {
@@ -65,6 +69,11 @@ export default function AddProjectForm() {
 
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
 
+  const quoteType = (id) => lookups?.quoteTypes.find((q) => q.Quote_Type_ID === Number(id));
+  const quoteTypeIsBudget = (id) => quoteType(id)?.Is_Budget === true;
+  const quoteTypeIsStreetLighting = (id) =>
+    /street\s*lighting/i.test(quoteType(id)?.Quote_Type ?? "");
+
   const subRegions = useMemo(() => {
     if (!lookups) return [];
     return lookups.subRegions.filter((s) => !f.Region_ID || +s.Region_ID === +f.Region_ID);
@@ -72,7 +81,7 @@ export default function AddProjectForm() {
 
   async function submit() {
     const miss = REQUIRED.filter(([k]) => !f[k]).map(([, l]) => l);
-    if (!isBudget(f.Quote_Type_ID) && scopes.length === 0) miss.push("At least one scope");
+    if (!quoteTypeIsBudget(f.Quote_Type_ID) && scopes.length === 0) miss.push("At least one scope");
     setErrors(miss);
     if (miss.length) return;
 
@@ -197,7 +206,7 @@ export default function AddProjectForm() {
           <Field label="BDD / KAM" required span={2}>
             <Select value={f.BDD_KAM_ID} onChange={set("BDD_KAM_ID")}>
               <option value="">Select&hellip;</option>
-              {lookups.people.map((p) => (
+              {peopleWithRole(lookups.people, "Is_BDD_KAM").map((p) => (
                 <option key={p.Person_ID} value={p.Person_ID}>
                   {p.Person_Name}
                 </option>
@@ -207,7 +216,7 @@ export default function AddProjectForm() {
           <Field label="Estimator" required span={2}>
             <Select value={f.Estimator_ID} onChange={set("Estimator_ID")}>
               <option value="">Select&hellip;</option>
-              {lookups.people.map((p) => (
+              {peopleWithRole(lookups.people, "Is_Estimator").map((p) => (
                 <option key={p.Person_ID} value={p.Person_ID}>
                   {p.Person_Name}
                 </option>
@@ -217,9 +226,9 @@ export default function AddProjectForm() {
 
           <Field label="Status" required span={2}>
             <Select value={f.Project_Status_ID} onChange={set("Project_Status_ID")}>
-              {statusesForStage(STAGES.TENDER).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
+              {statusesForStage(lookups.projectStatuses, STAGES.TENDER).map((s) => (
+                <option key={s.Project_Status_ID} value={s.Project_Status_ID}>
+                  {s.Status}
                 </option>
               ))}
             </Select>
@@ -250,11 +259,12 @@ export default function AddProjectForm() {
       <Section
         title="Scope"
         intro="Pick the designs this project needs. Each becomes a scope that can be quoted, won or lost on its own."
-        right={<span className="sec-note">{isBudget(f.Quote_Type_ID) ? "\u2014" : `${scopes.length} of 6 selected`}</span>}
+        right={<span className="sec-note">{quoteTypeIsBudget(f.Quote_Type_ID) ? "\u2014" : `${scopes.length} of 6 selected`}</span>}
       >
         <ScopePicker
           selected={scopes}
-          quoteTypeId={f.Quote_Type_ID}
+          isBudget={quoteTypeIsBudget(f.Quote_Type_ID)}
+          isStreetLightingOnly={quoteTypeIsStreetLighting(f.Quote_Type_ID)}
           onToggle={(id) => setScopes((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
         />
       </Section>

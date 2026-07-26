@@ -10,11 +10,9 @@ import { getProject, updateProject } from "../../api/projects.js";
 import {
   statusesForStage,
   STAGES,
-  SCOPE_STATUSES,
-  DESIGN_STATUSES,
-  SCOPE_STATUS_SECURED,
-  SCOPE_STATUS_LOST,
-  DESIGN_STATUS_COMPLETE,
+  isScopeSecured,
+  isScopeLost,
+  isDesignComplete,
 } from "../../lib/constants.js";
 import { utilityById } from "../../lib/utilities.js";
 
@@ -62,8 +60,8 @@ export default function EditContractForm({ projectId = 4711 }) {
   if (loadError) return <Banner kind="error">Couldn&rsquo;t load this project: {loadError}</Banner>;
   if (!f || !lookups) return <div className="loading">Loading project&hellip;</div>;
 
-  const secured = scopes.filter((s) => s.Scope_Status_ID === SCOPE_STATUS_SECURED);
-  const done = secured.filter((s) => s.Design_Status_ID === DESIGN_STATUS_COMPLETE);
+  const secured = scopes.filter((s) => isScopeSecured(lookups.scopeStatuses, s.Scope_Status_ID));
+  const done = secured.filter((s) => isDesignComplete(lookups.designStatuses, s.Design_Status_ID));
   const goodToGo = secured.length > 0 && done.length === secured.length;
   const plotMismatch = Number(f.Audacia_Plot_Count) !== Number(f.Auto_Plot_Count);
 
@@ -103,9 +101,9 @@ export default function EditContractForm({ projectId = 4711 }) {
           </Field>
           <Field label="Status" span={2}>
             <Select value={f.Project_Status_ID} onChange={set("Project_Status_ID")}>
-              {statusesForStage(STAGES.CONTRACT).map((s) => (
-                <option key={s.id} value={s.id}>
-                  {s.label}
+              {statusesForStage(lookups.projectStatuses, STAGES.CONTRACT).map((s) => (
+                <option key={s.Project_Status_ID} value={s.Project_Status_ID}>
+                  {s.Status}
                 </option>
               ))}
             </Select>
@@ -201,7 +199,7 @@ export default function EditContractForm({ projectId = 4711 }) {
           </div>
           {scopes.map((s) => {
             const u = utilityById(s.Utility_ID);
-            const lost = s.Scope_Status_ID === SCOPE_STATUS_LOST;
+            const lost = isScopeLost(lookups.scopeStatuses, s.Scope_Status_ID);
             return (
               <div className={lost ? "scope-tr lost" : "scope-tr"} key={s.Project_Scope_ID}>
                 <span className="scope-cell-name">
@@ -213,9 +211,9 @@ export default function EditContractForm({ projectId = 4711 }) {
                   value={s.Scope_Status_ID}
                   onChange={(v) => setScope(s.Project_Scope_ID, "Scope_Status_ID", Number(v))}
                 >
-                  {SCOPE_STATUSES.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.label}
+                  {lookups.scopeStatuses.map((x) => (
+                    <option key={x.Scope_Status_ID} value={x.Scope_Status_ID}>
+                      {x.Status}
                     </option>
                   ))}
                 </Select>
@@ -230,9 +228,9 @@ export default function EditContractForm({ projectId = 4711 }) {
                   disabled={lost}
                   onChange={(v) => setScope(s.Project_Scope_ID, "Design_Status_ID", Number(v))}
                 >
-                  {DESIGN_STATUSES.map((x) => (
-                    <option key={x.id} value={x.id}>
-                      {x.label}
+                  {lookups.designStatuses.map((x) => (
+                    <option key={x.Design_Status_ID} value={x.Design_Status_ID}>
+                      {x.Status}
                     </option>
                   ))}
                 </Select>

@@ -1,24 +1,19 @@
 import Banner from "../../components/Banner.jsx";
-import {
-  UTILITIES,
-  SCOPE_GROUPS,
-  STREET_LIGHTING_IDS,
-  isBudget,
-  isStreetLightingOnly,
-} from "../../lib/utilities.js";
+import { UTILITIES, SCOPE_GROUPS, STREET_LIGHTING_IDS } from "../../lib/utilities.js";
 
 /* Replaces both Contract_Phase and the child-tender split. The set of scopes
-   selected here IS the project's scope — no phase slots, no cloned records. */
-export default function ScopePicker({ selected, onToggle, quoteTypeId }) {
-  if (isBudget(quoteTypeId)) {
+   selected here IS the project's scope — no phase slots, no cloned records.
+
+   Budget and street-lighting behaviour are passed in rather than derived from
+   a hardcoded Quote_Type_ID, because those IDs belong to the database. */
+export default function ScopePicker({ selected, onToggle, isBudget, isStreetLightingOnly }) {
+  if (isBudget) {
     return (
       <Banner kind="muted">
         Budget quotes don&rsquo;t carry designs. Scope is set when the project moves to a full quote.
       </Banner>
     );
   }
-
-  const slOnly = isStreetLightingOnly(quoteTypeId);
 
   return (
     <div className="scope-groups">
@@ -27,7 +22,7 @@ export default function ScopePicker({ selected, onToggle, quoteTypeId }) {
           <p className="scope-group-title">{group}</p>
           <div className="scope-grid">
             {UTILITIES.filter((u) => u.group === group).map((u) => {
-              const unavailable = slOnly && !STREET_LIGHTING_IDS.includes(u.id);
+              const unavailable = isStreetLightingOnly && !STREET_LIGHTING_IDS.includes(u.id);
               const on = selected.includes(u.id);
               const cls = ["scope-chip", on ? "on" : "", unavailable ? "off" : ""]
                 .filter(Boolean)

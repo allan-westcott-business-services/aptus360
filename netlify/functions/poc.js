@@ -11,6 +11,11 @@ const COLS = [
 const nullEmpty = (o) =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === "" ? null : v]));
 
+/* Only columns that exist. A form sending a stray field shouldn't fail the
+   whole save with a schema-cache error — drop it at the boundary. */
+const WRITABLE = new Set(COLS.split(",").filter((c) => c !== "POC_Application_ID"));
+const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => WRITABLE.has(k)));
+
 export default async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
@@ -29,7 +34,7 @@ export default async function handler(req, context) {
        and progress at different speeds. */
     if (req.method === "POST") {
       const { idno_ids = [], dno_id = null, ...common } = await req.json();
-      const base = nullEmpty({ ...common, Project_ID: Number(projectId) });
+      const base = pick(nullEmpty({ ...common, Project_ID: Number(projectId) }));
       /* One row per provider. A DNO plus two IDNOs is three applications —
          they quote separately, so they can't share a row. At most one DNO:
          you apply to the incumbent or you don't. */
@@ -48,7 +53,7 @@ export default async function handler(req, context) {
       if (!id) return json({ error: "id required" }, 400);
       const body = await req.json();
       const { data, error } = await db.from("POC_Application")
-        .update(nullEmpty(body)).eq("POC_Application_ID", id).select(COLS).single();
+        .update(pick(nullEmpty(body))).eq("POC_Application_ID", id).select(COLS).single();
       if (error) throw error;
       return json(data);
     }

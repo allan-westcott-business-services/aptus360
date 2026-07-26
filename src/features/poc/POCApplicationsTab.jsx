@@ -108,8 +108,12 @@ export default function POCApplicationsTab({ projectId }) {
     if (!f.idno_ids.length && !f.dno_id) return setError("Select at least one provider.");
     setSaving(true);
     try {
+      /* Site details belong to the Project, not to each application —
+         copying them here would only let them drift. Shown read-only above
+         for context, then dropped before saving. */
+      const { Site_Name, Site_Address, ...payload } = f;
       const res = await createPoc(projectId, {
-        ...f,
+        ...payload,
         Utility_ID: Number(f.Utility_ID),
         POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
         POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -177,9 +181,11 @@ export default function POCApplicationsTab({ projectId }) {
 
           <div className="poc-grid">
             <div className="fld span2"><label>Site name</label>
-              <input value={f.Site_Name} onChange={(e) => set("Site_Name")(e.target.value)} /></div>
+              <input value={f.Site_Name} disabled />
+              <p className="hint">From the project</p></div>
             <div className="fld span3"><label>Site address</label>
-              <input value={f.Site_Address} onChange={(e) => set("Site_Address")(e.target.value)} /></div>
+              <input value={f.Site_Address} disabled />
+              <p className="hint">From the project</p></div>
             <div className="fld"><label># Plots</label>
               <input type="number" value={f.Plot_Count} onChange={(e) => set("Plot_Count")(e.target.value)} /></div>
 

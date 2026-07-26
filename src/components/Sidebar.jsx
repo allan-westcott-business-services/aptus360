@@ -122,6 +122,25 @@ input[type="checkbox"]:checked::after {
 input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
 
+/* Radios lose their native rendering to the same appearance:none rule.
+   Draw a ring with a filled centre so checked is unmistakable, and keep
+   them circular so they read as "pick one" against the square checkboxes. */
+input[type="radio"] {
+  appearance: none; -webkit-appearance: none;
+  width: 17px; height: 17px; flex: none; padding: 0; position: relative;
+  border: 1.5px solid #cbd5e1; border-radius: 50%;
+  background: #fff; cursor: pointer; vertical-align: middle;
+  transition: border-color .12s;
+}
+input[type="radio"]:hover { border-color: var(--accent); }
+input[type="radio"]:checked { border-color: var(--accent); }
+input[type="radio"]:checked::after {
+  content: ""; position: absolute; inset: 3px;
+  border-radius: 50%; background: var(--accent);
+}
+input[type="radio"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
+
 /* ═══ PLACEHOLDER (unmigrated views) ════════════════════════════ */
 .placeholder { text-align: center; padding: 60px 24px; }
 .placeholder-badge {

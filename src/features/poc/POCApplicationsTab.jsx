@@ -251,8 +251,13 @@ export default function POCApplicationsTab({ projectId }) {
                     {i.IDNO_Name}
                   </label>
                 ))}
-                {(lookups.dnos || []).map((d) => (
-                  <label key={`d${d.DNO_ID}`} className={String(f.dno_id) === String(d.DNO_ID) ? "prov on" : "prov"}>
+                {(lookups.dnos || []).map((d, di) => (
+                  <label key={`d${d.DNO_ID}`}
+                    className={[
+                      "prov",
+                      String(f.dno_id) === String(d.DNO_ID) ? "on" : "",
+                      di === 0 ? "first-dno" : "",
+                    ].filter(Boolean).join(" ")}>
                     <input type="radio" name="dno" checked={String(f.dno_id) === String(d.DNO_ID)}
                       onChange={() => set("dno_id")(String(d.DNO_ID))} />
                     <span className="badge dno">DNO</span>
@@ -369,14 +374,20 @@ const CSS = TABLE_CSS + `
 .kva-total { font-weight: 700; color: var(--accent); background: var(--accent-light) !important; }
 .provider-list { border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--white); max-height: 210px; overflow-y: auto; }
-.prov { display: flex; align-items: center; gap: 10px; padding: 8px 12px; margin: 0;
+.prov { display: flex; align-items: center; gap: 12px; padding: 9px 12px; margin: 0;
   font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: 0;
   color: var(--text); cursor: pointer; border-bottom: 1px solid var(--border); }
 .prov:last-child { border-bottom: none; }
 .prov:nth-child(even) { background: #fafbfc; }
 .prov:hover { background: var(--accent-light); }
 .prov.on { background: var(--accent-light); font-weight: 600; }
-.prov input { width: auto; flex: none; }
+/* A visible divider between the multi-select IDNOs and the pick-one DNOs */
+.prov.first-dno { border-top: 2px solid var(--border); }
+/* Don't set width here — that's what was collapsing the checkbox to a
+   sliver. Size comes from the global input rules; only scale it up. */
+.prov input[type="checkbox"] { width: 18px; height: 18px; border-radius: 5px; border-width: 2px; }
+.prov input[type="radio"] { width: 18px; height: 18px; border-width: 2px; }
+.prov input[type="checkbox"]:checked::after { left: 5px; top: 1.5px; width: 5px; height: 9px; }
 .badge { font-size: 9px; font-weight: 700; letter-spacing: .05em; border-radius: 4px;
   padding: 2px 6px; flex: none; }
 .badge.idno { background: var(--accent); color: #fff; }

@@ -1,12 +1,14 @@
 import { useState } from "react";
 import EditContractForm from "./EditContractForm.jsx";
 import PlotsTab from "../plots/PlotsTab.jsx";
+import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 
 /* An existing project, opened from the table. Tabs mirror the tender
    detail panel in the original app — Details and Plots for now, with
    Scopes, Designs and History slotting in as they're migrated. */
 const TABS = [
   { id: "details", label: "Details" },
+  { id: "designs", label: "Outline Designs" },
   { id: "plots", label: "Plots" },
 ];
 
@@ -47,6 +49,7 @@ export default function ProjectDetail({ project, onBack }) {
 
       <div className="detail-body">
         {tab === "details" && <EditContractForm projectId={project.Project_ID} />}
+        {tab === "designs" && <OutlineDesignsTab projectId={project.Project_ID} />}
         {tab === "plots" && (
           <PlotsTab projectId={project.Project_ID} projectRef={project.Project_Ref} />
         )}

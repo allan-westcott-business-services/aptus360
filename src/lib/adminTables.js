@@ -41,6 +41,10 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Complete", label: "Counts as complete", type: "checkbox" },
     ] },
+  { key: "POC_Status", label: "POC Status", pk: "POC_Status_ID", fields: [
+      { col: "POC_Status", label: "Status Name", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
   { key: "Utility", label: "Utility", pk: "Utility_ID", fields: [
       { col: "Utility", label: "Utility Name", type: "text", required: true },
       { col: "Is_Lighting", label: "Street lighting", type: "checkbox" },

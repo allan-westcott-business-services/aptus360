@@ -74,6 +74,13 @@ export const lookups = {
     { Scope_Status_ID: 4, Status: "Lost", Sort_Order: 40, Is_Terminal: true },
     { Scope_Status_ID: 5, Status: "Withdrawn", Sort_Order: 50, Is_Terminal: true },
   ],
+  pocStatuses: [
+    { POC_Status_ID: 1, POC_Status: "Not Required" },
+    { POC_Status_ID: 2, POC_Status: "To Apply" },
+    { POC_Status_ID: 3, POC_Status: "Applied" },
+    { POC_Status_ID: 4, POC_Status: "Received" },
+    { POC_Status_ID: 5, POC_Status: "Accepted" },
+  ],
   designStatuses: [
     { Design_Status_ID: 1, Status: "Not started", Sort_Order: 10, Is_Complete: false },
     { Design_Status_ID: 2, Status: "In progress", Sort_Order: 20, Is_Complete: false },

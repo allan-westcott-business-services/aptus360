@@ -18,7 +18,7 @@ const PROJECT_COLUMNS = [
 const SCOPE_COLUMNS = [
   "Project_Scope_ID", "Project_ID", "Utility_ID", "Scope_Status_ID",
   "Date_Sent", "Secured_Date", "Quote_Value_To_Client", "Quote_Value_To_Aptus",
-  "Designer_ID", "Design_Status_ID", "Design_Checked_By",
+  "Designer_ID", "Design_Status_ID", "Design_Checked_By", "POC_Status_ID",
   "Target_Date", "Actual_Date", "Revision",
   "Carried_Forward", "External_Design", "IDNO_ID", "Reference",
 ].join(",");

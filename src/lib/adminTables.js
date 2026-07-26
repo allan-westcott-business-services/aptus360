@@ -42,6 +42,11 @@ export const ADMIN_TABLES = [
       { col: "Is_Complete", label: "Counts as complete", type: "checkbox" },
     ] },
   { key: "Status_Transition", label: "Status Workflow", special: "workflow" },
+  { key: "POC_Type", label: "POC Type", pk: "POC_Type_ID", fields: [
+      { col: "POC_Type", label: "Type Name", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "POC_Status", label: "POC Status", pk: "POC_Status_ID", fields: [
       { col: "POC_Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
@@ -75,6 +80,10 @@ export const ADMIN_TABLES = [
   { separator: true, label: "Utilities & Connections" },
   { key: "IDNO", label: "IDNO / IGT / NAV", pk: "IDNO_ID", fields: [
       { col: "IDNO_Name", label: "Operator Name", type: "text", required: true },
+    ] },
+  { key: "DNO", label: "DNO", pk: "DNO_ID", fields: [
+      { col: "DNO_Name", label: "DNO Name", type: "text", required: true },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
   { key: "Fire_Service", label: "Fire Authority", pk: "Fire_Service_ID", fields: [
       { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },

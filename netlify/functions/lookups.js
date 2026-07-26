@@ -26,6 +26,8 @@ export default async function handler() {
       heatPumpModels: db.from("Heat_Pump_Model").select("Heat_Pump_Model_ID,Model").order("Model"),
       projectStatuses: db.from("Project_Status").select("Project_Status_ID,Stage,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
       scopeStatuses:   db.from("Scope_Status").select("Scope_Status_ID,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
+      pocTypes:        db.from("POC_Type").select("POC_Type_ID,POC_Type").eq("Is_Active", true).order("Sort_Order"),
+      dnos:            db.from("DNO").select("DNO_ID,DNO_Name").eq("Is_Active", true).order("DNO_Name"),
       pocStatuses:     db.from("POC_Status").select("POC_Status_ID,POC_Status").eq("Is_Active", true).order("Sort_Order"),
       transitions:     db.from("Status_Transition").select("From_Status_ID,To_Status_ID,Quote_Type_ID").eq("Is_Active", true),
       guards:          db.from("Status_Transition_Guard").select("Guard_ID,Target_Status_ID,Guard_Type,Condition_Status_IDs,Description").eq("Is_Active", true),

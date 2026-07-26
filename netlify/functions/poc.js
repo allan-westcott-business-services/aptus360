@@ -5,6 +5,7 @@ const COLS = [
   "Application_Date","Expected_Rx_Date","Applicant_Person_ID","Business_Address",
   "Plot_Count","Requested_kVA","Contingency_Load","Quote_Reference","Quote_Date",
   "Valid_Until_Date","Connection_Type","Distance_m","Estimated_Cost","Notes",
+  "POC_Type_ID","DNO_ID","Applicant_Company","Applicant_Company_Address","Non_Residential_kVA",
 ].join(",");
 
 const nullEmpty = (o) =>
@@ -27,11 +28,16 @@ export default async function handler(req, context) {
        applications, not one with three names on it — they quote separately
        and progress at different speeds. */
     if (req.method === "POST") {
-      const { idno_ids = [], ...common } = await req.json();
+      const { idno_ids = [], dno_id = null, ...common } = await req.json();
       const base = nullEmpty({ ...common, Project_ID: Number(projectId) });
-      const rows = idno_ids.length
-        ? idno_ids.map((id) => ({ ...base, IDNO_ID: Number(id) }))
-        : [{ ...base, IDNO_ID: null }];
+      /* One row per provider. A DNO plus two IDNOs is three applications —
+         they quote separately, so they can't share a row. At most one DNO:
+         you apply to the incumbent or you don't. */
+      const rows = [
+        ...(dno_id ? [{ ...base, DNO_ID: Number(dno_id), IDNO_ID: null }] : []),
+        ...idno_ids.map((id) => ({ ...base, IDNO_ID: Number(id), DNO_ID: null })),
+      ];
+      if (!rows.length) return json({ error: "Select at least one provider" }, 400);
       const { data, error } = await db.from("POC_Application").insert(rows).select(COLS);
       if (error) throw error;
       return json({ rows: data }, 201);

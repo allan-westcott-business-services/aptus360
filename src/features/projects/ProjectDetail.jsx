@@ -2,6 +2,7 @@ import { useState } from "react";
 import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
 import ContractDesignsTab from "../designs/ContractDesignsTab.jsx";
+import AssetValueTab from "../av/AssetValueTab.jsx";
 import POCApplicationsTab from "../poc/POCApplicationsTab.jsx";
 import NonResidentialTab from "../nrs/NonResidentialTab.jsx";
 import InvoicesTab from "../invoices/InvoicesTab.jsx";
@@ -17,6 +18,7 @@ const TABS = [
   { id: "nrs", label: "Non-Res Supplies" },
   { id: "poc", label: "POC Applications" },
   { id: "designs", label: "Outline Designs" },
+  { id: "av", label: "Asset Value" },
   { id: "contract-designs", label: "Contract Designs" },
   { id: "history", label: "History" },
   { id: "comments", label: "Comments" },
@@ -65,6 +67,7 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
         {tab === "comments" && <ActivityTab projectId={project.Project_ID} view="comments" />}
         {tab === "nrs" && <NonResidentialTab projectId={project.Project_ID} />}
         {tab === "poc" && <POCApplicationsTab projectId={project.Project_ID} />}
+        {tab === "av" && <AssetValueTab projectId={project.Project_ID} />}
         {tab === "contract-designs" && <ContractDesignsTab projectRef={project.Project_Ref} />}
         {tab === "invoices" && <InvoicesTab projectRef={project.Project_Ref} />}
         {tab === "plots" && (

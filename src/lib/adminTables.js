@@ -52,6 +52,11 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  { key: "AV_Status", label: "Asset Value Status", pk: "AV_Status_ID", fields: [
+      { col: "AV_Status", label: "Status Name", type: "text", required: true },
+      { col: "Row_Colour", label: "Colour", type: "text" },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
   { key: "Quotation_Status", label: "Quotation Status", pk: "Quotation_Status_ID", fields: [
       { col: "Quotation_Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

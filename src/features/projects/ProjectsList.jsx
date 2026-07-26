@@ -1,61 +1,81 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useRef } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listProjects } from "../../api/projects.js";
 import { UTILITIES } from "../../lib/utilities.js";
 
-/* Projects table, modelled on the Tenders page of the original app:
-   configurable columns, global search, sortable headers, priority rows
-   pinned to the top, and a clock once the KPI date has passed. */
+/* Projects table.
+
+   Each column declares a type, and the filter row picks the control to
+   match: free text, a date range with a "blank only" option, or a
+   checkbox list for anything that resolves to a lookup. Widths are
+   drag-resizable and persist alongside column order and visibility. */
 
 const COLUMNS = [
-  { key: "ref",      label: "Project Ref", width: 110 },
-  { key: "rev",      label: "Rev",         width: 46,  align: "center" },
-  { key: "sitename", label: "Site Name",   width: 190 },
-  { key: "date",     label: "Date Received", width: 108 },
-  { key: "kpi",      label: "KPI Date",    width: 108 },
-  { key: "cust",     label: "Customer",    width: 170 },
-  { key: "region",   label: "Region",      width: 100 },
-  { key: "qt",       label: "Quote Type",  width: 100 },
-  { key: "plots",    label: "Plots",       width: 60,  align: "right" },
-  { key: "status",   label: "Status",      width: 130 },
-  { key: "scopes",   label: "Scopes",      width: 130 },
-  { key: "bdd",      label: "BDD / KAM",   width: 130 },
-  { key: "est",      label: "Estimator",   width: 130 },
-  { key: "iandc",    label: "I & C",       width: 54,  align: "center" },
-  { key: "g2g",      label: "Good to Go",  width: 108 },
-  { key: "secured",  label: "Secured Date", width: 108 },
+  { key: "ref",      label: "Project Ref",   width: 118, type: "text",  raw: (p) => p.Project_Ref },
+  { key: "rev",      label: "Rev",           width: 56,  type: "text",  align: "center", raw: (p) => (p.Revision ? `r${p.Revision}` : "") },
+  { key: "sitename", label: "Site Name",     width: 200, type: "text",  raw: (p) => p.Site_Name },
+  { key: "date",     label: "Date Received", width: 130, type: "date",  raw: (p) => p.Date_Received },
+  { key: "kpi",      label: "KPI Date",      width: 130, type: "date",  raw: (p) => p.KPI_Date },
+  { key: "cust",     label: "Customer",      width: 180, type: "multi", src: "customers", idKey: "Customer_ID", labelKey: "Customer_Name", raw: (p) => p.Customer_ID },
+  { key: "region",   label: "Region",        width: 120, type: "multi", src: "regions", idKey: "Region_ID", labelKey: "Region", raw: (p) => p.Region_ID },
+  { key: "qt",       label: "Quote Type",    width: 120, type: "multi", src: "quoteTypes", idKey: "Quote_Type_ID", labelKey: "Quote_Type", raw: (p) => p.Quote_Type_ID },
+  { key: "plots",    label: "Plots",         width: 76,  type: "num",   align: "right", raw: (p) => p.Plot_Count ?? 0 },
+  { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },
+  { key: "scopes",   label: "Scopes",        width: 120, type: "num",   raw: (p) => (p.scopes || []).length },
+  { key: "bdd",      label: "BDD / KAM",     width: 140, type: "multi", src: "people", idKey: "Person_ID", labelKey: "Person_Name", raw: (p) => p.BDD_KAM_ID },
+  { key: "est",      label: "Estimator",     width: 140, type: "multi", src: "people", idKey: "Person_ID", labelKey: "Person_Name", raw: (p) => p.Estimator_ID },
+  { key: "iandc",    label: "I & C",         width: 70,  type: "bool",  align: "center", raw: (p) => !!p.I_and_C },
+  { key: "g2g",      label: "Good to Go",    width: 130, type: "date",  raw: (p) => p.Good_To_Go },
+  { key: "secured",  label: "Secured Date",  width: 130, type: "date",  raw: (p) => p.Secured_Date },
 ];
 
-const PREFS_KEY = "aptus_projectColumnPrefs";
+const PREFS_KEY = "aptus_projectColumnPrefs_v2";
+const DEFAULTS = () => ({
+  order: COLUMNS.map((c) => c.key),
+  hidden: [],
+  widths: Object.fromEntries(COLUMNS.map((c) => [c.key, c.width])),
+});
 
 function loadPrefs() {
-  const def = { order: COLUMNS.map((c) => c.key), hidden: [] };
+  const def = DEFAULTS();
   try {
     const raw = localStorage.getItem(PREFS_KEY);
     if (!raw) return def;
-    const parsed = JSON.parse(raw);
+    const p = JSON.parse(raw);
     const valid = new Set(def.order);
-    const order = (parsed.order || []).filter((k) => valid.has(k));
-    // Append columns added since the user last customised their layout.
+    const order = (p.order || []).filter((k) => valid.has(k));
     def.order.forEach((k) => !order.includes(k) && order.push(k));
-    return { order, hidden: (parsed.hidden || []).filter((k) => valid.has(k)) };
+    return {
+      order,
+      hidden: (p.hidden || []).filter((k) => valid.has(k)),
+      widths: { ...def.widths, ...(p.widths || {}) },
+    };
   } catch {
     return def;
   }
 }
-
 const savePrefs = (p) => {
-  try {
-    localStorage.setItem(PREFS_KEY, JSON.stringify(p));
-  } catch {
-    /* private browsing — prefs just won't persist */
-  }
+  try { localStorage.setItem(PREFS_KEY, JSON.stringify(p)); } catch { /* private mode */ }
 };
 
-const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "");
-const today = () => new Date().toISOString().slice(0, 10);
-const kpiReached = (d) => d && String(d).slice(0, 10) <= today();
+const iso = (d) => (d ? String(d).slice(0, 10) : "");
+const fmtDate = (d) => (d ? iso(d).split("-").reverse().join("/") : "");
+const kpiReached = (d) => d && iso(d) <= new Date().toISOString().slice(0, 10);
+
+const blankFilter = (type) =>
+  type === "date" ? { from: "", to: "", blank: false }
+  : type === "multi" ? []
+  : type === "num" ? { min: "", max: "" }
+  : "";
+
+const isActive = (f, type) => {
+  if (f == null) return false;
+  if (type === "date") return !!(f.from || f.to || f.blank);
+  if (type === "multi") return f.length > 0;
+  if (type === "num") return f.min !== "" || f.max !== "";
+  return f !== "";
+};
 
 export default function ProjectsList({ onOpen, onNew }) {
   const [rows, setRows] = useState([]);
@@ -66,7 +86,11 @@ export default function ProjectsList({ onOpen, onNew }) {
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [prefs, setPrefs] = useState(loadPrefs);
   const [menuOpen, setMenuOpen] = useState(false);
-  const [filters, setFilters] = useState({ status: "", region: "", quoteType: "" });
+  const [openFilter, setOpenFilter] = useState(null);
+  const [filters, setFilters] = useState(() =>
+    Object.fromEntries(COLUMNS.map((c) => [c.key, blankFilter(c.type)]))
+  );
+  const drag = useRef(null);
 
   useEffect(() => {
     let live = true;
@@ -78,73 +102,135 @@ export default function ProjectsList({ onOpen, onNew }) {
       })
       .catch((e) => live && setError(e.message))
       .finally(() => live && setLoading(false));
+    return () => { live = false; };
+  }, []);
+
+  /* ── column resize ── */
+  useEffect(() => {
+    const move = (e) => {
+      if (!drag.current) return;
+      const { key, startX, startW } = drag.current;
+      const w = Math.max(56, startW + (e.clientX - startX));
+      setPrefs((p) => ({ ...p, widths: { ...p.widths, [key]: w } }));
+    };
+    const up = () => {
+      if (drag.current) {
+        drag.current = null;
+        setPrefs((p) => { savePrefs(p); return p; });
+        document.body.classList.remove("resizing");
+      }
+    };
+    window.addEventListener("mousemove", move);
+    window.addEventListener("mouseup", up);
     return () => {
-      live = false;
+      window.removeEventListener("mousemove", move);
+      window.removeEventListener("mouseup", up);
     };
   }, []);
 
-  const name = (list, idKey, nameKey, id) =>
-    list?.find((x) => x[idKey] === id)?.[nameKey] ?? "";
+  function startResize(e, key) {
+    e.stopPropagation();
+    e.preventDefault();
+    drag.current = { key, startX: e.clientX, startW: prefs.widths[key] || 120 };
+    document.body.classList.add("resizing");
+  }
 
-  const cell = useMemo(() => {
+  /* ── display values ── */
+  const nameOf = (src, idKey, labelKey, id) =>
+    lookups?.[src]?.find((x) => x[idKey] === id)?.[labelKey] ?? "";
+
+  const display = useMemo(() => {
     if (!lookups) return {};
-    const l = lookups;
-    return {
-      ref: (p) => p.Project_Ref,
-      rev: (p) => (p.Revision ? `r${p.Revision}` : ""),
-      sitename: (p) => p.Site_Name,
-      date: (p) => fmtDate(p.Date_Received),
-      kpi: (p) => fmtDate(p.KPI_Date),
-      cust: (p) => name(l.customers, "Customer_ID", "Customer_Name", p.Customer_ID),
-      region: (p) => name(l.regions, "Region_ID", "Region", p.Region_ID),
-      qt: (p) => name(l.quoteTypes, "Quote_Type_ID", "Quote_Type", p.Quote_Type_ID),
-      plots: (p) => p.Plot_Count ?? 0,
-      status: (p) => name(l.projectStatuses, "Project_Status_ID", "Status", p.Project_Status_ID),
-      scopes: (p) => (p.scopes || []).length,
-      bdd: (p) => name(l.people, "Person_ID", "Person_Name", p.BDD_KAM_ID),
-      est: (p) => name(l.people, "Person_ID", "Person_Name", p.Estimator_ID),
-      iandc: (p) => (p.I_and_C ? "Y" : ""),
-      g2g: (p) => fmtDate(p.Good_To_Go),
-      secured: (p) => fmtDate(p.Secured_Date),
-    };
+    const d = {};
+    COLUMNS.forEach((c) => {
+      d[c.key] =
+        c.type === "date" ? (p) => fmtDate(c.raw(p))
+        : c.type === "multi" ? (p) => nameOf(c.src, c.idKey, c.labelKey, c.raw(p))
+        : c.type === "bool" ? (p) => (c.raw(p) ? "Y" : "")
+        : (p) => c.raw(p);
+    });
+    return d;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [lookups]);
+
+  const optionsFor = (c) => {
+    const list = lookups?.[c.src] || [];
+    if (c.key !== "status") return list;
+    return list.map((s) => ({ ...s, Status: `${s.Stage} · ${s.Status}` }));
+  };
+
+  /* ── filtering ── */
+  const filtered = useMemo(() => {
+    if (!lookups) return [];
+    const q = search.trim().toLowerCase();
+
+    let out = rows.filter((p) => {
+      for (const c of COLUMNS) {
+        const f = filters[c.key];
+        if (!isActive(f, c.type)) continue;
+        const v = c.raw(p);
+
+        if (c.type === "date") {
+          const val = iso(v);
+          if (f.blank) { if (val) return false; continue; }
+          if (!val) return false;
+          if (f.from && val < f.from) return false;
+          if (f.to && val > f.to) return false;
+        } else if (c.type === "multi") {
+          if (f.includes("__blank__")) {
+            if (v == null && f.length === 1) continue;
+            if (v == null) continue;
+          }
+          if (!f.includes(String(v))) return false;
+        } else if (c.type === "num") {
+          const n = Number(v);
+          if (f.min !== "" && n < Number(f.min)) return false;
+          if (f.max !== "" && n > Number(f.max)) return false;
+        } else if (c.type === "bool") {
+          if (f === "y" && !v) return false;
+          if (f === "n" && v) return false;
+        } else {
+          if (!String(v ?? "").toLowerCase().includes(String(f).toLowerCase())) return false;
+        }
+      }
+      if (!q) return true;
+      const hay = [p.Project_Ref, p.Site_Name, p.Site_Address, p.Postcode,
+        display.cust?.(p), display.region?.(p), display.bdd?.(p), display.est?.(p), display.status?.(p)]
+        .join(" ").toLowerCase();
+      return hay.includes(q);
+    });
+
+    const dir = sort.dir === "asc" ? 1 : -1;
+    const col = COLUMNS.find((c) => c.key === sort.key);
+    out = [...out].sort((a, b) => {
+      const va = col ? col.raw(a) : "";
+      const vb = col ? col.raw(b) : "";
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      if (col?.type === "multi") {
+        return String(display[col.key](a)).localeCompare(String(display[col.key](b))) * dir;
+      }
+      return String(va ?? "").localeCompare(String(vb ?? ""), undefined, { numeric: true }) * dir;
+    });
+
+    return [...out.filter((p) => p.Is_Priority), ...out.filter((p) => !p.Is_Priority)];
+  }, [rows, search, sort, filters, display, lookups]);
 
   const visible = prefs.order
     .filter((k) => !prefs.hidden.includes(k))
     .map((k) => COLUMNS.find((c) => c.key === k))
     .filter(Boolean);
 
-  const filtered = useMemo(() => {
-    if (!lookups) return [];
-    const q = search.trim().toLowerCase();
-    let out = rows.filter((p) => {
-      if (filters.status && String(p.Project_Status_ID) !== filters.status) return false;
-      if (filters.region && String(p.Region_ID) !== filters.region) return false;
-      if (filters.quoteType && String(p.Quote_Type_ID) !== filters.quoteType) return false;
-      if (!q) return true;
-      const hay = [
-        p.Project_Ref, p.Site_Name, p.Site_Address, p.Postcode,
-        cell.cust?.(p), cell.region?.(p), cell.bdd?.(p), cell.est?.(p), cell.status?.(p),
-      ].join(" ").toLowerCase();
-      return hay.includes(q);
-    });
+  const activeCount = COLUMNS.filter((c) => isActive(filters[c.key], c.type)).length;
 
-    const dir = sort.dir === "asc" ? 1 : -1;
-    const get = cell[sort.key] || (() => "");
-    out = [...out].sort((a, b) => {
-      const va = get(a), vb = get(b);
-      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
-      return String(va).localeCompare(String(vb), undefined, { numeric: true }) * dir;
-    });
-
-    // Priority rows sit above everything, as in the original.
-    return [...out.filter((p) => p.Is_Priority), ...out.filter((p) => !p.Is_Priority)];
-  }, [rows, search, sort, filters, cell, lookups]);
+  const setFilter = (key, val) => setFilters((f) => ({ ...f, [key]: val }));
+  const clearAll = () => {
+    setFilters(Object.fromEntries(COLUMNS.map((c) => [c.key, blankFilter(c.type)])));
+    setSearch("");
+  };
 
   function toggleSort(key) {
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
   }
-
   function toggleColumn(key) {
     setPrefs((p) => {
       const hidden = p.hidden.includes(key) ? p.hidden.filter((k) => k !== key) : [...p.hidden, key];
@@ -153,9 +239,8 @@ export default function ProjectsList({ onOpen, onNew }) {
       return next;
     });
   }
-
   function resetColumns() {
-    const def = { order: COLUMNS.map((c) => c.key), hidden: [] };
+    const def = DEFAULTS();
     setPrefs(def);
     savePrefs(def);
   }
@@ -164,7 +249,7 @@ export default function ProjectsList({ onOpen, onNew }) {
   if (error) return <Banner kind="error">Couldn&rsquo;t load projects: {error}</Banner>;
 
   return (
-    <div>
+    <div onClick={() => { setOpenFilter(null); setMenuOpen(false); }}>
       <style>{CSS}</style>
 
       <div className="list-head">
@@ -172,19 +257,17 @@ export default function ProjectsList({ onOpen, onNew }) {
           <h2>Projects</h2>
           <p className="page-sub">
             {filtered.length} of {rows.length} shown
+            {activeCount > 0 && ` · ${activeCount} column filter${activeCount === 1 ? "" : "s"}`}
           </p>
         </div>
-        <div className="list-tools">
-          <input
-            className="search"
-            value={search}
-            placeholder="Search ref, site, customer, person&hellip;"
-            onChange={(e) => setSearch(e.target.value)}
-          />
+        <div className="list-tools" onClick={(e) => e.stopPropagation()}>
+          <input className="search" value={search} placeholder="Search all columns&hellip;"
+            onChange={(e) => setSearch(e.target.value)} />
+          {(activeCount > 0 || search) && (
+            <button className="btn ghost" onClick={clearAll}>Clear filters</button>
+          )}
           <div className="col-menu-wrap">
-            <button className="btn ghost" onClick={() => setMenuOpen((o) => !o)}>
-              Columns
-            </button>
+            <button className="btn ghost" onClick={() => setMenuOpen((o) => !o)}>Columns</button>
             {menuOpen && (
               <div className="col-menu">
                 <div className="col-menu-head">
@@ -193,104 +276,170 @@ export default function ProjectsList({ onOpen, onNew }) {
                 </div>
                 {COLUMNS.map((c) => (
                   <label key={c.key} className="col-opt">
-                    <input
-                      type="checkbox"
-                      checked={!prefs.hidden.includes(c.key)}
-                      onChange={() => toggleColumn(c.key)}
-                    />
+                    <input type="checkbox" checked={!prefs.hidden.includes(c.key)}
+                      onChange={() => toggleColumn(c.key)} />
                     {c.label}
                   </label>
                 ))}
               </div>
             )}
           </div>
-          {onNew && (
-            <button className="btn accent" onClick={onNew}>
-              + New project
-            </button>
-          )}
+          {onNew && <button className="btn accent" onClick={onNew}>+ New project</button>}
         </div>
       </div>
 
-      <div className="filter-row">
-        <select value={filters.status} onChange={(e) => setFilters((f) => ({ ...f, status: e.target.value }))}>
-          <option value="">All statuses</option>
-          {(lookups.projectStatuses || []).map((s) => (
-            <option key={s.Project_Status_ID} value={s.Project_Status_ID}>
-              {s.Stage} &middot; {s.Status}
-            </option>
-          ))}
-        </select>
-        <select value={filters.region} onChange={(e) => setFilters((f) => ({ ...f, region: e.target.value }))}>
-          <option value="">All regions</option>
-          {(lookups.regions || []).map((r) => (
-            <option key={r.Region_ID} value={r.Region_ID}>{r.Region}</option>
-          ))}
-        </select>
-        <select value={filters.quoteType} onChange={(e) => setFilters((f) => ({ ...f, quoteType: e.target.value }))}>
-          <option value="">All quote types</option>
-          {(lookups.quoteTypes || []).map((q) => (
-            <option key={q.Quote_Type_ID} value={q.Quote_Type_ID}>{q.Quote_Type}</option>
-          ))}
-        </select>
-        {(filters.status || filters.region || filters.quoteType || search) && (
-          <button className="clear-filters" onClick={() => { setFilters({ status: "", region: "", quoteType: "" }); setSearch(""); }}>
-            Clear
-          </button>
-        )}
-      </div>
-
-      {filtered.length === 0 ? (
-        <div className="empty">
-          <p className="empty-title">No projects match</p>
-          <p>Try clearing the search or filters.</p>
-        </div>
-      ) : (
-        <div className="proj-table-wrap">
-          <table className="proj-table">
-            <thead>
-              <tr>
+      <div className="proj-table-wrap">
+        <table className="proj-table">
+          <colgroup>
+            {visible.map((c) => <col key={c.key} style={{ width: prefs.widths[c.key] }} />)}
+          </colgroup>
+          <thead>
+            <tr className="head-row">
+              {visible.map((c) => (
+                <th key={c.key} style={{ textAlign: c.align || "left" }} onClick={() => toggleSort(c.key)}>
+                  <span className="th-label">{c.label}</span>
+                  {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                  <span className="resizer" onMouseDown={(e) => startResize(e, c.key)} />
+                </th>
+              ))}
+            </tr>
+            <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
+              {visible.map((c) => (
+                <th key={c.key}>
+                  <FilterControl
+                    col={c}
+                    value={filters[c.key]}
+                    onChange={(v) => setFilter(c.key, v)}
+                    options={c.type === "multi" ? optionsFor(c) : null}
+                    open={openFilter === c.key}
+                    setOpen={(o) => setOpenFilter(o ? c.key : null)}
+                  />
+                </th>
+              ))}
+            </tr>
+          </thead>
+          <tbody>
+            {filtered.length === 0 ? (
+              <tr><td colSpan={visible.length} className="no-rows">No projects match these filters.</td></tr>
+            ) : filtered.map((p) => (
+              <tr key={p.Project_ID} onClick={() => onOpen && onOpen(p)} className={p.Is_Priority ? "priority" : ""}>
                 {visible.map((c) => (
-                  <th
-                    key={c.key}
-                    style={{ minWidth: c.width, textAlign: c.align || "left" }}
-                    onClick={() => toggleSort(c.key)}
-                  >
-                    {c.label}
-                    {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
-                  </th>
+                  <td key={c.key} style={{ textAlign: c.align || "left" }}>
+                    {c.key === "ref" && p.Is_Priority && <span className="pri" title="Priority">&#9733;</span>}
+                    {c.key === "status" ? <span className="pill">{display.status(p)}</span>
+                      : c.key === "scopes" ? <ScopeDots scopes={p.scopes} />
+                      : c.key === "kpi" ? (<>{display.kpi(p)}{kpiReached(p.KPI_Date) && <span className="clock" title="KPI date reached">&#9200;</span>}</>)
+                      : display[c.key](p)}
+                  </td>
                 ))}
               </tr>
-            </thead>
-            <tbody>
-              {filtered.map((p) => (
-                <tr key={p.Project_ID} onClick={() => onOpen && onOpen(p)} className={p.Is_Priority ? "priority" : ""}>
-                  {visible.map((c) => (
-                    <td key={c.key} style={{ textAlign: c.align || "left" }}>
-                      {c.key === "ref" && p.Is_Priority && <span className="pri" title="Priority">&#9733;</span>}
-                      {c.key === "status" ? (
-                        <span className="pill">{cell.status(p)}</span>
-                      ) : c.key === "scopes" ? (
-                        <ScopeDots scopes={p.scopes} />
-                      ) : c.key === "kpi" ? (
-                        <>
-                          {cell.kpi(p)}
-                          {kpiReached(p.KPI_Date) && (
-                            <span className="clock" title="KPI date reached">&#9200;</span>
-                          )}
-                        </>
-                      ) : (
-                        cell[c.key](p)
-                      )}
-                    </td>
-                  ))}
-                </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
-      )}
+            ))}
+          </tbody>
+        </table>
+      </div>
     </div>
+  );
+}
+
+/* ── one control per column type ── */
+function FilterControl({ col, value, onChange, options, open, setOpen }) {
+  if (col.type === "date") {
+    const on = isActive(value, "date");
+    return (
+      <div className="fc">
+        <button className={on ? "fc-btn on" : "fc-btn"} onClick={() => setOpen(!open)}>
+          {value.blank ? "Blank only" : value.from || value.to
+            ? `${value.from ? fmtDate(value.from) : "\u2190"} \u2013 ${value.to ? fmtDate(value.to) : "\u2192"}`
+            : "All dates"}
+        </button>
+        {open && (
+          <div className="fc-pop">
+            <label className="fc-lbl">From</label>
+            <input type="date" value={value.from} disabled={value.blank}
+              onChange={(e) => onChange({ ...value, from: e.target.value })} />
+            <label className="fc-lbl">To</label>
+            <input type="date" value={value.to} disabled={value.blank}
+              onChange={(e) => onChange({ ...value, to: e.target.value })} />
+            <label className="fc-check">
+              <input type="checkbox" checked={value.blank}
+                onChange={(e) => onChange({ from: "", to: "", blank: e.target.checked })} />
+              Blank only
+            </label>
+            <button className="fc-clear" onClick={() => { onChange(blankFilter("date")); setOpen(false); }}>
+              Clear
+            </button>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (col.type === "multi") {
+    const on = value.length > 0;
+    const label = !on ? "All"
+      : value.length === 1
+        ? (options.find((o) => String(o[col.idKey]) === value[0])?.[col.labelKey] ?? "1 selected")
+        : `${value.length} selected`;
+    const toggle = (id) =>
+      onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+    return (
+      <div className="fc">
+        <button className={on ? "fc-btn on" : "fc-btn"} onClick={() => setOpen(!open)}>
+          <span className="fc-trunc">{label}</span>
+          <span className="fc-caret">&#9662;</span>
+        </button>
+        {open && (
+          <div className="fc-pop wide">
+            <div className="fc-actions">
+              <button onClick={() => onChange(options.map((o) => String(o[col.idKey])))}>All</button>
+              <button onClick={() => onChange([])}>None</button>
+            </div>
+            <div className="fc-opts">
+              <label className="fc-opt">
+                <input type="checkbox" checked={value.includes("__blank__")}
+                  onChange={() => toggle("__blank__")} />
+                <em>(Blank)</em>
+              </label>
+              {options.map((o) => {
+                const id = String(o[col.idKey]);
+                return (
+                  <label className="fc-opt" key={id}>
+                    <input type="checkbox" checked={value.includes(id)} onChange={() => toggle(id)} />
+                    {o[col.labelKey]}
+                  </label>
+                );
+              })}
+            </div>
+          </div>
+        )}
+      </div>
+    );
+  }
+
+  if (col.type === "num") {
+    return (
+      <div className="fc num">
+        <input type="number" placeholder="min" value={value.min}
+          onChange={(e) => onChange({ ...value, min: e.target.value })} />
+        <input type="number" placeholder="max" value={value.max}
+          onChange={(e) => onChange({ ...value, max: e.target.value })} />
+      </div>
+    );
+  }
+
+  if (col.type === "bool") {
+    return (
+      <select className="fc-sel" value={value} onChange={(e) => onChange(e.target.value)}>
+        <option value="">All</option>
+        <option value="y">Yes</option>
+        <option value="n">No</option>
+      </select>
+    );
+  }
+
+  return (
+    <input className="fc-text" value={value} placeholder="Contains&hellip;"
+      onChange={(e) => onChange(e.target.value)} />
   );
 }
 
@@ -300,65 +449,106 @@ function ScopeDots({ scopes = [] }) {
     <span className="dots">
       {scopes.map((s, i) => {
         const u = UTILITIES.find((x) => x.id === s.Utility_ID);
-        return (
-          <span key={i} className="dot" style={{ background: u?.colour ?? "#94a3b8" }} title={u?.name ?? "Scope"} />
-        );
+        return <span key={i} className="dot" style={{ background: u?.colour ?? "#94a3b8" }} title={u?.name ?? "Scope"} />;
       })}
     </span>
   );
 }
 
 const CSS = `
+body.resizing { cursor: col-resize; user-select: none; }
 .list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
-.list-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -0.01em; }
+.list-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
 .list-tools { display: flex; gap: 8px; align-items: flex-start; }
-.search { width: 260px; }
-
+.search { width: 230px; }
 .col-menu-wrap { position: relative; }
 .col-menu {
-  position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 25;
+  position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 40;
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 8px; width: 190px; max-height: 340px; overflow-y: auto;
 }
 .col-menu-head {
-  display: flex; justify-content: space-between; align-items: center;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--muted); padding: 2px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px;
+  display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
+  padding: 2px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px;
 }
 .col-menu-head button { background: none; border: none; cursor: pointer; color: var(--accent); font: inherit; }
 .col-opt { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 4px;
   text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; margin: 0; cursor: pointer; }
 .col-opt input { width: auto; }
 
-.filter-row { display: flex; gap: 8px; margin-bottom: 12px; flex-wrap: wrap; align-items: center; }
-.filter-row select { width: auto; min-width: 150px; }
-.clear-filters { background: none; border: none; color: var(--accent); font: 600 12.5px inherit; cursor: pointer; }
-
 .proj-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; max-height: 68vh; }
-.proj-table { width: 100%; border-collapse: collapse; font-size: 12.5px; white-space: nowrap; }
-.proj-table th {
-  position: sticky; top: 0; z-index: 1; background: var(--accent); color: #fff;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-  padding: 8px 10px; cursor: pointer; user-select: none; text-align: left;
+.proj-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
+.proj-table th, .proj-table td {
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap;
 }
-.proj-table th:hover { background: var(--accent-dark); }
+.head-row th {
+  position: sticky; top: 0; z-index: 3; background: var(--accent); color: #fff;
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  padding: 8px 10px; cursor: pointer; user-select: none; position: sticky;
+}
+.head-row th:hover { background: var(--accent-dark); }
 .arrow { margin-left: 4px; font-size: 8px; }
+.resizer {
+  position: absolute; right: 0; top: 0; height: 100%; width: 7px;
+  cursor: col-resize; z-index: 4;
+}
+.resizer:hover { background: rgba(255,255,255,.35); }
+.filter-row th {
+  position: sticky; top: 30px; z-index: 2; background: #eef0f4;
+  border-bottom: 1px solid var(--border); padding: 4px 5px; overflow: visible;
+}
 .proj-table td { padding: 7px 10px; border-top: 1px solid var(--border); }
 .proj-table tbody tr { cursor: pointer; }
 .proj-table tbody tr:nth-child(even) { background: #fafbfc; }
 .proj-table tbody tr:hover { background: var(--accent-light); }
 .proj-table tbody tr.priority td { background: #fffbeb; }
 .proj-table tbody tr.priority:hover td { background: #fef3c7; }
+.no-rows { text-align: center; padding: 40px; color: var(--muted); white-space: normal; }
 .pri { color: #d97706; margin-right: 4px; }
-.pill {
-  display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
-  border-radius: 20px; background: var(--accent-light); color: var(--accent); border: 1px solid #bfdbfe;
-}
+.pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
+  border-radius: 20px; background: var(--accent-light); color: var(--accent); border: 1px solid #bfdbfe; }
 .clock { margin-left: 5px; font-size: 12px; }
 .dots { display: inline-flex; gap: 3px; }
 .dots .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .muted-dash { color: var(--muted); }
-.empty { text-align: center; padding: 48px 20px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); }
-.empty-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }
-.empty p { margin: 0; font-size: 12.5px; color: var(--muted); }
+
+.fc { position: relative; }
+.fc-btn, .fc-text, .fc-sel {
+  width: 100%; font-size: 11.5px; padding: 3px 6px; border-radius: 5px;
+  border: 1px solid var(--border); background: var(--white); font-family: inherit;
+  color: var(--text); text-align: left; cursor: pointer;
+  display: flex; align-items: center; justify-content: space-between; gap: 4px;
+}
+.fc-text, .fc-sel { cursor: text; display: block; }
+.fc-sel { cursor: pointer; }
+.fc-btn.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
+.fc-trunc { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.fc-caret { font-size: 8px; flex: none; }
+.fc.num { display: flex; gap: 3px; }
+.fc.num input { width: 50%; font-size: 11.5px; padding: 3px 5px; border-radius: 5px; }
+
+.fc-pop {
+  position: absolute; top: calc(100% + 3px); left: 0; z-index: 50; min-width: 180px;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
+  box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: 9px;
+}
+.fc-pop.wide { min-width: 210px; }
+.fc-lbl { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin: 0 0 3px; }
+.fc-pop input[type=date] { font-size: 11.5px; padding: 4px 6px; margin-bottom: 7px; }
+.fc-check { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
+  text-transform: none; letter-spacing: 0; color: var(--text); margin: 4px 0 8px; cursor: pointer; }
+.fc-check input { width: auto; }
+.fc-clear { width: 100%; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 4px; font: 600 11.5px inherit; color: var(--muted); cursor: pointer; }
+.fc-actions { display: flex; gap: 5px; margin-bottom: 6px; }
+.fc-actions button { flex: 1; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 5px; padding: 3px; font: 600 11px inherit; color: var(--accent); cursor: pointer; }
+.fc-opts { max-height: 220px; overflow-y: auto; }
+.fc-opt { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 400;
+  text-transform: none; letter-spacing: 0; color: var(--text); padding: 3px 2px; margin: 0; cursor: pointer;
+  white-space: normal; }
+.fc-opt input { width: auto; }
+.fc-opt em { font-style: italic; color: var(--muted); }
 `;

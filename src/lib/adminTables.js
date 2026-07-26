@@ -47,6 +47,14 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  { key: "Quotation_Status", label: "Quotation Status", pk: "Quotation_Status_ID", fields: [
+      { col: "Quotation_Status", label: "Status Name", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
+  { key: "Voltage_Rating", label: "Voltage Rating", pk: "Voltage_Rating_ID", fields: [
+      { col: "Voltage_Rating", label: "Rating", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
   { key: "POC_Status", label: "POC Status", pk: "POC_Status_ID", fields: [
       { col: "POC_Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

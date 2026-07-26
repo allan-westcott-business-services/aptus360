@@ -24,6 +24,8 @@ const TABLES = {
   Design_Status:   { pk: "Design_Status_ID",   order: "Sort_Order" },
   POC_Status:      { pk: "POC_Status_ID",      order: "Sort_Order" },
   POC_Type:        { pk: "POC_Type_ID",        order: "Sort_Order" },
+  Quotation_Status:{ pk: "Quotation_Status_ID", order: "Sort_Order" },
+  Voltage_Rating:  { pk: "Voltage_Rating_ID",   order: "Sort_Order" },
   DNO:             { pk: "DNO_ID",             order: "DNO_Name" },
   Status_Transition:       { pk: "Transition_ID", order: "Transition_ID" },
   Status_Transition_Guard: { pk: "Guard_ID",      order: "Guard_ID" },

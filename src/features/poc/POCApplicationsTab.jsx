@@ -7,6 +7,7 @@ import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
+import OptionsPanel from "./OptionsPanel.jsx";
 
 /* POC applications, following the original app.
 
@@ -49,6 +50,7 @@ export default function POCApplicationsTab({ projectId }) {
   const [sort, setSort] = useState({ key: "utility", dir: "asc" });
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
+  const [expanded, setExpanded] = useState(null);
   const [plots, setPlots] = useState([]);
   const [project, setProject] = useState(null);
 
@@ -486,11 +488,28 @@ export default function POCApplicationsTab({ projectId }) {
                         <td className="mono">{r.Quote_Reference || "\u2014"}</td>
                         <td className="num">{money(r.Estimated_Cost)}</td>
                         <td className="mid nowrap">
+                          <button className="row-edit"
+                            onClick={() => setExpanded(expanded === r.POC_Application_ID ? null : r.POC_Application_ID)}
+                            title="Options and quotations">
+                            {expanded === r.POC_Application_ID ? "\u25BE" : "\u25B8"} Options
+                          </button>
                           <button className="row-edit" onClick={() => editRow(r)} title="Edit">Edit</button>
                           <button className="row-del" onClick={() => remove(r)} title="Delete">&#10005;</button>
                         </td>
                       </tr>
-                    ))}
+                    )).flatMap((row, i) => {
+                      const r = sortRows(list)[i];
+                      return expanded === r.POC_Application_ID
+                        ? [row, (
+                            <tr className="opt-row" key={`o${r.POC_Application_ID}`}>
+                              <td colSpan={COLS.length}>
+                                <OptionsPanel appId={r.POC_Application_ID}
+                                  providerName={providerName(r)} onChanged={load} />
+                              </td>
+                            </tr>
+                          )]
+                        : [row];
+                    })}
                   </tbody>
                 </table>
               </div>
@@ -573,6 +592,8 @@ const CSS = TABLE_CSS + FILTER_CSS + `
   font: 600 11.5px inherit; padding: 2px 6px; border-radius: 4px; }
 .row-edit:hover { background: var(--accent-light); }
 .nowrap { white-space: nowrap; }
+.opt-row td { padding: 0 !important; background: var(--bg); }
+.opt-row:hover { background: var(--bg) !important; }
 .btn.submit { background: #059669; color: #fff; }
 .btn.submit:hover { background: #047857; }
 .submitted-note { align-self: center; font-size: 11.5px; color: var(--ok-text); font-weight: 600; }

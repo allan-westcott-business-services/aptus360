@@ -236,38 +236,56 @@ export default function POCApplicationsTab({ projectId }) {
 
             <div className="fld span6">
               <label>
-                Provider (IDNO or DNO) <span className="req">*</span>
-                <span className="lbl-note">
-                  {" "}({(lookups.idnos || []).length} IDNOs &mdash; multiple allowed,
-                  {" "}{(lookups.dnos || []).length} DNOs &mdash; pick at most one)
-                </span>
+                Provider <span className="req">*</span>
+                <span className="lbl-note"> apply to any number of IDNOs, and at most one DNO</span>
               </label>
-              <div className="provider-list">
-                {(lookups.idnos || []).map((i) => (
-                  <label key={`i${i.IDNO_ID}`} className={f.idno_ids.includes(i.IDNO_ID) ? "prov on" : "prov"}>
-                    <input type="checkbox" checked={f.idno_ids.includes(i.IDNO_ID)}
-                      onChange={() => toggleIdno(i.IDNO_ID)} />
+              <div className="prov-cols">
+                <div className="prov-col">
+                  <div className="prov-head idno">
                     <span className="badge idno">IDNO</span>
-                    {i.IDNO_Name}
-                  </label>
-                ))}
-                {(lookups.dnos || []).map((d, di) => (
-                  <label key={`d${d.DNO_ID}`}
-                    className={[
-                      "prov",
-                      String(f.dno_id) === String(d.DNO_ID) ? "on" : "",
-                      di === 0 ? "first-dno" : "",
-                    ].filter(Boolean).join(" ")}>
-                    <input type="radio" name="dno" checked={String(f.dno_id) === String(d.DNO_ID)}
-                      onChange={() => set("dno_id")(String(d.DNO_ID))} />
+                    <span>Independent operators</span>
+                    <span className="prov-rule">choose any</span>
+                  </div>
+                  <div className="provider-list">
+                    {(lookups.idnos || []).length === 0 ? (
+                      <p className="prov-none">None configured &mdash; add them in Admin.</p>
+                    ) : (lookups.idnos || []).map((i) => (
+                      <label key={i.IDNO_ID} className={f.idno_ids.includes(i.IDNO_ID) ? "prov on" : "prov"}>
+                        <input type="checkbox" checked={f.idno_ids.includes(i.IDNO_ID)}
+                          onChange={() => toggleIdno(i.IDNO_ID)} />
+                        {i.IDNO_Name}
+                      </label>
+                    ))}
+                  </div>
+                  {f.idno_ids.length > 0 && (
+                    <button className="prov-clear" onClick={() => set("idno_ids")([])}>
+                      Clear {f.idno_ids.length} selected
+                    </button>
+                  )}
+                </div>
+
+                <div className="prov-col">
+                  <div className="prov-head dno">
                     <span className="badge dno">DNO</span>
-                    {d.DNO_Name}
-                  </label>
-                ))}
+                    <span>Incumbent operator</span>
+                    <span className="prov-rule">choose one</span>
+                  </div>
+                  <div className="provider-list">
+                    {(lookups.dnos || []).length === 0 ? (
+                      <p className="prov-none">None configured &mdash; add them in Admin.</p>
+                    ) : (lookups.dnos || []).map((d) => (
+                      <label key={d.DNO_ID} className={String(f.dno_id) === String(d.DNO_ID) ? "prov on" : "prov"}>
+                        <input type="radio" name="dno" checked={String(f.dno_id) === String(d.DNO_ID)}
+                          onChange={() => set("dno_id")(String(d.DNO_ID))} />
+                        {d.DNO_Name}
+                      </label>
+                    ))}
+                  </div>
+                  {f.dno_id && (
+                    <button className="prov-clear" onClick={() => set("dno_id")("")}>Clear selection</button>
+                  )}
+                </div>
               </div>
-              {f.dno_id && (
-                <button className="clear-dno" onClick={() => set("dno_id")("")}>Clear DNO selection</button>
-              )}
               {providerCount > 1 && (
                 <p className="hint">
                   Creates {providerCount} separate applications &mdash; each provider quotes
@@ -372,8 +390,17 @@ const CSS = TABLE_CSS + `
 .poc-grid .span6 { grid-column: span 6; }
 .lbl-note { font-weight: 400; text-transform: none; letter-spacing: 0; font-size: 10.5px; color: var(--muted); }
 .kva-total { font-weight: 700; color: var(--accent); background: var(--accent-light) !important; }
+.prov-cols { display: grid; grid-template-columns: 1fr 1fr; gap: 14px; }
+.prov-col { display: flex; flex-direction: column; }
+.prov-head { display: flex; align-items: center; gap: 8px; padding: 0 2px 6px;
+  font-size: 11.5px; font-weight: 600; color: var(--text); }
+.prov-rule { margin-left: auto; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); }
 .provider-list { border: 1px solid var(--border); border-radius: var(--radius);
-  background: var(--white); max-height: 210px; overflow-y: auto; }
+  background: var(--white); max-height: 220px; overflow-y: auto; }
+.prov-none { margin: 0; padding: 18px; text-align: center; font-size: 12px; color: var(--muted); }
+.prov-clear { align-self: flex-start; background: none; border: none; color: var(--accent);
+  font: 600 11.5px inherit; cursor: pointer; padding: 6px 2px 0; }
 .prov { display: flex; align-items: center; gap: 12px; padding: 9px 12px; margin: 0;
   font-size: 12.5px; font-weight: 500; text-transform: none; letter-spacing: 0;
   color: var(--text); cursor: pointer; border-bottom: 1px solid var(--border); }
@@ -381,8 +408,7 @@ const CSS = TABLE_CSS + `
 .prov:nth-child(even) { background: #fafbfc; }
 .prov:hover { background: var(--accent-light); }
 .prov.on { background: var(--accent-light); font-weight: 600; }
-/* A visible divider between the multi-select IDNOs and the pick-one DNOs */
-.prov.first-dno { border-top: 2px solid var(--border); }
+
 /* Don't set width here — that's what was collapsing the checkbox to a
    sliver. Size comes from the global input rules; only scale it up. */
 .prov input[type="checkbox"] { width: 18px; height: 18px; border-radius: 5px; border-width: 2px; }

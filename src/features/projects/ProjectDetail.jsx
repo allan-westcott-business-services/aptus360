@@ -1,6 +1,7 @@
 import { useState } from "react";
 import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
+import InvoicesTab from "../invoices/InvoicesTab.jsx";
 import PlotsTab from "../plots/PlotsTab.jsx";
 import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 
@@ -9,10 +10,11 @@ import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
    Scopes, Designs and History slotting in as they're migrated. */
 const TABS = [
   { id: "details", label: "Details" },
-  { id: "designs", label: "Outline Designs" },
   { id: "plots", label: "Plots" },
+  { id: "designs", label: "Outline Designs" },
   { id: "history", label: "History" },
   { id: "comments", label: "Comments" },
+  { id: "invoices", label: "Invoices" },
 ];
 
 export default function ProjectDetail({ project, initialTab = "details", onBack }) {
@@ -55,6 +57,7 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
         {tab === "designs" && <OutlineDesignsTab projectId={project.Project_ID} />}
         {tab === "history" && <ActivityTab projectId={project.Project_ID} view="history" />}
         {tab === "comments" && <ActivityTab projectId={project.Project_ID} view="comments" />}
+        {tab === "invoices" && <InvoicesTab projectRef={project.Project_Ref} />}
         {tab === "plots" && (
           <PlotsTab projectId={project.Project_ID} projectRef={project.Project_Ref} />
         )}

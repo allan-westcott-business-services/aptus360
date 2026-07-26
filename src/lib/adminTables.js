@@ -65,6 +65,7 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  { key: "Sub_Region", label: "Sub Region", special: "subregions" },
 
   { separator: true, label: "Utilities & Connections" },
   { key: "IDNO", label: "IDNO / IGT / NAV", pk: "IDNO_ID", fields: [

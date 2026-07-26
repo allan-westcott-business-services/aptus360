@@ -186,4 +186,25 @@ export const adminMock = {
   Scope_Status: lookups.scopeStatuses,
   Project_Status: lookups.projectStatuses,
   Customer: [],
+  Person: [
+    { Person_ID: 1, Person_Name: "A. Whitcombe", Email: "aw@example.com", Is_Active: true },
+    { Person_ID: 2, Person_Name: "R. Nkemelu", Email: "rn@example.com", Is_Active: true },
+    { Person_ID: 3, Person_Name: "J. Farrell", Email: "jf@example.com", Is_Active: true },
+    { Person_ID: 4, Person_Name: "S. Dhillon", Email: "sd@example.com", Is_Active: true },
+  ],
+  Person_Role: [
+    { Person_Role_ID: 1, Person_ID: 1, Role_ID: 1 },
+    { Person_Role_ID: 2, Person_ID: 2, Role_ID: 2 },
+    { Person_Role_ID: 3, Person_ID: 2, Role_ID: 3 },
+    { Person_Role_ID: 4, Person_ID: 3, Role_ID: 1 },
+    { Person_Role_ID: 5, Person_ID: 3, Role_ID: 2 },
+    { Person_Role_ID: 6, Person_ID: 3, Role_ID: 5 },
+    { Person_Role_ID: 7, Person_ID: 4, Role_ID: 2 },
+  ],
+  Sub_Region: [
+    { Sub_Region_ID: 1, Region_ID: 1, Sub_Region: "Yorkshire", Sort_Order: 10 },
+    { Sub_Region_ID: 2, Region_ID: 1, Sub_Region: "North West", Sort_Order: 20 },
+    { Sub_Region_ID: 3, Region_ID: 2, Sub_Region: "West Midlands", Sort_Order: 10 },
+    { Sub_Region_ID: 4, Region_ID: 3, Sub_Region: "Wessex", Sort_Order: 10 },
+  ],
 };

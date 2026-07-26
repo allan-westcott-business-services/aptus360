@@ -2,6 +2,8 @@ import { useState } from "react";
 import { ADMIN_TABLES } from "../../lib/adminTables.js";
 import GenericTable from "./GenericTable.jsx";
 import PropertyConfigAdmin from "./PropertyConfigAdmin.jsx";
+import PeopleRolesAdmin from "./PeopleRolesAdmin.jsx";
+import SubRegionAdmin from "./SubRegionAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
@@ -34,11 +36,9 @@ export default function AdminPage() {
         {table?.special === "housetypes" ? (
           <PropertyConfigAdmin />
         ) : table?.special === "people" ? (
-          <div className="soon-note">
-            People and role assignment isn&rsquo;t built yet. Roles live in
-            <code> Person_Role</code>, so this screen needs a person list with role
-            checkboxes rather than the generic editor.
-          </div>
+          <PeopleRolesAdmin />
+        ) : table?.special === "subregions" ? (
+          <SubRegionAdmin />
         ) : table ? (
           <GenericTable table={table} />
         ) : null}

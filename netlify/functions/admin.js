@@ -14,6 +14,7 @@ const TABLES = {
   Utility:         { pk: "Utility_ID",         order: "Sort_Order" },
   Role:            { pk: "Role_ID",            order: "Sort_Order" },
   Person:          { pk: "Person_ID",          order: "Person_Name" },
+  Person_Role:     { pk: "Person_Role_ID",     order: "Person_Role_ID" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   Fire_Service:    { pk: "Fire_Service_ID",    order: "Fire_Service_Name" },

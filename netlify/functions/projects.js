@@ -24,6 +24,18 @@ const SCOPE_COLUMNS = [
   "Base_Points_Overridden", "IDNO_ID", "Reference",
 ].join(",");
 
+
+/* An HTML form sends "" for an untouched field. Postgres rejects that for
+   date, numeric and bigint columns — "invalid input syntax for type date".
+   Empty means absent, so normalise to null at the boundary. */
+function nullEmpty(obj) {
+  const out = {};
+  for (const [k, v] of Object.entries(obj)) {
+    out[k] = v === "" ? null : v;
+  }
+  return out;
+}
+
 export default async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
@@ -67,7 +79,7 @@ export default async function handler(req, context) {
 
       const { data: created, error } = await db
         .from("Project")
-        .insert(project)
+        .insert(nullEmpty(project))
         .select(PROJECT_COLUMNS)
         .single();
       if (error) throw error;
@@ -88,7 +100,7 @@ export default async function handler(req, context) {
 
       const { data: updated, error } = await db
         .from("Project")
-        .update(changes)
+        .update(nullEmpty(changes))
         .eq("Project_ID", id)
         .select(PROJECT_COLUMNS)
         .single();
@@ -99,7 +111,7 @@ export default async function handler(req, context) {
           const { Project_Scope_ID, ...scopeChanges } = s;
           const { error: sErr } = await db
             .from("Project_Scope")
-            .update(scopeChanges)
+            .update(nullEmpty(scopeChanges))
             .eq("Project_Scope_ID", Project_Scope_ID);
           if (sErr) throw sErr;
         }

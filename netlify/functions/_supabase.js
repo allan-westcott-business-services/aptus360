@@ -33,5 +33,26 @@ export function json(body, status = 200) {
 
 export function fail(error, status = 500) {
   console.error("[api]", error);
-  return json({ error: error instanceof Error ? error.message : String(error) }, status);
+
+  /* Supabase returns plain objects, not Error instances, so String(error)
+     yields "[object Object]" and swallows the actual problem. Pull the
+     message out explicitly and pass the diagnostic fields through. */
+  let message;
+  if (error instanceof Error) {
+    message = error.message;
+  } else if (error && typeof error === "object") {
+    message = error.message || error.details || error.hint || JSON.stringify(error);
+  } else {
+    message = String(error);
+  }
+
+  return json(
+    {
+      error: message,
+      code: error?.code,
+      details: error?.details,
+      hint: error?.hint,
+    },
+    status
+  );
 }

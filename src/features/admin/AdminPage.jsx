@@ -4,6 +4,7 @@ import GenericTable from "./GenericTable.jsx";
 import PropertyConfigAdmin from "./PropertyConfigAdmin.jsx";
 import PeopleRolesAdmin from "./PeopleRolesAdmin.jsx";
 import SubRegionAdmin from "./SubRegionAdmin.jsx";
+import StatusWorkflowAdmin from "./StatusWorkflowAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
@@ -39,6 +40,8 @@ export default function AdminPage() {
           <PeopleRolesAdmin />
         ) : table?.special === "subregions" ? (
           <SubRegionAdmin />
+        ) : table?.special === "workflow" ? (
+          <StatusWorkflowAdmin />
         ) : table ? (
           <GenericTable table={table} />
         ) : null}

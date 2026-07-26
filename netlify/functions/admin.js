@@ -23,6 +23,8 @@ const TABLES = {
   Heat_Pump_Model: { pk: "Heat_Pump_Model_ID", order: "Model" },
   Design_Status:   { pk: "Design_Status_ID",   order: "Sort_Order" },
   POC_Status:      { pk: "POC_Status_ID",      order: "Sort_Order" },
+  Status_Transition:       { pk: "Transition_ID", order: "Transition_ID" },
+  Status_Transition_Guard: { pk: "Guard_ID",      order: "Guard_ID" },
   Scope_Status:    { pk: "Scope_Status_ID",    order: "Sort_Order" },
   Project_Status:  { pk: "Project_Status_ID",  order: "Sort_Order" },
 };

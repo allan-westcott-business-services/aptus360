@@ -416,7 +416,7 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
               <button onClick={() => onChange([])}>None</button>
             </div>
             <div className="fc-opts">
-              <label className="fc-opt">
+              <label className={value.includes("__blank__") ? "fc-opt on" : "fc-opt"}>
                 <input type="checkbox" checked={value.includes("__blank__")}
                   onChange={() => toggle("__blank__")} />
                 <em>(Blank)</em>
@@ -424,7 +424,7 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
               {options.map((o) => {
                 const id = String(o[col.idKey]);
                 return (
-                  <label className="fc-opt" key={id}>
+                  <label className={value.includes(id) ? "fc-opt on" : "fc-opt"} key={id}>
                     <input type="checkbox" checked={value.includes(id)} onChange={() => toggle(id)} />
                     {o[col.labelKey]}
                   </label>
@@ -568,8 +568,10 @@ body.resizing { cursor: col-resize; user-select: none; }
   border-radius: 5px; padding: 3px; font: 600 11px inherit; color: var(--accent); cursor: pointer; }
 .fc-opts { max-height: 220px; overflow-y: auto; }
 .fc-opt { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 400;
-  text-transform: none; letter-spacing: 0; color: var(--text); padding: 3px 2px; margin: 0; cursor: pointer;
-  white-space: normal; }
+  text-transform: none; letter-spacing: 0; color: var(--text); padding: 4px 5px; margin: 0;
+  cursor: pointer; white-space: normal; border-radius: 4px; }
+.fc-opt:hover { background: var(--bg); }
+.fc-opt.on { background: var(--accent-light); color: var(--accent); font-weight: 600; }
 .fc-opt input { width: auto; }
 .fc-opt em { font-style: italic; color: var(--muted); }
 `;

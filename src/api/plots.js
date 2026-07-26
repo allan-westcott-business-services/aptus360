@@ -35,3 +35,21 @@ export async function deletePlot(projectId, plotId) {
   }
   return http.del(`/projects/${projectId}/plots?plot_id=${plotId}`);
 }
+
+export async function bulkUpdatePlots(projectId, plotIds, changes) {
+  if (USE_MOCKS) {
+    await delay(400);
+    mockStore = mockStore.map((p) => (plotIds.includes(p.Plot_ID) ? { ...p, ...changes } : p));
+    return { updated: plotIds.length };
+  }
+  return http.patch(`/projects/${projectId}/plots`, { plot_ids: plotIds, changes });
+}
+
+export async function bulkDeletePlots(projectId, plotIds) {
+  if (USE_MOCKS) {
+    await delay(300);
+    mockStore = mockStore.filter((p) => !plotIds.includes(p.Plot_ID));
+    return { deleted: plotIds.length };
+  }
+  return http.del(`/projects/${projectId}/plots?plot_ids=${plotIds.join(",")}`);
+}

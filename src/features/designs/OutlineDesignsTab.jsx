@@ -5,6 +5,7 @@ import { getProject } from "../../api/projects.js";
 import { updateScope, createScope, deleteScope } from "../../api/scopes.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
 import { peopleWithRole, ROLE, isDesignComplete } from "../../lib/constants.js";
+import { useTableLayout } from "../../lib/useTableLayout.js";
 
 /* Outline designs as an editable table — one row per scope.
 
@@ -18,7 +19,22 @@ const EDITABLE = [
   "Target_Date", "Actual_Date", "Revision", "Carried_Forward", "External_Design",
 ];
 
+const OD_COLS = [
+  { key: "scope",   label: "Scope",         width: 200 },
+  { key: "designer",label: "Designer",      width: 150 },
+  { key: "status",  label: "Design status", width: 150 },
+  { key: "rev",     label: "Rev",           width: 64 },
+  { key: "target",  label: "Target",        width: 138 },
+  { key: "actual",  label: "Actual",        width: 138 },
+  { key: "poc",     label: "POC status",    width: 140 },
+  { key: "checked", label: "Checked by",    width: 150 },
+  { key: "ext",     label: "Ext",           width: 48, align: "center" },
+  { key: "cf",      label: "C/F",           width: 48, align: "center" },
+  { key: "act",     label: "",              width: 42, align: "center" },
+];
+
 export default function OutlineDesignsTab({ projectId }) {
+  const layout = useTableLayout("designs", OD_COLS);
   const [lookups, setLookups] = useState(null);
   const [scopes, setScopes] = useState([]);
   const [original, setOriginal] = useState({});
@@ -152,19 +168,17 @@ export default function OutlineDesignsTab({ projectId }) {
       ) : (
         <div className="od-wrap">
           <table className="od-table">
+            <colgroup>
+              {OD_COLS.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
+            </colgroup>
             <thead>
               <tr>
-                <th className="w-scope">Scope</th>
-                <th className="w-sel">Designer</th>
-                <th className="w-sel">Design status</th>
-                <th className="w-rev">Rev</th>
-                <th className="w-date">Target</th>
-                <th className="w-date">Actual</th>
-                <th className="w-sel">POC status</th>
-                <th className="w-sel">Checked by</th>
-                <th className="w-flag">Ext</th>
-                <th className="w-flag">C/F</th>
-                <th className="w-act" aria-label="Actions" />
+                {OD_COLS.map((c) => (
+                  <th key={c.key} style={{ textAlign: c.align || "left" }}>
+                    {c.label}
+                    <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                  </th>
+                ))}
               </tr>
             </thead>
             <tbody>
@@ -272,13 +286,18 @@ const CSS = `
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
 
 .od-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; }
-.od-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.od-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
+.od-table th { position: relative; }
+.od-table .resizer { position: absolute; right: 0; top: 0; height: 100%; width: 7px;
+  cursor: col-resize; z-index: 4; }
+.od-table .resizer:hover { background: rgba(255,255,255,.35); }
+body.resizing { cursor: col-resize; user-select: none; }
 .od-table th {
   position: sticky; top: 0; z-index: 1; background: var(--accent); color: #fff;
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
   padding: 8px 8px; text-align: left; white-space: nowrap;
 }
-.od-table td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: middle; }
+.od-table td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
 .od-table tbody tr:nth-child(even) { background: #fafbfc; }
 .od-table tbody tr.dirty { background: #fffbeb; }
 .od-table tbody tr.dirty td { border-top-color: #fde68a; }
@@ -289,12 +308,6 @@ const CSS = `
 .od-table .mid { text-align: center; }
 .late-date { border-color: #fca5a5 !important; background: #fef2f2 !important; }
 
-.w-scope { min-width: 190px; }
-.w-sel   { min-width: 132px; }
-.w-rev   { width: 62px; }
-.w-date  { width: 132px; }
-.w-flag  { width: 44px; text-align: center !important; }
-.w-act   { width: 38px; }
 
 .scope-cell {
   border-left: 3px solid var(--muted); font-weight: 600;

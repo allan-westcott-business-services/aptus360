@@ -39,13 +39,35 @@ export default async function handler(req, context) {
       return json({ rows: data }, 201);
     }
 
+    /* Bulk edit: one statement for the whole selection rather than a
+       request per plot, which would blow the 10s function timeout on a
+       large site. */
+    if (req.method === "PATCH") {
+      const { plot_ids = [], changes = {} } = await req.json();
+      if (!plot_ids.length) return json({ error: "No plots selected" }, 400);
+      const clean = Object.fromEntries(
+        Object.entries(changes).filter(([, v]) => v !== undefined)
+      );
+      if (!Object.keys(clean).length) return json({ error: "No changes supplied" }, 400);
+
+      const { data, error } = await db
+        .from("Plot").update(clean)
+        .in("Plot_ID", plot_ids).eq("Project_ID", projectId)
+        .select(PLOT_COLUMNS);
+      if (error) throw error;
+      return json({ rows: data, updated: data?.length ?? 0 });
+    }
+
     if (req.method === "DELETE") {
       const url = new URL(req.url);
       const plotId = url.searchParams.get("plot_id");
-      if (!plotId) return json({ error: "plot_id required" }, 400);
-      const { error } = await db.from("Plot").delete().eq("Plot_ID", plotId);
+      const ids = url.searchParams.get("plot_ids");
+      if (!plotId && !ids) return json({ error: "plot_id or plot_ids required" }, 400);
+      const list = ids ? ids.split(",").map(Number) : [Number(plotId)];
+      const { error } = await db
+        .from("Plot").delete().in("Plot_ID", list).eq("Project_ID", projectId);
       if (error) throw error;
-      return json({ deleted: true });
+      return json({ deleted: list.length });
     }
 
     return json({ error: "Method not allowed" }, 405);

@@ -98,6 +98,30 @@ const SIDEBAR_CSS = `
 .sidebar-toggle-btn:hover { color: var(--accent); }
 #app-sidebar.collapsed + .sidebar-toggle-btn { left: 0; }
 
+
+/* styles.css applies appearance:none to every input, which strips the
+   native checkbox rendering — checked and unchecked look identical.
+   Draw them explicitly. Sidebar is always mounted, so this applies
+   app-wide. */
+input[type="checkbox"] {
+  appearance: none; -webkit-appearance: none;
+  width: 16px; height: 16px; flex: none; padding: 0; position: relative;
+  border: 1.5px solid #cbd5e1; border-radius: 4px;
+  background: #fff; cursor: pointer; vertical-align: middle;
+  transition: background .12s, border-color .12s;
+}
+input[type="checkbox"]:hover { border-color: var(--accent); }
+input[type="checkbox"]:checked {
+  background: var(--accent); border-color: var(--accent);
+}
+input[type="checkbox"]:checked::after {
+  content: ""; position: absolute; left: 4.5px; top: 1px;
+  width: 4px; height: 8px; border: solid #fff;
+  border-width: 0 2px 2px 0; transform: rotate(45deg);
+}
+input[type="checkbox"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
+input[type="checkbox"]:disabled { opacity: .5; cursor: not-allowed; }
+
 /* ═══ PLACEHOLDER (unmigrated views) ════════════════════════════ */
 .placeholder { text-align: center; padding: 60px 24px; }
 .placeholder-badge {

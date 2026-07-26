@@ -4,6 +4,9 @@ import AddPlotsForm from "./AddPlotsForm.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, deletePlot } from "../../api/plots.js";
 import { getProject, updateProject } from "../../api/projects.js";
+import { bulkUpdatePlots, bulkDeletePlots } from "../../api/plots.js";
+import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
+import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
@@ -105,7 +108,26 @@ function BedroomSummary({ plots, configFor, typeName }) {
   );
 }
 
+const COLS = (cfg, typeName, hpName) => [
+  { key: "sel",    label: "",             width: 38,  type: "none" },
+  { key: "ref",    label: "Plot ref",     width: 140, type: "text",  raw: (p) => p.Plot_Ref || "" },
+  { key: "num",    label: "Plot",         width: 80,  type: "text",  raw: (p) => p.Plot_Number },
+  { key: "type",   label: "House type",   width: 190, type: "multi", raw: (p) => p.Property_Config_ID },
+  { key: "beds",   label: "Beds",         width: 74,  type: "num",   align: "right", raw: (p) => cfg(p.Property_Config_ID)?.Bedrooms ?? null },
+  { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Load ?? null },
+  { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
+  { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
+  { key: "slp",    label: "SLP",          width: 60,  type: "bool",  align: "center", raw: (p) => !!p.Self_Lay_Provider },
+  { key: "act",    label: "",             width: 44,  type: "none" },
+];
+
 export default function PlotsTab({ projectId, projectRef }) {
+  const [sort, setSort] = useState({ key: "num", dir: "asc" });
+  const [filters, setFilters] = useState({});
+  const [openFilter, setOpenFilter] = useState(null);
+  const [selected, setSelected] = useState([]);
+  const [bulk, setBulk] = useState({ Property_Config_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
+  const [bulkBusy, setBulkBusy] = useState(false);
   const [mode, setMode] = useState("list");
   const [plots, setPlots] = useState([]);
   const [lookups, setLookups] = useState(null);
@@ -171,6 +193,79 @@ export default function PlotsTab({ projectId, projectRef }) {
       setError(e.message);
     } finally {
       setSavingDefaults(false);
+    }
+  }
+
+  const hpName = (id) =>
+    (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
+
+  const columns = useMemo(() => COLS(configFor, typeName, hpName), [lookups]);
+  const layout = useTableLayout("plots", columns);
+
+  const filterOptions = (key) => {
+    if (key === "type")
+      return (lookups?.propertyConfigs || []).map((c) => ({
+        id: c.Property_Config_ID,
+        label: `${c.Code} \u2014 ${c.Bedrooms} Bed ${typeName(c.Property_Type_ID)}`,
+      }));
+    if (key === "hp")
+      return (lookups?.heatPumpModels || []).map((m) => ({ id: m.Heat_Pump_Model_ID, label: m.Model }));
+    return [];
+  };
+
+  const shown = useMemo(() => {
+    const out = plots.filter((p) => rowPasses(p, columns.filter((c) => c.type !== "none"), filters));
+    const col = columns.find((c) => c.key === sort.key);
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...out].sort((a, b) => {
+      if (!col) return 0;
+      const va = col.raw(a), vb = col.raw(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return naturalCompare(String(va), String(vb)) * dir;
+    });
+  }, [plots, filters, sort, columns]);
+
+  const allSelected = shown.length > 0 && shown.every((p) => selected.includes(p.Plot_ID));
+
+  const hasBulk = Object.values(bulk).some((v) => v !== "");
+
+  const toggleSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
+
+  async function applyBulk() {
+    const changes = {};
+    if (bulk.Property_Config_ID) changes.Property_Config_ID = Number(bulk.Property_Config_ID);
+    if (bulk.Heat_Pump_Model_ID) changes.Heat_Pump_Model_ID = Number(bulk.Heat_Pump_Model_ID);
+    if (bulk.KVA_Load !== "") changes.KVA_Load = Number(bulk.KVA_Load);
+    if (bulk.PV) changes.PV = bulk.PV === "y";
+    if (bulk.Self_Lay_Provider) changes.Self_Lay_Provider = bulk.Self_Lay_Provider === "y";
+    setBulkBusy(true);
+    try {
+      await bulkUpdatePlots(projectId, selected, changes);
+      setBulk({ Property_Config_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
+      setSelected([]);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBulkBusy(false);
+    }
+  }
+
+  async function deleteSelected() {
+    if (!window.confirm(`Delete ${selected.length} plot${selected.length === 1 ? "" : "s"}?`)) return;
+    setBulkBusy(true);
+    try {
+      await bulkDeletePlots(projectId, selected);
+      setSelected([]);
+      await load();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBulkBusy(false);
     }
   }
 
@@ -261,53 +356,120 @@ export default function PlotsTab({ projectId, projectRef }) {
           </button>
         </div>
       ) : (
-        <div className="plot-table-wrap">
-          <table className="plot-table">
-            <thead>
-              <tr>
-                <th>Plot ref</th>
-                <th>Plot</th>
-                <th>House type</th>
-                <th className="num">Beds</th>
-                <th className="num">kVA</th>
-                <th>Heat pump</th>
-                <th className="mid">PV</th>
-                <th className="mid">SLP</th>
-                <th aria-label="Actions" />
-              </tr>
-            </thead>
-            <tbody>
-              {sorted.map((p) => (
-                <tr key={p.Plot_ID}>
-                  <td className="mono ref">{p.Plot_Ref || "\u2014"}</td>
-                  <td className="mono">{p.Plot_Number}</td>
-                  <td>
-                    {configFor(p.Property_Config_ID)
-                      ? <><span className="code-chip">{configFor(p.Property_Config_ID).Code}</span>{" "}
-                          {typeName(configFor(p.Property_Config_ID).Property_Type_ID)}</>
-                      : "\u2014"}
-                  </td>
-                  <td className="num">{configFor(p.Property_Config_ID)?.Bedrooms ?? "\u2014"}</td>
-                  <td className="num">{p.KVA_Load ?? "\u2014"}</td>
-                  <td>{heatPumpName(p.Heat_Pump_Model_ID)}</td>
-                  <td className="mid">{p.PV ? <span className="tick">&#10003;</span> : ""}</td>
-                  <td className="mid">{p.Self_Lay_Provider ? <span className="tick">&#10003;</span> : ""}</td>
-                  <td className="mid">
-                    <button className="row-del" onClick={() => remove(p)} aria-label={`Remove plot ${p.Plot_Number}`}>
-                      &#10005;
-                    </button>
-                  </td>
+        <>
+          {selected.length > 0 && (
+            <div className="bulk-bar">
+              <span className="bulk-count">{selected.length} selected</span>
+              <select value={bulk.Property_Config_ID}
+                onChange={(e) => setBulk((b) => ({ ...b, Property_Config_ID: e.target.value }))}>
+                <option value="">House type&hellip;</option>
+                {(lookups?.propertyConfigs || []).map((c) => (
+                  <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
+                    {c.Code} — {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
+                  </option>
+                ))}
+              </select>
+              <select value={bulk.Heat_Pump_Model_ID}
+                onChange={(e) => setBulk((b) => ({ ...b, Heat_Pump_Model_ID: e.target.value }))}>
+                <option value="">Heat pump&hellip;</option>
+                {(lookups?.heatPumpModels || []).map((m) => (
+                  <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>{m.Model}</option>
+                ))}
+              </select>
+              <input type="number" step="0.1" placeholder="kVA" className="bulk-kva"
+                value={bulk.KVA_Load} onChange={(e) => setBulk((b) => ({ ...b, KVA_Load: e.target.value }))} />
+              <select value={bulk.PV} onChange={(e) => setBulk((b) => ({ ...b, PV: e.target.value }))}>
+                <option value="">PV&hellip;</option><option value="y">PV: Yes</option><option value="n">PV: No</option>
+              </select>
+              <select value={bulk.Self_Lay_Provider}
+                onChange={(e) => setBulk((b) => ({ ...b, Self_Lay_Provider: e.target.value }))}>
+                <option value="">SLP&hellip;</option><option value="y">SLP: Yes</option><option value="n">SLP: No</option>
+              </select>
+              <button className="btn accent" disabled={bulkBusy || !hasBulk} onClick={applyBulk}>
+                {bulkBusy ? "Applying\u2026" : "Apply"}
+              </button>
+              <button className="btn ghost danger" disabled={bulkBusy} onClick={deleteSelected}>Delete</button>
+              <button className="bulk-x" onClick={() => setSelected([])} title="Clear selection">&#10005;</button>
+            </div>
+          )}
+
+          <div className="dt-wrap">
+            <table className="dt">
+              <colgroup>
+                {layout.visible.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
+              </colgroup>
+              <thead>
+                <tr className="head-row">
+                  {layout.visible.map((c) => (
+                    <th key={c.key} style={{ textAlign: c.align || "left" }}
+                        onClick={() => c.type !== "none" && toggleSort(c.key)}>
+                      {c.key === "sel" ? (
+                        <input type="checkbox" checked={allSelected}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setSelected(e.target.checked ? shown.map((p) => p.Plot_ID) : [])} />
+                      ) : (<>
+                        {c.label}
+                        {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
+                      </>)}
+                      <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                    </th>
+                  ))}
                 </tr>
-              ))}
-            </tbody>
-          </table>
-        </div>
+                <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
+                  {layout.visible.map((c) => (
+                    <th key={c.key}>
+                      {c.type !== "none" && (
+                        <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
+                          onChange={(v) => setFilters((f) => ({ ...f, [c.key]: v }))}
+                          options={c.type === "multi" ? filterOptions(c.key) : null}
+                          open={openFilter === c.key}
+                          setOpen={(o) => setOpenFilter(o ? c.key : null)} />
+                      )}
+                    </th>
+                  ))}
+                </tr>
+              </thead>
+              <tbody>
+                {shown.length === 0 ? (
+                  <tr><td colSpan={layout.visible.length} className="no-rows">No plots match these filters.</td></tr>
+                ) : shown.map((p) => {
+                  const c = configFor(p.Property_Config_ID);
+                  const on = selected.includes(p.Plot_ID);
+                  return (
+                    <tr key={p.Plot_ID} className={on ? "row-sel" : ""}>
+                      {layout.visible.map((col) => (
+                        <td key={col.key} style={{ textAlign: col.align || "left" }}>
+                          {col.key === "sel" ? (
+                            <input type="checkbox" checked={on}
+                              onChange={() => setSelected((s) => on ? s.filter((x) => x !== p.Plot_ID) : [...s, p.Plot_ID])} />
+                          ) : col.key === "ref" ? <span className="mono ref">{p.Plot_Ref || "\u2014"}</span>
+                            : col.key === "num" ? <span className="mono">{p.Plot_Number}</span>
+                            : col.key === "type" ? (c ? <><span className="code-chip">{c.Code}</span> {typeName(c.Property_Type_ID)}</> : "\u2014")
+                            : col.key === "beds" ? (c?.Bedrooms ?? "\u2014")
+                            : col.key === "kva" ? (p.KVA_Load ?? "\u2014")
+                            : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
+                            : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")
+                            : col.key === "slp" ? (p.Self_Lay_Provider ? <span className="tick">&#10003;</span> : "")
+                            : (
+                              <button className="row-del" onClick={() => remove(p)} aria-label={`Remove plot ${p.Plot_Number}`}>
+                                &#10005;
+                              </button>
+                            )}
+                        </td>
+                      ))}
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
       )}
     </div>
   );
 }
 
-const CSS = `
+const CSS = TABLE_CSS + FILTER_CSS + `
 .tab-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 16px; margin-bottom: 14px;
@@ -315,96 +477,66 @@ const CSS = `
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .tab-head .count {
   font-size: 11px; font-weight: 700; background: var(--accent-light);
-  color: var(--accent); border-radius: 20px; padding: 2px 8px; margin-left: 6px;
-  vertical-align: middle;
+  color: var(--accent); border-radius: 20px; padding: 2px 8px; margin-left: 6px; vertical-align: middle;
 }
 .tab-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
-
-.empty {
-  text-align: center; padding: 48px 20px; border: 1px dashed var(--border);
-  border-radius: var(--radius); background: var(--bg);
-}
-.empty-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }
-.empty p { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
-
-.plot-table-wrap {
-  border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: auto; max-height: 62vh;
-}
-.plot-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.plot-table th {
-  position: sticky; top: 0; z-index: 1;
-  background: var(--accent); color: #fff; text-align: left;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.06em; padding: 8px 10px; white-space: nowrap;
-}
-.plot-table td { padding: 7px 10px; border-top: 1px solid var(--border); }
-.plot-table tbody tr:nth-child(even) { background: #fafbfc; }
-.plot-table tbody tr:hover { background: var(--accent-light); }
-.plot-table .num { text-align: right; }
-.plot-table .mid { text-align: center; }
-.plot-table .ref { color: var(--accent); font-weight: 600; }
-.tick { color: #059669; font-weight: 700; }
-.code-chip {
-  font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
-  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
-}
-.row-del {
-  background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 11px; padding: 2px 5px; border-radius: 4px;
-}
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 
 .plot-defaults {
   display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
   border: 1px solid var(--border); border-radius: var(--radius);
   background: var(--bg); padding: 10px 14px; margin-bottom: 16px;
 }
-.pd-label {
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--accent); align-self: center; margin-right: 2px;
-}
+.pd-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--accent); align-self: center; }
 .pd-field { min-width: 168px; }
-.pd-field label {
-  display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--muted); margin-bottom: 3px;
-}
+.pd-field label { display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
 .pd-save { padding: 6px 14px; font-size: 12.5px; }
 .pd-note { font-size: 11px; color: var(--muted); margin-left: auto; align-self: center; }
 
-.bed-summary {
-  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
-  align-items: center; margin: 0 0 16px;
+.bulk-bar {
+  display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  background: var(--accent); color: #fff; border-radius: var(--radius);
+  padding: 9px 12px; margin-bottom: 10px;
 }
-.bed-pill {
-  position: relative; display: inline-flex; align-items: center; gap: 6px;
-  padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
-  white-space: nowrap; cursor: default;
-}
-.bed-pill.load { background: var(--accent); color: #fff; }
-.bed-count {
-  background: rgba(255,255,255,.3); border-radius: 999px;
-  padding: 1px 7px; font-size: 11.5px;
-}
-.bed-missing { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.bulk-count { font-size: 12px; font-weight: 700; white-space: nowrap; }
+.bulk-bar select, .bulk-bar input { width: auto; min-width: 118px; font-size: 12px; padding: 5px 8px; }
+.bulk-kva { width: 78px !important; min-width: 0 !important; }
+.bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }
+.bulk-bar .btn.ghost.danger { color: #b91c1c; }
+.bulk-x { background: none; border: none; color: #fff; cursor: pointer; font-size: 12px; margin-left: auto; }
+.dt tbody tr.row-sel { background: #fff7ed !important; }
 
-.bed-tooltip {
-  position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
-  display: none; flex-direction: column; gap: 3px; z-index: 30;
-  background: #1a1d23; color: #f1f5f9; border-radius: 7px; padding: 9px 11px;
-  min-width: 168px; box-shadow: 0 6px 18px rgba(0,0,0,.28);
-  font-size: 11.5px; font-weight: 500; text-align: left;
-}
+.empty { text-align: center; padding: 48px 20px; border: 1px dashed var(--border);
+  border-radius: var(--radius); background: var(--bg); }
+.empty-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }
+.empty p { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
+.mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
+.dt .ref { color: var(--accent); font-weight: 600; }
+.tick { color: #059669; font-weight: 700; }
+.code-chip { font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
+.row-del { background: none; border: none; cursor: pointer; color: var(--muted);
+  font-size: 11px; padding: 2px 5px; border-radius: 4px; }
+.row-del:hover { background: #fef2f2; color: #ef4444; }
+
+.bed-summary { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  align-items: center; margin: 0 0 16px; }
+.bed-pill { position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  white-space: nowrap; cursor: default; }
+.bed-pill.load { background: var(--accent); color: #fff; }
+.bed-count { background: rgba(255,255,255,.3); border-radius: 999px; padding: 1px 7px; font-size: 11.5px; }
+.bed-missing { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+.bed-tooltip { position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  display: none; flex-direction: column; gap: 3px; z-index: 30; background: #1a1d23; color: #f1f5f9;
+  border-radius: 7px; padding: 9px 11px; min-width: 168px; box-shadow: 0 6px 18px rgba(0,0,0,.28);
+  font-size: 11.5px; font-weight: 500; text-align: left; }
 .bed-pill:hover .bed-tooltip { display: flex; }
-.bed-tooltip::after {
-  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
-  border: 5px solid transparent; border-top-color: #1a1d23;
-}
-.bed-tooltip-title {
-  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .07em; opacity: .65; padding-bottom: 4px;
-  border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 2px;
-}
+.bed-tooltip::after { content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #1a1d23; }
+.bed-tooltip-title { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  opacity: .65; padding-bottom: 4px; border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 2px; }
 .bed-tooltip-row { display: flex; justify-content: space-between; gap: 14px; }
 .bed-tooltip-row .val { font-weight: 700; }
 `;

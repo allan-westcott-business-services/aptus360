@@ -10,7 +10,7 @@ export default async function handler() {
     const db = supabase();
 
     const queries = {
-      branches:       db.from("Customer_Branch").select("Branch_ID,Branch_Name,Customer_ID").eq("Is_Active", true).order("Branch_Name"),
+      branches:       db.from("Customer_Branch").select("Branch_ID,Branch_Name,Branch_Dropdown,Customer_ID").eq("Is_Active", true).order("Branch_Dropdown"),
       customers:      db.from("Customer").select("Customer_ID,Customer_Name").eq("Is_Active", true).order("Customer_Name"),
       regions:        db.from("Region").select("Region_ID,Region").eq("Is_Active", true).order("Sort_Order"),
       subRegions:     db.from("Sub_Region").select("Sub_Region_ID,Region_ID,Sub_Region").eq("Is_Active", true).order("Sort_Order"),

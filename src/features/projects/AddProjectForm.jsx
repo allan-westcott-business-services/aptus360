@@ -162,7 +162,7 @@ export default function AddProjectForm() {
               <option value="">Select&hellip;</option>
               {lookups.branches.map((b) => (
                 <option key={b.Branch_ID} value={b.Branch_ID}>
-                  {b.Branch_Name}
+                  {b.Branch_Dropdown || b.Branch_Name}
                 </option>
               ))}
             </Select>

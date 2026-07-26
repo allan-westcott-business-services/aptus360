@@ -3,10 +3,10 @@
 
 export const lookups = {
   branches: [
-    { Branch_ID: 1, Branch_Name: "Barratt \u2014 Yorkshire East", Customer_ID: 10 },
-    { Branch_ID: 2, Branch_Name: "Persimmon \u2014 West Midlands", Customer_ID: 11 },
-    { Branch_ID: 3, Branch_Name: "Taylor Wimpey \u2014 North West", Customer_ID: 12 },
-    { Branch_ID: 4, Branch_Name: "Vistry \u2014 South West", Customer_ID: 13 },
+    { Branch_ID: 1, Branch_Name: "Yorkshire East", Branch_Dropdown: "Barratt Homes (Yorkshire East)", Customer_ID: 10 },
+    { Branch_ID: 2, Branch_Name: "West Midlands", Branch_Dropdown: "Persimmon Homes (West Midlands)", Customer_ID: 11 },
+    { Branch_ID: 3, Branch_Name: "North West", Branch_Dropdown: "Taylor Wimpey Homes (North West)", Customer_ID: 12 },
+    { Branch_ID: 4, Branch_Name: "South West", Branch_Dropdown: "Vistry Homes (South West)", Customer_ID: 13 },
   ],
   regions: [
     { Region_ID: 1, Region: "North" },

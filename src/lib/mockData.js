@@ -110,13 +110,12 @@ export const demoProject = {
   Eastings: 426300,
   Northings: 435120,
   Site_Contact: "M. Okafor \u2014 07700 900412",
-  Audacia_Customer_Name: "BARRATT HOMES (YORKS E)",
   Audacia_Plot_Count: 148,
   Auto_Plot_Count: 146,
   Minimum_Service_Call_Off: 12,
   Lay_Only_MU: false,
   Heat_Pump_Model_ID: 1,
-  Default_Plot_Heat_Source_ID: 1,
+  Default_Heat_Source_ID: 1,
 };
 
 export const demoScopes = [

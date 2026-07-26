@@ -10,9 +10,9 @@ const PROJECT_COLUMNS = [
   "Site_Name", "Site_Address", "Postcode", "Eastings", "Northings",
   "Date_Received", "KPI_Date", "Date_Sent", "Secured_Date", "Status_Changed_Date",
   "BDD_KAM_ID", "Estimator_ID", "Quote_Type_ID", "I_and_C", "Is_Priority", "Notes",
-  "Contract_Number", "Date_Signed", "Site_Contact", "Fire_Service_ID",
-  "Heat_Pump_Model_ID", "Default_Plot_Heat_Source_ID", "Lay_Only_MU",
-  "Minimum_Service_Call_Off", "Audacia_Customer_Name", "Audacia_Plot_Count",
+  "Contract_Number", "Date_Signed", "Site_Contact", "Project_Manager_ID",
+  "Fire_Service_ID", "Heat_Pump_Model_ID", "Default_Heat_Source_ID",
+  "Lay_Only_MU", "Minimum_Service_Call_Off", "Audacia_Plot_Count",
 ].join(",");
 
 const SCOPE_COLUMNS = [
@@ -43,13 +43,16 @@ export default async function handler(req, context) {
   try {
     /* ── GET /api/projects/:id ─────────────────────────────────── */
     if (req.method === "GET" && id) {
-      const [{ data: project, error: pErr }, { data: scopes, error: sErr }] = await Promise.all([
-        db.from("Project").select(PROJECT_COLUMNS).eq("Project_ID", id).single(),
-        db.from("Project_Scope").select(SCOPE_COLUMNS).eq("Project_ID", id).order("Utility_ID"),
-      ]);
+      const [{ data: project, error: pErr }, { data: scopes, error: sErr }, { count, error: cErr }] =
+        await Promise.all([
+          db.from("Project").select(PROJECT_COLUMNS).eq("Project_ID", id).single(),
+          db.from("Project_Scope").select(SCOPE_COLUMNS).eq("Project_ID", id).order("Utility_ID"),
+          db.from("Plot").select("Plot_ID", { count: "exact", head: true }).eq("Project_ID", id),
+        ]);
       if (pErr) throw pErr;
       if (sErr) throw sErr;
-      return json({ ...project, scopes: scopes || [] });
+      if (cErr) throw cErr;
+      return json({ ...project, Auto_Plot_Count: count ?? 0, scopes: scopes || [] });
     }
 
     /* ── GET /api/projects ─────────────────────────────────────── */

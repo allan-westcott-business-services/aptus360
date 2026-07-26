@@ -109,23 +109,17 @@ export default function EditContractForm({ projectId = 4711 }) {
             </Select>
           </Field>
 
-          <Field label="Audacia customer name" span={3}>
-            <input
-              value={f.Audacia_Customer_Name || ""}
-              onChange={(e) => set("Audacia_Customer_Name")(e.target.value)}
-            />
-          </Field>
-          <Field label="Plot count (Audacia)">
+          <Field label="Plot count (Audacia)" span={2}>
             <input
               type="number"
               value={f.Audacia_Plot_Count ?? ""}
               onChange={(e) => set("Audacia_Plot_Count")(e.target.value)}
             />
           </Field>
-          <Field label="Plot count (Aptus)" hint="Counted from plots">
+          <Field label="Plot count (Aptus)" span={2} hint="Counted from plots">
             <input value={f.Auto_Plot_Count ?? ""} disabled />
           </Field>
-          <Field label="Min. plot call off">
+          <Field label="Min. plot call off" span={2}>
             <input
               type="number"
               value={f.Minimum_Service_Call_Off ?? ""}
@@ -262,7 +256,7 @@ export default function EditContractForm({ projectId = 4711 }) {
       <Section title="Technical defaults">
         <div className="grid6">
           <Field label="Default heat source" span={2}>
-            <Select value={f.Default_Plot_Heat_Source_ID} onChange={set("Default_Plot_Heat_Source_ID")}>
+            <Select value={f.Default_Heat_Source_ID} onChange={set("Default_Heat_Source_ID")}>
               {lookups.heatSources.map((x) => (
                 <option key={x.Heat_Source_ID} value={x.Heat_Source_ID}>
                   {x.Heat_Source}

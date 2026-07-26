@@ -1,0 +1,12 @@
+[build]
+  command = "npm run build"
+  publish = "dist"
+  functions = "netlify/functions"
+
+# SPA fallback — without this, refreshing any route but "/" returns 404.
+# API routes are declared via `export const config` inside each function,
+# so they do not need a redirect here.
+[[redirects]]
+  from = "/*"
+  to = "/index.html"
+  status = 200

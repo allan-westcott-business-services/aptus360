@@ -15,7 +15,8 @@ export default async function handler() {
       regions:        db.from("Region").select("Region_ID,Region").eq("Is_Active", true).order("Sort_Order"),
       subRegions:     db.from("Sub_Region").select("Sub_Region_ID,Region_ID,Sub_Region").eq("Is_Active", true).order("Sort_Order"),
       quoteTypes:     db.from("Quote_Type").select("Quote_Type_ID,Quote_Type,Is_Budget").eq("Is_Active", true).order("Sort_Order"),
-      people:         db.from("Person").select("Person_ID,Person_Name,Is_BDD_KAM,Is_Estimator,Is_Designer,Is_Project_Manager").eq("Is_Active", true).order("Person_Name"),
+      people:         db.from("Person").select("Person_ID,Person_Name,Person_Role(Role_ID)").eq("Is_Active", true).order("Person_Name"),
+      roles:          db.from("Role").select("Role_ID,Role,Role_Code,Sort_Order").eq("Is_Active", true).order("Sort_Order"),
       utilities:      db.from("Utility").select("Utility_ID,Utility,Is_Lighting").order("Sort_Order"),
       fireServices:   db.from("Fire_Service").select("Fire_Service_ID,Fire_Service_Name").order("Fire_Service_Name"),
       idnos:          db.from("IDNO").select("IDNO_ID,IDNO_Name").order("IDNO_Name"),
@@ -36,6 +37,19 @@ export default async function handler() {
       // phantom columns for months.
       if (results[i].error) throw new Error(`${k}: ${results[i].error.message}`);
       out[k] = results[i].data;
+    });
+
+    /* Flatten the embedded Person_Role rows into a plain Role_ID list, so
+       the frontend never has to know the join table exists. */
+    const roleById = new Map((out.roles || []).map((r) => [r.Role_ID, r.Role_Code]));
+    out.people = (out.people || []).map((p) => {
+      const ids = (p.Person_Role || []).map((x) => x.Role_ID);
+      return {
+        Person_ID: p.Person_ID,
+        Person_Name: p.Person_Name,
+        Role_IDs: ids,
+        Role_Codes: ids.map((id) => roleById.get(id)).filter(Boolean),
+      };
     });
 
     return json(out);

@@ -25,10 +25,18 @@ export const lookups = {
     { Quote_Type_ID: 3, Quote_Type: "Street Lighting" },
   ],
   people: [
-    { Person_ID: 1, Person_Name: "A. Whitcombe", Is_BDD_KAM: true, Is_Estimator: false, Is_Designer: false, Is_Project_Manager: false },
-    { Person_ID: 2, Person_Name: "R. Nkemelu", Is_BDD_KAM: false, Is_Estimator: true, Is_Designer: true, Is_Project_Manager: false },
-    { Person_ID: 3, Person_Name: "J. Farrell", Is_BDD_KAM: true, Is_Estimator: true, Is_Designer: false, Is_Project_Manager: true },
-    { Person_ID: 4, Person_Name: "S. Dhillon", Is_BDD_KAM: false, Is_Estimator: true, Is_Designer: true, Is_Project_Manager: true },
+    { Person_ID: 1, Person_Name: "A. Whitcombe", Role_IDs: [1], Role_Codes: ["BDD_KAM"] },
+    { Person_ID: 2, Person_Name: "R. Nkemelu", Role_IDs: [2, 3], Role_Codes: ["ESTIMATOR", "DESIGNER"] },
+    { Person_ID: 3, Person_Name: "J. Farrell", Role_IDs: [1, 2, 5], Role_Codes: ["BDD_KAM", "ESTIMATOR", "PROJECT_MANAGER"] },
+    { Person_ID: 4, Person_Name: "S. Dhillon", Role_IDs: [2, 3, 5], Role_Codes: ["ESTIMATOR", "DESIGNER", "PROJECT_MANAGER"] },
+  ],
+  roles: [
+    { Role_ID: 1, Role: "BDD / KAM", Role_Code: "BDD_KAM", Sort_Order: 10 },
+    { Role_ID: 2, Role: "Estimator", Role_Code: "ESTIMATOR", Sort_Order: 20 },
+    { Role_ID: 3, Role: "Designer", Role_Code: "DESIGNER", Sort_Order: 30 },
+    { Role_ID: 4, Role: "Design Checker", Role_Code: "DESIGN_CHECKER", Sort_Order: 40 },
+    { Role_ID: 5, Role: "Project Manager", Role_Code: "PROJECT_MANAGER", Sort_Order: 50 },
+    { Role_ID: 6, Role: "Quantity Surveyor", Role_Code: "QS", Sort_Order: 60 },
   ],
   fireServices: [
     { Fire_Service_ID: 1, Fire_Service_Name: "West Yorkshire FRS" },

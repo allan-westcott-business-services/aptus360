@@ -8,7 +8,7 @@ import StagePill from "../../components/StagePill.jsx";
 import ScopePicker from "./ScopePicker.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { createProject, nextProjectRef } from "../../api/projects.js";
-import { statusesForStage, firstStatusForStage, peopleWithRole, STAGES } from "../../lib/constants.js";
+import { statusesForStage, firstStatusForStage, peopleWithRole, ROLE, STAGES } from "../../lib/constants.js";
 
 const REQUIRED = [
   ["Date_Received", "Date received"],
@@ -206,7 +206,7 @@ export default function AddProjectForm() {
           <Field label="BDD / KAM" required span={2}>
             <Select value={f.BDD_KAM_ID} onChange={set("BDD_KAM_ID")}>
               <option value="">Select&hellip;</option>
-              {peopleWithRole(lookups.people, "Is_BDD_KAM").map((p) => (
+              {peopleWithRole(lookups.people, ROLE.BDD_KAM).map((p) => (
                 <option key={p.Person_ID} value={p.Person_ID}>
                   {p.Person_Name}
                 </option>
@@ -216,7 +216,7 @@ export default function AddProjectForm() {
           <Field label="Estimator" required span={2}>
             <Select value={f.Estimator_ID} onChange={set("Estimator_ID")}>
               <option value="">Select&hellip;</option>
-              {peopleWithRole(lookups.people, "Is_Estimator").map((p) => (
+              {peopleWithRole(lookups.people, ROLE.ESTIMATOR).map((p) => (
                 <option key={p.Person_ID} value={p.Person_ID}>
                   {p.Person_Name}
                 </option>

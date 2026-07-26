@@ -37,4 +37,19 @@ export const isDesignComplete = (designStatuses = [], id) =>
   designStatuses.find((d) => d.Design_Status_ID === Number(id))?.Is_Complete === true;
 
 /* ── People ─────────────────────────────────────────────────────── */
-export const peopleWithRole = (people = [], flag) => people.filter((p) => p[flag]);
+/* Filters on Role_Code, not display name, so renaming "BDD / KAM" in the
+   Role table doesn't silently empty a dropdown. */
+export const ROLE = {
+  BDD_KAM: "BDD_KAM",
+  ESTIMATOR: "ESTIMATOR",
+  DESIGNER: "DESIGNER",
+  DESIGN_CHECKER: "DESIGN_CHECKER",
+  PROJECT_MANAGER: "PROJECT_MANAGER",
+  QS: "QS",
+};
+
+export const peopleWithRole = (people = [], code) =>
+  people.filter((p) => (p.Role_Codes || []).includes(code));
+
+export const rolesForPerson = (person, roles = []) =>
+  roles.filter((r) => (person?.Role_IDs || []).includes(r.Role_ID));

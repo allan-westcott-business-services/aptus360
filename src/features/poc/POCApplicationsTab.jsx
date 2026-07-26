@@ -503,7 +503,7 @@ export default function POCApplicationsTab({ projectId }) {
                         ? [row, (
                             <tr className="opt-row" key={`o${r.POC_Application_ID}`}>
                               <td colSpan={COLS.length}>
-                                <OptionsPanel appId={r.POC_Application_ID}
+                                <OptionsPanel appId={r.POC_Application_ID} projectId={projectId}
                                   providerName={providerName(r)} onChanged={load} />
                               </td>
                             </tr>

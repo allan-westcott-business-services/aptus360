@@ -2,6 +2,7 @@ import { useState, useEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listOptions, saveOption, saveQuotation, removeOption, removeQuotation } from "../../api/pocOptions.js";
+import PlotAssignment from "./PlotAssignment.jsx";
 
 /* Options and quotations returned by a network operator.
 
@@ -13,7 +14,7 @@ import { listOptions, saveOption, saveQuotation, removeOption, removeQuotation }
 const money = (n) => (n == null || n === "" ? "\u2014" : `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
 
-export default function OptionsPanel({ appId, providerName, onChanged }) {
+export default function OptionsPanel({ appId, projectId, providerName, onChanged }) {
   const [lookups, setLookups] = useState(null);
   const [options, setOptions] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -23,6 +24,7 @@ export default function OptionsPanel({ appId, providerName, onChanged }) {
   const [optDraft, setOptDraft] = useState({ Option_Name: "", Date_Received: "", Consumption_kVA: "", Interactive: false });
   const [quotFor, setQuotFor] = useState(null);
   const [quotDraft, setQuotDraft] = useState(blankQuot());
+  const [assigning, setAssigning] = useState(null);
 
   function blankQuot() {
     return { Quotation_Ref: "", Quotation_Status_ID: "", Estimated_Cost: "",
@@ -165,13 +167,27 @@ export default function OptionsPanel({ appId, providerName, onChanged }) {
                         <td>{fmt(q.Valid_Until_Date)}</td>
                         <td className="num">{q.Distance_m != null ? `${q.Distance_m} m` : "\u2014"}</td>
                         <td className="num strong">{money(q.Estimated_Cost)}</td>
-                        <td className="num">
+                        <td className="num nowrap">
+                          <button className="row-edit"
+                            onClick={() => setAssigning(assigning === q.Quotation_ID ? null : q.Quotation_ID)}
+                            title="Assign plots">Plots</button>
                           <button className="row-del" onClick={() => delQuot(q)} title="Delete">&#10005;</button>
                         </td>
                       </tr>
                     ))}
                   </tbody>
                 </table>
+              )}
+
+              {assigning && qs.some((q) => q.Quotation_ID === assigning) && (
+                <PlotAssignment
+                  projectId={projectId}
+                  quotationId={assigning}
+                  optionId={o.Option_ID}
+                  siblingQuotations={qs}
+                  onClose={() => setAssigning(null)}
+                  onSaved={load}
+                />
               )}
 
               {quotFor === o.Option_ID ? (
@@ -261,6 +277,10 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; 
 .quot-table .num { text-align: right; }
 .quot-table .strong { font-weight: 700; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
+.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
+  font: 600 11px inherit; padding: 2px 6px; border-radius: 4px; }
+.row-edit:hover { background: var(--accent-light); }
+.nowrap { white-space: nowrap; }
 .add-quot { background: none; border: none; color: var(--accent); font: 600 11.5px inherit;
   cursor: pointer; padding: 7px 0 0; }
 .row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;

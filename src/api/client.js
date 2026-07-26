@@ -1,10 +1,13 @@
 /* Thin fetch wrapper for the API layer.
 
    Every call goes to /api/*, which Netlify routes to netlify/functions/*.
-   The browser never talks to Supabase directly — that is what lets RLS be
-   switched back on and the service-role key stay server-side. */
+   The browser never talks to Supabase directly — that is what lets RLS stay
+   on and the service-role key stay server-side. */
 
-export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS === "true";
+/* Sample data unless something explicitly says otherwise. Defaulting the
+   other way meant an unconfigured deploy failed with a confusing error
+   instead of just working. */
+export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== "false";
 
 class ApiError extends Error {
   constructor(message, status, body) {

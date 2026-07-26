@@ -36,8 +36,7 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
 
   // attributes applied to every plot in this batch
   const [attrs, setAttrs] = useState({
-    House_Type_ID: "",
-    Bedrooms: "",
+    Property_Config_ID: "",
     PV: false,
     Heat_Pump_Model_ID: "",
     KVA_Load: "",
@@ -69,6 +68,9 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
   const dupes = pending.filter((p) => existingSet.has(p));
 
   const setAttr = (k) => (v) => setAttrs((p) => ({ ...p, [k]: v }));
+
+  const typeName = (id) =>
+    (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
 
   function addIndividual() {
     const vals = individual
@@ -102,8 +104,7 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
     try {
       const payload = fresh.map((label) => ({
         Plot_Number: label,
-        House_Type_ID: attrs.House_Type_ID ? Number(attrs.House_Type_ID) : null,
-        Bedrooms: attrs.Bedrooms === "" ? null : Number(attrs.Bedrooms),
+        Property_Config_ID: attrs.Property_Config_ID ? Number(attrs.Property_Config_ID) : null,
         PV: !!attrs.PV,
         Heat_Pump_Model_ID: attrs.Heat_Pump_Model_ID ? Number(attrs.Heat_Pump_Model_ID) : null,
         KVA_Load: attrs.KVA_Load === "" ? null : Number(attrs.KVA_Load),
@@ -151,23 +152,15 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
 
       <Section title="Applied to every plot in this batch">
         <div className="grid6">
-          <Field label="House type" span={2}>
-            <Select value={attrs.House_Type_ID} onChange={setAttr("House_Type_ID")}>
+          <Field label="House type" span={3} hint="Bedrooms and property type, configured in Admin">
+            <Select value={attrs.Property_Config_ID} onChange={setAttr("Property_Config_ID")}>
               <option value="">&mdash; optional &mdash;</option>
-              {(lookups.houseTypes || []).map((h) => (
-                <option key={h.House_Type_ID} value={h.House_Type_ID}>
-                  {h.House_Type}
+              {(lookups.propertyConfigs || []).map((c) => (
+                <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
+                  {c.Code} &mdash; {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
                 </option>
               ))}
             </Select>
-          </Field>
-          <Field label="Bedrooms">
-            <input
-              type="number"
-              min="0"
-              value={attrs.Bedrooms}
-              onChange={(e) => setAttr("Bedrooms")(e.target.value)}
-            />
           </Field>
           <Field label="KVA load">
             <input

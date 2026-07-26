@@ -34,13 +34,14 @@ const BED_FALLBACK = { bg: "#6b7280", fg: "#fff" };
 /* Bedroom mix across the project. Counts of zero are omitted; plots with no
    bedroom value collect under "Unspecified". Hovering a pill breaks that
    bedroom count down by house type, highest first. */
-function BedroomSummary({ plots, houseTypeName }) {
+function BedroomSummary({ plots, configFor, typeName }) {
   if (!plots.length) return null;
 
   const groups = {};
   plots.forEach((p) => {
-    const beds = p.Bedrooms == null || p.Bedrooms === "" ? "null" : Number(p.Bedrooms);
-    const type = p.House_Type_ID ?? "null";
+    const cfg = configFor(p.Property_Config_ID);
+    const beds = cfg?.Bedrooms == null ? "null" : Number(cfg.Bedrooms);
+    const type = cfg?.Property_Type_ID ?? "null";
     if (!groups[beds]) groups[beds] = { total: 0, byType: {} };
     groups[beds].total++;
     groups[beds].byType[type] = (groups[beds].byType[type] || 0) + 1;
@@ -61,7 +62,7 @@ function BedroomSummary({ plots, houseTypeName }) {
         .sort((a, b) => b[1] - a[1])
         .map(([type, count]) => (
           <span className="bed-tooltip-row" key={type}>
-            <span className="lbl">{type === "null" ? "Unspecified" : houseTypeName(Number(type))}</span>
+            <span className="lbl">{type === "null" ? "Unspecified" : typeName(Number(type))}</span>
             <span className="val">{count}</span>
           </span>
         ))}
@@ -133,8 +134,10 @@ export default function PlotsTab({ projectId, projectRef }) {
     [plots]
   );
 
-  const houseTypeName = (id) =>
-    (lookups?.houseTypes || []).find((h) => h.House_Type_ID === id)?.House_Type ?? "\u2014";
+  const configFor = (id) =>
+    (lookups?.propertyConfigs || []).find((c) => c.Property_Config_ID === id) || null;
+  const typeName = (id) =>
+    (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "\u2014";
   const heatPumpName = (id) =>
     (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
 
@@ -182,7 +185,7 @@ export default function PlotsTab({ projectId, projectRef }) {
 
       {error && <Banner kind="error">{error}</Banner>}
 
-      <BedroomSummary plots={plots} houseTypeName={houseTypeName} />
+      <BedroomSummary plots={plots} configFor={configFor} typeName={typeName} />
 
       {plots.length === 0 ? (
         <div className="empty">
@@ -213,8 +216,13 @@ export default function PlotsTab({ projectId, projectRef }) {
                 <tr key={p.Plot_ID}>
                   <td className="mono ref">{p.Plot_Ref || "\u2014"}</td>
                   <td className="mono">{p.Plot_Number}</td>
-                  <td>{houseTypeName(p.House_Type_ID)}</td>
-                  <td className="num">{p.Bedrooms ?? "\u2014"}</td>
+                  <td>
+                    {configFor(p.Property_Config_ID)
+                      ? <><span className="code-chip">{configFor(p.Property_Config_ID).Code}</span>{" "}
+                          {typeName(configFor(p.Property_Config_ID).Property_Type_ID)}</>
+                      : "\u2014"}
+                  </td>
+                  <td className="num">{configFor(p.Property_Config_ID)?.Bedrooms ?? "\u2014"}</td>
                   <td className="num">{p.KVA_Load ?? "\u2014"}</td>
                   <td>{heatPumpName(p.Heat_Pump_Model_ID)}</td>
                   <td className="mid">{p.PV ? <span className="tick">&#10003;</span> : ""}</td>
@@ -272,6 +280,10 @@ const CSS = `
 .plot-table .mid { text-align: center; }
 .plot-table .ref { color: var(--accent); font-weight: 600; }
 .tick { color: #059669; font-weight: 700; }
+.code-chip {
+  font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px;
+}
 .row-del {
   background: none; border: none; cursor: pointer; color: var(--muted);
   font-size: 11px; padding: 2px 5px; border-radius: 4px;

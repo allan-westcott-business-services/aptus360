@@ -80,12 +80,19 @@ export const lookups = {
     { Design_Status_ID: 3, Status: "Peer check", Sort_Order: 30, Is_Complete: false },
     { Design_Status_ID: 4, Status: "Completed", Sort_Order: 40, Is_Complete: true },
   ],
-  houseTypes: [
-    { House_Type_ID: 1, House_Type: "Detached" },
-    { House_Type_ID: 2, House_Type: "Semi-detached" },
-    { House_Type_ID: 3, House_Type: "Terraced" },
-    { House_Type_ID: 4, House_Type: "Flat" },
-    { House_Type_ID: 5, House_Type: "Bungalow" },
+  propertyTypes: [
+    { Property_Type_ID: 1, Property_Type: "Detached" },
+    { Property_Type_ID: 2, Property_Type: "Semi-Detached" },
+    { Property_Type_ID: 3, Property_Type: "Terraced" },
+    { Property_Type_ID: 4, Property_Type: "Flat" },
+    { Property_Type_ID: 5, Property_Type: "Bungalow" },
+  ],
+  propertyConfigs: [
+    { Property_Config_ID: 1, Bedrooms: 2, Property_Type_ID: 3, Code: "2BT" },
+    { Property_Config_ID: 2, Bedrooms: 2, Property_Type_ID: 4, Code: "2BF" },
+    { Property_Config_ID: 3, Bedrooms: 3, Property_Type_ID: 2, Code: "3BS" },
+    { Property_Config_ID: 4, Bedrooms: 3, Property_Type_ID: 1, Code: "3BD" },
+    { Property_Config_ID: 5, Bedrooms: 4, Property_Type_ID: 1, Code: "4BD" },
   ],
   heatSources: [
     { Heat_Source_ID: 1, Heat_Source: "ASHP" },

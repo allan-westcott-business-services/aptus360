@@ -1,8 +1,8 @@
 import { supabase, json, fail } from "./_supabase.js";
 
 const PLOT_COLUMNS = [
-  "Plot_ID", "Project_ID", "Plot_Number", "Plot_Ref", "House_Type_ID",
-  "Bedrooms", "PV", "Heat_Pump_Model_ID", "KVA_Load", "Self_Lay_Provider",
+  "Plot_ID", "Project_ID", "Plot_Number", "Plot_Ref", "Property_Config_ID",
+  "PV", "Heat_Pump_Model_ID", "KVA_Load", "Self_Lay_Provider",
 ].join(",");
 
 export default async function handler(req, context) {

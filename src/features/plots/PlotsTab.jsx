@@ -4,8 +4,10 @@ import AddPlotsForm from "./AddPlotsForm.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, deletePlot } from "../../api/plots.js";
 import { getProject, updateProject } from "../../api/projects.js";
+import { generateConnections } from "../../api/connections.js";
 import { bulkUpdatePlots, bulkDeletePlots } from "../../api/plots.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
+import { UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
 
@@ -136,6 +138,10 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [defaults, setDefaults] = useState({ Default_Heat_Source_ID: "", Heat_Pump_Model_ID: "" });
   const [savedDefaults, setSavedDefaults] = useState({});
   const [savingDefaults, setSavingDefaults] = useState(false);
+  const [genUtils, setGenUtils] = useState([]);
+  const [genOpen, setGenOpen] = useState(false);
+  const [genBusy, setGenBusy] = useState(false);
+  const [genMsg, setGenMsg] = useState("");
 
   async function load() {
     setLoading(true);
@@ -269,6 +275,22 @@ export default function PlotsTab({ projectId, projectRef }) {
     }
   }
 
+  /* Connections are tracked on the Plot Connections page, but they're
+     created from here — this is where the plots are. */
+  async function generateConns() {
+    if (!genUtils.length) return setError("Choose at least one utility.");
+    setGenBusy(true);
+    try {
+      const eligible = plots.filter((p) => !p.Self_Lay_Provider).map((p) => p.Plot_ID);
+      const res = await generateConnections(projectId, eligible, genUtils);
+      setGenMsg(`${res.created ?? 0} connection${res.created === 1 ? "" : "s"} created — see Plot Connections in the sidebar.`);
+      setTimeout(() => setGenMsg(""), 5000);
+      setGenOpen(false);
+      setGenUtils([]);
+    } catch (e) { setError(e.message); }
+    finally { setGenBusy(false); }
+  }
+
   async function remove(plot) {
     if (!window.confirm(`Remove plot ${plot.Plot_Number}?`)) return;
     try {
@@ -306,12 +328,40 @@ export default function PlotsTab({ projectId, projectRef }) {
           </h3>
           <p className="tab-sub">Every plot on this site, with its connection attributes.</p>
         </div>
-        <button className="btn accent" onClick={() => setMode("add")}>
-          + Add plots
-        </button>
+        <div className="ph-actions">
+          <button className="btn ghost" onClick={() => setGenOpen((g) => !g)}>
+            {genOpen ? "Cancel" : "Generate connections"}
+          </button>
+          <button className="btn accent" onClick={() => setMode("add")}>+ Add plots</button>
+        </div>
       </div>
 
       {error && <Banner kind="error">{error}</Banner>}
+      {genMsg && <Banner kind="ok">{genMsg}</Banner>}
+
+      {genOpen && (
+        <div className="gen-panel">
+          <p className="panel-label">Generate connections</p>
+          <p className="hint">
+            Creates a connection record for every plot against each utility chosen.
+            Existing ones are left alone and self-lay plots are skipped. Track them on
+            the Plot Connections page.
+          </p>
+          <div className="util-pick">
+            {UTILS.map((u) => (
+              <label key={u.id} className={genUtils.includes(u.id) ? "up on" : "up"}>
+                <input type="checkbox" checked={genUtils.includes(u.id)}
+                  onChange={() => setGenUtils((g) => g.includes(u.id) ? g.filter((x) => x !== u.id) : [...g, u.id])} />
+                <span className="udot" style={{ background: u.colour }} />
+                {u.name}
+              </label>
+            ))}
+          </div>
+          <button className="btn accent" disabled={genBusy || !genUtils.length} onClick={generateConns}>
+            {genBusy ? "Generating\u2026" : "Generate"}
+          </button>
+        </div>
+      )}
 
       <div className="plot-defaults">
         <span className="pd-label">Plot defaults</span>
@@ -494,6 +544,15 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .pd-save { padding: 6px 14px; font-size: 12.5px; }
 .pd-note { font-size: 11px; color: var(--muted); margin-left: auto; align-self: center; }
 
+.ph-actions { display: flex; gap: 8px; }
+.gen-panel { border: 1.5px solid var(--border); border-radius: 12px; background: #f8f9fb;
+  padding: 16px; margin-bottom: 16px; }
+.util-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }
+.up { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 400;
+  text-transform: none; letter-spacing: 0; color: var(--text); background: var(--white);
+  border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; margin: 0; cursor: pointer; }
+.up.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
+.udot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .bulk-bar {
   display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
   background: var(--accent); color: #fff; border-radius: var(--radius);

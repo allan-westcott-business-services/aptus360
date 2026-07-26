@@ -54,7 +54,7 @@ export const NAV_SECTIONS = [
       { view: "planning", label: "Planning" },
       { view: "field-team-work", label: "Field Team Work" },
       { view: "gis-canvas", label: "GIS Canvas" },
-      { view: "plot-connections", label: "Plot Connections" },
+      { view: "plot-connections", label: "Plot Connections", built: true },
       { view: "sc-log", label: "Service Card Log" },
       { view: "teams", label: "Teams" },
       { view: "vehicles", label: "Vehicles" },

@@ -4,6 +4,11 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 let store = [];
 let nid = 3000;
 
+export async function listAllConnections() {
+  if (USE_MOCKS) { await delay(220); return { plots: [], connections: [...store] }; }
+  return http.get("/connections");
+}
+
 export async function listConnections(projectId) {
   if (USE_MOCKS) { await delay(200); return { plots: [], connections: [...store] }; }
   return http.get(`/projects/${projectId}/connections`);

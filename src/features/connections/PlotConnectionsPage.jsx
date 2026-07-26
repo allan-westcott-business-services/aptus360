@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
-import { listConnections, generateConnections, updateConnection, bulkUpdateConnections } from "../../api/connections.js";
+import { listAllConnections, updateConnection, bulkUpdateConnections } from "../../api/connections.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
@@ -22,7 +22,9 @@ const nat = (a, b) => {
 
 const COLS = [
   { key: "sel",     label: "",           width: 38,  type: "none", raw: () => "" },
-  { key: "plot",    label: "Plot",       width: 84,  type: "text", raw: (r) => r._plotNumber || "" },
+  { key: "project", label: "Project",    width: 110, type: "multi", raw: (r) => r._projectId },
+  { key: "site",    label: "Site",       width: 180, type: "text",  raw: (r) => r._siteName || "" },
+  { key: "plot",    label: "Plot",       width: 84,  type: "text",  raw: (r) => r._plotNumber || "" },
   { key: "utility", label: "Utility",    width: 150, type: "multi", raw: (r) => r.Utility_ID },
   { key: "prog",    label: "Programmed", width: 128, type: "date", raw: (r) => r.Programmed_Date },
   { key: "laid",    label: "As laid",    width: 128, type: "date", raw: (r) => r.As_Laid_Date },
@@ -41,7 +43,7 @@ const BULK_DATES = [
   ["Service_Card_Submission_Date", "SC submitted"],
 ];
 
-export default function PlotConnectionsTab({ projectId }) {
+export default function PlotConnectionsPage() {
   const layout = useTableLayout("connections", COLS);
   const [lookups, setLookups] = useState(null);
   const [plots, setPlots] = useState([]);
@@ -53,15 +55,13 @@ export default function PlotConnectionsTab({ projectId }) {
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
-  const [genOpen, setGenOpen] = useState(false);
-  const [genUtils, setGenUtils] = useState([]);
   const [bulkField, setBulkField] = useState("Programmed_Date");
   const [bulkValue, setBulkValue] = useState("");
   const [busy, setBusy] = useState(false);
 
   async function load() {
     try {
-      const [lk, res] = await Promise.all([getLookups(), listConnections(projectId)]);
+      const [lk, res] = await Promise.all([getLookups(), listAllConnections()]);
       setLookups(lk);
       setPlots(res.plots || []);
       setConns(res.connections || []);
@@ -69,7 +69,7 @@ export default function PlotConnectionsTab({ projectId }) {
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
   }
-  useEffect(() => { load(); /* eslint-disable-next-line */ }, [projectId]);
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, []);
 
   const plotById = useMemo(() => {
     const m = {};
@@ -78,14 +78,21 @@ export default function PlotConnectionsTab({ projectId }) {
   }, [plots]);
 
   const rows = useMemo(
-    () => conns.map((c) => ({ ...c, _plotNumber: plotById[c.Plot_ID]?.Plot_Number ?? "" })),
+    () => conns.map((c) => ({ ...c, _plotNumber: c._plotNumber ?? plotById[c.Plot_ID]?.Plot_Number ?? "" })),
     [conns, plotById]
   );
 
   const packName = (id) => (lookups?.packStatuses || []).find((s) => s.Pack_Status_ID === id)?.Pack_Status ?? "\u2014";
   const idnoName = (id) => (lookups?.idnos || []).find((i) => i.IDNO_ID === id)?.IDNO_Name ?? "\u2014";
 
+  const projectOptions = useMemo(() => {
+    const m = new Map();
+    conns.forEach((c) => { if (c._projectId && !m.has(c._projectId)) m.set(c._projectId, c._projectRef); });
+    return [...m].map(([id, label]) => ({ id, label }));
+  }, [conns]);
+
   const filterOptions = (key) => {
+    if (key === "project") return projectOptions;
     if (key === "utility") return UTILITIES.map((u) => ({ id: u.id, label: u.name }));
     if (key === "pack") return (lookups?.packStatuses || []).map((s) => ({ id: s.Pack_Status_ID, label: s.Pack_Status }));
     if (key === "adopter") return (lookups?.idnos || []).map((i) => ({ id: i.IDNO_ID, label: i.IDNO_Name }));
@@ -119,30 +126,22 @@ export default function PlotConnectionsTab({ projectId }) {
 
   async function patch(r, key, value) {
     setConns((x) => x.map((y) => (y.Plot_Utility_ID === r.Plot_Utility_ID ? { ...y, [key]: value } : y)));
-    try { await updateConnection(projectId, r.Plot_Utility_ID, { [key]: value }); }
+    try { await updateConnection(r._projectId, r.Plot_Utility_ID, { [key]: value }); }
     catch (e) { setError(e.message); await load(); }
-  }
-
-  async function generate() {
-    if (!genUtils.length) return setError("Choose at least one utility.");
-    setBusy(true);
-    try {
-      const eligible = plots.filter((p) => !p.Self_Lay_Provider).map((p) => p.Plot_ID);
-      const res = await generateConnections(projectId, eligible, genUtils);
-      setFlash(`${res.created ?? 0} connection${res.created === 1 ? "" : "s"} created`);
-      setTimeout(() => setFlash(""), 3000);
-      setGenOpen(false);
-      setGenUtils([]);
-      await load();
-    } catch (e) { setError(e.message); }
-    finally { setBusy(false); }
   }
 
   async function applyBulk() {
     if (!bulkValue) return setError("Pick a date first.");
     setBusy(true);
     try {
-      await bulkUpdateConnections(projectId, selected, { [bulkField]: bulkValue });
+      /* Selections can span projects, so group by project rather than
+         assuming one — the endpoint is scoped per project. */
+      const byProject = {};
+      shown.filter((r) => selected.includes(r.Plot_Utility_ID))
+           .forEach((r) => { (byProject[r._projectId] ||= []).push(r.Plot_Utility_ID); });
+      for (const [pid, ids] of Object.entries(byProject)) {
+        await bulkUpdateConnections(pid, ids, { [bulkField]: bulkValue });
+      }
       setFlash(`${selected.length} connection${selected.length === 1 ? "" : "s"} updated`);
       setTimeout(() => setFlash(""), 2600);
       setSelected([]);
@@ -155,47 +154,24 @@ export default function PlotConnectionsTab({ projectId }) {
   if (loading) return <div className="loading">Loading connections&hellip;</div>;
 
   const allSelected = shown.length > 0 && shown.every((r) => selected.includes(r.Plot_Utility_ID));
-  const selfLay = plots.filter((p) => p.Self_Lay_Provider).length;
-
+  
   return (
     <div>
       <style>{CSS}</style>
 
       <div className="tab-head">
         <div>
-          <h3>Plot connections <span className="count">{conns.length}</span></h3>
-          <p className="tab-sub">One row per plot per utility, from programmed through laid to connected.</p>
+          <h2>Plot connections</h2>
+          <p className="tab-sub">
+            Every connection across all projects. Generate new ones from a project&rsquo;s
+            Plots tab; track and update them here.
+          </p>
         </div>
-        <button className="btn accent" onClick={() => setGenOpen((g) => !g)}>
-          {genOpen ? "Cancel" : "+ Generate connections"}
-        </button>
+        <span className="cs-pill">{shown.length} of {conns.length} shown</span>
       </div>
 
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
-
-      {genOpen && (
-        <div className="gen-panel">
-          <p className="panel-label">Generate connections</p>
-          <p className="hint">
-            Creates a row for every plot against each utility chosen. Existing rows are left
-            alone{selfLay > 0 && `, and ${selfLay} self-lay plot${selfLay === 1 ? " is" : "s are"} skipped`}.
-          </p>
-          <div className="util-pick">
-            {UTILITIES.map((u) => (
-              <label key={u.id} className={genUtils.includes(u.id) ? "up on" : "up"}>
-                <input type="checkbox" checked={genUtils.includes(u.id)}
-                  onChange={() => setGenUtils((g) => g.includes(u.id) ? g.filter((x) => x !== u.id) : [...g, u.id])} />
-                <span className="dot" style={{ background: u.colour }} />
-                {u.name}
-              </label>
-            ))}
-          </div>
-          <button className="btn accent" disabled={busy || !genUtils.length} onClick={generate}>
-            {busy ? "Generating\u2026" : `Generate for ${plots.length - selfLay} plot(s) × ${genUtils.length} utility(ies)`}
-          </button>
-        </div>
-      )}
 
       {conns.length > 0 && (
         <div className="conn-stats">
@@ -222,7 +198,7 @@ export default function PlotConnectionsTab({ projectId }) {
       {conns.length === 0 ? (
         <div className="empty">
           <p className="empty-title">No connections yet</p>
-          <p>Generate them from the project&rsquo;s plots.</p>
+          <p>Open a project, go to Plots, and generate connections there.</p>
         </div>
       ) : (
         <div className="dt-wrap">
@@ -270,6 +246,8 @@ export default function PlotConnectionsTab({ projectId }) {
                       <input type="checkbox" checked={on}
                         onChange={() => setSelected((s) => on ? s.filter((x) => x !== r.Plot_Utility_ID) : [...s, r.Plot_Utility_ID])} />
                     </td>
+                    <td className="mono ref">{r._projectRef}</td>
+                    <td>{r._siteName}</td>
                     <td className="mono strong">{r._plotNumber}</td>
                     <td><span className="dot" style={{ background: u?.colour }} /> {u?.name}</td>
                     <td><input className="in" type="date" value={r.Programmed_Date || ""}
@@ -315,7 +293,7 @@ export default function PlotConnectionsTab({ projectId }) {
 
 const CSS = TABLE_CSS + FILTER_CSS + `
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
-.tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.tab-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
 .tab-head .count { font-size: 11px; font-weight: 700; background: var(--accent-light); color: var(--accent);
   border-radius: 20px; padding: 2px 8px; margin-left: 6px; vertical-align: middle; }
 .tab-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); }
@@ -344,6 +322,7 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .dt .num { text-align: right; }
 .dt .mid { text-align: center; }
 .dt .strong { font-weight: 700; }
+.dt .ref { color: var(--accent); font-weight: 600; }
 .dt tbody tr.row-sel { background: #fff7ed !important; }
 .dt tbody tr.done td:first-child { box-shadow: inset 3px 0 0 #059669; }
 .mono { font-family: ui-monospace, Menlo, monospace; }

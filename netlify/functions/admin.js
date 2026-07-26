@@ -26,6 +26,7 @@ const TABLES = {
   POC_Type:        { pk: "POC_Type_ID",        order: "Sort_Order" },
   NRS_Sub_Type:    { pk: "NRS_Sub_Type_ID",    order: "Sort_Order" },
   Quotation_Status:{ pk: "Quotation_Status_ID", order: "Sort_Order" },
+  AV_Status:       { pk: "AV_Status_ID",       order: "Sort_Order" },
   Voltage_Rating:  { pk: "Voltage_Rating_ID",   order: "Sort_Order" },
   DNO:             { pk: "DNO_ID",             order: "DNO_Name" },
   Status_Transition:       { pk: "Transition_ID", order: "Transition_ID" },

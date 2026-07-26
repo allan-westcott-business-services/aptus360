@@ -6,6 +6,7 @@ const COLS = [
   "Plot_Count","Requested_kVA","Contingency_Load","Quote_Reference","Quote_Date",
   "Valid_Until_Date","Connection_Type","Distance_m","Estimated_Cost","Notes",
   "POC_Type_ID","DNO_ID","Applicant_Company","Applicant_Company_Address","Non_Residential_kVA",
+  "Submitted_Date","Received_Date",
 ].join(",");
 
 const nullEmpty = (o) =>

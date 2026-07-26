@@ -6,6 +6,7 @@ import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
+import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
 /* POC applications, following the original app.
 
@@ -18,17 +19,17 @@ import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 const POC_UTILITIES = [1, 2, 3];
 
 const COLS = [
-  { key: "utility",  label: "Utility",   width: 160 },
-  { key: "operator", label: "Operator",  width: 150 },
-  { key: "type",     label: "Type",      width: 96 },
-  { key: "status",   label: "Status",    width: 130 },
-  { key: "applied",  label: "Applied",   width: 118 },
-  { key: "expected", label: "Expected",  width: 118 },
-  { key: "kva",      label: "kVA",       width: 84, align: "right" },
-  { key: "plots",    label: "Plots",     width: 74, align: "right" },
-  { key: "quoteref", label: "Quote ref", width: 140 },
-  { key: "cost",     label: "Est. cost", width: 110, align: "right" },
-  { key: "act",      label: "",          width: 42, align: "center" },
+  { key: "utility",  label: "Utility",   width: 150, type: "multi", raw: (r) => r.Utility_ID },
+  { key: "operator", label: "Operator",  width: 170, type: "multi", raw: (r) => (r.DNO_ID ? `d${r.DNO_ID}` : `i${r.IDNO_ID}`) },
+  { key: "type",     label: "Type",      width: 104, type: "multi", raw: (r) => r.POC_Type_ID },
+  { key: "status",   label: "Status",    width: 136, type: "multi", raw: (r) => r.POC_Status_ID },
+  { key: "applied",  label: "Applied",   width: 122, type: "date",  raw: (r) => r.Application_Date },
+  { key: "expected", label: "Expected",  width: 122, type: "date",  raw: (r) => r.Expected_Rx_Date },
+  { key: "kva",      label: "kVA",       width: 88,  type: "num",   align: "right", raw: (r) => r.Requested_kVA ?? null },
+  { key: "plots",    label: "Plots",     width: 78,  type: "num",   align: "right", raw: (r) => r.Plot_Count ?? null },
+  { key: "quoteref", label: "Quote ref", width: 140, type: "text",  raw: (r) => r.Quote_Reference || "" },
+  { key: "cost",     label: "Est. cost", width: 112, type: "num",   align: "right", raw: (r) => r.Estimated_Cost ?? null },
+  { key: "act",      label: "",          width: 78,  type: "none",  align: "center", raw: () => "" },
 ];
 
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
@@ -44,6 +45,10 @@ export default function POCApplicationsTab({ projectId }) {
   const [showForm, setShowForm] = useState(false);
   const [saving, setSaving] = useState(false);
   const [f, setF] = useState(blank());
+  const [editingId, setEditingId] = useState(null);
+  const [sort, setSort] = useState({ key: "utility", dir: "asc" });
+  const [filters, setFilters] = useState({});
+  const [openFilter, setOpenFilter] = useState(null);
   const [plots, setPlots] = useState([]);
   const [project, setProject] = useState(null);
 
@@ -99,9 +104,10 @@ export default function POCApplicationsTab({ projectId }) {
 
   const grouped = useMemo(() => {
     const g = {};
-    rows.forEach((r) => (g[r.Utility_ID] = g[r.Utility_ID] || []).push(r));
+    rows.filter((r) => rowPasses(r, COLS.filter((c) => c.type !== "none"), filters))
+        .forEach((r) => (g[r.Utility_ID] = g[r.Utility_ID] || []).push(r));
     return g;
-  }, [rows]);
+  }, [rows, filters]);
 
   async function save() {
     if (!f.Utility_ID) return setError("Choose a utility.");
@@ -111,9 +117,26 @@ export default function POCApplicationsTab({ projectId }) {
       /* Site details belong to the Project, not to each application —
          copying them here would only let them drift. Shown read-only above
          for context, then dropped before saving. */
-      const { Site_Name, Site_Address, ...payload } = f;
+      const { Site_Name, Site_Address, idno_ids, dno_id, ...rest } = f;
+      if (editingId) {
+        await updatePoc(projectId, editingId, {
+          ...rest,
+          Utility_ID: Number(f.Utility_ID),
+          POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
+          POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
+          IDNO_ID: idno_ids[0] ?? null,
+          DNO_ID: dno_id ? Number(dno_id) : null,
+        });
+        setFlash("Application saved");
+        setTimeout(() => setFlash(""), 2400);
+        setEditingId(null);
+        setF(blank());
+        setShowForm(false);
+        await load();
+        return;
+      }
       const res = await createPoc(projectId, {
-        ...payload,
+        ...rest, idno_ids, dno_id,
         Utility_ID: Number(f.Utility_ID),
         POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
         POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -124,6 +147,42 @@ export default function POCApplicationsTab({ projectId }) {
       setTimeout(() => setFlash(""), 3000);
       setF(blank());
       setShowForm(false);
+      await load();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  /* Editing reuses the same form. The original did this too — one form,
+     two modes — so the fields can't drift apart. Creating fans out across
+     providers; editing updates the single row, which already represents
+     one provider. */
+  function editRow(row) {
+    setEditingId(row.POC_Application_ID);
+    setF({
+      ...blank(),
+      ...row,
+      Site_Name: project?.Site_Name ?? "",
+      Site_Address: project?.Site_Address ?? "",
+      idno_ids: row.IDNO_ID ? [row.IDNO_ID] : [],
+      dno_id: row.DNO_ID ? String(row.DNO_ID) : "",
+    });
+    setShowForm(true);
+  }
+
+  const submittedStatusId = () =>
+    (lookups?.pocStatuses || []).find((s) => s.POC_Status === "Submitted")?.POC_Status_ID ?? null;
+
+  async function submitApplication() {
+    const sid = submittedStatusId();
+    if (!sid) return setError('No "Submitted" status configured — add it in Admin.');
+    setSaving(true);
+    try {
+      await updatePoc(projectId, editingId, { POC_Status_ID: sid });
+      setFlash("Application submitted");
+      setTimeout(() => setFlash(""), 2600);
+      setShowForm(false);
+      setEditingId(null);
+      setF(blank());
       await load();
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
@@ -147,6 +206,38 @@ export default function POCApplicationsTab({ projectId }) {
   const totalKva =
     Number(f.Requested_kVA || 0) + Number(f.Non_Residential_kVA || 0) + Number(f.Contingency_Load || 0);
   const providerCount = f.idno_ids.length + (f.dno_id ? 1 : 0);
+  const isSubmitted =
+    !!f.POC_Status_ID &&
+    (lookups?.pocStatuses || []).find((s) => s.POC_Status_ID === Number(f.POC_Status_ID))?.POC_Status === "Submitted";
+
+  const providerOptions = [
+    ...(lookups?.idnos || []).map((i) => ({ id: `i${i.IDNO_ID}`, label: `IDNO — ${i.IDNO_Name}` })),
+    ...(lookups?.dnos || []).map((d) => ({ id: `d${d.DNO_ID}`, label: `DNO — ${d.DNO_Name}` })),
+  ];
+  const filterOptions = (key) => {
+    if (key === "utility") return UTILITIES.filter((u) => POC_UTILITIES.includes(u.id)).map((u) => ({ id: u.id, label: u.name }));
+    if (key === "operator") return providerOptions;
+    if (key === "type") return (lookups?.pocTypes || []).map((t) => ({ id: t.POC_Type_ID, label: t.POC_Type }));
+    if (key === "status") return (lookups?.pocStatuses || []).map((s) => ({ id: s.POC_Status_ID, label: s.POC_Status }));
+    return [];
+  };
+  const filterCols = COLS.filter((c) => c.type !== "none");
+  const sortRows = (list) => {
+    const col = COLS.find((c) => c.key === sort.key);
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      if (!col) return 0;
+      const va = col.key === "operator" ? providerName(a) : col.raw(a);
+      const vb = col.key === "operator" ? providerName(b) : col.raw(b);
+      if (va == null && vb == null) return 0;
+      if (va == null) return 1;
+      if (vb == null) return -1;
+      if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
+      return String(va).localeCompare(String(vb), undefined, { numeric: true }) * dir;
+    });
+  };
+  const toggleSort = (key) =>
+    setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
 
   if (loading) return <div className="loading">Loading applications&hellip;</div>;
 
@@ -167,7 +258,8 @@ export default function POCApplicationsTab({ projectId }) {
             Point of connection applications, one per network operator.
           </p>
         </div>
-        <button className="btn accent" onClick={() => (showForm ? setShowForm(false) : openForm())}>
+        <button className="btn accent"
+          onClick={() => (showForm ? (setShowForm(false), setEditingId(null)) : openForm())}>
           {showForm ? "Cancel" : "+ New application"}
         </button>
       </div>
@@ -177,7 +269,7 @@ export default function POCApplicationsTab({ projectId }) {
 
       {showForm && (
         <div className="poc-form">
-          <p className="panel-label">New POC application</p>
+          <p className="panel-label">{editingId ? "Edit POC application" : "New POC application"}</p>
 
           <div className="poc-grid">
             <div className="fld span2"><label>Site name</label>
@@ -306,10 +398,23 @@ export default function POCApplicationsTab({ projectId }) {
 
           <div className="poc-actions">
             <button className="btn accent" disabled={saving} onClick={save}>
-              {saving ? "Saving\u2026" : providerCount > 1
-                ? `Save ${providerCount} applications` : "Save application"}
+              {saving ? "Saving\u2026" : editingId ? "Save changes"
+                : providerCount > 1 ? `Save ${providerCount} applications` : "Save application"}
             </button>
-            <button className="btn ghost" onClick={() => { setShowForm(false); setF(blank()); }}>Cancel</button>
+            {editingId && !isSubmitted && (
+              <button className="btn submit" disabled={saving} onClick={submitApplication}>
+                Submit application
+              </button>
+            )}
+            <button className="btn ghost"
+              onClick={() => { setShowForm(false); setEditingId(null); setF(blank()); }}>
+              Cancel
+            </button>
+            {editingId && isSubmitted && (
+              <span className="submitted-note">
+                Submitted {f.Submitted_Date ? `on ${fmt(f.Submitted_Date)}` : ""}
+              </span>
+            )}
           </div>
         </div>
       )}
@@ -334,15 +439,30 @@ export default function POCApplicationsTab({ projectId }) {
                   <thead>
                     <tr className="head-row">
                       {COLS.map((c) => (
-                        <th key={c.key} style={{ textAlign: c.align || "left" }}>
+                        <th key={c.key} style={{ textAlign: c.align || "left" }}
+                            onClick={() => c.type !== "none" && toggleSort(c.key)}>
                           {c.label}
+                          {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                           <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                        </th>
+                      ))}
+                    </tr>
+                    <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
+                      {COLS.map((c) => (
+                        <th key={c.key}>
+                          {c.type !== "none" && (
+                            <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
+                              onChange={(v) => setFilters((x) => ({ ...x, [c.key]: v }))}
+                              options={c.type === "multi" ? filterOptions(c.key) : null}
+                              open={openFilter === c.key}
+                              setOpen={(o) => setOpenFilter(o ? c.key : null)} />
+                          )}
                         </th>
                       ))}
                     </tr>
                   </thead>
                   <tbody>
-                    {list.map((r) => (
+                    {sortRows(list).map((r) => (
                       <tr key={r.POC_Application_ID}>
                         <td>{u?.name}</td>
                         <td className="op-name">
@@ -365,7 +485,8 @@ export default function POCApplicationsTab({ projectId }) {
                         <td className="num">{r.Plot_Count ?? "\u2014"}</td>
                         <td className="mono">{r.Quote_Reference || "\u2014"}</td>
                         <td className="num">{money(r.Estimated_Cost)}</td>
-                        <td className="mid">
+                        <td className="mid nowrap">
+                          <button className="row-edit" onClick={() => editRow(r)} title="Edit">Edit</button>
                           <button className="row-del" onClick={() => remove(r)} title="Delete">&#10005;</button>
                         </td>
                       </tr>
@@ -381,7 +502,7 @@ export default function POCApplicationsTab({ projectId }) {
   );
 }
 
-const CSS = TABLE_CSS + `
+const CSS = TABLE_CSS + FILTER_CSS + `
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .tab-head .count, .poc-group-title .count { font-size: 11px; font-weight: 700; background: var(--accent-light);
@@ -448,6 +569,13 @@ const CSS = TABLE_CSS + `
 .row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;
   padding: 2px 5px; border-radius: 4px; }
 .row-del:hover { background: #fef2f2; color: #ef4444; }
+.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
+  font: 600 11.5px inherit; padding: 2px 6px; border-radius: 4px; }
+.row-edit:hover { background: var(--accent-light); }
+.nowrap { white-space: nowrap; }
+.btn.submit { background: #059669; color: #fff; }
+.btn.submit:hover { background: #047857; }
+.submitted-note { align-self: center; font-size: 11.5px; color: var(--ok-text); font-weight: 600; }
 .empty { text-align: center; padding: 48px 20px; border: 1px dashed var(--border);
   border-radius: var(--radius); background: var(--bg); }
 .empty-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }

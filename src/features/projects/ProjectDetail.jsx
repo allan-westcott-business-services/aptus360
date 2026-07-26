@@ -3,6 +3,7 @@ import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
 import ContractDesignsTab from "../designs/ContractDesignsTab.jsx";
 import POCApplicationsTab from "../poc/POCApplicationsTab.jsx";
+import NonResidentialTab from "../nrs/NonResidentialTab.jsx";
 import InvoicesTab from "../invoices/InvoicesTab.jsx";
 import PlotsTab from "../plots/PlotsTab.jsx";
 import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
@@ -13,6 +14,7 @@ import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 const TABS = [
   { id: "details", label: "Details" },
   { id: "plots", label: "Plots" },
+  { id: "nrs", label: "Non-Res Supplies" },
   { id: "poc", label: "POC Applications" },
   { id: "designs", label: "Outline Designs" },
   { id: "contract-designs", label: "Contract Designs" },
@@ -61,6 +63,7 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
         {tab === "designs" && <OutlineDesignsTab projectId={project.Project_ID} />}
         {tab === "history" && <ActivityTab projectId={project.Project_ID} view="history" />}
         {tab === "comments" && <ActivityTab projectId={project.Project_ID} view="comments" />}
+        {tab === "nrs" && <NonResidentialTab projectId={project.Project_ID} />}
         {tab === "poc" && <POCApplicationsTab projectId={project.Project_ID} />}
         {tab === "contract-designs" && <ContractDesignsTab projectRef={project.Project_Ref} />}
         {tab === "invoices" && <InvoicesTab projectRef={project.Project_Ref} />}

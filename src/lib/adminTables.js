@@ -42,6 +42,11 @@ export const ADMIN_TABLES = [
       { col: "Is_Complete", label: "Counts as complete", type: "checkbox" },
     ] },
   { key: "Status_Transition", label: "Status Workflow", special: "workflow" },
+  { key: "NRS_Sub_Type", label: "Non-Res Supply Type", pk: "NRS_Sub_Type_ID", fields: [
+      { col: "Label", label: "Type Name", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "POC_Type", label: "POC Type", pk: "POC_Type_ID", fields: [
       { col: "POC_Type", label: "Type Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

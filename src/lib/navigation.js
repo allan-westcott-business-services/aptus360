@@ -137,6 +137,13 @@ export const NAV_SECTIONS = [
   },
 ];
 
+NAV_SECTIONS.push({
+  id: "admin",
+  label: "Admin",
+  colour: "#64748b",
+  items: [{ view: "admin", label: "Reference Data", built: true }],
+});
+
 export const findNavItem = (view) => {
   for (const section of NAV_SECTIONS) {
     const item = section.items.find((i) => i.view === view);

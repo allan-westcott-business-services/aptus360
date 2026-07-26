@@ -1,6 +1,7 @@
 import { useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import ProjectsPage from "./features/projects/ProjectsPage.jsx";
+import AdminPage from "./features/admin/AdminPage.jsx";
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -37,6 +38,7 @@ export default function App() {
 
   let content;
   if (view === "projects") content = <div className="card"><ProjectsPage /></div>;
+  else if (view === "admin") content = <div className="card"><AdminPage /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

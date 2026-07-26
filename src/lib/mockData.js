@@ -150,3 +150,33 @@ export const mockList = [
     I_and_C: false, Is_Priority: false, Plot_Count: 210,
     scopes: [{ Utility_ID: 1 }, { Utility_ID: 3 }] },
 ];
+
+/* Mutable store backing the admin screens when running on sample data. */
+export const adminMock = {
+  Property_Type: [
+    { Property_Type_ID: 1, Property_Type: "Detached", Sort_Order: 10, Is_Active: true },
+    { Property_Type_ID: 2, Property_Type: "Semi-Detached", Sort_Order: 20, Is_Active: true },
+    { Property_Type_ID: 3, Property_Type: "Terraced", Sort_Order: 30, Is_Active: true },
+    { Property_Type_ID: 4, Property_Type: "Flat", Sort_Order: 40, Is_Active: true },
+    { Property_Type_ID: 5, Property_Type: "Bungalow", Sort_Order: 50, Is_Active: true },
+  ],
+  Property_Config: [
+    { Property_Config_ID: 1, Bedrooms: 2, Property_Type_ID: 3, Code: "2BT" },
+    { Property_Config_ID: 2, Bedrooms: 2, Property_Type_ID: 4, Code: "2BF" },
+    { Property_Config_ID: 3, Bedrooms: 3, Property_Type_ID: 2, Code: "3BS" },
+    { Property_Config_ID: 4, Bedrooms: 3, Property_Type_ID: 1, Code: "3BD" },
+    { Property_Config_ID: 5, Bedrooms: 4, Property_Type_ID: 1, Code: "4BD" },
+  ],
+  Quote_Type: lookups.quoteTypes,
+  Region: lookups.regions,
+  Role: lookups.roles,
+  IDNO: lookups.idnos,
+  Fire_Service: lookups.fireServices,
+  Heat_Source: lookups.heatSources,
+  Heat_Pump_Model: lookups.heatPumpModels,
+  Utility: [],
+  Design_Status: lookups.designStatuses,
+  Scope_Status: lookups.scopeStatuses,
+  Project_Status: lookups.projectStatuses,
+  Customer: [],
+};

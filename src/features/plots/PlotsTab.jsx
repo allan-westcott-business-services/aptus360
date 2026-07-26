@@ -17,6 +17,91 @@ function naturalCompare(a, b) {
   return String(a).localeCompare(String(b), undefined, { numeric: true });
 }
 
+
+/* Same palette as the original app's Property Config admin and plot badges.
+   Three-bed is the odd one out: black text, because the yellow is too light
+   to carry white. */
+const BED_COLORS = {
+  1: { bg: "#7c3aed", fg: "#fff" },
+  2: { bg: "#65a30d", fg: "#fff" },
+  3: { bg: "#eab308", fg: "#000" },
+  4: { bg: "#dc2626", fg: "#fff" },
+  5: { bg: "#0ea5e9", fg: "#fff" },
+  6: { bg: "#39467B", fg: "#fff" },
+};
+const BED_FALLBACK = { bg: "#6b7280", fg: "#fff" };
+
+/* Bedroom mix across the project. Counts of zero are omitted; plots with no
+   bedroom value collect under "Unspecified". Hovering a pill breaks that
+   bedroom count down by house type, highest first. */
+function BedroomSummary({ plots, houseTypeName }) {
+  if (!plots.length) return null;
+
+  const groups = {};
+  plots.forEach((p) => {
+    const beds = p.Bedrooms == null || p.Bedrooms === "" ? "null" : Number(p.Bedrooms);
+    const type = p.House_Type_ID ?? "null";
+    if (!groups[beds]) groups[beds] = { total: 0, byType: {} };
+    groups[beds].total++;
+    groups[beds].byType[type] = (groups[beds].byType[type] || 0) + 1;
+  });
+
+  const bedKeys = Object.keys(groups)
+    .filter((k) => k !== "null")
+    .map(Number)
+    .sort((a, b) => a - b);
+
+  const totalKva = plots.reduce((sum, p) => sum + (Number(p.KVA_Load) || 0), 0);
+  const missingKva = plots.filter((p) => p.KVA_Load == null || p.KVA_Load === "").length;
+
+  const Tooltip = ({ g }) => (
+    <span className="bed-tooltip">
+      <span className="bed-tooltip-title">Configuration Breakdown</span>
+      {Object.entries(g.byType)
+        .sort((a, b) => b[1] - a[1])
+        .map(([type, count]) => (
+          <span className="bed-tooltip-row" key={type}>
+            <span className="lbl">{type === "null" ? "Unspecified" : houseTypeName(Number(type))}</span>
+            <span className="val">{count}</span>
+          </span>
+        ))}
+    </span>
+  );
+
+  const pill = (key, label, count, colour, g) => (
+    <span className="bed-pill" key={key} style={{ background: colour.bg, color: colour.fg }}>
+      <span>{label}</span>
+      <span className="bed-count">{count}</span>
+      <Tooltip g={g} />
+    </span>
+  );
+
+  return (
+    <div className="bed-summary">
+      {bedKeys.map((beds) =>
+        pill(beds, `${beds} Bed`, groups[beds].total, BED_COLORS[beds] || BED_FALLBACK, groups[beds])
+      )}
+      {groups["null"] && pill("none", "Unspecified", groups["null"].total, BED_FALLBACK, groups["null"])}
+      {totalKva > 0 && (
+        <span
+          className="bed-pill load"
+          title={`Sum of the kVA column across ${plots.length - missingKva} plot${
+            plots.length - missingKva === 1 ? "" : "s"
+          }`}
+        >
+          <span>Total Load</span>
+          <span className="bed-count">{totalKva.toFixed(2)} kVA</span>
+        </span>
+      )}
+      {missingKva > 0 && (
+        <span className="bed-missing">
+          {missingKva} plot{missingKva === 1 ? "" : "s"} excluded &mdash; no kVA
+        </span>
+      )}
+    </div>
+  );
+}
+
 export default function PlotsTab({ projectId, projectRef }) {
   const [mode, setMode] = useState("list");
   const [plots, setPlots] = useState([]);
@@ -96,6 +181,8 @@ export default function PlotsTab({ projectId, projectRef }) {
       </div>
 
       {error && <Banner kind="error">{error}</Banner>}
+
+      <BedroomSummary plots={plots} houseTypeName={houseTypeName} />
 
       {plots.length === 0 ? (
         <div className="empty">
@@ -190,4 +277,40 @@ const CSS = `
   font-size: 11px; padding: 2px 5px; border-radius: 4px;
 }
 .row-del:hover { background: #fef2f2; color: #ef4444; }
+
+.bed-summary {
+  display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
+  align-items: center; margin: 0 0 16px;
+}
+.bed-pill {
+  position: relative; display: inline-flex; align-items: center; gap: 6px;
+  padding: 4px 12px; border-radius: 999px; font-size: 12px; font-weight: 700;
+  white-space: nowrap; cursor: default;
+}
+.bed-pill.load { background: var(--accent); color: #fff; }
+.bed-count {
+  background: rgba(255,255,255,.3); border-radius: 999px;
+  padding: 1px 7px; font-size: 11.5px;
+}
+.bed-missing { font-size: 11.5px; color: var(--muted); font-weight: 600; }
+
+.bed-tooltip {
+  position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
+  display: none; flex-direction: column; gap: 3px; z-index: 30;
+  background: #1a1d23; color: #f1f5f9; border-radius: 7px; padding: 9px 11px;
+  min-width: 168px; box-shadow: 0 6px 18px rgba(0,0,0,.28);
+  font-size: 11.5px; font-weight: 500; text-align: left;
+}
+.bed-pill:hover .bed-tooltip { display: flex; }
+.bed-tooltip::after {
+  content: ""; position: absolute; top: 100%; left: 50%; transform: translateX(-50%);
+  border: 5px solid transparent; border-top-color: #1a1d23;
+}
+.bed-tooltip-title {
+  font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; opacity: .65; padding-bottom: 4px;
+  border-bottom: 1px solid rgba(255,255,255,.15); margin-bottom: 2px;
+}
+.bed-tooltip-row { display: flex; justify-content: space-between; gap: 14px; }
+.bed-tooltip-row .val { font-weight: 700; }
 `;

@@ -124,3 +124,29 @@ export const demoScopes = [
   { Project_Scope_ID: 3, Utility_ID: 3, Scope_Status_ID: 3, Secured_Date: "2026-05-06", Design_Status_ID: 3, IDNO_ID: 4, Reference: "4100063004", External_Design: false },
   { Project_Scope_ID: 4, Utility_ID: 5, Scope_Status_ID: 4, Secured_Date: "", Design_Status_ID: 1, IDNO_ID: null, Reference: "", External_Design: true },
 ];
+
+/* A few rows so the Projects table is worth looking at offline. */
+export const mockList = [
+  { ...demoProject, Plot_Count: 146, scopes: demoScopes, Is_Priority: false,
+    Date_Received: "2026-02-11", KPI_Date: "2026-02-25", Estimator_ID: 2, BDD_KAM_ID: 1,
+    Quote_Type_ID: 1, I_and_C: false, Good_To_Go: "" },
+  { Project_ID: 4712, Project_Ref: "2607.015", Revision: 0, Project_Status_ID: 2,
+    Customer_ID: 11, Branch_ID: 2, Region_ID: 2, Site_Name: "Hollybank Rise",
+    Site_Address: "Wolverhampton", Postcode: "WV6 8QT", Date_Received: "2026-06-03",
+    KPI_Date: "2026-06-17", BDD_KAM_ID: 3, Estimator_ID: 4, Quote_Type_ID: 1,
+    I_and_C: true, Is_Priority: true, Plot_Count: 62,
+    scopes: [{ Utility_ID: 1 }, { Utility_ID: 2 }, { Utility_ID: 3 }, { Utility_ID: 4 }] },
+  { Project_ID: 4713, Project_Ref: "2607.016", Revision: 1, Project_Status_ID: 5,
+    Customer_ID: 12, Branch_ID: 3, Region_ID: 1, Site_Name: "Carrfield Gardens",
+    Site_Address: "Preston", Postcode: "PR2 9LT", Date_Received: "2026-07-01",
+    KPI_Date: "2026-07-15", BDD_KAM_ID: 1, Estimator_ID: 2, Quote_Type_ID: 3,
+    I_and_C: false, Is_Priority: false, Plot_Count: 0,
+    scopes: [{ Utility_ID: 5 }, { Utility_ID: 6 }] },
+  { Project_ID: 4714, Project_Ref: "2607.017", Revision: 0, Project_Status_ID: 8,
+    Customer_ID: 13, Branch_ID: 4, Region_ID: 3, Site_Name: "Wessex Fields",
+    Site_Address: "Taunton", Postcode: "TA1 4LP", Date_Received: "2026-05-19",
+    KPI_Date: "2026-06-02", Secured_Date: "2026-06-20", Good_To_Go: "2026-07-04",
+    BDD_KAM_ID: 3, Estimator_ID: 4, Quote_Type_ID: 2,
+    I_and_C: false, Is_Priority: false, Plot_Count: 210,
+    scopes: [{ Utility_ID: 1 }, { Utility_ID: 3 }] },
+];

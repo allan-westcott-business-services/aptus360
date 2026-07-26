@@ -1,5 +1,5 @@
 import { http, USE_MOCKS } from "./client.js";
-import { demoProject, demoScopes } from "../lib/mockData.js";
+import { demoProject, demoScopes, mockList } from "../lib/mockData.js";
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 
@@ -24,7 +24,7 @@ export async function nextProjectRef() {
 export async function listProjects(params = {}) {
   if (USE_MOCKS) {
     await delay(200);
-    return { rows: [demoProject], total: 1 };
+    return { rows: mockList, total: mockList.length };
   }
   const qs = new URLSearchParams(params).toString();
   return http.get(`/projects${qs ? `?${qs}` : ""}`);

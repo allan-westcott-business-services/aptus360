@@ -61,9 +61,14 @@ export default async function handler(req, context) {
       const limit = Math.min(Number(url.searchParams.get("limit") || 100), 500);
       const offset = Number(url.searchParams.get("offset") || 0);
 
+      /* Embedded selects keep this to one round trip. Plot(count) returns
+         an aggregate rather than the rows themselves. */
       let q = db
         .from("Project")
-        .select(PROJECT_COLUMNS, { count: "exact" })
+        .select(
+          `${PROJECT_COLUMNS},Project_Scope(Utility_ID,Scope_Status_ID,Design_Status_ID),Plot(count)`,
+          { count: "exact" }
+        )
         .order("Date_Received", { ascending: false })
         .range(offset, offset + limit - 1);
 
@@ -72,7 +77,16 @@ export default async function handler(req, context) {
 
       const { data, error, count } = await q;
       if (error) throw error;
-      return json({ rows: data, total: count });
+
+      const rows = (data || []).map((r) => {
+        const { Plot, Project_Scope, ...rest } = r;
+        return {
+          ...rest,
+          Plot_Count: Plot?.[0]?.count ?? 0,
+          scopes: Project_Scope || [],
+        };
+      });
+      return json({ rows, total: count });
     }
 
     /* ── POST /api/projects ────────────────────────────────────── */

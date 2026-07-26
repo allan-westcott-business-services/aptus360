@@ -1,8 +1,7 @@
 import { useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
 import AddProjectForm from "./features/projects/AddProjectForm.jsx";
-import EditContractForm from "./features/projects/EditContractForm.jsx";
-import AddPlotsForm from "./features/plots/AddPlotsForm.jsx";
+import ProjectDetail from "./features/projects/ProjectDetail.jsx";
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -39,8 +38,7 @@ export default function App() {
 
   let content;
   if (view === "project-add") content = <div className="card"><AddProjectForm /></div>;
-  else if (view === "project-edit") content = <div className="card"><EditContractForm /></div>;
-  else if (view === "plots-add") content = <div className="card"><AddPlotsForm /></div>;
+  else if (view === "project-edit") content = <div className="card"><ProjectDetail /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

@@ -26,7 +26,7 @@ function naturalCompare(a, b) {
   return a.localeCompare(b, undefined, { numeric: true });
 }
 
-export default function AddPlotsForm({ projectId = 4711, projectRef = "2607.014", onDone }) {
+export default function AddPlotsForm({ projectId, projectRef = "", existingNumbers = null, onDone }) {
   const [lookups, setLookups] = useState(null);
   const [existing, setExisting] = useState([]);
   const [pending, setPending] = useState([]);
@@ -49,7 +49,10 @@ export default function AddPlotsForm({ projectId = 4711, projectRef = "2607.014"
 
   useEffect(() => {
     let live = true;
-    Promise.all([getLookups(), listPlots(projectId)])
+    const plotsPromise = existingNumbers
+      ? Promise.resolve({ rows: existingNumbers.map((n) => ({ Plot_Number: n })) })
+      : listPlots(projectId);
+    Promise.all([getLookups(), plotsPromise])
       .then(([lk, res]) => {
         if (!live) return;
         setLookups(lk);
@@ -124,27 +127,24 @@ export default function AddPlotsForm({ projectId = 4711, projectRef = "2607.014"
     <div>
       <style>{CSS}</style>
 
-      <div className="page-head">
+      <div className="tab-head">
         <div>
-          <h2>
-            Add plots <span className="ref mono">{projectRef}</span>
-          </h2>
-          <p className="page-sub">
+          <h3>Add plots</h3>
+          <p className="tab-sub">
             Build the list first &mdash; nothing is saved until you commit the batch.
+            {existing.length > 0 && ` ${existing.length} plot${existing.length === 1 ? "" : "s"} already on this project.`}
           </p>
         </div>
-        <span className="sec-note">{existing.length} existing</span>
+        {onDone && (
+          <button className="btn ghost" onClick={onDone}>
+            &larr; Back to plots
+          </button>
+        )}
       </div>
 
       {done > 0 && (
         <Banner kind="ok">
-          {done} plot{done === 1 ? "" : "s"} added. Add more below, or{" "}
-          {onDone && (
-            <button className="linkish" onClick={onDone}>
-              go back to the project
-            </button>
-          )}
-          .
+          {done} plot{done === 1 ? "" : "s"} added. Add more below, or go back to the list.
         </Banner>
       )}
       {error && <Banner kind="error">{error}</Banner>}
@@ -311,8 +311,10 @@ const CSS = `
   background: none; border: none; cursor: pointer; color: inherit;
   font-size: 10px; padding: 0; line-height: 1;
 }
-.linkish {
-  background: none; border: none; padding: 0; cursor: pointer;
-  color: inherit; font: inherit; text-decoration: underline;
+.tab-head {
+  display: flex; align-items: flex-start; justify-content: space-between;
+  gap: 16px; margin-bottom: 14px;
 }
+.tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.tab-sub { margin: 3px 0 0; font-size: 12.5px; color: var(--muted); max-width: 68ch; }
 `;

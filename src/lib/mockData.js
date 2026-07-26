@@ -80,6 +80,13 @@ export const lookups = {
     { Design_Status_ID: 3, Status: "Peer check", Sort_Order: 30, Is_Complete: false },
     { Design_Status_ID: 4, Status: "Completed", Sort_Order: 40, Is_Complete: true },
   ],
+  houseTypes: [
+    { House_Type_ID: 1, House_Type: "Detached" },
+    { House_Type_ID: 2, House_Type: "Semi-detached" },
+    { House_Type_ID: 3, House_Type: "Terraced" },
+    { House_Type_ID: 4, House_Type: "Flat" },
+    { House_Type_ID: 5, House_Type: "Bungalow" },
+  ],
   heatSources: [
     { Heat_Source_ID: 1, Heat_Source: "ASHP" },
     { Heat_Source_ID: 2, Heat_Source: "Gas boiler" },

@@ -57,7 +57,7 @@ const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/"
 const today = () => new Date().toISOString().slice(0, 10);
 const kpiReached = (d) => d && String(d).slice(0, 10) <= today();
 
-export default function ProjectsList({ onOpen }) {
+export default function ProjectsList({ onOpen, onNew }) {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -204,6 +204,11 @@ export default function ProjectsList({ onOpen }) {
               </div>
             )}
           </div>
+          {onNew && (
+            <button className="btn accent" onClick={onNew}>
+              + New project
+            </button>
+          )}
         </div>
       </div>
 

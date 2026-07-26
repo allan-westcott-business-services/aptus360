@@ -16,7 +16,7 @@ import {
 } from "../../lib/constants.js";
 import { utilityById } from "../../lib/utilities.js";
 
-export default function EditContractForm({ projectId = 4711 }) {
+export default function EditContractForm({ projectId }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(null);
   const [scopes, setScopes] = useState([]);

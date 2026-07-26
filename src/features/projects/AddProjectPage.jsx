@@ -7,7 +7,7 @@ import PlotsTab from "../plots/PlotsTab.jsx";
    Plots stays locked until the project exists — Plot.Project_ID is a
    foreign key, so there is nothing to attach them to until the record
    is saved. Creating the project unlocks the tab and switches to it. */
-export default function AddProjectPage() {
+export default function AddProjectPage({ onBack }) {
   const [tab, setTab] = useState("project");
   const [created, setCreated] = useState(null);
 
@@ -19,6 +19,12 @@ export default function AddProjectPage() {
   return (
     <div>
       <style>{CSS}</style>
+
+      {onBack && (
+        <button className="back-link" onClick={onBack}>
+          &larr; All projects
+        </button>
+      )}
 
       <div className="detail-tabs" role="tablist">
         {tabs.map((t) => (
@@ -70,4 +76,9 @@ const CSS = `
 .detail-tab.locked { opacity: 0.45; cursor: not-allowed; }
 .detail-tab .lock { font-size: 9px; }
 .done-actions { display: flex; gap: 9px; justify-content: center; }
+.back-link {
+  background: none; border: none; padding: 0 0 10px; cursor: pointer;
+  font: 600 12.5px inherit; color: var(--accent); display: block;
+}
+.back-link:hover { text-decoration: underline; }
 `;

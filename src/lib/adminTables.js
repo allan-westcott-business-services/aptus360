@@ -42,6 +42,10 @@ export const ADMIN_TABLES = [
       { col: "Is_Complete", label: "Counts as complete", type: "checkbox" },
     ] },
   { key: "Status_Transition", label: "Status Workflow", special: "workflow" },
+  { key: "Pack_Status", label: "Service Card Pack Status", pk: "Pack_Status_ID", fields: [
+      { col: "Pack_Status", label: "Status Name", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
   { key: "NRS_Sub_Type", label: "Non-Res Supply Type", pk: "NRS_Sub_Type_ID", fields: [
       { col: "Label", label: "Type Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

@@ -3,6 +3,8 @@ import Banner from "../../components/Banner.jsx";
 import AddPlotsForm from "./AddPlotsForm.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, deletePlot } from "../../api/plots.js";
+import { getProject, updateProject } from "../../api/projects.js";
+import Select from "../../components/Select.jsx";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
    and B1, so compare the numeric prefix when both rows have one. */
@@ -109,13 +111,24 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [lookups, setLookups] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
+  const [defaults, setDefaults] = useState({ Default_Heat_Source_ID: "", Heat_Pump_Model_ID: "" });
+  const [savedDefaults, setSavedDefaults] = useState({});
+  const [savingDefaults, setSavingDefaults] = useState(false);
 
   async function load() {
     setLoading(true);
     try {
-      const [lk, res] = await Promise.all([getLookups(), listPlots(projectId)]);
+      const [lk, res, proj] = await Promise.all([
+        getLookups(), listPlots(projectId), getProject(projectId),
+      ]);
       setLookups(lk);
       setPlots(res.rows || []);
+      const d = {
+        Default_Heat_Source_ID: proj.Default_Heat_Source_ID ?? "",
+        Heat_Pump_Model_ID: proj.Heat_Pump_Model_ID ?? "",
+      };
+      setDefaults(d);
+      setSavedDefaults(d);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -140,6 +153,26 @@ export default function PlotsTab({ projectId, projectRef }) {
     (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "\u2014";
   const heatPumpName = (id) =>
     (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
+
+  const defaultsDirty =
+    defaults.Default_Heat_Source_ID !== savedDefaults.Default_Heat_Source_ID ||
+    defaults.Heat_Pump_Model_ID !== savedDefaults.Heat_Pump_Model_ID;
+
+  async function saveDefaults() {
+    setSavingDefaults(true);
+    try {
+      await updateProject(projectId, {
+        Default_Heat_Source_ID: defaults.Default_Heat_Source_ID || null,
+        Heat_Pump_Model_ID: defaults.Heat_Pump_Model_ID || null,
+      });
+      setSavedDefaults({ ...defaults });
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setSavingDefaults(false);
+    }
+  }
 
   async function remove(plot) {
     if (!window.confirm(`Remove plot ${plot.Plot_Number}?`)) return;
@@ -184,6 +217,38 @@ export default function PlotsTab({ projectId, projectRef }) {
       </div>
 
       {error && <Banner kind="error">{error}</Banner>}
+
+      <div className="plot-defaults">
+        <span className="pd-label">Plot defaults</span>
+        <div className="pd-field">
+          <label>Heat source</label>
+          <Select
+            value={defaults.Default_Heat_Source_ID}
+            onChange={(v) => setDefaults((d) => ({ ...d, Default_Heat_Source_ID: v }))}
+          >
+            <option value="">&mdash; none &mdash;</option>
+            {(lookups?.heatSources || []).map((h) => (
+              <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>{h.Heat_Source}</option>
+            ))}
+          </Select>
+        </div>
+        <div className="pd-field">
+          <label>Heat pump model</label>
+          <Select
+            value={defaults.Heat_Pump_Model_ID}
+            onChange={(v) => setDefaults((d) => ({ ...d, Heat_Pump_Model_ID: v }))}
+          >
+            <option value="">&mdash; none &mdash;</option>
+            {(lookups?.heatPumpModels || []).map((m) => (
+              <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>{m.Model}</option>
+            ))}
+          </Select>
+        </div>
+        <button className="btn accent pd-save" disabled={!defaultsDirty || savingDefaults} onClick={saveDefaults}>
+          {savingDefaults ? "Saving\u2026" : defaultsDirty ? "Save" : "Saved"}
+        </button>
+        <span className="pd-note">Applies where a plot has no value of its own.</span>
+      </div>
 
       <BedroomSummary plots={plots} configFor={configFor} typeName={typeName} />
 
@@ -289,6 +354,23 @@ const CSS = `
   font-size: 11px; padding: 2px 5px; border-radius: 4px;
 }
 .row-del:hover { background: #fef2f2; color: #ef4444; }
+
+.plot-defaults {
+  display: flex; align-items: flex-end; gap: 12px; flex-wrap: wrap;
+  border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--bg); padding: 10px 14px; margin-bottom: 16px;
+}
+.pd-label {
+  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
+  color: var(--accent); align-self: center; margin-right: 2px;
+}
+.pd-field { min-width: 168px; }
+.pd-field label {
+  display: block; font-size: 10px; font-weight: 600; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 3px;
+}
+.pd-save { padding: 6px 14px; font-size: 12.5px; }
+.pd-note { font-size: 11px; color: var(--muted); margin-left: auto; align-self: center; }
 
 .bed-summary {
   display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;

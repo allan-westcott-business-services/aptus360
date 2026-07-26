@@ -10,16 +10,11 @@ import { getProject, updateProject } from "../../api/projects.js";
 import {
   statusesForStage,
   STAGES,
-  isScopeSecured,
-  isScopeLost,
-  isDesignComplete,
 } from "../../lib/constants.js";
-import { utilityById } from "../../lib/utilities.js";
 
 export default function EditContractForm({ projectId }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(null);
-  const [scopes, setScopes] = useState([]);
   const [saving, setSaving] = useState(false);
   const [flash, setFlash] = useState("");
   const [loadError, setLoadError] = useState("");
@@ -30,9 +25,8 @@ export default function EditContractForm({ projectId }) {
       .then(([lk, proj]) => {
         if (!live) return;
         setLookups(lk);
-        const { scopes: s = [], ...rest } = proj;
+        const { scopes: _ignored = [], ...rest } = proj;
         setF(rest);
-        setScopes(s);
       })
       .catch((e) => live && setLoadError(e.message));
     return () => {
@@ -41,13 +35,11 @@ export default function EditContractForm({ projectId }) {
   }, [projectId]);
 
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
-  const setScope = (id, k, v) =>
-    setScopes((p) => p.map((s) => (s.Project_Scope_ID === id ? { ...s, [k]: v } : s)));
 
   async function save() {
     setSaving(true);
     try {
-      await updateProject(f.Project_ID, { ...f, scopes });
+      await updateProject(f.Project_ID, f);
       setFlash("Changes saved");
       setTimeout(() => setFlash(""), 2600);
     } catch (e) {
@@ -60,9 +52,6 @@ export default function EditContractForm({ projectId }) {
   if (loadError) return <Banner kind="error">Couldn&rsquo;t load this project: {loadError}</Banner>;
   if (!f || !lookups) return <div className="loading">Loading project&hellip;</div>;
 
-  const secured = scopes.filter((s) => isScopeSecured(lookups.scopeStatuses, s.Scope_Status_ID));
-  const done = secured.filter((s) => isDesignComplete(lookups.designStatuses, s.Design_Status_ID));
-  const goodToGo = secured.length > 0 && done.length === secured.length;
   const plotMismatch = Number(f.Audacia_Plot_Count) !== Number(f.Auto_Plot_Count);
 
   return (
@@ -78,14 +67,6 @@ export default function EditContractForm({ projectId }) {
       </div>
 
       {flash && <Banner kind="ok">{flash}</Banner>}
-
-      <Banner kind={goodToGo ? "ok" : "muted"}>
-        <strong>Good to go:</strong>{" "}
-        {goodToGo
-          ? "all secured scopes have completed designs."
-          : `${done.length} of ${secured.length} secured scopes have completed designs.`}{" "}
-        <span className="derived">Derived &mdash; not editable</span>
-      </Banner>
 
       <Section title="Contract details">
         <div className="grid6">
@@ -173,106 +154,8 @@ export default function EditContractForm({ projectId }) {
         </div>
       </Section>
 
-      <Section
-        title="Scopes"
-        intro="Each scope carries its own commercial state, adopting operator and reference. Losing one leaves the rest untouched."
-        right={
-          <span className="sec-note">
-            {secured.length} of {scopes.length} secured
-          </span>
-        }
-      >
-        <div className="scope-table">
-          <div className="scope-th">
-            <span>Scope</span>
-            <span>Commercial</span>
-            <span>Secured</span>
-            <span>Design</span>
-            <span>Adopting operator</span>
-            <span>Reference</span>
-          </div>
-          {scopes.map((s) => {
-            const u = utilityById(s.Utility_ID);
-            const lost = isScopeLost(lookups.scopeStatuses, s.Scope_Status_ID);
-            return (
-              <div className={lost ? "scope-tr lost" : "scope-tr"} key={s.Project_Scope_ID}>
-                <span className="scope-cell-name">
-                  <span className="dot" style={{ background: u.colour }} />
-                  {u.icon} {u.name}
-                  {s.External_Design && <em className="ext">external</em>}
-                </span>
-                <Select
-                  value={s.Scope_Status_ID}
-                  onChange={(v) => setScope(s.Project_Scope_ID, "Scope_Status_ID", Number(v))}
-                >
-                  {lookups.scopeStatuses.map((x) => (
-                    <option key={x.Scope_Status_ID} value={x.Scope_Status_ID}>
-                      {x.Status}
-                    </option>
-                  ))}
-                </Select>
-                <input
-                  type="date"
-                  value={s.Secured_Date || ""}
-                  disabled={lost}
-                  onChange={(e) => setScope(s.Project_Scope_ID, "Secured_Date", e.target.value)}
-                />
-                <Select
-                  value={s.Design_Status_ID}
-                  disabled={lost}
-                  onChange={(v) => setScope(s.Project_Scope_ID, "Design_Status_ID", Number(v))}
-                >
-                  {lookups.designStatuses.map((x) => (
-                    <option key={x.Design_Status_ID} value={x.Design_Status_ID}>
-                      {x.Status}
-                    </option>
-                  ))}
-                </Select>
-                <Select
-                  value={s.IDNO_ID ?? ""}
-                  disabled={lost}
-                  onChange={(v) => setScope(s.Project_Scope_ID, "IDNO_ID", v ? Number(v) : null)}
-                >
-                  <option value="">&mdash;</option>
-                  {lookups.idnos.map((x) => (
-                    <option key={x.IDNO_ID} value={x.IDNO_ID}>
-                      {x.IDNO_Name}
-                    </option>
-                  ))}
-                </Select>
-                <input
-                  className="mono"
-                  placeholder="&mdash;"
-                  value={s.Reference || ""}
-                  disabled={lost}
-                  onChange={(e) => setScope(s.Project_Scope_ID, "Reference", e.target.value)}
-                />
-              </div>
-            );
-          })}
-        </div>
-      </Section>
-
-      <Section title="Technical defaults">
+      <Section title="Contract options">
         <div className="grid6">
-          <Field label="Default heat source" span={2}>
-            <Select value={f.Default_Heat_Source_ID} onChange={set("Default_Heat_Source_ID")}>
-              {lookups.heatSources.map((x) => (
-                <option key={x.Heat_Source_ID} value={x.Heat_Source_ID}>
-                  {x.Heat_Source}
-                </option>
-              ))}
-            </Select>
-          </Field>
-          <Field label="Default heat pump model" span={2} hint="Plots with their own model override this">
-            <Select value={f.Heat_Pump_Model_ID} onChange={set("Heat_Pump_Model_ID")}>
-              {lookups.heatPumpModels.map((x) => (
-                <option key={x.Heat_Pump_Model_ID} value={x.Heat_Pump_Model_ID}>
-                  {x.Model}
-                </option>
-              ))}
-            </Select>
-          </Field>
           <Field label="Mains &amp; services" span={2}>
             <div className="toggle-row">
               <Toggle checked={!!f.Lay_Only_MU} onChange={set("Lay_Only_MU")} label="Lay only" />

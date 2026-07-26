@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo, useRef } from "react";
+import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listProjects } from "../../api/projects.js";
@@ -342,18 +342,39 @@ export default function ProjectsList({ onOpen, onNew }) {
 }
 
 /* ── one control per column type ── */
+/* Popups are rendered position:fixed against the trigger's bounding rect.
+   The table wrapper has overflow:auto, which clips absolutely-positioned
+   children no matter how high the z-index goes. */
+function usePopupPos(open) {
+  const ref = useRef(null);
+  const [pos, setPos] = useState(null);
+  useLayoutEffect(() => {
+    if (!open || !ref.current) return setPos(null);
+    const r = ref.current.getBoundingClientRect();
+    const width = 220;
+    setPos({
+      top: r.bottom + 3,
+      left: Math.min(r.left, window.innerWidth - width - 12),
+      minWidth: Math.max(r.width, 180),
+    });
+  }, [open]);
+  return [ref, pos];
+}
+
 function FilterControl({ col, value, onChange, options, open, setOpen }) {
+  const [trigger, pos] = usePopupPos(open);
+
   if (col.type === "date") {
     const on = isActive(value, "date");
     return (
       <div className="fc">
-        <button className={on ? "fc-btn on" : "fc-btn"} onClick={() => setOpen(!open)}>
+        <button ref={trigger} className={on ? "fc-btn on" : "fc-btn"} onClick={() => setOpen(!open)}>
           {value.blank ? "Blank only" : value.from || value.to
             ? `${value.from ? fmtDate(value.from) : "\u2190"} \u2013 ${value.to ? fmtDate(value.to) : "\u2192"}`
             : "All dates"}
         </button>
-        {open && (
-          <div className="fc-pop">
+        {open && pos && (
+          <div className="fc-pop" style={pos}>
             <label className="fc-lbl">From</label>
             <input type="date" value={value.from} disabled={value.blank}
               onChange={(e) => onChange({ ...value, from: e.target.value })} />
@@ -384,12 +405,12 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
       onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
     return (
       <div className="fc">
-        <button className={on ? "fc-btn on" : "fc-btn"} onClick={() => setOpen(!open)}>
+        <button ref={trigger} className={on ? "fc-btn on" : "fc-btn"} onClick={() => setOpen(!open)}>
           <span className="fc-trunc">{label}</span>
           <span className="fc-caret">&#9662;</span>
         </button>
-        {open && (
-          <div className="fc-pop wide">
+        {open && pos && (
+          <div className="fc-pop wide" style={pos}>
             <div className="fc-actions">
               <button onClick={() => onChange(options.map((o) => String(o[col.idKey])))}>All</button>
               <button onClick={() => onChange([])}>None</button>
@@ -529,11 +550,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .fc.num input { width: 50%; font-size: 11.5px; padding: 3px 5px; border-radius: 5px; }
 
 .fc-pop {
-  position: absolute; top: calc(100% + 3px); left: 0; z-index: 50; min-width: 180px;
+  position: fixed; z-index: 900; min-width: 180px;
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 8px 24px rgba(0,0,0,.16); padding: 9px;
 }
-.fc-pop.wide { min-width: 210px; }
+.fc-pop.wide { min-width: 210px; max-width: 260px; }
 .fc-lbl { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); margin: 0 0 3px; }
 .fc-pop input[type=date] { font-size: 11.5px; padding: 4px 6px; margin-bottom: 7px; }

@@ -1,28 +1,62 @@
 import { useState } from "react";
+import Sidebar from "./components/Sidebar.jsx";
 import AddProjectForm from "./features/projects/AddProjectForm.jsx";
 import EditContractForm from "./features/projects/EditContractForm.jsx";
 import { USE_MOCKS } from "./api/client.js";
+import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
-/* Temporary shell. Replace with a router (react-router-dom) once there is
-   more than one feature area — see README "Next steps". */
-export default function App() {
-  const [tab, setTab] = useState("add");
+/* Placeholder for views not yet migrated. Keeping these visible rather than
+   hiding them means the sidebar doubles as a progress board. */
+function NotBuilt({ view }) {
+  const item = findNavItem(view);
   return (
-    <div className="app">
-      {USE_MOCKS && (
-        <div className="mock-bar">
-          Sample data &mdash; set <code>VITE_USE_MOCKS=false</code> once the Project tables exist.
+    <div className="card">
+      <div className="placeholder">
+        <div
+          className="placeholder-badge"
+          style={{ background: `${item?.section.colour ?? "#94a3b8"}1a`, color: item?.section.colour ?? "#94a3b8" }}
+        >
+          {item?.section.icon} {item?.section.label}
         </div>
-      )}
-      <div className="tabs">
-        <button className={tab === "add" ? "tab on" : "tab"} onClick={() => setTab("add")}>
-          Add project
-        </button>
-        <button className={tab === "edit" ? "tab on" : "tab"} onClick={() => setTab("edit")}>
-          Edit contract
-        </button>
+        <h2>{item?.label ?? view}</h2>
+        <p>
+          {item?.soon
+            ? "This was flagged as coming soon in the original app and hasn't been built yet."
+            : "Not migrated to React yet. It still exists in the original app."}
+        </p>
+        <p className="placeholder-progress">
+          {builtCount()} of {totalCount()} screens migrated
+        </p>
       </div>
-      <div className="card">{tab === "add" ? <AddProjectForm /> : <EditContractForm />}</div>
+    </div>
+  );
+}
+
+export default function App() {
+  const [view, setView] = useState("project-add");
+  const [collapsed, setCollapsed] = useState(false);
+
+  let content;
+  if (view === "project-add") content = <div className="card"><AddProjectForm /></div>;
+  else if (view === "project-edit") content = <div className="card"><EditContractForm /></div>;
+  else content = <NotBuilt view={view} />;
+
+  return (
+    <div className="shell">
+      <Sidebar
+        view={view}
+        onNavigate={setView}
+        collapsed={collapsed}
+        onToggle={() => setCollapsed((c) => !c)}
+      />
+      <main className="main">
+        {USE_MOCKS && (
+          <div className="mock-bar">
+            Sample data &mdash; set <code>VITE_USE_MOCKS=false</code> once the Project tables are populated.
+          </div>
+        )}
+        {content}
+      </main>
     </div>
   );
 }

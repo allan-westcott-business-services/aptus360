@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Sidebar from "./components/Sidebar.jsx";
-import AddProjectForm from "./features/projects/AddProjectForm.jsx";
-import ProjectDetail from "./features/projects/ProjectDetail.jsx";
+import AddProjectPage from "./features/projects/AddProjectPage.jsx";
+import EditContractForm from "./features/projects/EditContractForm.jsx";
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -37,8 +37,8 @@ export default function App() {
   const [collapsed, setCollapsed] = useState(false);
 
   let content;
-  if (view === "project-add") content = <div className="card"><AddProjectForm /></div>;
-  else if (view === "project-edit") content = <div className="card"><ProjectDetail /></div>;
+  if (view === "project-add") content = <div className="card"><AddProjectPage /></div>;
+  else if (view === "project-edit") content = <div className="card"><EditContractForm /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

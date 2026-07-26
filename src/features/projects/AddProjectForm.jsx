@@ -39,7 +39,7 @@ const blank = () => ({
   Notes: "",
 });
 
-export default function AddProjectForm() {
+export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(blank);
   const [scopes, setScopes] = useState([1, 2, 3]);
@@ -94,6 +94,7 @@ export default function AddProjectForm() {
         scopes: scopes.map((id) => ({ Utility_ID: id, Scope_Status_ID: 1 })),
       });
       setSaved(result);
+      if (onCreated) onCreated(result);
     } catch (e) {
       setErrors([e.message]);
     } finally {
@@ -103,6 +104,7 @@ export default function AddProjectForm() {
 
   function reset() {
     setSaved(null);
+    if (onReset) onReset();
     setScopes([1, 2, 3]);
     setErrors([]);
     nextProjectRef().then((ref) => setF({ ...blank(), Project_Ref: ref }));
@@ -120,9 +122,16 @@ export default function AddProjectForm() {
           {scopes.length} scope{scopes.length === 1 ? "" : "s"} added. It starts at Tender stage and can
           be promoted once secured.
         </p>
-        <button className="btn accent" onClick={reset}>
-          Add another project
-        </button>
+        <div className="done-actions">
+          {onGoToPlots && (
+            <button className="btn accent" onClick={onGoToPlots}>
+              Add plots &rarr;
+            </button>
+          )}
+          <button className="btn ghost" onClick={reset}>
+            Add another project
+          </button>
+        </div>
       </div>
     );
   }

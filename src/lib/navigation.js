@@ -33,7 +33,7 @@ export const NAV_SECTIONS = [
       { view: "tender-dashboard", label: "Tender Dashboard" },
       { view: "enquiries", label: "Enquiries", soon: true },
       { view: "project-add", label: "Add Project", built: true },
-      { view: "project-edit", label: "Project Detail", built: true },
+      { view: "project-edit", label: "Edit Contract", built: true },
       { view: "projects", label: "Projects" },
       { view: "invoice-log", label: "Invoice Log" },
       { view: "asset-value-invoices", label: "Asset Value" },

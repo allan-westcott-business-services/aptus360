@@ -267,8 +267,8 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
         fn: () => togglePriority(p),
       },
       { divider: true },
-      { icon: "\uD83D\uDCCB", label: "Change History", disabled: true },
-      { icon: "\uD83D\uDCAC", label: "Comments", disabled: true },
+      { icon: "\uD83D\uDCCB", label: "Change History", fn: () => onOpen(p, "history") },
+      { icon: "\uD83D\uDCAC", label: "Comments", fn: () => onOpen(p, "comments") },
       { divider: true },
       { icon: "\uD83D\uDDD1\uFE0F", label: "Delete Project", danger: true, fn: () => removeProject(p) },
     ];

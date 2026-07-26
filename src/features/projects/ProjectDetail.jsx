@@ -1,5 +1,6 @@
 import { useState } from "react";
-import EditContractForm from "./EditContractForm.jsx";
+import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
+import ActivityTab from "../activity/ActivityTab.jsx";
 import PlotsTab from "../plots/PlotsTab.jsx";
 import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 
@@ -10,6 +11,8 @@ const TABS = [
   { id: "details", label: "Details" },
   { id: "designs", label: "Outline Designs" },
   { id: "plots", label: "Plots" },
+  { id: "history", label: "History" },
+  { id: "comments", label: "Comments" },
 ];
 
 export default function ProjectDetail({ project, initialTab = "details", onBack }) {
@@ -48,8 +51,10 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
       </div>
 
       <div className="detail-body">
-        {tab === "details" && <EditContractForm projectId={project.Project_ID} />}
+        {tab === "details" && <ProjectDetailsForm projectId={project.Project_ID} />}
         {tab === "designs" && <OutlineDesignsTab projectId={project.Project_ID} />}
+        {tab === "history" && <ActivityTab projectId={project.Project_ID} view="history" />}
+        {tab === "comments" && <ActivityTab projectId={project.Project_ID} view="comments" />}
         {tab === "plots" && (
           <PlotsTab projectId={project.Project_ID} projectRef={project.Project_Ref} />
         )}

@@ -31,6 +31,10 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
   const [editOpt, setEditOpt] = useState(null);
   const [editQuot, setEditQuot] = useState(null);
   const [notesFor, setNotesFor] = useState(null);   // "option" | "quotation" | null
+  /* Compare options on their cheapest quote or their dearest. Totalling
+     the quotations was misleading — an operator's three quotes are
+     alternatives, not a bill, so adding them up describes nothing. */
+  const [costBasis, setCostBasis] = useState("min");   // "min" | "max"
 
   function blankQuot() {
     return { Quotation_Ref: "", Quotation_Status_ID: "", Estimated_Cost: "",
@@ -55,6 +59,16 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
   useEffect(() => { load(); /* eslint-disable-next-line */ }, [appId]);
 
   const quotsFor = (optId) => quotations.filter((q) => q.Option_ID === optId);
+
+  /* The cheapest or dearest quotation on an option, and the figure to show. */
+  const extremeQuot = (optId) => {
+    const priced = quotsFor(optId).filter((q) => q.Estimated_Cost != null && q.Estimated_Cost !== "");
+    if (!priced.length) return null;
+    return priced.reduce((best, q) =>
+      costBasis === "min"
+        ? (Number(q.Estimated_Cost) < Number(best.Estimated_Cost) ? q : best)
+        : (Number(q.Estimated_Cost) > Number(best.Estimated_Cost) ? q : best));
+  };
   const statusName = (id) => (lookups?.quotationStatuses || []).find((s) => s.Quotation_Status_ID === id)?.Quotation_Status ?? "\u2014";
   const voltName = (id) => (lookups?.voltageRatings || []).find((v) => v.Voltage_Rating_ID === id)?.Voltage_Rating ?? "\u2014";
 
@@ -108,6 +122,12 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
 
       <div className="opt-head">
         <span className="opt-title">Options from {providerName}</span>
+        <span className="cost-toggle" title="Which quotation each option is judged on">
+          {[["min", "Lowest"], ["max", "Highest"]].map(([k, label]) => (
+            <button key={k} className={costBasis === k ? "ct on" : "ct"}
+              onClick={() => setCostBasis(k)}>{label}</button>
+          ))}
+        </span>
         <button className="btn ghost sm" onClick={() => setAddingOption((a) => !a)}>
           {addingOption ? "Cancel" : "+ Add option"}
         </button>
@@ -145,15 +165,19 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
           <div className="pill-row">
             {options.map((o) => {
               const qs = quotsFor(o.Option_ID);
-              const total = qs.reduce((sum, q) => sum + (Number(q.Estimated_Cost) || 0), 0);
+              const best = extremeQuot(o.Option_ID);
               const on = activeOption === o.Option_ID;
               return (
                 <button key={o.Option_ID}
                   className={["pill", on ? "on" : "", o.Selected ? "accepted" : ""].filter(Boolean).join(" ")}
-                  onClick={() => { setActiveOption(o.Option_ID); setActiveQuot(null); }}>
+                  onClick={() => { setActiveOption(o.Option_ID); setActiveQuot(null); }}
+                  title={best
+                    ? `${costBasis === "min" ? "Lowest" : "Highest"} of ${qs.length} quotation${qs.length === 1 ? "" : "s"}`
+                    : "No priced quotations yet"}>
                   {o.Selected && <span className="pill-tick">&#10003;</span>}
                   {o.Option_Name}
-                  {qs.length > 0 && <span className="pill-badge">{money(total)}</span>}
+                  {best && <span className="pill-badge">{money(best.Estimated_Cost)}</span>}
+                  {qs.length > 1 && <span className="pill-n">{qs.length}</span>}
                 </button>
               );
             })}
@@ -161,7 +185,8 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
 
           {options.filter((o) => o.Option_ID === activeOption).map((o) => {
             const qs = quotsFor(o.Option_ID);
-            const active = qs.find((q) => q.Quotation_ID === activeQuot) || qs[0] || null;
+            const best = extremeQuot(o.Option_ID);
+            const active = qs.find((q) => q.Quotation_ID === activeQuot) || best || qs[0] || null;
             return (
               <div className={o.Selected ? "opt-card selected" : "opt-card"} key={o.Option_ID}>
                 <div className="oc-head">
@@ -227,9 +252,13 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
                   <div className="pill-row sub">
                     {qs.map((q) => {
                       const on = (active && active.Quotation_ID === q.Quotation_ID);
+                      const isBest = best && best.Quotation_ID === q.Quotation_ID && qs.length > 1;
                       return (
-                        <button key={q.Quotation_ID} className={on ? "pill sm on" : "pill sm"}
-                          onClick={() => setActiveQuot(q.Quotation_ID)}>
+                        <button key={q.Quotation_ID}
+                          className={["pill", "sm", on ? "on" : "", isBest ? "best" : ""].filter(Boolean).join(" ")}
+                          onClick={() => setActiveQuot(q.Quotation_ID)}
+                          title={isBest ? (costBasis === "min" ? "Lowest quotation" : "Highest quotation") : undefined}>
+                          {isBest && <span className="pill-tick">{costBasis === "min" ? "\u2193" : "\u2191"}</span>}
                           {q.Quotation_Ref || `Quote #${q.Quotation_ID}`}
                           <span className="pill-badge">{money(q.Estimated_Cost)}</span>
                         </button>
@@ -406,6 +435,15 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; 
 .pill.accepted:not(.on) { border-color: #a7f3d0; background: var(--ok-bg); color: var(--ok-text); }
 .pill.sm { padding: 4px 11px; font-size: 11.5px; }
 .pill-tick { font-weight: 700; }
+.cost-toggle { display: inline-flex; border: 1px solid var(--border); border-radius: 999px;
+  overflow: hidden; margin-left: auto; margin-right: 8px; }
+.ct { background: var(--white); border: none; padding: 4px 12px; cursor: pointer;
+  font: 600 11.5px inherit; color: var(--muted); }
+.ct.on { background: var(--accent); color: #fff; }
+.pill.best:not(.on) { border-color: var(--accent); color: var(--accent); }
+.pill-n { background: var(--border); color: var(--muted); border-radius: 999px;
+  padding: 0 6px; font-size: 10px; font-weight: 700; }
+.pill.on .pill-n { background: rgba(255,255,255,.25); color: #fff; }
 .pill-badge { background: rgba(0,0,0,.09); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
 .pill.on .pill-badge { background: rgba(255,255,255,.25); }
 

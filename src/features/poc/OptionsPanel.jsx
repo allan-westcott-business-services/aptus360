@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listOptions, saveOption, saveQuotation, removeOption, removeQuotation } from "../../api/pocOptions.js";
 import PlotAssignment from "./PlotAssignment.jsx";
+import EntityNotes from "../../components/EntityNotes.jsx";
 
 /* Options and quotations returned by a network operator.
 
@@ -27,6 +28,9 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
   const [assigning, setAssigning] = useState(null);
   const [activeOption, setActiveOption] = useState(null);
   const [activeQuot, setActiveQuot] = useState(null);
+  const [editOpt, setEditOpt] = useState(null);
+  const [editQuot, setEditQuot] = useState(null);
+  const [notesFor, setNotesFor] = useState(null);   // "option" | "quotation" | null
 
   function blankQuot() {
     return { Quotation_Ref: "", Quotation_Status_ID: "", Estimated_Cost: "",
@@ -172,9 +176,52 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
                   </span>
                   <span className="oc-actions">
                     {!o.Selected && <button className="btn ghost sm" onClick={() => select(o)}>Accept</button>}
+                    <button className="row-edit"
+                      onClick={() => setEditOpt(editOpt ? null : { ...o })}>
+                      {editOpt ? "Cancel" : "Edit"}
+                    </button>
+                    <button className={notesFor === "option" ? "row-edit on" : "row-edit"}
+                      onClick={() => setNotesFor(notesFor === "option" ? null : "option")}>
+                      Notes
+                    </button>
                     <button className="row-del" onClick={() => delOption(o)} title="Delete option">&#10005;</button>
                   </span>
                 </div>
+
+                {editOpt && (
+                  <div className="edit-form">
+                    <div className="ef-grid">
+                      <div className="fld span2"><label>Option name</label>
+                        <input value={editOpt.Option_Name || ""}
+                          onChange={(e) => setEditOpt((d) => ({ ...d, Option_Name: e.target.value }))} /></div>
+                      <div className="fld"><label>Date received</label>
+                        <input type="date" value={editOpt.Date_Received || ""}
+                          onChange={(e) => setEditOpt((d) => ({ ...d, Date_Received: e.target.value }))} /></div>
+                      <div className="fld"><label>Consumption kVA</label>
+                        <input type="number" step="0.1" value={editOpt.Consumption_kVA ?? ""}
+                          onChange={(e) => setEditOpt((d) => ({ ...d, Consumption_kVA: e.target.value }))} /></div>
+                      <div className="fld"><label className="inline">
+                        <input type="checkbox" checked={!!editOpt.Interactive}
+                          onChange={(e) => setEditOpt((d) => ({ ...d, Interactive: e.target.checked }))} />
+                        Interactive</label></div>
+                      <div className="fld"><button className="btn accent sm" onClick={async () => {
+                        try {
+                          await saveOption(appId, {
+                            Option_Name: editOpt.Option_Name,
+                            Date_Received: editOpt.Date_Received || null,
+                            Consumption_kVA: editOpt.Consumption_kVA === "" ? null : editOpt.Consumption_kVA,
+                            Interactive: !!editOpt.Interactive,
+                          }, editOpt.Option_ID);
+                          setEditOpt(null); await load();
+                        } catch (e) { setError(e.message); }
+                      }}>Save option</button></div>
+                    </div>
+                  </div>
+                )}
+
+                {notesFor === "option" && (
+                  <EntityNotes entityType="POC_Option" entityId={o.Option_ID} />
+                )}
 
                 {qs.length > 0 && (
                   <div className="pill-row sub">
@@ -206,9 +253,66 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
                         onClick={() => setAssigning(assigning === active.Quotation_ID ? null : active.Quotation_ID)}>
                         Assign plots
                       </button>
+                      <button className="row-edit"
+                        onClick={() => setEditQuot(editQuot ? null : { ...active })}>
+                        {editQuot ? "Cancel" : "Edit"}
+                      </button>
+                      <button className={notesFor === "quotation" ? "row-edit on" : "row-edit"}
+                        onClick={() => setNotesFor(notesFor === "quotation" ? null : "quotation")}>
+                        Notes
+                      </button>
                       <button className="row-del" onClick={() => delQuot(active)} title="Delete quotation">&#10005;</button>
                     </div>
                   </div>
+                )}
+
+                {editQuot && (
+                  <div className="edit-form">
+                    <div className="ef-grid">
+                      <div className="fld"><label>Quote ref</label>
+                        <input value={editQuot.Quotation_Ref || ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Quotation_Ref: e.target.value }))} /></div>
+                      <div className="fld"><label>Status</label>
+                        <select value={editQuot.Quotation_Status_ID ?? ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Quotation_Status_ID: e.target.value }))}>
+                          <option value="">&mdash;</option>
+                          {(lookups.quotationStatuses || []).map((x) => (
+                            <option key={x.Quotation_Status_ID} value={x.Quotation_Status_ID}>{x.Quotation_Status}</option>
+                          ))}
+                        </select></div>
+                      <div className="fld"><label>Voltage</label>
+                        <select value={editQuot.Voltage_Rating_ID ?? ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Voltage_Rating_ID: e.target.value }))}>
+                          <option value="">&mdash;</option>
+                          {(lookups.voltageRatings || []).map((v) => (
+                            <option key={v.Voltage_Rating_ID} value={v.Voltage_Rating_ID}>{v.Voltage_Rating}</option>
+                          ))}
+                        </select></div>
+                      <div className="fld"><label>Cost</label>
+                        <input type="number" step="0.01" value={editQuot.Estimated_Cost ?? ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Estimated_Cost: e.target.value }))} /></div>
+                      <div className="fld"><label>Received</label>
+                        <input type="date" value={editQuot.Date_Received || ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Date_Received: e.target.value }))} /></div>
+                      <div className="fld"><label>Valid until</label>
+                        <input type="date" value={editQuot.Valid_Until_Date || ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Valid_Until_Date: e.target.value }))} /></div>
+                      <div className="fld"><label>Distance (m)</label>
+                        <input type="number" value={editQuot.Distance_m ?? ""}
+                          onChange={(e) => setEditQuot((d) => ({ ...d, Distance_m: e.target.value }))} /></div>
+                      <div className="fld"><button className="btn accent sm" onClick={async () => {
+                        try {
+                          const { Quotation_ID, Option_ID, ...changes } = editQuot;
+                          await saveQuotation(appId, changes, Quotation_ID);
+                          setEditQuot(null); await load();
+                        } catch (e) { setError(e.message); }
+                      }}>Save quotation</button></div>
+                    </div>
+                  </div>
+                )}
+
+                {notesFor === "quotation" && active && (
+                  <EntityNotes entityType="POC_Quotation" entityId={active.Quotation_ID} />
                 )}
 
                 {assigning && qs.some((q) => q.Quotation_ID === assigning) && (
@@ -305,6 +409,13 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; 
 .pill-badge { background: rgba(0,0,0,.09); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
 .pill.on .pill-badge { background: rgba(255,255,255,.25); }
 
+.edit-form { border: 1px solid var(--accent); border-radius: var(--radius);
+  background: var(--accent-light); padding: 12px; margin-top: 10px; }
+.ef-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end; }
+.ef-grid .span2 { grid-column: span 2; }
+.ef-grid label.inline { display: flex; align-items: center; gap: 7px; font-size: 12px;
+  font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text); margin: 0 0 6px; }
+.row-edit.on { background: var(--accent); color: #fff; }
 .quot-detail { display: flex; align-items: center; gap: 14px; margin-top: 10px;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--bg); }
 .qd-grid { flex: 1; display: flex; flex-wrap: wrap; gap: 18px; font-size: 12.5px; }

@@ -8,6 +8,7 @@ import { utilityById, UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import OptionsPanel from "./OptionsPanel.jsx";
+import EntityNotes from "../../components/EntityNotes.jsx";
 
 /* POC applications, following the original app.
 
@@ -18,6 +19,15 @@ import OptionsPanel from "./OptionsPanel.jsx";
 /* Only these three have a point of connection to apply for — street
    lighting scopes don't. */
 const POC_UTILITIES = [1, 2, 3];
+
+const POC_FIELD_LABELS = {
+  POC_Status_ID: "Status", POC_Type_ID: "Type", IDNO_ID: "IDNO", DNO_ID: "DNO",
+  Utility_ID: "Utility", Application_Date: "Application date",
+  Expected_Rx_Date: "Expected response", Submitted_Date: "Submitted",
+  Received_Date: "Received", Requested_kVA: "Requested kVA", Plot_Count: "Plot count",
+  Contingency_Load: "Contingency load", Quote_Reference: "Quote ref",
+  Estimated_Cost: "Estimated cost", Applicant_Person_ID: "Applicant", Notes: "Notes",
+};
 
 const COLS = [
   { key: "utility",  label: "Utility",   width: 150, type: "multi", raw: (r) => r.Utility_ID },
@@ -505,6 +515,11 @@ export default function POCApplicationsTab({ projectId }) {
                               <td colSpan={COLS.length}>
                                 <OptionsPanel appId={r.POC_Application_ID} projectId={projectId}
                                   providerName={providerName(r)} onChanged={load} />
+                                <div className="app-notes">
+                                  <EntityNotes entityType="POC_Application"
+                                    entityId={r.POC_Application_ID}
+                                    labelFor={(f2) => POC_FIELD_LABELS[f2] || f2} />
+                                </div>
                               </td>
                             </tr>
                           )]
@@ -592,6 +607,7 @@ const CSS = TABLE_CSS + FILTER_CSS + `
   font: 600 11.5px inherit; padding: 2px 6px; border-radius: 4px; }
 .row-edit:hover { background: var(--accent-light); }
 .nowrap { white-space: nowrap; }
+.app-notes { padding: 0 16px 14px; }
 .opt-row td { padding: 0 !important; background: var(--bg); }
 .opt-row:hover { background: var(--bg) !important; }
 .btn.submit { background: #059669; color: #fff; }

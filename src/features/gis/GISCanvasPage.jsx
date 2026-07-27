@@ -10,7 +10,7 @@ import {
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getBasemap } from "../../api/basemap.js";
-import { usePdfPage } from "./usePdfPage.js";
+import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
 
@@ -98,18 +98,14 @@ export default function GISCanvasPage() {
 
   const isPdfMap = basemap?.Source_Kind === "pdf";
 
-  /* How many source units the plan needs per screen pixel at this zoom.
-     Metres_Per_Pixel converts source units to metres; view.scale
-     converts metres to pixels. */
-  const requiredPdfScale = isPdfMap && basemap?.Metres_Per_Pixel
+  const pdf = usePdfPage(isPdfMap ? basemap.Image_Url : null, basemap?.Pdf_Page || 1);
+
+  /* Screen pixels per page unit: Metres_Per_Pixel turns page units into
+     metres, view.scale turns metres into pixels. */
+  const pdfScreenScale = isPdfMap && basemap?.Metres_Per_Pixel
     ? Number(basemap.Metres_Per_Pixel) * view.scale
     : 0;
 
-  const pdf = usePdfPage(
-    isPdfMap ? basemap.Image_Url : null,
-    basemap?.Pdf_Page || 1,
-    requiredPdfScale || 1
-  );
 
   useEffect(() => { if (pdf.error) setError(pdf.error); }, [pdf.error]);
 
@@ -141,6 +137,32 @@ export default function GISCanvasPage() {
   /* ── coordinate conversion ── */
   const toPx = useCallback((m) => ({ x: m[0] * view.scale + view.x, y: m[1] * view.scale + view.y }), [view]);
   const toM = useCallback((px, py) => [(px - view.x) / view.scale, (py - view.y) / view.scale], [view]);
+
+  /* Ask for whatever part of the plan is on screen, at this zoom. */
+  useEffect(() => {
+    if (!isPdfMap || !pdf.size || !pdfScreenScale || !wrapRef.current) return;
+    const mpp = Number(basemap.Metres_Per_Pixel);
+    const ox = Number(basemap.Origin_X) || 0;
+    const oy = Number(basemap.Origin_Y) || 0;
+    const w = wrapRef.current.clientWidth, h = wrapRef.current.clientHeight;
+
+    // screen corners -> metres -> page units
+    const [mx0, my0] = toM(0, 0);
+    const [mx1, my1] = toM(w, h);
+    const x0 = (mx0 - ox) / mpp, y0 = (my0 - oy) / mpp;
+    const x1 = (mx1 - ox) / mpp, y1 = (my1 - oy) / mpp;
+
+    pdf.request(
+      {
+        x: Math.max(0, Math.min(x0, x1)),
+        y: Math.max(0, Math.min(y0, y1)),
+        w: Math.min(pdf.size.width, Math.abs(x1 - x0)),
+        h: Math.min(pdf.size.height, Math.abs(y1 - y0)),
+      },
+      pdfScreenScale
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPdfMap, pdf.size, view.x, view.y, view.scale, basemap?.Metres_Per_Pixel, basemap?.Origin_X, basemap?.Origin_Y]);
   const snap = (v) => Math.round(v / SNAP_M) * SNAP_M;
 
   /* ── drawing ── */
@@ -152,20 +174,29 @@ export default function GISCanvasPage() {
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
-    const bg = isPdfMap ? pdf.canvas : bgImage;
-    const bgW = isPdfMap ? (pdf.size?.width ?? 0) : (bgImage?.naturalWidth ?? 0);
-    const bgH = isPdfMap ? (pdf.size?.height ?? 0) : (bgImage?.naturalHeight ?? 0);
-
-    if (bg && bgW && basemap?.Metres_Per_Pixel) {
+    if (basemap?.Metres_Per_Pixel) {
       const mpp = Number(basemap.Metres_Per_Pixel);
-      const wM = bgW * mpp;
-      const hM = bgH * mpp;
-      const o = toPx([Number(basemap.Origin_X) || 0, Number(basemap.Origin_Y) || 0]);
+      const ox = Number(basemap.Origin_X) || 0;
+      const oy = Number(basemap.Origin_Y) || 0;
+      const o = toPx([ox, oy]);
+
       ctx.save();
       ctx.globalAlpha = Number(basemap.Opacity ?? 0.6);
       const rot = (Number(basemap.Rotation_Deg) || 0) * Math.PI / 180;
       if (rot) { ctx.translate(o.x, o.y); ctx.rotate(rot); ctx.translate(-o.x, -o.y); }
-      ctx.drawImage(bg, o.x, o.y, wM * view.scale, hM * view.scale);
+
+      if (isPdfMap) {
+        // page units -> metres -> screen
+        const pageToScreen = (x, y) => {
+          const p = toPx([ox + x * mpp, oy + y * mpp]);
+          return [p.x, p.y];
+        };
+        drawTile(ctx, pdf.tile, pageToScreen, mpp * view.scale);
+      } else if (bgImage) {
+        ctx.drawImage(bgImage, o.x, o.y,
+          bgImage.naturalWidth * mpp * view.scale,
+          bgImage.naturalHeight * mpp * view.scale);
+      }
       ctx.restore();
     }
 
@@ -287,7 +318,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.canvas, pdf.size]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.tile, pdf.size]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

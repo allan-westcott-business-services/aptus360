@@ -1,5 +1,5 @@
 import { useState, useRef, useEffect, useCallback } from "react";
-import { usePdfPage } from "./usePdfPage.js";
+import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* A zoomable view of the plan for placing calibration points.
 
@@ -29,7 +29,7 @@ export default function CalibrationView({
   const [panning, setPanning] = useState(false);
 
   const isPdf = sourceKind === "pdf";
-  const pdf = usePdfPage(isPdf ? src : null, pdfPage, Math.max(view.scale, 0.05));
+  const pdf = usePdfPage(isPdf ? src : null, pdfPage);
 
   // raster plans decode once
   useEffect(() => {
@@ -40,9 +40,9 @@ export default function CalibrationView({
     i.src = src;
   }, [src, isPdf]);
 
-  const source = isPdf ? pdf.canvas : raster;
   const srcW = isPdf ? (pdf.size?.width ?? imageWidth) : (raster?.naturalWidth ?? imageWidth);
   const srcH = isPdf ? (pdf.size?.height ?? imageHeight) : (raster?.naturalHeight ?? imageHeight);
+  const ready = isPdf ? !!pdf.tile : !!raster;
 
   const fit = useCallback(() => {
     const w = wrapRef.current;
@@ -57,10 +57,26 @@ export default function CalibrationView({
 
   const fitted = useRef(false);
   useEffect(() => {
-    if (!fitted.current && srcW && source) { fitted.current = true; fit(); }
-  }, [srcW, source, fit]);
+    if (!fitted.current && srcW) { fitted.current = true; fit(); }
+  }, [srcW, fit]);
 
   const toSource = (px, py) => [(px - view.x) / view.scale, (py - view.y) / view.scale];
+
+  /* Tell the renderer which part of the page is on screen. */
+  useEffect(() => {
+    if (!isPdf || !pdf.size || !wrapRef.current) return;
+    const w = wrapRef.current.clientWidth, h = wrapRef.current.clientHeight;
+    const [x0, y0] = toSource(0, 0);
+    const [x1, y1] = toSource(w, h);
+    pdf.request(
+      {
+        x: Math.max(0, x0), y: Math.max(0, y0),
+        w: Math.min(pdf.size.width, x1 - x0), h: Math.min(pdf.size.height, y1 - y0),
+      },
+      view.scale
+    );
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isPdf, pdf.size, view.x, view.y, view.scale]);
   const toScreen = (sx, sy) => [sx * view.scale + view.x, sy * view.scale + view.y];
 
   /* Draw the plan, the placed pins and the measured line. */
@@ -72,9 +88,11 @@ export default function CalibrationView({
     ctx.fillStyle = "#f1f5f9";
     ctx.fillRect(0, 0, cv.width, cv.height);
 
-    if (source && srcW) {
+    if (isPdf) {
+      drawTile(ctx, pdf.tile, toScreen, view.scale);
+    } else if (raster && srcW) {
       ctx.imageSmoothingEnabled = view.scale < 2;
-      ctx.drawImage(source, view.x, view.y, srcW * view.scale, srcH * view.scale);
+      ctx.drawImage(raster, view.x, view.y, srcW * view.scale, srcH * view.scale);
     }
 
     if (points.length === 2) {
@@ -104,7 +122,7 @@ export default function CalibrationView({
       ctx.textBaseline = "middle";
       ctx.fillText(mode === "one" ? (pinLabel || "\u25CE") : String(i + 1), sx, sy);
     });
-  }, [source, srcW, srcH, view, points, mode, pinLabel]);
+  }, [isPdf, pdf.tile, raster, srcW, srcH, view, points, mode, pinLabel]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -122,17 +140,31 @@ export default function CalibrationView({
 
   useEffect(() => { draw(); }, [draw]);
 
+  /* The loupe samples the rendered bitmap, so its source rectangle has
+     to be in that bitmap's pixels — page units times the scale it was
+     rendered at, offset by where the tile starts. Reading page units
+     directly is what made it show the wrong place. */
   function drawLoupe(px, py) {
     const cv = loupeRef.current;
-    if (!cv || !source) return;
+    if (!cv) return;
+    const bitmap = isPdf ? pdf.tile?.canvas : raster;
+    if (!bitmap) return;
+
     const ctx = cv.getContext("2d");
     const [ix, iy] = toSource(px, py);
-    const span = LOUPE / LOUPE_ZOOM / view.scale;
+    const spanPage = LOUPE / LOUPE_ZOOM / view.scale;
+
+    const s = isPdf ? pdf.tile.scale : 1;
+    const ox = isPdf ? pdf.tile.x : 0;
+    const oy = isPdf ? pdf.tile.y : 0;
+    const bx = (ix - ox) * s;
+    const by = (iy - oy) * s;
+    const bSpan = spanPage * s;
 
     ctx.imageSmoothingEnabled = false;
     ctx.fillStyle = "#fff";
     ctx.fillRect(0, 0, LOUPE, LOUPE);
-    ctx.drawImage(source, ix - span / 2, iy - span / 2, span, span, 0, 0, LOUPE, LOUPE);
+    ctx.drawImage(bitmap, bx - bSpan / 2, by - bSpan / 2, bSpan, bSpan, 0, 0, LOUPE, LOUPE);
 
     ctx.strokeStyle = "#dc2626";
     ctx.lineWidth = 1;
@@ -200,7 +232,7 @@ export default function CalibrationView({
     onPlace([ix, iy]);
   }
 
-  const loading = !source && !pdf.error;
+  const loading = !ready && !pdf.error;
 
   return (
     <div className="cv">
@@ -222,7 +254,7 @@ export default function CalibrationView({
         {loading && <div className="cv-wait">Rendering the plan&hellip;</div>}
         {pdf.error && <div className="cv-wait err">{pdf.error}</div>}
 
-        {cursor && source && (
+        {cursor && ready && (
           <canvas
             ref={loupeRef}
             className="cv-loupe"

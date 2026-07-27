@@ -1,36 +1,36 @@
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect, useRef, useCallback } from "react";
 import * as pdfjsLib from "pdfjs-dist";
 import workerUrl from "pdfjs-dist/build/pdf.worker.min.mjs?url";
 
 pdfjsLib.GlobalWorkerOptions.workerSrc = workerUrl;
 
-/* Renders a PDF page at whatever zoom you're actually viewing.
+/* Renders a PDF page — but only the part you're looking at.
 
-   Re-rendering on every wheel tick would be wasteful, so it works in
-   bands: render at twice the required resolution, and only render again
-   once the view has moved outside what that covers. In practice a few
-   renders cover the whole zoom range and each one is sharp.
+   Rendering the whole page at high zoom is impossible: an A0 drawing at
+   1000% would be billions of pixels, so it gets capped and you end up
+   staring at an enlarged low-resolution render. Rendering just the
+   visible rectangle at full resolution costs the same regardless of
+   zoom, and stays sharp all the way in.
 
-   Capped at 32MP — beyond that the browser starts refusing canvases, and
-   a plan that large is unreadable on screen anyway. */
+   The rendered tile is deliberately larger than the viewport so small
+   pans don't trigger a re-render. */
 
-const MAX_PIXELS = 32e6;
-const OVERSAMPLE = 2;
-const REDRAW_BAND = 1.9;   // re-render once needed scale exceeds this ratio
+const MAX_PIXELS = 24e6;
+const MARGIN = 0.35;        // extra tile beyond the viewport, as a fraction
+const SCALE_BAND = 1.6;     // re-render once zoom moves beyond this ratio
 
-export function usePdfPage(url, pageNumber = 1, requiredScale = 1) {
-  const [canvas, setCanvas] = useState(null);
-  const [size, setSize] = useState(null);      // page size in PDF points
+export function usePdfPage(url, pageNumber = 1) {
+  const [size, setSize] = useState(null);     // page size in PDF points
+  const [tile, setTile] = useState(null);     // { canvas, x, y, w, h, scale }
   const [error, setError] = useState("");
   const docRef = useRef(null);
-  const renderedAt = useRef(0);
   const busy = useRef(false);
-  const pending = useRef(null);
+  const queued = useRef(null);
 
-  // load once
   useEffect(() => {
-    if (!url) { setCanvas(null); return; }
+    if (!url) { setTile(null); setSize(null); return; }
     let dead = false;
+    setTile(null);
     (async () => {
       try {
         const doc = await pdfjsLib.getDocument({ url, withCredentials: false }).promise;
@@ -39,65 +39,70 @@ export function usePdfPage(url, pageNumber = 1, requiredScale = 1) {
         const page = await doc.getPage(pageNumber);
         const vp = page.getViewport({ scale: 1 });
         setSize({ width: vp.width, height: vp.height });
-        renderedAt.current = 0;
+        setError("");
       } catch (e) {
         if (!dead) setError(e.message || "The plan couldn't be opened.");
       }
     })();
-    return () => {
-      dead = true;
-      docRef.current?.destroy();
-      docRef.current = null;
-    };
+    return () => { dead = true; docRef.current?.destroy(); docRef.current = null; };
   }, [url, pageNumber]);
 
-  // render when the zoom moves outside the band the last render covers
-  useEffect(() => {
-    if (!docRef.current || !size || !requiredScale) return;
+  /* Ask for a region in page coordinates at a given screen scale. Called
+     on pan and zoom; ignores requests the current tile already covers. */
+  const request = useCallback(async (rect, scale) => {
+    if (!docRef.current || !size || !rect || !scale) return;
 
-    const need = requiredScale;
-    const covered = renderedAt.current;
-    if (covered && need <= covered && need > covered / REDRAW_BAND / OVERSAMPLE) return;
+    const covered = tile
+      && rect.x >= tile.x && rect.y >= tile.y
+      && rect.x + rect.w <= tile.x + tile.w
+      && rect.y + rect.h <= tile.y + tile.h
+      && scale <= tile.scale * SCALE_BAND
+      && scale >= tile.scale / SCALE_BAND;
+    if (covered) return;
 
-    if (busy.current) { pending.current = need; return; }
+    if (busy.current) { queued.current = { rect, scale }; return; }
+    busy.current = true;
 
-    let dead = false;
-    (async () => {
-      busy.current = true;
-      try {
-        let target = need * OVERSAMPLE;
-        if (size.width * target * size.height * target > MAX_PIXELS) {
-          target = Math.sqrt(MAX_PIXELS / (size.width * size.height));
-        }
+    try {
+      // Grow the region so small pans stay within it
+      const mx = rect.w * MARGIN, my = rect.h * MARGIN;
+      let x = Math.max(0, rect.x - mx);
+      let y = Math.max(0, rect.y - my);
+      let w = Math.min(size.width - x, rect.w + mx * 2);
+      let h = Math.min(size.height - y, rect.h + my * 2);
 
-        const page = await docRef.current.getPage(pageNumber);
-        const vp = page.getViewport({ scale: target });
-        const cv = document.createElement("canvas");
-        cv.width = Math.max(1, Math.round(vp.width));
-        cv.height = Math.max(1, Math.round(vp.height));
-        const ctx = cv.getContext("2d", { alpha: false });
-        ctx.fillStyle = "#ffffff";
-        ctx.fillRect(0, 0, cv.width, cv.height);
-        await page.render({ canvasContext: ctx, viewport: vp }).promise;
+      let s = scale;
+      if (w * s * h * s > MAX_PIXELS) s = Math.sqrt(MAX_PIXELS / (w * h));
 
-        if (!dead) {
-          renderedAt.current = target;
-          setCanvas(cv);
-        }
-      } catch (e) {
-        if (!dead) setError(e.message || "That page couldn't be drawn.");
-      } finally {
-        busy.current = false;
-        if (pending.current != null) {
-          const p = pending.current;
-          pending.current = null;
-          // nudge the effect by pretending the scale changed
-          if (!dead && p !== need) renderedAt.current = 0;
-        }
-      }
-    })();
-    return () => { dead = true; };
-  }, [size, requiredScale, pageNumber]);
+      const page = await docRef.current.getPage(pageNumber);
+      const vp = page.getViewport({ scale: s, offsetX: -x * s, offsetY: -y * s });
 
-  return { canvas, size, error, renderedScale: renderedAt.current };
+      const cv = document.createElement("canvas");
+      cv.width = Math.max(1, Math.round(w * s));
+      cv.height = Math.max(1, Math.round(h * s));
+      const ctx = cv.getContext("2d", { alpha: false });
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+      setTile({ canvas: cv, x, y, w, h, scale: s });
+    } catch (e) {
+      setError(e.message || "That page couldn't be drawn.");
+    } finally {
+      busy.current = false;
+      const q = queued.current;
+      queued.current = null;
+      if (q) request(q.rect, q.scale);
+    }
+  }, [size, pageNumber, tile]);
+
+  return { tile, size, error, request };
+}
+
+/* Draw a rendered tile onto a canvas, given the page→screen transform. */
+export function drawTile(ctx, tile, toScreen, viewScale) {
+  if (!tile) return;
+  const [sx, sy] = toScreen(tile.x, tile.y);
+  ctx.imageSmoothingEnabled = viewScale < tile.scale;
+  ctx.drawImage(tile.canvas, sx, sy, tile.w * viewScale, tile.h * viewScale);
 }

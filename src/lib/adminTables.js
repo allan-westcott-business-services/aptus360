@@ -25,6 +25,7 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  { key: "Points_Config", label: "Points Configuration", special: "points" },
   { key: "Project_Status", label: "Project Status", pk: "Project_Status_ID", fields: [
       { col: "Stage", label: "Stage", type: "select", options: ["Tender", "Contract"], required: true },
       { col: "Status", label: "Status Name", type: "text", required: true },
@@ -56,6 +57,7 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  { key: "Electric_Specs", label: "Electric Specs", special: "electric" },
   { key: "POC_Type", label: "POC Type", pk: "POC_Type_ID", fields: [
       { col: "POC_Type", label: "Type Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

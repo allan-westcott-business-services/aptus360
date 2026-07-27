@@ -11,6 +11,7 @@ const DESIGN_FIELDS = new Set([
   "Designer_ID", "Design_Status_ID", "Design_Checked_By", "POC_Status_ID",
   "Target_Date", "Actual_Date", "Revision", "Carried_Forward",
   "External_Design", "IDNO_ID", "Reference",
+  "Manual_Base_Points", "Base_Points_Overridden",
 ]);
 
 export default async function handler(req, context) {

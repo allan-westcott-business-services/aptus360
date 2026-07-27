@@ -31,6 +31,8 @@ const OD_COLS = [
   { key: "checked", label: "Checked by",    width: 150, type: "multi", raw: (s) => s.Design_Checked_By },
   { key: "ext",     label: "Ext",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.External_Design },
   { key: "cf",      label: "C/F",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.Carried_Forward },
+  { key: "points",  label: "Points",        width: 128, type: "num",   align: "right",
+    raw: (s) => (s.Base_Points_Overridden ? s.Manual_Base_Points : s.Auto_Base_Points) ?? null },
   { key: "act",     label: "",              width: 42,  type: "none",  align: "center", raw: () => "" },
 ];
 
@@ -187,6 +189,14 @@ export default function OutlineDesignsTab({ projectId }) {
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
 
+      <Banner kind="muted">
+        <strong>Design points:</strong>{" "}
+        {scopes.reduce((t, x) =>
+          t + Number((x.Base_Points_Overridden ? x.Manual_Base_Points : x.Auto_Base_Points) || 0), 0)}
+        {" "}across {scopes.length} design{scopes.length === 1 ? "" : "s"}.{" "}
+        <span className="derived">Auto figures come from the plot count &mdash; configure in Admin</span>
+      </Banner>
+
       <Banner kind={allDone ? "ok" : "muted"}>
         <strong>Good to go:</strong>{" "}
         {scopes.length === 0 ? "no designs on this project yet."
@@ -299,6 +309,24 @@ export default function OutlineDesignsTab({ projectId }) {
                       <input type="checkbox" checked={!!s.Carried_Forward}
                         onChange={(e) => setField(s.Project_Scope_ID, "Carried_Forward", e.target.checked)} />
                     </td>
+                    <td className="points-cell">
+                      {/* Auto by default; ticking the override swaps in a
+                          manual figure without losing the calculated one. */}
+                      <label className="ovr" title="Override the calculated points">
+                        <input type="checkbox" checked={!!s.Base_Points_Overridden}
+                          onChange={(e) => setField(s.Project_Scope_ID, "Base_Points_Overridden", e.target.checked)} />
+                      </label>
+                      {s.Base_Points_Overridden ? (
+                        <input type="number" step="0.5" className="pts manual"
+                          value={s.Manual_Base_Points ?? ""}
+                          onChange={(e) => setField(s.Project_Scope_ID, "Manual_Base_Points",
+                            e.target.value === "" ? null : Number(e.target.value))} />
+                      ) : (
+                        <span className="pts auto" title="Calculated from the plot count">
+                          {s.Auto_Base_Points ?? "\u2014"}
+                        </span>
+                      )}
+                    </td>
                     <td className="mid">
                       <button className="row-del" onClick={() => removeScope(s)} title="Remove design">
                         &#10005;
@@ -358,6 +386,12 @@ body.resizing { cursor: col-resize; user-select: none; }
 .od-table td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
 .od-table tbody tr:nth-child(even) { background: #fafbfc; }
 .od-table tbody tr.dirty { background: #fffbeb; }
+.points-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
+.points-cell .ovr { margin: 0; display: flex; }
+.points-cell .pts { min-width: 52px; text-align: right; }
+.points-cell .pts.auto { font-weight: 700; color: var(--muted); padding-right: 7px; }
+.points-cell .pts.manual { font-weight: 700; color: var(--accent);
+  border-color: var(--accent) !important; }
 .od-table tbody tr.dirty td { border-top-color: #fde68a; }
 .od-table select, .od-table input[type=date], .od-table input[type=number] {
   width: 100%; font-size: 12px; padding: 4px 6px; border-radius: 5px;

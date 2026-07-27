@@ -5,6 +5,8 @@ import PropertyConfigAdmin from "./PropertyConfigAdmin.jsx";
 import PeopleRolesAdmin from "./PeopleRolesAdmin.jsx";
 import SubRegionAdmin from "./SubRegionAdmin.jsx";
 import StatusWorkflowAdmin from "./StatusWorkflowAdmin.jsx";
+import ElectricSpecsAdmin from "./ElectricSpecsAdmin.jsx";
+import PointsConfigAdmin from "./PointsConfigAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
@@ -42,6 +44,10 @@ export default function AdminPage() {
           <SubRegionAdmin />
         ) : table?.special === "workflow" ? (
           <StatusWorkflowAdmin />
+        ) : table?.special === "electric" ? (
+          <ElectricSpecsAdmin />
+        ) : table?.special === "points" ? (
+          <PointsConfigAdmin />
         ) : table ? (
           <GenericTable table={table} />
         ) : null}

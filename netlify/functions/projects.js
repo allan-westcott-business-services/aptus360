@@ -13,6 +13,7 @@ const PROJECT_COLUMNS = [
   "Contract_Number", "Date_Signed", "Site_Contact", "Project_Manager_ID",
   "Fire_Service_ID", "Heat_Pump_Model_ID", "Default_Heat_Source_ID",
   "Lay_Only_MU", "Minimum_Service_Call_Off", "Town_Council_ID", "County_Council_ID",
+  "Tender_Base_Points", "Tender_Total_Points", "Manual_Base_Points",
 ].join(",");
 
 const SCOPE_COLUMNS = [
@@ -21,6 +22,7 @@ const SCOPE_COLUMNS = [
   "Designer_ID", "Design_Status_ID", "Design_Checked_By", "POC_Status_ID",
   "Target_Date", "Actual_Date", "Revision",
   "Carried_Forward", "External_Design", "IDNO_ID", "Reference",
+  "Auto_Base_Points", "Manual_Base_Points", "Base_Points_Overridden",
 ].join(",");
 
 

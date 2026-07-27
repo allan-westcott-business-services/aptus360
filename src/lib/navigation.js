@@ -41,6 +41,7 @@ export const NAV_SECTIONS = [
       { view: "invoice-plot-extractor", label: "Import Audacia Invoice Data" },
       { view: "mains-install-tracking", label: "Mains Install Tracking" },
       { view: "update-av-asset-values", label: "Update AV Asset Values" },
+      { view: "gis-canvas", label: "GIS Canvas", built: true },
     ],
   },
   {
@@ -53,7 +54,6 @@ export const NAV_SECTIONS = [
       { view: "call-offs", label: "Call-offs" },
       { view: "planning", label: "Planning" },
       { view: "field-team-work", label: "Field Team Work" },
-      { view: "gis-canvas", label: "GIS Canvas" },
       { view: "plot-connections", label: "Plot Connections", built: true },
       { view: "sc-log", label: "Service Card Log" },
       { view: "teams", label: "Teams" },

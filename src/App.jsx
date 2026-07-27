@@ -8,6 +8,7 @@ import Sidebar from "./components/Sidebar.jsx";
 const ProjectsPage = lazy(() => import("./features/projects/ProjectsPage.jsx"));
 const AdminPage = lazy(() => import("./features/admin/AdminPage.jsx"));
 const PlotConnectionsPage = lazy(() => import("./features/connections/PlotConnectionsPage.jsx"));
+const GISCanvasPage = lazy(() => import("./features/gis/GISCanvasPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -46,6 +47,7 @@ function Shell() {
   if (view === "projects") content = <div className="card"><ProjectsPage /></div>;
   else if (view === "admin") content = <div className="card"><AdminPage /></div>;
   else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage /></div>;
+  else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

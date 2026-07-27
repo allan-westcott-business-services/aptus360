@@ -105,3 +105,11 @@ export async function createRevision(projectId, carryScopeIds = [], copyPlots = 
   return http.post(`/projects/${projectId}/revision`,
     { carry_scope_ids: carryScopeIds, copy_plots: copyPlots });
 }
+
+export async function resurrectProject(projectId) {
+  if (USE_MOCKS) {
+    await delay(300);
+    return { resurrected: true, later_revisions: 0 };
+  }
+  return http.post(`/projects/${projectId}/resurrect`, {});
+}

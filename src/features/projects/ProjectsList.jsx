@@ -1,7 +1,7 @@
 import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
-import { listProjects, setPriority, deleteProject } from "../../api/projects.js";
+import { listProjects, setPriority, deleteProject, resurrectProject } from "../../api/projects.js";
 import BurgerMenu, { BURGER_CSS } from "../../components/BurgerMenu.jsx";
 import CreateRevisionModal from "./CreateRevisionModal.jsx";
 import { UTILITIES } from "../../lib/utilities.js";
@@ -240,6 +240,26 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     } catch (e) { setError(e.message); }
   }
 
+  /* A superseded project is locked. Without this a revision created by
+     mistake would leave the original unreachable for good. */
+  async function resurrect(p) {
+    if (!window.confirm(
+      `Unlock ${p.Project_Ref} r${p.Revision ?? 0}?\n\n` +
+      "It goes back to Tendering. Any later revision stays as it is, so " +
+      "you'll have two live revisions of the same reference."
+    )) return;
+    try {
+      const res = await resurrectProject(p.Project_ID);
+      onRefresh && onRefresh();
+      const list = await listProjects({ limit: 500 });
+      setRows(list.rows || []);
+      if (res.later_revisions > 0) {
+        setError(`Unlocked. ${res.later_revisions} later revision${
+          res.later_revisions === 1 ? "" : "s"} still exist for this reference.`);
+      }
+    } catch (e) { setError(e.message); }
+  }
+
   async function removeProject(p) {
     if (!window.confirm(`Delete project ${p.Project_Ref}? This cannot be undone.`)) return;
     try {
@@ -263,24 +283,41 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     const siblings = rows.filter((x) => x.Project_Ref === p.Project_Ref);
     const highestRev = Math.max(...siblings.map((x) => x.Revision ?? 0));
     const isHighest = (p.Revision ?? 0) === highestRev;
+    const statusName = (lookups?.projectStatuses || [])
+      .find((s) => s.Project_Status_ID === p.Project_Status_ID)?.Status;
+    const superseded = statusName === "Superseded";
+    const tender = isTender(p);
+
     return [
-      isHighest
-        ? { icon: "\u270F\uFE0F", label: "Edit Project", fn: () => onOpen(p, "details") }
-        : { icon: "\uD83D\uDD12", label: `Locked \u2014 rev ${highestRev} exists`, disabled: true },
-      isHighest && (isTender(p)
+      superseded
+        ? { icon: "\u267B\uFE0F", label: "Resurrect (unlock)", fn: () => resurrect(p) }
+        : isHighest
+          ? { icon: "\u270F\uFE0F", label: "Edit Project", fn: () => onOpen(p, "details") }
+          : { icon: "\uD83D\uDD12", label: `Locked \u2014 rev ${highestRev} exists`, disabled: true },
+
+      isHighest && !superseded && (tender
         ? { icon: "\uD83D\uDD04", label: "Create New Revision", fn: () => setRevising(p) }
         : { icon: "\uD83D\uDD04", label: "Revision \u2014 Tender stage only", disabled: true }),
+
+      { divider: true },
       { icon: "\uD83C\uDFE0", label: "Plots", fn: () => onOpen(p, "plots") },
+      { icon: "\uD83C\uDFED", label: "Non-Res Supplies", fn: () => onOpen(p, "nrs") },
+      { icon: "\uD83D\uDD0C", label: "POC Applications", fn: () => onOpen(p, "poc") },
       { icon: "\uD83D\uDCD0", label: "Outline Designs", fn: () => onOpen(p, "designs") },
-      isHighest && {
+      { icon: "\uD83D\uDCB0", label: "Asset Value", fn: () => onOpen(p, "av") },
+      { icon: "\uD83E\uDD1D", label: "Stakeholders", fn: () => onOpen(p, "stakeholder") },
+
+      { divider: true },
+      { icon: "\uD83D\uDCCB", label: "Change History", fn: () => onOpen(p, "history") },
+      { icon: "\uD83D\uDCAC", label: "Comments", fn: () => onOpen(p, "comments") },
+      { icon: "\uD83D\uDCCA", label: "Progress Report", disabled: true },
+
+      { divider: true },
+      isHighest && !superseded && {
         icon: p.Is_Priority ? "\u2B50" : "\u2606",
         label: p.Is_Priority ? "Remove Priority" : "Set Priority",
         fn: () => togglePriority(p),
       },
-      { divider: true },
-      { icon: "\uD83D\uDCCB", label: "Change History", fn: () => onOpen(p, "history") },
-      { icon: "\uD83D\uDCAC", label: "Comments", fn: () => onOpen(p, "comments") },
-      { divider: true },
       { icon: "\uD83D\uDDD1\uFE0F", label: "Delete Project", danger: true, fn: () => removeProject(p) },
     ];
   };

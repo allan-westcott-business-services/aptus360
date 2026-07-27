@@ -69,3 +69,19 @@ export async function deleteFeatures(projectId, ids) {
   }
   return http.del(`/projects/${projectId}/gis?ids=${ids.join(",")}`);
 }
+
+/* Network operations. Each returns a count so the screen can say what
+   happened rather than just "done". */
+export async function placeJoints(projectId) {
+  if (USE_MOCKS) { await delay(400); return { placed: 0 }; }
+  return http.post(`/projects/${projectId}/gis-network?op=joints`, {});
+}
+export async function traceNetwork(projectId, sourceFeatureId) {
+  if (USE_MOCKS) { await delay(500); return { traced: 0 }; }
+  return http.post(`/projects/${projectId}/gis-network?op=trace`,
+    { source_feature_id: sourceFeatureId });
+}
+export async function assignMeters(projectId, maxM = 30) {
+  if (USE_MOCKS) { await delay(450); return { assigned: 0 }; }
+  return http.post(`/projects/${projectId}/gis-network?op=meters`, { max_m: maxM });
+}

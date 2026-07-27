@@ -1,7 +1,10 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
-import { listGis, seedPlots, createFeature, moveFeatures, deleteFeatures } from "../../api/gis.js";
+import {
+  listGis, seedPlots, createFeature, moveFeatures, deleteFeatures,
+  placeJoints, traceNetwork, assignMeters,
+} from "../../api/gis.js";
 import {
   SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
 } from "./snapping.js";
@@ -42,6 +45,8 @@ export default function GISCanvasPage() {
   const [snapHit, setSnapHit] = useState(null);
   const [editVertex, setEditVertex] = useState(null);   // { featureId, index }
   const [size, setSize] = useState("");
+  const [busy, setBusy] = useState("");
+  const [showLabels, setShowLabels] = useState(true);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -174,14 +179,21 @@ export default function GISCanvasPage() {
             ctx.stroke();
           });
         }
-        // Length, once there's room for it
-        if (on && view.scale > 1.5 && pts.length > 1) {
+        // Way, circuit and length, once there's room
+        if (pts.length > 1 && view.scale > 1.5 && (on || showLabels)) {
           const mid = pts[Math.floor(pts.length / 2)];
-          const len = lineLength(f.Geometry);
-          ctx.fillStyle = "#0f172a";
-          ctx.font = "600 11px ui-monospace, Menlo, monospace";
-          ctx.textAlign = "center";
-          ctx.fillText(`${len.toFixed(1)} m`, mid.x, mid.y - 10);
+          const a = f.Attributes || {};
+          const tag = a.Way ? `${a.Way}${a.Circuit ?? ""}` : "";
+          const txt = on ? `${tag ? tag + "  " : ""}${lineLength(f.Geometry).toFixed(1)} m` : tag;
+          if (txt) {
+            ctx.font = "700 11px ui-monospace, Menlo, monospace";
+            ctx.textAlign = "center";
+            const w = ctx.measureText(txt).width + 10;
+            ctx.fillStyle = "rgba(255,255,255,.9)";
+            ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
+            ctx.fillStyle = "#0f172a";
+            ctx.fillText(txt, mid.x, mid.y - 9);
+          }
         }
       }
     });
@@ -421,6 +433,35 @@ export default function GISCanvasPage() {
     } catch (e) { setError(e.message); }
   }
 
+  /* The network tools. Each says what it did — "12 joints placed" tells
+     you something; a spinner that stops does not. */
+  async function runNetwork(op) {
+    setBusy(op);
+    try {
+      if (op === "joints") {
+        const r = await placeJoints(projectId);
+        setStatus(r.placed ? `${r.placed} joint${r.placed === 1 ? "" : "s"} placed where cables meet`
+                           : "No new junctions found");
+      } else if (op === "trace") {
+        if (selected.length !== 1) {
+          setError("Select the source — a substation, feeder pillar or POC — then trace.");
+          return;
+        }
+        const r = await traceNetwork(projectId, selected[0]);
+        setStatus(r.traced ? `${r.traced} cable${r.traced === 1 ? "" : "s"} numbered into ways and circuits`
+                           : "Nothing is connected to that source yet");
+      } else if (op === "meters") {
+        const r = await assignMeters(projectId);
+        setStatus(r.assigned ? `${r.assigned} plot${r.assigned === 1 ? "" : "s"} assigned to a cable`
+                             : "No plots were close enough to a cable");
+      }
+      setTimeout(() => setStatus(""), 5000);
+      setError("");
+      await load(projectId);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   async function removeSelected() {
     if (!selected.length) return;
     const withPlots = features.filter((f) => selected.includes(f.Feature_ID) && f.Plot_ID);
@@ -553,6 +594,26 @@ export default function GISCanvasPage() {
               );
             })}
 
+            <p className="gl-title">Network</p>
+            <div className="gn-tools">
+              <button className="gn" disabled={!!busy} onClick={() => runNetwork("joints")}>
+                {busy === "joints" ? "Working\u2026" : "Place joints"}
+              </button>
+              <button className="gn" disabled={!!busy || selected.length !== 1}
+                title={selected.length === 1 ? "Trace from the selected feature" : "Select a source first"}
+                onClick={() => runNetwork("trace")}>
+                {busy === "trace" ? "Tracing\u2026" : "Trace from source"}
+              </button>
+              <button className="gn" disabled={!!busy} onClick={() => runNetwork("meters")}>
+                {busy === "meters" ? "Working\u2026" : "Assign meters"}
+              </button>
+              <label className="gn-check">
+                <input type="checkbox" checked={showLabels}
+                  onChange={(e) => setShowLabels(e.target.checked)} />
+                Show way &amp; circuit
+              </label>
+            </div>
+
             <p className="gl-title">Help</p>
             <ul className="gl-help">
               <li>Drag empty space to pan</li>
@@ -629,6 +690,13 @@ const CSS = `
 .gl-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .gl-name { flex: 1; }
 .gl-count { font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.gn-tools { display: flex; flex-direction: column; gap: 5px; }
+.gn { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  padding: 7px 10px; cursor: pointer; font: 600 11.5px inherit; color: var(--text); text-align: left; }
+.gn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.gn:disabled { opacity: .45; cursor: not-allowed; }
+.gn-check { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 500;
+  text-transform: none; letter-spacing: 0; color: var(--muted); margin: 4px 0 0; cursor: pointer; }
 .gl-help { margin: 0; padding-left: 16px; font-size: 11px; color: var(--muted); line-height: 1.7; }
 kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: var(--bg);
   border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }

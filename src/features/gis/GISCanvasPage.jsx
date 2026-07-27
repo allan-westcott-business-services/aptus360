@@ -69,6 +69,7 @@ export default function GISCanvasPage() {
   const [pendingSeed, setPendingSeed] = useState(null);  // { plot, point } awaiting a direction
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
+  const [lookups, setLookups] = useState({});
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });

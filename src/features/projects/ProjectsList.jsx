@@ -168,6 +168,27 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   };
 
   /* ── filtering ── */
+  /* Finished work clutters the list without adding anything — the
+     original hid these by default and offered a way back. Driven by the
+     status table rather than a hardcoded list, so adding a terminal
+     status doesn't need a code change. */
+  const hiddenStatusIds = useMemo(() => {
+    const ids = new Set();
+    (lookups?.projectStatuses || []).forEach((st) => {
+      if (st.Is_Terminal || ["Complete", "Superseded"].includes(st.Status)) {
+        ids.add(st.Project_Status_ID);
+      }
+    });
+    return ids;
+  }, [lookups]);
+
+  const hiddenStatusNames = useMemo(
+    () => (lookups?.projectStatuses || [])
+      .filter((st) => hiddenStatusIds.has(st.Project_Status_ID))
+      .map((st) => st.Status),
+    [lookups, hiddenStatusIds]
+  );
+
   const filtered = useMemo(() => {
     if (!lookups) return [];
     const q = search.trim().toLowerCase();
@@ -287,27 +308,6 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
      rather than hidden — the menu doubles as a to-do list. */
   /* A secured project has a contract behind it. Re-quoting that isn't a
      revision, it's a variation — so the option is closed off. */
-  /* Finished work clutters the list without adding anything — the
-     original hid these by default and offered a way back. Driven by the
-     status table rather than a hardcoded list, so adding a terminal
-     status doesn't need a code change. */
-  const hiddenStatusIds = useMemo(() => {
-    const ids = new Set();
-    (lookups?.projectStatuses || []).forEach((st) => {
-      if (st.Is_Terminal || ["Complete", "Superseded"].includes(st.Status)) {
-        ids.add(st.Project_Status_ID);
-      }
-    });
-    return ids;
-  }, [lookups]);
-
-  const hiddenStatusNames = useMemo(
-    () => (lookups?.projectStatuses || [])
-      .filter((st) => hiddenStatusIds.has(st.Project_Status_ID))
-      .map((st) => st.Status),
-    [lookups, hiddenStatusIds]
-  );
-
   const isTender = (p) =>
     (lookups?.projectStatuses || [])
       .find((s) => s.Project_Status_ID === p.Project_Status_ID)?.Stage === "Tender";

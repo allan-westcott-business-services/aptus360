@@ -25,6 +25,8 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
   const [quotFor, setQuotFor] = useState(null);
   const [quotDraft, setQuotDraft] = useState(blankQuot());
   const [assigning, setAssigning] = useState(null);
+  const [activeOption, setActiveOption] = useState(null);
+  const [activeQuot, setActiveQuot] = useState(null);
 
   function blankQuot() {
     return { Quotation_Ref: "", Quotation_Status_ID: "", Estimated_Cost: "",
@@ -35,8 +37,13 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
     try {
       const [lk, res] = await Promise.all([getLookups(), listOptions(appId)]);
       setLookups(lk);
-      setOptions(res.options || []);
+      const opts = res.options || [];
+      setOptions(opts);
       setQuotations(res.quotations || []);
+      setActiveOption((cur) => {
+        if (cur && opts.some((o) => o.Option_ID === cur)) return cur;
+        return (opts.find((o) => o.Selected) || opts[0])?.Option_ID ?? null;
+      });
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -127,115 +134,141 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
       {options.length === 0 ? (
         <p className="opt-none">No options recorded yet.</p>
       ) : (
-        options.map((o) => {
-          const qs = quotsFor(o.Option_ID);
-          const total = qs.reduce((sum, q) => sum + (Number(q.Estimated_Cost) || 0), 0);
-          return (
-            <div className={o.Selected ? "opt-card selected" : "opt-card"} key={o.Option_ID}>
-              <div className="oc-head">
-                <span className="oc-name">
+        <>
+          {/* Options as pills rather than stacked cards: an operator can
+              return several and stacking them buries the one you care
+              about. One row of pills, one detail panel. */}
+          <div className="pill-row">
+            {options.map((o) => {
+              const qs = quotsFor(o.Option_ID);
+              const total = qs.reduce((sum, q) => sum + (Number(q.Estimated_Cost) || 0), 0);
+              const on = activeOption === o.Option_ID;
+              return (
+                <button key={o.Option_ID}
+                  className={["pill", on ? "on" : "", o.Selected ? "accepted" : ""].filter(Boolean).join(" ")}
+                  onClick={() => { setActiveOption(o.Option_ID); setActiveQuot(null); }}>
+                  {o.Selected && <span className="pill-tick">&#10003;</span>}
                   {o.Option_Name}
-                  {o.Interactive && <span className="tag">Interactive</span>}
-                  {o.Selected && <span className="tag accepted">Accepted</span>}
-                </span>
-                <span className="oc-meta">
-                  Received {fmt(o.Date_Received)}
-                  {o.Consumption_kVA ? ` · ${o.Consumption_kVA} kVA` : ""}
-                  {qs.length ? ` · ${money(total)}` : ""}
-                </span>
-                <span className="oc-actions">
-                  {!o.Selected && (
-                    <button className="btn ghost sm" onClick={() => select(o)}>Accept</button>
-                  )}
-                  <button className="row-del" onClick={() => delOption(o)} title="Delete option">&#10005;</button>
-                </span>
-              </div>
+                  {qs.length > 0 && <span className="pill-badge">{money(total)}</span>}
+                </button>
+              );
+            })}
+          </div>
 
-              {qs.length > 0 && (
-                <table className="quot-table">
-                  <thead>
-                    <tr><th>Quote ref</th><th>Status</th><th>Voltage</th><th>Received</th>
-                      <th>Valid until</th><th className="num">Distance</th><th className="num">Cost</th><th /></tr>
-                  </thead>
-                  <tbody>
-                    {qs.map((q) => (
-                      <tr key={q.Quotation_ID}>
-                        <td className="mono">{q.Quotation_Ref || "\u2014"}</td>
-                        <td>{statusName(q.Quotation_Status_ID)}</td>
-                        <td>{voltName(q.Voltage_Rating_ID)}</td>
-                        <td>{fmt(q.Date_Received)}</td>
-                        <td>{fmt(q.Valid_Until_Date)}</td>
-                        <td className="num">{q.Distance_m != null ? `${q.Distance_m} m` : "\u2014"}</td>
-                        <td className="num strong">{money(q.Estimated_Cost)}</td>
-                        <td className="num nowrap">
-                          <button className="row-edit"
-                            onClick={() => setAssigning(assigning === q.Quotation_ID ? null : q.Quotation_ID)}
-                            title="Assign plots">Plots</button>
-                          <button className="row-del" onClick={() => delQuot(q)} title="Delete">&#10005;</button>
-                        </td>
-                      </tr>
-                    ))}
-                  </tbody>
-                </table>
-              )}
+          {options.filter((o) => o.Option_ID === activeOption).map((o) => {
+            const qs = quotsFor(o.Option_ID);
+            const active = qs.find((q) => q.Quotation_ID === activeQuot) || qs[0] || null;
+            return (
+              <div className={o.Selected ? "opt-card selected" : "opt-card"} key={o.Option_ID}>
+                <div className="oc-head">
+                  <span className="oc-name">
+                    {o.Option_Name}
+                    {o.Interactive && <span className="tag">Interactive</span>}
+                    {o.Selected && <span className="tag accepted">Accepted</span>}
+                  </span>
+                  <span className="oc-meta">
+                    Received {fmt(o.Date_Received)}
+                    {o.Consumption_kVA ? ` \u00B7 ${o.Consumption_kVA} kVA` : ""}
+                  </span>
+                  <span className="oc-actions">
+                    {!o.Selected && <button className="btn ghost sm" onClick={() => select(o)}>Accept</button>}
+                    <button className="row-del" onClick={() => delOption(o)} title="Delete option">&#10005;</button>
+                  </span>
+                </div>
 
-              {assigning && qs.some((q) => q.Quotation_ID === assigning) && (
-                <PlotAssignment
-                  projectId={projectId}
-                  quotationId={assigning}
-                  optionId={o.Option_ID}
-                  siblingQuotations={qs}
-                  onClose={() => setAssigning(null)}
-                  onSaved={load}
-                />
-              )}
+                {qs.length > 0 && (
+                  <div className="pill-row sub">
+                    {qs.map((q) => {
+                      const on = (active && active.Quotation_ID === q.Quotation_ID);
+                      return (
+                        <button key={q.Quotation_ID} className={on ? "pill sm on" : "pill sm"}
+                          onClick={() => setActiveQuot(q.Quotation_ID)}>
+                          {q.Quotation_Ref || `Quote #${q.Quotation_ID}`}
+                          <span className="pill-badge">{money(q.Estimated_Cost)}</span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                )}
 
-              {quotFor === o.Option_ID ? (
-                <div className="quot-form">
-                  <div className="qf-grid">
-                    <div className="fld"><label>Quote ref</label>
-                      <input value={quotDraft.Quotation_Ref}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Quotation_Ref: e.target.value }))} /></div>
-                    <div className="fld"><label>Status</label>
-                      <select value={quotDraft.Quotation_Status_ID}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Quotation_Status_ID: e.target.value }))}>
-                        <option value="">&mdash;</option>
-                        {(lookups.quotationStatuses || []).map((s) => (
-                          <option key={s.Quotation_Status_ID} value={s.Quotation_Status_ID}>{s.Quotation_Status}</option>
-                        ))}
-                      </select></div>
-                    <div className="fld"><label>Voltage</label>
-                      <select value={quotDraft.Voltage_Rating_ID}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Voltage_Rating_ID: e.target.value }))}>
-                        <option value="">&mdash;</option>
-                        {(lookups.voltageRatings || []).map((v) => (
-                          <option key={v.Voltage_Rating_ID} value={v.Voltage_Rating_ID}>{v.Voltage_Rating}</option>
-                        ))}
-                      </select></div>
-                    <div className="fld"><label>Cost</label>
-                      <input type="number" step="0.01" value={quotDraft.Estimated_Cost}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Estimated_Cost: e.target.value }))} /></div>
-                    <div className="fld"><label>Received</label>
-                      <input type="date" value={quotDraft.Date_Received}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Date_Received: e.target.value }))} /></div>
-                    <div className="fld"><label>Valid until</label>
-                      <input type="date" value={quotDraft.Valid_Until_Date}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Valid_Until_Date: e.target.value }))} /></div>
-                    <div className="fld"><label>Distance (m)</label>
-                      <input type="number" value={quotDraft.Distance_m}
-                        onChange={(e) => setQuotDraft((d) => ({ ...d, Distance_m: e.target.value }))} /></div>
-                    <div className="fld btns">
-                      <button className="btn accent sm" onClick={() => addQuotation(o.Option_ID)}>Add</button>
-                      <button className="btn ghost sm" onClick={() => { setQuotFor(null); setQuotDraft(blankQuot()); }}>Cancel</button>
+                {active && (
+                  <div className="quot-detail">
+                    <div className="qd-grid">
+                      <div><span className="qd-lbl">Status</span>{statusName(active.Quotation_Status_ID)}</div>
+                      <div><span className="qd-lbl">Voltage</span>{voltName(active.Voltage_Rating_ID)}</div>
+                      <div><span className="qd-lbl">Received</span>{fmt(active.Date_Received)}</div>
+                      <div><span className="qd-lbl">Valid until</span>{fmt(active.Valid_Until_Date)}</div>
+                      <div><span className="qd-lbl">Distance</span>{active.Distance_m != null ? `${active.Distance_m} m` : "\u2014"}</div>
+                      <div className="qd-cost"><span className="qd-lbl">Cost</span>{money(active.Estimated_Cost)}</div>
+                    </div>
+                    <div className="qd-actions">
+                      <button className="row-edit"
+                        onClick={() => setAssigning(assigning === active.Quotation_ID ? null : active.Quotation_ID)}>
+                        Assign plots
+                      </button>
+                      <button className="row-del" onClick={() => delQuot(active)} title="Delete quotation">&#10005;</button>
                     </div>
                   </div>
-                </div>
-              ) : (
-                <button className="add-quot" onClick={() => setQuotFor(o.Option_ID)}>+ Add quotation</button>
-              )}
-            </div>
-          );
-        })
+                )}
+
+                {assigning && qs.some((q) => q.Quotation_ID === assigning) && (
+                  <PlotAssignment
+                    projectId={projectId}
+                    quotationId={assigning}
+                    optionId={o.Option_ID}
+                    siblingQuotations={qs}
+                    onClose={() => setAssigning(null)}
+                    onSaved={load}
+                  />
+                )}
+
+                {quotFor === o.Option_ID ? (
+                  <div className="quot-form">
+                    <div className="qf-grid">
+                      <div className="fld"><label>Quote ref</label>
+                        <input value={quotDraft.Quotation_Ref}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Quotation_Ref: e.target.value }))} /></div>
+                      <div className="fld"><label>Status</label>
+                        <select value={quotDraft.Quotation_Status_ID}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Quotation_Status_ID: e.target.value }))}>
+                          <option value="">&mdash;</option>
+                          {(lookups.quotationStatuses || []).map((x) => (
+                            <option key={x.Quotation_Status_ID} value={x.Quotation_Status_ID}>{x.Quotation_Status}</option>
+                          ))}
+                        </select></div>
+                      <div className="fld"><label>Voltage</label>
+                        <select value={quotDraft.Voltage_Rating_ID}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Voltage_Rating_ID: e.target.value }))}>
+                          <option value="">&mdash;</option>
+                          {(lookups.voltageRatings || []).map((v) => (
+                            <option key={v.Voltage_Rating_ID} value={v.Voltage_Rating_ID}>{v.Voltage_Rating}</option>
+                          ))}
+                        </select></div>
+                      <div className="fld"><label>Cost</label>
+                        <input type="number" step="0.01" value={quotDraft.Estimated_Cost}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Estimated_Cost: e.target.value }))} /></div>
+                      <div className="fld"><label>Received</label>
+                        <input type="date" value={quotDraft.Date_Received}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Date_Received: e.target.value }))} /></div>
+                      <div className="fld"><label>Valid until</label>
+                        <input type="date" value={quotDraft.Valid_Until_Date}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Valid_Until_Date: e.target.value }))} /></div>
+                      <div className="fld"><label>Distance (m)</label>
+                        <input type="number" value={quotDraft.Distance_m}
+                          onChange={(e) => setQuotDraft((d) => ({ ...d, Distance_m: e.target.value }))} /></div>
+                      <div className="fld btns">
+                        <button className="btn accent sm" onClick={() => addQuotation(o.Option_ID)}>Add</button>
+                        <button className="btn ghost sm" onClick={() => { setQuotFor(null); setQuotDraft(blankQuot()); }}>Cancel</button>
+                      </div>
+                    </div>
+                  </div>
+                ) : (
+                  <button className="add-quot" onClick={() => setQuotFor(o.Option_ID)}>+ Add quotation</button>
+                )}
+              </div>
+            );
+          })}
+        </>
       )}
     </div>
   );
@@ -257,6 +290,28 @@ const CSS = `
 .fld.chk { display: flex; align-items: flex-end; }
 label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 0 0 6px; cursor: pointer; }
+
+/* Pill tabs, matching the segmented look used elsewhere in the app. */
+.pill-row { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 10px; }
+.pill-row.sub { margin: 10px 0 0; }
+.pill { display: inline-flex; align-items: center; gap: 7px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 999px; padding: 6px 14px; cursor: pointer;
+  font: 600 12.5px inherit; color: var(--muted); }
+.pill:hover { border-color: var(--accent); color: var(--accent); }
+.pill.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.pill.accepted:not(.on) { border-color: #a7f3d0; background: var(--ok-bg); color: var(--ok-text); }
+.pill.sm { padding: 4px 11px; font-size: 11.5px; }
+.pill-tick { font-weight: 700; }
+.pill-badge { background: rgba(0,0,0,.09); border-radius: 999px; padding: 1px 7px; font-size: 11px; }
+.pill.on .pill-badge { background: rgba(255,255,255,.25); }
+
+.quot-detail { display: flex; align-items: center; gap: 14px; margin-top: 10px;
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--bg); }
+.qd-grid { flex: 1; display: flex; flex-wrap: wrap; gap: 18px; font-size: 12.5px; }
+.qd-lbl { display: block; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 2px; }
+.qd-cost { font-weight: 700; color: var(--accent); }
+.qd-actions { display: flex; gap: 4px; }
 
 .opt-card { background: var(--white); border: 1px solid var(--border); border-left: 3px solid var(--border);
   border-radius: var(--radius); padding: 11px 13px; margin-bottom: 8px; }

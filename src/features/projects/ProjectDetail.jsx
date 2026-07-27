@@ -15,7 +15,7 @@ import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
    Scopes, Designs and History slotting in as they're migrated. */
 const TABS = [
   { id: "details", label: "Details" },
-  { id: "stakeholder", label: "Stakeholder" },
+  { id: "stakeholder", label: "Stakeholders" },
   { id: "plots", label: "Plots" },
   { id: "nrs", label: "Non-Res Supplies" },
   { id: "poc", label: "POC Applications" },

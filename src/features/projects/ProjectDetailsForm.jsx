@@ -15,8 +15,8 @@ import {
 
 const SITE_CSS = `
 .site-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
-.site-row .fld.grow { flex: 1; min-width: 140px; }
-.site-row .fld.grow-wide { flex: 1.6; min-width: 180px; }
+.site-row .fld.grow { flex: 0.9; min-width: 120px; }
+.site-row .fld.grow-wide { flex: 1.2; min-width: 150px; }
 /* Sized to their content: "North West" and a six-figure grid reference */
 .site-row .fld.w-region { width: 152px; flex: none; }
 .site-row .fld.w-coord { width: 104px; flex: none; }
@@ -134,6 +134,67 @@ export default function ProjectDetailsForm({ projectId }) {
         </div>
       </Section>
 
+      <Section title="Site">
+        <div className="site-row">
+          <div className="fld grow">
+            <label>Site name</label>
+            <input value={f.Site_Name || ""} onChange={(e) => set("Site_Name")(e.target.value)} />
+          </div>
+          <div className="fld grow-wide">
+            <label>Site address</label>
+            <input value={f.Site_Address || ""} onChange={(e) => set("Site_Address")(e.target.value)} />
+          </div>
+          <div className="fld w-region">
+            <label>Region</label>
+            <Select
+              value={f.Region_ID}
+              onChange={(v) => { set("Region_ID")(v); set("Sub_Region_ID")(""); }}
+            >
+              <option value="">&mdash;</option>
+              {(lookups.regions || []).map((r) => (
+                <option key={r.Region_ID} value={r.Region_ID}>{r.Region}</option>
+              ))}
+            </Select>
+          </div>
+          <div className="fld w-region">
+            <label>Sub region</label>
+            <Select value={f.Sub_Region_ID} onChange={set("Sub_Region_ID")} disabled={!f.Region_ID}>
+              <option value="">&mdash;</option>
+              {(lookups.subRegions || [])
+                .filter((sr) => String(sr.Region_ID) === String(f.Region_ID))
+                .map((sr) => (
+                  <option key={sr.Sub_Region_ID} value={sr.Sub_Region_ID}>{sr.Sub_Region}</option>
+                ))}
+            </Select>
+          </div>
+          <div className="fld w-coord">
+            <label>Eastings</label>
+            <input className="mono" value={f.Eastings ?? ""} onChange={(e) => set("Eastings")(e.target.value)} />
+          </div>
+          <div className="fld w-coord">
+            <label>Northings</label>
+            <input className="mono" value={f.Northings ?? ""} onChange={(e) => set("Northings")(e.target.value)} />
+          </div>
+        </div>
+
+
+        <div className="site-row second">
+          <div className="fld w-count">
+            <label>Plot count</label>
+            <input value={f.Auto_Plot_Count ?? ""} disabled />
+            <p className="hint">Counted from plots</p>
+          </div>
+          <div className="fld w-count">
+            <label>Min. plot call off</label>
+            <input
+              type="number"
+              value={f.Minimum_Service_Call_Off ?? ""}
+              onChange={(e) => set("Minimum_Service_Call_Off")(e.target.value)}
+            />
+          </div>
+        </div>
+      </Section>
+
       <Section title="Status">
         <div className="grid6">
           <Field label="Project status" span={2}>
@@ -170,52 +231,6 @@ export default function ProjectDetailsForm({ projectId }) {
           </Field>
           
 
-        </div>
-      </Section>
-
-      <Section title="Site">
-        <div className="site-row">
-          <div className="fld grow">
-            <label>Site name</label>
-            <input value={f.Site_Name || ""} onChange={(e) => set("Site_Name")(e.target.value)} />
-          </div>
-          <div className="fld grow-wide">
-            <label>Site address</label>
-            <input value={f.Site_Address || ""} onChange={(e) => set("Site_Address")(e.target.value)} />
-          </div>
-          <div className="fld w-region">
-            <label>Region</label>
-            <Select value={f.Region_ID} onChange={set("Region_ID")}>
-              {(lookups.regions || []).map((r) => (
-                <option key={r.Region_ID} value={r.Region_ID}>{r.Region}</option>
-              ))}
-            </Select>
-          </div>
-          <div className="fld w-coord">
-            <label>Eastings</label>
-            <input className="mono" value={f.Eastings ?? ""} onChange={(e) => set("Eastings")(e.target.value)} />
-          </div>
-          <div className="fld w-coord">
-            <label>Northings</label>
-            <input className="mono" value={f.Northings ?? ""} onChange={(e) => set("Northings")(e.target.value)} />
-          </div>
-        </div>
-
-
-        <div className="site-row second">
-          <div className="fld w-count">
-            <label>Plot count</label>
-            <input value={f.Auto_Plot_Count ?? ""} disabled />
-            <p className="hint">Counted from plots</p>
-          </div>
-          <div className="fld w-count">
-            <label>Min. plot call off</label>
-            <input
-              type="number"
-              value={f.Minimum_Service_Call_Off ?? ""}
-              onChange={(e) => set("Minimum_Service_Call_Off")(e.target.value)}
-            />
-          </div>
         </div>
       </Section>
 

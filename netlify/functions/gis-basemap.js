@@ -24,13 +24,29 @@ export default async function handler(req, context) {
       return json(data || null);
     }
 
-    /* One basemap per project, so upsert rather than making the caller
-       know whether it's a create or an update. */
+    /* Update when a row exists, insert when it doesn't.
+
+       Not upsert: Supabase replaces the whole conflicting row, so saving
+       just the calibration would null the image URL and everything else
+       the caller didn't happen to send. Each step of the setup sends only
+       its own fields, which is the right shape for the UI and the wrong
+       shape for upsert. */
     if (req.method === "PUT") {
       const body = pick(await req.json());
-      const { data, error } = await db.from("GIS_Basemap")
-        .upsert({ ...body, Project_ID: Number(projectId) }, { onConflict: "Project_ID" })
-        .select(B).single();
+      const { data: existing } = await db.from("GIS_Basemap")
+        .select("Basemap_ID").eq("Project_ID", projectId).maybeSingle();
+
+      let data, error;
+      if (existing) {
+        ({ data, error } = await db.from("GIS_Basemap")
+          .update(body).eq("Project_ID", projectId).select(B).single());
+      } else {
+        if (!body.Image_Url) {
+          return json({ error: "Import a plan before setting the scale." }, 400);
+        }
+        ({ data, error } = await db.from("GIS_Basemap")
+          .insert({ ...body, Project_ID: Number(projectId) }).select(B).single());
+      }
       if (error) throw error;
 
       if (data && data.Ref_Easting == null) {

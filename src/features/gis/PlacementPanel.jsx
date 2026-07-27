@@ -1,31 +1,35 @@
 import { useState, useMemo } from "react";
 import { bedColour } from "../../lib/bedColours.js";
+import { parsePlotRange, MAX_PLOTS, DIRECTION_NAME } from "./plotRange.js";
 
 /* Choosing which plots to place, and tracking progress through them.
 
-   Placing is a sequence, not a single action: pick a range, then click
-   the canvas once per plot. This panel is what tells you where you are
-   in that sequence — which plot is next, what colour it'll be, and how
-   many are left. */
+   Two clicks per plot, as the original: one for the position, one to say
+   which side the meters go. The second click is a direction, not a
+   position — the meters space themselves 2m out and 1.4m apart. */
 export default function PlacementPanel({
-  plots, utilities, queue, current, meterFor, onStart, onCancel, onSkipMeter,
+  plots, utilities, queue, current, awaitingDirection, onStart, onCancel,
 }) {
-  const [from, setFrom] = useState("");
-  const [to, setTo] = useState("");
+  const [range, setRange] = useState("");
 
   const unplaced = useMemo(() => plots.filter((p) => !p.placed), [plots]);
+  const byNumber = useMemo(() => {
+    const m = {};
+    plots.forEach((p) => { m[String(p.plot_number)] = p; });
+    return m;
+  }, [plots]);
 
-  /* Plot numbers are text, so a range means "between these two in the
-     order they're listed" rather than arithmetic on the labels. */
-  const inRange = useMemo(() => {
-    if (!from && !to) return unplaced;
-    const idx = (v) => unplaced.findIndex((p) => p.plot_number === v.trim());
-    const a = from ? idx(from) : 0;
-    const b = to ? idx(to) : unplaced.length - 1;
-    if (a < 0 || b < 0) return [];
-    const [lo, hi] = a <= b ? [a, b] : [b, a];
-    return unplaced.slice(lo, hi + 1);
-  }, [unplaced, from, to]);
+  const parsed = useMemo(() => parsePlotRange(range), [range]);
+
+  /* Only plots that exist on the project and aren't already placed. */
+  const resolved = useMemo(
+    () => parsed.numbers
+      .map((n) => byNumber[n])
+      .filter((p) => p && !p.placed),
+    [parsed.numbers, byNumber]
+  );
+  const missing = parsed.numbers.filter((n) => !byNumber[n]);
+  const already = parsed.numbers.filter((n) => byNumber[n]?.placed);
 
   const placing = queue.length > 0;
 
@@ -39,44 +43,36 @@ export default function PlacementPanel({
           <span className="pp-count">{done} of {queue.length}</span>
         </div>
 
-        {meterFor ? (
-          <>
-            <p className="pp-now">
-              Plot <strong>{meterFor.plot.plot_number}</strong> placed. Now the{" "}
-              <strong style={{ color: meterFor.utility.colour }}>
-                {meterFor.utility.utility}
-              </strong>{" "}
-              meter.
-            </p>
-            <div className="pp-meters">
-              {meterFor.all.map((u) => (
-                <span key={u.layer_key}
-                  className={
-                    u.layer_key === meterFor.utility.layer_key ? "pm on"
-                    : meterFor.placed.includes(u.layer_key) ? "pm done" : "pm"
-                  }
-                  style={u.layer_key === meterFor.utility.layer_key
-                    ? { borderColor: u.colour, color: u.colour } : undefined}>
-                  {meterFor.placed.includes(u.layer_key) ? "\u2713 " : ""}{u.utility}
-                </span>
-              ))}
-            </div>
-            <button className="pp-skip" onClick={onSkipMeter}>
-              Skip this meter
-            </button>
-          </>
-        ) : current ? (
-          <>
-            <p className="pp-now">
-              Click where plot <strong>{current.plot_number}</strong> sits.
-            </p>
-            <span className="pp-chip" style={{
-              background: bedColour(current.bedrooms).bg,
-              color: bedColour(current.bedrooms).fg,
-            }}>
-              {current.config_code || `${current.bedrooms ?? "?"} bed`}
-            </span>
-          </>
+        {current ? (
+          awaitingDirection ? (
+            <>
+              <p className="pp-now">
+                Plot <strong>{current.plot_number}</strong> placed. Now click the side the
+                meters go &mdash; the direction is what matters, not the distance.
+              </p>
+              <div className="pp-compass">
+                {["N", "W", "E", "S"].map((d) => (
+                  <span key={d} className={`pc pc-${d}`}>{d}</span>
+                ))}
+                <span className="pc-mid">&#9820;</span>
+              </div>
+              <p className="pp-sub">
+                {utilities.map((u) => u.utility).join(", ")} &mdash; 2m out, 1.4m apart
+              </p>
+            </>
+          ) : (
+            <>
+              <p className="pp-now">
+                Click where plot <strong>{current.plot_number}</strong> sits.
+              </p>
+              <span className="pp-chip" style={{
+                background: bedColour(current.bedrooms).bg,
+                color: bedColour(current.bedrooms).fg,
+              }}>
+                {current.config_code || `${current.bedrooms ?? "?"} bed`}
+              </span>
+            </>
+          )
         ) : (
           <p className="pp-now">All placed.</p>
         )}
@@ -93,7 +89,7 @@ export default function PlacementPanel({
           )}
         </div>
 
-        <button className="pp-cancel" onClick={onCancel}>Stop placing</button>
+        <button className="pp-cancel" onClick={onCancel}>Stop placing &middot; Esc</button>
       </div>
     );
   }
@@ -106,55 +102,57 @@ export default function PlacementPanel({
         <span className="pp-count">{unplaced.length} to place</span>
       </div>
 
-      {unplaced.length === 0 ? (
-        <p className="pp-none">
-          {plots.length ? "Every plot is on the canvas." : "This project has no plots yet."}
-        </p>
+      {plots.length === 0 ? (
+        <p className="pp-none">This project has no plots yet.</p>
+      ) : unplaced.length === 0 ? (
+        <p className="pp-none">Every plot is on the canvas.</p>
       ) : (
         <>
-          <div className="pp-range">
-            <label>
-              From
-              <input list="pp-plots" value={from} placeholder={unplaced[0]?.plot_number}
-                onChange={(e) => setFrom(e.target.value)} />
-            </label>
-            <label>
-              To
-              <input list="pp-plots" value={to}
-                placeholder={unplaced[unplaced.length - 1]?.plot_number}
-                onChange={(e) => setTo(e.target.value)} />
-            </label>
-            <datalist id="pp-plots">
-              {unplaced.map((p) => <option key={p.plot_id} value={p.plot_number} />)}
-            </datalist>
-          </div>
-
-          <p className="pp-preview">
-            {inRange.length
-              ? <>{inRange.length} plot{inRange.length === 1 ? "" : "s"} selected</>
-              : <span className="pp-bad">No plots match that range</span>}
+          <label className="pp-label" htmlFor="pp-range">Plot range</label>
+          <input id="pp-range" className="pp-input" value={range}
+            placeholder="1-50  or  1,2,5-10,22-30"
+            onChange={(e) => setRange(e.target.value)} />
+          <p className="pp-fine">
+            Numbers separated by commas, hyphens for ranges. Up to {MAX_PLOTS} at once.
           </p>
 
+          {range.trim() && (
+            <p className="pp-preview">
+              {resolved.length
+                ? <>{resolved.length} plot{resolved.length === 1 ? "" : "s"} ready</>
+                : <span className="pp-bad">Nothing to place from that range</span>}
+              {already.length > 0 && (
+                <span className="pp-note"> &middot; {already.length} already placed</span>
+              )}
+              {missing.length > 0 && (
+                <span className="pp-note"> &middot; {missing.length} not on this project</span>
+              )}
+              {parsed.bad.length > 0 && (
+                <span className="pp-bad"> &middot; couldn&rsquo;t read {parsed.bad.join(", ")}</span>
+              )}
+            </p>
+          )}
+
           <div className="pp-upcoming">
-            {inRange.slice(0, 10).map((p) => (
+            {resolved.slice(0, 10).map((p) => (
               <span key={p.plot_id} className="pp-next"
                 style={{ background: bedColour(p.bedrooms).bg, color: bedColour(p.bedrooms).fg }}>
                 {p.plot_number}
               </span>
             ))}
-            {inRange.length > 10 && <span className="pp-more">+{inRange.length - 10}</span>}
+            {resolved.length > 10 && <span className="pp-more">+{resolved.length - 10}</span>}
           </div>
 
           {utilities.length > 0 && (
             <p className="pp-hint">
-              After each plot you&rsquo;ll be asked for its{" "}
-              {utilities.map((u) => u.utility.toLowerCase()).join(", ")} meter.
+              Two clicks each: where the plot sits, then which side its{" "}
+              {utilities.map((u) => u.utility.toLowerCase()).join(", ")} meters go.
             </p>
           )}
 
-          <button className="btn accent pp-go" disabled={!inRange.length}
-            onClick={() => onStart(inRange)}>
-            Start placing {inRange.length || ""}
+          <button className="btn accent pp-go" disabled={!resolved.length}
+            onClick={() => onStart(resolved)}>
+            Start placing {resolved.length || ""}
           </button>
         </>
       )}
@@ -171,11 +169,12 @@ const CSS = `
 .pp-count { font-size: 10.5px; font-weight: 700; background: var(--accent); color: #fff;
   border-radius: 20px; padding: 1px 8px; }
 .pp-none { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 0; }
-.pp-range { display: flex; gap: 8px; }
-.pp-range label { flex: 1; display: flex; flex-direction: column; gap: 3px;
-  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
-.pp-range input { font-size: 12px; padding: 5px 7px; }
-.pp-preview { font-size: 11.5px; color: var(--muted); margin: 8px 0 6px; }
+.pp-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
+.pp-input { width: 100%; font: 600 13px inherit; padding: 6px 8px; }
+.pp-fine { font-size: 10.5px; color: var(--muted); margin: 4px 0 8px; line-height: 1.4; }
+.pp-preview { font-size: 11.5px; color: var(--muted); margin: 0 0 6px; line-height: 1.45; }
+.pp-note { color: var(--muted); }
 .pp-bad { color: var(--warn-text); font-weight: 600; }
 .pp-upcoming { display: flex; flex-wrap: wrap; gap: 3px; margin-bottom: 8px; }
 .pp-next { font: 700 10px ui-monospace, Menlo, monospace; border-radius: 4px; padding: 2px 6px; }
@@ -183,15 +182,19 @@ const CSS = `
 .pp-hint { font-size: 11px; color: var(--muted); margin: 0 0 8px; line-height: 1.45; }
 .pp-go { width: 100%; padding: 7px; font-size: 12.5px; }
 .pp-now { font-size: 12.5px; margin: 0 0 8px; line-height: 1.45; }
+.pp-sub { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
 .pp-chip { display: inline-block; font: 700 11px ui-monospace, Menlo, monospace;
   border-radius: 5px; padding: 3px 9px; margin-bottom: 9px; }
-.pp-meters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
-.pm { font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); background: var(--white);
-  border-radius: 5px; padding: 2px 8px; color: var(--muted); }
-.pm.on { border-width: 2px; font-weight: 700; }
-.pm.done { color: var(--ok-text); border-color: var(--ok-border); background: var(--ok-bg); }
-.pp-skip, .pp-cancel { width: 100%; background: var(--white); border: 1px solid var(--border);
+.pp-compass { position: relative; width: 88px; height: 66px; margin: 0 auto 8px; }
+.pc { position: absolute; font: 700 10px inherit; color: var(--accent);
+  background: var(--white); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 5px; }
+.pc-N { top: 0; left: 50%; transform: translateX(-50%); }
+.pc-S { bottom: 0; left: 50%; transform: translateX(-50%); }
+.pc-W { left: 0; top: 50%; transform: translateY(-50%); }
+.pc-E { right: 0; top: 50%; transform: translateY(-50%); }
+.pc-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
+  font-size: 17px; color: var(--accent); }
+.pp-cancel { width: 100%; background: var(--white); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px; cursor: pointer; font: 600 11.5px inherit; color: var(--muted); }
-.pp-skip { margin-bottom: 6px; }
 .pp-cancel:hover { border-color: #ef4444; color: #ef4444; }
 `;

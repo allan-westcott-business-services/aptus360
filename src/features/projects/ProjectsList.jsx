@@ -92,6 +92,9 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFilter, setOpenFilter] = useState(null);
   const [revising, setRevising] = useState(null);
+  const [priorityOnly, setPriorityOnly] = useState(false);
+  const [showHidden, setShowHidden] = useState(false);
+  const [utilFilter, setUtilFilter] = useState([]);
   const [filters, setFilters] = useState(() =>
     Object.fromEntries(COLUMNS.map((c) => [c.key, blankFilter(c.type)]))
   );
@@ -170,6 +173,12 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     const q = search.trim().toLowerCase();
 
     let out = rows.filter((p) => {
+      if (priorityOnly && !p.Is_Priority) return false;
+      if (!showHidden && hiddenStatusIds.has(p.Project_Status_ID)) return false;
+      if (utilFilter.length) {
+        const on = (p.scopes || []).map((x) => x.Utility_ID);
+        if (!utilFilter.some((u) => on.includes(u))) return false;
+      }
       for (const c of COLUMNS) {
         const f = filters[c.key];
         if (!isActive(f, c.type)) continue;
@@ -218,7 +227,7 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     });
 
     return [...out.filter((p) => p.Is_Priority), ...out.filter((p) => !p.Is_Priority)];
-  }, [rows, search, sort, filters, display, lookups]);
+  }, [rows, search, sort, filters, display, lookups, priorityOnly, showHidden, utilFilter, hiddenStatusIds]);
 
   const visible = prefs.order
     .filter((k) => !prefs.hidden.includes(k))
@@ -226,11 +235,14 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     .filter(Boolean);
 
   const activeCount = COLUMNS.filter((c) => isActive(filters[c.key], c.type)).length;
+  const hiddenCount = rows.filter((p) => hiddenStatusIds.has(p.Project_Status_ID)).length;
 
   const setFilter = (key, val) => setFilters((f) => ({ ...f, [key]: val }));
   const clearAll = () => {
     setFilters(Object.fromEntries(COLUMNS.map((c) => [c.key, blankFilter(c.type)])));
     setSearch("");
+    setPriorityOnly(false);
+    setUtilFilter([]);
   };
 
   async function togglePriority(p) {
@@ -275,6 +287,27 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
      rather than hidden — the menu doubles as a to-do list. */
   /* A secured project has a contract behind it. Re-quoting that isn't a
      revision, it's a variation — so the option is closed off. */
+  /* Finished work clutters the list without adding anything — the
+     original hid these by default and offered a way back. Driven by the
+     status table rather than a hardcoded list, so adding a terminal
+     status doesn't need a code change. */
+  const hiddenStatusIds = useMemo(() => {
+    const ids = new Set();
+    (lookups?.projectStatuses || []).forEach((st) => {
+      if (st.Is_Terminal || ["Complete", "Superseded"].includes(st.Status)) {
+        ids.add(st.Project_Status_ID);
+      }
+    });
+    return ids;
+  }, [lookups]);
+
+  const hiddenStatusNames = useMemo(
+    () => (lookups?.projectStatuses || [])
+      .filter((st) => hiddenStatusIds.has(st.Project_Status_ID))
+      .map((st) => st.Status),
+    [lookups, hiddenStatusIds]
+  );
+
   const isTender = (p) =>
     (lookups?.projectStatuses || [])
       .find((s) => s.Project_Status_ID === p.Project_Status_ID)?.Stage === "Tender";
@@ -360,16 +393,32 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
 
       <div className="list-head">
         <div>
-          <h2>Projects</h2>
+          <h2>
+            Projects <span className="ph-count">({filtered.length} of {rows.length})</span>
+          </h2>
           <p className="page-sub">
-            {filtered.length} of {rows.length} shown
-            {activeCount > 0 && ` · ${activeCount} column filter${activeCount === 1 ? "" : "s"}`}
+            {activeCount > 0 && `${activeCount} column filter${activeCount === 1 ? "" : "s"}`}
           </p>
         </div>
         <div className="list-tools" onClick={(e) => e.stopPropagation()}>
           <input className="search" value={search} aria-label="Search projects" placeholder="Search all columns&hellip;"
             onChange={(e) => setSearch(e.target.value)} />
-          {(activeCount > 0 || search) && (
+          <button
+            className={priorityOnly ? "btn toggle on" : "btn toggle"}
+            onClick={() => setPriorityOnly((v) => !v)}
+            aria-pressed={priorityOnly}
+            title="Show only projects flagged as priority"
+          >
+            Priority
+          </button>
+          <button
+            className={showHidden ? "btn toggle on" : "btn toggle"}
+            onClick={() => setShowHidden((v) => !v)}
+            aria-pressed={showHidden}
+          >
+            Show Hidden{hiddenCount > 0 && ` (${hiddenCount})`}
+          </button>
+          {(activeCount > 0 || search || priorityOnly || utilFilter.length) && (
             <button className="btn ghost" onClick={clearAll}>Clear filters</button>
           )}
           <div className="col-menu-wrap">
@@ -392,6 +441,34 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
           </div>
           {onNew && <button className="btn accent" onClick={onNew}>+ New project</button>}
         </div>
+      </div>
+
+      {!showHidden && hiddenCount > 0 && (
+        <div className="hidden-note">
+          <span className="hn-icon" aria-hidden="true">&#8505;</span>
+          Projects at <strong>{hiddenStatusNames.join(", ")}</strong> are hidden by default.
+          Use <strong>Show Hidden</strong> to reveal them.
+          <span className="hn-count">{hiddenCount}</span>
+        </div>
+      )}
+
+      <div className="util-filter">
+        <span className="uf-label">Filter by outline design type</span>
+        {UTILITIES.map((u) => {
+          const on = utilFilter.includes(u.id);
+          return (
+            <label key={u.id} className={on ? "uf on" : "uf"}>
+              <input type="checkbox" checked={on}
+                onChange={() => setUtilFilter((f) =>
+                  f.includes(u.id) ? f.filter((x) => x !== u.id) : [...f, u.id])} />
+              <span className="uf-dot" style={{ background: u.colour }} />
+              {u.name}
+            </label>
+          );
+        })}
+        {utilFilter.length > 0 && (
+          <button className="uf-clear" onClick={() => setUtilFilter([])}>Clear</button>
+        )}
       </div>
 
       <div className="proj-table-wrap">
@@ -595,6 +672,24 @@ const CSS = BURGER_CSS + `
 body.resizing { cursor: col-resize; user-select: none; }
 .list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .list-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
+.ph-count { font-size: 14px; font-weight: 600; color: var(--muted); }
+.btn.toggle { background: var(--white); border: 1px solid var(--border); color: var(--text); }
+.btn.toggle.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.hidden-note { display: flex; align-items: center; gap: 8px; font-size: 12.5px;
+  background: var(--accent-light); border: 1px solid #bfdbfe; border-radius: var(--radius);
+  padding: 9px 13px; margin-bottom: 10px; color: var(--text); }
+.hn-icon { color: var(--accent); font-size: 13px; }
+.hn-count { margin-left: auto; font-weight: 700; background: var(--accent); color: #fff;
+  border-radius: 999px; padding: 1px 9px; font-size: 11px; }
+.util-filter { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 10px; }
+.uf-label { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); margin-right: 4px; }
+.uf { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
+  text-transform: none; letter-spacing: 0; color: var(--text); background: var(--white);
+  border: 1px solid var(--border); border-radius: 6px; padding: 5px 11px; margin: 0; cursor: pointer; }
+.uf.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
+.uf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+.uf-clear { background: none; border: none; color: var(--accent); font: 600 11.5px inherit; cursor: pointer; }
 .list-tools { display: flex; gap: 8px; align-items: flex-start; }
 .search { width: 230px; }
 .col-menu-wrap { position: relative; }

@@ -112,6 +112,17 @@ export const ADMIN_TABLES = [
       { col: "DNO_Name", label: "DNO Name", type: "text", required: true },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  { key: "Local_Authority", label: "Local Authority", pk: "Local_Authority_ID", fields: [
+      { col: "Authority_Name", label: "Authority Name", type: "text", required: true },
+      { col: "Authority_Type", label: "Type", type: "select", options: ["Town","County","Unitary"], required: true },
+      { col: "Contact_Name", label: "Contact", type: "text" },
+      { col: "Telephone", label: "Telephone", type: "text" },
+      { col: "Email", label: "Email", type: "text" },
+    ] },
+  { key: "AV_Agreement_Type", label: "AV Agreement Type", pk: "AV_Agreement_Type_ID", fields: [
+      { col: "AV_Agreement_Type", label: "Type Name", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
   { key: "Fire_Service", label: "Fire Authority", pk: "Fire_Service_ID", fields: [
       { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },
     ] },

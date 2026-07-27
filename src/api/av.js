@@ -55,3 +55,28 @@ export async function deleteAv(projectId, kind, id) {
   }
   return http.del(`/projects/${projectId}/av?kind=${kind}&id=${id}`);
 }
+
+/* Agreements are the agreed outcome — what was actually signed — as
+   distinct from the applications and quotations, which are the
+   competition that produced it. */
+let agreements = [];
+let aid = 6000;
+
+export async function listAgreements(projectId) {
+  if (USE_MOCKS) { await delay(150); return { rows: [...agreements] }; }
+  return http.get(`/projects/${projectId}/av-agreements`);
+}
+export async function saveAgreement(projectId, row, id) {
+  if (USE_MOCKS) {
+    await delay(230);
+    if (id) { agreements = agreements.map((a) => (a.AV_Agreement_ID === id ? { ...a, ...row } : a)); return row; }
+    const a = { ...row, AV_Agreement_ID: ++aid }; agreements = [...agreements, a]; return a;
+  }
+  return id
+    ? http.patch(`/projects/${projectId}/av-agreements?id=${id}`, row)
+    : http.post(`/projects/${projectId}/av-agreements`, row);
+}
+export async function deleteAgreement(projectId, id) {
+  if (USE_MOCKS) { await delay(150); agreements = agreements.filter((a) => a.AV_Agreement_ID !== id); return { deleted: true }; }
+  return http.del(`/projects/${projectId}/av-agreements?id=${id}`);
+}

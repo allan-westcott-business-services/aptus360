@@ -193,14 +193,6 @@ export default function ProjectDetailsForm({ projectId }) {
         </div>
 
         <div className="grid6">
-          <Field label="Fire authority" span={2}>
-            <Select value={f.Fire_Service_ID} onChange={set("Fire_Service_ID")}>
-              <option value="">&mdash;</option>
-              {(lookups.fireServices || []).map((x) => (
-                <option key={x.Fire_Service_ID} value={x.Fire_Service_ID}>{x.Fire_Service_Name}</option>
-              ))}
-            </Select>
-          </Field>
           <Field label="Site contact" span={3}>
             <input value={f.Site_Contact || ""} onChange={(e) => set("Site_Contact")(e.target.value)} />
           </Field>

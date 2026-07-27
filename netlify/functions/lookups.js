@@ -26,6 +26,8 @@ export default async function handler() {
       heatPumpModels: db.from("Heat_Pump_Model").select("Heat_Pump_Model_ID,Model").order("Model"),
       projectStatuses: db.from("Project_Status").select("Project_Status_ID,Stage,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
       scopeStatuses:   db.from("Scope_Status").select("Scope_Status_ID,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
+      localAuthorities: db.from("Local_Authority").select("Local_Authority_ID,Authority_Name,Authority_Type,Contact_Name,Telephone,Email").eq("Is_Active", true).order("Authority_Name"),
+      avAgreementTypes: db.from("AV_Agreement_Type").select("AV_Agreement_Type_ID,AV_Agreement_Type,Utility_ID").eq("Is_Active", true).order("Sort_Order"),
       avStatuses:      db.from("AV_Status").select("AV_Status_ID,AV_Status,Row_Colour").eq("Is_Active", true).order("Sort_Order"),
       quotationStatuses: db.from("Quotation_Status").select("Quotation_Status_ID,Quotation_Status").eq("Is_Active", true).order("Sort_Order"),
       voltageRatings:    db.from("Voltage_Rating").select("Voltage_Rating_ID,Voltage_Rating").order("Sort_Order"),

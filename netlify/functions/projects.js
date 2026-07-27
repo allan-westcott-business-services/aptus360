@@ -12,7 +12,7 @@ const PROJECT_COLUMNS = [
   "BDD_KAM_ID", "Estimator_ID", "Quote_Type_ID", "I_and_C", "Is_Priority", "Notes",
   "Contract_Number", "Date_Signed", "Site_Contact", "Project_Manager_ID",
   "Fire_Service_ID", "Heat_Pump_Model_ID", "Default_Heat_Source_ID",
-  "Lay_Only_MU", "Minimum_Service_Call_Off",
+  "Lay_Only_MU", "Minimum_Service_Call_Off", "Town_Council_ID", "County_Council_ID",
 ].join(",");
 
 const SCOPE_COLUMNS = [

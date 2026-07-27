@@ -1,7 +1,8 @@
 import { useState, useEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
-import { listAv, createAvApplication, updateAv, addAvSlot, deleteAv } from "../../api/av.js";
+import { listAv, createAvApplication, updateAv, addAvSlot, deleteAv,
+         listAgreements, saveAgreement, deleteAgreement } from "../../api/av.js";
 import { listPlots } from "../../api/plots.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
 
@@ -15,6 +16,11 @@ import { UTILITIES, utilityById } from "../../lib/utilities.js";
 const money = (n) => (n == null || n === "" ? "\u2014" : `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
 
+function blankAgreement() {
+  return { Utility_ID: "", IDNO_ID: "", AV_Agreement_Type_ID: "", AV_Value: "",
+    Estimated_Plot_AV_Value: "", Agreement_Date: "", Status: "" };
+}
+
 export default function AssetValueTab({ projectId }) {
   const [lookups, setLookups] = useState(null);
   const [apps, setApps] = useState([]);
@@ -26,13 +32,20 @@ export default function AssetValueTab({ projectId }) {
   const [saving, setSaving] = useState(false);
   const [f, setF] = useState({ Utility_ID: "", Application_Ref: "", Submitted_Date: "", idno_ids: [] });
   const [addSlotFor, setAddSlotFor] = useState(null);
+  const [agreements, setAgreements] = useState([]);
+  const [agDraft, setAgDraft] = useState(blankAgreement());
+  const [agEditing, setAgEditing] = useState(null);
+  const [showAgForm, setShowAgForm] = useState(false);
 
   async function load() {
     try {
-      const [lk, res, plots] = await Promise.all([getLookups(), listAv(projectId), listPlots(projectId)]);
+      const [lk, res, plots, ag] = await Promise.all([
+        getLookups(), listAv(projectId), listPlots(projectId), listAgreements(projectId),
+      ]);
       setLookups(lk);
       setApps(res.applications || []);
       setQuots(res.quotations || []);
+      setAgreements(ag.rows || []);
       setPlotCount((plots.rows || []).length);
       setError("");
     } catch (e) { setError(e.message); }
@@ -90,6 +103,33 @@ export default function AssetValueTab({ projectId }) {
   async function remove(kind, id, label) {
     if (!window.confirm(`Delete ${label}?`)) return;
     try { await deleteAv(projectId, kind, id); await load(); }
+    catch (e) { setError(e.message); }
+  }
+
+  const agTypeName = (id) =>
+    (lookups?.avAgreementTypes || []).find((t) => t.AV_Agreement_Type_ID === id)?.AV_Agreement_Type ?? "\u2014";
+  const agreedTotal = agreements.reduce((s2, a) => s2 + (Number(a.AV_Value) || 0), 0);
+
+  async function submitAgreement() {
+    if (!agDraft.Utility_ID) return setError("Choose a utility.");
+    try {
+      await saveAgreement(projectId, {
+        ...agDraft,
+        Utility_ID: Number(agDraft.Utility_ID),
+        IDNO_ID: agDraft.IDNO_ID ? Number(agDraft.IDNO_ID) : null,
+        AV_Agreement_Type_ID: agDraft.AV_Agreement_Type_ID ? Number(agDraft.AV_Agreement_Type_ID) : null,
+      }, agEditing);
+      setAgDraft(blankAgreement());
+      setAgEditing(null);
+      setShowAgForm(false);
+      setError("");
+      await load();
+    } catch (e) { setError(e.message); }
+  }
+
+  async function removeAgreement(a) {
+    if (!window.confirm("Delete this agreement?")) return;
+    try { await deleteAgreement(projectId, a.AV_Agreement_ID); await load(); }
     catch (e) { setError(e.message); }
   }
 
@@ -272,6 +312,103 @@ export default function AssetValueTab({ projectId }) {
           );
         })
       )}
+
+      <div className="ag-section">
+        <div className="ag-head">
+          <div>
+            <h4>Agreements <span className="count">{agreements.length}</span></h4>
+            <p className="tab-sub">
+              What was actually signed, per utility and operator &mdash; the outcome of the
+              quotations above.
+            </p>
+          </div>
+          <span className="ag-total">{money(agreedTotal)} agreed</span>
+          <button className="btn ghost sm"
+            onClick={() => { setShowAgForm((x) => !x); setAgEditing(null); setAgDraft(blankAgreement()); }}>
+            {showAgForm ? "Cancel" : "+ Add agreement"}
+          </button>
+        </div>
+
+        {showAgForm && (
+          <div className="ag-form">
+            <div className="ag-grid">
+              <div className="fld"><label>Utility <span className="req">*</span></label>
+                <select value={agDraft.Utility_ID}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, Utility_ID: e.target.value }))}>
+                  <option value="">&mdash;</option>
+                  {UTILITIES.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                </select></div>
+              <div className="fld"><label>Operator</label>
+                <select value={agDraft.IDNO_ID}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, IDNO_ID: e.target.value }))}>
+                  <option value="">&mdash;</option>
+                  {(lookups.idnos || []).map((i) => (
+                    <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
+                  ))}
+                </select></div>
+              <div className="fld"><label>Agreement type</label>
+                <select value={agDraft.AV_Agreement_Type_ID}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, AV_Agreement_Type_ID: e.target.value }))}>
+                  <option value="">&mdash;</option>
+                  {(lookups.avAgreementTypes || []).map((t) => (
+                    <option key={t.AV_Agreement_Type_ID} value={t.AV_Agreement_Type_ID}>{t.AV_Agreement_Type}</option>
+                  ))}
+                </select></div>
+              <div className="fld"><label>Agreement date</label>
+                <input className="dt" type="date" value={agDraft.Agreement_Date}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, Agreement_Date: e.target.value }))} /></div>
+              <div className="fld"><label>Asset value</label>
+                <input type="number" step="0.01" value={agDraft.AV_Value}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, AV_Value: e.target.value }))} /></div>
+              <div className="fld"><label>Est. per plot</label>
+                <input type="number" step="0.01" value={agDraft.Estimated_Plot_AV_Value}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, Estimated_Plot_AV_Value: e.target.value }))} /></div>
+              <div className="fld"><label>Status</label>
+                <input value={agDraft.Status}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, Status: e.target.value }))} /></div>
+              <div className="fld btns">
+                <button className="btn accent sm" onClick={submitAgreement}>
+                  {agEditing ? "Save" : "+ Add"}
+                </button>
+              </div>
+            </div>
+          </div>
+        )}
+
+        {agreements.length === 0 ? (
+          <p className="ag-none">No agreements recorded yet.</p>
+        ) : (
+          <table className="ag-table">
+            <thead>
+              <tr><th>Utility</th><th>Type</th><th>Operator</th><th>Agreed</th>
+                <th className="num">Asset value</th><th className="num">Per plot</th><th>Status</th><th /></tr>
+            </thead>
+            <tbody>
+              {agreements.map((a) => {
+                const u = utilityById(a.Utility_ID);
+                return (
+                  <tr key={a.AV_Agreement_ID}>
+                    <td><span className="dot" style={{ background: u?.colour }} /> {u?.name ?? "\u2014"}</td>
+                    <td>{agTypeName(a.AV_Agreement_Type_ID)}</td>
+                    <td>{idnoName(a.IDNO_ID)}</td>
+                    <td>{fmt(a.Agreement_Date)}</td>
+                    <td className="num strong">{money(a.AV_Value)}</td>
+                    <td className="num">{money(a.Estimated_Plot_AV_Value)}</td>
+                    <td>{a.Status || "\u2014"}</td>
+                    <td className="nowrap">
+                      <button className="row-edit"
+                        onClick={() => { setAgEditing(a.AV_Agreement_ID); setAgDraft({ ...blankAgreement(), ...a }); setShowAgForm(true); }}>
+                        Edit
+                      </button>
+                      <button className="row-del" onClick={() => removeAgreement(a)} title="Delete">&#10005;</button>
+                    </td>
+                  </tr>
+                );
+              })}
+            </tbody>
+          </table>
+        )}
+      </div>
     </div>
   );
 }
@@ -328,6 +465,26 @@ const CSS = `
 .nowrap { white-space: nowrap; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 .ac-foot { margin: 10px 0 0; font-size: 11.5px; color: var(--ok-text); font-weight: 600; }
+.ag-section { border-top: 2px solid var(--border); margin-top: 22px; padding-top: 18px; }
+.ag-head { display: flex; align-items: center; gap: 14px; margin-bottom: 12px; }
+.ag-head h4 { margin: 0; font-size: 14px; font-weight: 700; }
+.ag-head .count { font-size: 10.5px; font-weight: 700; background: var(--accent-light); color: var(--accent);
+  border-radius: 20px; padding: 1px 7px; margin-left: 5px; }
+.ag-total { margin-left: auto; font-size: 13px; font-weight: 700; background: var(--ok-bg);
+  color: var(--ok-text); border: 1px solid var(--ok-border); border-radius: 999px; padding: 4px 14px; }
+.ag-form { border: 1px solid var(--border); border-radius: var(--radius); background: #f8f9fb;
+  padding: 14px; margin-bottom: 12px; }
+.ag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end; }
+.ag-grid .dt { width: 100%; }
+.ag-none { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 0; }
+.ag-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.ag-table th { text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); padding: 5px 8px; border-bottom: 1px solid var(--border); }
+.ag-table td { padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ag-table tr:last-child td { border-bottom: none; }
+.ag-table .num { text-align: right; }
+.ag-table .strong { font-weight: 700; }
+.nowrap { white-space: nowrap; }
 .empty { text-align: center; padding: 48px 20px; border: 1px dashed var(--border);
   border-radius: var(--radius); background: var(--bg); }
 .empty-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }

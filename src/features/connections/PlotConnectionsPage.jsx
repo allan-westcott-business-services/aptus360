@@ -238,7 +238,7 @@ export default function PlotConnectionsPage() {
       {error && <Banner kind="error">{error}</Banner>}
 
       <div className="pc-toolbar">
-        <input className="tb-search" value={search} placeholder="&#128269; Search project, site or plot&hellip;"
+        <input className="tb-search" value={search} aria-label="Search connections" placeholder="&#128269; Search project, site or plot&hellip;"
           onChange={(e) => setSearch(e.target.value)} />
 
         <select value={region} onChange={(e) => setRegion(e.target.value)}>

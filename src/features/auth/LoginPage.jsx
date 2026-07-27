@@ -60,7 +60,7 @@ export default function LoginPage() {
   return (
     <div className="lp">
       <style>{CSS}</style>
-      <form className="lp-card" onSubmit={submit}>
+      <form className="lp-card" onSubmit={submit} aria-label="Sign in to Aptus360">
         <div className="lp-brand">
           <span className="lp-mark">A360</span>
           <span className="lp-text"><strong>Aptus360</strong><em>End-to-End MU Management</em></span>
@@ -69,37 +69,38 @@ export default function LoginPage() {
         {idleOut && mode === "signin" && (
           <div className="lp-note idle">Signed out after 10 minutes of inactivity.</div>
         )}
-        {error && <div className="lp-note error">{error}</div>}
-        {notice && <div className="lp-note ok">{notice}</div>}
+        {error && <div className="lp-note error" role="alert">{error}</div>}
+        {notice && <div className="lp-note ok" role="status">{notice}</div>}
 
         {mode !== "reset" && (
           <div className="fld">
-            <label>Email</label>
-            <input type="email" required autoComplete="username" value={email}
+            <label htmlFor="lp-email">Email</label>
+            <input id="lp-email" type="email" required autoComplete="username" value={email}
               onChange={(e) => setEmail(e.target.value)} />
           </div>
         )}
 
         {mode === "signin" && (
           <div className="fld">
-            <label>Password</label>
-            <input type="password" required autoComplete="current-password" value={password}
-              onChange={(e) => setPassword(e.target.value)} />
+            <label htmlFor="lp-password">Password</label>
+            <input id="lp-password" type="password" required autoComplete="current-password"
+              value={password} onChange={(e) => setPassword(e.target.value)} />
           </div>
         )}
 
         {mode === "reset" && (
           <>
             <div className="fld">
-              <label>New password</label>
-              <input type="password" required autoComplete="new-password" value={password}
+              <label htmlFor="lp-new">New password</label>
+              <input id="lp-new" type="password" required autoComplete="new-password"
+                aria-describedby="lp-new-hint" value={password}
                 onChange={(e) => setPassword(e.target.value)} />
-              <p className="hint">At least 8 characters.</p>
+              <p className="hint" id="lp-new-hint">At least 8 characters.</p>
             </div>
             <div className="fld">
-              <label>Confirm password</label>
-              <input type="password" required autoComplete="new-password" value={confirm}
-                onChange={(e) => setConfirm(e.target.value)} />
+              <label htmlFor="lp-confirm">Confirm password</label>
+              <input id="lp-confirm" type="password" required autoComplete="new-password"
+                value={confirm} onChange={(e) => setConfirm(e.target.value)} />
             </div>
           </>
         )}

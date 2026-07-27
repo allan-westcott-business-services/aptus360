@@ -140,9 +140,9 @@ export default function FilterCell({ col, value, onChange, options, open, setOpe
   if (col.type === "num") {
     return (
       <div className="fc num">
-        <input type="number" placeholder="min" value={value.min}
+        <input type="number" aria-label={`${col.label} minimum`} placeholder="min" value={value.min}
           onChange={(e) => onChange({ ...value, min: e.target.value })} />
-        <input type="number" placeholder="max" value={value.max}
+        <input type="number" aria-label={`${col.label} maximum`} placeholder="max" value={value.max}
           onChange={(e) => onChange({ ...value, max: e.target.value })} />
       </div>
     );
@@ -150,7 +150,7 @@ export default function FilterCell({ col, value, onChange, options, open, setOpe
 
   if (col.type === "bool") {
     return (
-      <select className="fc-sel" value={value} onChange={(e) => onChange(e.target.value)}>
+      <select className="fc-sel" aria-label={`Filter by ${col.label}`} value={value} onChange={(e) => onChange(e.target.value)}>
         <option value="">All</option>
         <option value="y">Yes</option>
         <option value="n">No</option>
@@ -161,7 +161,7 @@ export default function FilterCell({ col, value, onChange, options, open, setOpe
   if (col.type === "none") return null;
 
   return (
-    <input className="fc-text" value={value} placeholder="Contains&hellip;"
+    <input className="fc-text" value={value} aria-label={`Filter by ${col.label}`} placeholder="Contains&hellip;"
       onChange={(e) => onChange(e.target.value)} />
   );
 }

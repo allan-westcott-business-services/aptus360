@@ -87,11 +87,7 @@ export const ADMIN_TABLES = [
     ] },
 
   { separator: true, label: "Organisations & People" },
-  { key: "Customer", label: "Customers", pk: "Customer_ID", fields: [
-      { col: "Customer_Name", label: "Customer Name", type: "text", required: true },
-      { col: "Audacia_Customer_Name", label: "Audacia Name", type: "text" },
-      { col: "Is_Active", label: "Active", type: "checkbox" },
-    ] },
+  { key: "Customer", label: "Customers & Branches", special: "customers" },
   { key: "Person", label: "People & Roles", special: "people" },
   { key: "Role", label: "Role", pk: "Role_ID", fields: [
       { col: "Role", label: "Role Name", type: "text", required: true },

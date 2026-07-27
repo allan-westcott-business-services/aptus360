@@ -308,7 +308,7 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
           </p>
         </div>
         <div className="list-tools" onClick={(e) => e.stopPropagation()}>
-          <input className="search" value={search} placeholder="Search all columns&hellip;"
+          <input className="search" value={search} aria-label="Search projects" placeholder="Search all columns&hellip;"
             onChange={(e) => setSearch(e.target.value)} />
           {(activeCount > 0 || search) && (
             <button className="btn ghost" onClick={clearAll}>Clear filters</button>

@@ -41,9 +41,9 @@ export default function AccountMenu() {
 
             {changing ? (
               <div className="am-form">
-                <input type="password" placeholder="New password" value={pw}
+                <input type="password" placeholder="New password" aria-label="New password" value={pw}
                   onChange={(e) => setPw(e.target.value)} autoComplete="new-password" />
-                <input type="password" placeholder="Confirm" value={confirm}
+                <input type="password" placeholder="Confirm" aria-label="Confirm new password" value={confirm}
                   onChange={(e) => setConfirm(e.target.value)} autoComplete="new-password" />
                 <div className="am-row">
                   <button className="btn accent sm" onClick={change}>Save</button>

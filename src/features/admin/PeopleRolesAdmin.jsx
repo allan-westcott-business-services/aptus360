@@ -117,6 +117,7 @@ export default function PeopleRolesAdmin() {
       <div className="pr-split">
         <div className="pr-list">
           <input
+            aria-label="Search"
             className="pr-search"
             value={search}
             placeholder={by === "person" ? "Search people\u2026" : "Search roles\u2026"}

@@ -70,7 +70,7 @@ function Shell() {
         )}
         {/* Keyed on the view so moving elsewhere clears a failed screen
             rather than leaving the error stuck. */}
-        <ErrorBoundary key={view} label={item?.label ?? "This screen"}>
+        <ErrorBoundary key={view} label={findNavItem(view)?.label ?? "This screen"}>
           <Suspense fallback={<div className="lazy-wait">Loading&hellip;</div>}>
             {content}
           </Suspense>

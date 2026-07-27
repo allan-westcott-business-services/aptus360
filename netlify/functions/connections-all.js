@@ -5,6 +5,7 @@ const COLS = [
   "Meter_Number","Meter_Reference","Meter_Date","Service_Card_Date",
   "Service_Card_Submission_Date","Meter_Card_Submission_Date","Pack_Status_ID","Visit_Outcome",
   "IDNO_ID","Reference","AV_Value","AV_Invoice_Number","AV_Invoiced_Date","Self_Lay_Provider","Notes",
+  "Dead_Jointed_Date","Visit_Outcome_ID",
 ].join(",");
 
 /* Every connection across every project. Embeds the plot and its project

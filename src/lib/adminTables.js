@@ -42,6 +42,11 @@ export const ADMIN_TABLES = [
       { col: "Is_Complete", label: "Counts as complete", type: "checkbox" },
     ] },
   { key: "Status_Transition", label: "Status Workflow", special: "workflow" },
+  { key: "Visit_Outcome", label: "Visit Outcome", pk: "Visit_Outcome_ID", fields: [
+      { col: "Visit_Outcome", label: "Outcome", type: "text", required: true },
+      { col: "Is_Aborted", label: "Counts as aborted", type: "checkbox" },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+    ] },
   { key: "Pack_Status", label: "Service Card Pack Status", pk: "Pack_Status_ID", fields: [
       { col: "Pack_Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

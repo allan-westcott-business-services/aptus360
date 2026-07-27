@@ -5,6 +5,7 @@ const COLS = [
   "Meter_Number","Meter_Reference","Meter_Date","Service_Card_Date",
   "Service_Card_Submission_Date","Meter_Card_Submission_Date","Pack_Status_ID","Visit_Outcome",
   "IDNO_ID","Reference","AV_Value","AV_Invoice_Number","AV_Invoiced_Date","Self_Lay_Provider","Notes",
+  "Dead_Jointed_Date","Visit_Outcome_ID",
 ].join(",");
 
 const WRITABLE = new Set(COLS.split(",").filter((c) => c !== "Plot_Utility_ID"));
@@ -36,7 +37,7 @@ export default async function handler(req, context) {
        skipping any that already exist and any self-lay plot — the customer
        connects those, so we aren't tracking them. */
     if (req.method === "POST") {
-      const { utility_ids = [], plot_ids = [], programmed_date = null } = await req.json();
+      const { utility_ids = [], plot_ids = [], programmed_date = null, extra = {} } = await req.json();
       if (!utility_ids.length || !plot_ids.length) {
         return json({ error: "Select at least one plot and one utility" }, 400);
       }
@@ -50,6 +51,7 @@ export default async function handler(req, context) {
           rows.push({
             Plot_ID: Number(p), Utility_ID: Number(u),
             Programmed_Date: programmed_date || null,
+            ...pick(extra),
           });
         }
       }));

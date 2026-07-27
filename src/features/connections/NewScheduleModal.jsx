@@ -4,6 +4,7 @@ import { listProjects } from "../../api/projects.js";
 import { listPlots } from "../../api/plots.js";
 import { generateConnections } from "../../api/connections.js";
 import { UTILITIES } from "../../lib/utilities.js";
+import { getLookups } from "../../api/lookups.js";
 
 /* New Plot Connection Schedule, following the original's modal:
    project → programmed date → plots → utilities → save.
@@ -30,6 +31,16 @@ export default function NewScheduleModal({ onClose, onSaved }) {
   const [date, setDate] = useState("");
   const [error, setError] = useState("");
   const [saving, setSaving] = useState(false);
+  const [search, setSearch] = useState("");
+  const [lookups, setLookups] = useState(null);
+  const [showOptional, setShowOptional] = useState(false);
+  const [extra, setExtra] = useState({
+    Pack_Status_ID: "", Visit_Outcome_ID: "", Connection_Date: "",
+    Meter_Card_Submission_Date: "", Service_Card_Submission_Date: "",
+    As_Laid_Date: "", Dead_Jointed_Date: "",
+  });
+
+  useEffect(() => { getLookups().then(setLookups).catch(() => {}); }, []);
 
   useEffect(() => {
     listProjects({ limit: 500 })
@@ -77,7 +88,7 @@ export default function NewScheduleModal({ onClose, onSaved }) {
     if (!utils.length) return setError("Select at least one utility.");
     setSaving(true);
     try {
-      const res = await generateConnections(projectId, selected, utils, date);
+      const res = await generateConnections(projectId, selected, utils, date, extra);
       const n = res.created ?? 0;
       onSaved && onSaved(
         n === 0
@@ -90,6 +101,21 @@ export default function NewScheduleModal({ onClose, onSaved }) {
   }
 
   const willCreate = selected.length * utils.length;
+  const setX = (k) => (v) => setExtra((e) => ({ ...e, [k]: v }));
+
+  /* Type-to-filter rather than scrolling a list of hundreds. Matches on
+     both reference and site name, because people remember either. */
+  const q = search.trim().toLowerCase();
+  const visibleProjects = q
+    ? projects.filter((p) =>
+        `${p.Project_Ref} ${p.Site_Name ?? ""}`.toLowerCase().includes(q))
+    : projects;
+
+  const chosen = projects.find((p) => String(p.Project_ID) === String(projectId));
+  const regionName = chosen
+    ? (lookups?.regions || []).find((r) => r.Region_ID === chosen.Region_ID)?.Region ?? "\u2014"
+    : "";
+  const electricOnly = utils.length === 1 && utils[0] === 1;
 
   return (
     <div className="ns-backdrop" onClick={onClose}>
@@ -104,21 +130,35 @@ export default function NewScheduleModal({ onClose, onSaved }) {
         <div className="ns-body">
           {error && <Banner kind="error">{error}</Banner>}
 
-          <div className="fld">
-            <label>Project <span className="req">*</span></label>
-            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-              <option value="">&mdash; Select a project &mdash;</option>
-              {projects.map((p) => (
-                <option key={p.Project_ID} value={p.Project_ID}>
-                  {p.Project_Ref} &mdash; {p.Site_Name || "Unnamed site"}
+          <div className="ns-row">
+            <div className="fld grow">
+              <label>Project <span className="req">*</span></label>
+              <input className="ns-search" value={search} placeholder="&#128269; Type to filter by ref or site&hellip;"
+                onChange={(e) => setSearch(e.target.value)} />
+              <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+                <option value="">
+                  {q && visibleProjects.length === 0
+                    ? "\u2014 No match \u2014"
+                    : q
+                      ? `\u2014 ${visibleProjects.length} match${visibleProjects.length === 1 ? "" : "es"} \u2014`
+                      : "\u2014 Select a project \u2014"}
                 </option>
-              ))}
-            </select>
+                {visibleProjects.map((p) => (
+                  <option key={p.Project_ID} value={p.Project_ID}>
+                    {p.Project_Ref} &mdash; {p.Site_Name || "Unnamed site"}
+                  </option>
+                ))}
+              </select>
+            </div>
+            <div className="fld narrow">
+              <label>Region</label>
+              <input value={chosen ? regionName : ""} placeholder="(select project)" disabled />
+            </div>
           </div>
 
           <div className="fld">
             <label>Programmed date <span className="req">*</span></label>
-            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className="dt" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             <p className="hint">The date the connection work is scheduled to be carried out.</p>
           </div>
 
@@ -181,6 +221,74 @@ export default function NewScheduleModal({ onClose, onSaved }) {
               ))}
             </div>
           </div>
+
+          <div className="ns-optional">
+            <button className="ns-toggle" onClick={() => setShowOptional((o) => !o)}>
+              {showOptional ? "\u25BE" : "\u25B8"} Optional pack &amp; visit fields
+            </button>
+            {showOptional && (
+              <div className="ns-opt-body">
+                <div className="fld">
+                  <label>Status</label>
+                  <select value={extra.Pack_Status_ID} onChange={(e) => setX("Pack_Status_ID")(e.target.value)}>
+                    <option value="">&mdash; No status &mdash;</option>
+                    {(lookups?.packStatuses || []).map((s2) => (
+                      <option key={s2.Pack_Status_ID} value={s2.Pack_Status_ID}>{s2.Pack_Status}</option>
+                    ))}
+                  </select>
+                  <p className="hint">
+                    Auto-flips to <strong>Submitted</strong> when a service card submission date is entered.
+                  </p>
+                </div>
+
+                <div className="ns-row">
+                  <div className="fld grow">
+                    <label>Visit outcome</label>
+                    <select value={extra.Visit_Outcome_ID} onChange={(e) => setX("Visit_Outcome_ID")(e.target.value)}>
+                      <option value="">&mdash; No outcome &mdash;</option>
+                      {(lookups?.visitOutcomes || []).map((v) => (
+                        <option key={v.Visit_Outcome_ID} value={v.Visit_Outcome_ID}>{v.Visit_Outcome}</option>
+                      ))}
+                    </select>
+                  </div>
+                  <div className="fld">
+                    <label>Connection date</label>
+                    <input className="dt" type="date" value={extra.Connection_Date}
+                      onChange={(e) => setX("Connection_Date")(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="ns-row">
+                  <div className="fld">
+                    <label>Meter card submitted</label>
+                    <input className="dt" type="date" value={extra.Meter_Card_Submission_Date}
+                      disabled={electricOnly}
+                      onChange={(e) => setX("Meter_Card_Submission_Date")(e.target.value)} />
+                    {electricOnly && <p className="hint">N/A for Electric.</p>}
+                  </div>
+                  <div className="fld">
+                    <label>Service card submitted</label>
+                    <input className="dt" type="date" value={extra.Service_Card_Submission_Date}
+                      onChange={(e) => setX("Service_Card_Submission_Date")(e.target.value)} />
+                  </div>
+                </div>
+
+                <div className="ns-row">
+                  <div className="fld">
+                    <label>As-laid date</label>
+                    <input className="dt" type="date" value={extra.As_Laid_Date}
+                      onChange={(e) => setX("As_Laid_Date")(e.target.value)} />
+                  </div>
+                  <div className="fld">
+                    <label>Dead jointed date</label>
+                    <input className="dt" type="date" value={extra.Dead_Jointed_Date}
+                      onChange={(e) => setX("Dead_Jointed_Date")(e.target.value)} />
+                    <p className="hint">Normally set from the work instruction.</p>
+                  </div>
+                </div>
+              </div>
+            )}
+          </div>
         </div>
 
         <div className="ns-foot">
@@ -203,7 +311,7 @@ export default function NewScheduleModal({ onClose, onSaved }) {
 const CSS = `
 .ns-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 1000;
   display: flex; align-items: center; justify-content: center; padding: 24px; }
-.ns-modal { background: var(--white); border-radius: 12px; width: 100%; max-width: 620px;
+.ns-modal { background: var(--white); border-radius: 12px; width: 100%; max-width: 660px;
   max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
 .ns-head { display: flex; align-items: center; justify-content: space-between;
   padding: 16px 20px; border-bottom: 1px solid var(--border); }
@@ -222,6 +330,18 @@ const CSS = `
 .ns-plot.off { background: #fef3c7; color: #92400e; border-color: #fde68a; cursor: not-allowed; }
 .ns-link { background: none; border: none; color: var(--accent); font: 600 11px inherit;
   cursor: pointer; padding: 0; }
+.ns-row { display: flex; gap: 12px; align-items: flex-start; }
+.ns-row .fld { flex: none; }
+.ns-row .fld.grow { flex: 1; min-width: 0; }
+.ns-row .fld.narrow { width: 150px; }
+.ns-search { margin-bottom: 6px; }
+/* Date inputs sized to a date rather than stretched across the row */
+.dt { width: 158px; }
+.ns-optional { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
+.ns-toggle { background: none; border: none; cursor: pointer; font: 700 12px inherit;
+  color: var(--accent); padding: 0; }
+.ns-opt-body { display: flex; flex-direction: column; gap: 12px; margin-top: 12px;
+  padding-top: 12px; border-top: 1px solid var(--border); }
 .ns-utils { display: flex; flex-wrap: wrap; gap: 7px; }
 .ns-util { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 400;
   text-transform: none; letter-spacing: 0; color: var(--text); background: var(--white);

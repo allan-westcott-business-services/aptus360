@@ -60,6 +60,14 @@ export default function PlotConnectionsPage() {
   const [bulkValue, setBulkValue] = useState("");
   const [busy, setBusy] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
+  const [search, setSearch] = useState("");
+  const [region, setRegion] = useState("");
+  const [util, setUtil] = useState("");
+  const [state, setState] = useState("");        // all / connected / outstanding
+  const [progFrom, setProgFrom] = useState("");
+  const [progTo, setProgTo] = useState("");
+  const [hideLaid, setHideLaid] = useState(false);
+  const [groupBy, setGroupBy] = useState("project");
 
   async function load() {
     try {
@@ -101,8 +109,22 @@ export default function PlotConnectionsPage() {
     return [];
   };
 
+  const iso = (d) => (d ? String(d).slice(0, 10) : "");
+
   const shown = useMemo(() => {
-    const out = rows.filter((r) => rowPasses(r, COLS.filter((c) => c.type !== "none"), filters));
+    const q = search.trim().toLowerCase();
+    const out = rows.filter((r) => {
+      if (q && !`${r._projectRef} ${r._siteName} ${r._plotNumber}`.toLowerCase().includes(q)) return false;
+      if (region && String(r._regionId) !== region) return false;
+      if (util && String(r.Utility_ID) !== util) return false;
+      if (state === "connected" && !r.Connection_Date) return false;
+      if (state === "outstanding" && r.Connection_Date) return false;
+      if (hideLaid && r.As_Laid_Date) return false;
+      const pd = iso(r.Programmed_Date);
+      if (progFrom && (!pd || pd < progFrom)) return false;
+      if (progTo && (!pd || pd > progTo)) return false;
+      return rowPasses(r, COLS.filter((c) => c.type !== "none"), filters);
+    });
     const col = COLS.find((c) => c.key === sort.key);
     const dir = sort.dir === "asc" ? 1 : -1;
     return [...out].sort((a, b) => {
@@ -115,13 +137,36 @@ export default function PlotConnectionsPage() {
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
       return String(va).localeCompare(String(vb), undefined, { numeric: true }) * dir;
     });
-  }, [rows, filters, sort]);
+  }, [rows, filters, sort, search, region, util, state, progFrom, progTo, hideLaid]);
 
   const stats = useMemo(() => ({
     total: shown.length,
     laid: shown.filter((r) => r.As_Laid_Date).length,
     connected: shown.filter((r) => r.Connection_Date).length,
   }), [shown]);
+
+  /* Grouping matches the original's Group By: rows stay in one table but
+     get a heading row per group, so a day's programme or a site reads as a
+     block rather than something you have to scan for. */
+  const groups = useMemo(() => {
+    if (groupBy === "none") return [["", shown]];
+    const key = (r) =>
+      groupBy === "project" ? `${r._projectRef} \u2014 ${r._siteName || "Unnamed site"}`
+      : groupBy === "region" ? ((lookups?.regions || []).find((x) => x.Region_ID === r._regionId)?.Region ?? "No region")
+      : groupBy === "utility" ? (utilityById(r.Utility_ID)?.name ?? "Unknown")
+      : r.Programmed_Date ? String(r.Programmed_Date).slice(0, 10).split("-").reverse().join("/") : "Not programmed";
+    const m = new Map();
+    shown.forEach((r) => { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
+    return [...m].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
+  }, [shown, groupBy, lookups]);
+
+  const activeToolbar =
+    !!(search || region || util || state || progFrom || progTo || hideLaid);
+
+  function clearToolbar() {
+    setSearch(""); setRegion(""); setUtil(""); setState("");
+    setProgFrom(""); setProgTo(""); setHideLaid(false); setFilters({});
+  }
 
   const toggleSort = (key) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -170,7 +215,7 @@ export default function PlotConnectionsPage() {
           </p>
         </div>
         <div className="ph-actions">
-          <span className="cs-pill">{shown.length} of {conns.length} shown</span>
+          <button className="btn ghost" onClick={() => { setLoading(true); load(); }}>&#8635; Refresh</button>
           <button className="btn accent" onClick={() => setScheduleOpen(true)}>+ New Schedule</button>
         </div>
       </div>
@@ -184,6 +229,60 @@ export default function PlotConnectionsPage() {
 
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
+
+      <div className="pc-toolbar">
+        <input className="tb-search" value={search} placeholder="&#128269; Search project, site or plot&hellip;"
+          onChange={(e) => setSearch(e.target.value)} />
+
+        <select value={region} onChange={(e) => setRegion(e.target.value)}>
+          <option value="">All regions</option>
+          {(lookups?.regions || []).map((r) => (
+            <option key={r.Region_ID} value={r.Region_ID}>{r.Region}</option>
+          ))}
+        </select>
+
+        <select value={util} onChange={(e) => setUtil(e.target.value)}>
+          <option value="">All utilities</option>
+          {UTILITIES.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+        </select>
+
+        <select value={state} onChange={(e) => setState(e.target.value)}>
+          <option value="">All connections</option>
+          <option value="outstanding">Not yet connected</option>
+          <option value="connected">Connected</option>
+        </select>
+
+        <span className="tb-dates">
+          <span className="tb-lbl">Programmed</span>
+          <input className="dt" type="date" value={progFrom} onChange={(e) => setProgFrom(e.target.value)} />
+          <span className="tb-lbl">to</span>
+          <input className="dt" type="date" value={progTo} onChange={(e) => setProgTo(e.target.value)} />
+          {(progFrom || progTo) && (
+            <button className="tb-x" title="Clear dates"
+              onClick={() => { setProgFrom(""); setProgTo(""); }}>&#10005;</button>
+          )}
+        </span>
+
+        <span className="tb-group">
+          <span className="tb-lbl">Group by</span>
+          <select value={groupBy} onChange={(e) => setGroupBy(e.target.value)}>
+            <option value="project">Project</option>
+            <option value="region">Region</option>
+            <option value="utility">Utility</option>
+            <option value="date">Programmed date</option>
+            <option value="none">No grouping</option>
+          </select>
+        </span>
+
+        <label className={hideLaid ? "tb-chk on" : "tb-chk"}>
+          <input type="checkbox" checked={hideLaid} onChange={(e) => setHideLaid(e.target.checked)} />
+          Hide rows with an as-laid date
+        </label>
+
+        {activeToolbar && (
+          <button className="tb-clear" onClick={clearToolbar}>&#10005; Clear filters</button>
+        )}
+      </div>
 
       {conns.length > 0 && (
         <div className="conn-stats">
@@ -249,7 +348,15 @@ export default function PlotConnectionsPage() {
             <tbody>
               {shown.length === 0 ? (
                 <tr><td colSpan={COLS.length} className="no-rows">No connections match these filters.</td></tr>
-              ) : shown.map((r) => {
+              ) : groups.flatMap(([label, list]) => [
+                ...(label ? [(
+                  <tr className="grp-row" key={`g:${label}`}>
+                    <td colSpan={COLS.length}>
+                      {label} <span className="grp-count">{list.length}</span>
+                    </td>
+                  </tr>
+                )] : []),
+                ...list.map((r) => {
                 const u = utilityById(r.Utility_ID);
                 const on = selected.includes(r.Plot_Utility_ID);
                 return (
@@ -294,7 +401,8 @@ export default function PlotConnectionsPage() {
                       onChange={(e) => patch(r, "AV_Value", e.target.value)} /></td>
                   </tr>
                 );
-              })}
+                }),
+              ])}
             </tbody>
           </table>
         </div>
@@ -318,6 +426,24 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .up.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .ph-actions { display: flex; align-items: center; gap: 10px; }
+.pc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
+  padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
+.pc-toolbar select { width: auto; min-width: 132px; font-size: 12px; padding: 5px 8px; }
+.tb-search { width: 230px; font-size: 12px; padding: 5px 9px; }
+.tb-dates, .tb-group { display: inline-flex; align-items: center; gap: 6px;
+  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 8px; }
+.tb-lbl { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
+.tb-dates .dt { width: 138px; font-size: 12px; padding: 4px 6px; border: none; background: transparent; }
+.tb-x { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 10px; }
+.tb-chk { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
+  text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);
+  border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 11px; margin: 0; cursor: pointer; }
+.tb-chk.on { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.tb-clear { background: none; border: none; color: var(--accent); font: 600 12px inherit; cursor: pointer; }
+.grp-row td { background: #eef0f4 !important; font-size: 11.5px; font-weight: 700;
+  color: var(--accent); padding: 6px 10px !important; position: sticky; top: 60px; z-index: 1; }
+.grp-count { font-weight: 700; background: var(--accent); color: #fff; border-radius: 20px;
+  padding: 1px 8px; margin-left: 7px; font-size: 10.5px; }
 .conn-stats { display: flex; gap: 8px; margin-bottom: 12px; }
 .cs-pill { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 4px 13px;
   background: var(--bg); border: 1px solid var(--border); color: var(--muted); }

@@ -217,7 +217,7 @@ export default function CalibrationView({
         onContextMenu={(e) => e.preventDefault()}
         onAuxClick={(e) => e.preventDefault()}
       >
-        <canvas ref={canvasRef} />
+        <canvas ref={canvasRef} className="cv-plan" />
 
         {loading && <div className="cv-wait">Rendering the plan&hellip;</div>}
         {pdf.error && <div className="cv-wait err">{pdf.error}</div>}
@@ -254,11 +254,13 @@ const CSS = `
   border-radius: var(--radius); overflow: hidden; background: #f1f5f9;
   cursor: crosshair; touch-action: none; user-select: none; }
 .cv-stage.panning { cursor: grabbing; }
-.cv-stage canvas { display: block; width: 100%; height: 100%; }
+.cv-plan { display: block; width: 100%; height: 100%; }
 .cv-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 12.5px; color: var(--muted); pointer-events: none; }
 .cv-wait.err { color: var(--err-text); font-weight: 600; padding: 20px; text-align: center; }
+/* Explicit size, or a stray rule stretches it across the frame. */
 .cv-loupe { position: absolute; z-index: 4; pointer-events: none; border-radius: 50%;
+  width: 132px !important; height: 132px !important;
   border: 2px solid var(--white); box-shadow: 0 3px 12px rgba(0,0,0,.35); background: #fff; }
 .cv-bar { display: flex; align-items: center; gap: 6px; }
 .cv-bar button { width: 30px; height: 28px; border: 1px solid var(--border); background: var(--white);

@@ -141,6 +141,18 @@ input[type="radio"]:checked::after {
 input[type="radio"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
 
+/* Metric-adjusted fallback: the swap from system font to DM Sans then
+   happens without reflowing text, which is what the CLS was. */
+@font-face {
+  font-family: "DM Sans Fallback";
+  src: local("Helvetica Neue"), local("Arial"), local("Segoe UI");
+  size-adjust: 96%;
+  ascent-override: 96%;
+  descent-override: 24%;
+  line-gap-override: 0%;
+}
+
+.lazy-wait { padding: 60px; text-align: center; color: var(--muted); font-size: 13px; }
 .topbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
 .boot { display: flex; align-items: center; justify-content: center; min-height: 100vh;
   color: var(--muted); font-size: 13px; }

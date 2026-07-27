@@ -131,7 +131,9 @@ export default function LoginPage() {
 const CSS = `
 .lp { min-height: 100vh; display: flex; align-items: center; justify-content: center;
   background: var(--bg); padding: 24px; }
-.lp-card { background: var(--white); border: 1px solid var(--border); border-radius: 12px;
+/* min-height reserves the space the card will occupy, so nothing below
+   it moves when the font finishes loading. */
+.lp-card { min-height: 396px; background: var(--white); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0,0,0,.09); padding: 28px; width: 100%; max-width: 380px;
   display: flex; flex-direction: column; gap: 14px; }
 .lp-brand { display: flex; align-items: center; gap: 11px; margin-bottom: 4px; }
@@ -144,7 +146,7 @@ const CSS = `
 .lp-note.error { background: var(--err-bg); color: var(--err-text); border-color: var(--err-border); }
 .lp-note.ok { background: var(--ok-bg); color: var(--ok-text); border-color: var(--ok-border); }
 .lp-note.idle { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
-.lp-go { width: 100%; padding: 10px; font-size: 13.5px; }
+.lp-go { width: 100%; padding: 10px; font-size: 13.5px; margin-top: auto; }
 .lp-links { display: flex; justify-content: center; }
 .lp-links button { background: none; border: none; cursor: pointer; color: var(--accent);
   font: 600 12.5px inherit; }

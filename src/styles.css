@@ -25,7 +25,7 @@
 
 body {
   margin: 0;
-  font-family: "DM Sans", system-ui, sans-serif;
+  font-family: "DM Sans", "DM Sans Fallback", system-ui, sans-serif;
   background: var(--bg);
   color: var(--text);
 }

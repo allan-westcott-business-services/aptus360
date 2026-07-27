@@ -1,11 +1,13 @@
-import { useState } from "react";
+import { useState, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
 import Sidebar from "./components/Sidebar.jsx";
-import ProjectsPage from "./features/projects/ProjectsPage.jsx";
-import AdminPage from "./features/admin/AdminPage.jsx";
-import PlotConnectionsPage from "./features/connections/PlotConnectionsPage.jsx";
+/* Loaded on demand. Admin and Plot Connections are large and most
+   sessions never open them, so they shouldn't be in the first download. */
+const ProjectsPage = lazy(() => import("./features/projects/ProjectsPage.jsx"));
+const AdminPage = lazy(() => import("./features/admin/AdminPage.jsx"));
+const PlotConnectionsPage = lazy(() => import("./features/connections/PlotConnectionsPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -63,7 +65,9 @@ function Shell() {
             Sample data &mdash; set <code>VITE_USE_MOCKS=false</code> once the Project tables are populated.
           </div>
         )}
-        {content}
+        <Suspense fallback={<div className="lazy-wait">Loading&hellip;</div>}>
+          {content}
+        </Suspense>
       </main>
     </div>
   );

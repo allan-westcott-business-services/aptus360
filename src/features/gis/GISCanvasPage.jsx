@@ -8,6 +8,8 @@ import {
 import {
   SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
 } from "./snapping.js";
+import BasemapSetup from "./BasemapSetup.jsx";
+import { getBasemap } from "../../api/basemap.js";
 
 /* GIS canvas — stage 1.
 
@@ -47,6 +49,10 @@ export default function GISCanvasPage() {
   const [size, setSize] = useState("");
   const [busy, setBusy] = useState("");
   const [showLabels, setShowLabels] = useState(true);
+  const [basemap, setBasemap] = useState(null);
+  const [setupOpen, setSetupOpen] = useState(false);
+  const [bgImage, setBgImage] = useState(null);
+  const [project, setProject] = useState(null);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -62,14 +68,16 @@ export default function GISCanvasPage() {
     if (!pid) return;
     setLoading(true);
     try {
-      const res = await listGis(pid);
+      const [res, bm] = await Promise.all([listGis(pid), getBasemap(pid).catch(() => null)]);
+      setBasemap(bm);
+      setProject(projects.find((p) => String(p.Project_ID) === String(pid)) || null);
       setFeatures(res.features || []);
       setLayers(res.layers || []);
       setLineTypes(res.lineTypes || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
-  }, []);
+  }, [projects]);
 
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
 
@@ -86,6 +94,17 @@ export default function GISCanvasPage() {
   visibleRef.current = visible;
 
   const drawing = tool === "boundary" || tool === "line";
+
+  /* Decoded once and held, rather than re-fetched on every repaint —
+     a site plan is megabytes and the canvas redraws constantly. */
+  useEffect(() => {
+    if (!basemap?.Image_Url) { setBgImage(null); return; }
+    const img = new Image();
+    img.crossOrigin = "anonymous";
+    img.onload = () => setBgImage(img);
+    img.onerror = () => setError("The background plan couldn't be loaded.");
+    img.src = basemap.Image_Url;
+  }, [basemap?.Image_Url]);
 
   const typeOf = useCallback(
     (key) => lineTypes.find((t) => t.Type_Key === key) || null,
@@ -109,6 +128,20 @@ export default function GISCanvasPage() {
     const ctx = cv.getContext("2d");
     const { width: w, height: h } = cv;
     ctx.clearRect(0, 0, w, h);
+
+    // Background plan, under everything, at its calibrated size
+    if (bgImage && basemap?.Metres_Per_Pixel) {
+      const mpp = Number(basemap.Metres_Per_Pixel);
+      const wM = bgImage.naturalWidth * mpp;
+      const hM = bgImage.naturalHeight * mpp;
+      const o = toPx([Number(basemap.Origin_X) || 0, Number(basemap.Origin_Y) || 0]);
+      ctx.save();
+      ctx.globalAlpha = Number(basemap.Opacity ?? 0.6);
+      const rot = (Number(basemap.Rotation_Deg) || 0) * Math.PI / 180;
+      if (rot) { ctx.translate(o.x, o.y); ctx.rotate(rot); ctx.translate(-o.x, -o.y); }
+      ctx.drawImage(bgImage, o.x, o.y, wM * view.scale, hM * view.scale);
+      ctx.restore();
+    }
 
     // grid, spaced so it never becomes noise at low zoom
     const step = GRID_M * view.scale;
@@ -228,7 +261,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -562,6 +595,10 @@ export default function GISCanvasPage() {
               <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
               Snap
             </label>
+            <button className={basemap?.Metres_Per_Pixel ? "btn ghost" : "btn accent"}
+              onClick={() => setSetupOpen(true)}>
+              {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
+            </button>
             <button className="btn ghost" onClick={seed} disabled={loading}>Place plot markers</button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
             {selected.length > 0 && (
@@ -572,6 +609,23 @@ export default function GISCanvasPage() {
           </>
         )}
       </div>
+
+      {setupOpen && projectId && (
+        <BasemapSetup
+          projectId={projectId}
+          project={project}
+          basemap={basemap}
+          onChange={setBasemap}
+          onClose={() => setSetupOpen(false)}
+        />
+      )}
+
+      {projectId && !basemap?.Metres_Per_Pixel && (
+        <Banner kind="warn">
+          No scale set. Import a plan and calibrate it before placing plots or drawing
+          trenches &mdash; otherwise nothing on the canvas is a real measurement.
+        </Banner>
+      )}
 
       {error && <Banner kind="error">{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
@@ -649,6 +703,13 @@ export default function GISCanvasPage() {
               {cursor && (
                 <span className="hud-xy mono">
                   {cursor[0].toFixed(1)}, {cursor[1].toFixed(1)} m
+                  {basemap?.Ref_Easting != null && (
+                    <span className="hud-grid">
+                      {(Number(basemap.Ref_Easting) + (cursor[0] - Number(basemap.Ref_Canvas_X))).toFixed(1)},
+                      {" "}
+                      {(Number(basemap.Ref_Northing) - (cursor[1] - Number(basemap.Ref_Canvas_Y))).toFixed(1)}
+                    </span>
+                  )}
                 </span>
               )}
               <span className="hud-zoom">{Math.round(view.scale * 25)}%</span>
@@ -719,6 +780,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .hud-bar { height: 3px; background: var(--text); border-radius: 2px;
   border-left: 1px solid var(--text); border-right: 1px solid var(--text); }
 .hud-xy { font-family: ui-monospace, Menlo, monospace; }
+.hud-grid { margin-left: 10px; color: var(--accent); font-weight: 600; }
 .hud-zoom { font-weight: 600; }
 .gis-tip { position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
   background: var(--accent); color: #fff; border-radius: 999px; padding: 6px 16px;

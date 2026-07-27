@@ -8,7 +8,7 @@ import { parsePlotRange, MAX_PLOTS, DIRECTION_NAME } from "./plotRange.js";
    which side the meters go. The second click is a direction, not a
    position — the meters space themselves 2m out and 1.4m apart. */
 export default function PlacementPanel({
-  plots, utilities, queue, current, awaitingDirection, onStart, onCancel,
+  plots, utilities, queue, current, awaitingDirection, onStart, onCancel, onAdd,
 }) {
   const [range, setRange] = useState("");
 
@@ -102,12 +102,15 @@ export default function PlacementPanel({
         <span className="pp-count">{unplaced.length} to place</span>
       </div>
 
+      <button className="btn accent pp-go" onClick={onAdd}>&#8853; Add plots by range</button>
+
       {plots.length === 0 ? (
-        <p className="pp-none">This project has no plots yet.</p>
+        <p className="pp-none pp-gap">No plots on this project yet &mdash; the range above creates them.</p>
       ) : unplaced.length === 0 ? (
-        <p className="pp-none">Every plot is on the canvas.</p>
+        <p className="pp-none pp-gap">Every plot is on the canvas.</p>
       ) : (
         <>
+          <p className="pp-or">or place existing plots</p>
           <label className="pp-label" htmlFor="pp-range">Plot range</label>
           <input id="pp-range" className="pp-input" value={range}
             placeholder="1-50  or  1,2,5-10,22-30"
@@ -181,6 +184,9 @@ const CSS = `
 .pp-more { font-size: 10px; font-weight: 700; color: var(--muted); align-self: center; }
 .pp-hint { font-size: 11px; color: var(--muted); margin: 0 0 8px; line-height: 1.45; }
 .pp-go { width: 100%; padding: 7px; font-size: 12.5px; }
+.pp-gap { margin-top: 9px; }
+.pp-or { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  color: var(--muted); margin: 12px 0 6px; text-align: center; }
 .pp-now { font-size: 12.5px; margin: 0 0 8px; line-height: 1.45; }
 .pp-sub { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
 .pp-chip { display: inline-block; font: 700 11px ui-monospace, Menlo, monospace;

@@ -29,10 +29,6 @@ export async function listGis(projectId) {
   if (USE_MOCKS) { await delay(180); return { features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES }; }
   return http.get(`/projects/${projectId}/gis`);
 }
-export async function seedPlots(projectId, spacing = 12) {
-  if (USE_MOCKS) { await delay(400); return { created: 0 }; }
-  return http.post(`/projects/${projectId}/gis?action=seed&spacing=${spacing}`, {});
-}
 export async function createFeature(projectId, feature) {
   if (USE_MOCKS) {
     await delay(160);
@@ -91,4 +87,11 @@ export async function assignMeters(projectId, maxM = 30) {
 export async function listPlacementPlots(projectId) {
   if (USE_MOCKS) { await delay(180); return { plots: [], utilities: [] }; }
   return http.get(`/projects/${projectId}/gis?what=plots`);
+}
+
+/* Create any plots in the range that don't exist, then return the whole
+   range ready to place. */
+export async function ensurePlots(projectId, payload) {
+  if (USE_MOCKS) { await delay(400); return { created: 0, plots: [] }; }
+  return http.post(`/projects/${projectId}/gis?action=ensure-plots`, payload);
 }

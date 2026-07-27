@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import {
-  listGis, seedPlots, createFeature, moveFeatures, deleteFeatures,
+  listGis, createFeature, moveFeatures, deleteFeatures, ensurePlots,
   placeJoints, traceNetwork, assignMeters,
 } from "../../api/gis.js";
 import {
@@ -10,8 +10,10 @@ import {
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getBasemap } from "../../api/basemap.js";
+import { listDevelopers } from "../../api/developers.js";
 import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
+import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import {
   directionFromDelta, DIRECTION_NAME, meterPositions, housePath,
@@ -64,6 +66,8 @@ export default function GISCanvasPage() {
   const [utilities, setUtilities] = useState([]);
   const [queue, setQueue] = useState([]);          // plots being placed, in order
   const [pendingSeed, setPendingSeed] = useState(null);  // { plot, point } awaiting a direction
+  const [addOpen, setAddOpen] = useState(false);
+  const [developers, setDevelopers] = useState([]);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -79,16 +83,23 @@ export default function GISCanvasPage() {
     if (!pid) return;
     setLoading(true);
     try {
+      const lk = await getLookups();
       const [res, bm, pl] = await Promise.all([
         listGis(pid),
         getBasemap(pid).catch(() => null),
         listPlacementPlots(pid).catch(() => ({ plots: [], utilities: [] })),
       ]);
       setPlotList(pl.plots || []);
+      const devs = await listDevelopers(pid).catch(() => ({ rows: [] }));
+      setDevelopers((devs.rows || []).map((d) => {
+        const b = (lk.branches || []).find((x) => x.Branch_ID === d.Branch_ID);
+        return { ...d, label: b ? (b.Branch_Dropdown || b.Branch_Name) : "Developer" };
+      }));
       setUtilities((pl.utilities || []).map((u) => ({
         ...u,
         colour: (res.layers || []).find((l) => l.Layer_Key === u.layer_key)?.Colour || "#64748b",
       })));
+      setLookups(lk);
       setBasemap(bm);
       setProject(projects.find((p) => String(p.Project_ID) === String(pid)) || null);
       setFeatures(res.features || []);
@@ -608,6 +619,24 @@ export default function GISCanvasPage() {
      second says which side the meters go, and they space themselves —
      2m out, 1.4m apart, centred. Asking for a direction beats asking for
      three meter positions, and gives a tidier result. */
+  /* Create anything missing, then place the whole range. */
+  async function addAndPlace(payload) {
+    const res = await ensurePlots(projectId, payload);
+    setAddOpen(false);
+    await load(projectId);
+    const toPlace = (res.plots || []).filter((p) => !p.placed);
+    if (!toPlace.length) {
+      setStatus("Those plots are already on the canvas.");
+      setTimeout(() => setStatus(""), 4000);
+      return;
+    }
+    startPlacing(toPlace);
+    if (res.created) {
+      setStatus(`${res.created} plot${res.created === 1 ? "" : "s"} created`);
+      setTimeout(() => setStatus(""), 4000);
+    }
+  }
+
   function startPlacing(list) {
     setQueue(list.map((p) => ({ ...p, done: false })));
     setPendingSeed(null);
@@ -666,19 +695,6 @@ export default function GISCanvasPage() {
       }
       await load(projectId);
     } catch (e) { setError(e.message); }
-  }
-
-  async function seed() {
-    setLoading(true);
-    try {
-      const res = await seedPlots(projectId);
-      setStatus(res.created
-        ? `${res.created} plot marker${res.created === 1 ? "" : "s"} placed — drag them into position`
-        : "Every plot already has a marker");
-      setTimeout(() => setStatus(""), 4000);
-      await load(projectId);
-    } catch (e) { setError(e.message); }
-    finally { setLoading(false); }
   }
 
   async function finishDrawing() {
@@ -833,7 +849,6 @@ export default function GISCanvasPage() {
               onClick={() => setSetupOpen(true)}>
               {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
             </button>
-            <button className="btn ghost" onClick={seed} disabled={loading}>Place plot markers</button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
             {selected.length > 0 && (
               <button className="btn ghost danger" onClick={removeSelected}>
@@ -843,6 +858,18 @@ export default function GISCanvasPage() {
           </>
         )}
       </div>
+
+      {addOpen && projectId && (
+        <AddPlotsModal
+          existing={plotList}
+          lookups={lookups}
+          developers={developers}
+          contractNumber={project?.Contract_Number}
+          utilities={utilities}
+          onStart={addAndPlace}
+          onClose={() => setAddOpen(false)}
+        />
+      )}
 
       {setupOpen && projectId && (
         <BasemapSetup
@@ -888,6 +915,7 @@ export default function GISCanvasPage() {
             })}
 
             <PlacementPanel
+              onAdd={() => setAddOpen(true)}
               plots={plotList}
               utilities={utilities}
               queue={queue}

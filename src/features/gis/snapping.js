@@ -1,0 +1,107 @@
+/* Snapping.
+
+   Two tolerances doing two different jobs, as the original had:
+
+   SNAP_PX      a drawing aid. Measured in pixels so it feels the same at
+                every zoom — at 40% a 12px reach covers a lot of ground,
+                which is what you want when placing roughly.
+   CONNECT_M    a fact about the network. Measured in metres because two
+                ends either meet or they don't, and that can't depend on
+                how far you happened to be zoomed in when you drew it. */
+export const SNAP_PX = 12;
+export const CONNECT_M = 0.25;
+
+/* Candidate points to snap to: every vertex of every visible feature,
+   plus the midpoints of line segments, which is where people put tees. */
+export function snapTargets(features, { includeMidpoints = true } = {}) {
+  const out = [];
+  features.forEach((f) => {
+    const g = f.Geometry || [];
+    g.forEach((p, i) => {
+      out.push({
+        point: p,
+        featureId: f.Feature_ID,
+        vertex: i,
+        kind: f.Feature_Type === "point" ? "point" : (i === 0 || i === g.length - 1 ? "end" : "vertex"),
+        label: f.Label,
+      });
+    });
+    if (includeMidpoints && f.Feature_Type !== "point") {
+      for (let i = 0; i < g.length - 1; i++) {
+        out.push({
+          point: [(g[i][0] + g[i + 1][0]) / 2, (g[i][1] + g[i + 1][1]) / 2],
+          featureId: f.Feature_ID,
+          segment: i,
+          kind: "mid",
+          label: f.Label,
+        });
+      }
+    }
+  });
+  return out;
+}
+
+/* Nearest target within reach, or null. Distance is compared in pixels
+   so the tolerance behaves the same however far you're zoomed in. */
+export function findSnap(targets, cursorM, scale, tolerancePx = SNAP_PX) {
+  let best = null;
+  let bestPx = tolerancePx;
+  for (const t of targets) {
+    const dPx = Math.hypot(t.point[0] - cursorM[0], t.point[1] - cursorM[1]) * scale;
+    if (dPx <= bestPx) { bestPx = dPx; best = t; }
+  }
+  return best;
+}
+
+/* Perpendicular foot on a segment — snapping onto a line rather than to
+   one of its ends, which is how a service tees off a main. */
+export function projectOntoSegment(p, a, b) {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const len2 = vx * vx + vy * vy;
+  if (!len2) return { point: [...a], t: 0 };
+  let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return { point: [a[0] + t * vx, a[1] + t * vy], t };
+}
+
+export function nearestOnLines(features, cursorM, scale, tolerancePx = SNAP_PX) {
+  let best = null;
+  let bestPx = tolerancePx;
+  features.forEach((f) => {
+    if (f.Feature_Type === "point") return;
+    const g = f.Geometry || [];
+    for (let i = 0; i < g.length - 1; i++) {
+      const { point } = projectOntoSegment(cursorM, g[i], g[i + 1]);
+      const dPx = Math.hypot(point[0] - cursorM[0], point[1] - cursorM[1]) * scale;
+      if (dPx <= bestPx) {
+        bestPx = dPx;
+        best = { point, featureId: f.Feature_ID, segment: i, kind: "edge", label: f.Label };
+      }
+    }
+  });
+  return best;
+}
+
+/* Which features this geometry actually touches. Uses CONNECT_M, not the
+   snap tolerance — a line drawn near another isn't joined to it. */
+export function connectedTo(geometry, features, selfId) {
+  const hits = new Set();
+  const ends = [geometry[0], geometry[geometry.length - 1]].filter(Boolean);
+  features.forEach((f) => {
+    if (f.Feature_ID === selfId) return;
+    (f.Geometry || []).forEach((p) => {
+      ends.forEach((e) => {
+        if (Math.hypot(p[0] - e[0], p[1] - e[1]) <= CONNECT_M) hits.add(f.Feature_ID);
+      });
+    });
+  });
+  return [...hits];
+}
+
+export function lineLength(geometry) {
+  let t = 0;
+  for (let i = 0; i < geometry.length - 1; i++) {
+    t += Math.hypot(geometry[i + 1][0] - geometry[i][0], geometry[i + 1][1] - geometry[i][1]);
+  }
+  return t;
+}

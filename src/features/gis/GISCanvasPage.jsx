@@ -2,6 +2,9 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import { listGis, seedPlots, createFeature, moveFeatures, deleteFeatures } from "../../api/gis.js";
+import {
+  SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
+} from "./snapping.js";
 
 /* GIS canvas — stage 1.
 
@@ -31,8 +34,14 @@ export default function GISCanvasPage() {
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const [tool, setTool] = useState("select");
-  const [draft, setDraft] = useState([]);        // boundary being drawn
+  const [draft, setDraft] = useState([]);        // line or boundary being drawn
   const [cursor, setCursor] = useState(null);
+  const [lineTypes, setLineTypes] = useState([]);
+  const [lineType, setLineType] = useState("elec_main");
+  const [snapOn, setSnapOn] = useState(true);
+  const [snapHit, setSnapHit] = useState(null);
+  const [editVertex, setEditVertex] = useState(null);   // { featureId, index }
+  const [size, setSize] = useState("");
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -51,6 +60,7 @@ export default function GISCanvasPage() {
       const res = await listGis(pid);
       setFeatures(res.features || []);
       setLayers(res.layers || []);
+      setLineTypes(res.lineTypes || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -67,6 +77,20 @@ export default function GISCanvasPage() {
     () => features.filter((f) => !hidden.includes(f.Layer_Key)),
     [features, hidden]
   );
+  const visibleRef = useRef(visible);
+  visibleRef.current = visible;
+
+  const drawing = tool === "boundary" || tool === "line";
+
+  const typeOf = useCallback(
+    (key) => lineTypes.find((t) => t.Type_Key === key) || null,
+    [lineTypes]
+  );
+
+  /* Everything worth snapping to, recalculated only when the drawing
+     changes rather than on every mouse move. */
+  const targets = useMemo(() => snapTargets(visibleRef.current || []), [features, hidden]);
+
 
   /* ── coordinate conversion ── */
   const toPx = useCallback((m) => ({ x: m[0] * view.scale + view.x, y: m[1] * view.scale + view.y }), [view]);
@@ -123,36 +147,76 @@ export default function GISCanvasPage() {
           ctx.fillText(f.Label, p.x, p.y - 11);
         }
       } else {
+        const lt = lineTypes.find((t) => t.Type_Key === f.Attributes?.Line_Type);
         ctx.beginPath();
         pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         if (f.Feature_Type === "polygon") ctx.closePath();
-        ctx.strokeStyle = on ? "#1d4ed8" : colour;
-        ctx.lineWidth = on ? 3 : 2;
+        ctx.strokeStyle = on ? "#1d4ed8" : (lt?.Colour ?? colour);
+        ctx.lineWidth = on ? (lt?.Width_px ?? 2) + 1.5 : (lt?.Width_px ?? 2);
+        ctx.setLineDash(lt?.Dashed ? [9, 6] : []);
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
         ctx.stroke();
+        ctx.setLineDash([]);
         if (f.Feature_Type === "polygon") {
           ctx.fillStyle = colour + "18";
           ctx.fill();
         }
+        // Vertices, so a selected line can be reshaped
+        if (on) {
+          pts.forEach((p, i) => {
+            ctx.beginPath();
+            ctx.arc(p.x, p.y, editVertex?.featureId === f.Feature_ID && editVertex.index === i ? 6 : 4.5, 0, Math.PI * 2);
+            ctx.fillStyle = "#fff";
+            ctx.fill();
+            ctx.strokeStyle = "#1d4ed8";
+            ctx.lineWidth = 2;
+            ctx.stroke();
+          });
+        }
+        // Length, once there's room for it
+        if (on && view.scale > 1.5 && pts.length > 1) {
+          const mid = pts[Math.floor(pts.length / 2)];
+          const len = lineLength(f.Geometry);
+          ctx.fillStyle = "#0f172a";
+          ctx.font = "600 11px ui-monospace, Menlo, monospace";
+          ctx.textAlign = "center";
+          ctx.fillText(`${len.toFixed(1)} m`, mid.x, mid.y - 10);
+        }
       }
     });
 
-    // boundary in progress
+    // where the next click will land
+    if (snapHit) {
+      const p = toPx(snapHit.point);
+      ctx.beginPath();
+      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+      ctx.strokeStyle = "#dc2626";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.beginPath();
+      ctx.moveTo(p.x - 5, p.y); ctx.lineTo(p.x + 5, p.y);
+      ctx.moveTo(p.x, p.y - 5); ctx.lineTo(p.x, p.y + 5);
+      ctx.stroke();
+    }
+
+    // line or boundary in progress
     if (draft.length) {
       const pts = draft.map(toPx);
       ctx.beginPath();
       pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       if (cursor) { const c = toPx(cursor); ctx.lineTo(c.x, c.y); }
-      ctx.strokeStyle = "#0f172a";
+      ctx.strokeStyle = typeOf(lineType)?.Colour ?? "#0f172a";
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.setLineDash([]);
       pts.forEach((p) => {
         ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = "#0f172a"; ctx.fill();
+        ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -187,10 +251,28 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
-    if (tool === "boundary") {
-      const [mx, my] = toM(px, py);
-      setDraft((d) => [...d, [snap(mx), snap(my)]]);
+    if (drawing) {
+      const raw = toM(px, py);
+      const { point } = resolve(raw[0], raw[1]);
+      setDraft((d) => [...d, point]);
       return;
+    }
+
+    /* A selected line shows its vertices; dragging one reshapes the line
+       rather than moving the whole thing. */
+    if (tool === "select" && selected.length === 1) {
+      const f = features.find((x) => x.Feature_ID === selected[0]);
+      if (f && f.Feature_Type !== "point") {
+        const idx = (f.Geometry || []).findIndex((m) => {
+          const q = toPx(m);
+          return Math.hypot(q.x - px, q.y - py) <= HIT_PX;
+        });
+        if (idx >= 0) {
+          drag.current = { mode: "vertex", featureId: f.Feature_ID, index: idx };
+          setEditVertex({ featureId: f.Feature_ID, index: idx });
+          return;
+        }
+      }
     }
 
     const hit = featureAt(px, py);
@@ -212,13 +294,43 @@ export default function GISCanvasPage() {
     }
   }
 
+  /* Cursor position after snapping. Vertices and ends win over the
+     middle of a line, because that's usually what you meant. */
+  function resolve(mx, my) {
+    if (!snapOn) return { point: [snap(mx), snap(my)], hit: null };
+    const t = findSnap(targets, [mx, my], view.scale, SNAP_PX);
+    if (t) return { point: [...t.point], hit: t };
+    const edge = nearestOnLines(visible, [mx, my], view.scale, SNAP_PX);
+    if (edge) return { point: [...edge.point], hit: edge };
+    return { point: [snap(mx), snap(my)], hit: null };
+  }
+
   function onMove(e) {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
-    setCursor(toM(px, py));
+    const raw = toM(px, py);
+
+    if (drawing) {
+      const { point, hit } = resolve(raw[0], raw[1]);
+      setCursor(point);
+      setSnapHit(hit);
+    } else {
+      setCursor(raw);
+      setSnapHit(null);
+    }
 
     if (!drag.current) return;
     const dx = px - drag.current.startPx[0], dy = py - drag.current.startPx[1];
+
+    if (drag.current.mode === "vertex") {
+      const { featureId, index } = drag.current;
+      const { point } = resolve(...toM(px, py));
+      setFeatures((fs) => fs.map((f) =>
+        f.Feature_ID === featureId
+          ? { ...f, Geometry: f.Geometry.map((g, i) => (i === index ? point : g)) }
+          : f));
+      return;
+    }
 
     if (drag.current.mode === "pan") {
       setView((v) => ({ ...v, x: drag.current.startView.x + dx, y: drag.current.startView.y + dy }));
@@ -235,6 +347,17 @@ export default function GISCanvasPage() {
   async function onUp() {
     const d = drag.current;
     drag.current = null;
+    setEditVertex(null);
+
+    if (d?.mode === "vertex") {
+      const f = features.find((x) => x.Feature_ID === d.featureId);
+      if (f) {
+        try { await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]); }
+        catch (e) { setError(e.message); await load(projectId); }
+      }
+      return;
+    }
+
     if (!d || d.mode !== "move") return;
     const updates = d.ids
       .map((id) => features.find((f) => f.Feature_ID === id))
@@ -274,14 +397,26 @@ export default function GISCanvasPage() {
     finally { setLoading(false); }
   }
 
-  async function finishBoundary() {
-    if (draft.length < 3) { setDraft([]); return; }
+  async function finishDrawing() {
+    const isPoly = tool === "boundary";
+    if (draft.length < (isPoly ? 3 : 2)) { setDraft([]); return; }
+    const t = typeOf(lineType);
     try {
       await createFeature(projectId, {
-        Layer_Key: "boundary", Feature_Type: "polygon", Geometry: draft, Label: "Site boundary",
+        Layer_Key: isPoly ? "boundary" : (t?.Layer_Key ?? "note"),
+        Feature_Type: isPoly ? "polygon" : "line",
+        Geometry: draft,
+        Label: isPoly ? "Site boundary" : (t?.Label ?? "Line"),
+        Attributes: isPoly ? {} : {
+          Line_Type: lineType,
+          Size: size || null,
+          // Recorded at draw time using the metre tolerance, not the
+          // pixel one — what it touches, not what it looked near.
+          Connects: connectedTo(draft, visible, null),
+        },
       });
       setDraft([]);
-      setTool("select");
+      setSnapHit(null);
       await load(projectId);
     } catch (e) { setError(e.message); }
   }
@@ -303,7 +438,11 @@ export default function GISCanvasPage() {
   useEffect(() => {
     const onKey = (e) => {
       if (e.key === "Escape") { setDraft([]); setTool("select"); setSelected([]); }
-      if (e.key === "Enter" && tool === "boundary") finishBoundary();
+      if (e.key === "Enter" && drawing) finishDrawing();
+      if (e.key === "Backspace" && drawing && draft.length) {
+        e.preventDefault();
+        setDraft((d) => d.slice(0, -1));
+      }
       if ((e.key === "Delete" || e.key === "Backspace") && selected.length
           && document.activeElement?.tagName !== "INPUT") {
         e.preventDefault(); removeSelected();
@@ -352,10 +491,31 @@ export default function GISCanvasPage() {
               <button className={tool === "select" ? "gt on" : "gt"} onClick={() => { setTool("select"); setDraft([]); }}>
                 Select
               </button>
-              <button className={tool === "boundary" ? "gt on" : "gt"} onClick={() => { setTool("boundary"); setSelected([]); }}>
-                Draw boundary
+              <button className={tool === "line" ? "gt on" : "gt"}
+                onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
+                Draw line
+              </button>
+              <button className={tool === "boundary" ? "gt on" : "gt"}
+                onClick={() => { setTool("boundary"); setSelected([]); setDraft([]); }}>
+                Boundary
               </button>
             </div>
+            {tool === "line" && (
+              <>
+                <select className="gis-type" value={lineType}
+                  onChange={(e) => setLineType(e.target.value)} aria-label="Line type">
+                  {lineTypes.map((t) => (
+                    <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
+                  ))}
+                </select>
+                <input className="gis-size" value={size} placeholder="Size"
+                  aria-label="Cable or pipe size" onChange={(e) => setSize(e.target.value)} />
+              </>
+            )}
+            <label className={snapOn ? "gis-snap on" : "gis-snap"} title="Snap to existing geometry">
+              <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
+              Snap
+            </label>
             <button className="btn ghost" onClick={seed} disabled={loading}>Place plot markers</button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
             {selected.length > 0 && (
@@ -399,14 +559,15 @@ export default function GISCanvasPage() {
               <li>Scroll to zoom on the cursor</li>
               <li>Shift-click to multi-select</li>
               <li><kbd>Esc</kbd> cancels, <kbd>Del</kbd> removes</li>
-              {tool === "boundary" && <li><kbd>Enter</kbd> closes the boundary</li>}
+              {drawing && <li><kbd>Enter</kbd> finishes, <kbd>Backspace</kbd> undoes</li>}
+              {!drawing && <li>Select a line to drag its points</li>}
             </ul>
           </div>
 
           <div className="gis-canvas-wrap" ref={wrapRef}>
             <canvas
               ref={canvasRef}
-              className={tool === "boundary" ? "crosshair" : ""}
+              className={drawing ? "crosshair" : ""}
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={onUp}
@@ -425,10 +586,14 @@ export default function GISCanvasPage() {
               )}
               <span className="hud-zoom">{Math.round(view.scale * 25)}%</span>
             </div>
-            {tool === "boundary" && (
+            {drawing && (
               <div className="gis-tip">
-                Click to place corners &middot; <kbd>Enter</kbd> to close &middot; <kbd>Esc</kbd> to cancel
+                {tool === "boundary" ? "Click to place corners" : "Click to place points"}
+                {" \u00B7 "}<kbd>Enter</kbd> to finish{" \u00B7 "}
+                <kbd>Backspace</kbd> undoes{" \u00B7 "}<kbd>Esc</kbd> cancels
                 {draft.length > 0 && ` \u00B7 ${draft.length} placed`}
+                {draft.length > 1 && ` \u00B7 ${lineLength(draft).toFixed(1)} m`}
+                {snapHit && <span className="tip-snap">snapping to {snapHit.kind}</span>}
               </div>
             )}
           </div>
@@ -485,6 +650,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   background: var(--accent); color: #fff; border-radius: 999px; padding: 6px 16px;
   font-size: 11.5px; font-weight: 600; white-space: nowrap; }
 .gis-tip kbd { background: rgba(255,255,255,.22); border-color: rgba(255,255,255,.35); color: #fff; }
+.tip-snap { margin-left: 10px; background: #dc2626; border-radius: 999px; padding: 1px 9px; font-size: 10.5px; }
+.gis-type { width: auto; min-width: 150px; font-size: 12.5px; }
+.gis-size { width: 88px; font-size: 12.5px; }
+.gis-snap { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
+  text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);
+  border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; margin: 0; cursor: pointer; }
+.gis-snap.on { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .gis-empty { flex: 1; display: flex; flex-direction: column; align-items: center; justify-content: center;
   border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); }
 .ge-title { margin: 0 0 4px; font-size: 15px; font-weight: 700; color: var(--text); }

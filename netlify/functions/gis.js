@@ -12,13 +12,13 @@ export default async function handler(req, context) {
 
   try {
     if (req.method === "GET") {
-      const [f, l] = await Promise.all([
+      const [f, l, t] = await Promise.all([
         db.from("GIS_Feature").select(F).eq("Project_ID", projectId).order("Feature_ID"),
         db.from("GIS_Layer").select("*").eq("Is_Active", true).order("Sort_Order"),
+        db.from("GIS_Line_Type").select("*").eq("Is_Active", true).order("Sort_Order"),
       ]);
-      if (f.error) throw f.error;
-      if (l.error) throw l.error;
-      return json({ features: f.data || [], layers: l.data || [] });
+      for (const r of [f, l, t]) if (r.error) throw r.error;
+      return json({ features: f.data || [], layers: l.data || [], lineTypes: t.data || [] });
     }
 
     if (req.method === "POST" && url.searchParams.get("action") === "seed") {

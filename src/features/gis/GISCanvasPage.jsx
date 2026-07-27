@@ -260,6 +260,7 @@ export default function GISCanvasPage() {
 
   /* ── pointer ── */
   function onDown(e) {
+    e.currentTarget.setPointerCapture?.(e.pointerId);
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
@@ -331,12 +332,13 @@ export default function GISCanvasPage() {
       setSnapHit(null);
     }
 
-    if (!drag.current) return;
-    const dx = px - drag.current.startPx[0], dy = py - drag.current.startPx[1];
+    const d = drag.current;
+    if (!d) return;
+    const dx = px - d.startPx[0], dy = py - d.startPx[1];
 
-    if (drag.current.mode === "vertex") {
-      const { featureId, index } = drag.current;
-      const { point } = resolve(...toM(px, py));
+    if (d.mode === "vertex") {
+      const { featureId, index } = d;
+      const { point } = resolve(raw[0], raw[1]);
       setFeatures((fs) => fs.map((f) =>
         f.Feature_ID === featureId
           ? { ...f, Geometry: f.Geometry.map((g, i) => (i === index ? point : g)) }
@@ -344,16 +346,19 @@ export default function GISCanvasPage() {
       return;
     }
 
-    if (drag.current.mode === "pan") {
-      setView((v) => ({ ...v, x: drag.current.startView.x + dx, y: drag.current.startView.y + dy }));
-    } else {
-      const dm = [dx / view.scale, dy / view.scale];
-      setFeatures((fs) => fs.map((f) => {
-        const orig = drag.current.origin[f.Feature_ID];
-        if (!orig) return f;
-        return { ...f, Geometry: orig.map(([x, y]) => [snap(x + dm[0]), snap(y + dm[1])]) };
-      }));
+    if (d.mode === "pan") {
+      const { x: sx, y: sy } = d.startView;
+      setView((v) => ({ ...v, x: sx + dx, y: sy + dy }));
+      return;
     }
+
+    const dm = [dx / view.scale, dy / view.scale];
+    const origin = d.origin;
+    setFeatures((fs) => fs.map((f) => {
+      const orig = origin[f.Feature_ID];
+      if (!orig) return f;
+      return { ...f, Geometry: orig.map(([x, y]) => [snap(x + dm[0]), snap(y + dm[1])]) };
+    }));
   }
 
   async function onUp() {
@@ -631,7 +636,8 @@ export default function GISCanvasPage() {
               className={drawing ? "crosshair" : ""}
               onPointerDown={onDown}
               onPointerMove={onMove}
-              onPointerUp={onUp}
+              onPointerUp={(e) => { e.currentTarget.releasePointerCapture?.(e.pointerId); onUp(); }}
+              onPointerCancel={() => { drag.current = null; setEditVertex(null); }}
               onPointerLeave={() => { drag.current = null; setCursor(null); }}
               onWheel={onWheel}
             />

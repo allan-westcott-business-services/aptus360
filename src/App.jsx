@@ -2,6 +2,7 @@ import { useState, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
+import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 /* Loaded on demand. Admin and Plot Connections are large and most
    sessions never open them, so they shouldn't be in the first download. */
@@ -67,9 +68,13 @@ function Shell() {
             Sample data &mdash; set <code>VITE_USE_MOCKS=false</code> once the Project tables are populated.
           </div>
         )}
-        <Suspense fallback={<div className="lazy-wait">Loading&hellip;</div>}>
-          {content}
-        </Suspense>
+        {/* Keyed on the view so moving elsewhere clears a failed screen
+            rather than leaving the error stuck. */}
+        <ErrorBoundary key={view} label={item?.label ?? "This screen"}>
+          <Suspense fallback={<div className="lazy-wait">Loading&hellip;</div>}>
+            {content}
+          </Suspense>
+        </ErrorBoundary>
       </main>
     </div>
   );

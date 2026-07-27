@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listProjects, setPriority, deleteProject } from "../../api/projects.js";
 import BurgerMenu, { BURGER_CSS } from "../../components/BurgerMenu.jsx";
+import CreateRevisionModal from "./CreateRevisionModal.jsx";
 import { UTILITIES } from "../../lib/utilities.js";
 
 /* Projects table.
@@ -90,6 +91,7 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   const [prefs, setPrefs] = useState(loadPrefs);
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFilter, setOpenFilter] = useState(null);
+  const [revising, setRevising] = useState(null);
   const [filters, setFilters] = useState(() =>
     Object.fromEntries(COLUMNS.map((c) => [c.key, blankFilter(c.type)]))
   );
@@ -251,6 +253,12 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
      flag priority, then history/comments, then delete. Revisions and the
      history/comment logs aren't migrated yet, so they're shown disabled
      rather than hidden — the menu doubles as a to-do list. */
+  /* A secured project has a contract behind it. Re-quoting that isn't a
+     revision, it's a variation — so the option is closed off. */
+  const isTender = (p) =>
+    (lookups?.projectStatuses || [])
+      .find((s) => s.Project_Status_ID === p.Project_Status_ID)?.Stage === "Tender";
+
   const menuFor = (p) => {
     const siblings = rows.filter((x) => x.Project_Ref === p.Project_Ref);
     const highestRev = Math.max(...siblings.map((x) => x.Revision ?? 0));
@@ -259,7 +267,9 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
       isHighest
         ? { icon: "\u270F\uFE0F", label: "Edit Project", fn: () => onOpen(p, "details") }
         : { icon: "\uD83D\uDD12", label: `Locked \u2014 rev ${highestRev} exists`, disabled: true },
-      isHighest && { icon: "\uD83D\uDD04", label: "Create New Revision", disabled: true },
+      isHighest && (isTender(p)
+        ? { icon: "\uD83D\uDD04", label: "Create New Revision", fn: () => setRevising(p) }
+        : { icon: "\uD83D\uDD04", label: "Revision \u2014 Tender stage only", disabled: true }),
       { icon: "\uD83C\uDFE0", label: "Plots", fn: () => onOpen(p, "plots") },
       { icon: "\uD83D\uDCD0", label: "Outline Designs", fn: () => onOpen(p, "designs") },
       isHighest && {
@@ -298,6 +308,18 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   return (
     <div onClick={() => { setOpenFilter(null); setMenuOpen(false); }}>
       <style>{CSS}</style>
+
+      {revising && (
+        <CreateRevisionModal
+          project={revising}
+          onClose={() => setRevising(null)}
+          onCreated={(created) => {
+            setRevising(null);
+            onRefresh && onRefresh();
+            if (created && onOpen) onOpen(created, "details");
+          }}
+        />
+      )}
 
       <div className="list-head">
         <div>

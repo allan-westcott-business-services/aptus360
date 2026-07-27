@@ -479,7 +479,12 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .dt .mid { text-align: center; }
 .dt .strong { font-weight: 700; }
 /* Explicit, so it can't pick up alignment from a neighbouring rule */
-.dt .plot-cell { text-align: left !important; padding-left: 10px; }
+/* Force it on every body cell. Something was giving a handful of rows a
+   different alignment and forcing it is more reliable than chasing it. */
+.dt tbody td { text-align: left; }
+.dt tbody td.num, .dt tbody td .in.num { text-align: right; }
+.dt tbody td.mid { text-align: center; }
+.dt .plot-cell { padding-left: 10px; }
 .dt .ref { color: var(--accent); font-weight: 600; }
 .dt tbody tr.row-sel { background: #fff7ed !important; }
 .dt tbody tr.done td:first-child { box-shadow: inset 3px 0 0 #059669; }

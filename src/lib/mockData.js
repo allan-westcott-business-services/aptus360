@@ -124,7 +124,6 @@ export const demoProject = {
   Eastings: 426300,
   Northings: 435120,
   Site_Contact: "M. Okafor \u2014 07700 900412",
-  Audacia_Plot_Count: 148,
   Auto_Plot_Count: 146,
   Minimum_Service_Call_Off: 12,
   Lay_Only_MU: false,

@@ -13,6 +13,16 @@ import {
   STAGES,
 } from "../../lib/constants.js";
 
+const SITE_CSS = `
+.site-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
+.site-row .fld.grow { flex: 1; min-width: 140px; }
+.site-row .fld.grow-wide { flex: 1.6; min-width: 180px; }
+/* Sized to their content: "North West" and a six-figure grid reference */
+.site-row .fld.w-region { width: 152px; flex: none; }
+.site-row .fld.w-coord { width: 104px; flex: none; }
+@media (max-width: 900px) { .site-row { flex-wrap: wrap; } }
+`;
+
 export default function ProjectDetailsForm({ projectId }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(null);
@@ -81,10 +91,10 @@ export default function ProjectDetailsForm({ projectId }) {
   const isTender = stage === STAGES.TENDER;
   const willPromote = isTender && /^secured/i.test(currentStatus?.Status ?? "");
 
-  const plotMismatch = Number(f.Audacia_Plot_Count) !== Number(f.Auto_Plot_Count);
 
   return (
     <div>
+      <style>{SITE_CSS}</style>
       <div className="page-head">
         <div>
           <h2>Project details</h2>
@@ -141,14 +151,7 @@ export default function ProjectDetailsForm({ projectId }) {
           </Field>
           
 
-          <Field label="Plot count (Audacia)" span={2}>
-            <input
-              type="number"
-              value={f.Audacia_Plot_Count ?? ""}
-              onChange={(e) => set("Audacia_Plot_Count")(e.target.value)}
-            />
-          </Field>
-          <Field label="Plot count (Aptus)" span={2} hint="Counted from plots">
+          <Field label="Plot count" span={2} hint="Counted from plots">
             <input value={f.Auto_Plot_Count ?? ""} disabled />
           </Field>
           <Field label="Min. plot call off" span={2}>
@@ -159,45 +162,44 @@ export default function ProjectDetailsForm({ projectId }) {
             />
           </Field>
         </div>
-        {plotMismatch && (
-          <Banner kind="warn">
-            Plot counts disagree &mdash; Audacia has {f.Audacia_Plot_Count}, Aptus has {f.Auto_Plot_Count}.
-          </Banner>
-        )}
       </Section>
 
       <Section title="Site">
-        <div className="grid6">
-          <Field label="Site name" span={3}>
+        <div className="site-row">
+          <div className="fld grow">
+            <label>Site name</label>
             <input value={f.Site_Name || ""} onChange={(e) => set("Site_Name")(e.target.value)} />
-          </Field>
-          <Field label="Site address" span={3}>
+          </div>
+          <div className="fld grow-wide">
+            <label>Site address</label>
             <input value={f.Site_Address || ""} onChange={(e) => set("Site_Address")(e.target.value)} />
-          </Field>
-          <Field label="Region" span={2}>
+          </div>
+          <div className="fld w-region">
+            <label>Region</label>
             <Select value={f.Region_ID} onChange={set("Region_ID")}>
-              {lookups.regions.map((r) => (
-                <option key={r.Region_ID} value={r.Region_ID}>
-                  {r.Region}
-                </option>
+              {(lookups.regions || []).map((r) => (
+                <option key={r.Region_ID} value={r.Region_ID}>{r.Region}</option>
               ))}
             </Select>
-          </Field>
+          </div>
+          <div className="fld w-coord">
+            <label>Eastings</label>
+            <input className="mono" value={f.Eastings ?? ""} onChange={(e) => set("Eastings")(e.target.value)} />
+          </div>
+          <div className="fld w-coord">
+            <label>Northings</label>
+            <input className="mono" value={f.Northings ?? ""} onChange={(e) => set("Northings")(e.target.value)} />
+          </div>
+        </div>
+
+        <div className="grid6">
           <Field label="Fire authority" span={2}>
             <Select value={f.Fire_Service_ID} onChange={set("Fire_Service_ID")}>
               <option value="">&mdash;</option>
-              {lookups.fireServices.map((x) => (
-                <option key={x.Fire_Service_ID} value={x.Fire_Service_ID}>
-                  {x.Fire_Service_Name}
-                </option>
+              {(lookups.fireServices || []).map((x) => (
+                <option key={x.Fire_Service_ID} value={x.Fire_Service_ID}>{x.Fire_Service_Name}</option>
               ))}
             </Select>
-          </Field>
-          <Field label="Eastings">
-            <input className="mono" value={f.Eastings ?? ""} onChange={(e) => set("Eastings")(e.target.value)} />
-          </Field>
-          <Field label="Northings">
-            <input className="mono" value={f.Northings ?? ""} onChange={(e) => set("Northings")(e.target.value)} />
           </Field>
           <Field label="Site contact" span={3}>
             <input value={f.Site_Contact || ""} onChange={(e) => set("Site_Contact")(e.target.value)} />

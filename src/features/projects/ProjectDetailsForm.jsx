@@ -43,17 +43,18 @@ const SITE_CSS = `
   letter-spacing: .05em; background: var(--warn-bg); color: var(--warn-text);
   border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 6px; }
 .pts-flag.warn { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.pts-manual-row { display: flex; gap: 6px; align-items: center; }
+.pts-manual-row input { flex: 1; min-width: 0; }
+.pts-clear { flex: none; background: var(--bg); border: 1px solid var(--border);
+  border-radius: 6px; padding: 6px 11px; cursor: pointer; font: 600 12px inherit; color: var(--muted); }
+.pts-clear:hover { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
 .pts-total { font-weight: 700; color: var(--accent); background: var(--accent-light) !important; }
-.pts-total.overridden { color: #92400e; background: var(--warn-bg) !important;
-  border-color: var(--warn-border) !important; }
 .pts-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .pts-row .fld.w-pts { width: 132px; flex: none; }
 .pts-row .pts-manual { color: var(--accent); font-weight: 700; }
 .pts-row .pts-total { font-weight: 700; color: var(--accent);
   background: var(--accent-light) !important; }
-.pts-row .pts-total.overridden { color: #92400e; background: var(--warn-bg) !important;
-  border-color: var(--warn-border) !important; }
-.pts-note { flex: 1; min-width: 220px; font-size: 11.5px; color: var(--muted);
+.pts-row .pts-note { flex: 1; min-width: 220px; font-size: 11.5px; color: var(--muted);
   align-self: center; margin: 0; max-width: 46ch; }
 @media (max-width: 900px) { .site-row { flex-wrap: wrap; } }
 `;
@@ -315,37 +316,35 @@ export default function ProjectDetailsForm({ projectId }) {
               Tender base points (manual)
               {f.Manual_Base_Points != null && <span className="pts-flag">Manual</span>}
             </label>
-            <input type="number" step="0.5" value={f.Manual_Base_Points ?? ""} placeholder="\u2014"
-              onChange={(e) => set("Manual_Base_Points")(e.target.value === "" ? null : e.target.value)} />
+            <div className="pts-manual-row">
+              <input type="number" step="0.5" value={f.Manual_Base_Points ?? ""}
+                placeholder={"\u2014"}
+                onChange={(e) => set("Manual_Base_Points")(e.target.value === "" ? null : e.target.value)} />
+              {f.Manual_Base_Points != null && (
+                <button type="button" className="pts-clear"
+                  onClick={() => set("Manual_Base_Points")(null)}>
+                  Clear
+                </button>
+              )}
+            </div>
             <p className="hint">
-              Overrides the auto figure when set. Leave blank to use the calculated value.
+              Overrides the auto figure when set. <strong>0 is a valid override</strong> &mdash;
+              use Clear to go back to the calculated value.
             </p>
           </div>
 
           <div className="fld">
-            <label>
-              Tender total points
-              {f.Manual_Total_Points != null && <span className="pts-flag warn">Overridden</span>}
-            </label>
-            <input value={f.Tender_Total_Points ?? ""} disabled
-              className={f.Manual_Total_Points != null ? "pts-total overridden" : "pts-total"} />
+            <label>Tender total points</label>
+            <input value={f.Tender_Total_Points ?? ""} disabled className="pts-total" />
             <p className="hint">
-              {f.Manual_Total_Points != null
-                ? "Set manually \u2014 the calculation is ignored."
-                : `Design ${f.Total_Design_Points ?? 0} + base ${
-                    f.Manual_Base_Points != null
-                      ? `${f.Manual_Base_Points} (manual)`
-                      : (f.Tender_Base_Points ?? 0)
-                  }`}
+              {`Design ${f.Total_Design_Points ?? 0} + base ${
+                f.Manual_Base_Points != null
+                  ? `${f.Manual_Base_Points} (manual)`
+                  : (f.Tender_Base_Points ?? 0)
+              }`}
             </p>
           </div>
 
-          <div className="fld">
-            <label>Override total</label>
-            <input type="number" step="0.5" value={f.Manual_Total_Points ?? ""} placeholder="\u2014"
-              onChange={(e) => set("Manual_Total_Points")(e.target.value === "" ? null : e.target.value)} />
-            <p className="hint">Replaces the whole calculation</p>
-          </div>
 
           <div className="fld span2">
             <label>Reason for override</label>

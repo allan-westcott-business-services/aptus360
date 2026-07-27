@@ -166,7 +166,7 @@ export default function DevelopersSection({ projectId, onChanged }) {
               <input
                 className="dev-code inline"
                 maxLength={4}
-                placeholder="\u2014"
+                placeholder={"\u2014"}
                 aria-label={`Code for ${branchLabel(d.Branch_ID)}`}
                 value={codeEdit[d.Project_Developer_ID] ?? d.Developer_Code ?? ""}
                 onChange={(e) => setCodeEdit((c) => ({

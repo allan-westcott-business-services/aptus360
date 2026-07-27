@@ -141,6 +141,10 @@ input[type="radio"]:checked::after {
 input[type="radio"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
 input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
 
+.topbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
+.boot { display: flex; align-items: center; justify-content: center; min-height: 100vh;
+  color: var(--muted); font-size: 13px; }
+
 /* ═══ PLACEHOLDER (unmigrated views) ════════════════════════════ */
 .placeholder { text-align: center; padding: 60px 24px; }
 .placeholder-badge {

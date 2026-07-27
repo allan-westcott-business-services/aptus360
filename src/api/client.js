@@ -9,6 +9,21 @@
    instead of just working. */
 export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== "false";
 
+/* The signed-in user's token travels with every request so functions can
+   tell who's calling. Imported lazily to keep this module usable when
+   auth isn't configured. */
+async function authHeader() {
+  try {
+    const { supabase } = await import("../lib/supabaseClient.js");
+    if (!supabase) return {};
+    const { data } = await supabase.auth.getSession();
+    const token = data?.session?.access_token;
+    return token ? { Authorization: `Bearer ${token}` } : {};
+  } catch {
+    return {};
+  }
+}
+
 class ApiError extends Error {
   constructor(message, status, body) {
     super(message);
@@ -22,7 +37,10 @@ async function request(path, { method = "GET", body, signal } = {}) {
   const res = await fetch(`/api${path}`, {
     method,
     signal,
-    headers: body ? { "Content-Type": "application/json" } : undefined,
+    headers: {
+      ...(body ? { "Content-Type": "application/json" } : {}),
+      ...(await authHeader()),
+    },
     body: body ? JSON.stringify(body) : undefined,
   });
 

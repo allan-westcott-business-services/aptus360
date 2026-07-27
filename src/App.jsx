@@ -1,4 +1,7 @@
 import { useState } from "react";
+import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
+import LoginPage from "./features/auth/LoginPage.jsx";
+import AccountMenu from "./features/auth/AccountMenu.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 import ProjectsPage from "./features/projects/ProjectsPage.jsx";
 import AdminPage from "./features/admin/AdminPage.jsx";
@@ -33,7 +36,7 @@ function NotBuilt({ view }) {
   );
 }
 
-export default function App() {
+function Shell() {
   const [view, setView] = useState("projects");
   const [collapsed, setCollapsed] = useState(false);
 
@@ -52,6 +55,9 @@ export default function App() {
         onToggle={() => setCollapsed((c) => !c)}
       />
       <main className="main">
+        <div className="topbar">
+          <AccountMenu />
+        </div>
         {USE_MOCKS && (
           <div className="mock-bar">
             Sample data &mdash; set <code>VITE_USE_MOCKS=false</code> once the Project tables are populated.
@@ -61,4 +67,22 @@ export default function App() {
       </main>
     </div>
   );
+}
+
+export default function App() {
+  return (
+    <AuthProvider>
+      <Gate />
+    </AuthProvider>
+  );
+}
+
+/* Auth is optional until it's configured: without VITE_SUPABASE_ANON_KEY
+   the app runs open, so sample-data mode still works with no backend. */
+function Gate() {
+  const { session, loading, authEnabled } = useAuth();
+  if (!authEnabled) return <Shell />;
+  if (loading) return <div className="boot">Loading&hellip;</div>;
+  if (!session) return <LoginPage />;
+  return <Shell />;
 }

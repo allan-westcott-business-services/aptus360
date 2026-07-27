@@ -24,6 +24,23 @@ export function supabase() {
   return client;
 }
 
+/* Who's calling, from the bearer token the browser sends. Verified
+   against Supabase rather than trusted, but not yet enforced — every
+   endpoint still works without it so nothing breaks mid-rollout. Turn
+   it into a hard requirement once everyone has an account. */
+export async function currentUser(req) {
+  try {
+    const auth = req.headers.get("authorization") || "";
+    const token = auth.startsWith("Bearer ") ? auth.slice(7) : null;
+    if (!token) return null;
+    const { data, error } = await supabase().auth.getUser(token);
+    if (error) return null;
+    return data?.user ?? null;
+  } catch {
+    return null;
+  }
+}
+
 export function json(body, status = 200) {
   return new Response(JSON.stringify(body), {
     status,

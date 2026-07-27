@@ -20,6 +20,7 @@ export default function CalibrationView({
   const [img, setImg] = useState(null);
   const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
   const [cursor, setCursor] = useState(null);
+  const [panning, setPanning] = useState(false);
   const drag = useRef(null);
   const moved = useRef(false);
 
@@ -64,14 +65,29 @@ export default function CalibrationView({
     });
   }
 
+  /* Middle or right button pans, as in every CAD tool. That leaves the
+     left button doing one thing only — placing the point — so a slightly
+     shaky click can't be mistaken for a drag. */
+  const isPanButton = (e) => e.button === 1 || e.button === 2;
+
   function onDown(e) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const r = wrapRef.current.getBoundingClientRect();
     moved.current = false;
-    drag.current = {
-      startPx: [e.clientX - r.left, e.clientY - r.top],
-      startView: { ...view },
-    };
+
+    if (isPanButton(e)) {
+      e.preventDefault();
+      drag.current = {
+        pan: true,
+        startPx: [e.clientX - r.left, e.clientY - r.top],
+        startView: { ...view },
+      };
+      setPanning(true);
+      return;
+    }
+
+    if (e.button !== 0) return;
+    drag.current = { pan: false, startPx: [e.clientX - r.left, e.clientY - r.top] };
   }
 
   function onMove(e) {
@@ -84,6 +100,7 @@ export default function CalibrationView({
     if (!d) return;
     const dx = px - d.startPx[0], dy = py - d.startPx[1];
     if (Math.abs(dx) > 3 || Math.abs(dy) > 3) moved.current = true;
+    if (!d.pan) return;
     const { x: sx, y: sy } = d.startView;
     setView((v) => ({ ...v, x: sx + dx, y: sy + dy }));
   }
@@ -91,8 +108,10 @@ export default function CalibrationView({
   function onUp(e) {
     const d = drag.current;
     drag.current = null;
+    setPanning(false);
     e.currentTarget.releasePointerCapture?.(e.pointerId);
-    if (moved.current || !d) return;      // a pan isn't a click
+    if (!d || d.pan || e.button !== 0) return;
+    if (moved.current) return;            // a drag isn't a click
 
     const r = wrapRef.current.getBoundingClientRect();
     const [ix, iy] = toImage(e.clientX - r.left, e.clientY - r.top);
@@ -129,13 +148,15 @@ export default function CalibrationView({
       <style>{CSS}</style>
 
       <div
-        className="cv-stage"
+        className={panning ? "cv-stage panning" : "cv-stage"}
         ref={wrapRef}
         onWheel={onWheel}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
-        onPointerLeave={() => { drag.current = null; setCursor(null); }}
+        onPointerLeave={() => { drag.current = null; setPanning(false); setCursor(null); }}
+        onContextMenu={(e) => e.preventDefault()}
+        onAuxClick={(e) => e.preventDefault()}
       >
         {img && (
           <img
@@ -192,7 +213,7 @@ export default function CalibrationView({
         <button onClick={() => setView((v) => ({ ...v, scale: Math.max(0.05, v.scale / 1.6) }))}>&minus;</button>
         <button onClick={fit}>Fit</button>
         <span className="cv-zoom">{pct}%</span>
-        <span className="cv-hint">Scroll to zoom &middot; drag to pan &middot; click to place</span>
+        <span className="cv-hint">Scroll to zoom &middot; right or middle drag to pan &middot; left click to place</span>
       </div>
     </div>
   );
@@ -219,5 +240,6 @@ const CSS = `
 .cv-bar button:hover { border-color: var(--accent); color: var(--accent); }
 .cv-bar button:nth-child(3) { width: auto; padding: 0 12px; font-size: 12px; }
 .cv-zoom { font-size: 11.5px; font-weight: 700; color: var(--accent); min-width: 48px; }
+.cv-stage.panning { cursor: grabbing; }
 .cv-hint { font-size: 11px; color: var(--muted); margin-left: auto; }
 `;

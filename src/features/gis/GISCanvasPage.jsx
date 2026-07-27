@@ -297,6 +297,15 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
+    /* Middle or right drags the view, whatever tool is active — so you
+       can reposition mid-drawing without putting the tool down. */
+    if (e.button === 1 || e.button === 2) {
+      e.preventDefault();
+      drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
+      return;
+    }
+    if (e.button !== 0) return;
+
     if (drawing) {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
@@ -334,9 +343,8 @@ export default function GISCanvasPage() {
         const f = features.find((x) => x.Feature_ID === id);
         if (f) drag.current.origin[id] = f.Geometry;
       });
-    } else {
-      if (!e.shiftKey) setSelected([]);
-      drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
+    } else if (!e.shiftKey) {
+      setSelected([]);
     }
   }
 
@@ -675,7 +683,7 @@ export default function GISCanvasPage() {
 
             <p className="gl-title">Help</p>
             <ul className="gl-help">
-              <li>Drag empty space to pan</li>
+              <li>Right or middle drag to pan</li>
               <li>Scroll to zoom on the cursor</li>
               <li>Shift-click to multi-select</li>
               <li><kbd>Esc</kbd> cancels, <kbd>Del</kbd> removes</li>
@@ -693,6 +701,8 @@ export default function GISCanvasPage() {
               onPointerUp={(e) => { e.currentTarget.releasePointerCapture?.(e.pointerId); onUp(); }}
               onPointerCancel={() => { drag.current = null; setEditVertex(null); }}
               onPointerLeave={() => { drag.current = null; setCursor(null); }}
+              onContextMenu={(e) => e.preventDefault()}
+              onAuxClick={(e) => e.preventDefault()}
               onWheel={onWheel}
             />
             <div className="gis-hud">
@@ -770,8 +780,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 
 .gis-canvas-wrap { position: relative; border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; background: var(--white); min-height: 0; }
-.gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: grab; touch-action: none; }
-.gis-canvas-wrap canvas:active { cursor: grabbing; }
+.gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default; touch-action: none; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
 .gis-hud { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 14px;
   background: rgba(255,255,255,.94); border: 1px solid var(--border); border-radius: 7px;

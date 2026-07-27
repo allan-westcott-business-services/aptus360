@@ -111,6 +111,8 @@ export default function GISCanvasPage() {
     requiredPdfScale || 1
   );
 
+  useEffect(() => { if (pdf.error) setError(pdf.error); }, [pdf.error]);
+
   /* Raster plans are decoded once and held — re-fetching on every
      repaint would be pointless for something that can't get sharper. */
   useEffect(() => {
@@ -118,7 +120,11 @@ export default function GISCanvasPage() {
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => setBgImage(img);
-    img.onerror = () => setError("The background plan couldn't be loaded.");
+    img.onerror = () => setError(
+      /\.pdf($|\?)/i.test(basemap.Image_Url)
+        ? "This plan is a PDF but is recorded as an image — re-import it to render it as vector."
+        : "The background plan couldn't be loaded."
+    );
     img.src = basemap.Image_Url;
   }, [basemap?.Image_Url, isPdfMap]);
 

@@ -2,6 +2,7 @@ import { supabase, json, fail } from "./_supabase.js";
 
 const B = [
   "Basemap_ID","Project_ID","File_Name","Storage_Path","Image_Url",
+  "Source_Kind","Pdf_Page","Page_Width","Page_Height",
   "Image_Width","Image_Height","Metres_Per_Pixel","Stated_Scale",
   "Cal_Point_A","Cal_Point_B","Cal_Distance_M",
   "Origin_X","Origin_Y","Rotation_Deg","Opacity","Locked",

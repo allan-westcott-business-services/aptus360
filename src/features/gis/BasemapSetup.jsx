@@ -257,6 +257,8 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
               </p>
               <CalibrationView
                 src={basemap.Image_Url}
+                sourceKind={basemap.Source_Kind}
+                pdfPage={basemap.Pdf_Page}
                 imageWidth={basemap.Image_Width}
                 imageHeight={basemap.Image_Height}
                 points={calPts}
@@ -322,6 +324,8 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
               </p>
               <CalibrationView
                 src={basemap.Image_Url}
+                sourceKind={basemap.Source_Kind}
+                pdfPage={basemap.Pdf_Page}
                 imageWidth={basemap.Image_Width}
                 imageHeight={basemap.Image_Height}
                 mode="one"

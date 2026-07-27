@@ -1,62 +1,153 @@
 import { useState, useRef, useEffect, useCallback } from "react";
+import { usePdfPage } from "./usePdfPage.js";
 
 /* A zoomable view of the plan for placing calibration points.
 
-   Precision matters more here than anywhere else on the canvas: every
-   later measurement inherits this one. Clicking a 5m scale bar at
-   fit-to-screen might span twenty pixels, and one pixel of error there
-   becomes 25cm — then multiplies across the whole site. So: zoom to the
-   pixel, and a loupe showing exactly what's under the cursor. */
+   Canvas rather than an <img>, because a PDF can't be shown in one and
+   a vector plan is the whole point — this re-renders from the PDF as you
+   zoom, exactly as the main canvas does.
 
-const LOUPE = 132;      // px across
+   Precision matters more here than anywhere else: every later
+   measurement inherits this one. Hence the loupe, and zoom to 4000%. */
+
+const LOUPE = 132;
 const LOUPE_ZOOM = 5;
 
 export default function CalibrationView({
-  src, imageWidth, imageHeight, points, onPlace, mode = "two", pinLabel,
+  src, sourceKind = "image", pdfPage = 1,
+  imageWidth, imageHeight, points, onPlace, mode = "two", pinLabel,
 }) {
   const wrapRef = useRef(null);
-  const imgRef = useRef(null);
+  const canvasRef = useRef(null);
   const loupeRef = useRef(null);
-  const [img, setImg] = useState(null);
-  const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
-  const [cursor, setCursor] = useState(null);
-  const [panning, setPanning] = useState(false);
   const drag = useRef(null);
   const moved = useRef(false);
 
+  const [raster, setRaster] = useState(null);
+  const [view, setView] = useState({ x: 0, y: 0, scale: 1 });
+  const [cursor, setCursor] = useState(null);
+  const [panning, setPanning] = useState(false);
+
+  const isPdf = sourceKind === "pdf";
+  const pdf = usePdfPage(isPdf ? src : null, pdfPage, Math.max(view.scale, 0.05));
+
+  // raster plans decode once
   useEffect(() => {
+    if (!src || isPdf) { setRaster(null); return; }
     const i = new Image();
     i.crossOrigin = "anonymous";
-    i.onload = () => setImg(i);
+    i.onload = () => setRaster(i);
     i.src = src;
-    imgRef.current = i;
-  }, [src]);
+  }, [src, isPdf]);
 
-  // start fitted to the viewport
+  const source = isPdf ? pdf.canvas : raster;
+  const srcW = isPdf ? (pdf.size?.width ?? imageWidth) : (raster?.naturalWidth ?? imageWidth);
+  const srcH = isPdf ? (pdf.size?.height ?? imageHeight) : (raster?.naturalHeight ?? imageHeight);
+
   const fit = useCallback(() => {
     const w = wrapRef.current;
-    if (!w || !imageWidth) return;
-    const s = Math.min(w.clientWidth / imageWidth, w.clientHeight / imageHeight);
+    if (!w || !srcW) return;
+    const s = Math.min(w.clientWidth / srcW, w.clientHeight / srcH) * 0.96;
     setView({
       scale: s,
-      x: (w.clientWidth - imageWidth * s) / 2,
-      y: (w.clientHeight - imageHeight * s) / 2,
+      x: (w.clientWidth - srcW * s) / 2,
+      y: (w.clientHeight - srcH * s) / 2,
     });
-  }, [imageWidth, imageHeight]);
+  }, [srcW, srcH]);
 
-  useEffect(() => { if (img) fit(); }, [img, fit]);
+  const fitted = useRef(false);
+  useEffect(() => {
+    if (!fitted.current && srcW && source) { fitted.current = true; fit(); }
+  }, [srcW, source, fit]);
 
-  const toImage = (px, py) => [(px - view.x) / view.scale, (py - view.y) / view.scale];
-  const toScreen = (ix, iy) => [ix * view.scale + view.x, iy * view.scale + view.y];
+  const toSource = (px, py) => [(px - view.x) / view.scale, (py - view.y) / view.scale];
+  const toScreen = (sx, sy) => [sx * view.scale + view.x, sy * view.scale + view.y];
+
+  /* Draw the plan, the placed pins and the measured line. */
+  const draw = useCallback(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+    const ctx = cv.getContext("2d");
+    ctx.clearRect(0, 0, cv.width, cv.height);
+    ctx.fillStyle = "#f1f5f9";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+
+    if (source && srcW) {
+      ctx.imageSmoothingEnabled = view.scale < 2;
+      ctx.drawImage(source, view.x, view.y, srcW * view.scale, srcH * view.scale);
+    }
+
+    if (points.length === 2) {
+      const a = toScreen(points[0][0], points[0][1]);
+      const b = toScreen(points[1][0], points[1][1]);
+      ctx.strokeStyle = "#dc2626";
+      ctx.lineWidth = 2;
+      ctx.setLineDash([7, 5]);
+      ctx.beginPath();
+      ctx.moveTo(a[0], a[1]); ctx.lineTo(b[0], b[1]);
+      ctx.stroke();
+      ctx.setLineDash([]);
+    }
+
+    points.forEach((p, i) => {
+      const [sx, sy] = toScreen(p[0], p[1]);
+      ctx.beginPath();
+      ctx.arc(sx, sy, 11, 0, Math.PI * 2);
+      ctx.fillStyle = mode === "one" ? "#39467b" : "#dc2626";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.fillStyle = "#fff";
+      ctx.font = "700 11px system-ui, sans-serif";
+      ctx.textAlign = "center";
+      ctx.textBaseline = "middle";
+      ctx.fillText(mode === "one" ? (pinLabel || "\u25CE") : String(i + 1), sx, sy);
+    });
+  }, [source, srcW, srcH, view, points, mode, pinLabel]);
+
+  useEffect(() => {
+    const cv = canvasRef.current, wrap = wrapRef.current;
+    if (!cv || !wrap) return;
+    const resize = () => {
+      cv.width = wrap.clientWidth;
+      cv.height = wrap.clientHeight;
+      draw();
+    };
+    resize();
+    const ro = new ResizeObserver(resize);
+    ro.observe(wrap);
+    return () => ro.disconnect();
+  }, [draw]);
+
+  useEffect(() => { draw(); }, [draw]);
+
+  function drawLoupe(px, py) {
+    const cv = loupeRef.current;
+    if (!cv || !source) return;
+    const ctx = cv.getContext("2d");
+    const [ix, iy] = toSource(px, py);
+    const span = LOUPE / LOUPE_ZOOM / view.scale;
+
+    ctx.imageSmoothingEnabled = false;
+    ctx.fillStyle = "#fff";
+    ctx.fillRect(0, 0, LOUPE, LOUPE);
+    ctx.drawImage(source, ix - span / 2, iy - span / 2, span, span, 0, 0, LOUPE, LOUPE);
+
+    ctx.strokeStyle = "#dc2626";
+    ctx.lineWidth = 1;
+    ctx.beginPath();
+    ctx.moveTo(LOUPE / 2, 0); ctx.lineTo(LOUPE / 2, LOUPE);
+    ctx.moveTo(0, LOUPE / 2); ctx.lineTo(LOUPE, LOUPE / 2);
+    ctx.stroke();
+  }
 
   function onWheel(e) {
     e.preventDefault();
     const r = wrapRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
     setView((v) => {
-      // Generous ceiling: at 40× a single image pixel is a visible block,
-      // which is what placing a point precisely needs.
-      const next = Math.min(40, Math.max(0.05, v.scale * (e.deltaY < 0 ? 1.15 : 0.87)));
+      const next = Math.min(40, Math.max(0.02, v.scale * (e.deltaY < 0 ? 1.15 : 0.87)));
       return {
         scale: next,
         x: px - (px - v.x) * (next / v.scale),
@@ -65,27 +156,18 @@ export default function CalibrationView({
     });
   }
 
-  /* Middle or right button pans, as in every CAD tool. That leaves the
-     left button doing one thing only — placing the point — so a slightly
-     shaky click can't be mistaken for a drag. */
   const isPanButton = (e) => e.button === 1 || e.button === 2;
 
   function onDown(e) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
     const r = wrapRef.current.getBoundingClientRect();
     moved.current = false;
-
     if (isPanButton(e)) {
       e.preventDefault();
-      drag.current = {
-        pan: true,
-        startPx: [e.clientX - r.left, e.clientY - r.top],
-        startView: { ...view },
-      };
+      drag.current = { pan: true, startPx: [e.clientX - r.left, e.clientY - r.top], startView: { ...view } };
       setPanning(true);
       return;
     }
-
     if (e.button !== 0) return;
     drag.current = { pan: false, startPx: [e.clientX - r.left, e.clientY - r.top] };
   }
@@ -110,38 +192,15 @@ export default function CalibrationView({
     drag.current = null;
     setPanning(false);
     e.currentTarget.releasePointerCapture?.(e.pointerId);
-    if (!d || d.pan || e.button !== 0) return;
-    if (moved.current) return;            // a drag isn't a click
+    if (!d || d.pan || e.button !== 0 || moved.current) return;
 
     const r = wrapRef.current.getBoundingClientRect();
-    const [ix, iy] = toImage(e.clientX - r.left, e.clientY - r.top);
-    if (ix < 0 || iy < 0 || ix > imageWidth || iy > imageHeight) return;
+    const [ix, iy] = toSource(e.clientX - r.left, e.clientY - r.top);
+    if (ix < 0 || iy < 0 || ix > srcW || iy > srcH) return;
     onPlace([ix, iy]);
   }
 
-  /* The loupe reads from the decoded image, not the scaled element, so
-     it shows real pixels rather than a blurry enlargement of a blur. */
-  function drawLoupe(px, py) {
-    const cv = loupeRef.current;
-    if (!cv || !img) return;
-    const ctx = cv.getContext("2d");
-    const [ix, iy] = toImage(px, py);
-    const span = LOUPE / LOUPE_ZOOM;
-
-    ctx.imageSmoothingEnabled = false;
-    ctx.fillStyle = "#fff";
-    ctx.fillRect(0, 0, LOUPE, LOUPE);
-    ctx.drawImage(img, ix - span / 2, iy - span / 2, span, span, 0, 0, LOUPE, LOUPE);
-
-    ctx.strokeStyle = "#dc2626";
-    ctx.lineWidth = 1;
-    ctx.beginPath();
-    ctx.moveTo(LOUPE / 2, 0); ctx.lineTo(LOUPE / 2, LOUPE);
-    ctx.moveTo(0, LOUPE / 2); ctx.lineTo(LOUPE, LOUPE / 2);
-    ctx.stroke();
-  }
-
-  const pct = Math.round(view.scale * 100);
+  const loading = !source && !pdf.error;
 
   return (
     <div className="cv">
@@ -158,43 +217,12 @@ export default function CalibrationView({
         onContextMenu={(e) => e.preventDefault()}
         onAuxClick={(e) => e.preventDefault()}
       >
-        {img && (
-          <img
-            src={src}
-            alt="Site plan"
-            draggable={false}
-            style={{
-              position: "absolute",
-              left: view.x, top: view.y,
-              width: imageWidth * view.scale,
-              height: imageHeight * view.scale,
-              imageRendering: view.scale > 2 ? "pixelated" : "auto",
-            }}
-          />
-        )}
+        <canvas ref={canvasRef} />
 
-        {points.map((p, i) => {
-          const [sx, sy] = toScreen(p[0], p[1]);
-          return (
-            <span key={i} className={mode === "one" ? "cv-pin ref" : "cv-pin"}
-                  style={{ left: sx, top: sy }}>
-              {mode === "one" ? (pinLabel || "\u25CE") : i + 1}
-            </span>
-          );
-        })}
+        {loading && <div className="cv-wait">Rendering the plan&hellip;</div>}
+        {pdf.error && <div className="cv-wait err">{pdf.error}</div>}
 
-        {points.length === 2 && (
-          <svg className="cv-line">
-            <line
-              x1={toScreen(points[0][0], points[0][1])[0]}
-              y1={toScreen(points[0][0], points[0][1])[1]}
-              x2={toScreen(points[1][0], points[1][1])[0]}
-              y2={toScreen(points[1][0], points[1][1])[1]}
-            />
-          </svg>
-        )}
-
-        {cursor && (
+        {cursor && source && (
           <canvas
             ref={loupeRef}
             className="cv-loupe"
@@ -210,9 +238,10 @@ export default function CalibrationView({
 
       <div className="cv-bar">
         <button onClick={() => setView((v) => ({ ...v, scale: Math.min(40, v.scale * 1.6) }))}>+</button>
-        <button onClick={() => setView((v) => ({ ...v, scale: Math.max(0.05, v.scale / 1.6) }))}>&minus;</button>
+        <button onClick={() => setView((v) => ({ ...v, scale: Math.max(0.02, v.scale / 1.6) }))}>&minus;</button>
         <button onClick={fit}>Fit</button>
-        <span className="cv-zoom">{pct}%</span>
+        <span className="cv-zoom">{Math.round(view.scale * 100)}%</span>
+        {isPdf && <span className="cv-vector">vector</span>}
         <span className="cv-hint">Scroll to zoom &middot; right or middle drag to pan &middot; left click to place</span>
       </div>
     </div>
@@ -224,14 +253,11 @@ const CSS = `
 .cv-stage { position: relative; height: 340px; border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden; background: #f1f5f9;
   cursor: crosshair; touch-action: none; user-select: none; }
-.cv-stage img { pointer-events: none; }
-.cv-pin { position: absolute; transform: translate(-50%, -50%); width: 22px; height: 22px;
-  border-radius: 50%; background: #dc2626; color: #fff; font-size: 11px; font-weight: 700;
-  display: flex; align-items: center; justify-content: center; border: 2px solid #fff;
-  box-shadow: 0 1px 5px rgba(0,0,0,.45); pointer-events: none; z-index: 3; }
-.cv-pin.ref { background: var(--accent); font-size: 13px; }
-.cv-line { position: absolute; inset: 0; width: 100%; height: 100%; pointer-events: none; z-index: 2; }
-.cv-line line { stroke: #dc2626; stroke-width: 2; stroke-dasharray: 7 5; }
+.cv-stage.panning { cursor: grabbing; }
+.cv-stage canvas { display: block; width: 100%; height: 100%; }
+.cv-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
+  font-size: 12.5px; color: var(--muted); pointer-events: none; }
+.cv-wait.err { color: var(--err-text); font-weight: 600; padding: 20px; text-align: center; }
 .cv-loupe { position: absolute; z-index: 4; pointer-events: none; border-radius: 50%;
   border: 2px solid var(--white); box-shadow: 0 3px 12px rgba(0,0,0,.35); background: #fff; }
 .cv-bar { display: flex; align-items: center; gap: 6px; }
@@ -239,7 +265,9 @@ const CSS = `
   border-radius: 6px; cursor: pointer; font: 700 13px inherit; color: var(--text); }
 .cv-bar button:hover { border-color: var(--accent); color: var(--accent); }
 .cv-bar button:nth-child(3) { width: auto; padding: 0 12px; font-size: 12px; }
-.cv-zoom { font-size: 11.5px; font-weight: 700; color: var(--accent); min-width: 48px; }
-.cv-stage.panning { cursor: grabbing; }
+.cv-zoom { font-size: 11.5px; font-weight: 700; color: var(--accent); min-width: 46px; }
+.cv-vector { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border);
+  border-radius: 4px; padding: 1px 6px; }
 .cv-hint { font-size: 11px; color: var(--muted); margin-left: auto; }
 `;

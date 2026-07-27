@@ -2,6 +2,7 @@ import { useState, useRef, useEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getBasemap, saveBasemap, removeBasemap, uploadBasemap, readImageSize } from "../../api/basemap.js";
 import { pdfPageCount } from "./pdfToImage.js";
+import CalibrationView from "./CalibrationView.jsx";
 
 /* Getting the canvas ready to draw on.
 
@@ -32,7 +33,6 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
   const [calPts, setCalPts] = useState([]);
   const [calDist, setCalDist] = useState("");
   const [statedScale, setStatedScale] = useState(basemap?.Stated_Scale || "");
-  const previewRef = useRef(null);
 
   // reference
   const [refE, setRefE] = useState(basemap?.Ref_Easting ?? project?.Eastings ?? "");
@@ -91,25 +91,6 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
     } catch (e2) {
       setError(e2.message);
     } finally { setBusy(false); setProgress(0); }
-  }
-
-  /* Calibration: two points on the plan and the real distance between
-     them. Deriving the scale beats trusting the drawing's stated one,
-     which stops being true the moment it's printed to another size. */
-  function clickPreview(e) {
-    if (step !== "scale" && step !== "ref") return;
-    const img = previewRef.current;
-    if (!img) return;
-    const r = img.getBoundingClientRect();
-    const px = ((e.clientX - r.left) / r.width) * (basemap?.Image_Width || 1);
-    const py = ((e.clientY - r.top) / r.height) * (basemap?.Image_Height || 1);
-
-    if (step === "scale") {
-      setCalPts((p) => (p.length >= 2 ? [[px, py]] : [...p, [px, py]]));
-    } else {
-      const m = mpp || 1;
-      setRefPt([+(px * m).toFixed(2), +(py * m).toFixed(2)]);
-    }
   }
 
   const calPx = calPts.length === 2
@@ -264,23 +245,17 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
             <>
               <p className="bs-hint">
                 Click two points a known distance apart &mdash; a scale bar, a plot
-                frontage, anything dimensioned &mdash; then type that distance.
+                frontage, anything dimensioned &mdash; then type that distance. Zoom in
+                first: every measurement on the site inherits this one, so it&rsquo;s worth
+                placing the points on the exact pixel.
               </p>
-              <div className="bs-preview" onClick={clickPreview}>
-                <img ref={previewRef} src={basemap.Image_Url} alt="Site plan" />
-                {calPts.map((p, i) => (
-                  <span key={i} className="bs-pin" style={{
-                    left: `${(p[0] / basemap.Image_Width) * 100}%`,
-                    top: `${(p[1] / basemap.Image_Height) * 100}%`,
-                  }}>{i + 1}</span>
-                ))}
-                {calPts.length === 2 && (
-                  <svg className="bs-line" viewBox={`0 0 ${basemap.Image_Width} ${basemap.Image_Height}`}
-                       preserveAspectRatio="none">
-                    <line x1={calPts[0][0]} y1={calPts[0][1]} x2={calPts[1][0]} y2={calPts[1][1]} />
-                  </svg>
-                )}
-              </div>
+              <CalibrationView
+                src={basemap.Image_Url}
+                imageWidth={basemap.Image_Width}
+                imageHeight={basemap.Image_Height}
+                points={calPts}
+                onPlace={(pt) => setCalPts((p) => (p.length >= 2 ? [pt] : [...p, pt]))}
+              />
               <div className="bs-row">
                 <div className="fld w-sm">
                   <label htmlFor="bs-dist">Distance between them</label>
@@ -300,7 +275,19 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
                   {derivedMpp ? (
                     <>
                       <strong>1 px = {derivedMpp.toFixed(4)} m</strong>
-                      <span>roughly 1:{impliedScale}</span>
+                      <span>roughly 1:{impliedScale} &middot; measured over {Math.round(calPx)} px</span>
+                      {calPx > 0 && calPx < 120 && (
+                        <span className="bs-warn">
+                          Short baseline &mdash; 1px of error here is about{" "}
+                          {((1 / calPx) * 100).toFixed(1)}% across the whole drawing.
+                          Zoom in, or measure a longer known distance.
+                        </span>
+                      )}
+                      {calPx >= 400 && (
+                        <span className="bs-good">
+                          Good baseline &mdash; error stays under {(100 / calPx).toFixed(2)}%
+                        </span>
+                      )}
                       {statedScale && impliedScale &&
                         Math.abs(impliedScale - Number(statedScale.replace(/[^0-9]/g, ""))) >
                           Number(statedScale.replace(/[^0-9]/g, "")) * 0.05 && (
@@ -327,15 +314,17 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
                 benchmark, the POC &mdash; and enter its coordinates. One tie point is
                 enough, since the plan is already true to scale and north.
               </p>
-              <div className="bs-preview" onClick={clickPreview}>
-                <img ref={previewRef} src={basemap.Image_Url} alt="Site plan" />
-                {refPt && mpp && (
-                  <span className="bs-pin ref" style={{
-                    left: `${(refPt[0] / mpp / basemap.Image_Width) * 100}%`,
-                    top: `${(refPt[1] / mpp / basemap.Image_Height) * 100}%`,
-                  }}>&#9678;</span>
-                )}
-              </div>
+              <CalibrationView
+                src={basemap.Image_Url}
+                imageWidth={basemap.Image_Width}
+                imageHeight={basemap.Image_Height}
+                mode="one"
+                points={refPt && mpp ? [[refPt[0] / mpp, refPt[1] / mpp]] : []}
+                onPlace={(pt) => setRefPt([
+                  +(pt[0] * (mpp || 1)).toFixed(2),
+                  +(pt[1] * (mpp || 1)).toFixed(2),
+                ])}
+              />
               <div className="bs-row">
                 <div className="fld w-sm">
                   <label htmlFor="bs-e">Easting</label>
@@ -473,6 +462,7 @@ const CSS = `
 .bs-result strong { font-size: 13.5px; color: var(--accent); }
 .bs-result span { color: var(--muted); font-size: 11.5px; }
 .bs-warn { color: var(--warn-text) !important; font-weight: 600; }
+.bs-good { color: var(--ok-text) !important; font-weight: 600; }
 .bs-note { color: var(--muted); font-style: italic; }
 .bs-await { color: var(--muted); font-style: italic; }
 .bs-import input[type=file] { font-size: 12.5px; }

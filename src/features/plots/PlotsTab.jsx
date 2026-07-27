@@ -114,8 +114,7 @@ const COLS = (cfg, typeName, hpName) => [
   { key: "sel",    label: "",             width: 38,  type: "none" },
   { key: "ref",    label: "Plot ref",     width: 140, type: "text",  raw: (p) => p.Plot_Ref || "" },
   { key: "num",    label: "Plot",         width: 80,  type: "text",  raw: (p) => p.Plot_Number },
-  { key: "type",   label: "House type",   width: 190, type: "multi", raw: (p) => p.Property_Config_ID },
-  { key: "beds",   label: "Beds",         width: 74,  type: "num",   align: "right", raw: (p) => cfg(p.Property_Config_ID)?.Bedrooms ?? null },
+  { key: "type",   label: "House type",   width: 230, type: "multi", raw: (p) => p.Property_Config_ID },
   { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Load ?? null },
   { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
   { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
@@ -494,8 +493,7 @@ export default function PlotsTab({ projectId, projectRef }) {
                               onChange={() => setSelected((s) => on ? s.filter((x) => x !== p.Plot_ID) : [...s, p.Plot_ID])} />
                           ) : col.key === "ref" ? <span className="mono ref">{p.Plot_Ref || "\u2014"}</span>
                             : col.key === "num" ? <span className="mono">{p.Plot_Number}</span>
-                            : col.key === "type" ? (c ? <><span className="code-chip">{c.Code}</span> {typeName(c.Property_Type_ID)}</> : "\u2014")
-                            : col.key === "beds" ? (c?.Bedrooms ?? "\u2014")
+                            : col.key === "type" ? (c ? <><span className="code-chip">{c.Code}</span> {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}</> : "\u2014")
                             : col.key === "kva" ? (p.KVA_Load ?? "\u2014")
                             : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")

@@ -25,17 +25,22 @@ const COLS = [
   { key: "sel",     label: "",           width: 38,  type: "none", raw: () => "" },
   { key: "project", label: "Project",    width: 110, type: "multi", raw: (r) => r._projectId },
   { key: "site",    label: "Site",       width: 180, type: "text",  raw: (r) => r._siteName || "" },
-  { key: "plot",    label: "Plot",       width: 84,  type: "text",  raw: (r) => r._plotNumber || "" },
-  { key: "utility", label: "Utility",    width: 150, type: "multi", raw: (r) => r.Utility_ID },
+  { key: "plot",    label: "Plot",       width: 80,  type: "text",  align: "left", raw: (r) => r._plotNumber || "" },
+  { key: "utility", label: "Utility",    width: 140, type: "multi", raw: (r) => r.Utility_ID },
   { key: "prog",    label: "Programmed", width: 128, type: "date", raw: (r) => r.Programmed_Date },
-  { key: "laid",    label: "As laid",    width: 128, type: "date", raw: (r) => r.As_Laid_Date },
   { key: "conn",    label: "Connected",  width: 128, type: "date", raw: (r) => r.Connection_Date },
+  { key: "laid",    label: "As laid",    width: 128, type: "date", raw: (r) => r.As_Laid_Date },
+  { key: "outcome", label: "Outcome",    width: 150, type: "multi", raw: (r) => r.Visit_Outcome_ID },
+  { key: "pack",    label: "Status",     width: 140, type: "multi", raw: (r) => r.Pack_Status_ID },
   { key: "meter",   label: "Meter no.",  width: 140, type: "text", raw: (r) => r.Meter_Number || "" },
   { key: "scsub",   label: "SC submitted", width: 128, type: "date", raw: (r) => r.Service_Card_Submission_Date },
-  { key: "pack",    label: "Pack",       width: 140, type: "multi", raw: (r) => r.Pack_Status_ID },
   { key: "adopter", label: "Adopter",    width: 140, type: "multi", raw: (r) => r.IDNO_ID },
   { key: "av",      label: "AV value",   width: 104, type: "num",  align: "right", raw: (r) => r.AV_Value ?? null },
 ];
+
+/* Grouping by a field makes that column redundant — the heading already
+   says it, so showing it repeats the same value down every row. */
+const GROUP_HIDES = { project: ["project", "site"], region: [], utility: ["utility"], date: ["prog"] };
 
 const BULK_DATES = [
   ["Programmed_Date", "Programmed"],
@@ -141,7 +146,6 @@ export default function PlotConnectionsPage() {
 
   const stats = useMemo(() => ({
     total: shown.length,
-    laid: shown.filter((r) => r.As_Laid_Date).length,
     connected: shown.filter((r) => r.Connection_Date).length,
   }), [shown]);
 
@@ -159,6 +163,9 @@ export default function PlotConnectionsPage() {
     shown.forEach((r) => { const k = key(r); if (!m.has(k)) m.set(k, []); m.get(k).push(r); });
     return [...m].sort((a, b) => a[0].localeCompare(b[0], undefined, { numeric: true }));
   }, [shown, groupBy, lookups]);
+
+  const hidden = GROUP_HIDES[groupBy] || [];
+  const cols = COLS.filter((c) => !hidden.includes(c.key));
 
   const activeToolbar =
     !!(search || region || util || state || progFrom || progTo || hideLaid);
@@ -210,8 +217,8 @@ export default function PlotConnectionsPage() {
         <div>
           <h2>Plot connections</h2>
           <p className="tab-sub">
-            Every connection across all projects. Generate new ones from a project&rsquo;s
-            Plots tab; track and update them here.
+            Every connection across all projects. Add them with New Schedule, then
+            track and update them here.
           </p>
         </div>
         <div className="ph-actions">
@@ -287,7 +294,6 @@ export default function PlotConnectionsPage() {
       {conns.length > 0 && (
         <div className="conn-stats">
           <span className="cs-pill">{stats.total} connections</span>
-          <span className="cs-pill laid">{stats.laid} laid</span>
           <span className="cs-pill conn">{stats.connected} connected</span>
         </div>
       )}
@@ -314,10 +320,10 @@ export default function PlotConnectionsPage() {
       ) : (
         <div className="dt-wrap">
           <table className="dt">
-            <colgroup>{COLS.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}</colgroup>
+            <colgroup>{cols.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}</colgroup>
             <thead>
               <tr className="head-row">
-                {COLS.map((c) => (
+                {cols.map((c) => (
                   <th key={c.key} style={{ textAlign: c.align || "left" }}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.key === "sel" ? (
@@ -332,7 +338,7 @@ export default function PlotConnectionsPage() {
                 ))}
               </tr>
               <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
-                {COLS.map((c) => (
+                {cols.map((c) => (
                   <th key={c.key}>
                     {c.type !== "none" && (
                       <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
@@ -347,11 +353,11 @@ export default function PlotConnectionsPage() {
             </thead>
             <tbody>
               {shown.length === 0 ? (
-                <tr><td colSpan={COLS.length} className="no-rows">No connections match these filters.</td></tr>
+                <tr><td colSpan={cols.length} className="no-rows">No connections match these filters.</td></tr>
               ) : groups.flatMap(([label, list]) => [
                 ...(label ? [(
                   <tr className="grp-row" key={`g:${label}`}>
-                    <td colSpan={COLS.length}>
+                    <td colSpan={cols.length}>
                       {label} <span className="grp-count">{list.length}</span>
                     </td>
                   </tr>
@@ -361,24 +367,31 @@ export default function PlotConnectionsPage() {
                 const on = selected.includes(r.Plot_Utility_ID);
                 return (
                   <tr key={r.Plot_Utility_ID} className={on ? "row-sel" : r.Connection_Date ? "done" : ""}>
+                    {cols.some((c) => c.key === "sel") && (
                     <td className="mid">
                       <input type="checkbox" checked={on}
                         onChange={() => setSelected((s) => on ? s.filter((x) => x !== r.Plot_Utility_ID) : [...s, r.Plot_Utility_ID])} />
-                    </td>
-                    <td className="mono ref">{r._projectRef}</td>
-                    <td>{r._siteName}</td>
-                    <td className="mono strong">{r._plotNumber}</td>
-                    <td><span className="dot" style={{ background: u?.colour }} /> {u?.name}</td>
+                    </td>)}
+                    {!hidden.includes("project") && <td className="mono ref">{r._projectRef}</td>}
+                    {!hidden.includes("site") && <td>{r._siteName}</td>}
+                    <td className="mono strong plot-cell">{r._plotNumber}</td>
+                    {!hidden.includes("utility") && <td><span className="dot" style={{ background: u?.colour }} /> {u?.name}</td>}
+                    {!hidden.includes("prog") && (
                     <td><input className="in" type="date" value={r.Programmed_Date || ""}
-                      onChange={(e) => patch(r, "Programmed_Date", e.target.value)} /></td>
-                    <td><input className="in" type="date" value={r.As_Laid_Date || ""}
-                      onChange={(e) => patch(r, "As_Laid_Date", e.target.value)} /></td>
+                      onChange={(e) => patch(r, "Programmed_Date", e.target.value)} /></td>)}
                     <td><input className="in" type="date" value={r.Connection_Date || ""}
                       onChange={(e) => patch(r, "Connection_Date", e.target.value)} /></td>
-                    <td><input className="in mono" value={r.Meter_Number || ""}
-                      onChange={(e) => patch(r, "Meter_Number", e.target.value)} /></td>
-                    <td><input className="in" type="date" value={r.Service_Card_Submission_Date || ""}
-                      onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} /></td>
+                    <td><input className="in" type="date" value={r.As_Laid_Date || ""}
+                      onChange={(e) => patch(r, "As_Laid_Date", e.target.value)} /></td>
+                    <td>
+                      <select className="in" value={r.Visit_Outcome_ID ?? ""}
+                        onChange={(e) => patch(r, "Visit_Outcome_ID", e.target.value ? Number(e.target.value) : null)}>
+                        <option value="">&mdash;</option>
+                        {(lookups.visitOutcomes || []).map((v) => (
+                          <option key={v.Visit_Outcome_ID} value={v.Visit_Outcome_ID}>{v.Visit_Outcome}</option>
+                        ))}
+                      </select>
+                    </td>
                     <td>
                       <select className="in" value={r.Pack_Status_ID ?? ""}
                         onChange={(e) => patch(r, "Pack_Status_ID", e.target.value ? Number(e.target.value) : null)}>
@@ -388,6 +401,10 @@ export default function PlotConnectionsPage() {
                         ))}
                       </select>
                     </td>
+                    <td><input className="in mono" value={r.Meter_Number || ""}
+                      onChange={(e) => patch(r, "Meter_Number", e.target.value)} /></td>
+                    <td><input className="in" type="date" value={r.Service_Card_Submission_Date || ""}
+                      onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} /></td>
                     <td>
                       <select className="in" value={r.IDNO_ID ?? ""}
                         onChange={(e) => patch(r, "IDNO_ID", e.target.value ? Number(e.target.value) : null)}>
@@ -461,6 +478,8 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .dt .num { text-align: right; }
 .dt .mid { text-align: center; }
 .dt .strong { font-weight: 700; }
+/* Explicit, so it can't pick up alignment from a neighbouring rule */
+.dt .plot-cell { text-align: left !important; padding-left: 10px; }
 .dt .ref { color: var(--accent); font-weight: 600; }
 .dt tbody tr.row-sel { background: #fff7ed !important; }
 .dt tbody tr.done td:first-child { box-shadow: inset 3px 0 0 #059669; }

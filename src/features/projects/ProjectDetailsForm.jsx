@@ -23,12 +23,13 @@ const SITE_CSS = `
 .site-row .fld.w-coord { width: 104px; flex: none; }
 .site-row.second { margin-bottom: 12px; }
 .site-row .fld.w-count { width: 150px; flex: none; }
-.dv-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.dv-list { display: grid; grid-template-columns: repeat(auto-fit, minmax(280px, 1fr)); gap: 8px; }
 .dv { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border);
   border-left: 3px solid var(--border); border-radius: var(--radius); padding: 9px 13px;
-  min-width: 260px; }
+  min-width: 0; }
 .dv.main { border-left-color: var(--accent); background: var(--accent-light); }
-.dv-name { flex: 1; font-size: 13px; font-weight: 600; }
+.dv-name { flex: 1; min-width: 0; font-size: 13px; font-weight: 600;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .dv-tag { margin-left: 8px; font-size: 9px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; background: var(--accent); color: #fff; border-radius: 4px; padding: 1px 6px; }
 .dv-plots { font-size: 11.5px; font-weight: 700; color: var(--muted); background: var(--white);

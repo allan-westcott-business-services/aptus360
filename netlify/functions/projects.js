@@ -27,6 +27,13 @@ const SCOPE_COLUMNS = [
 /* An HTML form sends "" for an untouched field. Postgres rejects that for
    date, numeric and bigint columns — "invalid input syntax for type date".
    Empty means absent, so normalise to null at the boundary. */
+/* Computed fields like Auto_Plot_Count are added to the GET response, and
+   forms post the whole object back. Filter to real columns so a derived
+   value can't be mistaken for something writable. */
+const WRITABLE = new Set(PROJECT_COLUMNS.split(",").filter((c) => c !== "Project_ID"));
+const onlyColumns = (obj) =>
+  Object.fromEntries(Object.entries(obj).filter(([k]) => WRITABLE.has(k)));
+
 function nullEmpty(obj) {
   const out = {};
   for (const [k, v] of Object.entries(obj)) {
@@ -95,7 +102,7 @@ export default async function handler(req, context) {
 
       const { data: created, error } = await db
         .from("Project")
-        .insert(nullEmpty(project))
+        .insert(onlyColumns(nullEmpty(project)))
         .select(PROJECT_COLUMNS)
         .single();
       if (error) throw error;
@@ -116,7 +123,7 @@ export default async function handler(req, context) {
 
       const { data: updated, error } = await db
         .from("Project")
-        .update(nullEmpty(changes))
+        .update(onlyColumns(nullEmpty(changes)))
         .eq("Project_ID", id)
         .select(PROJECT_COLUMNS)
         .single();

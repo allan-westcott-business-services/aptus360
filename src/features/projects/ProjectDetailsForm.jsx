@@ -20,6 +20,8 @@ const SITE_CSS = `
 /* Sized to their content: "North West" and a six-figure grid reference */
 .site-row .fld.w-region { width: 152px; flex: none; }
 .site-row .fld.w-coord { width: 104px; flex: none; }
+.site-row.second { margin-bottom: 12px; }
+.site-row .fld.w-count { width: 150px; flex: none; }
 @media (max-width: 900px) { .site-row { flex-wrap: wrap; } }
 `;
 
@@ -53,7 +55,9 @@ export default function ProjectDetailsForm({ projectId }) {
     setSaving(true);
     try {
       const before = f.Project_Status_ID;
-      await updateProject(f.Project_ID, f);
+      /* Auto_Plot_Count is derived, not stored — strip it before saving. */
+      const { Auto_Plot_Count, ...payload } = f;
+      await updateProject(f.Project_ID, payload);
       const fresh = await getProject(f.Project_ID);
       const { scopes: _ignored = [], ...rest } = fresh;
       setF(rest);
@@ -115,6 +119,21 @@ export default function ProjectDetailsForm({ projectId }) {
         </Banner>
       )}
 
+      <Section title="Customer">
+        <div className="grid6">
+          <Field label="Customer branch" span={3}>
+            <Select value={f.Branch_ID} onChange={set("Branch_ID")}>
+              <option value="">&mdash; None &mdash;</option>
+              {(lookups.branches || []).map((b) => (
+                <option key={b.Branch_ID} value={b.Branch_ID}>
+                  {b.Branch_Dropdown || b.Branch_Name}
+                </option>
+              ))}
+            </Select>
+          </Field>
+        </div>
+      </Section>
+
       <Section title="Status">
         <div className="grid6">
           <Field label="Project status" span={2}>
@@ -151,16 +170,6 @@ export default function ProjectDetailsForm({ projectId }) {
           </Field>
           
 
-          <Field label="Plot count" span={2} hint="Counted from plots">
-            <input value={f.Auto_Plot_Count ?? ""} disabled />
-          </Field>
-          <Field label="Min. plot call off" span={2}>
-            <input
-              type="number"
-              value={f.Minimum_Service_Call_Off ?? ""}
-              onChange={(e) => set("Minimum_Service_Call_Off")(e.target.value)}
-            />
-          </Field>
         </div>
       </Section>
 
@@ -192,10 +201,21 @@ export default function ProjectDetailsForm({ projectId }) {
           </div>
         </div>
 
-        <div className="grid6">
-          <Field label="Site contact" span={3}>
-            <input value={f.Site_Contact || ""} onChange={(e) => set("Site_Contact")(e.target.value)} />
-          </Field>
+
+        <div className="site-row second">
+          <div className="fld w-count">
+            <label>Plot count</label>
+            <input value={f.Auto_Plot_Count ?? ""} disabled />
+            <p className="hint">Counted from plots</p>
+          </div>
+          <div className="fld w-count">
+            <label>Min. plot call off</label>
+            <input
+              type="number"
+              value={f.Minimum_Service_Call_Off ?? ""}
+              onChange={(e) => set("Minimum_Service_Call_Off")(e.target.value)}
+            />
+          </div>
         </div>
       </Section>
 

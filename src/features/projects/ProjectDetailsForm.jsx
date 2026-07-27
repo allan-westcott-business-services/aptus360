@@ -37,6 +37,15 @@ const SITE_CSS = `
 .dv-none { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 0; }
 .dv-warn { font-size: 11.5px; color: #92400e; font-weight: 600; margin: 10px 0 0; }
 .dv-note { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
+.pts-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(220px, 1fr)); gap: 14px; }
+.pts-grid .span2 { grid-column: span 2; }
+.pts-flag { margin-left: 7px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; background: var(--warn-bg); color: var(--warn-text);
+  border: 1px solid var(--warn-border); border-radius: 4px; padding: 1px 6px; }
+.pts-flag.warn { background: #fee2e2; color: #991b1b; border-color: #fecaca; }
+.pts-total { font-weight: 700; color: var(--accent); background: var(--accent-light) !important; }
+.pts-total.overridden { color: #92400e; background: var(--warn-bg) !important;
+  border-color: var(--warn-border) !important; }
 .pts-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .pts-row .fld.w-pts { width: 132px; flex: none; }
 .pts-row .pts-manual { color: var(--accent); font-weight: 700; }
@@ -108,6 +117,18 @@ export default function ProjectDetailsForm({ projectId }) {
     .find((s) => s.Project_Status_ID === Number(f.Project_Status_ID));
   const stage = currentStatus?.Stage ?? STAGES.TENDER;
   const isTenderStage = (x) => x === STAGES.TENDER;
+
+  /* "Electric = 15, Gas = 1, Water = 1" — the original showed the working,
+     which is the difference between a number you trust and one you query. */
+  const ruleBreakdown = Object.entries(f.Points_Breakdown || {})
+    .map(([k, v]) => `${k} = ${v}`).join(", ");
+  const designBreakdown = scopeDesigns
+    .map((d) => {
+      const u = (lookups.utilities || []).find((x) => x.Utility_ID === d.Utility_ID);
+      const v = d.Base_Points_Overridden ? d.Manual_Base_Points : d.Auto_Base_Points;
+      return u ? `${u.Utility} = ${v ?? 0}` : null;
+    })
+    .filter(Boolean).join(", ");
   const statusOptions = isTenderStage(stage)
     ? workflowOptions({
         statuses: lookups.projectStatuses || [],
@@ -218,6 +239,11 @@ export default function ProjectDetailsForm({ projectId }) {
             <label>Eastings</label>
             <input className="mono" value={f.Eastings ?? ""} onChange={(e) => set("Eastings")(e.target.value)} />
           </div>
+          <div className="fld w-region">
+            <label>Postcode</label>
+            <input className="mono" value={f.Postcode || ""}
+              onChange={(e) => set("Postcode")(e.target.value.toUpperCase())} />
+          </div>
           <div className="fld w-coord">
             <label>Northings</label>
             <input className="mono" value={f.Northings ?? ""} onChange={(e) => set("Northings")(e.target.value)} />
@@ -265,48 +291,93 @@ export default function ProjectDetailsForm({ projectId }) {
       </Section>
 
       <Section title="Points">
-        <div className="pts-row">
-          <div className="fld w-pts">
-            <label>Base points</label>
-            <input value={f.Manual_Base_Points ?? f.Tender_Base_Points ?? ""} disabled
-              className={f.Manual_Base_Points != null ? "pts-manual" : ""} />
+        <div className="pts-grid">
+          <div className="fld">
+            <label>Total design points (auto)</label>
+            <input value={f.Total_Design_Points ?? ""} disabled />
             <p className="hint">
-              {f.Manual_Base_Points != null ? "Overridden" : "From the plot count band"}
+              Always calculated from the outline designs &mdash; not editable.
+              {designBreakdown && <><br /><strong>{designBreakdown}</strong></>}
             </p>
           </div>
-          <div className="fld w-pts">
-            <label>Override</label>
-            <input type="number" step="0.5" value={f.Manual_Base_Points ?? ""}
-              placeholder="\u2014"
-              onChange={(e) => set("Manual_Base_Points")(e.target.value === "" ? null : e.target.value)} />
-            <p className="hint">Blank to use the band</p>
+
+          <div className="fld">
+            <label>Tender base points (auto)</label>
+            <input value={f.Tender_Base_Points ?? ""} disabled />
+            <p className="hint">
+              From the plot count and which utilities are on this project.
+              {ruleBreakdown && <><br /><strong>{ruleBreakdown}</strong></>}
+            </p>
           </div>
-          <div className="fld w-pts">
-            <label>Total points</label>
+
+          <div className="fld">
+            <label>
+              Tender base points (manual)
+              {f.Manual_Base_Points != null && <span className="pts-flag">Manual</span>}
+            </label>
+            <input type="number" step="0.5" value={f.Manual_Base_Points ?? ""} placeholder="\u2014"
+              onChange={(e) => set("Manual_Base_Points")(e.target.value === "" ? null : e.target.value)} />
+            <p className="hint">
+              Overrides the auto figure when set. Leave blank to use the calculated value.
+            </p>
+          </div>
+
+          <div className="fld">
+            <label>
+              Tender total points
+              {f.Manual_Total_Points != null && <span className="pts-flag warn">Overridden</span>}
+            </label>
             <input value={f.Tender_Total_Points ?? ""} disabled
               className={f.Manual_Total_Points != null ? "pts-total overridden" : "pts-total"} />
             <p className="hint">
-              {f.Manual_Total_Points != null ? "Set manually" : "Base, rules and design points"}
+              {f.Manual_Total_Points != null
+                ? "Set manually \u2014 the calculation is ignored."
+                : `Design ${f.Total_Design_Points ?? 0} + base ${
+                    f.Manual_Base_Points != null
+                      ? `${f.Manual_Base_Points} (manual)`
+                      : (f.Tender_Base_Points ?? 0)
+                  }`}
             </p>
           </div>
-          <div className="fld w-pts">
+
+          <div className="fld">
             <label>Override total</label>
-            <input type="number" step="0.5" placeholder="\u2014"
-              value={f.Manual_Total_Points ?? ""}
+            <input type="number" step="0.5" value={f.Manual_Total_Points ?? ""} placeholder="\u2014"
               onChange={(e) => set("Manual_Total_Points")(e.target.value === "" ? null : e.target.value)} />
-            <p className="hint">Blank to calculate</p>
+            <p className="hint">Replaces the whole calculation</p>
           </div>
-          <div className="fld grow">
-            <label>Reason</label>
+
+          <div className="fld span2">
+            <label>Reason for override</label>
             <input value={f.Points_Note || ""} placeholder="Why the score was adjusted"
               onChange={(e) => set("Points_Note")(e.target.value)} />
           </div>
-          <p className="pts-note">
-            Total is the base, each utility&rsquo;s rule and the outline design points.
-            Overriding the total replaces all of that &mdash; worth noting why.
-            Bands and rules live in Admin &rarr; Points Configuration.
-          </p>
         </div>
+      </Section>
+
+      <Section title="Quote">
+        <div className="grid6">
+          <Field label="Date sent" span={2} hint="When the quote went to the customer">
+            <input type="date" value={f.Date_Sent || ""}
+              onChange={(e) => set("Date_Sent")(e.target.value)} />
+          </Field>
+          <Field label="Quote type" span={2}>
+            <Select value={f.Quote_Type_ID} onChange={set("Quote_Type_ID")}>
+              <option value="">&mdash;</option>
+              {(lookups.quoteTypes || []).map((q) => (
+                <option key={q.Quote_Type_ID} value={q.Quote_Type_ID}>{q.Quote_Type}</option>
+              ))}
+            </Select>
+          </Field>
+          <Field label="I &amp; C" span={2}>
+            <div className="toggle-row">
+              <Toggle checked={!!f.I_and_C} onChange={set("I_and_C")} label="Industrial &amp; commercial" />
+            </div>
+          </Field>
+        </div>
+        <p className="hint">
+          Quote values are held per outline design, since each is quoted and won separately.
+        </p>
       </Section>
 
       <Section title="Award details">

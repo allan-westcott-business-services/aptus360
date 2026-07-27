@@ -17,7 +17,8 @@ export default function DevelopersSection({ projectId, onChanged }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [adding, setAdding] = useState(false);
-  const [draft, setDraft] = useState({ Branch_ID: "", Is_Main: false, Notes: "" });
+  const [codeEdit, setCodeEdit] = useState({});
+  const [draft, setDraft] = useState({ Branch_ID: "", Developer_Code: "", Is_Main: false, Notes: "" });
 
   async function load() {
     try {
@@ -46,9 +47,10 @@ export default function DevelopersSection({ projectId, onChanged }) {
         Customer_ID: b?.Customer_ID ?? null,
         Branch_ID: Number(draft.Branch_ID),
         Is_Main: rows.length === 0 ? true : !!draft.Is_Main,
+        Developer_Code: (draft.Developer_Code || "").toUpperCase() || null,
         Notes: draft.Notes || null,
       });
-      setDraft({ Branch_ID: "", Is_Main: false, Notes: "" });
+      setDraft({ Branch_ID: "", Developer_Code: "", Is_Main: false, Notes: "" });
       setAdding(false);
       setError("");
       await load();
@@ -100,7 +102,15 @@ export default function DevelopersSection({ projectId, onChanged }) {
             <div className="fld grow">
               <label>Customer branch <span className="req">*</span></label>
               <select value={draft.Branch_ID}
-                onChange={(e) => setDraft((d) => ({ ...d, Branch_ID: e.target.value }))}>
+                onChange={(e) => {
+                  const b = branch(Number(e.target.value));
+                  const cust = (lookups?.customers || []).find((c) => c.Customer_ID === b?.Customer_ID);
+                  setDraft((d) => ({
+                    ...d,
+                    Branch_ID: e.target.value,
+                    Developer_Code: d.Developer_Code || cust?.Customer_Code || "",
+                  }));
+                }}>
                 <option value="">&mdash; Select &mdash;</option>
                 {(lookups.branches || [])
                   .filter((b) => !rows.some((r) => r.Branch_ID === b.Branch_ID))
@@ -110,6 +120,12 @@ export default function DevelopersSection({ projectId, onChanged }) {
                     </option>
                   ))}
               </select>
+            </div>
+            <div className="fld">
+              <label>Code</label>
+              <input className="dev-code" maxLength={4} placeholder="AH"
+                value={draft.Developer_Code}
+                onChange={(e) => setDraft((d) => ({ ...d, Developer_Code: e.target.value.toUpperCase() }))} />
             </div>
             <div className="fld grow">
               <label>Notes</label>
@@ -126,7 +142,11 @@ export default function DevelopersSection({ projectId, onChanged }) {
               <button className="btn accent sm" onClick={add}>+ Add</button>
             </div>
           </div>
-          {rows.length === 0 && <p className="hint">The first developer is the main one.</p>}
+          <p className="hint">
+            {rows.length === 0
+              ? "The first developer is the main one."
+              : "The code prefixes this developer's plot numbers \u2014 two branches of the same customer need different codes."}
+          </p>
         </div>
       )}
 
@@ -143,6 +163,26 @@ export default function DevelopersSection({ projectId, onChanged }) {
                 </span>
                 {d.Notes && <span className="dev-note">{d.Notes}</span>}
               </div>
+              <input
+                className="dev-code inline"
+                maxLength={4}
+                placeholder="\u2014"
+                aria-label={`Code for ${branchLabel(d.Branch_ID)}`}
+                value={codeEdit[d.Project_Developer_ID] ?? d.Developer_Code ?? ""}
+                onChange={(e) => setCodeEdit((c) => ({
+                  ...c, [d.Project_Developer_ID]: e.target.value.toUpperCase(),
+                }))}
+                onBlur={async (e) => {
+                  const v = e.target.value.toUpperCase().trim();
+                  if (v === (d.Developer_Code ?? "")) return;
+                  try {
+                    await saveDeveloper(projectId, { Developer_Code: v || null }, d.Project_Developer_ID);
+                    setCodeEdit((c) => { const n = { ...c }; delete n[d.Project_Developer_ID]; return n; });
+                    await load();
+                    onChanged && onChanged();
+                  } catch (err) { setError(err.message); await load(); }
+                }}
+              />
               <span className="dev-plots">
                 {counts[d.Project_Developer_ID] || 0} plot{(counts[d.Project_Developer_ID] || 0) === 1 ? "" : "s"}
               </span>
@@ -176,6 +216,9 @@ const CSS = `
 .dev-main { flex: 1; min-width: 0; }
 .dev-name { display: block; font-size: 13px; font-weight: 700; }
 .dev-note { font-size: 11.5px; color: var(--muted); }
+.dev-code { width: 74px; font-family: ui-monospace, Menlo, monospace; font-weight: 700;
+  text-align: center; text-transform: uppercase; }
+.dev-code.inline { width: 62px; padding: 4px 6px; font-size: 12px; }
 .dev-plots { font-size: 12px; font-weight: 700; color: var(--muted);
   background: var(--white); border: 1px solid var(--border); border-radius: 999px; padding: 3px 11px; }
 .dev-act { display: flex; gap: 5px; }

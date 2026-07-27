@@ -14,6 +14,7 @@ const PROJECT_COLUMNS = [
   "Fire_Service_ID", "Heat_Pump_Model_ID", "Default_Heat_Source_ID",
   "Lay_Only_MU", "Minimum_Service_Call_Off", "Town_Council_ID", "County_Council_ID",
   "Tender_Base_Points", "Tender_Total_Points", "Manual_Base_Points",
+  "Total_Design_Points", "Points_Breakdown",
   "Manual_Total_Points", "Points_Note",
 ].join(",");
 

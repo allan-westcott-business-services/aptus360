@@ -16,7 +16,7 @@ export default function CustomersAdmin() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
-  const [custDraft, setCustDraft] = useState({ Customer_Name: "", Audacia_Customer_Name: "" });
+  const [custDraft, setCustDraft] = useState({ Customer_Name: "", Customer_Code: "", Audacia_Customer_Name: "" });
   const [addingCust, setAddingCust] = useState(false);
   const [editingCust, setEditingCust] = useState(false);
 
@@ -63,6 +63,7 @@ export default function CustomersAdmin() {
     try {
       await adminUpdate("Customer", current.Customer_ID, {
         Customer_Name: custDraft.Customer_Name,
+        Customer_Code: custDraft.Customer_Code ? custDraft.Customer_Code.toUpperCase() : null,
         Audacia_Customer_Name: custDraft.Audacia_Customer_Name || null,
       });
       setEditingCust(false);
@@ -113,7 +114,8 @@ export default function CustomersAdmin() {
       <h2 className="admin-title">Customers &amp; Branches</h2>
       <p className="ca-note">
         Projects are linked to a <strong>branch</strong>, not a customer &mdash; so every
-        customer needs at least one.
+        customer needs at least one. The code prefixes plot numbers where a site has
+        more than one developer.
       </p>
       {error && <Banner kind="error">{error}</Banner>}
 
@@ -138,6 +140,9 @@ export default function CustomersAdmin() {
               <input autoFocus placeholder="Customer name" value={custDraft.Customer_Name}
                 onChange={(e) => setCustDraft((d) => ({ ...d, Customer_Name: e.target.value }))}
                 onKeyDown={(e) => e.key === "Enter" && addCustomer()} />
+              <input placeholder="Code, e.g. AH" maxLength={4} className="ca-code"
+                value={custDraft.Customer_Code}
+                onChange={(e) => setCustDraft((d) => ({ ...d, Customer_Code: e.target.value.toUpperCase() }))} />
               <input placeholder="Audacia name (optional)" value={custDraft.Audacia_Customer_Name}
                 onChange={(e) => setCustDraft((d) => ({ ...d, Audacia_Customer_Name: e.target.value }))} />
               <div className="ca-add-actions">
@@ -162,6 +167,9 @@ export default function CustomersAdmin() {
                   <div className="ca-edit">
                     <input value={custDraft.Customer_Name}
                       onChange={(e) => setCustDraft((d) => ({ ...d, Customer_Name: e.target.value }))} />
+                    <input placeholder="Code" maxLength={4} className="ca-code"
+                      value={custDraft.Customer_Code}
+                      onChange={(e) => setCustDraft((d) => ({ ...d, Customer_Code: e.target.value.toUpperCase() }))} />
                     <input placeholder="Audacia name" value={custDraft.Audacia_Customer_Name}
                       onChange={(e) => setCustDraft((d) => ({ ...d, Audacia_Customer_Name: e.target.value }))} />
                     <button className="btn accent sm" onClick={saveCustomer}>Save</button>
@@ -170,7 +178,10 @@ export default function CustomersAdmin() {
                 ) : (
                   <>
                     <div>
-                      <h3>{current.Customer_Name}</h3>
+                      <h3>
+                        {current.Customer_Name}
+                        {current.Customer_Code && <span className="ca-codetag">{current.Customer_Code}</span>}
+                      </h3>
                       {current.Audacia_Customer_Name && (
                         <p className="ca-audacia">Audacia: {current.Audacia_Customer_Name}</p>
                       )}
@@ -178,6 +189,7 @@ export default function CustomersAdmin() {
                     <button className="row-edit" onClick={() => {
                       setCustDraft({
                         Customer_Name: current.Customer_Name || "",
+                        Customer_Code: current.Customer_Code || "",
                         Audacia_Customer_Name: current.Audacia_Customer_Name || "",
                       });
                       setEditingCust(true);
@@ -273,6 +285,10 @@ const CSS = `
 .ca-audacia { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
 .ca-edit { display: flex; gap: 7px; flex: 1; flex-wrap: wrap; }
 .ca-edit input { flex: 1; min-width: 140px; }
+.ca-code { max-width: 96px; font-family: ui-monospace, Menlo, monospace;
+  font-weight: 700; text-align: center; }
+.ca-codetag { margin-left: 9px; font-family: ui-monospace, Menlo, monospace; font-size: 11px;
+  font-weight: 700; background: var(--accent); color: #fff; border-radius: 4px; padding: 2px 7px; }
 .ca-bform { display: flex; gap: 8px; margin-bottom: 12px; }
 .ca-bform input { flex: 1; }
 .ca-bform select { width: auto; min-width: 130px; }

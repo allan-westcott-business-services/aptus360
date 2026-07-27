@@ -1,6 +1,6 @@
 import { supabase, json, fail } from "./_supabase.js";
 
-const D = "Project_Developer_ID,Project_ID,Customer_ID,Branch_ID,Is_Main,Plot_From,Plot_To,Notes";
+const D = "Project_Developer_ID,Project_ID,Customer_ID,Branch_ID,Is_Main,Developer_Code,Plot_From,Plot_To,Notes";
 const W = new Set(D.split(",").filter((x) => x !== "Project_Developer_ID"));
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)).map(([k, v]) => [k, v === "" ? null : v]));

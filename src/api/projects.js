@@ -102,6 +102,6 @@ export async function createRevision(projectId, carryScopeIds = [], copyPlots = 
     await delay(500);
     return { Project_ID: projectId + 1, Project_Ref: "2607.014", Revision: 1 };
   }
-  return http.post(`/projects/${projectId}?action=revision`,
+  return http.post(`/projects/${projectId}/revision`,
     { carry_scope_ids: carryScopeIds, copy_plots: copyPlots });
 }

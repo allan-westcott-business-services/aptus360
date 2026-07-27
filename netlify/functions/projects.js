@@ -147,22 +147,6 @@ export default async function handler(req, context) {
       return json(updated);
     }
 
-    /* Revision creation runs as one database function: several inserts
-       plus superseding the original, and a half-made revision would be
-       worse than none. */
-    if (req.method === "POST" && id && new URL(req.url).searchParams.get("action") === "revision") {
-      const { carry_scope_ids = [], copy_plots = true } = await req.json().catch(() => ({}));
-      const { data, error } = await db.rpc("create_project_revision", {
-        p_project: Number(id),
-        p_carry_scopes: carry_scope_ids.map(Number),
-        p_copy_plots: copy_plots,
-      });
-      if (error) throw error;
-      const { data: created } = await db.from("Project")
-        .select(PROJECT_COLUMNS).eq("Project_ID", data).single();
-      return json(created, 201);
-    }
-
     if (req.method === "DELETE" && id) {
       const { error } = await db.from("Project").delete().eq("Project_ID", id);
       if (error && error.code === "23503") {

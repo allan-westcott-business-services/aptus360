@@ -81,7 +81,7 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
 
   async function submit() {
     const miss = REQUIRED.filter(([k]) => !f[k]).map(([, l]) => l);
-    if (!quoteTypeIsBudget(f.Quote_Type_ID) && scopes.length === 0) miss.push("At least one scope");
+    if (!quoteTypeIsBudget(f.Quote_Type_ID) && scopes.length === 0) miss.push("At least one outline design");
     setErrors(miss);
     if (miss.length) return;
 
@@ -119,7 +119,7 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
         <div className="done-tick">&#10003;</div>
         <h3>Project {saved.Project_Ref} created</h3>
         <p>
-          {scopes.length} scope{scopes.length === 1 ? "" : "s"} added. It starts at Tender stage and can
+          {scopes.length} outline design{scopes.length === 1 ? "" : "s"} added. It starts at Tender stage and can
           be promoted once secured.
         </p>
         <div className="done-actions">
@@ -266,8 +266,8 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
       </Section>
 
       <Section
-        title="Scope"
-        intro="Pick the designs this project needs. Each becomes a scope that can be quoted, won or lost on its own."
+        title="Design"
+        intro="Pick the outline designs this project needs. Each can be quoted, won or lost on its own."
         right={<span className="sec-note">{quoteTypeIsBudget(f.Quote_Type_ID) ? "\u2014" : `${scopes.length} of 6 selected`}</span>}
       >
         <ScopePicker

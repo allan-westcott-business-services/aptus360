@@ -6,6 +6,7 @@ import Select from "../../components/Select.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getProject, updateProject } from "../../api/projects.js";
 import { listContacts, saveContact, deleteContact } from "../../api/stakeholders.js";
+import DevelopersSection from "./DevelopersSection.jsx";
 
 /* Everyone outside Aptus with a stake in the site: the authorities that
    have to be satisfied, and the developer's own people. */
@@ -93,6 +94,8 @@ export default function StakeholderTab({ projectId }) {
       <style>{CSS}</style>
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
+
+      <DevelopersSection projectId={projectId} />
 
       <Section
         title="Authorities"

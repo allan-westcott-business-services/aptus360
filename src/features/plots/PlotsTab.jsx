@@ -5,6 +5,7 @@ import { getLookups } from "../../api/lookups.js";
 import { listPlots, deletePlot } from "../../api/plots.js";
 import { getProject, updateProject } from "../../api/projects.js";
 import { generateConnections } from "../../api/connections.js";
+import { listDevelopers, assignPlots } from "../../api/developers.js";
 import { bulkUpdatePlots, bulkDeletePlots } from "../../api/plots.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import { UTILITIES as UTILS } from "../../lib/utilities.js";
@@ -115,6 +116,7 @@ const COLS = (cfg, typeName, hpName) => [
   { key: "ref",    label: "Plot ref",     width: 140, type: "text",  raw: (p) => p.Plot_Ref || "" },
   { key: "num",    label: "Plot",         width: 80,  type: "text",  raw: (p) => p.Plot_Number },
   { key: "type",   label: "House type",   width: 230, type: "multi", raw: (p) => p.Property_Config_ID },
+  { key: "dev",    label: "Developer",    width: 170, type: "multi", raw: (p) => p.Project_Developer_ID },
   { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Load ?? null },
   { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
   { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
@@ -141,13 +143,16 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [genOpen, setGenOpen] = useState(false);
   const [genBusy, setGenBusy] = useState(false);
   const [genMsg, setGenMsg] = useState("");
+  const [developers, setDevelopers] = useState([]);
+  const [bulkDev, setBulkDev] = useState("");
 
   async function load() {
     setLoading(true);
     try {
-      const [lk, res, proj] = await Promise.all([
-        getLookups(), listPlots(projectId), getProject(projectId),
+      const [lk, res, proj, devs] = await Promise.all([
+        getLookups(), listPlots(projectId), getProject(projectId), listDevelopers(projectId),
       ]);
+      setDevelopers(devs.rows || []);
       setLookups(lk);
       setPlots(res.rows || []);
       const d = {
@@ -201,6 +206,13 @@ export default function PlotsTab({ projectId, projectRef }) {
     }
   }
 
+  const devName = (id) => {
+    const d = developers.find((x) => x.Project_Developer_ID === id);
+    if (!d) return "\u2014";
+    const b = (lookups?.branches || []).find((x) => x.Branch_ID === d.Branch_ID);
+    return b ? (b.Branch_Dropdown || b.Branch_Name) : "\u2014";
+  };
+
   const hpName = (id) =>
     (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
 
@@ -215,6 +227,8 @@ export default function PlotsTab({ projectId, projectRef }) {
       }));
     if (key === "hp")
       return (lookups?.heatPumpModels || []).map((m) => ({ id: m.Heat_Pump_Model_ID, label: m.Model }));
+    if (key === "dev")
+      return developers.map((d) => ({ id: d.Project_Developer_ID, label: devName(d.Project_Developer_ID) }));
     return [];
   };
 
@@ -249,7 +263,11 @@ export default function PlotsTab({ projectId, projectRef }) {
     if (bulk.Self_Lay_Provider) changes.Self_Lay_Provider = bulk.Self_Lay_Provider === "y";
     setBulkBusy(true);
     try {
-      await bulkUpdatePlots(projectId, selected, changes);
+      if (bulkDev) {
+        await assignPlots(projectId, selected, bulkDev === "none" ? null : Number(bulkDev));
+        setBulkDev("");
+      }
+      if (Object.keys(changes).length) await bulkUpdatePlots(projectId, selected, changes);
       setBulk({ Property_Config_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
       setSelected([]);
       await load();
@@ -434,7 +452,18 @@ export default function PlotsTab({ projectId, projectRef }) {
                 onChange={(e) => setBulk((b) => ({ ...b, Self_Lay_Provider: e.target.value }))}>
                 <option value="">SLP&hellip;</option><option value="y">SLP: Yes</option><option value="n">SLP: No</option>
               </select>
-              <button className="btn accent" disabled={bulkBusy || !hasBulk} onClick={applyBulk}>
+              {developers.length > 1 && (
+                <select value={bulkDev} onChange={(e) => setBulkDev(e.target.value)}>
+                  <option value="">Developer&hellip;</option>
+                  {developers.map((d) => (
+                    <option key={d.Project_Developer_ID} value={d.Project_Developer_ID}>
+                      {devName(d.Project_Developer_ID)}
+                    </option>
+                  ))}
+                  <option value="none">&mdash; Unassign &mdash;</option>
+                </select>
+              )}
+              <button className="btn accent" disabled={bulkBusy || (!hasBulk && !bulkDev)} onClick={applyBulk}>
                 {bulkBusy ? "Applying\u2026" : "Apply"}
               </button>
               <button className="btn ghost danger" disabled={bulkBusy} onClick={deleteSelected}>Delete</button>
@@ -494,6 +523,7 @@ export default function PlotsTab({ projectId, projectRef }) {
                           ) : col.key === "ref" ? <span className="mono ref">{p.Plot_Ref || "\u2014"}</span>
                             : col.key === "num" ? <span className="mono">{p.Plot_Number}</span>
                             : col.key === "type" ? (c ? <><span className="code-chip">{c.Code}</span> {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}</> : "\u2014")
+                            : col.key === "dev" ? devName(p.Project_Developer_ID)
                             : col.key === "kva" ? (p.KVA_Load ?? "\u2014")
                             : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")

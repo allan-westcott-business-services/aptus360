@@ -27,6 +27,8 @@ const SITE_CSS = `
 .pts-row .pts-manual { color: var(--accent); font-weight: 700; }
 .pts-row .pts-total { font-weight: 700; color: var(--accent);
   background: var(--accent-light) !important; }
+.pts-row .pts-total.overridden { color: #92400e; background: var(--warn-bg) !important;
+  border-color: var(--warn-border) !important; }
 .pts-note { flex: 1; min-width: 220px; font-size: 11.5px; color: var(--muted);
   align-self: center; margin: 0; max-width: 46ch; }
 @media (max-width: 900px) { .site-row { flex-wrap: wrap; } }
@@ -243,13 +245,28 @@ export default function ProjectDetailsForm({ projectId }) {
           </div>
           <div className="fld w-pts">
             <label>Total points</label>
-            <input value={f.Tender_Total_Points ?? ""} disabled className="pts-total" />
-            <p className="hint">Base plus each scope&rsquo;s rule</p>
+            <input value={f.Tender_Total_Points ?? ""} disabled
+              className={f.Manual_Total_Points != null ? "pts-total overridden" : "pts-total"} />
+            <p className="hint">
+              {f.Manual_Total_Points != null ? "Set manually" : "Base, rules and design points"}
+            </p>
+          </div>
+          <div className="fld w-pts">
+            <label>Override total</label>
+            <input type="number" step="0.5" placeholder="\u2014"
+              value={f.Manual_Total_Points ?? ""}
+              onChange={(e) => set("Manual_Total_Points")(e.target.value === "" ? null : e.target.value)} />
+            <p className="hint">Blank to calculate</p>
+          </div>
+          <div className="fld grow">
+            <label>Reason</label>
+            <input value={f.Points_Note || ""} placeholder="Why the score was adjusted"
+              onChange={(e) => set("Points_Note")(e.target.value)} />
           </div>
           <p className="pts-note">
-            Recalculated by the database whenever plots, scopes, quote type or the
-            override change &mdash; configure the bands and rules in Admin &rarr; Points
-            Configuration.
+            Total is the base, each utility&rsquo;s rule and the outline design points.
+            Overriding the total replaces all of that &mdash; worth noting why.
+            Bands and rules live in Admin &rarr; Points Configuration.
           </p>
         </div>
       </Section>

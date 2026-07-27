@@ -21,7 +21,7 @@ const EDITABLE = [
 ];
 
 const OD_COLS = [
-  { key: "scope",   label: "Scope",         width: 200, type: "multi", raw: (s) => s.Utility_ID },
+  { key: "scope",   label: "Design",         width: 200, type: "multi", raw: (s) => s.Utility_ID },
   { key: "designer",label: "Designer",      width: 150, type: "multi", raw: (s) => s.Designer_ID },
   { key: "status",  label: "Design status", width: 150, type: "multi", raw: (s) => s.Design_Status_ID },
   { key: "rev",     label: "Rev",           width: 64,  type: "num",   raw: (s) => s.Revision ?? 0 },
@@ -102,7 +102,7 @@ export default function OutlineDesignsTab({ projectId }) {
 
   async function removeScope(s) {
     const u = utilityById(s.Utility_ID);
-    if (!window.confirm(`Remove the ${u?.name} design?`)) return;
+    if (!window.confirm(`Remove the ${u?.name} outline design?`)) return;
     try {
       await deleteScope(s.Project_Scope_ID);
       setScopes((x) => x.filter((r) => r.Project_Scope_ID !== s.Project_Scope_ID));
@@ -199,9 +199,9 @@ export default function OutlineDesignsTab({ projectId }) {
 
       <Banner kind={allDone ? "ok" : "muted"}>
         <strong>Good to go:</strong>{" "}
-        {scopes.length === 0 ? "no designs on this project yet."
-          : allDone ? "every design is complete."
-          : `${complete.length} of ${scopes.length} designs complete.`}{" "}
+        {scopes.length === 0 ? "no outline designs on this project yet."
+          : allDone ? "every outline design is complete."
+          : `${complete.length} of ${scopes.length} outline designs complete.`}{" "}
         <span className="derived">Derived &mdash; not editable</span>
       </Banner>
 

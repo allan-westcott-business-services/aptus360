@@ -8,13 +8,23 @@
    and meet an error on save. */
 
 export function allowedNext(transitions = [], fromStatusId, quoteTypeId) {
-  return transitions
-    .filter(
-      (t) =>
-        String(t.From_Status_ID) === String(fromStatusId) &&
-        (t.Quote_Type_ID == null || String(t.Quote_Type_ID) === String(quoteTypeId))
-    )
-    .map((t) => t.To_Status_ID);
+  const matching = transitions.filter(
+    (t) =>
+      String(t.From_Status_ID) === String(fromStatusId) &&
+      (t.Quote_Type_ID == null || String(t.Quote_Type_ID) === String(quoteTypeId))
+  );
+
+  /* A quote-type-specific rule replaces the general one rather than
+     adding to it — otherwise a Budget project offers both sets. */
+  const specific = new Set(
+    matching.filter((t) => t.Quote_Type_ID != null).map((t) => String(t.To_Status_ID))
+  );
+  const kept = matching.filter(
+    (t) => t.Quote_Type_ID != null || !specific.has(String(t.To_Status_ID))
+  );
+
+  // Deduped regardless: the dropdown must never list a status twice.
+  return [...new Set(kept.map((t) => t.To_Status_ID))];
 }
 
 /* Returns null if allowed, or a human reason if a guard blocks it. */
@@ -47,13 +57,18 @@ export function guardBlock(guards = [], targetStatusId, ctx = {}) {
 export function statusOptions({ statuses, transitions, guards, currentId, quoteTypeId, ctx }) {
   const nextIds = allowedNext(transitions, currentId, quoteTypeId);
   const out = [];
+  const seen = new Set();
   const current = statuses.find((s) => String(s.Project_Status_ID) === String(currentId));
-  if (current) out.push({ ...current, isCurrent: true, blocked: null });
+  if (current) {
+    out.push({ ...current, isCurrent: true, blocked: null });
+    seen.add(String(current.Project_Status_ID));
+  }
   nextIds.forEach((id) => {
+    if (seen.has(String(id))) return;
     const s = statuses.find((x) => String(x.Project_Status_ID) === String(id));
-    if (s && String(s.Project_Status_ID) !== String(currentId)) {
-      out.push({ ...s, isCurrent: false, blocked: guardBlock(guards, id, ctx) });
-    }
+    if (!s) return;
+    seen.add(String(id));
+    out.push({ ...s, isCurrent: false, blocked: guardBlock(guards, id, ctx) });
   });
   return out;
 }

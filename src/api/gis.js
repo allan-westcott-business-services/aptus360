@@ -85,3 +85,10 @@ export async function assignMeters(projectId, maxM = 30) {
   if (USE_MOCKS) { await delay(450); return { assigned: 0 }; }
   return http.post(`/projects/${projectId}/gis-network?op=meters`, { max_m: maxM });
 }
+
+/* The plots still to be placed, with the bedroom count so seeds can be
+   coloured, and the utilities this project needs meters for. */
+export async function listPlacementPlots(projectId) {
+  if (USE_MOCKS) { await delay(180); return { plots: [], utilities: [] }; }
+  return http.get(`/projects/${projectId}/gis?what=plots`);
+}

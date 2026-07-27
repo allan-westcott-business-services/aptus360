@@ -1,6 +1,6 @@
 import { supabase, json, fail } from "./_supabase.js";
 
-const F = "Feature_ID,Project_ID,Layer_Key,Feature_Type,Geometry,Label,Attributes,Plot_ID";
+const F = "Feature_ID,Project_ID,Layer_Key,Feature_Type,Geometry,Label,Attributes,Plot_ID,Feature_Role";
 const W = new Set(F.split(",").filter((x) => x !== "Feature_ID"));
 const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)));
 
@@ -19,6 +19,19 @@ export default async function handler(req, context) {
       ]);
       for (const r of [f, l, t]) if (r.error) throw r.error;
       return json({ features: f.data || [], layers: l.data || [], lineTypes: t.data || [] });
+    }
+
+    /* Which plots are still to place, and which utilities need meters.
+       Both come from the database so the canvas doesn't have to work out
+       what "unplaced" means. */
+    if (req.method === "GET" && url.searchParams.get("what") === "plots") {
+      const [plots, utils] = await Promise.all([
+        db.rpc("gis_unplaced_plots", { p_project: Number(projectId) }),
+        db.rpc("gis_project_utilities", { p_project: Number(projectId) }),
+      ]);
+      if (plots.error) throw plots.error;
+      if (utils.error) throw utils.error;
+      return json({ plots: plots.data || [], utilities: utils.data || [] });
     }
 
     if (req.method === "POST" && url.searchParams.get("action") === "seed") {

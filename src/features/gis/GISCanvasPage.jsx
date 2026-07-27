@@ -10,6 +10,9 @@ import {
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getBasemap } from "../../api/basemap.js";
+import { listPlacementPlots } from "../../api/gis.js";
+import PlacementPanel from "./PlacementPanel.jsx";
+import { bedColour } from "../../lib/bedColours.js";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -54,6 +57,10 @@ export default function GISCanvasPage() {
   const [setupOpen, setSetupOpen] = useState(false);
   const [bgImage, setBgImage] = useState(null);
   const [project, setProject] = useState(null);
+  const [plotList, setPlotList] = useState([]);
+  const [utilities, setUtilities] = useState([]);
+  const [queue, setQueue] = useState([]);          // plots being placed, in order
+  const [meterFor, setMeterFor] = useState(null);  // { plot, utility, all, placed }
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -69,7 +76,16 @@ export default function GISCanvasPage() {
     if (!pid) return;
     setLoading(true);
     try {
-      const [res, bm] = await Promise.all([listGis(pid), getBasemap(pid).catch(() => null)]);
+      const [res, bm, pl] = await Promise.all([
+        listGis(pid),
+        getBasemap(pid).catch(() => null),
+        listPlacementPlots(pid).catch(() => ({ plots: [], utilities: [] })),
+      ]);
+      setPlotList(pl.plots || []);
+      setUtilities((pl.utilities || []).map((u) => ({
+        ...u,
+        colour: (res.layers || []).find((l) => l.Layer_Key === u.layer_key)?.Colour || "#64748b",
+      })));
       setBasemap(bm);
       setProject(projects.find((p) => String(p.Project_ID) === String(pid)) || null);
       setFeatures(res.features || []);
@@ -95,6 +111,9 @@ export default function GISCanvasPage() {
   visibleRef.current = visible;
 
   const drawing = tool === "boundary" || tool === "line";
+  const placingPlot = queue.some((q) => !q.done) && !meterFor;
+  const placing = placingPlot || !!meterFor;
+  const nextPlot = queue.find((q) => !q.done) || null;
 
   const isPdfMap = basemap?.Source_Kind === "pdf";
 
@@ -228,14 +247,24 @@ export default function GISCanvasPage() {
 
       if (f.Feature_Type === "point") {
         const p = pts[0];
+        const isMeter = f.Feature_Role === "meter";
+        const isSeed = f.Feature_Role === "plot";
+        // Seeds take the bedroom colour used everywhere else for plots
+        const fill = isSeed ? bedColour(f.Attributes?.Bedrooms).bg : colour;
+        const r = isMeter ? 4 : (on ? 8 : 6);
+
         ctx.beginPath();
-        ctx.arc(p.x, p.y, on ? 8 : 6, 0, Math.PI * 2);
-        ctx.fillStyle = on ? "#1d4ed8" : colour;
+        if (isMeter) {
+          ctx.rect(p.x - r, p.y - r, r * 2, r * 2);
+        } else {
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+        }
+        ctx.fillStyle = on ? "#1d4ed8" : fill;
         ctx.fill();
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
-        if (f.Label && view.scale > 2.5) {
+        if (f.Label && view.scale > 2.5 && !isMeter) {
           ctx.fillStyle = "#0f172a";
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";
@@ -302,6 +331,39 @@ export default function GISCanvasPage() {
       ctx.stroke();
     }
 
+    // Where the next plot or meter will land
+    if (placing && cursor) {
+      const c = toPx(cursor);
+      const isMeterStep = !!meterFor;
+      const col = isMeterStep
+        ? meterFor.utility.colour
+        : bedColour(nextPlot?.bedrooms).bg;
+      ctx.save();
+      ctx.globalAlpha = 0.75;
+      ctx.beginPath();
+      if (isMeterStep) ctx.rect(c.x - 5, c.y - 5, 10, 10);
+      else ctx.arc(c.x, c.y, 7, 0, Math.PI * 2);
+      ctx.fillStyle = col;
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2;
+      ctx.stroke();
+      ctx.restore();
+
+      const label = isMeterStep
+        ? `${meterFor.plot.plot_number} ${meterFor.utility.utility}`
+        : nextPlot?.plot_number;
+      if (label) {
+        ctx.font = "700 11px ui-monospace, Menlo, monospace";
+        ctx.textAlign = "center";
+        const w = ctx.measureText(label).width + 12;
+        ctx.fillStyle = "rgba(15,23,42,.85)";
+        ctx.fillRect(c.x - w / 2, c.y - 30, w, 17);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, c.x, c.y - 18);
+      }
+    }
+
     // line or boundary in progress
     if (draft.length) {
       const pts = draft.map(toPx);
@@ -318,7 +380,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.tile, pdf.size]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -367,6 +429,13 @@ export default function GISCanvasPage() {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
       setDraft((d) => [...d, point]);
+      return;
+    }
+
+    if (placing) {
+      const raw = toM(px, py);
+      const { point } = resolve(raw[0], raw[1]);
+      placeAt(point);
       return;
     }
 
@@ -421,7 +490,7 @@ export default function GISCanvasPage() {
     const px = e.clientX - r.left, py = e.clientY - r.top;
     const raw = toM(px, py);
 
-    if (drawing) {
+    if (drawing || placing) {
       const { point, hit } = resolve(raw[0], raw[1]);
       setCursor(point);
       setSnapHit(hit);
@@ -499,6 +568,74 @@ export default function GISCanvasPage() {
   }
 
   /* ── actions ── */
+  /* Placing runs as a sequence: seed, then a meter per utility, then the
+     next plot. Each click lands whatever the sequence is currently
+     asking for, so there's no mode to remember. */
+  function startPlacing(list) {
+    setQueue(list.map((p) => ({ ...p, done: false })));
+    setMeterFor(null);
+    setTool("select");
+    setSelected([]);
+  }
+
+  function stopPlacing() {
+    setQueue([]);
+    setMeterFor(null);
+  }
+
+  async function placeAt(point) {
+    try {
+      if (meterFor) {
+        await createFeature(projectId, {
+          Layer_Key: meterFor.utility.layer_key,
+          Feature_Type: "point",
+          Feature_Role: "meter",
+          Geometry: [point],
+          Label: `${meterFor.plot.plot_number} ${meterFor.utility.utility}`,
+          Plot_ID: meterFor.plot.plot_id,
+          Attributes: { Meter_Utility: meterFor.utility.utility },
+        });
+        advanceMeter(meterFor.utility.layer_key);
+        return;
+      }
+
+      const plot = nextPlot;
+      if (!plot) return;
+      await createFeature(projectId, {
+        Layer_Key: "plot",
+        Feature_Type: "point",
+        Feature_Role: "plot",
+        Geometry: [point],
+        Label: plot.plot_number,
+        Plot_ID: plot.plot_id,
+        Attributes: { Bedrooms: plot.bedrooms ?? null, Config: plot.config_code ?? null },
+      });
+
+      if (utilities.length) {
+        setMeterFor({ plot, utility: utilities[0], all: utilities, placed: [] });
+      } else {
+        finishPlot(plot.plot_id);
+      }
+      await load(projectId);
+    } catch (e) { setError(e.message); }
+  }
+
+  function advanceMeter(justPlaced) {
+    setMeterFor((m) => {
+      if (!m) return null;
+      const placed = justPlaced ? [...m.placed, justPlaced] : m.placed;
+      const next = m.all.find((u) => !placed.includes(u.layer_key));
+      if (next) return { ...m, utility: next, placed };
+      finishPlot(m.plot.plot_id);
+      return null;
+    });
+  }
+
+  function finishPlot(plotId) {
+    setQueue((q) => q.map((x) => (x.plot_id === plotId ? { ...x, done: true } : x)));
+    load(projectId);
+  }
+
   async function seed() {
     setLoading(true);
     try {
@@ -718,6 +855,17 @@ export default function GISCanvasPage() {
               );
             })}
 
+            <PlacementPanel
+              plots={plotList}
+              utilities={utilities}
+              queue={queue}
+              current={nextPlot}
+              meterFor={meterFor}
+              onStart={startPlacing}
+              onCancel={stopPlacing}
+              onSkipMeter={() => advanceMeter(meterFor?.utility.layer_key)}
+            />
+
             <p className="gl-title">Network</p>
             <div className="gn-tools">
               <button className="gn" disabled={!!busy} onClick={() => runNetwork("joints")}>
@@ -752,7 +900,7 @@ export default function GISCanvasPage() {
           <div className="gis-canvas-wrap" ref={wrapRef}>
             <canvas
               ref={canvasRef}
-              className={drawing ? "crosshair" : ""}
+              className={drawing || placing ? "crosshair" : ""}
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={(e) => { e.currentTarget.releasePointerCapture?.(e.pointerId); onUp(); }}
@@ -825,6 +973,7 @@ const CSS = `
 .gl-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
 .gl-name { flex: 1; }
 .gl-count { font-size: 10.5px; font-weight: 700; color: var(--muted); }
+.gis-layers > .pp { margin-bottom: 14px; }
 .gn-tools { display: flex; flex-direction: column; gap: 5px; }
 .gn { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
   padding: 7px 10px; cursor: pointer; font: 600 11.5px inherit; color: var(--text); text-align: left; }

@@ -8,6 +8,7 @@ import StagePill from "../../components/StagePill.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getProject, updateProject } from "../../api/projects.js";
 import { statusOptions as workflowOptions } from "../../lib/statusWorkflow.js";
+import { listDevelopers } from "../../api/developers.js";
 import {
   statusesForStage,
   STAGES,
@@ -22,6 +23,19 @@ const SITE_CSS = `
 .site-row .fld.w-coord { width: 104px; flex: none; }
 .site-row.second { margin-bottom: 12px; }
 .site-row .fld.w-count { width: 150px; flex: none; }
+.dv-list { display: flex; flex-wrap: wrap; gap: 8px; }
+.dv { display: flex; align-items: center; gap: 12px; border: 1px solid var(--border);
+  border-left: 3px solid var(--border); border-radius: var(--radius); padding: 9px 13px;
+  min-width: 260px; }
+.dv.main { border-left-color: var(--accent); background: var(--accent-light); }
+.dv-name { flex: 1; font-size: 13px; font-weight: 600; }
+.dv-tag { margin-left: 8px; font-size: 9px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; background: var(--accent); color: #fff; border-radius: 4px; padding: 1px 6px; }
+.dv-plots { font-size: 11.5px; font-weight: 700; color: var(--muted); background: var(--white);
+  border: 1px solid var(--border); border-radius: 999px; padding: 2px 10px; white-space: nowrap; }
+.dv-none { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 0; }
+.dv-warn { font-size: 11.5px; color: #92400e; font-weight: 600; margin: 10px 0 0; }
+.dv-note { font-size: 11px; color: var(--muted); margin: 8px 0 0; }
 .pts-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .pts-row .fld.w-pts { width: 132px; flex: none; }
 .pts-row .pts-manual { color: var(--accent); font-weight: 700; }
@@ -39,15 +53,17 @@ export default function ProjectDetailsForm({ projectId }) {
   const [f, setF] = useState(null);
   const [saving, setSaving] = useState(false);
   const [scopeDesigns, setScopeDesigns] = useState([]);
+  const [devs, setDevs] = useState({ rows: [], counts: {}, unassigned: 0 });
   const [flash, setFlash] = useState("");
   const [loadError, setLoadError] = useState("");
 
   useEffect(() => {
     let live = true;
-    Promise.all([getLookups(), getProject(projectId)])
-      .then(([lk, proj]) => {
+    Promise.all([getLookups(), getProject(projectId), listDevelopers(projectId)])
+      .then(([lk, proj, d]) => {
         if (!live) return;
         setLookups(lk);
+        setDevs(d || { rows: [], counts: {}, unassigned: 0 });
         const { scopes: sc = [], ...rest } = proj;
         setScopeDesigns(sc);
         setF(rest);
@@ -128,19 +144,40 @@ export default function ProjectDetailsForm({ projectId }) {
         </Banner>
       )}
 
-      <Section title="Customer">
-        <div className="grid6">
-          <Field label="Customer branch" span={3}>
-            <Select value={f.Branch_ID} onChange={set("Branch_ID")}>
-              <option value="">&mdash; None &mdash;</option>
-              {(lookups.branches || []).map((b) => (
-                <option key={b.Branch_ID} value={b.Branch_ID}>
-                  {b.Branch_Dropdown || b.Branch_Name}
-                </option>
-              ))}
-            </Select>
-          </Field>
-        </div>
+      <Section
+        title="Developers"
+        right={<span className="sec-note">{devs.rows.length}</span>}
+      >
+        {devs.rows.length === 0 ? (
+          <p className="dv-none">
+            No developers on this project &mdash; add them on the Stakeholders tab.
+          </p>
+        ) : (
+          <>
+            <div className="dv-list">
+              {devs.rows.map((d) => {
+                const b = (lookups.branches || []).find((x) => x.Branch_ID === d.Branch_ID);
+                const n = devs.counts?.[d.Project_Developer_ID] || 0;
+                return (
+                  <div className={d.Is_Main ? "dv main" : "dv"} key={d.Project_Developer_ID}>
+                    <span className="dv-name">
+                      {b ? (b.Branch_Dropdown || b.Branch_Name) : "\u2014"}
+                      {d.Is_Main && <span className="dv-tag">Main</span>}
+                    </span>
+                    <span className="dv-plots">{n} plot{n === 1 ? "" : "s"}</span>
+                  </div>
+                );
+              })}
+            </div>
+            {devs.unassigned > 0 && (
+              <p className="dv-warn">
+                {devs.unassigned} plot{devs.unassigned === 1 ? " is" : "s are"} not assigned to a
+                developer &mdash; set them on the Plots tab.
+              </p>
+            )}
+            <p className="dv-note">Managed on the Stakeholders tab.</p>
+          </>
+        )}
       </Section>
 
       <Section title="Site">

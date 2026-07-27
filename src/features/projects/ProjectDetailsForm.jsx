@@ -49,6 +49,8 @@ const SITE_CSS = `
   border-radius: 6px; padding: 6px 11px; cursor: pointer; font: 600 12px inherit; color: var(--muted); }
 .pts-clear:hover { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }
 .pts-total { font-weight: 700; color: var(--accent); background: var(--accent-light) !important; }
+.pts-total.pending { color: var(--warn-text); background: var(--warn-bg) !important;
+  border-color: var(--warn-border) !important; }
 .pts-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
 .pts-row .fld.w-pts { width: 132px; flex: none; }
 .pts-row .pts-manual { color: var(--accent); font-weight: 700; }
@@ -121,6 +123,12 @@ export default function ProjectDetailsForm({ projectId }) {
 
   /* "Electric = 15, Gas = 1, Water = 1" — the original showed the working,
      which is the difference between a number you trust and one you query. */
+  const baseUsed = f.Manual_Base_Points != null && f.Manual_Base_Points !== ""
+    ? Number(f.Manual_Base_Points)
+    : Number(f.Tender_Base_Points ?? 0);
+  const liveTotal = Number(f.Total_Design_Points ?? 0) + baseUsed;
+  const totalDiffers = Number(f.Tender_Total_Points ?? 0) !== liveTotal;
+
   const ruleBreakdown = Object.entries(f.Points_Breakdown || {})
     .map(([k, v]) => `${k} = ${v}`).join(", ");
   const designBreakdown = scopeDesigns
@@ -334,14 +342,19 @@ export default function ProjectDetailsForm({ projectId }) {
           </div>
 
           <div className="fld">
-            <label>Tender total points</label>
-            <input value={f.Tender_Total_Points ?? ""} disabled className="pts-total" />
+            <label>
+              Tender total points
+              {totalDiffers && <span className="pts-flag">Unsaved</span>}
+            </label>
+            <input value={liveTotal} disabled
+              className={totalDiffers ? "pts-total pending" : "pts-total"} />
             <p className="hint">
               {`Design ${f.Total_Design_Points ?? 0} + base ${
-                f.Manual_Base_Points != null
+                f.Manual_Base_Points != null && f.Manual_Base_Points !== ""
                   ? `${f.Manual_Base_Points} (manual)`
                   : (f.Tender_Base_Points ?? 0)
               }`}
+              {totalDiffers && <><br />Saves as {liveTotal}.</>}
             </p>
           </div>
 

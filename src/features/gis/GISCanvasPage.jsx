@@ -9,6 +9,7 @@ import {
   SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
+import { getLookups } from "../../api/lookups.js";
 import { getBasemap } from "../../api/basemap.js";
 import { listDevelopers } from "../../api/developers.js";
 import { listPlacementPlots } from "../../api/gis.js";

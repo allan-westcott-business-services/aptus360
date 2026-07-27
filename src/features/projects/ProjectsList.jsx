@@ -25,6 +25,7 @@ const COLUMNS = [
   { key: "plots",    label: "Plots",         width: 76,  type: "num",   align: "right", raw: (p) => p.Plot_Count ?? 0 },
   { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },
   { key: "scopes",   label: "Scopes",        width: 120, type: "num",   raw: (p) => (p.scopes || []).length },
+  { key: "points",   label: "Points",        width: 84,  type: "num",   align: "right", raw: (p) => p.Tender_Total_Points ?? null },
   { key: "bdd",      label: "BDD / KAM",     width: 140, type: "multi", src: "people", idKey: "Person_ID", labelKey: "Person_Name", raw: (p) => p.BDD_KAM_ID },
   { key: "est",      label: "Estimator",     width: 140, type: "multi", src: "people", idKey: "Person_ID", labelKey: "Person_Name", raw: (p) => p.Estimator_ID },
   { key: "iandc",    label: "I & C",         width: 70,  type: "bool",  align: "center", raw: (p) => !!p.I_and_C },
@@ -376,6 +377,13 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
                     {c.key === "menu" ? <BurgerMenu items={menuFor(p)} />
                       : c.key === "status" ? <span className="pill">{display.status(p)}</span>
                       : c.key === "scopes" ? <ScopeDots scopes={p.scopes} />
+                      : c.key === "points" ? (
+                          p.Tender_Total_Points != null
+                            ? <span className="pts-pill" title={`Base ${p.Tender_Base_Points ?? "\u2014"}`}>
+                                {p.Tender_Total_Points}
+                              </span>
+                            : "\u2014"
+                        )
                       : c.key === "kpi" ? (<>{display.kpi(p)}{kpiReached(p.KPI_Date) && <span className="clock" title="KPI date reached">&#9200;</span>}</>)
                       : display[c.key](p)}
                   </td>
@@ -579,6 +587,8 @@ body.resizing { cursor: col-resize; user-select: none; }
 .pill { display: inline-block; font-size: 11px; font-weight: 600; padding: 2px 8px;
   border-radius: 20px; background: var(--accent-light); color: var(--accent); border: 1px solid #bfdbfe; }
 .clock { margin-left: 5px; font-size: 12px; }
+.pts-pill { display: inline-block; font-size: 11px; font-weight: 700; padding: 1px 8px;
+  border-radius: 20px; background: var(--accent); color: #fff; }
 .dots { display: inline-flex; gap: 3px; }
 .dots .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
 .muted-dash { color: var(--muted); }

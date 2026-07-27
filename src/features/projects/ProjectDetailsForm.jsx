@@ -22,6 +22,13 @@ const SITE_CSS = `
 .site-row .fld.w-coord { width: 104px; flex: none; }
 .site-row.second { margin-bottom: 12px; }
 .site-row .fld.w-count { width: 150px; flex: none; }
+.pts-row { display: flex; gap: 14px; align-items: flex-start; flex-wrap: wrap; }
+.pts-row .fld.w-pts { width: 132px; flex: none; }
+.pts-row .pts-manual { color: var(--accent); font-weight: 700; }
+.pts-row .pts-total { font-weight: 700; color: var(--accent);
+  background: var(--accent-light) !important; }
+.pts-note { flex: 1; min-width: 220px; font-size: 11.5px; color: var(--muted);
+  align-self: center; margin: 0; max-width: 46ch; }
 @media (max-width: 900px) { .site-row { flex-wrap: wrap; } }
 `;
 
@@ -214,6 +221,36 @@ export default function ProjectDetailsForm({ projectId }) {
             <input type="date" value={f.Secured_Date || ""}
               onChange={(e) => set("Secured_Date")(e.target.value)} />
           </Field>
+        </div>
+      </Section>
+
+      <Section title="Points">
+        <div className="pts-row">
+          <div className="fld w-pts">
+            <label>Base points</label>
+            <input value={f.Manual_Base_Points ?? f.Tender_Base_Points ?? ""} disabled
+              className={f.Manual_Base_Points != null ? "pts-manual" : ""} />
+            <p className="hint">
+              {f.Manual_Base_Points != null ? "Overridden" : "From the plot count band"}
+            </p>
+          </div>
+          <div className="fld w-pts">
+            <label>Override</label>
+            <input type="number" step="0.5" value={f.Manual_Base_Points ?? ""}
+              placeholder="\u2014"
+              onChange={(e) => set("Manual_Base_Points")(e.target.value === "" ? null : e.target.value)} />
+            <p className="hint">Blank to use the band</p>
+          </div>
+          <div className="fld w-pts">
+            <label>Total points</label>
+            <input value={f.Tender_Total_Points ?? ""} disabled className="pts-total" />
+            <p className="hint">Base plus each scope&rsquo;s rule</p>
+          </div>
+          <p className="pts-note">
+            Recalculated by the database whenever plots, scopes, quote type or the
+            override change &mdash; configure the bands and rules in Admin &rarr; Points
+            Configuration.
+          </p>
         </div>
       </Section>
 

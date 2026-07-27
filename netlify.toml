@@ -10,3 +10,16 @@
   from = "/*"
   to = "/index.html"
   status = 200
+
+# Vite fingerprints these filenames, so they can be cached indefinitely —
+# a new build produces new names rather than stale content.
+[[headers]]
+  for = "/assets/*"
+  [headers.values]
+    Cache-Control = "public, max-age=31536000, immutable"
+
+# The HTML must never be cached: it's what points at the current assets.
+[[headers]]
+  for = "/index.html"
+  [headers.values]
+    Cache-Control = "public, max-age=0, must-revalidate"

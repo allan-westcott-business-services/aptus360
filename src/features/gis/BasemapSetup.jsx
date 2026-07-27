@@ -1,6 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getBasemap, saveBasemap, removeBasemap, uploadBasemap, readImageSize } from "../../api/basemap.js";
+import { pdfPageCount } from "./pdfToImage.js";
 
 /* Getting the canvas ready to draw on.
 
@@ -24,6 +25,8 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
   const [error, setError] = useState("");
   const [status, setStatus] = useState("");
   const fileRef = useRef(null);
+  const [pendingPdf, setPendingPdf] = useState(null);   // { file, pages }
+  const [pdfPage, setPdfPage] = useState(1);
 
   // calibration
   const [calPts, setCalPts] = useState([]);
@@ -50,21 +53,40 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
   async function onFile(e) {
     const file = e.target.files?.[0];
     if (!file) return;
-    if (file.size > 25 * 1024 * 1024) {
-      return setError("That plan is over 25MB. Export it at a lower resolution first.");
+    if (file.size > 60 * 1024 * 1024) {
+      return setError("That file is over 60MB — larger than this can handle.");
     }
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
+
+    /* A drawing set often has the site plan on a later page, so ask
+       rather than silently taking page 1. */
+    if (isPdf) {
+      setError("");
+      try {
+        const pages = await pdfPageCount(file);
+        if (pages > 1) { setPendingPdf({ file, pages }); setPdfPage(1); return; }
+      } catch { /* fall through and let the render report the problem */ }
+    }
+    await ingest(file, 1);
+  }
+
+  async function ingest(file, page) {
+    const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
     setBusy(true); setError(""); setProgress(0);
     try {
-      const size = await readImageSize(file);
-      const { url, path } = await uploadBasemap(projectId, file, setProgress);
+      const size = isPdf ? null : await readImageSize(file);
+      const { url, path, size: pdfSize } = await uploadBasemap(projectId, file, setProgress, page);
+      const dims = pdfSize || size;
       const saved = await saveBasemap(projectId, {
         File_Name: file.name, Storage_Path: path, Image_Url: url,
-        Image_Width: size.width, Image_Height: size.height,
+        Image_Width: dims.width, Image_Height: dims.height,
         Opacity: 0.6,
       });
+      setPendingPdf(null);
       onChange(saved);
       setStep("scale");
-      setStatus(`${file.name} imported at ${size.width}×${size.height}px`);
+      setStatus(`${file.name} imported at ${dims.width}×${dims.height}px${
+        isPdf ? ` (page ${page})` : ""}`);
       setTimeout(() => setStatus(""), 4000);
     } catch (e2) {
       setError(e2.message);
@@ -196,12 +218,32 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
           {step === "import" && (
             <div className="bs-import">
               <p className="bs-hint">
-                A site plan as PNG or JPEG. Export PDFs to an image first &mdash; at the
-                largest size that stays under 25MB, since detail lost here can&rsquo;t be
-                recovered by zooming.
+                A site plan as PDF, PNG or JPEG. PDFs are rendered here in the browser
+                at high resolution &mdash; a vector drawing comes out crisp, so import
+                the original rather than a screenshot of it.
               </p>
-              <input ref={fileRef} type="file" accept="image/png,image/jpeg,image/webp"
+              <input ref={fileRef} type="file"
+                accept="application/pdf,image/png,image/jpeg,image/webp"
                 onChange={onFile} disabled={busy} />
+
+              {pendingPdf && (
+                <div className="bs-pdf">
+                  <p>
+                    <strong>{pendingPdf.file.name}</strong> has {pendingPdf.pages} pages.
+                    Which one is the site plan?
+                  </p>
+                  <div className="bs-pdf-row">
+                    <input type="number" min="1" max={pendingPdf.pages} value={pdfPage}
+                      aria-label="Page number"
+                      onChange={(e) => setPdfPage(Number(e.target.value))} />
+                    <button className="btn accent" disabled={busy}
+                      onClick={() => ingest(pendingPdf.file, pdfPage)}>
+                      Import page {pdfPage}
+                    </button>
+                    <button className="btn ghost" onClick={() => setPendingPdf(null)}>Cancel</button>
+                  </div>
+                </div>
+              )}
               {busy && (
                 <div className="bs-progress"><span style={{ width: `${progress}%` }} /></div>
               )}
@@ -434,6 +476,11 @@ const CSS = `
 .bs-note { color: var(--muted); font-style: italic; }
 .bs-await { color: var(--muted); font-style: italic; }
 .bs-import input[type=file] { font-size: 12.5px; }
+.bs-pdf { border: 1px solid var(--accent); background: var(--accent-light);
+  border-radius: var(--radius); padding: 12px 14px; margin-top: 12px; }
+.bs-pdf p { margin: 0 0 9px; font-size: 12.5px; }
+.bs-pdf-row { display: flex; gap: 8px; align-items: center; }
+.bs-pdf-row input { width: 80px; }
 .bs-progress { height: 5px; background: var(--bg); border-radius: 3px; overflow: hidden; margin-top: 12px; }
 .bs-progress span { display: block; height: 100%; background: var(--accent); transition: width .2s; }
 .bs-current { display: flex; align-items: center; gap: 12px; margin-top: 14px;

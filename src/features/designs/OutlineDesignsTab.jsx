@@ -6,6 +6,7 @@ import { updateScope, createScope, deleteScope } from "../../api/scopes.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
 import { peopleWithRole, ROLE, isDesignComplete } from "../../lib/constants.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
+import DesignEditModal from "./DesignEditModal.jsx";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
 /* Outline designs as an editable table — one row per scope.
@@ -31,9 +32,9 @@ const OD_COLS = [
   { key: "checked", label: "Checked by",    width: 150, type: "multi", raw: (s) => s.Design_Checked_By },
   { key: "ext",     label: "Ext",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.External_Design },
   { key: "cf",      label: "C/F",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.Carried_Forward },
-  { key: "points",  label: "Points",        width: 128, type: "num",   align: "right",
+  { key: "points",  label: "Design points", width: 158, type: "num",   align: "right",
     raw: (s) => (s.Base_Points_Overridden ? s.Manual_Base_Points : s.Auto_Base_Points) ?? null },
-  { key: "act",     label: "",              width: 42,  type: "none",  align: "center", raw: () => "" },
+  { key: "act",     label: "",              width: 84,  type: "none",  align: "center", raw: () => "" },
 ];
 
 export default function OutlineDesignsTab({ projectId }) {
@@ -41,6 +42,7 @@ export default function OutlineDesignsTab({ projectId }) {
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
   const [sort, setSort] = useState({ key: "scope", dir: "asc" });
+  const [editing, setEditing] = useState(null);
   const [lookups, setLookups] = useState(null);
   const [scopes, setScopes] = useState([]);
   const [original, setOriginal] = useState({});
@@ -186,6 +188,23 @@ export default function OutlineDesignsTab({ projectId }) {
         </div>
       </div>
 
+      {editing && (
+        <DesignEditModal
+          design={editing}
+          lookups={lookups}
+          designers={designers}
+          checkers={checkers}
+          onClose={() => setEditing(null)}
+          onSave={async (next) => {
+            await updateScope(next.Project_Scope_ID,
+              Object.fromEntries(EDITABLE.map((k) => [k, next[k]])));
+            setFlash(`${utilityById(next.Utility_ID)?.name ?? "Design"} saved`);
+            setTimeout(() => setFlash(""), 2400);
+            await load();
+          }}
+        />
+      )}
+
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
 
@@ -194,7 +213,9 @@ export default function OutlineDesignsTab({ projectId }) {
         {scopes.reduce((t, x) =>
           t + Number((x.Base_Points_Overridden ? x.Manual_Base_Points : x.Auto_Base_Points) || 0), 0)}
         {" "}across {scopes.length} design{scopes.length === 1 ? "" : "s"}.{" "}
-        <span className="derived">Auto figures come from the plot count &mdash; configure in Admin</span>
+        <span className="derived">
+          Auto figures come from the plot count &mdash; use Override on a row to set one by hand
+        </span>
       </Banner>
 
       <Banner kind={allDone ? "ok" : "muted"}>
@@ -310,24 +331,44 @@ export default function OutlineDesignsTab({ projectId }) {
                         onChange={(e) => setField(s.Project_Scope_ID, "Carried_Forward", e.target.checked)} />
                     </td>
                     <td className="points-cell">
-                      {/* Auto by default; ticking the override swaps in a
-                          manual figure without losing the calculated one. */}
-                      <label className="ovr" title="Override the calculated points">
-                        <input type="checkbox" checked={!!s.Base_Points_Overridden}
-                          onChange={(e) => setField(s.Project_Scope_ID, "Base_Points_Overridden", e.target.checked)} />
-                      </label>
+                      {/* Auto by default. Overriding swaps in a manual figure
+                          and keeps the calculated one, so Clear restores it. */}
                       {s.Base_Points_Overridden ? (
-                        <input type="number" step="0.5" className="pts manual"
-                          value={s.Manual_Base_Points ?? ""}
-                          onChange={(e) => setField(s.Project_Scope_ID, "Manual_Base_Points",
-                            e.target.value === "" ? null : Number(e.target.value))} />
+                        <>
+                          <input type="number" step="0.5" className="pts manual"
+                            aria-label={`Manual points for ${utilityById(s.Utility_ID)?.name ?? "design"}`}
+                            value={s.Manual_Base_Points ?? ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Manual_Base_Points",
+                              e.target.value === "" ? null : Number(e.target.value))} />
+                          <button type="button" className="pts-btn clear"
+                            title={`Back to the calculated ${s.Auto_Base_Points ?? 0}`}
+                            onClick={() => {
+                              setField(s.Project_Scope_ID, "Base_Points_Overridden", false);
+                              setField(s.Project_Scope_ID, "Manual_Base_Points", null);
+                            }}>
+                            Clear
+                          </button>
+                        </>
                       ) : (
-                        <span className="pts auto" title="Calculated from the plot count">
-                          {s.Auto_Base_Points ?? "\u2014"}
-                        </span>
+                        <>
+                          <span className="pts auto" title="Calculated from the plot count">
+                            {s.Auto_Base_Points ?? "\u2014"}
+                          </span>
+                          <button type="button" className="pts-btn"
+                            title="Enter a manual figure instead"
+                            onClick={() => {
+                              setField(s.Project_Scope_ID, "Base_Points_Overridden", true);
+                              setField(s.Project_Scope_ID, "Manual_Base_Points", s.Auto_Base_Points ?? 0);
+                            }}>
+                            Override
+                          </button>
+                        </>
                       )}
                     </td>
-                    <td className="mid">
+                    <td className="mid nowrap">
+                      <button className="row-edit" onClick={() => setEditing(s)} title="Open this design">
+                        Edit
+                      </button>
                       <button className="row-del" onClick={() => removeScope(s)} title="Remove design">
                         &#10005;
                       </button>
@@ -391,7 +432,11 @@ body.resizing { cursor: col-resize; user-select: none; }
 .points-cell .pts { min-width: 52px; text-align: right; }
 .points-cell .pts.auto { font-weight: 700; color: var(--muted); padding-right: 7px; }
 .points-cell .pts.manual { font-weight: 700; color: var(--accent);
-  border-color: var(--accent) !important; }
+  border-color: var(--accent) !important; background: var(--accent-light) !important; }
+.pts-btn { flex: none; background: none; border: 1px solid var(--border); border-radius: 5px;
+  padding: 3px 8px; cursor: pointer; font: 600 10.5px inherit; color: var(--muted); }
+.pts-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
+.pts-btn.clear:hover { border-color: var(--warn-border); color: var(--warn-text); background: var(--warn-bg); }
 .od-table tbody tr.dirty td { border-top-color: #fde68a; }
 .od-table select, .od-table input[type=date], .od-table input[type=number] {
   width: 100%; font-size: 12px; padding: 4px 6px; border-radius: 5px;
@@ -413,6 +458,10 @@ body.resizing { cursor: col-resize; user-select: none; }
 .badge.done { background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border); }
 .badge.late { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); }
 .row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px; padding: 3px 5px; border-radius: 4px; }
+.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
+  font: 600 11.5px inherit; padding: 3px 7px; border-radius: 4px; }
+.row-edit:hover { background: var(--accent-light); }
+.nowrap { white-space: nowrap; }
 .row-del:hover { background: #fef2f2; color: #ef4444; }
 .unsaved { font-size: 11.5px; color: #92400e; font-weight: 600; margin-top: 10px; }
 `;

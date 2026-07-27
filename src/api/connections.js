@@ -13,19 +13,21 @@ export async function listConnections(projectId) {
   if (USE_MOCKS) { await delay(200); return { plots: [], connections: [...store] }; }
   return http.get(`/projects/${projectId}/connections`);
 }
-export async function generateConnections(projectId, plotIds, utilityIds) {
+export async function generateConnections(projectId, plotIds, utilityIds, programmedDate = null) {
   if (USE_MOCKS) {
     await delay(400);
     const rows = [];
     plotIds.forEach((p) => utilityIds.forEach((u) => {
       if (!store.some((r) => r.Plot_ID === p && r.Utility_ID === u)) {
-        rows.push({ Plot_Utility_ID: ++nid, Plot_ID: p, Utility_ID: u });
+        rows.push({ Plot_Utility_ID: ++nid, Plot_ID: p, Utility_ID: u, Programmed_Date: programmedDate });
       }
     }));
     store = [...store, ...rows];
     return { rows, created: rows.length };
   }
-  return http.post(`/projects/${projectId}/connections`, { plot_ids: plotIds, utility_ids: utilityIds });
+  return http.post(`/projects/${projectId}/connections`, {
+    plot_ids: plotIds, utility_ids: utilityIds, programmed_date: programmedDate,
+  });
 }
 export async function updateConnection(projectId, id, changes) {
   if (USE_MOCKS) {

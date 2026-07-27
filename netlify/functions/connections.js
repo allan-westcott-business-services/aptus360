@@ -36,7 +36,7 @@ export default async function handler(req, context) {
        skipping any that already exist and any self-lay plot — the customer
        connects those, so we aren't tracking them. */
     if (req.method === "POST") {
-      const { utility_ids = [], plot_ids = [] } = await req.json();
+      const { utility_ids = [], plot_ids = [], programmed_date = null } = await req.json();
       if (!utility_ids.length || !plot_ids.length) {
         return json({ error: "Select at least one plot and one utility" }, 400);
       }
@@ -46,7 +46,12 @@ export default async function handler(req, context) {
 
       const rows = [];
       plot_ids.forEach((p) => utility_ids.forEach((u) => {
-        if (!have.has(`${p}:${u}`)) rows.push({ Plot_ID: Number(p), Utility_ID: Number(u) });
+        if (!have.has(`${p}:${u}`)) {
+          rows.push({
+            Plot_ID: Number(p), Utility_ID: Number(u),
+            Programmed_Date: programmed_date || null,
+          });
+        }
       }));
       if (!rows.length) return json({ rows: [], created: 0, skipped: plot_ids.length * utility_ids.length });
 

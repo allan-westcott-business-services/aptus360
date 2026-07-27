@@ -1,0 +1,234 @@
+import { useState, useEffect } from "react";
+import Banner from "../../components/Banner.jsx";
+import { listProjects } from "../../api/projects.js";
+import { listPlots } from "../../api/plots.js";
+import { generateConnections } from "../../api/connections.js";
+import { UTILITIES } from "../../lib/utilities.js";
+
+/* New Plot Connection Schedule, following the original's modal:
+   project → programmed date → plots → utilities → save.
+
+   Only Gas, Electric and Water are offered. Street lighting scopes don't
+   connect a plot, so they'd never appear on a connection schedule. */
+const SCHEDULABLE = [1, 2, 3];
+
+const nat = (a, b) => {
+  const re = /^(\d+)(.*)$/;
+  const ma = re.exec(String(a)), mb = re.exec(String(b));
+  if (ma && mb) { const d = Number(ma[1]) - Number(mb[1]); return d !== 0 ? d : ma[2].localeCompare(mb[2]); }
+  return String(a).localeCompare(String(b), undefined, { numeric: true });
+};
+
+export default function NewScheduleModal({ onClose, onSaved }) {
+  const [projects, setProjects] = useState([]);
+  const [projectId, setProjectId] = useState("");
+  const [plots, setPlots] = useState([]);
+  const [loadingPlots, setLoadingPlots] = useState(false);
+  const [selected, setSelected] = useState([]);
+  const [anchor, setAnchor] = useState(null);
+  const [utils, setUtils] = useState([]);
+  const [date, setDate] = useState("");
+  const [error, setError] = useState("");
+  const [saving, setSaving] = useState(false);
+
+  useEffect(() => {
+    listProjects({ limit: 500 })
+      .then((r) => setProjects(r.rows || []))
+      .catch((e) => setError(e.message));
+  }, []);
+
+  useEffect(() => {
+    if (!projectId) { setPlots([]); setSelected([]); return; }
+    setLoadingPlots(true);
+    listPlots(projectId)
+      .then((r) => {
+        setPlots((r.rows || []).sort((a, b) => nat(a.Plot_Number, b.Plot_Number)));
+        setSelected([]);
+      })
+      .catch((e) => setError(e.message))
+      .finally(() => setLoadingPlots(false));
+  }, [projectId]);
+
+  // Self-lay plots aren't ours to connect, so they can't be scheduled.
+  const eligible = (p) => !p.Self_Lay_Provider;
+  const selfLay = plots.filter((p) => !eligible(p)).length;
+
+  function clickPlot(p, e) {
+    if (!eligible(p)) return;
+    const id = p.Plot_ID;
+    if (e.shiftKey && anchor != null) {
+      const a = plots.findIndex((x) => x.Plot_ID === anchor);
+      const b = plots.findIndex((x) => x.Plot_ID === id);
+      if (a !== -1 && b !== -1) {
+        const [lo, hi] = a < b ? [a, b] : [b, a];
+        setSelected((s) => [...new Set([...s, ...plots.slice(lo, hi + 1).filter(eligible).map((x) => x.Plot_ID)])]);
+      }
+      setAnchor(null);
+      return;
+    }
+    setAnchor(id);
+    setSelected((s) => (s.includes(id) ? s.filter((x) => x !== id) : [...s, id]));
+  }
+
+  async function save() {
+    if (!projectId) return setError("Choose a project.");
+    if (!date) return setError("Set a programmed date.");
+    if (!selected.length) return setError("Select at least one plot.");
+    if (!utils.length) return setError("Select at least one utility.");
+    setSaving(true);
+    try {
+      const res = await generateConnections(projectId, selected, utils, date);
+      const n = res.created ?? 0;
+      onSaved && onSaved(
+        n === 0
+          ? "Those connections already exist — nothing new was scheduled."
+          : `${n} connection${n === 1 ? "" : "s"} scheduled for ${date.split("-").reverse().join("/")}`
+      );
+      onClose();
+    } catch (e) { setError(e.message); }
+    finally { setSaving(false); }
+  }
+
+  const willCreate = selected.length * utils.length;
+
+  return (
+    <div className="ns-backdrop" onClick={onClose}>
+      <div className="ns-modal" onClick={(e) => e.stopPropagation()}>
+        <style>{CSS}</style>
+
+        <div className="ns-head">
+          <h3>New plot connection schedule</h3>
+          <button className="ns-x" onClick={onClose}>&#10005;</button>
+        </div>
+
+        <div className="ns-body">
+          {error && <Banner kind="error">{error}</Banner>}
+
+          <div className="fld">
+            <label>Project <span className="req">*</span></label>
+            <select value={projectId} onChange={(e) => setProjectId(e.target.value)}>
+              <option value="">&mdash; Select a project &mdash;</option>
+              {projects.map((p) => (
+                <option key={p.Project_ID} value={p.Project_ID}>
+                  {p.Project_Ref} &mdash; {p.Site_Name || "Unnamed site"}
+                </option>
+              ))}
+            </select>
+          </div>
+
+          <div className="fld">
+            <label>Programmed date <span className="req">*</span></label>
+            <input type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <p className="hint">The date the connection work is scheduled to be carried out.</p>
+          </div>
+
+          <div className="fld">
+            <label>
+              Plots to connect <span className="req">*</span>
+              {plots.length > 0 && (
+                <span className="ns-count">
+                  {selected.length} of {plots.length - selfLay} selected
+                </span>
+              )}
+            </label>
+            <div className="ns-plots">
+              {!projectId ? (
+                <p className="ns-ph">Select a project first to load its plots.</p>
+              ) : loadingPlots ? (
+                <p className="ns-ph">Loading plots&hellip;</p>
+              ) : plots.length === 0 ? (
+                <p className="ns-ph">This project has no plots yet.</p>
+              ) : (
+                plots.map((p) => {
+                  const on = selected.includes(p.Plot_ID);
+                  const off = !eligible(p);
+                  return (
+                    <button key={p.Plot_ID} type="button"
+                      className={["ns-plot", on ? "on" : "", off ? "off" : ""].filter(Boolean).join(" ")}
+                      disabled={off} title={off ? "Self-lay plot" : undefined}
+                      onClick={(e) => clickPlot(p, e)}>
+                      {p.Plot_Number}
+                    </button>
+                  );
+                })
+              )}
+            </div>
+            {plots.length > 0 && (
+              <p className="hint">
+                Click to toggle, shift-click for a range.
+                {selfLay > 0 && ` ${selfLay} self-lay plot${selfLay === 1 ? "" : "s"} excluded.`}
+                {" "}
+                <button className="ns-link" onClick={() => setSelected(plots.filter(eligible).map((p) => p.Plot_ID))}>
+                  Select all
+                </button>
+                {selected.length > 0 && (
+                  <> &middot; <button className="ns-link" onClick={() => setSelected([])}>Clear</button></>
+                )}
+              </p>
+            )}
+          </div>
+
+          <div className="fld">
+            <label>Utilities to connect <span className="req">*</span></label>
+            <div className="ns-utils">
+              {UTILITIES.filter((u) => SCHEDULABLE.includes(u.id)).map((u) => (
+                <label key={u.id} className={utils.includes(u.id) ? "ns-util on" : "ns-util"}>
+                  <input type="checkbox" checked={utils.includes(u.id)}
+                    onChange={() => setUtils((g) => g.includes(u.id) ? g.filter((x) => x !== u.id) : [...g, u.id])} />
+                  <span className="dot" style={{ background: u.colour }} />
+                  {u.name}
+                </label>
+              ))}
+            </div>
+          </div>
+        </div>
+
+        <div className="ns-foot">
+          {willCreate > 0 && (
+            <span className="ns-summary">
+              {selected.length} plot{selected.length === 1 ? "" : "s"} &times; {utils.length} utilit{utils.length === 1 ? "y" : "ies"}
+              {" = "}<strong>up to {willCreate} connection{willCreate === 1 ? "" : "s"}</strong>
+            </span>
+          )}
+          <button className="btn ghost" onClick={onClose}>Cancel</button>
+          <button className="btn accent" disabled={saving} onClick={save}>
+            {saving ? "Saving\u2026" : "Save schedule"}
+          </button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
+const CSS = `
+.ns-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.45); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 24px; }
+.ns-modal { background: var(--white); border-radius: 12px; width: 100%; max-width: 620px;
+  max-height: 88vh; display: flex; flex-direction: column; box-shadow: 0 20px 50px rgba(0,0,0,.3); }
+.ns-head { display: flex; align-items: center; justify-content: space-between;
+  padding: 16px 20px; border-bottom: 1px solid var(--border); }
+.ns-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.ns-x { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 13px; }
+.ns-body { padding: 18px 20px; overflow-y: auto; display: flex; flex-direction: column; gap: 14px; }
+.ns-count { float: right; font-weight: 700; color: var(--accent); text-transform: none; letter-spacing: 0; }
+.ns-plots { border: 1.5px solid var(--border); border-radius: var(--radius); background: var(--bg);
+  max-height: 170px; overflow-y: auto; padding: 8px; display: flex; flex-wrap: wrap; gap: 4px; }
+.ns-ph { font-size: 12px; color: var(--muted); padding: 8px 2px; margin: 0; }
+.ns-plot { min-width: 44px; padding: 5px 8px; border-radius: 5px; cursor: pointer;
+  border: 1px solid var(--border); background: var(--white);
+  font: 600 11.5px ui-monospace, Menlo, monospace; color: var(--text); }
+.ns-plot:hover:not(:disabled) { border-color: var(--accent); }
+.ns-plot.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ns-plot.off { background: #fef3c7; color: #92400e; border-color: #fde68a; cursor: not-allowed; }
+.ns-link { background: none; border: none; color: var(--accent); font: 600 11px inherit;
+  cursor: pointer; padding: 0; }
+.ns-utils { display: flex; flex-wrap: wrap; gap: 7px; }
+.ns-util { display: inline-flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 400;
+  text-transform: none; letter-spacing: 0; color: var(--text); background: var(--white);
+  border: 1px solid var(--border); border-radius: 6px; padding: 8px 13px; margin: 0; cursor: pointer; }
+.ns-util.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
+.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ns-foot { display: flex; align-items: center; gap: 9px; padding: 14px 20px;
+  border-top: 1px solid var(--border); }
+.ns-summary { flex: 1; font-size: 11.5px; color: var(--muted); }
+`;

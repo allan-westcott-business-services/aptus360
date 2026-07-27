@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listAllConnections, updateConnection, bulkUpdateConnections } from "../../api/connections.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
+import NewScheduleModal from "./NewScheduleModal.jsx";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
@@ -58,6 +59,7 @@ export default function PlotConnectionsPage() {
   const [bulkField, setBulkField] = useState("Programmed_Date");
   const [bulkValue, setBulkValue] = useState("");
   const [busy, setBusy] = useState(false);
+  const [scheduleOpen, setScheduleOpen] = useState(false);
 
   async function load() {
     try {
@@ -167,8 +169,18 @@ export default function PlotConnectionsPage() {
             Plots tab; track and update them here.
           </p>
         </div>
-        <span className="cs-pill">{shown.length} of {conns.length} shown</span>
+        <div className="ph-actions">
+          <span className="cs-pill">{shown.length} of {conns.length} shown</span>
+          <button className="btn accent" onClick={() => setScheduleOpen(true)}>+ New Schedule</button>
+        </div>
       </div>
+
+      {scheduleOpen && (
+        <NewScheduleModal
+          onClose={() => setScheduleOpen(false)}
+          onSaved={(msg) => { setFlash(msg); setTimeout(() => setFlash(""), 5000); load(); }}
+        />
+      )}
 
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
@@ -305,6 +317,7 @@ const CSS = TABLE_CSS + FILTER_CSS + `
   border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; margin: 0; cursor: pointer; }
 .up.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+.ph-actions { display: flex; align-items: center; gap: 10px; }
 .conn-stats { display: flex; gap: 8px; margin-bottom: 12px; }
 .cs-pill { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 4px 13px;
   background: var(--bg); border: 1px solid var(--border); color: var(--muted); }

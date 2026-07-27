@@ -1,7 +1,7 @@
 import { useState, useRef, useEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getBasemap, saveBasemap, removeBasemap, uploadBasemap, readImageSize } from "../../api/basemap.js";
-import { pdfPageCount } from "./pdfToImage.js";
+import { pdfPageCount, pdfPageSize } from "./pdfToImage.js";
 import CalibrationView from "./CalibrationView.jsx";
 
 /* Getting the canvas ready to draw on.
@@ -74,19 +74,25 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
     const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
     setBusy(true); setError(""); setProgress(0);
     try {
-      const size = isPdf ? null : await readImageSize(file);
-      const { url, path, size: pdfSize } = await uploadBasemap(projectId, file, setProgress, page);
-      const dims = pdfSize || size;
+      /* For a PDF the "dimensions" are the page size in points. The
+         canvas renders it at whatever zoom it needs, so there's no fixed
+         pixel size to record. */
+      const dims = isPdf ? await pdfPageSize(file, page) : await readImageSize(file);
+      const { url, path } = await uploadBasemap(projectId, file, setProgress);
       const saved = await saveBasemap(projectId, {
         File_Name: file.name, Storage_Path: path, Image_Url: url,
-        Image_Width: dims.width, Image_Height: dims.height,
+        Source_Kind: isPdf ? "pdf" : "image",
+        Pdf_Page: isPdf ? page : 1,
+        Image_Width: Math.round(dims.width), Image_Height: Math.round(dims.height),
+        Page_Width: dims.width, Page_Height: dims.height,
         Opacity: 0.6,
       });
       setPendingPdf(null);
       onChange(saved);
       setStep("scale");
-      setStatus(`${file.name} imported at ${dims.width}×${dims.height}px${
-        isPdf ? ` (page ${page})` : ""}`);
+      setStatus(isPdf
+        ? `${file.name} page ${page} imported — vector, sharp at any zoom`
+        : `${file.name} imported at ${Math.round(dims.width)}×${Math.round(dims.height)}px`);
       setTimeout(() => setStatus(""), 4000);
     } catch (e2) {
       setError(e2.message);

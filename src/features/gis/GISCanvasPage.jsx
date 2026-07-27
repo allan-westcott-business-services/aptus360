@@ -10,6 +10,7 @@ import {
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getBasemap } from "../../api/basemap.js";
+import { usePdfPage } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
 
@@ -95,16 +96,31 @@ export default function GISCanvasPage() {
 
   const drawing = tool === "boundary" || tool === "line";
 
-  /* Decoded once and held, rather than re-fetched on every repaint —
-     a site plan is megabytes and the canvas redraws constantly. */
+  const isPdfMap = basemap?.Source_Kind === "pdf";
+
+  /* How many source units the plan needs per screen pixel at this zoom.
+     Metres_Per_Pixel converts source units to metres; view.scale
+     converts metres to pixels. */
+  const requiredPdfScale = isPdfMap && basemap?.Metres_Per_Pixel
+    ? Number(basemap.Metres_Per_Pixel) * view.scale
+    : 0;
+
+  const pdf = usePdfPage(
+    isPdfMap ? basemap.Image_Url : null,
+    basemap?.Pdf_Page || 1,
+    requiredPdfScale || 1
+  );
+
+  /* Raster plans are decoded once and held — re-fetching on every
+     repaint would be pointless for something that can't get sharper. */
   useEffect(() => {
-    if (!basemap?.Image_Url) { setBgImage(null); return; }
+    if (!basemap?.Image_Url || isPdfMap) { setBgImage(null); return; }
     const img = new Image();
     img.crossOrigin = "anonymous";
     img.onload = () => setBgImage(img);
     img.onerror = () => setError("The background plan couldn't be loaded.");
     img.src = basemap.Image_Url;
-  }, [basemap?.Image_Url]);
+  }, [basemap?.Image_Url, isPdfMap]);
 
   const typeOf = useCallback(
     (key) => lineTypes.find((t) => t.Type_Key === key) || null,
@@ -130,16 +146,20 @@ export default function GISCanvasPage() {
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
-    if (bgImage && basemap?.Metres_Per_Pixel) {
+    const bg = isPdfMap ? pdf.canvas : bgImage;
+    const bgW = isPdfMap ? (pdf.size?.width ?? 0) : (bgImage?.naturalWidth ?? 0);
+    const bgH = isPdfMap ? (pdf.size?.height ?? 0) : (bgImage?.naturalHeight ?? 0);
+
+    if (bg && bgW && basemap?.Metres_Per_Pixel) {
       const mpp = Number(basemap.Metres_Per_Pixel);
-      const wM = bgImage.naturalWidth * mpp;
-      const hM = bgImage.naturalHeight * mpp;
+      const wM = bgW * mpp;
+      const hM = bgH * mpp;
       const o = toPx([Number(basemap.Origin_X) || 0, Number(basemap.Origin_Y) || 0]);
       ctx.save();
       ctx.globalAlpha = Number(basemap.Opacity ?? 0.6);
       const rot = (Number(basemap.Rotation_Deg) || 0) * Math.PI / 180;
       if (rot) { ctx.translate(o.x, o.y); ctx.rotate(rot); ctx.translate(-o.x, -o.y); }
-      ctx.drawImage(bgImage, o.x, o.y, wM * view.scale, hM * view.scale);
+      ctx.drawImage(bg, o.x, o.y, wM * view.scale, hM * view.scale);
       ctx.restore();
     }
 
@@ -261,7 +281,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.canvas, pdf.size]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -723,6 +743,7 @@ export default function GISCanvasPage() {
                 </span>
               )}
               <span className="hud-zoom">{Math.round(view.scale * 25)}%</span>
+              {isPdfMap && <span className="hud-vector" title="Re-rendered from the PDF at this zoom">vector</span>}
             </div>
             {drawing && (
               <div className="gis-tip">
@@ -791,6 +812,9 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .hud-xy { font-family: ui-monospace, Menlo, monospace; }
 .hud-grid { margin-left: 10px; color: var(--accent); font-weight: 600; }
 .hud-zoom { font-weight: 600; }
+.hud-vector { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+  background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border);
+  border-radius: 4px; padding: 1px 6px; }
 .gis-tip { position: absolute; left: 50%; top: 12px; transform: translateX(-50%);
   background: var(--accent); color: #fff; border-radius: 999px; padding: 6px 16px;
   font-size: 11.5px; font-weight: 600; white-space: nowrap; }

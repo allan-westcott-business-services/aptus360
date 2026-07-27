@@ -1,6 +1,6 @@
 import { http, USE_MOCKS } from "./client.js";
 import { supabase } from "../lib/supabaseClient.js";
-import { renderPdfPage } from "../features/gis/pdfToImage.js";
+
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 let mock = null;
@@ -23,37 +23,33 @@ export async function removeBasemap(projectId) {
 /* Straight to Supabase Storage rather than through a function: a site
    plan is megabytes, and a Netlify function has a 10-second budget and a
    6MB body limit. The browser already holds a signed-in session. */
-export async function uploadBasemap(projectId, file, onProgress, page = 1) {
-  /* PDFs are rasterised in the browser before upload. Storing the PDF
-     and rendering it on every repaint would be far slower, and the
-     canvas needs pixel dimensions to place the image anyway. */
+/* The PDF is stored as it arrived. Flattening it to an image at import
+   throws away the resolution that makes a vector drawing useful — it's
+   rendered instead at whatever zoom you're viewing. */
+export async function uploadBasemap(projectId, file, onProgress) {
   const isPdf = file.type === "application/pdf" || /\.pdf$/i.test(file.name);
-  let body = file;
-  let size = null;
-
-  if (isPdf) {
-    const r = await renderPdfPage(file, page, onProgress);
-    body = new File([r.blob], file.name.replace(/\.pdf$/i, ".jpg"), { type: "image/jpeg" });
-    size = { width: r.renderedWidth, height: r.renderedHeight, pageCount: r.pageCount };
-  }
 
   if (USE_MOCKS) {
     await delay(400);
-    return { url: URL.createObjectURL(body), path: `mock/${body.name}`, size };
+    return { url: URL.createObjectURL(file), path: `mock/${file.name}`, isPdf };
   }
   if (!supabase) throw new Error("Sign in before uploading a plan.");
 
-  const ext = (body.name.split(".").pop() || "png").toLowerCase();
+  const ext = (file.name.split(".").pop() || "png").toLowerCase();
   const path = `${projectId}/${Date.now()}.${ext}`;
 
-  onProgress && onProgress(85);
+  onProgress && onProgress(20);
   const { error } = await supabase.storage.from("basemaps")
-    .upload(path, body, { cacheControl: "31536000", upsert: false });
+    .upload(path, file, {
+      cacheControl: "31536000",
+      upsert: false,
+      contentType: isPdf ? "application/pdf" : file.type,
+    });
   if (error) throw new Error(error.message);
 
   const { data } = supabase.storage.from("basemaps").getPublicUrl(path);
   onProgress && onProgress(100);
-  return { url: data.publicUrl, path, size };
+  return { url: data.publicUrl, path, isPdf };
 }
 
 /* Read the pixel dimensions before saving — the canvas needs them to

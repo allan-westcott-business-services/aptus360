@@ -201,7 +201,7 @@ export default function CalibrationView({
 
     el.addEventListener("wheel", onWheelNative, { passive: false });
     return () => el.removeEventListener("wheel", onWheelNative);
-  }, []);
+  }, [src]);
 
   const isPanButton = (e) => e.button === 1 || e.button === 2;
 

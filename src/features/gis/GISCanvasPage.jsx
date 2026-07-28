@@ -639,6 +639,14 @@ export default function GISCanvasPage() {
      so preventDefault there is ignored and a trackpad pinch zooms the
      whole page. A pinch arrives as a wheel event with ctrlKey set. */
   useEffect(() => {
+    const wrap = wrapRef.current;
+    if (!wrap) return;
+    const swallow = (e) => { if (e.ctrlKey) e.preventDefault(); };
+    wrap.addEventListener("wheel", swallow, { passive: false });
+    return () => wrap.removeEventListener("wheel", swallow);
+  }, [projectId]);
+
+  useEffect(() => {
     const cv = canvasRef.current;
     if (!cv) return;
 
@@ -666,7 +674,7 @@ export default function GISCanvasPage() {
 
     cv.addEventListener("wheel", onWheelNative, { passive: false });
     return () => cv.removeEventListener("wheel", onWheelNative);
-  }, []);
+  }, [projectId]);
 
   /* ── actions ── */
   /* Create anything missing, then place the whole range. */

@@ -1,4 +1,4 @@
-import { useState, lazy, Suspense } from "react";
+import { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
@@ -40,7 +40,27 @@ function NotBuilt({ view }) {
   );
 }
 
+/* Safari on macOS sends gesturestart/gesturechange for a trackpad pinch
+   rather than a ctrl+wheel, and those ignore any wheel handler. Blocking
+   them inside the app area stops the page zooming under the canvas. */
+function useBlockPageZoom() {
+  useEffect(() => {
+    const stop = (e) => {
+      if (e.target.closest?.(".gis-canvas-wrap, .cv-stage")) e.preventDefault();
+    };
+    document.addEventListener("gesturestart", stop, { passive: false });
+    document.addEventListener("gesturechange", stop, { passive: false });
+    document.addEventListener("gestureend", stop, { passive: false });
+    return () => {
+      document.removeEventListener("gesturestart", stop);
+      document.removeEventListener("gesturechange", stop);
+      document.removeEventListener("gestureend", stop);
+    };
+  }, []);
+}
+
 function Shell() {
+  useBlockPageZoom();
   const [view, setView] = useState("projects");
   const [collapsed, setCollapsed] = useState(false);
 

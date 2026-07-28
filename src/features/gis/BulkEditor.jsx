@@ -1,6 +1,6 @@
 import { useState } from "react";
 import Banner from "../../components/Banner.jsx";
-import { lineLength } from "./snapping.js";
+import { lineLength, isTrenchType } from "./snapping.js";
 
 /* Editing a whole selection at once.
 
@@ -12,17 +12,21 @@ import { lineLength } from "./snapping.js";
    Only fields that mean the same thing across the selection are here.
    Way and circuit are not: they're assigned by tracing and are meant to
    differ per run. */
-export default function BulkEditor({ features, lineTypes, layers, onApply, onClose }) {
+export default function BulkEditor({ features, lineTypes, surfaceTypes = [], layers, onApply, onClose }) {
   const [label, setLabel] = useState("");
   const [lineType, setLineType] = useState("");
   const [size, setSize] = useState("");
   const [depth, setDepth] = useState("");
+  const [surface, setSurface] = useState("");
   const [clearSize, setClearSize] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const lines = features.filter((f) => f.Feature_Type === "line");
   const allLines = lines.length === features.length && lines.length > 0;
+  /* The selection is already one class to get here, so the first line
+     settles it for all of them. */
+  const allTrenches = allLines && isTrenchType(lines[0]?.Attributes?.Line_Type, lineTypes);
   const totalM = lines.reduce((t, f) => t + lineLength(f.Geometry || []), 0);
 
   const first = features[0];
@@ -32,8 +36,9 @@ export default function BulkEditor({ features, lineTypes, layers, onApply, onClo
   const changes = [
     label.trim() && "name",
     lineType && "type",
-    (size.trim() || clearSize) && "size",
+    !allTrenches && (size.trim() || clearSize) && "size",
     depth.trim() && "depth",
+    allTrenches && surface && "surface",
   ].filter(Boolean);
 
   async function apply() {
@@ -46,9 +51,12 @@ export default function BulkEditor({ features, lineTypes, layers, onApply, onClo
       const updates = features.map((f) => {
         const attrs = { ...(f.Attributes || {}) };
         if (lineType) attrs.Line_Type = lineType;
-        if (clearSize) attrs.Size = null;
-        else if (size.trim()) attrs.Size = size.trim();
+        if (!allTrenches) {
+          if (clearSize) attrs.Size = null;
+          else if (size.trim()) attrs.Size = size.trim();
+        }
         if (depth.trim()) attrs.Depth_m = Number(depth);
+        if (allTrenches && surface) attrs.Surface_Type = surface === "__none" ? null : surface;
 
         const u = { Feature_ID: f.Feature_ID, Attributes: attrs };
         if (label.trim()) u.Label = label.trim();
@@ -112,13 +120,27 @@ export default function BulkEditor({ features, lineTypes, layers, onApply, onClo
                 </select>
               </div>
 
-              <div className="be-row">
+              {allTrenches && (
                 <div className="fld">
-                  <label htmlFor="be-size">Size</label>
-                  <input id="be-size" value={size} disabled={clearSize}
-                    placeholder="Leave blank to keep"
-                    onChange={(e) => setSize(e.target.value)} />
+                  <label htmlFor="be-surface">Surface</label>
+                  <select id="be-surface" value={surface} onChange={(e) => setSurface(e.target.value)}>
+                    <option value="">Leave unchanged</option>
+                    {surfaceTypes.map((x) => (
+                      <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
+                    ))}
+                    <option value="__none">&mdash; Clear it &mdash;</option>
+                  </select>
                 </div>
+              )}
+              <div className="be-row">
+                {!allTrenches && (
+                  <div className="fld">
+                    <label htmlFor="be-size">Size</label>
+                    <input id="be-size" value={size} disabled={clearSize}
+                      placeholder="Leave blank to keep"
+                      onChange={(e) => setSize(e.target.value)} />
+                  </div>
+                )}
                 <div className="fld">
                   <label htmlFor="be-depth">Depth (m)</label>
                   <input id="be-depth" type="number" step="0.05" value={depth}
@@ -127,11 +149,13 @@ export default function BulkEditor({ features, lineTypes, layers, onApply, onClo
                 </div>
               </div>
 
-              <label className="be-check">
-                <input type="checkbox" checked={clearSize}
-                  onChange={(e) => setClearSize(e.target.checked)} />
-                Clear the size on all {features.length}
-              </label>
+              {!allTrenches && (
+                <label className="be-check">
+                  <input type="checkbox" checked={clearSize}
+                    onChange={(e) => setClearSize(e.target.checked)} />
+                  Clear the size on all {features.length}
+                </label>
+              )}
             </>
           )}
 

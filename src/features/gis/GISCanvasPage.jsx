@@ -7,7 +7,7 @@ import {
 } from "../../api/gis.js";
 import {
   SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
-  classOf, classLabel, joinLines,
+  classOf, classLabel, joinLines, isTrenchType,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
@@ -20,6 +20,7 @@ import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { housePath } from "./plotRange.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
+import { splitByBoundary, boundaryPolygons, OFF_SITE } from "./boundary.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
@@ -74,6 +75,8 @@ export default function GISCanvasPage() {
   const [lookups, setLookups] = useState({});
   const [showGrid, setShowGrid] = useState(true);
   const [styles, setStyles] = useState([]);
+  const [surfaceTypes, setSurfaceTypes] = useState([]);
+  const [surface, setSurface] = useState("");
   const [standard, setStandard] = useState("");   // operator whose style rules apply
   const [editing, setEditing] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
@@ -118,6 +121,7 @@ export default function GISCanvasPage() {
       setLayers(res.layers || []);
       setLineTypes(res.lineTypes || []);
       setStyles(res.styles || []);
+      setSurfaceTypes(res.surfaceTypes || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -943,23 +947,79 @@ export default function GISCanvasPage() {
     const isPoly = tool === "boundary";
     if (draft.length < (isPoly ? 3 : 2)) { setDraft([]); return; }
     const t = typeOf(lineType);
+
+    if (isPoly) {
+      try {
+        await createFeature(projectId, {
+          Layer_Key: "boundary", Feature_Type: "polygon",
+          Geometry: draft, Label: "Site boundary", Attributes: {},
+        });
+        setDraft([]); setSnapHit(null);
+        await load(projectId);
+      } catch (e) { setError(e.message); }
+      return;
+    }
+
+    /* A run that leaves the site is stored as two features, not one row
+       with a flag. The halves have different lengths, costs and
+       consents, and Length_m is one number per row.
+
+       With no boundary drawn, site comes back null and one feature is
+       created as before. Calling everything on-site because nobody has
+       drawn the red line yet would put the wrong figure in a quote. */
+    const runs = splitByBoundary(draft, boundaryPolygons(visible));
+
     try {
-      await createFeature(projectId, {
-        Layer_Key: isPoly ? "boundary" : (t?.Layer_Key ?? "note"),
-        Feature_Type: isPoly ? "polygon" : "line",
-        Geometry: draft,
-        Label: isPoly ? "Site boundary" : (t?.Label ?? "Line"),
-        Attributes: isPoly ? {} : {
-          Line_Type: lineType,
-          Size: size || null,
-          // Recorded at draw time using the metre tolerance, not the
-          // pixel one — what it touches, not what it looked near.
-          Connects: connectedTo(draft, visible, null),
-        },
-      });
+      const made = [];
+      for (const run of runs) {
+        made.push(await createFeature(projectId, {
+          Layer_Key: t?.Layer_Key ?? "note",
+          Feature_Type: "line",
+          Geometry: run.geometry,
+          Label: t?.Label ?? "Line",
+          Attributes: {
+            Line_Type: lineType,
+            /* Written by which kind of run this is, not by whatever was
+               last typed into a field that is now hidden. */
+            Size: isTrenchType(lineType, lineTypes) ? null : (size || null),
+            Surface_Type: isTrenchType(lineType, lineTypes) ? (surface || null) : null,
+            Site: run.site,
+            // Recorded at draw time using the metre tolerance, not the
+            // pixel one — what it touches, not what it looked near.
+            Connects: connectedTo(run.geometry, visible, null),
+          },
+        }));
+      }
+
+      /* Consecutive runs meet at the boundary, so they have to know
+         about each other. Tracing walks Connects, and without this a
+         network would stop dead at the red line — which is exactly where
+         it most needs to carry on. The ids only exist once the rows do,
+         hence the second pass. */
+      if (made.length > 1) {
+        const ids = made.map((m) => m.Feature_ID).filter(Boolean);
+        if (ids.length === made.length) {
+          await bulkUpdateFeatures(projectId, made.map((m, i) => ({
+            Feature_ID: m.Feature_ID,
+            Attributes: {
+              ...m.Attributes,
+              Connects: [...new Set([
+                ...(m.Attributes?.Connects || []),
+                ...[ids[i - 1], ids[i + 1]].filter(Boolean),
+              ])],
+            },
+          })));
+        }
+      }
+
       setDraft([]);
       setSnapHit(null);
       await load(projectId);
+      const off = runs.filter((r) => r.site === OFF_SITE).length;
+      if (runs.length > 1) {
+        setStatus(`Split at the boundary \u2014 ${runs.length} runs, ${off} off site`);
+        setTimeout(() => setStatus(""), 6000);
+      }
     } catch (e) { setError(e.message); }
   }
 
@@ -1264,8 +1324,19 @@ export default function GISCanvasPage() {
                     <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
                   ))}
                 </select>
-                <input className="gis-size" value={size} placeholder="Size"
-                  aria-label="Cable or pipe size" onChange={(e) => setSize(e.target.value)} />
+                {isTrenchType(lineType, lineTypes) ? (
+                  <select className="gis-type" value={surface} aria-label="Surface type"
+                    onChange={(e) => setSurface(e.target.value)}
+                    title="What this trench is dug through \u2014 drives reinstatement">
+                    <option value="">Surface&hellip;</option>
+                    {surfaceTypes.map((x) => (
+                      <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
+                    ))}
+                  </select>
+                ) : (
+                  <input className="gis-size" value={size} placeholder="Size"
+                    aria-label="Cable or pipe size" onChange={(e) => setSize(e.target.value)} />
+                )}
               </>
             )}
             {/* Which operator's drawing standard applies. Deliberately a
@@ -1328,6 +1399,7 @@ export default function GISCanvasPage() {
           feature={editing}
           layers={layers}
           lineTypes={lineTypes}
+          surfaceTypes={surfaceTypes}
           plotList={plotList}
           lookups={lookups}
           onSave={saveFeature}
@@ -1341,6 +1413,7 @@ export default function GISCanvasPage() {
         <BulkEditor
           features={selectedFeatures}
           lineTypes={lineTypes}
+          surfaceTypes={surfaceTypes}
           layers={layers}
           onApply={applyBulk}
           onClose={() => setBulkOpen(false)}

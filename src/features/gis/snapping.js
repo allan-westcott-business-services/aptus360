@@ -118,6 +118,17 @@ export function classOf(f) {
   return `${f.Feature_Type}:${f.Attributes?.Line_Type || f.Layer_Key}`;
 }
 
+/* A trench is a hole; a cable is what goes in it. They take different
+   fields — a trench has a surface to reinstate and no size, a cable has
+   a size and no surface, because nobody reinstates a cable.
+
+   Decided from the line type's layer rather than a list of keys, so a
+   trench type added later needs no code change. */
+export function isTrenchType(typeKey, lineTypes = []) {
+  if (!typeKey) return false;
+  return lineTypes.find((t) => t.Type_Key === typeKey)?.Layer_Key === "trench";
+}
+
 export function classLabel(f, lineTypes = []) {
   if (!f) return "";
   if (f.Feature_Type === "point") return f.Feature_Role || f.Layer_Key;

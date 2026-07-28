@@ -1,7 +1,7 @@
 import { useState } from "react";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
-import { lineLength } from "./snapping.js";
+import { lineLength, isTrenchType } from "./snapping.js";
 
 /* Editing whatever you right-clicked.
 
@@ -9,7 +9,8 @@ import { lineLength } from "./snapping.js";
    same fields — what it's called, which layer it's on, what it's made
    of. The parts that differ appear only when they apply. */
 export default function FeatureEditor({
-  feature, layers, lineTypes, plotList, lookups, onSave, onSavePlot, onDelete, onClose,
+  feature, layers, lineTypes, surfaceTypes = [], plotList, lookups,
+  onSave, onSavePlot, onDelete, onClose,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -20,6 +21,9 @@ export default function FeatureEditor({
   const [error, setError] = useState("");
 
   const isLine = feature.Feature_Type === "line";
+  /* Read from the draft, not the saved row, so switching a cable to a
+     trench swaps the fields immediately rather than after a save. */
+  const isTrench = isTrenchType(f.Attributes?.Line_Type, lineTypes);
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
@@ -150,12 +154,26 @@ export default function FeatureEditor({
                 </select>
               </div>
               <div className="fe-row">
-                <div className="fld">
-                  <label htmlFor="fe-size">Size</label>
-                  <input id="fe-size" value={f.Attributes.Size ?? ""}
-                    placeholder="e.g. 185mm² WF"
-                    onChange={(e) => setAttr("Size")(e.target.value)} />
-                </div>
+                {isTrench ? (
+                  <div className="fld">
+                    <label htmlFor="fe-surface">Surface</label>
+                    <select id="fe-surface" value={f.Attributes.Surface_Type ?? ""}
+                      onChange={(e) => setAttr("Surface_Type")(e.target.value)}>
+                      <option value="">&mdash; None &mdash;</option>
+                      {surfaceTypes.map((x) => (
+                        <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
+                      ))}
+                    </select>
+                    <p className="hint">What it is dug through. Drives reinstatement.</p>
+                  </div>
+                ) : (
+                  <div className="fld">
+                    <label htmlFor="fe-size">Size</label>
+                    <input id="fe-size" value={f.Attributes.Size ?? ""}
+                      placeholder="e.g. 185mm² WF"
+                      onChange={(e) => setAttr("Size")(e.target.value)} />
+                  </div>
+                )}
                 <div className="fld">
                   <label htmlFor="fe-depth">Depth (m)</label>
                   <input id="fe-depth" type="number" step="0.05"
@@ -163,6 +181,13 @@ export default function FeatureEditor({
                     onChange={(e) => setAttr("Depth_m")(e.target.value)} />
                 </div>
               </div>
+              {f.Attributes.Site && (
+                <p className="fe-derived">
+                  <strong>{f.Attributes.Site}</strong>
+                  <span> &mdash; from the site boundary when this was drawn.
+                    Redraw it to reclassify.</span>
+                </p>
+              )}
               {(f.Attributes.Way || f.Attributes.Circuit) && (
                 <p className="fe-derived">
                   Way <strong>{f.Attributes.Way ?? "\u2014"}</strong>,

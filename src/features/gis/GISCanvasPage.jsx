@@ -2,7 +2,7 @@ import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import {
-  listGis, createFeature, moveFeatures, deleteFeatures, ensurePlots,
+  listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
   placeJoints, traceNetwork, assignMeters,
 } from "../../api/gis.js";
 import {
@@ -17,6 +17,7 @@ import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { housePath } from "./plotRange.js";
+import FeatureEditor from "./FeatureEditor.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -68,6 +69,8 @@ export default function GISCanvasPage() {
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
   const [lookups, setLookups] = useState({});
+  const [showGrid, setShowGrid] = useState(true);
+  const [editing, setEditing] = useState(null);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -198,7 +201,10 @@ export default function GISCanvasPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPdfMap, pdf.size, view.x, view.y, view.scale, basemap?.Metres_Per_Pixel, basemap?.Origin_X, basemap?.Origin_Y]);
-  const snap = (v) => Math.round(v / SNAP_M) * SNAP_M;
+  /* With Snap off, nothing is rounded. Quietly snapping to a metre grid
+     you can't see is worse than not snapping — it looks like the click
+     was misread. */
+  const snap = (v) => (snapOn ? Math.round(v / SNAP_M) * SNAP_M : v);
 
   /* ── drawing ── */
   const draw = useCallback(() => {
@@ -237,7 +243,7 @@ export default function GISCanvasPage() {
 
     // grid, spaced so it never becomes noise at low zoom
     const step = GRID_M * view.scale;
-    if (step > 6) {
+    if (showGrid && step > 6) {
       ctx.strokeStyle = "#eef0f4";
       ctx.lineWidth = 1;
       ctx.beginPath();
@@ -426,7 +432,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -445,12 +451,32 @@ export default function GISCanvasPage() {
   useEffect(() => { draw(); }, [draw]);
 
   /* ── hit testing ── */
+  /* Vertices first, then edges. A boundary's corners are often off
+     screen, so requiring a vertex hit made it unselectable. */
   function featureAt(px, py) {
     for (let i = visible.length - 1; i >= 0; i--) {
       const f = visible[i];
       for (const m of f.Geometry || []) {
         const p = toPx(m);
         if (Math.hypot(p.x - px, p.y - py) <= HIT_PX) return f;
+      }
+    }
+    for (let i = visible.length - 1; i >= 0; i--) {
+      const f = visible[i];
+      if (f.Feature_Type === "point") continue;
+      const g = f.Geometry || [];
+      const closed = f.Feature_Type === "polygon";
+      const n = closed ? g.length : g.length - 1;
+      for (let k = 0; k < n; k++) {
+        const a = toPx(g[k]);
+        const b = toPx(g[(k + 1) % g.length]);
+        const vx = b.x - a.x, vy = b.y - a.y;
+        const len2 = vx * vx + vy * vy;
+        if (!len2) continue;
+        let t = ((px - a.x) * vx + (py - a.y) * vy) / len2;
+        t = Math.max(0, Math.min(1, t));
+        const d = Math.hypot(a.x + t * vx - px, a.y + t * vy - py);
+        if (d <= HIT_PX) return f;
       }
     }
     return null;
@@ -462,9 +488,20 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
-    /* Middle or right drags the view, whatever tool is active — so you
-       can reposition mid-drawing without putting the tool down. */
-    if (e.button === 1 || e.button === 2) {
+    /* Right-click on something opens its editor; right-drag on empty
+       space pans. Middle always pans, whatever's under it. */
+    if (e.button === 2) {
+      e.preventDefault();
+      const hit = featureAt(px, py);
+      if (hit && !placing && !drawing) {
+        setSelected([hit.Feature_ID]);
+        setEditing(hit);
+        return;
+      }
+      drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
+      return;
+    }
+    if (e.button === 1) {
       e.preventDefault();
       drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
       return;
@@ -523,7 +560,7 @@ export default function GISCanvasPage() {
   /* Cursor position after snapping. Vertices and ends win over the
      middle of a line, because that's usually what you meant. */
   function resolve(mx, my) {
-    if (!snapOn) return { point: [snap(mx), snap(my)], hit: null };
+    if (!snapOn) return { point: [mx, my], hit: null };
     const t = findSnap(targets, [mx, my], view.scale, SNAP_PX);
     if (t) return { point: [...t.point], hit: t };
     const edge = nearestOnLines(visible, [mx, my], view.scale, SNAP_PX);
@@ -770,6 +807,19 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  async function saveFeature(id, changes) {
+    setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
+    try { await updateFeature(projectId, id, changes); }
+    catch (e) { setError(e.message); await load(projectId); throw e; }
+  }
+
+  async function deleteFeature(id) {
+    setFeatures((f) => f.filter((x) => x.Feature_ID !== id));
+    setSelected((sel) => sel.filter((x) => x !== id));
+    try { await deleteFeatures(projectId, [id]); }
+    catch (e) { setError(e.message); await load(projectId); throw e; }
+  }
+
   async function removeSelected() {
     if (!selected.length) return;
     const withPlots = features.filter((f) => selected.includes(f.Feature_ID) && f.Plot_ID);
@@ -879,6 +929,18 @@ export default function GISCanvasPage() {
         )}
       </div>
 
+      {editing && (
+        <FeatureEditor
+          feature={editing}
+          layers={layers}
+          lineTypes={lineTypes}
+          plotList={plotList}
+          onSave={saveFeature}
+          onDelete={deleteFeature}
+          onClose={() => setEditing(null)}
+        />
+      )}
+
       {addOpen && projectId && (
         <AddPlotsModal
           existing={plotList}
@@ -965,9 +1027,19 @@ export default function GISCanvasPage() {
               </label>
             </div>
 
+            <p className="gl-title">View</p>
+            <label className={showGrid ? "gl" : "gl off"}>
+              <input type="checkbox" checked={showGrid}
+                onChange={(e) => setShowGrid(e.target.checked)} />
+              <span className="gl-swatch grid" />
+              <span className="gl-name">Grid</span>
+              <span className="gl-count">{GRID_M}m</span>
+            </label>
+
             <p className="gl-title">Help</p>
             <ul className="gl-help">
               <li>Right or middle drag to pan</li>
+              <li>Right-click an object to edit it</li>
               <li>Scroll to zoom on the cursor</li>
               <li>Shift-click to multi-select</li>
               <li><kbd>Esc</kbd> cancels, <kbd>Del</kbd> removes</li>
@@ -1050,6 +1122,8 @@ const CSS = `
 .gl:hover { background: var(--bg); }
 .gl.off .gl-name, .gl.off .gl-count { opacity: .4; }
 .gl-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
+.gl-swatch.grid { background: repeating-linear-gradient(0deg,#cbd5e1 0 1px,transparent 1px 4px),
+  repeating-linear-gradient(90deg,#cbd5e1 0 1px,transparent 1px 4px); }
 .gl-name { flex: 1; }
 .gl-count { font-size: 10.5px; font-weight: 700; color: var(--muted); }
 .gis-layers > .pp { margin-bottom: 14px; }

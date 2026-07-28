@@ -2,6 +2,7 @@ import { useState } from "react";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
+import { pocUnit, circuitLetter, SUB_DEFAULTS } from "./electric.js";
 
 /* Editing whatever you right-clicked.
 
@@ -141,6 +142,69 @@ export default function FeatureEditor({
             </select>
           </div>
 
+          {feature.Feature_Role === "poc" && (
+            <div className="fld">
+              <label htmlFor="fe-poc">Agreed output ({pocUnit(f.Layer_Key)})</label>
+              <input id="fe-poc" type="number" step="0.1"
+                value={f.Attributes.Output ?? ""}
+                onChange={(e) => setAttr("Output")(e.target.value)} />
+              <p className="hint">
+                What the DNO has agreed to supply here. Circuits are checked against it.
+              </p>
+            </div>
+          )}
+
+          {feature.Feature_Role === "substation" && (
+            <>
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-rating">Rating (kVA)</label>
+                  <input id="fe-rating" type="number" step="1"
+                    value={f.Attributes.Rating_kVA ?? ""}
+                    onChange={(e) => setAttr("Rating_kVA")(e.target.value)} />
+                </div>
+                <div className="fld">
+                  <label htmlFor="fe-outv">Output (V)</label>
+                  <input id="fe-outv" type="number" step="1"
+                    placeholder={String(SUB_DEFAULTS.Output_V)}
+                    value={f.Attributes.Output_V ?? ""}
+                    onChange={(e) => setAttr("Output_V")(e.target.value)} />
+                </div>
+              </div>
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-ways">LV ways</label>
+                  <input id="fe-ways" type="number" min="1" max="24" step="1"
+                    placeholder={String(SUB_DEFAULTS.Ways)}
+                    value={f.Attributes.Ways ?? ""}
+                    onChange={(e) => setAttr("Ways")(e.target.value)} />
+                </div>
+                <div className="fld">
+                  <label htmlFor="fe-fuse">Way fuse (A)</label>
+                  <input id="fe-fuse" type="number" step="1"
+                    placeholder={String(SUB_DEFAULTS.Way_Fuse_A)}
+                    value={f.Attributes.Way_Fuse_A ?? ""}
+                    onChange={(e) => setAttr("Way_Fuse_A")(e.target.value)} />
+                </div>
+              </div>
+              <p className="hint">
+                One circuit per way. Defining a circuit takes the next free one.
+              </p>
+              {Object.keys(f.Attributes.Way_Circuits || {}).length > 0 && (
+                <div className="fe-ways">
+                  {Object.entries(f.Attributes.Way_Circuits)
+                    .sort((a, b) => Number(a[0]) - Number(b[0]))
+                    .map(([way, cid]) => (
+                      <span className="fe-way" key={way}>
+                        Way {way}
+                        <strong>{circuitLetter(cid)}</strong>
+                      </span>
+                    ))}
+                </div>
+              )}
+            </>
+          )}
+
           {isLine && (
             <>
               <div className="fld">
@@ -174,12 +238,17 @@ export default function FeatureEditor({
                       onChange={(e) => setAttr("Size")(e.target.value)} />
                   </div>
                 )}
-                <div className="fld">
-                  <label htmlFor="fe-depth">Depth (m)</label>
-                  <input id="fe-depth" type="number" step="0.05"
-                    value={f.Attributes.Depth_m ?? ""}
-                    onChange={(e) => setAttr("Depth_m")(e.target.value)} />
-                </div>
+                {/* Depth belongs to what is laid, not to the hole it
+                    is laid in — a trench's depth follows from the
+                    deepest service in it. */}
+                {!isTrench && (
+                  <div className="fld">
+                    <label htmlFor="fe-depth">Depth (m)</label>
+                    <input id="fe-depth" type="number" step="0.05"
+                      value={f.Attributes.Depth_m ?? ""}
+                      onChange={(e) => setAttr("Depth_m")(e.target.value)} />
+                  </div>
+                )}
               </div>
               {f.Attributes.Site && (
                 <p className="fe-derived">
@@ -298,6 +367,11 @@ const CSS = `
 .fe-derived { margin: 0; font-size: 11.5px; color: var(--muted); background: var(--bg);
   border-radius: var(--radius); padding: 8px 10px; line-height: 1.5; }
 .fe-derived strong { color: var(--text); }
+.fe-ways { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
+.fe-way { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
+  background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px;
+  color: var(--muted); }
+.fe-way strong { color: var(--accent); font-size: 12px; }
 .fe-tip { margin: 0; font-size: 11px; color: var(--muted); font-style: italic; }
 .fe-foot { display: flex; align-items: center; gap: 8px; padding: 13px 18px;
   border-top: 1px solid var(--border); }

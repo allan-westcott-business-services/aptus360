@@ -19,9 +19,13 @@ import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
-import { splitByBoundary, boundaryPolygons, pointInAny, surfaceFor, ON_SITE, OFF_SITE }
-  from "./boundary.js";
-import { planAutoService, mainsTrenches, teeIntoMains } from "./autoService.js";
+import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
+  ON_SITE, OFF_SITE } from "./boundary.js";
+import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
+import {
+  circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
+  assignWay, circuitsFrom, pocUnit,
+} from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
@@ -160,7 +164,7 @@ export default function GISCanvasPage() {
   const joinable = selectedFeatures.length > 1 && !!selectionClass
     && selectedFeatures.every((f) => f.Feature_Type === "line");
 
-  const drawing = tool === "boundary" || tool === "line";
+  const drawing = tool === "boundary" || tool === "line" || tool === "circuit";
   const placing = queue.some((q) => !q.done);
   const nextPlot = meterFor?.plot || queue.find((q) => !q.done) || null;
 
@@ -998,6 +1002,11 @@ export default function GISCanvasPage() {
   }
 
   async function finishDrawing() {
+    if (tool === "circuit") {
+      if (draft.length < 3) { setDraft([]); setTool("select"); return; }
+      await finishCircuit(draft);
+      return;
+    }
     const isPoly = tool === "boundary";
     if (draft.length < (isPoly ? 3 : 2)) { setDraft([]); return; }
     const t = typeOf(lineType);
@@ -1241,6 +1250,135 @@ export default function GISCanvasPage() {
      versus off-site comes from the boundary, tested per run, rather than
      being inherited from whatever the mains trench happened to be
      labelled. */
+  /* POC and substation, as the original places them.
+
+     A POC snaps onto the nearest main of its utility, because it is the
+     point where that main meets the DNO's network. A substation snaps
+     onto the nearest trench, so it sits on the network rather than
+     beside it. Both fall back to where you clicked, with the reason
+     said out loud — the original lets you place one before the network
+     exists and draw through it afterwards. */
+  async function placeNode(role) {
+    if (!projectId) return;
+    const layerKey = role === "substation" ? "electric" : (utilities[0]?.layer_key ?? "electric");
+
+    if (role === "poc") {
+      const existing = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === layerKey);
+      if (existing) {
+        setError(`There is already an ${layerKey} POC. Move or delete it rather than adding a second.`);
+        setSelected([existing.Feature_ID]);
+        return;
+      }
+    }
+
+    /* Middle of the current view, then snapped. Placing it at the centre
+       rather than asking for a click keeps this one button rather than a
+       button and a mode. */
+    const cx = (canvasRef.current?.clientWidth ?? 800) / 2;
+    const cy = (canvasRef.current?.clientHeight ?? 500) / 2;
+    let point = toM(cx, cy);
+    let note = "";
+
+    const targets = role === "substation"
+      ? visible.filter((f) => f.Feature_Type === "line"
+          && isTrenchType(f.Attributes?.Line_Type, lineTypes))
+      : visible.filter((f) => f.Feature_Type === "line"
+          && f.Layer_Key === layerKey
+          && String(f.Attributes?.Line_Type || "").includes("main"));
+
+    let best = null;
+    for (const t of targets) {
+      const r = nearestOnPolyline(point, t.Geometry || []);
+      if (r && (!best || r.d < best.d)) best = { ...r, line: t };
+    }
+    if (best) { point = best.q; note = ` on ${best.line.Label ?? "the network"}`; }
+    else {
+      note = role === "substation"
+        ? " \u2014 not on a trench yet, draw one through it to join the network"
+        : " \u2014 not on a main yet, draw the main through it later";
+    }
+
+    const count = features.filter((f) => f.Feature_Role === role).length + 1;
+    const label = role === "substation"
+      ? `Substation ${count}`
+      : `${utilities.find((u) => u.layer_key === layerKey)?.utility ?? "Electric"} POC`;
+
+    try {
+      await createFeature(projectId, {
+        Layer_Key: layerKey,
+        Feature_Type: "point",
+        Feature_Role: role,
+        Geometry: [point],
+        Label: label,
+        Attributes: role === "substation" ? {} : { Output: null },
+      });
+      await load(projectId);
+      setStatus(`${label} placed${note}`);
+      setTimeout(() => setStatus(""), 7000);
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
+  /* ── Link to Circuit ──
+     The original's gisLinkCircuitFinish. Draw round the plot seeds a
+     circuit should serve; the plots with an electric meter become its
+     members, membership is written on those meters, and the circuit
+     takes the next free LV way on the substation.
+
+     Cabling is deliberately not drawn here, exactly as in the original —
+     defining a circuit assigns its meters, and laying the feeders is a
+     separate step. */
+  async function finishCircuit(ring) {
+    const sub = features.find((f) => f.Feature_Role === "substation");
+    if (!sub) {
+      setError("Place a substation first \u2014 a circuit has to feed back to one.");
+      return;
+    }
+    const seeds = metredSeedsInside(features, ring, pointInPolygon);
+    if (!seeds.length) {
+      setError("No plot seeds with an electric meter inside that outline.");
+      return;
+    }
+    const meters = metersOfSeeds(features, seeds);
+    const circuitId = nextCircuitId(features);
+    const letter = circuitLetter(circuitId);
+    const name = `Circuit ${circuitId}`;
+    const kva = circuitKva(meters, (id) => plotList.find((p) => p.plot_id === id));
+    const way = assignWay(sub, circuitId, kva);
+
+    if (way.full) {
+      setError(`All ${way.ways} LV ways are taken. Add a way on the substation, or free one by deleting a circuit.`);
+      return;
+    }
+
+    setBusy("circuit");
+    try {
+      await bulkUpdateFeatures(projectId, meters.map((m) => ({
+        Feature_ID: m.Feature_ID,
+        Attributes: {
+          ...m.Attributes,
+          Circuit_ID: circuitId, Circuit_Name: name, Circuit_Letter: letter,
+        },
+      })));
+      if (way.changed) {
+        await updateFeature(projectId, sub.Feature_ID, {
+          Attributes: { ...sub.Attributes, Way_Circuits: way.map },
+        });
+      }
+      await load(projectId);
+      setTool("select");
+      setDraft([]);
+      setError("");
+      setStatus(
+        `${name} (${letter}): ${seeds.length} plot(s), ${meters.length} meter(s), `
+        + `${kva} kVA on LV way ${way.way}`
+        + (way.over ? ` \u2014 ~${way.amps} A exceeds the ${way.fuse} A fuse` : "")
+      );
+      setTimeout(() => setStatus(""), 10000);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   async function runAutoService() {
     const seeds = selected.length
       ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
@@ -1592,6 +1730,23 @@ export default function GISCanvasPage() {
               {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
             </button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
+            <button className="btn ghost" disabled={!projectId} onClick={() => placeNode("poc")}
+              title="Where this utility's network meets the DNO's. Snaps onto the nearest main.">
+              + POC
+            </button>
+            <button className="btn ghost" disabled={!projectId} onClick={() => placeNode("substation")}
+              title="On-site substation. Snaps onto the nearest trench so it joins the network.">
+              + Substation
+            </button>
+            <button className={tool === "circuit" ? "btn accent" : "btn ghost"}
+              disabled={!projectId}
+              onClick={() => {
+                setTool(tool === "circuit" ? "select" : "circuit");
+                setSelected([]); setDraft([]);
+              }}
+              title="Draw round the plot seeds a circuit should serve. Their electric meters are assigned to it.">
+              {tool === "circuit" ? "Drawing circuit\u2026" : "Link to Circuit"}
+            </button>
             <button className="btn ghost" disabled={!projectId} onClick={() => setBomOpen(true)}
               title="Quantities for everything drawn, by site, surface and utility">
               BOM
@@ -1821,6 +1976,33 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {/* What is defined so far: the POC's agreed output and the
+                circuits drawn against it. Both are read constantly while
+                laying out an estate, and neither was visible without
+                opening a feature. */}
+            {(() => {
+              const poc = features.find((f) => f.Feature_Role === "poc"
+                && f.Layer_Key === "electric");
+              const circuits = circuitsFrom(features);
+              if (!poc && !circuits.length) return null;
+              return (
+                <div className="gis-elec">
+                  {poc && (
+                    <span className="ge-poc">
+                      POC {poc.Attributes?.Output != null && poc.Attributes.Output !== ""
+                        ? `${poc.Attributes.Output} ${pocUnit(poc.Layer_Key)}`
+                        : "output not set"}
+                    </span>
+                  )}
+                  {circuits.map((c) => (
+                    <span className="ge-c" key={c.id} title={`${c.name}, ${c.meters.length} meter(s)`}>
+                      {c.letter}<em>{c.meters.length}</em>
+                    </span>
+                  ))}
+                </div>
+              );
+            })()}
+
             <div className="gis-hud">
               <span className="hud-scale">
                 <span className="hud-bar" style={{ width: barM * view.scale }} />
@@ -1843,7 +2025,8 @@ export default function GISCanvasPage() {
             </div>
             {drawing && (
               <div className="gis-tip">
-                {tool === "boundary" ? "Click to place corners" : "Click to place points"}
+                {tool === "circuit" ? "Click round the plot seeds this circuit serves"
+              : tool === "boundary" ? "Click to place corners" : "Click to place points"}
                 {" \u00B7 "}<kbd>Enter</kbd> to finish{" \u00B7 "}
                 <kbd>Backspace</kbd> undoes{" \u00B7 "}<kbd>Esc</kbd> cancels
                 {draft.length > 0 && ` \u00B7 ${draft.length} placed`}
@@ -1931,6 +2114,14 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+.gis-elec { position: absolute; right: 12px; top: 12px; z-index: 5; display: flex;
+  align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 45%; }
+.ge-poc { background: #0f766e; color: #fff; border-radius: 20px; padding: 2px 10px;
+  font: 700 10.5px inherit; }
+.ge-c { background: var(--white); border: 1px solid var(--accent); color: var(--accent);
+  border-radius: 20px; padding: 2px 9px; font: 700 10.5px inherit; display: inline-flex;
+  align-items: center; gap: 5px; }
+.ge-c em { font-style: normal; font-weight: 600; color: var(--muted); }
 .gis-picker { position: absolute; z-index: 6; width: 240px; background: var(--white);
   border: 1px solid var(--border); border-radius: 8px; padding: 5px;
   box-shadow: 0 10px 28px rgba(15,23,42,.18); }

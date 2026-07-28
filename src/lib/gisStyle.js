@@ -32,6 +32,9 @@ const FIELDS = [
   "Colour", "Dashed", "Dash_Pattern", "Symbol",
   "Width_Px", "Width_M", "Scale_Width", "Min_Width_Px", "Max_Width_Px",
   "Symbol_Size_Px", "Min_Scale", "Max_Scale", "Label_Min_Scale",
+  // Markers repeated along a line: an E every 10 m, an arrow, a tick
+  "Marker_Text", "Marker_Symbol", "Marker_Interval_M", "Marker_Size_Px",
+  "Marker_Colour", "Marker_Rotate", "Marker_Offset_Px", "Marker_Min_Gap_Px",
 ];
 
 const same = (a, b) => String(a) === String(b);
@@ -125,7 +128,78 @@ export function appearance(style, scale, fallback = {}) {
     symbol: style.Symbol ?? fallback.symbol ?? "circle",
     symbolPx: Number(style.Symbol_Size_Px ?? fallback.symbolPx ?? 6),
     showLabel: style.Label_Min_Scale == null || scale >= Number(style.Label_Min_Scale),
+    marker: markerConfig(style, scale),
   };
+}
+
+/* Markers repeated along a line — the E along an electric main, an
+   arrow showing flow, a tick across a trench.
+
+   The interval is a distance on the ground, not a number of pixels,
+   because "every 10 metres" is a property of the drawing and has to
+   survive a zoom. What can't survive a zoom is the appearance: at 0.5
+   px/m a marker every 10 m is one every 5 pixels, which is a smear. So
+   there is a minimum on-screen gap, and when the interval falls below
+   it the step grows to a whole multiple of itself rather than to
+   whatever the gap requires — markers thin out instead of sliding, so
+   the ones you can still see are where they always were. */
+function markerConfig(style, scale) {
+  const text = style.Marker_Text ? String(style.Marker_Text) : null;
+  const symbol = style.Marker_Symbol || null;
+  if (!text && !symbol) return null;
+
+  const interval = Number(style.Marker_Interval_M ?? 10);
+  if (!(interval > 0)) return null;
+
+  const minGap = Number(style.Marker_Min_Gap_Px ?? 28);
+  const stepM = interval * Math.max(1, Math.ceil(minGap / scale / interval));
+
+  return {
+    text, symbol,
+    intervalM: interval,
+    stepM,
+    sizePx: Number(style.Marker_Size_Px ?? 11),
+    colour: style.Marker_Colour ?? null,       // null = follow the line
+    rotate: style.Marker_Rotate !== false,
+    offsetPx: Number(style.Marker_Offset_Px ?? 0),
+  };
+}
+
+/* Where the markers fall, in the same metres the geometry is stored in.
+
+   Walks the run accumulating distance and drops one every stepM, with a
+   half-step lead-in so a marker never sits exactly on a junction where
+   it would collide with whatever else is drawn there. The angle is the
+   direction of the segment it landed on, flipped where it would
+   otherwise read upside down. */
+export function markerPositions(geometry, stepM, { lead = 0.5 } = {}) {
+  const g = geometry || [];
+  if (g.length < 2 || !(stepM > 0)) return [];
+
+  const out = [];
+  let next = stepM * lead;
+  let travelled = 0;
+
+  for (let i = 1; i < g.length; i++) {
+    const a = g[i - 1], b = g[i];
+    const dx = b[0] - a[0], dy = b[1] - a[1];
+    const seg = Math.hypot(dx, dy);
+    if (!seg) continue;
+
+    let angle = Math.atan2(dy, dx);
+    // Keep text the right way up: a run drawn right to left would
+    // otherwise letter it upside down.
+    if (angle > Math.PI / 2) angle -= Math.PI;
+    if (angle < -Math.PI / 2) angle += Math.PI;
+
+    while (next <= travelled + seg) {
+      const t = (next - travelled) / seg;
+      out.push({ point: [a[0] + dx * t, a[1] + dy * t], angle });
+      next += stepM;
+    }
+    travelled += seg;
+  }
+  return out;
 }
 
 /* Drawing a symbol. Kept here rather than in the canvas so the admin

@@ -94,17 +94,58 @@ label {
 .req { color: #ef4444; }
 .hint { font-size: 11px; color: var(--muted); margin: 3px 0 0; }
 
-input, select, textarea {
+/* Checkboxes and radios are excluded: width:100% stretches them across
+   the row and appearance:none removes the box and the tick. They get
+   their own rule below. */
+input:not([type="checkbox"]):not([type="radio"]), select, textarea {
   width: 100%; background: var(--bg); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 6px 10px; font-family: "DM Sans", sans-serif;
   font-size: 13px; color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s; appearance: none; -webkit-appearance: none;
 }
 textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
-input:focus, select:focus, textarea:focus {
+input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(57, 70, 123, 0.14);
 }
-input:disabled, select:disabled { background: #f9fafb; color: var(--muted); cursor: not-allowed; }
+input:not([type="checkbox"]):not([type="radio"]):disabled, select:disabled {
+  background: #f9fafb; color: var(--muted); cursor: not-allowed;
+}
+
+/* Checkboxes and radios.
+
+   Native, deliberately. The previous attempt drew its own box with
+   appearance:none, which meant re-inventing the tick, the focus ring and
+   the disabled state — and any stray `.thing input { width: ... }` rule
+   left it a hairline or a pill, because an appearance-less input has no
+   size of its own to fall back on.
+
+   A native checkbox has an intrinsic square size, so the worst a stray
+   width rule can do is nothing. accent-color tints it to the brand
+   without giving up any of that. Supported everywhere this app runs.
+
+   The doubled attribute selector is not a typo: it lifts these to the
+   same weight as a `.class input` rule from a component <style> block,
+   which is injected after this file and would otherwise win the tie. */
+input[type="checkbox"][type="checkbox"],
+input[type="radio"][type="radio"] {
+  appearance: auto; -webkit-appearance: auto;
+  width: 16px; height: 16px;
+  min-width: 16px; flex: none;
+  margin: 0; padding: 0;
+  accent-color: var(--accent);
+  cursor: pointer;
+  vertical-align: -3px;
+}
+input[type="checkbox"]:disabled,
+input[type="radio"]:disabled { cursor: not-allowed; opacity: 0.6; }
+
+/* Sits a box next to its words without the label rule's uppercase
+   treatment. Use this instead of reaching for width: auto. */
+.check {
+  display: inline-flex; align-items: center; gap: 8px;
+  font-size: 12.5px; font-weight: 500; text-transform: none;
+  letter-spacing: 0; color: var(--text); margin: 0; cursor: pointer;
+}
 
 .sel { position: relative; }
 .sel select { padding-right: 26px; }

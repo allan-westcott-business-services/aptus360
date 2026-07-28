@@ -19,10 +19,11 @@ import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
-import { splitByBoundary, boundaryPolygons, OFF_SITE } from "./boundary.js";
+import { splitByBoundary, boundaryPolygons, pointInAny, ON_SITE, OFF_SITE } from "./boundary.js";
 import { planAutoService, mainsTrenches, teeIntoMains } from "./autoService.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
+import BomModal from "./BomModal.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -81,6 +82,7 @@ export default function GISCanvasPage() {
   const [editing, setEditing] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
   const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
+  const [bomOpen, setBomOpen] = useState(false);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -1322,7 +1324,13 @@ export default function GISCanvasPage() {
             Geometry: [m.point],
             Label: `${m.utility.utility} Meter ${plan.seed.Label ?? ""}`.trim(),
             Plot_ID: plan.seed.Plot_ID ?? null,
-            Attributes: { Meter_Utility: m.utility.utility, Seed_Feature_ID: plan.seed.Feature_ID },
+            Attributes: {
+              Meter_Utility: m.utility.utility,
+              Seed_Feature_ID: plan.seed.Feature_ID,
+              /* Classified on the way in, so it counts on the right side
+                 of the bill rather than landing in Unclassified. */
+              Site: polys.length ? (pointInAny(m.point, polys) ? ON_SITE : OFF_SITE) : null,
+            },
           });
           meterCount++;
         }
@@ -1571,6 +1579,10 @@ export default function GISCanvasPage() {
               {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
             </button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
+            <button className="btn ghost" disabled={!projectId} onClick={() => setBomOpen(true)}
+              title="Quantities for everything drawn, by site, surface and utility">
+              BOM
+            </button>
             <button className="btn ghost" disabled={busy === "autoservice"}
               onClick={runAutoService}
               title="Drop a service trench at right angles from the nearest mains trench to each plot seed, then place that plot's meters and services. Works on the selected seed, or every seed if none is selected.">
@@ -1616,6 +1628,14 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onDelete={deleteFeature}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {bomOpen && projectId && (
+        <BomModal
+          projectId={projectId}
+          projectName={project?.Project_Name ?? project?.Project_Ref}
+          onClose={() => setBomOpen(false)}
         />
       )}
 

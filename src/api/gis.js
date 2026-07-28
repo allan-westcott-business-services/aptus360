@@ -33,6 +33,12 @@ export async function listGis(projectId) {
   return http.get(`/projects/${projectId}/gis`);
 }
 
+/* Quantities for the project, aggregated by gis_bom in the database. */
+export async function getGisBom(projectId) {
+  if (USE_MOCKS) { await delay(200); return { rows: [] }; }
+  return http.get(`/gis-bom?project=${projectId}`);
+}
+
 /* Styling rules, edited in Admin and read by the canvas every frame
    through src/lib/gisStyle.js. */
 export async function listGisStyles() {

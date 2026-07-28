@@ -9,7 +9,7 @@ import { lineLength } from "./snapping.js";
    same fields — what it's called, which layer it's on, what it's made
    of. The parts that differ appear only when they apply. */
 export default function FeatureEditor({
-  feature, layers, lineTypes, plotList, onSave, onDelete, onClose,
+  feature, layers, lineTypes, plotList, lookups, onSave, onSavePlot, onDelete, onClose,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -28,6 +28,24 @@ export default function FeatureEditor({
     setF((p) => ({ ...p, Attributes: { ...p.Attributes, [k]: v === "" ? null : v } }));
 
   const plot = plotList.find((p) => p.plot_id === feature.Plot_ID);
+
+  /* A plot seed edits the plot record, not the drawing — the house type
+     belongs to the plot and shows on the Plots tab too. */
+  const [plotFields, setPlotFields] = useState({
+    Property_Config_ID: plot?.property_config_id ?? "",
+    Heat_Source_ID: plot?.heat_source_id ?? "",
+    Heat_Pump_Model_ID: plot?.heat_pump_model_id ?? "",
+  });
+  const setPlotField = (k) => (v) => setPlotFields((p) => ({ ...p, [k]: v }));
+
+  const heatSource = (lookups?.heatSources || [])
+    .find((h) => String(h.Heat_Source_ID) === String(plotFields.Heat_Source_ID));
+  /* Only ask for a model when the source is a pump — a gas boiler has no
+     model to choose from this list. */
+  const needsPump = /pump|ashp|gshp|wshp/i.test(heatSource?.Heat_Source || "");
+
+  const typeName = (id) =>
+    (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
   const layer = layers.find((l) => l.Layer_Key === f.Layer_Key);
   const length = (isLine || isPoly) ? lineLength(feature.Geometry || []) : 0;
   const vertices = (feature.Geometry || []).length;
@@ -41,13 +59,39 @@ export default function FeatureEditor({
   async function save() {
     setBusy(true);
     try {
+      if (isSeed && feature.Plot_ID) {
+        const config = (lookups?.propertyConfigs || [])
+          .find((c) => String(c.Property_Config_ID) === String(plotFields.Property_Config_ID));
+
+        await onSavePlot(feature.Plot_ID, {
+          Property_Config_ID: plotFields.Property_Config_ID || null,
+          Heat_Source_ID: plotFields.Heat_Source_ID || null,
+          // Clearing the pump when the source isn't one, so a stale model
+          // can't sit against a gas plot
+          Heat_Pump_Model_ID: needsPump ? (plotFields.Heat_Pump_Model_ID || null) : null,
+        }, {
+          Bedrooms: config?.Bedrooms ?? null,
+          Config: config?.Code ?? null,
+        });
+      }
+
       await onSave(feature.Feature_ID, {
         Label: f.Label || null,
         Layer_Key: f.Layer_Key,
-        Attributes: f.Attributes,
+        Attributes: isSeed
+          ? { ...f.Attributes, ...seedAttributes() }
+          : f.Attributes,
       });
       onClose();
     } catch (e) { setError(e.message); setBusy(false); }
+  }
+
+  /* Keep the drawing's cached bedroom count in step, or the seed keeps
+     its old colour until the next reload. */
+  function seedAttributes() {
+    const config = (lookups?.propertyConfigs || [])
+      .find((c) => String(c.Property_Config_ID) === String(plotFields.Property_Config_ID));
+    return { Bedrooms: config?.Bedrooms ?? null, Config: config?.Code ?? null };
   }
 
   async function remove() {
@@ -138,11 +182,50 @@ export default function FeatureEditor({
           )}
 
           {isSeed && (
-            <p className="fe-derived">
-              {f.Attributes.Config && <>House type <strong>{f.Attributes.Config}</strong>, </>}
-              {f.Attributes.Bedrooms ?? "?"} bed
-              <span> &mdash; change these on the project&rsquo;s Plots tab</span>
-            </p>
+            <>
+              <div className="fld">
+                <label htmlFor="fe-config">House type</label>
+                <select id="fe-config" value={plotFields.Property_Config_ID}
+                  onChange={(e) => setPlotField("Property_Config_ID")(e.target.value)}>
+                  <option value="">&mdash; None &mdash;</option>
+                  {(lookups?.propertyConfigs || []).map((c) => (
+                    <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
+                      {c.Code} &mdash; {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
+                    </option>
+                  ))}
+                </select>
+              </div>
+
+              <div className="fld">
+                <label htmlFor="fe-heat">Heating source</label>
+                <select id="fe-heat" value={plotFields.Heat_Source_ID}
+                  onChange={(e) => setPlotField("Heat_Source_ID")(e.target.value)}>
+                  <option value="">&mdash; None &mdash;</option>
+                  {(lookups?.heatSources || []).map((h) => (
+                    <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>{h.Heat_Source}</option>
+                  ))}
+                </select>
+              </div>
+
+              {needsPump && (
+                <div className="fld">
+                  <label htmlFor="fe-pump">Heat pump model</label>
+                  <select id="fe-pump" value={plotFields.Heat_Pump_Model_ID}
+                    onChange={(e) => setPlotField("Heat_Pump_Model_ID")(e.target.value)}>
+                    <option value="">&mdash; None &mdash;</option>
+                    {(lookups?.heatPumpModels || []).map((m) => (
+                      <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
+                        {m.Model}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              )}
+
+              <p className="fe-derived">
+                These belong to the plot, so they change on the Plots tab too.
+              </p>
+            </>
           )}
 
           <div className="fld">

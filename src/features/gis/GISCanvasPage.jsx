@@ -12,6 +12,7 @@ import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getBasemap } from "../../api/basemap.js";
 import { listDevelopers } from "../../api/developers.js";
+import { bulkUpdatePlots } from "../../api/plots.js";
 import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
@@ -833,6 +834,21 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Writing to the plot record, then refreshing the local copies so the
+     seed recolours and the list stays right without a full reload. */
+  async function savePlot(plotId, changes, seedAttrs) {
+    setPlotList((l) => l.map((x) => (x.plot_id === plotId ? {
+      ...x,
+      property_config_id: changes.Property_Config_ID,
+      heat_source_id: changes.Heat_Source_ID,
+      heat_pump_model_id: changes.Heat_Pump_Model_ID,
+      bedrooms: seedAttrs?.Bedrooms ?? x.bedrooms,
+      config_code: seedAttrs?.Config ?? x.config_code,
+    } : x)));
+    try { await bulkUpdatePlots(projectId, [plotId], changes); }
+    catch (e) { setError(e.message); await load(projectId); throw e; }
+  }
+
   async function saveFeature(id, changes) {
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
     try { await updateFeature(projectId, id, changes); }
@@ -961,7 +977,9 @@ export default function GISCanvasPage() {
           layers={layers}
           lineTypes={lineTypes}
           plotList={plotList}
+          lookups={lookups}
           onSave={saveFeature}
+          onSavePlot={savePlot}
           onDelete={deleteFeature}
           onClose={() => setEditing(null)}
         />

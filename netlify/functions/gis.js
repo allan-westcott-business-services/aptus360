@@ -30,12 +30,19 @@ export default async function handler(req, context) {
     }
 
     /* Dragging produces a stream of positions. Sending the whole moved
-       set in one call keeps it to a single request per drag. */
+       set in one call keeps it to a single request per drag.
+
+       Each update carries whatever it wants changed, filtered through
+       the same writable list as a single PATCH — a drag sends Geometry
+       alone, a bulk edit sends Attributes and Label. Attributes is
+       replaced wholesale, not merged, so the caller sends the merged
+       object; that is deliberate, because a partial merge here would
+       have no way to remove a key. */
     if (req.method === "PATCH" && !id) {
       const { updates = [] } = await req.json();
       if (!updates.length) return json({ updated: 0 });
       const results = await Promise.all(updates.map((u) =>
-        db.from("GIS_Feature").update({ Geometry: u.Geometry })
+        db.from("GIS_Feature").update(pick(u))
           .eq("Feature_ID", u.Feature_ID).eq("Project_ID", projectId)
       ));
       const bad = results.find((r) => r.error);

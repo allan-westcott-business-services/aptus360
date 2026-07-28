@@ -24,6 +24,7 @@ export function snapTargets(features, { includeMidpoints = true } = {}) {
         vertex: i,
         kind: f.Feature_Type === "point" ? "point" : (i === 0 || i === g.length - 1 ? "end" : "vertex"),
         label: f.Label,
+        lineType: f.Attributes?.Line_Type ?? null,
       });
     });
     if (includeMidpoints && f.Feature_Type !== "point") {
@@ -34,6 +35,7 @@ export function snapTargets(features, { includeMidpoints = true } = {}) {
           segment: i,
           kind: "mid",
           label: f.Label,
+          lineType: f.Attributes?.Line_Type ?? null,
         });
       }
     }
@@ -104,4 +106,73 @@ export function lineLength(geometry) {
     t += Math.hypot(geometry[i + 1][0] - geometry[i][0], geometry[i + 1][1] - geometry[i][1]);
   }
   return t;
+}
+
+
+/* What counts as "the same class". Lines are classed by their type — a
+   mains trench and a service trench are different things even though
+   they share a layer. Points are classed by the role they play. */
+export function classOf(f) {
+  if (!f) return "";
+  if (f.Feature_Type === "point") return `point:${f.Feature_Role || f.Layer_Key}`;
+  return `${f.Feature_Type}:${f.Attributes?.Line_Type || f.Layer_Key}`;
+}
+
+export function classLabel(f, lineTypes = []) {
+  if (!f) return "";
+  if (f.Feature_Type === "point") return f.Feature_Role || f.Layer_Key;
+  const t = lineTypes.find((x) => x.Type_Key === f.Attributes?.Line_Type);
+  return t?.Label || f.Layer_Key;
+}
+
+const meets = (a, b, tol) => Math.hypot(a[0] - b[0], a[1] - b[1]) <= tol;
+
+/* Chain lines end to end into one polyline.
+
+   Works outwards from the first line, attaching whichever remaining line
+   touches either free end and reversing it if it arrives backwards. The
+   shared point is dropped rather than repeated, so the joined length is
+   the sum of the parts and not one vertex longer.
+
+   Tolerance is CONNECT_M — metres, not pixels. Two ends either meet or
+   they don't, and that can't depend on the zoom at the time. */
+export function joinLines(lines, tol = CONNECT_M) {
+  const usable = lines.filter((f) => (f.Geometry || []).length >= 2);
+  if (usable.length < 2) return { error: "Select two or more lines to join." };
+
+  let chain = [...usable[0].Geometry];
+  const used = [usable[0]];
+  const rest = usable.slice(1);
+
+  let attached = true;
+  while (rest.length && attached) {
+    attached = false;
+    for (let i = 0; i < rest.length; i++) {
+      const g = rest[i].Geometry;
+      const head = chain[0];
+      const tail = chain[chain.length - 1];
+      const gs = g[0];
+      const ge = g[g.length - 1];
+
+      if (meets(tail, gs, tol))      chain = [...chain, ...g.slice(1)];
+      else if (meets(tail, ge, tol)) chain = [...chain, ...[...g].reverse().slice(1)];
+      else if (meets(head, ge, tol)) chain = [...g.slice(0, -1), ...chain];
+      else if (meets(head, gs, tol)) chain = [...[...g].reverse().slice(0, -1), ...chain];
+      else continue;
+
+      used.push(rest[i]);
+      rest.splice(i, 1);
+      attached = true;
+      break;
+    }
+  }
+
+  if (rest.length) {
+    return {
+      error: rest.length === 1
+        ? "One of these doesn't share an end point with the others. Lines join end to end — drag the loose end onto the one it should meet, then try again."
+        : `${rest.length} of these don't share an end point with the others. Lines join end to end, within ${CONNECT_M} m.`,
+    };
+  }
+  return { geometry: chain, used };
 }

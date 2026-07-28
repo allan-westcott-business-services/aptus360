@@ -175,11 +175,15 @@ export default function PlacementPanel({
 const CSS = `
 .pp { border: 1px solid var(--border); border-radius: var(--radius); padding: 11px; background: var(--white); }
 .pp.active { border-color: var(--accent); background: var(--accent-light); }
-.pp-head { display: flex; align-items: center; justify-content: space-between; margin-bottom: 8px; }
+/* Stacked, not side by side. The panel is 200px wide and "88 to place"
+   is a pill that mustn't wrap — putting the label above it gives the
+   count the whole width and keeps it on one line. */
+.pp-head { display: flex; flex-direction: column; align-items: flex-start; gap: 5px;
+  margin-bottom: 8px; }
 .pp-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .07em; color: var(--accent); }
 .pp-count { font-size: 10.5px; font-weight: 700; background: var(--accent); color: #fff;
-  border-radius: 20px; padding: 1px 8px; }
+  border-radius: 20px; padding: 1px 8px; white-space: nowrap; }
 .pp-none { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 0; }
 .pp-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }

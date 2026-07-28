@@ -49,6 +49,21 @@ export async function moveFeatures(projectId, updates) {
   }
   return http.patch(`/projects/${projectId}/gis`, { updates });
 }
+/* Same endpoint as moveFeatures — one request for the whole selection
+   rather than one per feature. Each update carries its own already
+   merged Attributes, because the endpoint replaces the column rather
+   than merging into it. */
+export async function bulkUpdateFeatures(projectId, updates) {
+  if (USE_MOCKS) {
+    await delay(200);
+    store = store.map((f) => {
+      const u = updates.find((x) => x.Feature_ID === f.Feature_ID);
+      return u ? { ...f, ...u } : f;
+    });
+    return { updated: updates.length };
+  }
+  return http.patch(`/projects/${projectId}/gis`, { updates });
+}
 export async function updateFeature(projectId, id, changes) {
   if (USE_MOCKS) {
     await delay(160);

@@ -3,10 +3,11 @@ import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
-  placeJoints, traceNetwork, assignMeters,
+  placeJoints, traceNetwork, assignMeters, bulkUpdateFeatures,
 } from "../../api/gis.js";
 import {
   SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
+  classOf, classLabel, joinLines,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
@@ -19,6 +20,7 @@ import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { housePath } from "./plotRange.js";
 import FeatureEditor from "./FeatureEditor.jsx";
+import BulkEditor from "./BulkEditor.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -72,6 +74,7 @@ export default function GISCanvasPage() {
   const [lookups, setLookups] = useState({});
   const [showGrid, setShowGrid] = useState(true);
   const [editing, setEditing] = useState(null);
+  const [bulkOpen, setBulkOpen] = useState(false);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -130,6 +133,21 @@ export default function GISCanvasPage() {
   );
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
+
+  /* Bulk actions need the selection to be one kind of thing. Editing a
+     trench and a cable together would offer fields that only apply to
+     one of them, and joining only means anything within a class. */
+  const selectedFeatures = useMemo(
+    () => selected.map((id) => features.find((f) => f.Feature_ID === id)).filter(Boolean),
+    [selected, features]
+  );
+  const selectionClass = useMemo(() => {
+    if (!selectedFeatures.length) return null;
+    const first = classOf(selectedFeatures[0]);
+    return selectedFeatures.every((f) => classOf(f) === first) ? first : null;
+  }, [selectedFeatures]);
+  const joinable = selectedFeatures.length > 1 && !!selectionClass
+    && selectedFeatures.every((f) => f.Feature_Type === "line");
 
   const drawing = tool === "boundary" || tool === "line";
   const placing = queue.some((q) => !q.done);
@@ -524,18 +542,21 @@ export default function GISCanvasPage() {
     }
 
     /* A selected line shows its vertices; dragging one reshapes the line
-       rather than moving the whole thing. */
+       rather than moving the whole thing. Alt turns the same click into
+       remove-this-point, or add-one-here when it lands on a segment. */
     if (tool === "select" && selected.length === 1) {
       const f = features.find((x) => x.Feature_ID === selected[0]);
       if (f && f.Feature_Type !== "point") {
-        const idx = (f.Geometry || []).findIndex((m) => {
-          const q = toPx(m);
-          return Math.hypot(q.x - px, q.y - py) <= HIT_PX;
-        });
+        const idx = vertexAt(f, px, py);
         if (idx >= 0) {
+          if (e.altKey) { removeVertex(f, idx); return; }
           drag.current = { mode: "vertex", featureId: f.Feature_ID, index: idx };
           setEditVertex({ featureId: f.Feature_ID, index: idx });
           return;
+        }
+        if (e.altKey) {
+          const seg = segmentAt(f, px, py);
+          if (seg) { addVertex(f, seg.index, seg.point); return; }
         }
       }
     }
@@ -559,9 +580,22 @@ export default function GISCanvasPage() {
   }
 
   /* Cursor position after snapping. Vertices and ends win over the
-     middle of a line, because that's usually what you meant. */
+     middle of a line, because that's usually what you meant.
+
+     Starting a line prefers its own class first: a mains trench begun
+     near both a cable and another mains trench takes the trench. A run
+     almost always continues from the run it belongs to, and once the
+     first point is down the general rules take over — the far end is
+     usually meeting something else entirely. */
   function resolve(mx, my) {
     if (!snapOn) return { point: [mx, my], hit: null };
+
+    if (tool === "line" && draft.length === 0 && lineType) {
+      const own = targets.filter((t) => t.lineType === lineType);
+      const t = findSnap(own, [mx, my], view.scale, SNAP_PX);
+      if (t) return { point: [...t.point], hit: { ...t, sameClass: true } };
+    }
+
     const t = findSnap(targets, [mx, my], view.scale, SNAP_PX);
     if (t) return { point: [...t.point], hit: t };
     const edge = nearestOnLines(visible, [mx, my], view.scale, SNAP_PX);
@@ -849,6 +883,76 @@ export default function GISCanvasPage() {
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
 
+  /* ── vertices ──
+     Geometry is the only thing sent. gis_length_trg recomputes
+     Attributes.Length_m on any change to it, so the stored length can't
+     fall behind the shape, and the label on screen reads the live
+     geometry so it moves while you drag. */
+  function vertexAt(f, px, py) {
+    return (f.Geometry || []).findIndex((m) => {
+      const q = toPx(m);
+      return Math.hypot(q.x - px, q.y - py) <= HIT_PX;
+    });
+  }
+
+  /* Which segment the click landed on, and where along it. Polygons
+     include the closing edge back to the first point. */
+  function segmentAt(f, px, py) {
+    const g = f.Geometry || [];
+    if (g.length < 2) return null;
+    const closed = f.Feature_Type === "polygon";
+    const n = closed ? g.length : g.length - 1;
+    let best = null;
+    let bestD = HIT_PX;
+    for (let k = 0; k < n; k++) {
+      const a = toPx(g[k]);
+      const b = toPx(g[(k + 1) % g.length]);
+      const vx = b.x - a.x, vy = b.y - a.y;
+      const len2 = vx * vx + vy * vy;
+      if (!len2) continue;
+      let t = ((px - a.x) * vx + (py - a.y) * vy) / len2;
+      t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(a.x + t * vx - px, a.y + t * vy - py);
+      if (d <= bestD) {
+        bestD = d;
+        const am = g[k], bm = g[(k + 1) % g.length];
+        best = { index: k, point: [am[0] + t * (bm[0] - am[0]), am[1] + t * (bm[1] - am[1])] };
+      }
+    }
+    return best;
+  }
+
+  async function writeGeometry(id, geometry) {
+    setFeatures((fs) => fs.map((f) => (f.Feature_ID === id ? { ...f, Geometry: geometry } : f)));
+    try { await moveFeatures(projectId, [{ Feature_ID: id, Geometry: geometry }]); }
+    catch (e) { setError(e.message); await load(projectId); }
+  }
+
+  /* A line needs two points and a polygon three. Below that it stops
+     being the thing it is, so the last one can't be removed — deleting
+     the feature is the honest way to get rid of it. */
+  function removeVertex(f, index) {
+    const g = f.Geometry || [];
+    const floor = f.Feature_Type === "polygon" ? 3 : 2;
+    if (g.length <= floor) {
+      setError(f.Feature_Type === "polygon"
+        ? "An area needs three corners. Delete the whole shape instead."
+        : "A line needs two points. Delete the whole line instead.");
+      return;
+    }
+    setEditVertex(null);
+    setError("");
+    writeGeometry(f.Feature_ID, g.filter((_, i) => i !== index));
+  }
+
+  function addVertex(f, segmentIndex, point) {
+    const g = f.Geometry || [];
+    const next = [...g.slice(0, segmentIndex + 1), point, ...g.slice(segmentIndex + 1)];
+    setEditVertex({ featureId: f.Feature_ID, index: segmentIndex + 1 });
+    setError("");
+    writeGeometry(f.Feature_ID, next);
+  }
+
   async function saveFeature(id, changes) {
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
     try { await updateFeature(projectId, id, changes); }
@@ -860,6 +964,69 @@ export default function GISCanvasPage() {
     setSelected((sel) => sel.filter((x) => x !== id));
     try { await deleteFeatures(projectId, [id]); }
     catch (e) { setError(e.message); await load(projectId); throw e; }
+  }
+
+  /* Joining runs end to end into one. The earliest-drawn line survives,
+     so it keeps its Feature_ID and with it its way, circuit and the
+     Connects entries other features hold against it — tracing walks
+     that graph, so a joined run that lost its identity would drop off
+     the network.
+
+     Anything that pointed at a consumed line is repointed at the
+     survivor in the same request. The survivor is written before the
+     others are deleted: if the delete fails you are left with the
+     joined line and its originals overlapping, which is visible and
+     fixable, rather than a gap where a run used to be. */
+  async function joinSelected() {
+    const lines = selectedFeatures.filter((f) => f.Feature_Type === "line");
+    const { geometry, used, error: why } = joinLines(lines);
+    if (why) { setError(why); return; }
+
+    const survivor = used.reduce((a, b) => (a.Feature_ID <= b.Feature_ID ? a : b));
+    const consumed = used
+      .filter((f) => f.Feature_ID !== survivor.Feature_ID)
+      .map((f) => f.Feature_ID);
+
+    const attrs = { ...(survivor.Attributes || {}) };
+    if (Array.isArray(attrs.Connects)) {
+      attrs.Connects = [...new Set(attrs.Connects.filter((id) => !consumed.includes(id)))];
+    }
+
+    const repointed = features
+      .filter((f) => !consumed.includes(f.Feature_ID)
+        && f.Feature_ID !== survivor.Feature_ID
+        && Array.isArray(f.Attributes?.Connects)
+        && f.Attributes.Connects.some((id) => consumed.includes(id)))
+      .map((f) => ({
+        Feature_ID: f.Feature_ID,
+        Attributes: {
+          ...f.Attributes,
+          Connects: [...new Set(f.Attributes.Connects.map(
+            (id) => (consumed.includes(id) ? survivor.Feature_ID : id)))],
+        },
+      }));
+
+    setBusy("join");
+    try {
+      await bulkUpdateFeatures(projectId, [
+        { Feature_ID: survivor.Feature_ID, Geometry: geometry, Attributes: attrs },
+        ...repointed,
+      ]);
+      await deleteFeatures(projectId, consumed);
+      await load(projectId);
+      setSelected([survivor.Feature_ID]);
+      setError("");
+      setStatus(`${used.length} lines joined into one \u2014 ${lineLength(geometry).toFixed(1)} m`);
+      setTimeout(() => setStatus(""), 5000);
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); }
+  }
+
+  async function applyBulk(updates) {
+    await bulkUpdateFeatures(projectId, updates);
+    await load(projectId);
+    setStatus(`${updates.length} feature${updates.length === 1 ? "" : "s"} updated`);
+    setTimeout(() => setStatus(""), 5000);
   }
 
   async function removeSelected() {
@@ -883,10 +1050,17 @@ export default function GISCanvasPage() {
       if (e.key === "Backspace" && drawing && draft.length) {
         e.preventDefault();
         setDraft((d) => d.slice(0, -1));
+        return;
       }
-      if ((e.key === "Delete" || e.key === "Backspace") && selected.length
+      if ((e.key === "Delete" || e.key === "Backspace")
           && document.activeElement?.tagName !== "INPUT") {
-        e.preventDefault(); removeSelected();
+        /* A point is being worked on, so Delete means that point. Only
+           once nothing is picked does it mean the whole feature. */
+        if (editVertex) {
+          const f = features.find((x) => x.Feature_ID === editVertex.featureId);
+          if (f) { e.preventDefault(); removeVertex(f, editVertex.index); return; }
+        }
+        if (selected.length) { e.preventDefault(); removeSelected(); }
       }
     };
     window.addEventListener("keydown", onKey);
@@ -962,6 +1136,25 @@ export default function GISCanvasPage() {
               {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
             </button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
+            {selected.length > 1 && (
+              <button className="btn ghost" disabled={!selectionClass}
+                title={selectionClass
+                  ? `Edit all ${selected.length} ${classLabel(selectedFeatures[0], lineTypes)} together`
+                  : "Selection holds more than one kind of object"}
+                onClick={() => setBulkOpen(true)}>
+                Edit {selected.length}
+              </button>
+            )}
+            {joinable && (
+              <button className="btn ghost" disabled={busy === "join"} onClick={joinSelected}>
+                {busy === "join" ? "Joining\u2026" : `Join ${selected.length}`}
+              </button>
+            )}
+            {selected.length > 1 && !selectionClass && (
+              <span className="gis-mixed">
+                Mixed selection &mdash; shift-click to narrow it to one kind
+              </span>
+            )}
             {selected.length > 0 && (
               <button className="btn ghost danger" onClick={removeSelected}>
                 Delete {selected.length}
@@ -982,6 +1175,16 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onDelete={deleteFeature}
           onClose={() => setEditing(null)}
+        />
+      )}
+
+      {bulkOpen && selectedFeatures.length > 1 && (
+        <BulkEditor
+          features={selectedFeatures}
+          lineTypes={lineTypes}
+          layers={layers}
+          onApply={applyBulk}
+          onClose={() => setBulkOpen(false)}
         />
       )}
 
@@ -1089,6 +1292,9 @@ export default function GISCanvasPage() {
               <li><kbd>Esc</kbd> cancels, <kbd>Del</kbd> removes</li>
               {drawing && <li><kbd>Enter</kbd> finishes, <kbd>Backspace</kbd> undoes</li>}
               {!drawing && <li>Select a line to drag its points</li>}
+              {!drawing && <li><kbd>Alt</kbd>-click a point to remove it</li>}
+              {!drawing && <li><kbd>Alt</kbd>-click a segment to add one</li>}
+              {!drawing && <li>Same class, sharing an end: Join</li>}
             </ul>
           </div>
 
@@ -1131,7 +1337,12 @@ export default function GISCanvasPage() {
                 <kbd>Backspace</kbd> undoes{" \u00B7 "}<kbd>Esc</kbd> cancels
                 {draft.length > 0 && ` \u00B7 ${draft.length} placed`}
                 {draft.length > 1 && ` \u00B7 ${lineLength(draft).toFixed(1)} m`}
-                {snapHit && <span className="tip-snap">snapping to {snapHit.kind}</span>}
+                {snapHit && (
+                  <span className="tip-snap">
+                    snapping to {snapHit.kind}
+                    {snapHit.sameClass && " on the same class"}
+                  </span>
+                )}
               </div>
             )}
           </div>
@@ -1205,6 +1416,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .tip-snap { margin-left: 10px; background: #dc2626; border-radius: 999px; padding: 1px 9px; font-size: 10.5px; }
 .gis-type { width: auto; min-width: 150px; font-size: 12.5px; }
 .gis-size { width: 88px; font-size: 12.5px; }
+.gis-mixed { font-size: 11px; color: var(--muted); font-style: italic; max-width: 22ch; }
 .gis-snap { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);
   border: 1px solid var(--border); border-radius: 7px; padding: 6px 12px; margin: 0; cursor: pointer; }

@@ -1206,7 +1206,24 @@ export default function GISCanvasPage() {
   const barM = [1, 2, 5, 10, 20, 50, 100, 200].find((m) => m * view.scale > 60) || 200;
 
   return (
-    <div className="gis">
+    /* Right-click opens the feature editor, and the browser's own menu
+       must not come with it.
+
+       The canvas has its own handler, but it only catches this on macOS,
+       where contextmenu fires on mousedown — before React commits the
+       modal. Windows fires it after mouseup, by which point the editor's
+       backdrop is under the cursor and is the event target, so the
+       canvas never sees it. Caught here instead, where the canvas and
+       anything it opens are both in scope.
+
+       Form fields are exempt. Suppressing right-click inside a text box
+       takes away paste, spellcheck and undo for no benefit. */
+    <div className="gis"
+      onContextMenu={(e) => {
+        if (!e.target?.closest?.("input, textarea, select, [contenteditable]")) {
+          e.preventDefault();
+        }
+      }}>
       <style>{CSS}</style>
 
       <div className="gis-bar">

@@ -137,6 +137,30 @@ export function midpointOf(run) {
   return run[run.length - 1];
 }
 
+/* What a trench is dug through, given which side of the boundary it
+   fell on.
+
+   On site is unmade ground: a building site has no formal surface yet,
+   and there is nothing to reinstate. Off site is whatever was chosen
+   when drawing, because that is a decision about the highway that only
+   the person drawing it can make.
+
+   This matters because one drawn trench becomes two features when it
+   crosses. Applying a single chosen surface to both halves would put a
+   footway reinstatement on the length inside the red line, where no
+   footway exists.
+
+   Guarded on the surface types actually loaded, so removing Unmade in
+   Admin stops this writing a key that no longer resolves. */
+export const ON_SITE_SURFACE = "unmade";
+
+export function surfaceFor(site, chosen, available = []) {
+  if (site === ON_SITE && available.some((s) => s.Surface_Key === ON_SITE_SURFACE)) {
+    return ON_SITE_SURFACE;
+  }
+  return chosen || null;
+}
+
 /* The polygons that make up the site boundary. More than one is allowed
    — a site split by an existing road is still one project. */
 export function boundaryPolygons(features = []) {

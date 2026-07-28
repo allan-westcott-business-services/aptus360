@@ -19,7 +19,8 @@ import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
-import { splitByBoundary, boundaryPolygons, pointInAny, ON_SITE, OFF_SITE } from "./boundary.js";
+import { splitByBoundary, boundaryPolygons, pointInAny, surfaceFor, ON_SITE, OFF_SITE }
+  from "./boundary.js";
 import { planAutoService, mainsTrenches, teeIntoMains } from "./autoService.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
@@ -1035,7 +1036,8 @@ export default function GISCanvasPage() {
             /* Written by which kind of run this is, not by whatever was
                last typed into a field that is now hidden. */
             Size: isTrenchType(lineType, lineTypes) ? null : (size || null),
-            Surface_Type: isTrenchType(lineType, lineTypes) ? (surface || null) : null,
+            Surface_Type: isTrenchType(lineType, lineTypes)
+              ? surfaceFor(run.site, surface, surfaceTypes) : null,
             Site: run.site,
             // Recorded at draw time using the metre tolerance, not the
             // pixel one — what it touches, not what it looked near.
@@ -1306,6 +1308,7 @@ export default function GISCanvasPage() {
             Attributes: {
               Line_Type: "trench_service",
               Site: run.site,
+              Surface_Type: surfaceFor(run.site, null, surfaceTypes),
               Seed_Feature_ID: plan.seed.Feature_ID,
               Connects: connectedTo(run.geometry, visible, null),
             },
@@ -1540,8 +1543,10 @@ export default function GISCanvasPage() {
                 {isTrenchType(lineType, lineTypes) ? (
                   <select className="gis-type" value={surface} aria-label="Surface type"
                     onChange={(e) => setSurface(e.target.value)}
-                    title="What this trench is dug through \u2014 drives reinstatement">
+                    title="Surface for any part outside the boundary. On-site runs are set to Unmade automatically.">
                     <option value="">Surface&hellip;</option>
+                    {/* On-site runs are set to Unmade automatically, so
+                        this only governs anything outside the boundary. */}
                     {surfaceTypes.map((x) => (
                       <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
                     ))}

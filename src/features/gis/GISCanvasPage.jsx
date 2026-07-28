@@ -89,8 +89,11 @@ export default function GISCanvasPage() {
       const [res, bm, pl] = await Promise.all([
         listGis(pid),
         getBasemap(pid).catch(() => null),
-        listPlacementPlots(pid).catch(() => ({ plots: [], utilities: [] })),
+        listPlacementPlots(pid).catch((e) => ({
+          plots: [], utilities: [], _error: e.message,
+        })),
       ]);
+      if (pl._error) setError(`Couldn't read this project's plots: ${pl._error}`);
       setPlotList(pl.plots || []);
       const devs = await listDevelopers(pid).catch(() => ({ rows: [] }));
       setDevelopers((devs.rows || []).map((d) => {

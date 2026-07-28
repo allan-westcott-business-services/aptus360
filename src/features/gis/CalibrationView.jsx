@@ -174,19 +174,34 @@ export default function CalibrationView({
     ctx.stroke();
   }
 
-  function onWheel(e) {
-    e.preventDefault();
-    const r = wrapRef.current.getBoundingClientRect();
-    const px = e.clientX - r.left, py = e.clientY - r.top;
-    setView((v) => {
-      const next = Math.min(40, Math.max(0.02, v.scale * (e.deltaY < 0 ? 1.15 : 0.87)));
-      return {
-        scale: next,
-        x: px - (px - v.x) * (next / v.scale),
-        y: py - (py - v.y) * (next / v.scale),
-      };
-    });
-  }
+  /* Native and non-passive: React's onWheel can't preventDefault, so a
+     trackpad pinch would zoom the page rather than the plan. */
+  useEffect(() => {
+    const el = wrapRef.current;
+    if (!el) return;
+
+    const onWheelNative = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const r = el.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+      const factor = e.ctrlKey
+        ? Math.exp(-e.deltaY * 0.01)
+        : (e.deltaY < 0 ? 1.15 : 0.87);
+
+      setView((v) => {
+        const next = Math.min(40, Math.max(0.02, v.scale * factor));
+        return {
+          scale: next,
+          x: px - (px - v.x) * (next / v.scale),
+          y: py - (py - v.y) * (next / v.scale),
+        };
+      });
+    };
+
+    el.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => el.removeEventListener("wheel", onWheelNative);
+  }, []);
 
   const isPanButton = (e) => e.button === 1 || e.button === 2;
 
@@ -241,7 +256,6 @@ export default function CalibrationView({
       <div
         className={panning ? "cv-stage panning" : "cv-stage"}
         ref={wrapRef}
-        onWheel={onWheel}
         onPointerDown={onDown}
         onPointerMove={onMove}
         onPointerUp={onUp}
@@ -284,7 +298,7 @@ const CSS = `
 .cv { display: flex; flex-direction: column; gap: 8px; }
 .cv-stage { position: relative; height: 340px; border: 1px solid var(--border);
   border-radius: var(--radius); overflow: hidden; background: #f1f5f9;
-  cursor: crosshair; touch-action: none; user-select: none; }
+  cursor: crosshair; touch-action: none; user-select: none; overscroll-behavior: contain; }
 .cv-stage.panning { cursor: grabbing; }
 .cv-plan { display: block; width: 100%; height: 100%; }
 .cv-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;

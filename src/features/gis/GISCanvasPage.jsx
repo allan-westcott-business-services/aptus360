@@ -635,20 +635,38 @@ export default function GISCanvasPage() {
     catch (e) { setError(e.message); await load(projectId); }
   }
 
-  function onWheel(e) {
-    e.preventDefault();
-    const r = canvasRef.current.getBoundingClientRect();
-    const px = e.clientX - r.left, py = e.clientY - r.top;
-    setView((v) => {
-      const next = Math.min(40, Math.max(0.4, v.scale * (e.deltaY < 0 ? 1.12 : 0.89)));
-      // keep the point under the cursor fixed
-      return {
-        scale: next,
-        x: px - (px - v.x) * (next / v.scale),
-        y: py - (py - v.y) * (next / v.scale),
-      };
-    });
-  }
+  /* Registered natively with passive:false — React's onWheel is passive,
+     so preventDefault there is ignored and a trackpad pinch zooms the
+     whole page. A pinch arrives as a wheel event with ctrlKey set. */
+  useEffect(() => {
+    const cv = canvasRef.current;
+    if (!cv) return;
+
+    const onWheelNative = (e) => {
+      e.preventDefault();
+      e.stopPropagation();
+      const r = cv.getBoundingClientRect();
+      const px = e.clientX - r.left, py = e.clientY - r.top;
+
+      // A pinch reports far larger deltas than a wheel notch; damp it so
+      // both feel like the same gesture.
+      const factor = e.ctrlKey
+        ? Math.exp(-e.deltaY * 0.01)
+        : (e.deltaY < 0 ? 1.12 : 0.89);
+
+      setView((v) => {
+        const next = Math.min(40, Math.max(0.4, v.scale * factor));
+        return {
+          scale: next,
+          x: px - (px - v.x) * (next / v.scale),
+          y: py - (py - v.y) * (next / v.scale),
+        };
+      });
+    };
+
+    cv.addEventListener("wheel", onWheelNative, { passive: false });
+    return () => cv.removeEventListener("wheel", onWheelNative);
+  }, []);
 
   /* ── actions ── */
   /* Create anything missing, then place the whole range. */
@@ -1059,7 +1077,6 @@ export default function GISCanvasPage() {
               onPointerLeave={() => { drag.current = null; setCursor(null); }}
               onContextMenu={(e) => e.preventDefault()}
               onAuxClick={(e) => e.preventDefault()}
-              onWheel={onWheel}
             />
             <div className="gis-hud">
               <span className="hud-scale">
@@ -1140,7 +1157,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 
 .gis-canvas-wrap { position: relative; border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; background: var(--white); min-height: 0; }
-.gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default; touch-action: none; }
+.gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
+  touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
 .gis-hud { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 14px;
   background: rgba(255,255,255,.94); border: 1px solid var(--border); border-radius: 7px;

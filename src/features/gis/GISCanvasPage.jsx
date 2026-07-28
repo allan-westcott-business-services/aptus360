@@ -6,7 +6,7 @@ import {
   placeJoints, traceNetwork, assignMeters, bulkUpdateFeatures,
 } from "../../api/gis.js";
 import {
-  SNAP_PX, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
+  SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
   classOf, classLabel, joinLines, isTrenchType,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
@@ -21,6 +21,7 @@ import { bedColour } from "../../lib/bedColours.js";
 import { housePath } from "./plotRange.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
 import { splitByBoundary, boundaryPolygons, OFF_SITE } from "./boundary.js";
+import { planAutoService, mainsTrenches, teeIntoMains } from "./autoService.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
@@ -1161,6 +1162,159 @@ export default function GISCanvasPage() {
      others are deleted: if the delete fails you are left with the
      joined line and its originals overlapping, which is visible and
      fixable, rather than a gap where a run used to be. */
+  /* ── Auto Service ──
+     A port of the original's gisAutoServiceTrench. For each plot seed:
+     drop a perpendicular onto the nearest mains trench, lay a service
+     trench along it, stack that plot's meters just beyond the seed, and
+     run a service cable or pipe down the trench to each one.
+
+     Scope follows the original: the selected seed, or every seed when
+     nothing is selected.
+
+     Two things are done differently, both because this app has
+     something the original didn't. Meter spacing is in metres rather
+     than screen pixels over zoom — the original capped that figure to
+     stop a zoomed-out run flinging meters across the site, which is a
+     symptom of keeping a screen measurement in the data. And on-site
+     versus off-site comes from the boundary, tested per run, rather than
+     being inherited from whatever the mains trench happened to be
+     labelled. */
+  async function runAutoService() {
+    const seeds = selected.length
+      ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
+      : features.filter((f) => f.Feature_Role === "plot");
+    if (!seeds.length) {
+      setError(selected.length
+        ? "Select a plot seed, or select nothing to cover every plot."
+        : "Place a plot seed first.");
+      return;
+    }
+
+    const trenches = mainsTrenches(visible, (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    if (!trenches.length) { setError("Draw a mains trench first."); return; }
+
+    const serviceType = lineTypes.find((t) => t.Type_Key === "trench_service") || {};
+    const polys = boundaryPolygons(visible);
+
+    /* A seed is already done if a service trench is bound to it. The
+       link is stored on the trench rather than inferred from position,
+       so moving either afterwards doesn't make the plot look unserved
+       and get a second trench on the next run. */
+    const serviced = new Set(features
+      .filter((f) => f.Attributes?.Seed_Feature_ID != null)
+      .map((f) => Number(f.Attributes.Seed_Feature_ID)));
+
+    const utilitiesFor = (seed) => {
+      const plot = plotList.find((p) => p.plot_id === seed.Plot_ID);
+      return utilities.filter((u) =>
+        /* Electric-only plot gets no gas meter — the original read the
+           plot's heat source for this. */
+        !(u.layer_key === "gas" && plot && plot.heat_source_id != null
+          && Number(plot.heat_source_id) !== 1));
+    };
+
+    /* A meter already at this plot for this utility. Matched on the plot
+       first, because that is how the placement flow links them, and on
+       the seed only as a fallback for a seed with no plot behind it. */
+    const existingMeter = (seed, utility) => {
+      const m = features.find((f) =>
+        f.Feature_Role === "meter"
+        && f.Layer_Key === utility.layer_key
+        && (seed.Plot_ID != null
+          ? f.Plot_ID === seed.Plot_ID
+          : Number(f.Attributes?.Seed_Feature_ID) === Number(seed.Feature_ID)));
+      return m ? (m.Geometry || [])[0] ?? null : null;
+    };
+
+    const { plans, skipped } = planAutoService(seeds, trenches, utilitiesFor, {
+      alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
+      existingMeter,
+    });
+    if (!plans.length) {
+      setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped (${skipped[0]?.why ?? "unknown"}).`);
+      return;
+    }
+
+    setBusy("autoservice");
+    let trenchCount = 0, meterCount = 0, cableCount = 0, keptCount = 0;
+    try {
+      for (const plan of plans) {
+        /* Split at the boundary like any other run, so a service that
+           leaves the site is two features with the right lengths on
+           either side rather than one row that is half wrong. */
+        const runs = splitByBoundary(plan.trench, polys);
+        const madeTrenches = [];
+        for (const run of runs) {
+          madeTrenches.push(await createFeature(projectId, {
+            Layer_Key: serviceType.Layer_Key ?? "trench",
+            Feature_Type: "line",
+            Geometry: run.geometry,
+            Label: `Service trench ${plan.seed.Label ?? ""}`.trim(),
+            Plot_ID: plan.seed.Plot_ID ?? null,
+            Attributes: {
+              Line_Type: "trench_service",
+              Site: run.site,
+              Seed_Feature_ID: plan.seed.Feature_ID,
+              Connects: connectedTo(run.geometry, visible, null),
+            },
+          }));
+          trenchCount++;
+        }
+
+        for (const m of plan.meters) {
+          /* Already placed, with its meters. Leave them alone and run
+             the service to where they actually are. */
+          if (m.exists) { keptCount++; continue; }
+          await createFeature(projectId, {
+            Layer_Key: m.utility.layer_key,
+            Feature_Type: "point",
+            Feature_Role: "meter",
+            Geometry: [m.point],
+            Label: `${m.utility.utility} Meter ${plan.seed.Label ?? ""}`.trim(),
+            Plot_ID: plan.seed.Plot_ID ?? null,
+            Attributes: { Meter_Utility: m.utility.utility, Seed_Feature_ID: plan.seed.Feature_ID },
+          });
+          meterCount++;
+        }
+
+        for (const c of plan.cables) {
+          await createFeature(projectId, {
+            Layer_Key: c.utility.layer_key,
+            Feature_Type: "line",
+            Geometry: c.geometry,
+            Label: `${c.utility.utility} service ${plan.seed.Label ?? ""}`.trim(),
+            Plot_ID: plan.seed.Plot_ID ?? null,
+            Attributes: {
+              Line_Type: `${c.utility.layer_key}_service`,
+              Seed_Feature_ID: plan.seed.Feature_ID,
+              Connects: connectedTo(c.geometry, visible, null),
+            },
+          });
+          cableCount++;
+        }
+
+        /* Give the mains a vertex where the service tees in. Without it
+           the two lines cross without meeting and tracing stops at the
+           junction. */
+        const teed = teeIntoMains(plan.mains.Geometry, plan.foot, CONNECT_M);
+        if (teed) {
+          await moveFeatures(projectId, [{ Feature_ID: plan.mains.Feature_ID, Geometry: teed }]);
+        }
+      }
+
+      await load(projectId);
+      setError("");
+      setStatus(
+        `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
+        + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
+        + (skipped.length ? `, ${skipped.length} skipped` : "")
+        + (selected.length ? " \u2014 selected plot only" : "")
+      );
+      setTimeout(() => setStatus(""), 8000);
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); }
+  }
+
   async function joinSelected() {
     const lines = selectedFeatures.filter((f) => f.Feature_Type === "line");
     const { geometry, used, error: why } = joinLines(lines);
@@ -1366,6 +1520,11 @@ export default function GISCanvasPage() {
               {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
             </button>
             <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
+            <button className="btn ghost" disabled={busy === "autoservice"}
+              onClick={runAutoService}
+              title="Drop a service trench at right angles from the nearest mains trench to each plot seed, then place that plot's meters and services. Works on the selected seed, or every seed if none is selected.">
+              {busy === "autoservice" ? "Auto service\u2026" : "\u27C2 Auto Service"}
+            </button>
             {selected.length > 1 && (
               <button className="btn ghost" disabled={!selectionClass}
                 title={selectionClass

@@ -1,4 +1,5 @@
 import * as XLSX from "xlsx";
+import { extractPlots } from "./extractPlots.js";
 
 /* Reading an operator's export, according to its mapping.
 
@@ -85,6 +86,10 @@ export async function parseAvFile(file, config = {}) {
     description: columnIndex(headers, config.description),
   };
 
+  /* Formats where the plot cell is prose rather than a single reference. */
+  const textPlots = config.plots_from_text === true
+    || ["gtc", "gtc_water"].includes(config.source_format);
+
   const statusFilter = config.status_filter
     ? String(config.status_filter).trim().toLowerCase()
     : null;
@@ -119,9 +124,16 @@ export async function parseAvFile(file, config = {}) {
       }
     }
 
+    /* GTC and similar send free text — "Plots 1, 2 and 5-10" — with one
+       payment covering all of them. The value then belongs to the row,
+       not to each plot, so it mustn't be counted per plot. */
+    const plots = textPlots ? extractPlots(plotRef) : [plotRef];
+
     rows.push({
       sourceRow: i + 1,
       plotRef,
+      plots,
+      valueIsRowTotal: textPlots,
       value,
       service: cols.service >= 0 ? String(r[cols.service] ?? "").trim() : "",
       apNumber: cols.apNumber >= 0 ? String(r[cols.apNumber] ?? "").trim() : "",
@@ -141,6 +153,7 @@ export async function parseAvFile(file, config = {}) {
     ),
     rows,
     skipped,
+    textPlots,
   };
 }
 
@@ -163,9 +176,22 @@ export function matchRowsToPlots(rows, plots) {
   });
 
   return rows.map((r) => {
-    const key = normalisePlotRef(r.plotRef);
-    const plot = byRef.get(key) || null;
-    return { ...r, plot, matched: !!plot, normalised: key };
+    const refs = (r.plots && r.plots.length ? r.plots : [r.plotRef]);
+    const resolved = refs.map((ref) => {
+      const key = normalisePlotRef(ref);
+      return { ref, key, plot: byRef.get(key) || null };
+    });
+    const matchedPlots = resolved.filter((x) => x.plot);
+
+    return {
+      ...r,
+      resolved,
+      matchedPlots: matchedPlots.map((x) => x.plot),
+      unmatchedRefs: resolved.filter((x) => !x.plot).map((x) => x.ref),
+      // A single-plot row keeps the old shape so the rest reads the same
+      plot: matchedPlots.length === 1 ? matchedPlots[0].plot : null,
+      matched: matchedPlots.length > 0,
+    };
   });
 }
 
@@ -222,11 +248,31 @@ export function resolveGroups(groups, projects, plots, invoiced) {
     return {
       ...g,
       project,
-      lines: lines.map((l) => ({
-        ...l,
-        billedOn: l.plot ? billedRef.get(l.plot.Plot_ID) : null,
-      })),
+      lines: lines.map((l) => {
+        const found = l.matchedPlots || [];
+        /* A text row covers several plots, so it's only "already billed"
+           when every one of them is — otherwise there's still something
+           to invoice. */
+        const billedNumbers = found
+          .map((pl) => billedRef.get(pl.Plot_ID))
+          .filter(Boolean);
+        return {
+          ...l,
+          // Downstream code expects a single plot; give it the first
+          plot: l.plot || found[0] || null,
+          plotLabel: found.length > 1
+            ? `${found.length} plots: ${found.slice(0, 3).map((pl) => pl.Plot_Number).join(", ")}${
+                found.length > 3 ? "\u2026" : ""}`
+            : (found[0]?.Plot_Number ?? null),
+          billedOn: billedNumbers.length === found.length && found.length
+            ? (billedNumbers[0] || "an invoice")
+            : null,
+          partlyBilled: billedNumbers.length > 0 && billedNumbers.length < found.length,
+        };
+      }),
       matched: lines.filter((l) => l.matched).length,
+      /* A text row's value covers all its plots, so it counts once —
+         adding it per plot would multiply the invoice by the plot count. */
       total: lines.reduce((s, l) => s + l.value, 0),
     };
   });

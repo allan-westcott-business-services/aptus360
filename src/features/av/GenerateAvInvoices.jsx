@@ -108,6 +108,10 @@ export default function GenerateAvInvoices() {
     if (!g.project) return { key: "noproject", label: "No matching contract", tone: "bad" };
     if (!l.matched) return { key: "unmatched", label: "No matching plot", tone: "bad" };
     if (l.billedOn) return { key: "billed", label: `On ${l.billedOn}`, tone: "warn" };
+    if (l.partlyBilled) return { key: "part", label: "Some plots already billed", tone: "warn" };
+    if (l.unmatchedRefs?.length) {
+      return { key: "part", label: `${l.unmatchedRefs.length} plot(s) not found`, tone: "warn" };
+    }
     if (excludedLines.includes(`${g.key}|${l.sourceRow}`)) {
       return { key: "excluded", label: "Excluded", tone: "muted" };
     }
@@ -116,7 +120,7 @@ export default function GenerateAvInvoices() {
 
   const included = useMemo(() => groups
     .filter((g) => g.project && !excludedGroups.includes(g.key))
-    .map((g) => ({ ...g, use: g.lines.filter((l) => lineState(g, l).key === "ok") }))
+    .map((g) => ({ ...g, use: g.lines.filter((l) => ["ok", "part"].includes(lineState(g, l).key)) }))
     .filter((g) => g.use.length),
     // eslint-disable-next-line react-hooks/exhaustive-deps
     [groups, excludedGroups, excludedLines]);
@@ -355,7 +359,7 @@ export default function GenerateAvInvoices() {
                               </td>
                               <td className="muted">{l.sourceRow}</td>
                               <td className="mono">{l.plotRef}</td>
-                              <td className="mono">{l.plot?.Plot_Number ?? "\u2014"}</td>
+                              <td className="mono">{l.plotLabel ?? "\u2014"}</td>
                               <td className="num">{money(l.value)}</td>
                               <td><span className={`gav-pill ${st.tone}`}>{st.label}</span></td>
                             </tr>

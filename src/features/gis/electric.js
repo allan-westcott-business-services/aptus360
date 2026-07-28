@@ -171,3 +171,127 @@ export function circuitsFrom(features = []) {
   }
   return [...out.values()].sort((a, b) => a.id - b.id);
 }
+
+
+/* ── Span nodes ──
+   Numbered points along a circuit. Seq 0 sits on the substation and is
+   the origin every other point on that circuit is measured from — A0,
+   B0, and so on. The original creates it as part of defining a circuit,
+   in gisEnsureCircuitOriginNode. */
+
+export const spanLabel = (letter, seq) => `${letter}${seq}`;
+
+export function originNodeFor(features, circuitId) {
+  return features.find((f) =>
+    f.Feature_Role === "spannode"
+    && Number(f.Attributes?.Circuit_ID) === Number(circuitId)
+    && Number(f.Attributes?.Span_Seq) === 0) || null;
+}
+
+/* ── Full trace from here ──
+   A port of gisFullCircuitTrace, adapted to the graph this app already
+   has. The original walks a geometric node graph built by gisFeederModel;
+   here the graph is the Connects attribute that network tracing already
+   maintains, so a trace can't disagree with what tracing shows.
+
+   Direction comes from the substation: everything is measured outwards
+   from it, so "downstream" means further from the substation, which is
+   the only definition that makes a leg length mean anything.
+
+   A leg runs from the starting node to the next span node, or to a dead
+   end. That is the unit an LV design is checked in — each span of cable
+   between two points, with the meters hanging off it. */
+
+const idsOf = (f) => (Array.isArray(f.Attributes?.Connects) ? f.Attributes.Connects.map(Number) : []);
+
+export function buildGraph(features = []) {
+  const byId = new Map(features.map((f) => [Number(f.Feature_ID), f]));
+  const adj = new Map();
+  const link = (a, b) => {
+    if (!byId.has(a) || !byId.has(b)) return;
+    if (!adj.has(a)) adj.set(a, new Set());
+    adj.get(a).add(b);
+  };
+  for (const f of features) {
+    const a = Number(f.Feature_ID);
+    for (const b of idsOf(f)) { link(a, b); link(b, a); }
+  }
+  return { byId, adj };
+}
+
+/* Breadth first from the substation, so each feature learns which
+   feature it hangs off. Breadth first rather than depth first because
+   the shortest route back is the one the cable actually takes. */
+export function rootAt(graph, rootId) {
+  const parent = new Map([[Number(rootId), null]]);
+  const queue = [Number(rootId)];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const next of graph.adj.get(cur) || []) {
+      if (parent.has(next)) continue;
+      parent.set(next, cur);
+      queue.push(next);
+    }
+  }
+  const children = new Map();
+  for (const [node, par] of parent) {
+    if (par == null) continue;
+    if (!children.has(par)) children.set(par, []);
+    children.get(par).push(node);
+  }
+  return { parent, children };
+}
+
+const lengthOf = (f) => Number(f?.Attributes?.Length_m ?? 0) || 0;
+
+/* Walk outwards from a starting feature, closing a leg whenever another
+   span node is reached. Returns one entry per leg. */
+export function traceFrom(startId, features, rootId) {
+  const graph = buildGraph(features);
+  const start = Number(startId);
+  if (!graph.byId.has(start)) return { error: "That node isn't on the network." };
+  if (rootId == null || !graph.byId.has(Number(rootId))) {
+    return { error: "No substation on the network to measure from." };
+  }
+  const { children } = rootAt(graph, rootId);
+
+  const isSpan = (f) => f.Feature_Role === "spannode";
+  const isMeter = (f) => f.Feature_Role === "meter" && f.Layer_Key === "electric";
+  const legs = [];
+
+  const walk = (from, cur, metres, meters, fromLabel) => {
+    const f = graph.byId.get(cur);
+    const runningM = metres + lengthOf(f);
+    const runningMeters = isMeter(f) ? [...meters, f] : meters;
+
+    if (cur !== start && isSpan(f)) {
+      legs.push({
+        from: fromLabel, to: f.Attributes?.Span_Label ?? f.Label ?? `#${cur}`,
+        toId: cur, metres: Math.round(runningM * 10) / 10, meters: runningMeters,
+      });
+      for (const k of children.get(cur) || []) {
+        walk(cur, k, 0, [], f.Attributes?.Span_Label ?? f.Label ?? `#${cur}`);
+      }
+      return;
+    }
+
+    const kids = children.get(cur) || [];
+    if (!kids.length) {
+      legs.push({
+        from: fromLabel, to: null, toId: cur,
+        metres: Math.round(runningM * 10) / 10, meters: runningMeters,
+      });
+      return;
+    }
+    for (const k of kids) walk(cur, k, runningM, runningMeters, fromLabel);
+  };
+
+  const startFeature = graph.byId.get(start);
+  const startLabel = startFeature.Attributes?.Span_Label ?? startFeature.Label ?? `#${start}`;
+  const branches = children.get(start) || [];
+  if (!branches.length) {
+    return { error: `Nothing runs downstream of ${startLabel}.`, legs: [] };
+  }
+  for (const k of branches) walk(start, k, 0, [], startLabel);
+  return { legs, startLabel };
+}

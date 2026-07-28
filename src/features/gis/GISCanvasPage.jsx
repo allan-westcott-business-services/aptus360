@@ -24,7 +24,7 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
 import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
-  assignWay, circuitsFrom, pocUnit,
+  assignWay, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
@@ -89,6 +89,7 @@ export default function GISCanvasPage() {
   const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
+  const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   /* A ref, not state: the loop below has to read the current value
      between awaits, and a state read there would see the value from the
      render that started it. */
@@ -1370,12 +1371,32 @@ export default function GISCanvasPage() {
           Attributes: { ...sub.Attributes, Way_Circuits: way.map },
         });
       }
+      /* The origin node. Every other point on the circuit is measured
+         from it, so it exists from the moment the circuit does rather
+         than appearing later when someone traces. The original does the
+         same in gisEnsureCircuitOriginNode. */
+      if (!originNodeFor(features, circuitId)) {
+        await createFeature(projectId, {
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: "spannode",
+          Geometry: [sub.Geometry[0]],
+          Label: `Point ${spanLabel(letter, 0)}`,
+          Attributes: {
+            Circuit_ID: circuitId, Circuit_Name: name, Circuit_Letter: letter,
+            Span_Seq: 0, Span_Label: spanLabel(letter, 0),
+            Connects: [sub.Feature_ID],
+          },
+        });
+      }
+
       await load(projectId);
       setTool("select");
       setDraft([]);
       setError("");
       setStatus(
-        `${name} (${letter}): ${seeds.length} plot(s), ${meters.length} meter(s), `
+        `${name} (${letter}) \u00B7 node ${spanLabel(letter, 0)} at the substation: `
+        + `${seeds.length} plot(s), ${meters.length} meter(s), `
         + `${kva} kVA on LV way ${way.way}`
         + (way.over ? ` \u2014 ~${way.amps} A exceeds the ${way.fuse} A fuse` : "")
       );
@@ -1511,7 +1532,13 @@ export default function GISCanvasPage() {
             Label: `${c.utility.utility} service ${plan.seed.Label ?? ""}`.trim(),
             Plot_ID: plan.seed.Plot_ID ?? null,
             Attributes: {
-              Line_Type: `${c.utility.layer_key}_service`,
+              /* The seeded key is elec_service, not electric_service —
+                 the layer key and the line-type prefix don't match for
+                 electric. Getting this wrong left every generated cable
+                 with an unrecognised type: no colour of its own, and a
+                 bill that said "Electric" instead of "Electric service". */
+              Line_Type: lineTypes.find((t) => t.Layer_Key === c.utility.layer_key
+                && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
               Seed_Feature_ID: plan.seed.Feature_ID,
               Connects: connectedTo(c.geometry, visible, null),
             },
@@ -1543,6 +1570,29 @@ export default function GISCanvasPage() {
       setTimeout(() => setStatus(""), stopped ? 12000 : 8000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); cancelRef.current = false; }
+  }
+
+  /* Full trace from here.
+
+     The original's gisFullCircuitTrace. From the selected span node,
+     walk everything downstream, closing a leg at each further span node
+     or dead end, and report the length and meters on each. "Full"
+     because it carries on past each node rather than stopping at the
+     first — that is the difference between this and a single-hop trace.
+
+     Downstream is defined by distance from the substation, which is the
+     only definition that makes a leg length mean anything. */
+  function runFullTrace() {
+    const node = selectedFeatures.find((f) => f.Feature_Role === "spannode");
+    if (!node) { setError("Select a span node to trace from."); return; }
+    const station = features.find((f) => f.Feature_Role === "substation");
+    if (!station) { setError("No substation on the network to measure from."); return; }
+
+    const { legs, error: why, startLabel } = traceFrom(node.Feature_ID, features, station.Feature_ID);
+    if (why) { setError(why); return; }
+
+    setTrace({ startLabel, legs });
+    setError("");
   }
 
   async function joinSelected() {
@@ -1761,6 +1811,12 @@ export default function GISCanvasPage() {
               title="On-site substation. Snaps onto the nearest trench so it joins the network.">
               + Substation
             </button>
+            {selectedFeatures.some((f) => f.Feature_Role === "spannode") && (
+              <button className="btn ghost" onClick={runFullTrace}
+                title="Walk everything downstream of this node, leg by leg">
+                Full trace from here
+              </button>
+            )}
             <button className={tool === "circuit" ? "btn accent" : "btn ghost"}
               disabled={!projectId}
               onClick={() => {
@@ -2026,6 +2082,43 @@ export default function GISCanvasPage() {
               );
             })()}
 
+            {trace && (
+              <div className="gis-trace" role="dialog" aria-label="Full trace">
+                <div className="gt-head">
+                  <strong>Full trace from {trace.startLabel}</strong>
+                  <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">
+                    &times;
+                  </button>
+                </div>
+                {!trace.legs.length && <p className="gt-none">Nothing downstream.</p>}
+                {trace.legs.length > 0 && (
+                  <table className="gt-tbl">
+                    <thead>
+                      <tr><th>Leg</th><th className="num">Length</th><th className="num">Meters</th></tr>
+                    </thead>
+                    <tbody>
+                      {trace.legs.map((l, i) => (
+                        <tr key={i}>
+                          <td>{l.from} &rarr; {l.to ?? "end"}</td>
+                          <td className="num">{l.metres.toFixed(1)} m</td>
+                          <td className="num">{l.meters.length}</td>
+                        </tr>
+                      ))}
+                      <tr className="gt-tot">
+                        <td>{trace.legs.length} leg(s)</td>
+                        <td className="num">
+                          {trace.legs.reduce((t, l) => t + l.metres, 0).toFixed(1)} m
+                        </td>
+                        <td className="num">
+                          {trace.legs.reduce((t, l) => t + l.meters.length, 0)}
+                        </td>
+                      </tr>
+                    </tbody>
+                  </table>
+                )}
+              </div>
+            )}
+
             {progress && (
               <div className="gis-prog" role="status" aria-live="polite">
                 <p className="gp-lbl">{progress.label}</p>
@@ -2154,6 +2247,19 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+.gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
+  background: var(--white); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;
+  overflow-y: auto; }
+.gt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  margin-bottom: 7px; font-size: 12.5px; }
+.gt-none { font-size: 12px; color: var(--muted); margin: 0; }
+.gt-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gt-tbl th { text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); padding: 3px 5px; border-bottom: 1px solid var(--border); }
+.gt-tbl td { padding: 4px 5px; border-bottom: 1px solid var(--border); }
+.gt-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gt-tot td { font-weight: 700; border-bottom: none; }
 .gis-prog { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
   z-index: 8; min-width: 300px; background: var(--white); border: 1px solid var(--border);
   border-radius: 12px; padding: 13px 16px; box-shadow: 0 10px 34px rgba(15,23,42,.22); }

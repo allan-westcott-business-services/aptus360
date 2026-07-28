@@ -31,16 +31,34 @@ SELECT bom.m AS bom_metres, raw.m AS feature_metres
 
 
 -- ── 4. Same for the counts ───────────────────────────────────────
--- Expect: no rows.
+-- Expect: no rows. Plot seeds are excluded from the bill by 0058 — they
+-- mark where a plot is rather than being something anyone orders — so
+-- the comparison excludes them too.
 WITH bom AS (
   SELECT SUM(quantity) AS n FROM gis_bom(<project>) WHERE unit = 'no.'
 ), raw AS (
   SELECT COUNT(*)::numeric AS n FROM "GIS_Feature"
    WHERE "Project_ID" = <project> AND "Feature_Type" = 'point'
+     AND "Feature_Role" IS DISTINCT FROM 'plot'
 )
 SELECT bom.n AS bom_points, raw.n AS feature_points
   FROM bom, raw
  WHERE bom.n IS DISTINCT FROM raw.n;
+
+
+-- ── 4b. Why a row says 'None' for utility ────────────────────────
+-- Utility comes from the layer. 'None' is correct for trench, boundary,
+-- plot and note — a trench is not a utility, it is a hole that carries
+-- them. Any OTHER layer showing no utility is a gap in 0051's backfill,
+-- and its cables are landing under 'None' with the trenches.
+SELECT l."Layer_Key", l."Label", u."Utility",
+       CASE WHEN u."Utility" IS NOT NULL THEN 'ok'
+            WHEN l."Layer_Key" IN ('boundary','plot','trench','note') THEN 'ok - not a utility'
+            ELSE 'MISSING - backfill missed this layer' END AS verdict
+  FROM "GIS_Layer" l
+  LEFT JOIN "Utility" u ON u."Utility_ID" = l."Utility_ID"
+ WHERE l."Is_Active"
+ ORDER BY l."Sort_Order";
 
 
 -- ── 5. Polygons must not appear ──────────────────────────────────

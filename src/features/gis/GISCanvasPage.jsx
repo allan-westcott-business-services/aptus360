@@ -88,6 +88,11 @@ export default function GISCanvasPage() {
   const [bulkOpen, setBulkOpen] = useState(false);
   const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
   const [bomOpen, setBomOpen] = useState(false);
+  const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
+  /* A ref, not state: the loop below has to read the current value
+     between awaits, and a state read there would see the value from the
+     render that started it. */
+  const cancelRef = useRef(false);
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -1436,9 +1441,23 @@ export default function GISCanvasPage() {
     }
 
     setBusy("autoservice");
+    cancelRef.current = false;
+    setProgress({ done: 0, total: plans.length, label: `Servicing ${plans.length} plot(s)` });
     let trenchCount = 0, meterCount = 0, cableCount = 0, keptCount = 0;
+    let doneCount = 0, stopped = false;
     try {
       for (const plan of plans) {
+        /* Stopping part-way is safe and worth offering: a run over a
+           whole estate is slow, and the already-serviced guard means a
+           later run picks up exactly where this one left off rather
+           than starting again or doubling up. */
+        if (cancelRef.current) { stopped = true; break; }
+        setProgress({
+          done: doneCount,
+          total: plans.length,
+          label: `Plot ${doneCount + 1} of ${plans.length}`
+            + (plan.seed.Label ? ` \u00B7 ${plan.seed.Label}` : ""),
+        });
         /* Split at the boundary like any other run, so a service that
            leaves the site is two features with the right lengths on
            either side rather than one row that is half wrong. */
@@ -1507,19 +1526,23 @@ export default function GISCanvasPage() {
         if (teed) {
           await moveFeatures(projectId, [{ Feature_ID: plan.mains.Feature_ID, Geometry: teed }]);
         }
+        doneCount++;
+        setProgress((p) => (p ? { ...p, done: doneCount } : p));
       }
 
       await load(projectId);
       setError("");
       setStatus(
-        `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
+        (stopped ? `Stopped after ${doneCount} of ${plans.length} plot(s). ` : "")
+        + `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
         + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
         + (skipped.length ? `, ${skipped.length} skipped` : "")
         + (selected.length ? " \u2014 selected plot only" : "")
+        + (stopped ? " \u2014 run it again to carry on where it stopped." : "")
       );
-      setTimeout(() => setStatus(""), 8000);
+      setTimeout(() => setStatus(""), stopped ? 12000 : 8000);
     } catch (e) { setError(e.message); await load(projectId); }
-    finally { setBusy(""); }
+    finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
 
   async function joinSelected() {
@@ -2003,6 +2026,23 @@ export default function GISCanvasPage() {
               );
             })()}
 
+            {progress && (
+              <div className="gis-prog" role="status" aria-live="polite">
+                <p className="gp-lbl">{progress.label}</p>
+                <div className="gp-track">
+                  <div className="gp-bar" style={{
+                    width: `${progress.total ? Math.round(progress.done / progress.total * 100) : 0}%`,
+                  }} />
+                </div>
+                <div className="gp-foot">
+                  <span>{progress.done} of {progress.total}</span>
+                  <button className="gp-stop" onClick={() => { cancelRef.current = true; }}>
+                    Stop
+                  </button>
+                </div>
+              </div>
+            )}
+
             <div className="gis-hud">
               <span className="hud-scale">
                 <span className="hud-bar" style={{ width: barM * view.scale }} />
@@ -2114,6 +2154,17 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+.gis-prog { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
+  z-index: 8; min-width: 300px; background: var(--white); border: 1px solid var(--border);
+  border-radius: 12px; padding: 13px 16px; box-shadow: 0 10px 34px rgba(15,23,42,.22); }
+.gp-lbl { margin: 0 0 9px; font-size: 12.5px; font-weight: 600; }
+.gp-track { height: 9px; background: #eef0f8; border-radius: 6px; overflow: hidden; }
+.gp-bar { height: 100%; background: var(--accent); border-radius: 6px; transition: width .15s ease; }
+.gp-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px;
+  font-size: 11px; color: var(--muted); }
+.gp-stop { background: none; border: none; cursor: pointer; font: 600 11px inherit;
+  color: #b91c1c; padding: 2px 6px; border-radius: 4px; }
+.gp-stop:hover { background: #fef2f2; }
 .gis-elec { position: absolute; right: 12px; top: 12px; z-index: 5; display: flex;
   align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 45%; }
 .ge-poc { background: #0f766e; color: #fff; border-radius: 20px; padding: 2px 10px;

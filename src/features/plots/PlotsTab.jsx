@@ -7,7 +7,7 @@ import { getProject, updateProject } from "../../api/projects.js";
 import { generateConnections } from "../../api/connections.js";
 import { listDevelopers, assignPlots } from "../../api/developers.js";
 import { bulkUpdatePlots, bulkDeletePlots } from "../../api/plots.js";
-import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
+import { useTableLayout } from "../../lib/useTableLayout.js";
 import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
@@ -229,9 +229,12 @@ export default function PlotsTab({ projectId, projectRef }) {
 
   const filterOptions = (key) => {
     if (key === "type")
+      /* The code alone, matching the column. The filter list and the
+         cells should read the same, or picking one to find the other
+         means translating between two names for the same thing. */
       return (lookups?.propertyConfigs || []).map((c) => ({
         id: c.Property_Config_ID,
-        label: `${c.Code} \u2014 ${c.Bedrooms} Bed ${typeName(c.Property_Type_ID)}`,
+        label: c.Code,
       }));
     if (key === "hp")
       return (lookups?.heatPumpModels || []).map((m) => ({ id: m.Heat_Pump_Model_ID, label: m.Model }));
@@ -489,7 +492,7 @@ export default function PlotsTab({ projectId, projectRef }) {
               <thead>
                 <tr className="head-row">
                   {layout.visible.map((c) => (
-                    <th key={c.key} style={{ textAlign: c.align || "left" }}
+                    <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
                         onClick={() => c.type !== "none" && toggleSort(c.key)}>
                       {c.key === "sel" ? (
                         <input type="checkbox" checked={allSelected}
@@ -499,7 +502,9 @@ export default function PlotsTab({ projectId, projectRef }) {
                         {c.label}
                         {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
                       </>)}
-                      <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                      <span className="resizer" draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => layout.startResize(e, c.key)} />
                     </th>
                   ))}
                 </tr>
@@ -574,7 +579,7 @@ export default function PlotsTab({ projectId, projectRef }) {
   );
 }
 
-const CSS = TABLE_CSS + FILTER_CSS + `
+const CSS = FILTER_CSS + `
 .tab-head {
   display: flex; align-items: flex-start; justify-content: space-between;
   gap: 16px; margin-bottom: 14px;

@@ -5,7 +5,7 @@ import { listPoc, createPoc, updatePoc, deletePoc } from "../../api/poc.js";
 import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
-import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
+import { useTableLayout } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import OptionsPanel from "./OptionsPanel.jsx";
 import EntityNotes from "../../components/EntityNotes.jsx";
@@ -449,11 +449,13 @@ export default function POCApplicationsTab({ projectId }) {
                   <thead>
                     <tr className="head-row">
                       {COLS.map((c) => (
-                        <th key={c.key} style={{ textAlign: c.align || "left" }}
+                        <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
                             onClick={() => c.type !== "none" && toggleSort(c.key)}>
                           {c.label}
                           {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
-                          <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                          <span className="resizer" draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => layout.startResize(e, c.key)} />
                         </th>
                       ))}
                     </tr>
@@ -534,7 +536,7 @@ export default function POCApplicationsTab({ projectId }) {
   );
 }
 
-const CSS = TABLE_CSS + FILTER_CSS + `
+const CSS = FILTER_CSS + `
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .tab-head .count, .poc-group-title .count { font-size: 11px; font-weight: 700; background: var(--accent-light);

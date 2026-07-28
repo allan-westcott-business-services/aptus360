@@ -232,19 +232,21 @@ export default function OutlineDesignsTab({ projectId }) {
           <p>Add the utilities this project needs.</p>
         </div>
       ) : (
-        <div className="od-wrap">
-          <table className="od-table">
+        <div className="dt-wrap">
+          <table className="dt">
             <colgroup>
               {OD_COLS.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
             </colgroup>
             <thead>
               <tr>
                 {OD_COLS.map((c) => (
-                  <th key={c.key} style={{ textAlign: c.align || "left" }}
+                  <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.label}
                     {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
-                    <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                    <span className="resizer" draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => layout.startResize(e, c.key)} />
                   </th>
                 ))}
               </tr>
@@ -406,43 +408,15 @@ const CSS = FILTER_CSS + `
 .add-menu button:hover { background: var(--bg); }
 .dot { width: 8px; height: 8px; border-radius: 50%; flex: none; display: inline-block; }
 
-.od-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; max-height: 62vh; }
-.od-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
-.od-table th { position: relative; cursor: pointer; user-select: none; }
-.od-table .arrow { margin-left: 4px; font-size: 8px; }
-.od-filter-row th {
-  position: sticky; top: 29px; z-index: 2; background: #eef0f4; cursor: default;
-  border-bottom: 1px solid var(--border); padding: 4px 5px; overflow: visible;
+/* Refinements on the shared table spec in styles.css — tighter cells for
+   a screen that is mostly inline controls, and the unsaved-row state.
+   Everything else comes from .dt. */
+.dt td { padding: 4px 6px; vertical-align: middle; }
+.dt tbody tr.dirty { background: #fffbeb; }
+.dt tbody tr.dirty td { border-top-color: #fde68a; }
+.dt select, .dt input[type=date], .dt input[type=number] {
+  width: 100%; font-size: 11.5px; padding: 3px 6px; border-radius: 5px;
 }
-.od-table .no-rows { text-align: center; padding: 34px; color: var(--muted); }
-.od-table .resizer { position: absolute; right: 0; top: 0; height: 100%; width: 7px;
-  cursor: col-resize; z-index: 4; }
-.od-table .resizer:hover { background: rgba(255,255,255,.35); }
-body.resizing { cursor: col-resize; user-select: none; }
-.od-table th {
-  position: sticky; top: 0; z-index: 1; background: var(--accent); color: #fff;
-  font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
-  padding: 8px 8px; text-align: left; white-space: nowrap;
-}
-.od-table td { padding: 4px 6px; border-top: 1px solid var(--border); vertical-align: middle; overflow: hidden; }
-.od-table tbody tr:nth-child(even) { background: #fafbfc; }
-.od-table tbody tr.dirty { background: #fffbeb; }
-.points-cell { display: flex; align-items: center; gap: 6px; justify-content: flex-end; }
-.points-cell .ovr { margin: 0; display: flex; }
-.points-cell .pts { min-width: 52px; text-align: right; }
-.points-cell .pts.auto { font-weight: 700; color: var(--muted); padding-right: 7px; }
-.points-cell .pts.manual { font-weight: 700; color: var(--accent);
-  border-color: var(--accent) !important; background: var(--accent-light) !important; }
-.pts-btn { flex: none; background: none; border: 1px solid var(--border); border-radius: 5px;
-  padding: 3px 8px; cursor: pointer; font: 600 10.5px inherit; color: var(--muted); }
-.pts-btn:hover { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-.pts-btn.clear:hover { border-color: var(--warn-border); color: var(--warn-text); background: var(--warn-bg); }
-.od-table tbody tr.dirty td { border-top-color: #fde68a; }
-.od-table select, .od-table input[type=date], .od-table input[type=number] {
-  width: 100%; font-size: 12px; padding: 4px 6px; border-radius: 5px;
-}
-
-.od-table .mid { text-align: center; }
 .late-date { border-color: #fca5a5 !important; background: #fef2f2 !important; }
 
 

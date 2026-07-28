@@ -3,7 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listNrs, saveNrs, deleteNrs } from "../../api/nrs.js";
 import { UTILITIES, utilityById } from "../../lib/utilities.js";
-import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
+import { useTableLayout } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
 /* Non-residential supplies: anything on site that isn't a dwelling —
@@ -224,11 +224,13 @@ export default function NonResidentialTab({ projectId }) {
             <thead>
               <tr className="head-row">
                 {COLS.map((c) => (
-                  <th key={c.key} style={{ textAlign: c.align || "left" }}
+                  <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.label}
                     {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
-                    <span className="resizer" onMouseDown={(e) => layout.startResize(e, c.key)} />
+                    <span className="resizer" draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => layout.startResize(e, c.key)} />
                   </th>
                 ))}
               </tr>
@@ -279,7 +281,7 @@ export default function NonResidentialTab({ projectId }) {
   );
 }
 
-const CSS = TABLE_CSS + FILTER_CSS + `
+const CSS = FILTER_CSS + `
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .tab-head .count { font-size: 11px; font-weight: 700; background: var(--accent-light); color: var(--accent);

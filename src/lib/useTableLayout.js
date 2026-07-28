@@ -41,6 +41,8 @@ export function useTableLayout(storageKey, columns) {
     try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ }
   };
   const drag = useRef(null);
+  const dragCol = useRef(null);
+  const [overCol, setOverCol] = useState(null);
 
   useEffect(() => {
     const move = (e) => {
@@ -80,6 +82,58 @@ export function useTableLayout(storageKey, columns) {
     });
   }
 
+  /* Drag a header onto another to move the column there.
+
+     HTML5 drag rather than pointer maths: it gives the drag image, the
+     cursor and the escape-to-cancel for nothing, and a table header is
+     exactly the kind of coarse target it suits. The resizer opts out
+     with draggable={false}, or dragging its edge would reorder instead
+     of resize. */
+  function moveColumn(fromKey, toKey) {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+    setPrefs((p) => {
+      const order = p.order.filter((k) => k !== fromKey);
+      const at = order.indexOf(toKey);
+      if (at < 0) return p;
+      /* Dropping on a column to the right puts it after that column,
+         to the left puts it before — which is what the drop indicator
+         shows and what the movement feels like. */
+      const wasBefore = p.order.indexOf(fromKey) < p.order.indexOf(toKey);
+      order.splice(wasBefore ? at + 1 : at, 0, fromKey);
+      const next = { ...p, order };
+      save(next);
+      return next;
+    });
+  }
+
+  function reorderProps(key) {
+    return {
+      draggable: true,
+      onDragStart: (e) => {
+        dragCol.current = key;
+        e.dataTransfer.effectAllowed = "move";
+        /* Firefox won't start a drag without data set on it. */
+        try { e.dataTransfer.setData("text/plain", key); } catch { /* ignore */ }
+      },
+      onDragOver: (e) => {
+        if (!dragCol.current || dragCol.current === key) return;
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (overCol !== key) setOverCol(key);
+      },
+      onDragLeave: () => { if (overCol === key) setOverCol(null); },
+      onDrop: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        moveColumn(dragCol.current, key);
+        dragCol.current = null;
+        setOverCol(null);
+      },
+      onDragEnd: () => { dragCol.current = null; setOverCol(null); },
+      className: overCol === key ? "col-drop" : undefined,
+    };
+  }
+
   function reset() {
     const def = defaults();
     setPrefs(def);
@@ -91,30 +145,11 @@ export function useTableLayout(storageKey, columns) {
     .map((k) => columns.find((c) => c.key === k))
     .filter(Boolean);
 
-  return { ...prefs, visible, startResize, toggleColumn, reset };
+  return { ...prefs, visible, startResize, toggleColumn, reset, reorderProps, moveColumn };
 }
 
-/* Shared CSS for resizable, sortable tables. Injected once per table. */
-export const TABLE_CSS = `
-body.resizing { cursor: col-resize; user-select: none; }
-.dt-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; max-height: 62vh; }
-.dt { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
-.dt th, .dt td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
-.dt thead .head-row th {
-  position: sticky; top: 0; z-index: 3; background: var(--accent); color: #fff;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-  padding: 8px 10px; text-align: left; cursor: pointer; user-select: none;
-}
-.dt thead .head-row th:hover { background: var(--accent-dark); }
-.dt .arrow { margin-left: 4px; font-size: 8px; }
-.dt .resizer { position: absolute; right: 0; top: 0; height: 100%; width: 7px; cursor: col-resize; z-index: 4; }
-.dt .resizer:hover { background: rgba(255,255,255,.35); }
-.dt thead .filter-row th {
-  position: sticky; top: 30px; z-index: 2; background: #eef0f4;
-  border-bottom: 1px solid var(--border); padding: 4px 5px; overflow: visible;
-}
-.dt td { padding: 6px 10px; border-top: 1px solid var(--border); }
-.dt tbody tr:nth-child(even) { background: #fafbfc; }
-.dt tbody tr:hover { background: var(--accent-light); }
-.dt .no-rows { text-align: center; padding: 36px; color: var(--muted); white-space: normal; }
-`;
+/* The table spec lives in src/styles.css, under "Data tables", so every
+   table in the app reads one definition rather than each injecting its
+   own copy. Kept as an empty export so a component that still adds it to
+   its CSS string is harmless rather than broken. */
+export const TABLE_CSS = "";

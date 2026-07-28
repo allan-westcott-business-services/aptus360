@@ -65,8 +65,22 @@ export default function ActivityTab({ projectId, view = "history" }) {
      to read, and a signed-in address with no matching Person row would
      otherwise leave comments with no author at all. Falling back to the
      address is better than nothing, but a named person is the point. */
-  const me = (lookups?.people || []).find(
-    (p) => p.Email && user?.email && p.Email.toLowerCase() === user.email.toLowerCase());
+  const people = lookups?.people || [];
+  /* Trimmed as well as lower-cased: an address pasted into either the
+     Person record or the login carries whitespace often enough to be
+     worth handling, and it fails invisibly when it does. */
+  const norm = (e) => String(e || "").trim().toLowerCase();
+  const me = people.find((p) => p.Email && user?.email && norm(p.Email) === norm(user.email));
+
+  /* Two quite different reasons the match can fail, and saying which
+     saves guessing. If not one person in the list carries an Email at
+     all, the lookups endpoint predates the field — that's a deploy, not
+     a data problem. If they do, the address genuinely isn't on an active
+     Person row. */
+  const lookupHasEmail = people.some((p) => Object.hasOwn(p, "Email"));
+  const whyNoMatch = !people.length ? null
+    : !lookupHasEmail ? "the people lookup isn\u2019t returning email yet"
+    : "no active person has this email";
   const knownAuthor = me?.Person_Name || (user?.email ?? null);
   const [posting, setPosting] = useState(false);
 
@@ -147,7 +161,7 @@ export default function ActivityTab({ projectId, view = "history" }) {
               {knownAuthor ? (
                 <span className="cmt-as" title={me ? `Matched to ${me.Person_Name} by email` : user?.email}>
                   as <strong>{knownAuthor}</strong>
-                  {!me && <em> &mdash; no matching person record</em>}
+                  {!me && whyNoMatch && <em> &mdash; {whyNoMatch}</em>}
                 </span>
               ) : (
                 <input className="cmt-author" value={author}

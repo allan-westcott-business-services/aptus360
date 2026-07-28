@@ -319,7 +319,7 @@ export default function PlotConnectionsPage() {
         </div>
       ) : (
         <div className="dt-wrap">
-          <table className="dt">
+          <table className="dt pc">
             <colgroup>{cols.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}</colgroup>
             <thead>
               <tr className="head-row">
@@ -474,7 +474,10 @@ const CSS = FILTER_CSS + `
 .bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 140px; font-size: 12px; padding: 5px 8px; }
 .bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }
 .bulk-x { background: none; border: none; color: #fff; cursor: pointer; font-size: 12px; margin-left: auto; }
-.dt td { padding: 3px 6px; }
+/* Scoped .dt.pc, not .dt: this block is injected after the stylesheet,
+   so an element-level rule here would retune every table in the app once
+   this page had been opened. */
+.dt.pc td { padding: 3px 6px; }
 .dt .in { width: 100%; font-size: 11.5px; padding: 3px 6px; border-radius: 5px; }
 .dt .in.num { text-align: right; }
 .dt .num { text-align: right; }
@@ -483,9 +486,9 @@ const CSS = FILTER_CSS + `
 /* Explicit, so it can't pick up alignment from a neighbouring rule */
 /* Force it on every body cell. Something was giving a handful of rows a
    different alignment and forcing it is more reliable than chasing it. */
-.dt tbody td { text-align: left; }
-.dt tbody td.num, .dt tbody td .in.num { text-align: right; }
-.dt tbody td.mid { text-align: center; }
+.dt.pc tbody td { text-align: left; }
+.dt.pc tbody td.num, .dt.pc tbody td .in.num { text-align: right; }
+.dt.pc tbody td.mid { text-align: center; }
 .dt .plot-cell { padding-left: 10px; }
 .dt .ref { color: var(--accent); font-weight: 600; }
 .dt tbody tr.row-sel { background: #fff7ed !important; }

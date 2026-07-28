@@ -18,7 +18,9 @@ import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components
 
 const EDITABLE = [
   "Designer_ID", "Design_Status_ID", "Design_Checked_By", "POC_Status_ID",
-  "Target_Date", "Actual_Date", "Revision", "Carried_Forward", "External_Design",
+  /* Carried_Forward is not here: the revision flow sets it, and with no
+     control on screen a save has no business writing it. */
+  "Target_Date", "Actual_Date", "Revision", "External_Design",
 ];
 
 const OD_COLS = [
@@ -31,7 +33,6 @@ const OD_COLS = [
   { key: "poc",     label: "POC status",    width: 140, type: "multi", raw: (s) => s.POC_Status_ID },
   { key: "checked", label: "Checked by",    width: 150, type: "multi", raw: (s) => s.Design_Checked_By },
   { key: "ext",     label: "Ext",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.External_Design },
-  { key: "cf",      label: "C/F",           width: 48,  type: "bool",  align: "center", raw: (s) => !!s.Carried_Forward },
   { key: "points",  label: "Design points", width: 158, type: "num",   align: "right",
     raw: (s) => (s.Base_Points_Overridden ? s.Manual_Base_Points : s.Auto_Base_Points) ?? null },
   { key: "act",     label: "",              width: 84,  type: "none",  align: "center", raw: () => "" },
@@ -214,7 +215,7 @@ export default function OutlineDesignsTab({ projectId }) {
           t + Number((x.Base_Points_Overridden ? x.Manual_Base_Points : x.Auto_Base_Points) || 0), 0)}
         {" "}across {scopes.length} design{scopes.length === 1 ? "" : "s"}.{" "}
         <span className="derived">
-          Auto figures come from the plot count &mdash; use Override on a row to set one by hand
+          Calculated from the plot count
         </span>
       </Banner>
 
@@ -233,7 +234,7 @@ export default function OutlineDesignsTab({ projectId }) {
         </div>
       ) : (
         <div className="dt-wrap">
-          <table className="dt">
+          <table className="dt od">
             <colgroup>
               {layout.visible.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
             </colgroup>
@@ -343,12 +344,12 @@ export default function OutlineDesignsTab({ projectId }) {
                           <input type="checkbox" checked={!!s.External_Design}
                             onChange={(e) => setField(s.Project_Scope_ID, "External_Design", e.target.checked)} />)
 
-                        : col.key === "cf" ? (
-                          <input type="checkbox" checked={!!s.Carried_Forward}
-                            onChange={(e) => setField(s.Project_Scope_ID, "Carried_Forward", e.target.checked)} />)
-
                         /* Auto by default. Overriding swaps in a manual figure
                            and keeps the calculated one, so Clear restores it. */
+                        /* Auto by default and shown as a plain figure. A
+                           row already carrying a manual number keeps its
+                           input and its way back to auto, so an override
+                           set earlier isn't stranded. */
                         : col.key === "points" ? (s.Base_Points_Overridden ? (<>
                             <input type="number" step="0.5" className="pts manual"
                               aria-label={`Manual points for ${utilityById(s.Utility_ID)?.name ?? "design"}`}
@@ -363,19 +364,11 @@ export default function OutlineDesignsTab({ projectId }) {
                               }}>
                               Clear
                             </button>
-                          </>) : (<>
+                          </>) : (
                             <span className="pts auto" title="Calculated from the plot count">
                               {s.Auto_Base_Points ?? "\u2014"}
                             </span>
-                            <button type="button" className="pts-btn"
-                              title="Enter a manual figure instead"
-                              onClick={() => {
-                                setField(s.Project_Scope_ID, "Base_Points_Overridden", true);
-                                setField(s.Project_Scope_ID, "Manual_Base_Points", s.Auto_Base_Points ?? 0);
-                              }}>
-                              Override
-                            </button>
-                          </>))
+                          ))
 
                         : (<>
                           <button className="row-edit" onClick={() => setEditing(s)} title="Open this design">
@@ -422,11 +415,15 @@ const CSS = FILTER_CSS + `
 
 /* Refinements on the shared table spec in styles.css — tighter cells for
    a screen that is mostly inline controls, and the unsaved-row state.
-   Everything else comes from .dt. */
-.dt td { padding: 4px 6px; vertical-align: middle; }
-.dt tbody tr.dirty { background: #fffbeb; }
-.dt tbody tr.dirty td { border-top-color: #fde68a; }
-.dt select, .dt input[type=date], .dt input[type=number] {
+   Everything else comes from .dt.
+
+   Scoped .dt.od, never bare .dt: this block is injected after the
+   stylesheet, so a plain .dt rule here would restyle every table in the
+   app the moment this tab was opened. */
+.dt.od td { padding: 4px 6px; vertical-align: middle; }
+.dt.od tbody tr.dirty { background: #fffbeb; }
+.dt.od tbody tr.dirty td { border-top-color: #fde68a; }
+.dt.od select, .dt.od input[type=date], .dt.od input[type=number] {
   width: 100%; font-size: 11.5px; padding: 3px 6px; border-radius: 5px;
 }
 .late-date { border-color: #fca5a5 !important; background: #fef2f2 !important; }

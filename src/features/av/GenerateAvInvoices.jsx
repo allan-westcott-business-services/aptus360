@@ -1,11 +1,12 @@
-import { useState, useMemo } from "react";
+import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import * as XLSX from "xlsx";
 import { listProjects } from "../../api/projects.js";
 import { listPlots } from "../../api/plots.js";
 import { getLookups } from "../../api/lookups.js";
 import { checkInvoiced, generateInvoices } from "../../api/avInvoices.js";
-import { parseAvFile, matchRowsToPlots } from "./parseAvFile.js";
+import { parseAvFile, matchRowsToPlots, groupByContract, parseInvoiceReport } from "./parseAvFile.js";
+import { adminList } from "../../api/admin.js";
 import { utilityById, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
 
 /* Generate AV Invoices.
@@ -18,7 +19,7 @@ import { utilityById, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
 const money = (n) =>
   n == null ? "—" : `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 
-const STEPS = ["Source file", "Preview", "Done"];
+const STEPS = ["Source mapping", "Preview", "Done"];
 
 export default function GenerateAvInvoices() {
   const [step, setStep] = useState(0);
@@ -27,6 +28,10 @@ export default function GenerateAvInvoices() {
   const [utilityId, setUtilityId] = useState("");
   const [idnoId, setIdnoId] = useState("");
   const [lookups, setLookups] = useState({});
+  const [mappings, setMappings] = useState([]);
+  const [mappingId, setMappingId] = useState("");
+  const [reportFile, setReportFile] = useState(null);
+  const [report, setReport] = useState(null);
   const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
   const [matched, setMatched] = useState([]);
@@ -38,23 +43,44 @@ export default function GenerateAvInvoices() {
   const [error, setError] = useState("");
   const [result, setResult] = useState(null);
 
-  useMemo(() => {
+  useEffect(() => {
     listProjects({ limit: 500 }).then((r) => setProjects(r.rows || [])).catch(() => {});
     getLookups().then(setLookups).catch(() => {});
+    adminList("IDNO_Source_Mapping")
+      .then((r) => setMappings((r.rows || []).filter((m) => m.Is_Active !== false)))
+      .catch((e) => setError(`Couldn't load source mappings: ${e.message}`));
   }, []);
 
+  const mapping = mappings.find(
+    (m) => String(m.IDNO_Source_Mapping_ID) === String(mappingId)
+  );
+  const config = mapping?.Config || {};
+
   const project = projects.find((p) => String(p.Project_ID) === String(projectId));
+
+  async function onReportFile(e) {
+    const f = e.target.files?.[0];
+    if (!f) return;
+    try {
+      const r = await parseInvoiceReport(f);
+      setReportFile(f);
+      setReport(r);
+      setError("");
+    } catch (e2) { setError(`Couldn't read the invoice report: ${e2.message}`); }
+    finally { e.target.value = ""; }
+  }
 
   async function onFile(e) {
     const f = e.target.files?.[0];
     if (!f) return;
+    if (!mappingId) return setError("Pick a source mapping — it says how to read the file.");
     if (!projectId) return setError("Choose a project first — plots are matched against it.");
     if (!utilityId) return setError("Choose which utility this schedule is for.");
 
     setBusy(true);
     setError("");
     try {
-      const p = await parseAvFile(f);
+      const p = await parseAvFile(f, config);
       const plotsRes = await listPlots(projectId);
       const rows = matchRowsToPlots(p.rows, plotsRes.rows || []);
       const billed = await checkInvoiced(projectId, utilityId);
@@ -103,7 +129,7 @@ export default function GenerateAvInvoices() {
     setBusy(true);
     try {
       const res = await generateInvoices({
-        assign_numbers: assignNumbers,
+        assign_numbers: assignNumbers && !config.no_invoice_number,
         raised_by: raisedBy || null,
         source_file: file?.name || null,
         groups: [{
@@ -112,6 +138,8 @@ export default function GenerateAvInvoices() {
           utility_id: Number(utilityId),
           idno_id: idnoId ? Number(idnoId) : null,
           contract_number: project?.Contract_Number || null,
+          agreement_type_id: mapping?.AV_Agreement_Type_ID || null,
+          vat_rate: config.default_vat_rate ?? 20,
           lines: included.map((r) => ({
             plot_id: r.plot.Plot_ID,
             plot_ref: r.plot.Plot_Ref || r.plotRef,
@@ -141,7 +169,8 @@ export default function GenerateAvInvoices() {
       "Invoice Type": "Asset Value",
       "Plot": r.plot.Plot_Number,
       "Plot Value": r.value,
-      "Comments": r.description || `Asset value — plot ${r.plot.Plot_Number}`,
+      "Comments": [config.comments_prefix, r.description || `plot ${r.plot.Plot_Number}`]
+        .filter(Boolean).join(" — "),
     }));
     const ws = XLSX.utils.json_to_sheet(rows);
     const wb = XLSX.utils.book_new();
@@ -150,7 +179,7 @@ export default function GenerateAvInvoices() {
   }
 
   function reset() {
-    setStep(0); setFile(null); setParsed(null); setMatched([]);
+    setStep(0); setFile(null); setParsed(null); setMatched([]); setReport(null); setReportFile(null);
     setExcluded([]); setResult(null); setError("");
   }
 
@@ -170,12 +199,39 @@ export default function GenerateAvInvoices() {
 
       {step === 0 && (
         <div className="gav-panel">
+          <p className="gav-step-title">1 of 3 &mdash; Source mapping</p>
           <p className="gav-lede">
-            Load the schedule the operator sent. Plots are matched on their number, so the
-            spreadsheet needs a plot column and a value column &mdash; the headings can say
-            anything reasonable.
+            Pick the operator and agreement type you&rsquo;re invoicing for. The mapping says
+            how to read their export &mdash; which columns hold the plot and the value, and
+            which rows to keep.
           </p>
+          <div className="fld">
+            <label htmlFor="gav-mapping">Source mapping <span className="req">*</span></label>
+            <select id="gav-mapping" value={mappingId} onChange={(e) => setMappingId(e.target.value)}>
+              <option value="">&mdash; Select a source mapping &mdash;</option>
+              {mappings.map((m) => (
+                <option key={m.IDNO_Source_Mapping_ID} value={m.IDNO_Source_Mapping_ID}>
+                  {m.Mapping_Name}
+                </option>
+              ))}
+            </select>
+            {mappings.length === 0 && (
+              <p className="hint warn">
+                No mappings set up. Add them in Admin &rarr; IDNO Source Mapping.
+              </p>
+            )}
+            {mapping && (
+              <p className="hint">
+                Reads <strong>{config.plot || "?"}</strong> as the plot and{" "}
+                <strong>{config.value || "?"}</strong> as the value, from row{" "}
+                {config.header_row || 1}.
+                {config.status_filter && <> Only rows marked &ldquo;{config.status_filter}&rdquo;.</>}
+                {config.no_invoice_number && <> These aren&rsquo;t given invoice numbers.</>}
+              </p>
+            )}
+          </div>
 
+          <p className="gav-step-title">2 of 3 &mdash; Where it belongs</p>
           <div className="gav-row">
             <div className="fld grow">
               <label htmlFor="gav-project">Project <span className="req">*</span></label>
@@ -188,7 +244,7 @@ export default function GenerateAvInvoices() {
                   </option>
                 ))}
               </select>
-              {project && !project.Contract_Number && (
+              {project && !project.Contract_Number && !config.no_invoice_number && (
                 <p className="hint warn">
                   No contract number &mdash; invoices can&rsquo;t be numbered without one.
                 </p>
@@ -205,7 +261,8 @@ export default function GenerateAvInvoices() {
             </div>
             <div className="fld">
               <label htmlFor="gav-idno">Operator</label>
-              <select id="gav-idno" value={idnoId} onChange={(e) => setIdnoId(e.target.value)}>
+              <select id="gav-idno" value={idnoId || mapping?.IDNO_ID || ""}
+                onChange={(e) => setIdnoId(e.target.value)}>
                 <option value="">&mdash; None &mdash;</option>
                 {(lookups.idnos || []).map((i) => (
                   <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
@@ -214,11 +271,27 @@ export default function GenerateAvInvoices() {
             </div>
           </div>
 
-          <div className="fld">
-            <label htmlFor="gav-file">Schedule file</label>
-            <input id="gav-file" type="file" accept=".xlsx,.xls,.csv"
-              disabled={busy || !projectId || !utilityId} onChange={onFile} />
-            <p className="hint">Excel or CSV. The first sheet is used.</p>
+          <p className="gav-step-title">3 of 3 &mdash; Source export</p>
+          <p className="gav-lede">
+            The spreadsheet from the operator &mdash; ESP&rsquo;s &ldquo;Available to Invoice
+            Connections&rdquo; report, or whatever this mapping expects.
+          </p>
+          <div className="gav-row">
+            <div className="fld grow">
+              <label htmlFor="gav-file">Source export <span className="req">*</span></label>
+              <input id="gav-file" type="file" accept=".xlsx,.xls,.csv"
+                disabled={busy || !mappingId || !projectId || !utilityId} onChange={onFile} />
+            </div>
+            <div className="fld grow">
+              <label htmlFor="gav-report">Invoice report <span className="opt">(optional)</span></label>
+              <input id="gav-report" type="file" accept=".xlsx,.xls,.csv" onChange={onReportFile} />
+              <p className="hint">
+                {report
+                  ? `Read ${reportFile?.name} — highest numbers found for ${
+                      Object.keys(report.highestByContract).length} contract(s).`
+                  : "Used to continue invoice numbering from what finance already holds."}
+              </p>
+            </div>
           </div>
         </div>
       )}
@@ -282,9 +355,12 @@ export default function GenerateAvInvoices() {
 
           <div className="gav-actions">
             <label className="gav-check">
-              <input type="checkbox" checked={assignNumbers}
+              <input type="checkbox" checked={assignNumbers && !config.no_invoice_number}
+                disabled={!!config.no_invoice_number}
                 onChange={(e) => setAssignNumbers(e.target.checked)} />
-              Assign an invoice number
+              {config.no_invoice_number
+                ? "This mapping doesn't use invoice numbers"
+                : "Assign an invoice number"}
               {project?.Contract_Number && (
                 <span className="gav-next"> &mdash; next is {project.Contract_Number}/…</span>
               )}
@@ -357,6 +433,9 @@ const CSS = `
   display: flex; align-items: center; justify-content: center; font-size: 10px; }
 .gav-panel { border: 1px solid var(--border); border-radius: var(--radius);
   padding: 18px; display: flex; flex-direction: column; gap: 14px; }
+.gav-step-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--accent); margin: 4px 0 0; }
+.opt { font-weight: 400; text-transform: none; color: var(--muted); }
 .gav-lede { margin: 0; font-size: 12.5px; color: var(--muted); max-width: 76ch; line-height: 1.55; }
 .gav-row { display: flex; gap: 12px; }
 .gav-row .fld.grow { flex: 1; }

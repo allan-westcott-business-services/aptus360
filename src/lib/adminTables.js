@@ -88,6 +88,13 @@ export const ADMIN_TABLES = [
 
   { separator: true, label: "Organisations & People" },
   { key: "Customer", label: "Customers & Branches", special: "customers" },
+  { key: "IDNO_Source_Mapping", label: "IDNO Source Mapping", pk: "IDNO_Source_Mapping_ID", fields: [
+      { col: "Mapping_Name", label: "Mapping Name", type: "text", required: true },
+      { col: "IDNO_ID", label: "IDNO ID", type: "number" },
+      { col: "AV_Agreement_Type_ID", label: "Agreement Type ID", type: "number" },
+      { col: "Config", label: "Config (JSON)", type: "json" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "Person", label: "People & Roles", special: "people" },
   { key: "Role", label: "Role", pk: "Role_ID", fields: [
       { col: "Role", label: "Role Name", type: "text", required: true },

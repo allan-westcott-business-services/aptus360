@@ -17,6 +17,7 @@ const TABLES = {
   Person_Role:     { pk: "Person_Role_ID",     order: "Person_Role_ID" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
+  IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },
   Fire_Service:    { pk: "Fire_Service_ID",    order: "Fire_Service_Name" },
   IDNO:            { pk: "IDNO_ID",            order: "IDNO_Name" },
   Heat_Source:     { pk: "Heat_Source_ID",     order: "Heat_Source" },

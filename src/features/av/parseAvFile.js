@@ -1,98 +1,113 @@
 import * as XLSX from "xlsx";
 
-/* Reading the operator's schedule.
+/* Reading an operator's export, according to its mapping.
 
-   Every IDNO sends a different layout, so columns are matched by what
-   the heading looks like rather than by position. Anything unmatched is
-   reported instead of guessed at — a wrong column here becomes a wrong
-   invoice. */
+   The mapping says which columns to read and which rows to keep. That's
+   stored per IDNO rather than guessed from the headings, because a
+   heading that looks plausible but means something else produces an
+   invoice that's wrong rather than one that fails. */
 
-const PATTERNS = {
-  plotRef: [/plot\s*(ref|no|number)?/i, /^plot$/i, /site\s*plot/i, /property/i],
-  value: [/(net|asset|av)?\s*value/i, /amount/i, /price/i, /^av$/i, /payment/i],
-  description: [/desc/i, /detail/i, /narrative/i, /house\s*type/i],
-  utility: [/utility/i, /service/i, /commodity/i],
-  reference: [/(our|your|invoice|scheme)\s*ref/i, /^ref/i],
-};
-
-function matchColumn(headers, patterns) {
-  for (const p of patterns) {
-    const i = headers.findIndex((h) => p.test(String(h || "").trim()));
-    if (i >= 0) return i;
-  }
-  return -1;
+/* Find a column by its configured heading. Compared case- and
+   space-insensitively, since exports drift on presentation but not on
+   wording. */
+function columnIndex(headers, wanted) {
+  if (!wanted) return -1;
+  const norm = (s) => String(s || "").trim().toLowerCase().replace(/\s+/g, " ");
+  const target = norm(wanted);
+  let i = headers.findIndex((h) => norm(h) === target);
+  if (i >= 0) return i;
+  // Fall back to a contains match — "Plot" against "Plot Number"
+  return headers.findIndex((h) => norm(h).includes(target));
 }
 
-export async function parseAvFile(file) {
+export async function parseAvFile(file, config = {}) {
   const buf = await file.arrayBuffer();
-  const wb = XLSX.read(buf, { type: "array" });
-  const sheetName = wb.SheetNames[0];
-  const sheet = wb.Sheets[sheetName];
-  const grid = XLSX.utils.sheet_to_json(sheet, { header: 1, blankrows: false, defval: "" });
-
+  const wb = XLSX.read(buf, { type: "array", cellDates: true });
+  const sheetName = config.sheet_name && wb.SheetNames.includes(config.sheet_name)
+    ? config.sheet_name
+    : wb.SheetNames[0];
+  const grid = XLSX.utils.sheet_to_json(wb.Sheets[sheetName], {
+    header: 1, blankrows: false, defval: "",
+  });
   if (!grid.length) throw new Error("That file has no rows.");
 
-  /* The heading row isn't always the first — schedules often carry a
-     title and a blank line above it. Take the first row that matches
-     both a plot column and a value column. */
-  let headerRow = -1;
-  let cols = null;
-  for (let i = 0; i < Math.min(grid.length, 20); i++) {
-    const headers = grid[i].map((h) => String(h || ""));
-    const plotRef = matchColumn(headers, PATTERNS.plotRef);
-    const value = matchColumn(headers, PATTERNS.value);
-    if (plotRef >= 0 && value >= 0) {
-      headerRow = i;
-      cols = {
-        plotRef, value,
-        description: matchColumn(headers, PATTERNS.description),
-        utility: matchColumn(headers, PATTERNS.utility),
-        reference: matchColumn(headers, PATTERNS.reference),
-      };
-      break;
-    }
-  }
-
-  if (headerRow < 0) {
-    const seen = (grid[0] || []).map((h) => String(h || "")).filter(Boolean).slice(0, 8);
-    throw new Error(
-      `Couldn't find a plot column and a value column. Headings seen: ${
-        seen.join(", ") || "none"}.`
-    );
+  const headerRow = Math.max(0, (Number(config.header_row) || 1) - 1);
+  if (headerRow >= grid.length) {
+    throw new Error(`The mapping expects headings on row ${headerRow + 1}, but the file has ${grid.length} rows.`);
   }
 
   const headers = grid[headerRow].map((h) => String(h || "").trim());
+  const cols = {
+    plot: columnIndex(headers, config.plot),
+    value: columnIndex(headers, config.value),
+    service: columnIndex(headers, config.service),
+    apNumber: columnIndex(headers, config.ap_number),
+    customerRef: columnIndex(headers, config.customer_ref),
+    status: columnIndex(headers, config.status_column || config.status),
+    description: columnIndex(headers, config.description),
+  };
+
+  /* Say what's missing rather than producing an empty preview — a
+     mapping pointed at the wrong export is the likeliest failure. */
+  const missing = [];
+  if (cols.plot < 0) missing.push(`plot column "${config.plot || "(not set)"}"`);
+  if (cols.value < 0) missing.push(`value column "${config.value || "(not set)"}"`);
+  if (missing.length) {
+    throw new Error(
+      `This file doesn't match the mapping — couldn't find ${missing.join(" or ")}. ` +
+      `Headings on row ${headerRow + 1}: ${headers.filter(Boolean).slice(0, 8).join(", ")}.`
+    );
+  }
+
+  const statusFilter = config.status_filter
+    ? String(config.status_filter).trim().toLowerCase()
+    : null;
+  const minValue = config.min_value_filter != null ? Number(config.min_value_filter) : null;
+
   const rows = [];
   const skipped = [];
 
   for (let i = headerRow + 1; i < grid.length; i++) {
     const r = grid[i];
-    const plotRef = String(r[cols.plotRef] ?? "").trim();
-    const rawValue = r[cols.value];
+    const plotRef = String(r[cols.plot] ?? "").trim();
     if (!plotRef) continue;
 
-    const value = typeof rawValue === "number"
-      ? rawValue
-      : Number(String(rawValue ?? "").replace(/[£$,\s]/g, ""));
+    const raw = r[cols.value];
+    const value = typeof raw === "number"
+      ? raw
+      : Number(String(raw ?? "").replace(/[£$,\s]/g, ""));
 
     if (!Number.isFinite(value)) {
-      skipped.push({ row: i + 1, plotRef, reason: `value "${rawValue}" isn't a number` });
+      skipped.push({ row: i + 1, plotRef, reason: `value "${raw}" isn't a number` });
       continue;
+    }
+    if (minValue != null && value < minValue) {
+      skipped.push({ row: i + 1, plotRef, reason: `below the ${minValue} minimum` });
+      continue;
+    }
+    if (statusFilter && cols.status >= 0) {
+      const st = String(r[cols.status] ?? "").trim().toLowerCase();
+      if (st !== statusFilter) {
+        skipped.push({ row: i + 1, plotRef, reason: `status "${r[cols.status]}"` });
+        continue;
+      }
     }
 
     rows.push({
       sourceRow: i + 1,
       plotRef,
       value,
+      service: cols.service >= 0 ? String(r[cols.service] ?? "").trim() : "",
+      apNumber: cols.apNumber >= 0 ? String(r[cols.apNumber] ?? "").trim() : "",
+      customerRef: cols.customerRef >= 0 ? String(r[cols.customerRef] ?? "").trim() : "",
       description: cols.description >= 0 ? String(r[cols.description] ?? "").trim() : "",
-      utility: cols.utility >= 0 ? String(r[cols.utility] ?? "").trim() : "",
-      reference: cols.reference >= 0 ? String(r[cols.reference] ?? "").trim() : "",
     });
   }
 
   return {
     sheetName,
     headers,
+    headerRow: headerRow + 1,
     columns: Object.fromEntries(
       Object.entries(cols).map(([k, i]) => [k, i >= 0 ? headers[i] : null])
     ),
@@ -104,8 +119,8 @@ export async function parseAvFile(file) {
 /* Matching a reference to a plot.
 
    Operators write plot numbers loosely — "Plot 12", "12", "AP1045-12",
-   "12A". Compare on the digits and any trailing letter, which is what
-   distinguishes 12 from 12A without being confused by prefixes. */
+   "12A". Compare on the digits and any trailing letter, which separates
+   12 from 12A without being confused by prefixes. */
 export function normalisePlotRef(ref) {
   const s = String(ref || "").trim().toUpperCase();
   const m = s.match(/(\d+)\s*([A-Z]?)\s*$/);
@@ -124,4 +139,46 @@ export function matchRowsToPlots(rows, plots) {
     const plot = byRef.get(key) || null;
     return { ...r, plot, matched: !!plot, normalised: key };
   });
+}
+
+/* The original grouped one invoice per contract. Where the export
+   carries its own scheme reference, that decides the grouping; where it
+   doesn't, everything belongs to the project you chose. */
+export function groupByContract(rows, fallbackContract) {
+  const groups = new Map();
+  rows.forEach((r) => {
+    const key = (r.apNumber || fallbackContract || "").trim() || "(no contract)";
+    if (!groups.has(key)) groups.set(key, { contract: key, rows: [] });
+    groups.get(key).rows.push(r);
+  });
+  return [...groups.values()];
+}
+
+/* An Invoice Report from the finance system, read only to learn which
+   plots have already been billed. Deliberately forgiving: it's a
+   cross-check, so a row it can't read should be reported, not fatal. */
+export async function parseInvoiceReport(file) {
+  const buf = await file.arrayBuffer();
+  const wb = XLSX.read(buf, { type: "array" });
+  const grid = XLSX.utils.sheet_to_json(wb.Sheets[wb.SheetNames[0]], {
+    header: 1, blankrows: false, defval: "",
+  });
+
+  const apRe = /^(AP\d+)\s*[/-]\s*(\d{1,4})/i;
+  const highestByContract = {};
+  const plotRefs = new Set();
+
+  grid.forEach((row) => {
+    row.forEach((cell) => {
+      const s = String(cell ?? "").trim();
+      const m = s.match(apRe);
+      if (m) {
+        const ap = m[1].toUpperCase();
+        const seq = Number(m[2]);
+        if (!highestByContract[ap] || seq > highestByContract[ap]) highestByContract[ap] = seq;
+      }
+    });
+  });
+
+  return { highestByContract, plotRefs: [...plotRefs], rowCount: grid.length };
 }

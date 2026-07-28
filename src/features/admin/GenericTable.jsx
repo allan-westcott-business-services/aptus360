@@ -6,6 +6,40 @@ import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admi
 /* One editor for every simple lookup, driven by the field definitions in
    adminTables.js. Adding a reference table becomes a registry entry rather
    than a new screen. */
+/* JSON held as text while being edited, so a half-typed object doesn't
+   throw on every keystroke — parsed on the way out, and refusing to save
+   while it's invalid. */
+function JsonField({ value, onChange }) {
+  const [text, setText] = useState(() =>
+    value ? JSON.stringify(value, null, 2) : "{\n  \n}");
+  const [bad, setBad] = useState("");
+
+  function edit(next) {
+    setText(next);
+    try {
+      onChange(JSON.parse(next || "{}"));
+      setBad("");
+    } catch (e) {
+      setBad(e.message);
+    }
+  }
+
+  return (
+    <div className="json-field">
+      <textarea
+        rows={10}
+        spellCheck={false}
+        value={text}
+        onChange={(e) => edit(e.target.value)}
+        className={bad ? "bad" : ""}
+      />
+      {bad
+        ? <p className="json-err">{bad}</p>
+        : <p className="json-ok">Valid JSON</p>}
+    </div>
+  );
+}
+
 export default function GenericTable({ table }) {
   const [rows, setRows] = useState([]);
   const [draft, setDraft] = useState({});
@@ -76,7 +110,12 @@ export default function GenericTable({ table }) {
                 {f.label}
                 {f.required && <span className="req"> *</span>}
               </label>
-              {f.type === "checkbox" ? (
+              {f.type === "json" ? (
+                <JsonField
+                  value={draft[f.col]}
+                  onChange={(v) => setDraft((d) => ({ ...d, [f.col]: v }))}
+                />
+              ) : f.type === "checkbox" ? (
                 <input
                   type="checkbox"
                   className="cb"
@@ -139,7 +178,11 @@ export default function GenericTable({ table }) {
                     <td key={f.col}>
                       {f.type === "checkbox"
                         ? r[f.col] ? <span className="tick">&#10003;</span> : ""
-                        : r[f.col] ?? ""}
+                        : f.type === "json"
+                          ? <span className="json-cell">
+                              {Object.keys(r[f.col] || {}).length} setting(s)
+                            </span>
+                          : r[f.col] ?? ""}
                     </td>
                   ))}
                   <td className="row-actions">
@@ -157,6 +200,13 @@ export default function GenericTable({ table }) {
 }
 
 const CSS = `
+.json-field textarea { width: 100%; font: 12px ui-monospace, Menlo, monospace;
+  line-height: 1.5; padding: 9px 11px; resize: vertical; }
+.json-field textarea.bad { border-color: #fca5a5; background: #fef2f2; }
+.json-err { margin: 4px 0 0; font-size: 11px; color: #b91c1c; font-weight: 600; }
+.json-ok { margin: 4px 0 0; font-size: 11px; color: var(--ok-text); }
+.json-cell { font-size: 11.5px; color: var(--muted); }
+
 .gen-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 12px; align-items: end; }
 .gen-actions { display: flex; gap: 8px; }
 .gen-actions .btn { flex: 1; }

@@ -235,11 +235,11 @@ export default function OutlineDesignsTab({ projectId }) {
         <div className="dt-wrap">
           <table className="dt">
             <colgroup>
-              {OD_COLS.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
+              {layout.visible.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
             </colgroup>
             <thead>
-              <tr>
-                {OD_COLS.map((c) => (
+              <tr className="head-row">
+                {layout.visible.map((c) => (
                   <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.label}
@@ -250,8 +250,8 @@ export default function OutlineDesignsTab({ projectId }) {
                   </th>
                 ))}
               </tr>
-              <tr className="od-filter-row" onClick={(e) => e.stopPropagation()}>
-                {OD_COLS.map((c) => (
+              <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
+                {layout.visible.map((c) => (
                   <th key={c.key}>
                     {c.type !== "none" && (
                       <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
@@ -266,115 +266,127 @@ export default function OutlineDesignsTab({ projectId }) {
             </thead>
             <tbody>
               {shown.length === 0 ? (
-                <tr><td colSpan={OD_COLS.length} className="no-rows">No designs match these filters.</td></tr>
+                <tr><td colSpan={layout.visible.length} className="no-rows">No designs match these filters.</td></tr>
               ) : shown.map((s) => {
                 const u = utilityById(s.Utility_ID);
                 const done = isDesignComplete(lookups.designStatuses, s.Design_Status_ID);
                 const overdue = s.Target_Date && !s.Actual_Date && String(s.Target_Date).slice(0, 10) < today;
                 return (
                   <tr key={s.Project_Scope_ID} className={isDirty(s.Project_Scope_ID) ? "dirty" : ""}>
-                    <td className="scope-cell" style={{ borderLeftColor: u?.colour }}>
-                      <span className="scope-name">{u?.name ?? "Scope"}</span>
-                      {done && <span className="badge done">Done</span>}
-                      {overdue && <span className="badge late">Late</span>}
-                    </td>
-                    <td>
-                      <select value={s.Designer_ID ?? ""}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Designer_ID", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {designers.map((p) => <option key={p.Person_ID} value={p.Person_ID}>{p.Person_Name}</option>)}
-                      </select>
-                    </td>
-                    <td>
-                      <select value={s.Design_Status_ID ?? ""}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Design_Status_ID", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {(lookups.designStatuses || []).map((d) => (
-                          <option key={d.Design_Status_ID} value={d.Design_Status_ID}>{d.Status}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <input type="number" min="0" value={s.Revision ?? 0}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Revision", Number(e.target.value))} />
-                    </td>
-                    <td>
-                      <input type="date" className={overdue ? "late-date" : ""} value={s.Target_Date || ""}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Target_Date", e.target.value)} />
-                    </td>
-                    <td>
-                      <input type="date" value={s.Actual_Date || ""}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Actual_Date", e.target.value)} />
-                    </td>
-                    <td>
-                      <select value={s.POC_Status_ID ?? ""}
-                        onChange={(e) => setField(s.Project_Scope_ID, "POC_Status_ID", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {(lookups.pocStatuses || []).map((x) => (
-                          <option key={x.POC_Status_ID} value={x.POC_Status_ID}>{x.POC_Status}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select value={s.Design_Checked_By ?? ""}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Design_Checked_By", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {(checkers.length ? checkers : lookups.people).map((p) => (
-                          <option key={p.Person_ID} value={p.Person_ID}>{p.Person_Name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="mid">
-                      <input type="checkbox" checked={!!s.External_Design}
-                        onChange={(e) => setField(s.Project_Scope_ID, "External_Design", e.target.checked)} />
-                    </td>
-                    <td className="mid">
-                      <input type="checkbox" checked={!!s.Carried_Forward}
-                        onChange={(e) => setField(s.Project_Scope_ID, "Carried_Forward", e.target.checked)} />
-                    </td>
-                    <td className="points-cell">
-                      {/* Auto by default. Overriding swaps in a manual figure
-                          and keeps the calculated one, so Clear restores it. */}
-                      {s.Base_Points_Overridden ? (
-                        <>
-                          <input type="number" step="0.5" className="pts manual"
-                            aria-label={`Manual points for ${utilityById(s.Utility_ID)?.name ?? "design"}`}
-                            value={s.Manual_Base_Points ?? ""}
-                            onChange={(e) => setField(s.Project_Scope_ID, "Manual_Base_Points",
-                              e.target.value === "" ? null : Number(e.target.value))} />
-                          <button type="button" className="pts-btn clear"
-                            title={`Back to the calculated ${s.Auto_Base_Points ?? 0}`}
-                            onClick={() => {
-                              setField(s.Project_Scope_ID, "Base_Points_Overridden", false);
-                              setField(s.Project_Scope_ID, "Manual_Base_Points", null);
-                            }}>
-                            Clear
+                    {/* Rendered per column rather than as a fixed run of
+                        cells, so a reordered header takes its data with
+                        it. Hand-written cells in a fixed order would
+                        shear away from their headings the moment anyone
+                        dragged one. */}
+                    {layout.visible.map((col) => (
+                      <td key={col.key}
+                        className={
+                          col.key === "scope" ? "scope-cell"
+                          : col.key === "points" ? "points-cell"
+                          : col.key === "act" ? "mid nowrap"
+                          : col.align === "center" ? "mid" : undefined}
+                        style={col.key === "scope" ? { borderLeftColor: u?.colour } : undefined}>
+
+                        {col.key === "scope" ? (<>
+                          <span className="scope-name">{u?.name ?? "Scope"}</span>
+                          {done && <span className="badge done">Done</span>}
+                          {overdue && <span className="badge late">Late</span>}
+                        </>)
+
+                        : col.key === "designer" ? (
+                          <select value={s.Designer_ID ?? ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Designer_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {designers.map((p) => <option key={p.Person_ID} value={p.Person_ID}>{p.Person_Name}</option>)}
+                          </select>)
+
+                        : col.key === "status" ? (
+                          <select value={s.Design_Status_ID ?? ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Design_Status_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(lookups.designStatuses || []).map((d) => (
+                              <option key={d.Design_Status_ID} value={d.Design_Status_ID}>{d.Status}</option>
+                            ))}
+                          </select>)
+
+                        : col.key === "rev" ? (
+                          <input type="number" min="0" value={s.Revision ?? 0}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Revision", Number(e.target.value))} />)
+
+                        : col.key === "target" ? (
+                          <input type="date" className={overdue ? "late-date" : ""} value={s.Target_Date || ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Target_Date", e.target.value)} />)
+
+                        : col.key === "actual" ? (
+                          <input type="date" value={s.Actual_Date || ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Actual_Date", e.target.value)} />)
+
+                        : col.key === "poc" ? (
+                          <select value={s.POC_Status_ID ?? ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "POC_Status_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(lookups.pocStatuses || []).map((x) => (
+                              <option key={x.POC_Status_ID} value={x.POC_Status_ID}>{x.POC_Status}</option>
+                            ))}
+                          </select>)
+
+                        : col.key === "checked" ? (
+                          <select value={s.Design_Checked_By ?? ""}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Design_Checked_By", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(checkers.length ? checkers : lookups.people).map((p) => (
+                              <option key={p.Person_ID} value={p.Person_ID}>{p.Person_Name}</option>
+                            ))}
+                          </select>)
+
+                        : col.key === "ext" ? (
+                          <input type="checkbox" checked={!!s.External_Design}
+                            onChange={(e) => setField(s.Project_Scope_ID, "External_Design", e.target.checked)} />)
+
+                        : col.key === "cf" ? (
+                          <input type="checkbox" checked={!!s.Carried_Forward}
+                            onChange={(e) => setField(s.Project_Scope_ID, "Carried_Forward", e.target.checked)} />)
+
+                        /* Auto by default. Overriding swaps in a manual figure
+                           and keeps the calculated one, so Clear restores it. */
+                        : col.key === "points" ? (s.Base_Points_Overridden ? (<>
+                            <input type="number" step="0.5" className="pts manual"
+                              aria-label={`Manual points for ${utilityById(s.Utility_ID)?.name ?? "design"}`}
+                              value={s.Manual_Base_Points ?? ""}
+                              onChange={(e) => setField(s.Project_Scope_ID, "Manual_Base_Points",
+                                e.target.value === "" ? null : Number(e.target.value))} />
+                            <button type="button" className="pts-btn clear"
+                              title={`Back to the calculated ${s.Auto_Base_Points ?? 0}`}
+                              onClick={() => {
+                                setField(s.Project_Scope_ID, "Base_Points_Overridden", false);
+                                setField(s.Project_Scope_ID, "Manual_Base_Points", null);
+                              }}>
+                              Clear
+                            </button>
+                          </>) : (<>
+                            <span className="pts auto" title="Calculated from the plot count">
+                              {s.Auto_Base_Points ?? "\u2014"}
+                            </span>
+                            <button type="button" className="pts-btn"
+                              title="Enter a manual figure instead"
+                              onClick={() => {
+                                setField(s.Project_Scope_ID, "Base_Points_Overridden", true);
+                                setField(s.Project_Scope_ID, "Manual_Base_Points", s.Auto_Base_Points ?? 0);
+                              }}>
+                              Override
+                            </button>
+                          </>))
+
+                        : (<>
+                          <button className="row-edit" onClick={() => setEditing(s)} title="Open this design">
+                            Edit
                           </button>
-                        </>
-                      ) : (
-                        <>
-                          <span className="pts auto" title="Calculated from the plot count">
-                            {s.Auto_Base_Points ?? "\u2014"}
-                          </span>
-                          <button type="button" className="pts-btn"
-                            title="Enter a manual figure instead"
-                            onClick={() => {
-                              setField(s.Project_Scope_ID, "Base_Points_Overridden", true);
-                              setField(s.Project_Scope_ID, "Manual_Base_Points", s.Auto_Base_Points ?? 0);
-                            }}>
-                            Override
+                          <button className="row-del" onClick={() => removeScope(s)} title="Remove design">
+                            &#10005;
                           </button>
-                        </>
-                      )}
-                    </td>
-                    <td className="mid nowrap">
-                      <button className="row-edit" onClick={() => setEditing(s)} title="Open this design">
-                        Edit
-                      </button>
-                      <button className="row-del" onClick={() => removeScope(s)} title="Remove design">
-                        &#10005;
-                      </button>
-                    </td>
+                        </>)}
+                      </td>
+                    ))}
                   </tr>
                 );
               })}

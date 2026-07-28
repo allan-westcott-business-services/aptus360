@@ -15,7 +15,10 @@ export default async function handler() {
       regions:        db.from("Region").select("Region_ID,Region").eq("Is_Active", true).order("Sort_Order"),
       subRegions:     db.from("Sub_Region").select("Sub_Region_ID,Region_ID,Sub_Region").eq("Is_Active", true).order("Sort_Order"),
       quoteTypes:     db.from("Quote_Type").select("Quote_Type_ID,Quote_Type,Is_Budget").eq("Is_Active", true).order("Sort_Order"),
-      people:         db.from("Person").select("Person_ID,Person_Name,Person_Role(Role_ID)").eq("Is_Active", true).order("Person_Name"),
+      /* Email is here so the signed-in session can be resolved to a
+         person — it is the only thing the two have in common, and
+         Person.Email is unique. */
+      people:         db.from("Person").select("Person_ID,Person_Name,Email,Person_Role(Role_ID)").eq("Is_Active", true).order("Person_Name"),
       roles:          db.from("Role").select("Role_ID,Role,Role_Code,Sort_Order").eq("Is_Active", true).order("Sort_Order"),
       utilities:      db.from("Utility").select("Utility_ID,Utility,Is_Lighting").order("Sort_Order"),
       fireServices:   db.from("Fire_Service").select("Fire_Service_ID,Fire_Service_Name").order("Fire_Service_Name"),

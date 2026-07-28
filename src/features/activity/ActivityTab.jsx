@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getActivity, addComment, deleteComment } from "../../api/activity.js";
+import { useAuth } from "../../lib/AuthContext.jsx";
 import { getLookups } from "../../api/lookups.js";
 
 /* Change history and comments. History rows are written by a database
@@ -51,6 +52,22 @@ export default function ActivityTab({ projectId, view = "history" }) {
   const [error, setError] = useState("");
   const [draft, setDraft] = useState("");
   const [author, setAuthor] = useState("");
+  const { user, authEnabled } = useAuth() || {};
+
+  /* The signed-in person, matched on email — the only thing an auth
+     session and a Person row have in common, and Person.Email is unique.
+
+     Typing your own name into every comment is a field that can only be
+     got wrong: misspelled, someone else's, or left blank. Where the
+     session resolves to a person, the box goes away.
+
+     It stays when it can't: with auth switched off there is no session
+     to read, and a signed-in address with no matching Person row would
+     otherwise leave comments with no author at all. Falling back to the
+     address is better than nothing, but a named person is the point. */
+  const me = (lookups?.people || []).find(
+    (p) => p.Email && user?.email && p.Email.toLowerCase() === user.email.toLowerCase());
+  const knownAuthor = me?.Person_Name || (user?.email ?? null);
   const [posting, setPosting] = useState(false);
 
   async function load() {
@@ -88,7 +105,7 @@ export default function ActivityTab({ projectId, view = "history" }) {
     if (!draft.trim()) return;
     setPosting(true);
     try {
-      const c = await addComment(projectId, draft.trim(), author.trim() || null);
+      const c = await addComment(projectId, draft.trim(), knownAuthor || author.trim() || null);
       setComments((x) => [c, ...x]);
       setDraft("");
       setError("");
@@ -127,8 +144,16 @@ export default function ActivityTab({ projectId, view = "history" }) {
             <textarea rows={3} value={draft} placeholder="Add a comment&hellip;"
               onChange={(e) => setDraft(e.target.value)} />
             <div className="cmt-compose-foot">
-              <input className="cmt-author" value={author} placeholder="Your name (optional)"
-                onChange={(e) => setAuthor(e.target.value)} />
+              {knownAuthor ? (
+                <span className="cmt-as" title={me ? `Matched to ${me.Person_Name} by email` : user?.email}>
+                  as <strong>{knownAuthor}</strong>
+                  {!me && <em> &mdash; no matching person record</em>}
+                </span>
+              ) : (
+                <input className="cmt-author" value={author}
+                  placeholder={authEnabled ? "Your name" : "Your name (optional)"}
+                  onChange={(e) => setAuthor(e.target.value)} />
+              )}
               <button className="btn accent" disabled={!draft.trim() || posting} onClick={post}>
                 {posting ? "Posting\u2026" : "Post comment"}
               </button>
@@ -170,10 +195,17 @@ export default function ActivityTab({ projectId, view = "history" }) {
               <p>History starts from the first edit after logging was enabled.</p>
             </div>
           ) : (
-            <div className="hist-wrap">
-              <table className="hist">
+            <div className="dt-wrap">
+              {/* The shared table spec, plus a modifier for the two ways
+                  this one differs. Scoping overrides as .dt.hist rather
+                  than .dt keeps them here — a bare .dt rule in a
+                  component style block would reach every table in the
+                  app the moment this screen rendered. */}
+              <table className="dt hist">
                 <thead>
-                  <tr><th>When</th><th>Field</th><th>From</th><th>To</th><th>By</th></tr>
+                  <tr className="head-row">
+                    <th>When</th><th>Field</th><th>From</th><th>To</th><th>By</th>
+                  </tr>
                 </thead>
                 <tbody>
                   {history.map((h) => (
@@ -208,14 +240,16 @@ const CSS = `
 .cmt-del:hover { background: #fef2f2; color: #ef4444; }
 .cmt-body { margin: 0; font-size: 13px; line-height: 1.5; white-space: pre-wrap; }
 
-.hist-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; max-height: 62vh; }
-.hist { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.hist th {
-  position: sticky; top: 0; background: var(--accent); color: #fff; text-align: left;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; padding: 8px 10px;
-}
-.hist td { padding: 6px 10px; border-top: 1px solid var(--border); vertical-align: top; }
-.hist tbody tr:nth-child(even) { background: #fafbfc; }
+/* Refinements on the shared spec in styles.css. A history value is prose
+   and has to wrap — the shared spec clips to one line, which is right for
+   a data grid and wrong for a change log. */
+.dt.hist { width: 100%; table-layout: auto; }
+.dt.hist th, .dt.hist td { white-space: normal; overflow: visible; }
+.dt.hist td { vertical-align: top; }
+/* Header, cell padding and row striping all come from .dt. */
+.cmt-as { font-size: 12px; color: var(--muted); align-self: center; }
+.cmt-as strong { color: var(--text); }
+.cmt-as em { font-style: normal; color: #b45309; }
 .hist-when { white-space: nowrap; color: var(--muted); font-size: 11.5px; }
 .hist-field { font-weight: 600; white-space: nowrap; }
 .hist-old { color: var(--muted); text-decoration: line-through; }

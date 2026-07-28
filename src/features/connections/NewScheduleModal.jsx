@@ -158,7 +158,7 @@ export default function NewScheduleModal({ onClose, onSaved }) {
 
           <div className="fld">
             <label>Programmed date <span className="req">*</span></label>
-            <input className="dt" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
+            <input className="ns-date" type="date" value={date} onChange={(e) => setDate(e.target.value)} />
             <p className="hint">The date the connection work is scheduled to be carried out.</p>
           </div>
 
@@ -253,7 +253,7 @@ export default function NewScheduleModal({ onClose, onSaved }) {
                   </div>
                   <div className="fld">
                     <label>Connection date</label>
-                    <input className="dt" type="date" value={extra.Connection_Date}
+                    <input className="ns-date" type="date" value={extra.Connection_Date}
                       onChange={(e) => setX("Connection_Date")(e.target.value)} />
                   </div>
                 </div>
@@ -261,14 +261,14 @@ export default function NewScheduleModal({ onClose, onSaved }) {
                 <div className="ns-row">
                   <div className="fld">
                     <label>Meter card submitted</label>
-                    <input className="dt" type="date" value={extra.Meter_Card_Submission_Date}
+                    <input className="ns-date" type="date" value={extra.Meter_Card_Submission_Date}
                       disabled={electricOnly}
                       onChange={(e) => setX("Meter_Card_Submission_Date")(e.target.value)} />
                     {electricOnly && <p className="hint">N/A for Electric.</p>}
                   </div>
                   <div className="fld">
                     <label>Service card submitted</label>
-                    <input className="dt" type="date" value={extra.Service_Card_Submission_Date}
+                    <input className="ns-date" type="date" value={extra.Service_Card_Submission_Date}
                       onChange={(e) => setX("Service_Card_Submission_Date")(e.target.value)} />
                   </div>
                 </div>
@@ -276,12 +276,12 @@ export default function NewScheduleModal({ onClose, onSaved }) {
                 <div className="ns-row">
                   <div className="fld">
                     <label>As-laid date</label>
-                    <input className="dt" type="date" value={extra.As_Laid_Date}
+                    <input className="ns-date" type="date" value={extra.As_Laid_Date}
                       onChange={(e) => setX("As_Laid_Date")(e.target.value)} />
                   </div>
                   <div className="fld">
                     <label>Dead jointed date</label>
-                    <input className="dt" type="date" value={extra.Dead_Jointed_Date}
+                    <input className="ns-date" type="date" value={extra.Dead_Jointed_Date}
                       onChange={(e) => setX("Dead_Jointed_Date")(e.target.value)} />
                     <p className="hint">Normally set from the work instruction.</p>
                   </div>
@@ -336,7 +336,9 @@ const CSS = `
 .ns-row .fld.narrow { width: 150px; }
 .ns-search { margin-bottom: 6px; }
 /* Date inputs sized to a date rather than stretched across the row */
-.dt { width: 158px; }
+/* Renamed from .dt, which is now the app-wide data-table spec in
+   styles.css — these are date inputs, not a table. */
+.ns-date { width: 158px; }
 .ns-optional { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; }
 .ns-toggle { background: none; border: none; cursor: pointer; font: 700 12px inherit;
   color: var(--accent); padding: 0; }

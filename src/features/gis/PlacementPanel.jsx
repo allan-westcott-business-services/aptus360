@@ -8,7 +8,7 @@ import { parsePlotRange, MAX_PLOTS, DIRECTION_NAME } from "./plotRange.js";
    which side the meters go. The second click is a direction, not a
    position — the meters space themselves 2m out and 1.4m apart. */
 export default function PlacementPanel({
-  plots, utilities, queue, current, awaitingDirection, onStart, onCancel, onAdd,
+  plots, utilities, queue, current, meterFor, onStart, onCancel, onAdd,
 }) {
   const [range, setRange] = useState("");
 
@@ -44,21 +44,27 @@ export default function PlacementPanel({
         </div>
 
         {current ? (
-          awaitingDirection ? (
+          meterFor ? (
             <>
               <p className="pp-now">
-                Plot <strong>{current.plot_number}</strong> placed. Now click the side the
-                meters go &mdash; the direction is what matters, not the distance.
+                Plot <strong>{current.plot_number}</strong> placed. Now click where its{" "}
+                <strong style={{ color: meterFor.utility.colour }}>
+                  {meterFor.utility.utility.toLowerCase()}
+                </strong>{" "}
+                meter sits.
               </p>
-              <div className="pp-compass">
-                {["N", "W", "E", "S"].map((d) => (
-                  <span key={d} className={`pc pc-${d}`}>{d}</span>
-                ))}
-                <span className="pc-mid">&#9820;</span>
+              <div className="pp-meters">
+                {meterFor.all.map((u) => {
+                  const done = meterFor.placed.includes(u.layer_key);
+                  const now = u.layer_key === meterFor.utility.layer_key;
+                  return (
+                    <span key={u.layer_key} className={now ? "pm on" : done ? "pm done" : "pm"}
+                      style={now ? { borderColor: u.colour, color: u.colour } : undefined}>
+                      {done ? "\u2713 " : ""}{u.utility}
+                    </span>
+                  );
+                })}
               </div>
-              <p className="pp-sub">
-                {utilities.map((u) => u.utility).join(", ")} &mdash; 2m out, 1.4m apart
-              </p>
             </>
           ) : (
             <>
@@ -105,7 +111,10 @@ export default function PlacementPanel({
       <button className="btn accent pp-go" onClick={onAdd}>&#8853; Add plots by range</button>
 
       {plots.length === 0 ? (
-        <p className="pp-none pp-gap">No plots on this project yet &mdash; the range above creates them.</p>
+        <p className="pp-none pp-gap">
+          No plots came back for this project. If it has plots, the list failed to load
+          &mdash; check the browser console.
+        </p>
       ) : unplaced.length === 0 ? (
         <p className="pp-none pp-gap">Every plot is on the canvas.</p>
       ) : (
@@ -191,15 +200,11 @@ const CSS = `
 .pp-sub { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
 .pp-chip { display: inline-block; font: 700 11px ui-monospace, Menlo, monospace;
   border-radius: 5px; padding: 3px 9px; margin-bottom: 9px; }
-.pp-compass { position: relative; width: 88px; height: 66px; margin: 0 auto 8px; }
-.pc { position: absolute; font: 700 10px inherit; color: var(--accent);
-  background: var(--white); border: 1px solid var(--accent); border-radius: 4px; padding: 1px 5px; }
-.pc-N { top: 0; left: 50%; transform: translateX(-50%); }
-.pc-S { bottom: 0; left: 50%; transform: translateX(-50%); }
-.pc-W { left: 0; top: 50%; transform: translateY(-50%); }
-.pc-E { right: 0; top: 50%; transform: translateY(-50%); }
-.pc-mid { position: absolute; left: 50%; top: 50%; transform: translate(-50%, -50%);
-  font-size: 17px; color: var(--accent); }
+.pp-meters { display: flex; flex-wrap: wrap; gap: 4px; margin-bottom: 8px; }
+.pm { font-size: 10.5px; font-weight: 600; border: 1px solid var(--border); background: var(--white);
+  border-radius: 5px; padding: 2px 8px; color: var(--muted); }
+.pm.on { border-width: 2px; font-weight: 700; }
+.pm.done { color: var(--ok-text); border-color: var(--ok-border); background: var(--ok-bg); }
 .pp-cancel { width: 100%; background: var(--white); border: 1px solid var(--border);
   border-radius: 6px; padding: 6px; cursor: pointer; font: 600 11.5px inherit; color: var(--muted); }
 .pp-cancel:hover { border-color: #ef4444; color: #ef4444; }

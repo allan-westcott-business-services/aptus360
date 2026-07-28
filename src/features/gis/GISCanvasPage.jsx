@@ -16,9 +16,7 @@ import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
-import {
-  directionFromDelta, DIRECTION_NAME, meterPositions, housePath,
-} from "./plotRange.js";
+import { housePath } from "./plotRange.js";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -66,7 +64,7 @@ export default function GISCanvasPage() {
   const [plotList, setPlotList] = useState([]);
   const [utilities, setUtilities] = useState([]);
   const [queue, setQueue] = useState([]);          // plots being placed, in order
-  const [pendingSeed, setPendingSeed] = useState(null);  // { plot, point } awaiting a direction
+  const [meterFor, setMeterFor] = useState(null);  // { plot, seedPoint, utility, all, placed }
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
   const [lookups, setLookups] = useState({});
@@ -131,7 +129,7 @@ export default function GISCanvasPage() {
 
   const drawing = tool === "boundary" || tool === "line";
   const placing = queue.some((q) => !q.done);
-  const nextPlot = pendingSeed?.plot || queue.find((q) => !q.done) || null;
+  const nextPlot = meterFor?.plot || queue.find((q) => !q.done) || null;
 
   const isPdfMap = basemap?.Source_Kind === "pdf";
 
@@ -356,43 +354,39 @@ export default function GISCanvasPage() {
     if (placing && cursor) {
       ctx.save();
 
-      if (pendingSeed) {
-        /* Show the meters where they'd land for the direction the cursor
-           implies — the choice is visible before it's committed. */
-        const dir = directionFromDelta(
-          cursor[0] - pendingSeed.point[0], cursor[1] - pendingSeed.point[1]);
-        const spots = meterPositions(pendingSeed.point, dir, utilities.length);
-        const origin = toPx(pendingSeed.point);
+      if (meterFor) {
+        const c = toPx(cursor);
+        const origin = toPx(meterFor.seedPoint);
 
-        ctx.globalAlpha = 0.9;
-        spots.forEach((m, i) => {
-          const q = toPx(m);
-          ctx.beginPath();
-          ctx.moveTo(origin.x, origin.y);
-          ctx.lineTo(q.x, q.y);
-          ctx.strokeStyle = utilities[i].colour;
-          ctx.setLineDash([3, 3]);
-          ctx.lineWidth = 1;
-          ctx.stroke();
-          ctx.setLineDash([]);
+        // A leader back to the plot, so it's clear which one this serves
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(origin.x, origin.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.strokeStyle = meterFor.utility.colour;
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
 
-          ctx.beginPath();
-          ctx.rect(q.x - 4, q.y - 4, 8, 8);
-          ctx.fillStyle = utilities[i].colour;
-          ctx.fill();
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-        });
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.rect(c.x - 5, c.y - 5, 10, 10);
+        ctx.fillStyle = meterFor.utility.colour;
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
 
-        const label = `Meters ${DIRECTION_NAME[dir]}`;
+        ctx.globalAlpha = 1;
+        const label = `${meterFor.plot.plot_number} ${meterFor.utility.utility}`;
         ctx.font = "700 11px ui-monospace, Menlo, monospace";
         ctx.textAlign = "center";
         const w = ctx.measureText(label).width + 12;
         ctx.fillStyle = "rgba(15,23,42,.85)";
-        ctx.fillRect(origin.x - w / 2, origin.y - 34, w, 17);
+        ctx.fillRect(c.x - w / 2, c.y - 32, w, 17);
         ctx.fillStyle = "#fff";
-        ctx.fillText(label, origin.x, origin.y - 22);
+        ctx.fillText(label, c.x, c.y - 20);
       } else if (nextPlot) {
         const c = toPx(cursor);
         ctx.globalAlpha = 0.75;
@@ -432,7 +426,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.tile, pdf.size, placing, pendingSeed, nextPlot, utilities]);
+  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -620,10 +614,6 @@ export default function GISCanvasPage() {
   }
 
   /* ── actions ── */
-  /* Two clicks per plot, as the original. The first sets the seed; the
-     second says which side the meters go, and they space themselves —
-     2m out, 1.4m apart, centred. Asking for a direction beats asking for
-     three meter positions, and gives a tidier result. */
   /* Create anything missing, then place the whole range. */
   async function addAndPlace(payload) {
     const res = await ensurePlots(projectId, payload);
@@ -642,64 +632,89 @@ export default function GISCanvasPage() {
     }
   }
 
+  /* Seed first, then one click per meter — each landing exactly where
+     it's clicked rather than being spaced automatically. Meters on a
+     real site sit where the builder put them, not on a tidy row. */
   function startPlacing(list) {
     setQueue(list.map((p) => ({ ...p, done: false })));
-    setPendingSeed(null);
+    setMeterFor(null);
     setTool("select");
     setSelected([]);
   }
 
   function stopPlacing() {
     setQueue([]);
-    setPendingSeed(null);
+    setMeterFor(null);
+  }
+
+  /* Draw it immediately, confirm with the server after. Waiting for a
+     round trip before the seed appeared made placing feel unresponsive,
+     and the click has already happened — showing it is honest. */
+  function addOptimistic(feature) {
+    const tempId = `tmp-${Date.now()}-${Math.random().toString(36).slice(2)}`;
+    setFeatures((f) => [...f, { ...feature, Feature_ID: tempId }]);
+    return tempId;
+  }
+  const reconcile = (tempId, saved) =>
+    setFeatures((f) => f.map((x) => (x.Feature_ID === tempId ? saved : x)));
+  const rollback = (tempId) =>
+    setFeatures((f) => f.filter((x) => x.Feature_ID !== tempId));
+
+  function markPlaced(plotId) {
+    setQueue((q) => q.map((x) => (x.plot_id === plotId ? { ...x, done: true } : x)));
+    setPlotList((l) => l.map((x) => (x.plot_id === plotId ? { ...x, placed: true } : x)));
   }
 
   async function placeAt(point) {
-    try {
-      // Second click: direction
-      if (pendingSeed) {
-        const { plot, point: base } = pendingSeed;
-        const dir = directionFromDelta(point[0] - base[0], point[1] - base[1]);
-        const spots = meterPositions(base, dir, utilities.length);
-
-        await Promise.all(utilities.map((u, i) => createFeature(projectId, {
-          Layer_Key: u.layer_key,
-          Feature_Type: "point",
-          Feature_Role: "meter",
-          Geometry: [spots[i]],
-          Label: `${u.utility} Meter ${plot.plot_number}`,
-          Plot_ID: plot.plot_id,
-          Attributes: { Meter_Utility: u.utility, Side: dir },
-        })));
-
-        setPendingSeed(null);
-        setQueue((q) => q.map((x) => (x.plot_id === plot.plot_id ? { ...x, done: true } : x)));
-        setStatus(`Plot ${plot.plot_number} placed, meters ${DIRECTION_NAME[dir]}`);
-        setTimeout(() => setStatus(""), 2500);
-        await load(projectId);
-        return;
-      }
-
-      // First click: the seed
-      const plot = queue.find((q) => !q.done);
-      if (!plot) return;
-      await createFeature(projectId, {
-        Layer_Key: "plot",
+    // A meter for the plot just seeded
+    if (meterFor) {
+      const { plot, utility, all, placed } = meterFor;
+      const draftFeature = {
+        Project_ID: Number(projectId),
+        Layer_Key: utility.layer_key,
         Feature_Type: "point",
-        Feature_Role: "plot",
+        Feature_Role: "meter",
         Geometry: [point],
-        Label: plot.plot_number,
+        Label: `${utility.utility} Meter ${plot.plot_number}`,
         Plot_ID: plot.plot_id,
-        Attributes: { Bedrooms: plot.bedrooms ?? null, Config: plot.config_code ?? null },
-      });
+        Attributes: { Meter_Utility: utility.utility },
+      };
+      const tempId = addOptimistic(draftFeature);
 
-      if (utilities.length) {
-        setPendingSeed({ plot, point });
-      } else {
-        setQueue((q) => q.map((x) => (x.plot_id === plot.plot_id ? { ...x, done: true } : x)));
-      }
-      await load(projectId);
-    } catch (e) { setError(e.message); }
+      const nextPlaced = [...placed, utility.layer_key];
+      const nextUtility = all.find((u) => !nextPlaced.includes(u.layer_key));
+      if (nextUtility) setMeterFor({ ...meterFor, utility: nextUtility, placed: nextPlaced });
+      else { setMeterFor(null); markPlaced(plot.plot_id); }
+
+      try { reconcile(tempId, await createFeature(projectId, draftFeature)); }
+      catch (e) { rollback(tempId); setError(e.message); }
+      return;
+    }
+
+    // The seed itself
+    const plot = queue.find((q) => !q.done);
+    if (!plot) return;
+
+    const draftFeature = {
+      Project_ID: Number(projectId),
+      Layer_Key: "plot",
+      Feature_Type: "point",
+      Feature_Role: "plot",
+      Geometry: [point],
+      Label: plot.plot_number,
+      Plot_ID: plot.plot_id,
+      Attributes: { Bedrooms: plot.bedrooms ?? null, Config: plot.config_code ?? null },
+    };
+    const tempId = addOptimistic(draftFeature);
+
+    if (utilities.length) {
+      setMeterFor({ plot, seedPoint: point, utility: utilities[0], all: utilities, placed: [] });
+    } else {
+      markPlaced(plot.plot_id);
+    }
+
+    try { reconcile(tempId, await createFeature(projectId, draftFeature)); }
+    catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
   }
 
   async function finishDrawing() {
@@ -925,7 +940,7 @@ export default function GISCanvasPage() {
               utilities={utilities}
               queue={queue}
               current={nextPlot}
-              awaitingDirection={!!pendingSeed}
+              meterFor={meterFor}
               onStart={startPlacing}
               onCancel={stopPlacing}
             />

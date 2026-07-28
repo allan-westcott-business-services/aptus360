@@ -87,6 +87,7 @@ export const ADMIN_TABLES = [
     ] },
 
   { separator: true, label: "Organisations & People" },
+  { key: "Organisation", label: "Organisations", special: "organisations" },
   { key: "Customer", label: "Customers & Branches", special: "customers" },
   { key: "IDNO_Source_Mapping", label: "IDNO Source Mapping", pk: "IDNO_Source_Mapping_ID", fields: [
       { col: "Mapping_Name", label: "Mapping Name", type: "text", required: true },

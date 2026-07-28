@@ -8,6 +8,7 @@ import StatusWorkflowAdmin from "./StatusWorkflowAdmin.jsx";
 import ElectricSpecsAdmin from "./ElectricSpecsAdmin.jsx";
 import PointsConfigAdmin from "./PointsConfigAdmin.jsx";
 import CustomersAdmin from "./CustomersAdmin.jsx";
+import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
@@ -49,6 +50,8 @@ export default function AdminPage() {
           <ElectricSpecsAdmin />
         ) : table?.special === "points" ? (
           <PointsConfigAdmin />
+        ) : table?.special === "organisations" ? (
+          <OrganisationsAdmin />
         ) : table?.special === "customers" ? (
           <CustomersAdmin />
         ) : table ? (

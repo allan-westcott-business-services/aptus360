@@ -361,18 +361,84 @@ export default function GISCanvasPage() {
       }
     });
 
-    // where the next click will land
+    /* Where the next click will land, and what it is latching onto.
+
+       One marker for every kind of snap told you something was
+       happening but not what — and an end is the one that matters,
+       because that is the join the network is traced through. So an end
+       gets its own shape, its own word, and a highlight on the line it
+       belongs to. Meeting a line's end is a different act from passing
+       near its middle, and the canvas should say which one you're
+       about to do. */
     if (snapHit) {
       const p = toPx(snapHit.point);
-      ctx.beginPath();
-      ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
-      ctx.strokeStyle = "#dc2626";
+      const isEnd = snapHit.kind === "end";
+      const tint = isEnd ? "#dc2626" : "#f59e0b";
+
+      ctx.save();
+
+      // The line it belongs to, so there's no doubt which one was caught
+      const target = visible.find((f) => f.Feature_ID === snapHit.featureId);
+      if (target && target.Feature_Type !== "point" && (target.Geometry || []).length > 1) {
+        const tp = target.Geometry.map(toPx);
+        ctx.beginPath();
+        tp.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+        if (target.Feature_Type === "polygon") ctx.closePath();
+        ctx.strokeStyle = tint;
+        ctx.globalAlpha = 0.35;
+        ctx.lineWidth = 9;
+        ctx.lineCap = "round";
+        ctx.lineJoin = "round";
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
+      ctx.strokeStyle = tint;
+      ctx.fillStyle = tint;
       ctx.lineWidth = 2;
-      ctx.stroke();
-      ctx.beginPath();
-      ctx.moveTo(p.x - 5, p.y); ctx.lineTo(p.x + 5, p.y);
-      ctx.moveTo(p.x, p.y - 5); ctx.lineTo(p.x, p.y + 5);
-      ctx.stroke();
+
+      if (isEnd) {
+        // Filled square, white-cored — reads as a terminal, not a hint
+        ctx.beginPath();
+        ctx.rect(p.x - 7, p.y - 7, 14, 14);
+        ctx.fill();
+        ctx.fillStyle = "#fff";
+        ctx.beginPath();
+        ctx.rect(p.x - 3, p.y - 3, 6, 6);
+        ctx.fill();
+      } else if (snapHit.kind === "mid") {
+        ctx.beginPath();
+        ctx.moveTo(p.x, p.y - 8); ctx.lineTo(p.x + 8, p.y);
+        ctx.lineTo(p.x, p.y + 8); ctx.lineTo(p.x - 8, p.y);
+        ctx.closePath();
+        ctx.stroke();
+      } else {
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 9, 0, Math.PI * 2);
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.moveTo(p.x - 5, p.y); ctx.lineTo(p.x + 5, p.y);
+        ctx.moveTo(p.x, p.y - 5); ctx.lineTo(p.x, p.y + 5);
+        ctx.stroke();
+      }
+
+      // Name it on the canvas. The tip bar is at the bottom of the
+      // screen and the cursor is not.
+      const word = isEnd ? "END"
+        : snapHit.kind === "mid" ? "MIDPOINT"
+        : snapHit.kind === "vertex" ? "POINT"
+        : snapHit.kind === "edge" ? "ON LINE"
+        : "POINT";
+      const tag = snapHit.sameClass ? `${word} \u00B7 SAME TYPE` : word;
+      ctx.font = "700 10px ui-monospace, Menlo, monospace";
+      ctx.textAlign = "left";
+      const tw = ctx.measureText(tag).width;
+      ctx.fillStyle = tint;
+      ctx.fillRect(p.x + 12, p.y - 20, tw + 10, 15);
+      ctx.fillStyle = "#fff";
+      ctx.fillText(tag, p.x + 17, p.y - 9);
+
+      ctx.restore();
     }
 
     // What the next click will do
@@ -550,7 +616,7 @@ export default function GISCanvasPage() {
         const idx = vertexAt(f, px, py);
         if (idx >= 0) {
           if (e.altKey) { removeVertex(f, idx); return; }
-          drag.current = { mode: "vertex", featureId: f.Feature_ID, index: idx };
+          drag.current = { mode: "vertex", featureId: f.Feature_ID, index: idx, startPx: [px, py] };
           setEditVertex({ featureId: f.Feature_ID, index: idx });
           return;
         }
@@ -619,8 +685,12 @@ export default function GISCanvasPage() {
 
     const d = drag.current;
     if (!d) return;
-    const dx = px - d.startPx[0], dy = py - d.startPx[1];
 
+    /* Vertex first, and the delta after it. A vertex drag follows the
+       cursor absolutely rather than by an offset, so it carries no
+       startPx — reading one above this branch threw on every move and
+       took the whole drag with it. Anything added below here that needs
+       no delta belongs above the line that takes one. */
     if (d.mode === "vertex") {
       const { featureId, index } = d;
       const { point } = resolve(raw[0], raw[1]);
@@ -630,6 +700,9 @@ export default function GISCanvasPage() {
           : f));
       return;
     }
+
+    if (!d.startPx) return;
+    const dx = px - d.startPx[0], dy = py - d.startPx[1];
 
     if (d.mode === "pan") {
       const { x: sx, y: sy } = d.startView;

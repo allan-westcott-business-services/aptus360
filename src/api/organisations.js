@@ -34,6 +34,13 @@ export async function addRole(body) {
   if (USE_MOCKS) { await delay(150); return { added: true }; }
   return http.post("/organisations?what=role", body);
 }
+/* Only the reference and the active flag. Changing which role it is
+   means removing it and adding the other one — the unique constraint is
+   on organisation + type + subtype. */
+export async function saveRole(id, body) {
+  if (USE_MOCKS) { await delay(150); return body; }
+  return http.patch(`/organisations?what=role&id=${id}`, body);
+}
 export async function removeRecord(what, id) {
   if (USE_MOCKS) { await delay(150); return { deleted: true }; }
   return http.del(`/organisations?what=${what}&id=${id}`);

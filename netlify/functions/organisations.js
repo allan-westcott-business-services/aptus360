@@ -3,22 +3,41 @@ import { supabase, json, fail } from "./_supabase.js";
 const ORG = "Organisation_ID,Name,Trading_Name,Code,Registration_Number,Address_1,Address_2,Town,County,Postcode,Phone,Email,Website,Notes,Is_Active";
 const BRANCH = "Organisation_Branch_ID,Organisation_ID,Branch_Name,Branch_Dropdown,Region_ID,Address_1,Town,Postcode,Phone,Is_Active";
 const CONTACT = "Organisation_Contact_ID,Organisation_Branch_ID,Organisation_Type_ID,Contact_Name,Job_Title,Email,Phone,Mobile,Is_Primary,Notes,Is_Active";
+/* A role's type is its identity — the unique constraint is on the
+   triple, so changing it is a remove and an add. Only the reference and
+   the active flag are editable in place. */
+const ROLE = "Organisation_Role_ID,Reference,Is_Active";
 
-const only = (cols) => {
-  const set = new Set(cols.split(",").slice(1));
+/* Writable columns: the select list without the primary key, minus
+   anything the database maintains itself. Branch_Dropdown is written by
+   org_branch_dropdown_trg, and only when Branch_Name or Organisation_ID
+   changes — so a PATCH carrying a stale one would stick. */
+const only = (cols, skip = []) => {
+  const set = new Set(cols.split(",").slice(1).filter((c) => !skip.includes(c)));
   return (o) => Object.fromEntries(
     Object.entries(o).filter(([k]) => set.has(k)).map(([k, v]) => [k, v === "" ? null : v])
   );
 };
 const pickOrg = only(ORG);
-const pickBranch = only(BRANCH);
+const pickBranch = only(BRANCH, ["Branch_Dropdown"]);
 const pickContact = only(CONTACT);
+const pickRole = only(ROLE);
+
+/* 23505 is a unique index doing its job. The raw message names an index,
+   which tells the person nothing about what they just typed. */
+const DUPLICATE = {
+  organisation: "An organisation with that name already exists.",
+  branch: "This organisation already has a branch with that name.",
+  contact: "That branch already has a primary contact for this role. Clear the other one first.",
+  role: "This organisation already holds that role.",
+};
 
 export default async function handler(req, context) {
   const db = supabase();
   const url = new URL(req.url);
   const what = url.searchParams.get("what") || "organisations";
   const id = url.searchParams.get("id");
+  const kind = ["branch", "contact", "role"].includes(what) ? what : "organisation";
 
   try {
     /* ── Lookups the screen needs once ── */
@@ -92,23 +111,24 @@ export default async function handler(req, context) {
 
       const { data, error } = await db.from("Organisation")
         .insert(pickOrg(body)).select(ORG).single();
-      if (error) {
-        if (error.code === "23505") {
-          return json({ error: "An organisation with that name already exists." }, 409);
-        }
-        throw error;
-      }
+      if (error) throw error;
       return json(data, 201);
     }
 
     if (req.method === "PATCH" && id) {
       const body = await req.json();
       const table = what === "branch" ? "Organisation_Branch"
-        : what === "contact" ? "Organisation_Contact" : "Organisation";
+        : what === "contact" ? "Organisation_Contact"
+        : what === "role" ? "Organisation_Role" : "Organisation";
       const pk = what === "branch" ? "Organisation_Branch_ID"
-        : what === "contact" ? "Organisation_Contact_ID" : "Organisation_ID";
-      const cols = what === "branch" ? BRANCH : what === "contact" ? CONTACT : ORG;
-      const pick = what === "branch" ? pickBranch : what === "contact" ? pickContact : pickOrg;
+        : what === "contact" ? "Organisation_Contact_ID"
+        : what === "role" ? "Organisation_Role_ID" : "Organisation_ID";
+      const cols = what === "branch" ? BRANCH
+        : what === "contact" ? CONTACT
+        : what === "role" ? ROLE : ORG;
+      const pick = what === "branch" ? pickBranch
+        : what === "contact" ? pickContact
+        : what === "role" ? pickRole : pickOrg;
 
       const { data, error } = await db.from(table)
         .update(pick(body)).eq(pk, id).select(cols).single();
@@ -133,6 +153,9 @@ export default async function handler(req, context) {
 
     return json({ error: "Method not allowed" }, 405);
   } catch (e) {
+    if (e?.code === "23505") {
+      return json({ error: DUPLICATE[kind] ?? "That record already exists." }, 409);
+    }
     return fail(e, 400);
   }
 }

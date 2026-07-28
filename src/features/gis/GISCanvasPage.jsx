@@ -373,7 +373,15 @@ export default function GISCanvasPage() {
     if (snapHit) {
       const p = toPx(snapHit.point);
       const isEnd = snapHit.kind === "end";
-      const tint = isEnd ? "#dc2626" : "#f59e0b";
+
+      /* Starting a run on the end of another run of the same class is
+         the one snap that makes a connected network, so it gets its own
+         colour. Green because it is the case you want: this end and
+         that end are close enough to be treated as one point, and the
+         cable you are about to draw will trace through. Everything else
+         is a positioning aid and stays amber or red. */
+      const continuing = isEnd && snapHit.sameClass;
+      const tint = continuing ? "#16a34a" : isEnd ? "#dc2626" : "#f59e0b";
 
       ctx.save();
 
@@ -397,7 +405,22 @@ export default function GISCanvasPage() {
       ctx.fillStyle = tint;
       ctx.lineWidth = 2;
 
-      if (isEnd) {
+      if (continuing) {
+        /* Small, and sitting exactly on the existing end rather than
+           near it — the point of it is to say "these two are the same
+           point now", so anything larger would obscure the thing it is
+           describing. The white ring keeps it legible over a dark
+           basemap. */
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 6.5, 0, Math.PI * 2);
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+        ctx.beginPath();
+        ctx.arc(p.x, p.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = tint;
+        ctx.fill();
+      } else if (isEnd) {
         // Filled square, white-cored — reads as a terminal, not a hint
         ctx.beginPath();
         ctx.rect(p.x - 7, p.y - 7, 14, 14);
@@ -429,7 +452,9 @@ export default function GISCanvasPage() {
         : snapHit.kind === "vertex" ? "POINT"
         : snapHit.kind === "edge" ? "ON LINE"
         : "POINT";
-      const tag = snapHit.sameClass ? `${word} \u00B7 SAME TYPE` : word;
+      const tag = continuing ? "JOINS HERE"
+        : snapHit.sameClass ? `${word} \u00B7 SAME TYPE`
+        : word;
       ctx.font = "700 10px ui-monospace, Menlo, monospace";
       ctx.textAlign = "left";
       const tw = ctx.measureText(tag).width;

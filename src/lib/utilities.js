@@ -12,6 +12,15 @@ export const UTILITIES = [
 export const SCOPE_GROUPS = ["Residential", "Street Lighting"];
 export const STREET_LIGHTING_IDS = [4, 5, 6];
 
+/* The utilities a dwelling is actually connected to. Street lighting is
+   laid on the same site but has no plot, no meter and no connection
+   record — it's tracked separately, so it shouldn't appear anywhere
+   those things are being filtered. Derived from the group rather than a
+   second list of ids, so adding a utility only needs editing once. */
+export const RESIDENTIAL_UTILITIES = UTILITIES.filter((u) => u.group === "Residential");
+export const RESIDENTIAL_UTILITY_IDS = RESIDENTIAL_UTILITIES.map((u) => u.id);
+export const isResidentialUtility = (id) => RESIDENTIAL_UTILITY_IDS.includes(+id);
+
 export const utilityById = (id) => UTILITIES.find((u) => u.id === +id);
 
 /* Quote type helpers. Budget means no designs at all, which is the only

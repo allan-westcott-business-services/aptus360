@@ -4,7 +4,7 @@ import { getLookups } from "../../api/lookups.js";
 import { listPoc, createPoc, updatePoc, deletePoc } from "../../api/poc.js";
 import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
-import { utilityById, UTILITIES } from "../../lib/utilities.js";
+import { utilityById, UTILITIES, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import OptionsPanel from "./OptionsPanel.jsx";
@@ -16,9 +16,7 @@ import EntityNotes from "../../components/EntityNotes.jsx";
    creates three applications, not one. They quote separately and move at
    different speeds, so each needs its own status, reference and dates. */
 
-/* Only these three have a point of connection to apply for — street
-   lighting scopes don't. */
-const POC_UTILITIES = [1, 2, 3];
+
 
 const POC_FIELD_LABELS = {
   POC_Status_ID: "Status", POC_Type_ID: "Type", IDNO_ID: "IDNO", DNO_ID: "DNO",
@@ -227,7 +225,7 @@ export default function POCApplicationsTab({ projectId }) {
     ...(lookups?.dnos || []).map((d) => ({ id: `d${d.DNO_ID}`, label: `DNO — ${d.DNO_Name}` })),
   ];
   const filterOptions = (key) => {
-    if (key === "utility") return UTILITIES.filter((u) => POC_UTILITIES.includes(u.id)).map((u) => ({ id: u.id, label: u.name }));
+    if (key === "utility") return RESIDENTIAL_UTILITIES.map((u) => ({ id: u.id, label: u.name }));
     if (key === "operator") return providerOptions;
     if (key === "type") return (lookups?.pocTypes || []).map((t) => ({ id: t.POC_Type_ID, label: t.POC_Type }));
     if (key === "status") return (lookups?.pocStatuses || []).map((s) => ({ id: s.POC_Status_ID, label: s.POC_Status }));
@@ -320,7 +318,7 @@ export default function POCApplicationsTab({ projectId }) {
             <div className="fld"><label>Utility <span className="req">*</span></label>
               <select value={f.Utility_ID} onChange={(e) => set("Utility_ID")(e.target.value)}>
                 <option value="">&mdash;</option>
-                {UTILITIES.filter((u) => POC_UTILITIES.includes(u.id)).map((u) => (
+                {RESIDENTIAL_UTILITIES.map((u) => (
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select></div>

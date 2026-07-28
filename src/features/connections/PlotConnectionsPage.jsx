@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listAllConnections, updateConnection, bulkUpdateConnections } from "../../api/connections.js";
-import { UTILITIES, utilityById } from "../../lib/utilities.js";
+import { UTILITIES, RESIDENTIAL_UTILITIES, utilityById } from "../../lib/utilities.js";
 import NewScheduleModal from "./NewScheduleModal.jsx";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
@@ -108,7 +108,7 @@ export default function PlotConnectionsPage() {
 
   const filterOptions = (key) => {
     if (key === "project") return projectOptions;
-    if (key === "utility") return UTILITIES.map((u) => ({ id: u.id, label: u.name }));
+    if (key === "utility") return RESIDENTIAL_UTILITIES.map((u) => ({ id: u.id, label: u.name }));
     if (key === "pack") return (lookups?.packStatuses || []).map((s) => ({ id: s.Pack_Status_ID, label: s.Pack_Status }));
     if (key === "adopter") return (lookups?.idnos || []).map((i) => ({ id: i.IDNO_ID, label: i.IDNO_Name }));
     return [];
@@ -250,7 +250,7 @@ export default function PlotConnectionsPage() {
 
         <select value={util} onChange={(e) => setUtil(e.target.value)}>
           <option value="">All utilities</option>
-          {UTILITIES.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+          {RESIDENTIAL_UTILITIES.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
         </select>
 
         <select value={state} onChange={(e) => setState(e.target.value)}>

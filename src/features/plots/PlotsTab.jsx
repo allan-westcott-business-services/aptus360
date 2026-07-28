@@ -8,7 +8,7 @@ import { generateConnections } from "../../api/connections.js";
 import { listDevelopers, assignPlots } from "../../api/developers.js";
 import { bulkUpdatePlots, bulkDeletePlots } from "../../api/plots.js";
 import { useTableLayout, TABLE_CSS } from "../../lib/useTableLayout.js";
-import { UTILITIES as UTILS } from "../../lib/utilities.js";
+import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
 
@@ -361,8 +361,8 @@ export default function PlotsTab({ projectId, projectRef }) {
           <p className="panel-label">Generate connections</p>
           <p className="hint">
             Creates a connection record for every plot against each utility chosen.
-            Existing ones are left alone and self-lay plots are skipped. Track them on
-            the Plot Connections page.
+            Existing ones are left alone and self-lay plots are skipped. Street lighting
+            isn&rsquo;t listed &mdash; it has no plot connections and is tracked separately.
           </p>
           <div className="util-pick">
             {UTILS.map((u) => (

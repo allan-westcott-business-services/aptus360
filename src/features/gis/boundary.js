@@ -150,14 +150,24 @@ export function midpointOf(run) {
    footway reinstatement on the length inside the red line, where no
    footway exists.
 
-   Guarded on the surface types actually loaded, so removing Unmade in
-   Admin stops this writing a key that no longer resolves. */
+   Unclassified counts as on site here. With no boundary drawn there is
+   no off site to be in — you are drawing on the site plan — so Unmade is
+   the right default for the surface. Site itself stays null, because
+   that is a claim about consent and cost that shouldn't be guessed;
+   surface is a starting point that takes two clicks to correct. The two
+   deserve different treatment.
+
+   An empty list means the surface types haven't loaded, not that Unmade
+   was deleted. Only a list that has loaded and doesn't contain it counts
+   as deliberate removal — otherwise a stale endpoint that returns no
+   surface types turns this off with no sign that it has. */
 export const ON_SITE_SURFACE = "unmade";
 
 export function surfaceFor(site, chosen, available = []) {
-  if (site === ON_SITE && available.some((s) => s.Surface_Key === ON_SITE_SURFACE)) {
-    return ON_SITE_SURFACE;
-  }
+  const onSite = site === ON_SITE || site == null;
+  const haveUnmade = !available.length
+    || available.some((s) => s.Surface_Key === ON_SITE_SURFACE);
+  if (onSite && haveUnmade) return ON_SITE_SURFACE;
   return chosen || null;
 }
 

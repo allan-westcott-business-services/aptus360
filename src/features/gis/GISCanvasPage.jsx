@@ -1071,9 +1071,17 @@ export default function GISCanvasPage() {
       setSnapHit(null);
       await load(projectId);
       const off = runs.filter((r) => r.site === OFF_SITE).length;
+      const surfaces = isTrenchType(lineType, lineTypes)
+        ? [...new Set(runs.map((r) => surfaceFor(r.site, surface, surfaceTypes) ?? "none"))]
+        : [];
       if (runs.length > 1) {
-        setStatus(`Split at the boundary \u2014 ${runs.length} runs, ${off} off site`);
+        setStatus(`Split at the boundary \u2014 ${runs.length} runs, ${off} off site`
+          + (surfaces.length ? ` \u00B7 surface: ${surfaces.join(", ")}` : ""));
         setTimeout(() => setStatus(""), 6000);
+      } else if (surfaces.length) {
+        setStatus(`Trench drawn \u00B7 surface: ${surfaces[0]}`
+          + (runs[0].site ? ` \u00B7 ${runs[0].site}` : " \u00B7 no boundary drawn yet"));
+        setTimeout(() => setStatus(""), 5000);
       }
     } catch (e) { setError(e.message); }
   }

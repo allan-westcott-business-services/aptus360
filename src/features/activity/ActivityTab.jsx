@@ -119,7 +119,11 @@ export default function ActivityTab({ projectId, view = "history" }) {
     if (!draft.trim()) return;
     setPosting(true);
     try {
-      const c = await addComment(projectId, draft.trim(), knownAuthor || author.trim() || null);
+      /* Send the typed name only where there is one to send. Otherwise
+         the email goes and the server names it from the Person table —
+         which knows, whatever this page's cached lookups think. */
+      const c = await addComment(projectId, draft.trim(),
+        me?.Person_Name || author.trim() || null, user?.email || null);
       setComments((x) => [c, ...x]);
       setDraft("");
       setError("");
@@ -161,7 +165,11 @@ export default function ActivityTab({ projectId, view = "history" }) {
               {knownAuthor ? (
                 <span className="cmt-as" title={me ? `Matched to ${me.Person_Name} by email` : user?.email}>
                   as <strong>{knownAuthor}</strong>
-                  {!me && whyNoMatch && <em> &mdash; {whyNoMatch}</em>}
+                  {/* Not an error: the server resolves the name from the
+                      Person table when it saves, so an out-of-date
+                      lookup here changes what is shown, not what is
+                      stored. */}
+                  {!me && whyNoMatch && <em> &mdash; name resolved on save</em>}
                 </span>
               ) : (
                 <input className="cmt-author" value={author}

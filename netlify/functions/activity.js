@@ -22,10 +22,34 @@ export default async function handler(req, context) {
     }
 
     if (req.method === "POST") {
-      const { Comment, Author } = await req.json();
+      const { Comment, Author, Author_Email } = await req.json();
       if (!Comment || !Comment.trim()) return json({ error: "Comment is required" }, 400);
+
+      /* Who wrote it is settled here rather than in the browser.
+
+         The Person table is right there, so the name doesn't depend on
+         what the client happens to have in its lookups payload — which
+         is cached for the session and can easily be a build or two
+         behind. A comment stored with the right name matters more than
+         one displayed with it.
+
+         ilike with no wildcards is an exact match that ignores case, so
+         a login of Me@… still finds a record stored as me@…. */
+      let author = (Author || "").trim() || null;
+      const email = (Author_Email || "").trim();
+      if (!author && email) {
+        const { data: person } = await db.from("Person")
+          .select("Person_Name")
+          .ilike("Email", email)
+          .eq("Is_Active", true)
+          .maybeSingle();
+        /* The address is a poor name but a real one — better than a
+           comment nobody can trace. */
+        author = person?.Person_Name || email;
+      }
+
       const { data, error } = await db.from("Project_Comment")
-        .insert({ Project_ID: Number(projectId), Comment: Comment.trim(), Author: Author || null })
+        .insert({ Project_ID: Number(projectId), Comment: Comment.trim(), Author: author })
         .select().single();
       if (error) throw error;
       return json(data, 201);

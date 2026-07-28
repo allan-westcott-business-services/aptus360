@@ -18,14 +18,18 @@ export async function getActivity(projectId) {
   return http.get(`/projects/${projectId}/activity`);
 }
 
-export async function addComment(projectId, Comment, Author) {
+/* Author_Email goes with it so the server can resolve the name from the
+   Person table itself. The browser's copy of the people lookup is cached
+   for the session and can be a deploy or two behind. */
+export async function addComment(projectId, Comment, Author, Author_Email) {
   if (USE_MOCKS) {
     await delay(250);
-    const c = { Comment_ID: nextId++, Comment, Author, Created_At: new Date().toISOString() };
+    const c = { Comment_ID: nextId++, Comment, Author: Author || Author_Email,
+      Created_At: new Date().toISOString() };
     mockComments = [c, ...mockComments];
     return c;
   }
-  return http.post(`/projects/${projectId}/activity`, { Comment, Author });
+  return http.post(`/projects/${projectId}/activity`, { Comment, Author, Author_Email });
 }
 
 export async function deleteComment(projectId, commentId) {

@@ -40,6 +40,12 @@ export default async function handler() {
       transitions:     db.from("Status_Transition").select("From_Status_ID,To_Status_ID,Quote_Type_ID").eq("Is_Active", true),
       guards:          db.from("Status_Transition_Guard").select("Guard_ID,Target_Status_ID,Guard_Type,Condition_Status_IDs,Description").eq("Is_Active", true),
       designStatuses:  db.from("Design_Status").select("Design_Status_ID,Status,Sort_Order,Is_Complete").order("Sort_Order"),
+      /* Operators as organisations, for anything that needs to know
+         whose standard or scheme applies. Reads the 0048 view, so it
+         already excludes inactive organisations and inactive roles. An
+         organisation holding both roles comes back twice — once per
+         role — which is correct for a role-scoped list. */
+      orgOperators:    db.from("Organisation_By_Role").select("Organisation_ID,Name,Code,Type_Key,role_label,Reference").in("Type_Key", ["dno", "idno"]).order("Name"),
     };
 
     const keys = Object.keys(queries);

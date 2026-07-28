@@ -26,8 +26,26 @@ const MOCK_LINE_TYPES = [
 ];
 
 export async function listGis(projectId) {
-  if (USE_MOCKS) { await delay(180); return { features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES }; }
+  if (USE_MOCKS) {
+    await delay(180);
+    return { features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES, styles: [] };
+  }
   return http.get(`/projects/${projectId}/gis`);
+}
+
+/* Styling rules, edited in Admin and read by the canvas every frame
+   through src/lib/gisStyle.js. */
+export async function listGisStyles() {
+  if (USE_MOCKS) { await delay(120); return { rows: [] }; }
+  return http.get("/gis-styles");
+}
+export async function saveGisStyle(body, id) {
+  if (USE_MOCKS) { await delay(150); return body; }
+  return id ? http.patch(`/gis-styles?id=${id}`, body) : http.post("/gis-styles", body);
+}
+export async function deleteGisStyle(id) {
+  if (USE_MOCKS) { await delay(150); return { deleted: true }; }
+  return http.del(`/gis-styles?id=${id}`);
 }
 export async function createFeature(projectId, feature) {
   if (USE_MOCKS) {

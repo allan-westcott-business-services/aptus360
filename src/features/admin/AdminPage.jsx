@@ -9,6 +9,7 @@ import ElectricSpecsAdmin from "./ElectricSpecsAdmin.jsx";
 import PointsConfigAdmin from "./PointsConfigAdmin.jsx";
 import CustomersAdmin from "./CustomersAdmin.jsx";
 import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
+import GisStylesAdmin from "./GisStylesAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
@@ -54,6 +55,8 @@ export default function AdminPage() {
           <OrganisationsAdmin />
         ) : table?.special === "customers" ? (
           <CustomersAdmin />
+        ) : table?.special === "gisstyles" ? (
+          <GisStylesAdmin />
         ) : table ? (
           <GenericTable table={table} />
         ) : null}

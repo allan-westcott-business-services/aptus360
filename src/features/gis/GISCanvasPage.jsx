@@ -19,6 +19,7 @@ import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { housePath } from "./plotRange.js";
+import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
@@ -34,7 +35,6 @@ import { usePdfPage, drawTile } from "./usePdfPage.js";
    Drawing tools and the electrical model come next. */
 
 const GRID_M = 5;                 // metres between grid lines
-const SNAP_M = 1;                 // drag snaps to the nearest metre
 const HIT_PX = 10;
 
 export default function GISCanvasPage() {
@@ -73,6 +73,8 @@ export default function GISCanvasPage() {
   const [developers, setDevelopers] = useState([]);
   const [lookups, setLookups] = useState({});
   const [showGrid, setShowGrid] = useState(true);
+  const [styles, setStyles] = useState([]);
+  const [standard, setStandard] = useState("");   // operator whose style rules apply
   const [editing, setEditing] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
 
@@ -115,6 +117,7 @@ export default function GISCanvasPage() {
       setFeatures(res.features || []);
       setLayers(res.layers || []);
       setLineTypes(res.lineTypes || []);
+      setStyles(res.styles || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -186,6 +189,22 @@ export default function GISCanvasPage() {
     [lineTypes]
   );
 
+  /* One resolver for the whole frame. Styles and layers change rarely,
+     the chosen standard almost never, so the closure is rebuilt only
+     when one of them does — not per feature, per repaint. */
+  const styleFor = useCallback((f) => {
+    const resolved = resolveStyle(subjectOf(f, layers), styles,
+      { organisationId: standard || null });
+    const lt = lineTypes.find((t) => t.Type_Key === f.Attributes?.Line_Type);
+    const layer = layers.find((l) => l.Layer_Key === f.Layer_Key);
+    /* Falls back to what the canvas drew before styles existed, so an
+       unstyled project looks exactly as it did. */
+    return appearance(resolved, view.scale, {
+      colour: lt?.Colour ?? layer?.Colour ?? "#64748b",
+      widthPx: lt?.Width_px ?? 2,
+    });
+  }, [styles, layers, lineTypes, standard, view.scale]);
+
   /* Everything worth snapping to, recalculated only when the drawing
      changes rather than on every mouse move. */
   const targets = useMemo(() => snapTargets(visibleRef.current || []), [features, hidden]);
@@ -220,10 +239,6 @@ export default function GISCanvasPage() {
     );
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isPdfMap, pdf.size, view.x, view.y, view.scale, basemap?.Metres_Per_Pixel, basemap?.Origin_X, basemap?.Origin_Y]);
-  /* With Snap off, nothing is rounded. Quietly snapping to a metre grid
-     you can't see is worse than not snapping — it looks like the click
-     was misread. */
-  const snap = (v) => (snapOn ? Math.round(v / SNAP_M) * SNAP_M : v);
 
   /* ── drawing ── */
   const draw = useCallback(() => {
@@ -285,6 +300,9 @@ export default function GISCanvasPage() {
       const on = selected.includes(f.Feature_ID);
       const pts = (f.Geometry || []).map(toPx);
       if (!pts.length) return;
+      /* Outside its zoom band, unless it's selected — hiding the thing
+         someone just clicked would look like it had been deleted. */
+      if (!on && !styleFor(f).visible) return;
 
       if (f.Feature_Type === "point") {
         const p = pts[0];
@@ -295,13 +313,17 @@ export default function GISCanvasPage() {
 
         if (isSeed) {
           housePath(ctx, p.x, p.y, on ? 20 : 16);
-        } else if (isMeter) {
-          const r = 4;
-          ctx.beginPath();
-          ctx.rect(p.x - r, p.y - r, r * 2, r * 2);
         } else {
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, on ? 8 : 6, 0, Math.PI * 2);
+          /* Symbol and size come from the style, so a DNO that draws
+             meters as hexagons gets hexagons without a code change. */
+          const ps = styleFor(f);
+          symbolPath(ctx, ps.symbol, p.x, p.y, (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx));
+          if (STROKE_ONLY.has(ps.symbol)) {
+            ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? fill);
+            ctx.lineWidth = 2.5;
+            ctx.stroke();
+            ctx.beginPath();
+          }
         }
         ctx.fillStyle = on ? "#1d4ed8" : fill;
         ctx.fill();
@@ -315,13 +337,13 @@ export default function GISCanvasPage() {
           ctx.fillText(f.Label, p.x, p.y - (isSeed ? 15 : 11));
         }
       } else {
-        const lt = lineTypes.find((t) => t.Type_Key === f.Attributes?.Line_Type);
+        const st = styleFor(f);
         ctx.beginPath();
         pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         if (f.Feature_Type === "polygon") ctx.closePath();
-        ctx.strokeStyle = on ? "#1d4ed8" : (lt?.Colour ?? colour);
-        ctx.lineWidth = on ? (lt?.Width_px ?? 2) + 1.5 : (lt?.Width_px ?? 2);
-        ctx.setLineDash(lt?.Dashed ? [9, 6] : []);
+        ctx.strokeStyle = on ? "#1d4ed8" : st.colour;
+        ctx.lineWidth = on ? st.widthPx + 1.5 : st.widthPx;
+        ctx.setLineDash(st.dash);
         ctx.lineCap = "round";
         ctx.lineJoin = "round";
         ctx.stroke();
@@ -343,7 +365,7 @@ export default function GISCanvasPage() {
           });
         }
         // Way, circuit and length, once there's room
-        if (pts.length > 1 && view.scale > 1.5 && (on || showLabels)) {
+        if (pts.length > 1 && st.showLabel && view.scale > 1.5 && (on || showLabels)) {
           const mid = pts[Math.floor(pts.length / 2)];
           const a = f.Attributes || {};
           const tag = a.Way ? `${a.Way}${a.Circuit ?? ""}` : "";
@@ -542,7 +564,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -691,7 +713,11 @@ export default function GISCanvasPage() {
     if (t) return { point: [...t.point], hit: t };
     const edge = nearestOnLines(visible, [mx, my], view.scale, SNAP_PX);
     if (edge) return { point: [...edge.point], hit: edge };
-    return { point: [snap(mx), snap(my)], hit: null };
+    /* Nothing in range, so nothing is changed. Snap means snap to
+       geometry — rounding to a metre grid nobody can see reads as the
+       click being misplaced, and it quietly moved every point that
+       missed a target. */
+    return { point: [mx, my], hit: null };
   }
 
   function onMove(e) {
@@ -740,7 +766,7 @@ export default function GISCanvasPage() {
     setFeatures((fs) => fs.map((f) => {
       const orig = origin[f.Feature_ID];
       if (!orig) return f;
-      return { ...f, Geometry: orig.map(([x, y]) => [snap(x + dm[0]), snap(y + dm[1])]) };
+      return { ...f, Geometry: orig.map(([x, y]) => [x + dm[0], y + dm[1]]) };
     }));
   }
 
@@ -1225,7 +1251,25 @@ export default function GISCanvasPage() {
                   aria-label="Cable or pipe size" onChange={(e) => setSize(e.target.value)} />
               </>
             )}
-            <label className={snapOn ? "gis-snap on" : "gis-snap"} title="Snap to existing geometry">
+            {/* Which operator's drawing standard applies. Deliberately a
+                choice rather than something derived: a project's DNO
+                lives on its POC applications and there can be several,
+                while the standard you are drawing to is a property of
+                the drawing you are producing. */}
+            <select className="gis-type" value={standard} aria-label="Drawing standard"
+              onChange={(e) => setStandard(e.target.value)}
+              title="Apply an operator's styling rules to this drawing">
+              <option value="">House style</option>
+              {[...new Map((lookups?.orgOperators || [])
+                .map((o) => [o.Organisation_ID, o])).values()]
+                .map((o) => (
+                  <option key={o.Organisation_ID} value={o.Organisation_ID}>
+                    {o.Name}{o.Code ? ` (${o.Code})` : ""}
+                  </option>
+                ))}
+            </select>
+            <label className={snapOn ? "gis-snap on" : "gis-snap"}
+              title="Snap to the points, ends and edges of existing geometry">
               <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
               Snap
             </label>
@@ -1435,11 +1479,34 @@ export default function GISCanvasPage() {
                 <kbd>Backspace</kbd> undoes{" \u00B7 "}<kbd>Esc</kbd> cancels
                 {draft.length > 0 && ` \u00B7 ${draft.length} placed`}
                 {draft.length > 1 && ` \u00B7 ${lineLength(draft).toFixed(1)} m`}
-                {snapHit && (
+                {/* Says what it found and what you're drawing, so a snap
+                    that didn't turn green explains itself instead of
+                    just looking broken. */}
+                {tool === "line" && !snapOn && (
+                  <span className="tip-warn">Snap is off &mdash; nothing will latch</span>
+                )}
+                {tool === "line" && snapOn && !snapHit && (
                   <span className="tip-snap">
-                    snapping to {snapHit.kind}
-                    {snapHit.sameClass && " on the same class"}
+                    no snap in range &middot; drawing {typeOf(lineType)?.Label ?? lineType}
                   </span>
+                )}
+                {tool === "line" && snapOn && snapHit && (
+                  snapHit.sameClass && snapHit.kind === "end" ? (
+                    <span className="tip-join">
+                      joining the end of {typeOf(snapHit.lineType)?.Label ?? "that line"}
+                    </span>
+                  ) : (
+                    <span className="tip-snap">
+                      {snapHit.kind} of{" "}
+                      {typeOf(snapHit.lineType)?.Label ?? snapHit.lineType ?? "another object"}
+                      {" "}&middot; drawing {typeOf(lineType)?.Label ?? lineType}
+                      {snapHit.kind === "end" && snapHit.lineType !== lineType
+                        && " \u2014 different type, so no join"}
+                    </span>
+                  )
+                )}
+                {tool !== "line" && snapHit && (
+                  <span className="tip-snap">snapping to {snapHit.kind}</span>
                 )}
               </div>
             )}
@@ -1514,6 +1581,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .tip-snap { margin-left: 10px; background: #dc2626; border-radius: 999px; padding: 1px 9px; font-size: 10.5px; }
 .gis-type { width: auto; min-width: 150px; font-size: 12.5px; }
 .gis-size { width: 88px; font-size: 12.5px; }
+.tip-join { margin-left: 10px; padding: 1px 8px; border-radius: 20px; font-weight: 700;
+  background: #16a34a; color: #fff; }
+.tip-warn { margin-left: 10px; padding: 1px 8px; border-radius: 20px; font-weight: 700;
+  background: #b45309; color: #fff; }
 .gis-mixed { font-size: 11px; color: var(--muted); font-style: italic; max-width: 22ch; }
 .gis-snap { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);

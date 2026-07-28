@@ -132,6 +132,9 @@ export const ADMIN_TABLES = [
   { key: "Fire_Service", label: "Fire Authority", pk: "Fire_Service_ID", fields: [
       { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },
     ] },
+
+  { separator: true, label: "Drawings" },
+  { key: "GIS_Style", label: "GIS Styles", special: "gisstyles" },
 ];
 
 export const findAdminTable = (key) => ADMIN_TABLES.find((t) => !t.separator && t.key === key);

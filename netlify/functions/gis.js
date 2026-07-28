@@ -12,13 +12,17 @@ export default async function handler(req, context) {
 
   try {
     if (req.method === "GET") {
-      const [f, l, t] = await Promise.all([
+      const [f, l, t, st] = await Promise.all([
         db.from("GIS_Feature").select(F).eq("Project_ID", projectId).order("Feature_ID"),
         db.from("GIS_Layer").select("*").eq("Is_Active", true).order("Sort_Order"),
         db.from("GIS_Line_Type").select("*").eq("Is_Active", true).order("Sort_Order"),
+        db.from("GIS_Style").select("*").eq("Is_Active", true).order("Sort_Order"),
       ]);
-      for (const r of [f, l, t]) if (r.error) throw r.error;
-      return json({ features: f.data || [], layers: l.data || [], lineTypes: t.data || [] });
+      for (const r of [f, l, t, st]) if (r.error) throw r.error;
+      return json({
+        features: f.data || [], layers: l.data || [],
+        lineTypes: t.data || [], styles: st.data || [],
+      });
     }
 
     if (req.method === "POST") {

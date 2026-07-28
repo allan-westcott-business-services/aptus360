@@ -4,6 +4,8 @@
    12A exists — but ranges only expand where both ends are plain numbers,
    since "12A-15B" has no meaningful sequence. */
 
+import { symbolPath } from "../../lib/gisStyle.js";
+
 export const MAX_PLOTS = 500;
 
 export function parsePlotRange(input) {
@@ -66,16 +68,10 @@ export function meterPositions(seed, direction, count) {
 
 /* A small house outline, in metres, centred on the seed. Drawn as a path
    rather than a circle so a plot reads as a plot at a glance. */
+/* Kept for callers that think in overall width. The shape itself lives
+   in gisStyle.js so the canvas and the Admin preview can't drift apart —
+   size here is the width across, twice the radius the symbol system
+   uses, so existing call sites read the same. */
 export function housePath(ctx, cx, cy, size) {
-  const w = size, h = size * 0.72, roof = size * 0.52;
-  const l = cx - w / 2, r = cx + w / 2;
-  const base = cy + h / 2, eaves = cy + h / 2 - h * 0.62;
-
-  ctx.beginPath();
-  ctx.moveTo(l, base);
-  ctx.lineTo(l, eaves);
-  ctx.lineTo(cx, cy - roof / 2 - h * 0.05);
-  ctx.lineTo(r, eaves);
-  ctx.lineTo(r, base);
-  ctx.closePath();
+  symbolPath(ctx, "house", cx, cy, size / 2);
 }

@@ -18,7 +18,6 @@ import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
-import { housePath } from "./plotRange.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
 import { splitByBoundary, boundaryPolygons, OFF_SITE } from "./boundary.js";
 import { planAutoService, mainsTrenches, teeIntoMains } from "./autoService.js";
@@ -197,7 +196,7 @@ export default function GISCanvasPage() {
   /* One resolver for the whole frame. Styles and layers change rarely,
      the chosen standard almost never, so the closure is rebuilt only
      when one of them does — not per feature, per repaint. */
-  const styleFor = useCallback((f) => {
+  const styleFor = useCallback((f, fallback = {}) => {
     const resolved = resolveStyle(subjectOf(f, layers), styles,
       { organisationId: standard || null });
     const lt = lineTypes.find((t) => t.Type_Key === f.Attributes?.Line_Type);
@@ -207,8 +206,23 @@ export default function GISCanvasPage() {
     return appearance(resolved, view.scale, {
       colour: lt?.Colour ?? layer?.Colour ?? "#64748b",
       widthPx: lt?.Width_px ?? 2,
+      ...fallback,
     });
   }, [styles, layers, lineTypes, standard, view.scale]);
+
+  /* A plot seed's size and symbol are configurable like anything else,
+     but its colour is not: it carries the bedroom colour used on the
+     plot badges, the plot summary and the House Types screen, and a
+     style rule that quietly overrode it would break the one thing the
+     symbol is read for at a glance.
+
+     Half-width of 8 is what the canvas drew before styles existed, so an
+     unstyled project is unchanged. */
+  const seedStyle = useCallback((f, on) => {
+    const ps = styleFor(f, { symbol: "house", symbolPx: 8 });
+    return { ...ps, symbolPx: (on ? 1.25 : 1) * ps.symbolPx,
+      colour: bedColour(f.Attributes?.Bedrooms).bg };
+  }, [styleFor]);
 
   /* Everything worth snapping to, recalculated only when the drawing
      changes rather than on every mouse move. */
@@ -317,7 +331,8 @@ export default function GISCanvasPage() {
         const fill = isSeed ? bedColour(f.Attributes?.Bedrooms).bg : colour;
 
         if (isSeed) {
-          housePath(ctx, p.x, p.y, on ? 20 : 16);
+          const ss = seedStyle(f, on);
+          symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
         } else {
           /* Symbol and size come from the style, so a DNO that draws
              meters as hexagons gets hexagons without a code change. */
@@ -533,7 +548,8 @@ export default function GISCanvasPage() {
       } else if (nextPlot) {
         const c = toPx(cursor);
         ctx.globalAlpha = 0.75;
-        housePath(ctx, c.x, c.y, 18);
+        symbolPath(ctx, "house", c.x, c.y,
+          seedStyle({ Layer_Key: "plot", Feature_Role: "plot", Attributes: {} }, false).symbolPx);
         ctx.fillStyle = bedColour(nextPlot.bedrooms).bg;
         ctx.fill();
         ctx.strokeStyle = "#fff";
@@ -569,7 +585,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
     }
-  }, [visible, selected, view, toPx, layerOf, styleFor, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

@@ -153,6 +153,21 @@ export function symbolPath(ctx, symbol, x, y, r) {
       ctx.moveTo(x - r, y); ctx.lineTo(x + r, y);
       ctx.moveTo(x, y - r); ctx.lineTo(x, y + r);
       break;
+    /* r is the half-width, as it is for a circle, so a house and a
+       circle at the same size setting are the same width across. */
+    case "house": {
+      const w = r * 2, h = r * 1.44;
+      const l = x - r, rt = x + r;
+      const base = y + h / 2;
+      const eaves = base - h * 0.62;
+      ctx.moveTo(l, base);
+      ctx.lineTo(l, eaves);
+      ctx.lineTo(x, y - r * 0.52 - h * 0.05);
+      ctx.lineTo(rt, eaves);
+      ctx.lineTo(rt, base);
+      ctx.closePath();
+      break;
+    }
     case "hexagon":
       for (let i = 0; i < 6; i++) {
         const a = (Math.PI / 3) * i - Math.PI / 2;
@@ -166,6 +181,6 @@ export function symbolPath(ctx, symbol, x, y, r) {
   }
 }
 
-export const SYMBOLS = ["circle", "square", "triangle", "diamond", "cross", "plus", "hexagon"];
+export const SYMBOLS = ["house", "circle", "square", "triangle", "diamond", "cross", "plus", "hexagon"];
 /* Outlines only — a cross has no inside to fill. */
 export const STROKE_ONLY = new Set(["cross", "plus"]);

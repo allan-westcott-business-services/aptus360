@@ -37,7 +37,7 @@ export const NAV_SECTIONS = [
       { view: "asset-value-invoices", label: "Asset Value" },
       { view: "asset-value-dashboard", label: "Asset Value Dashboard" },
       { view: "av-meter-recon", label: "Meter Date Reconciliation" },
-      { view: "generate-av-invoices", label: "Generate AV Invoices" },
+      { view: "generate-av-invoices", label: "Generate AV Invoices", built: true },
       { view: "invoice-plot-extractor", label: "Import Audacia Invoice Data" },
       { view: "mains-install-tracking", label: "Mains Install Tracking" },
       { view: "update-av-asset-values", label: "Update AV Asset Values" },

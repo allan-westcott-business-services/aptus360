@@ -80,6 +80,7 @@ export default function GISCanvasPage() {
   const [standard, setStandard] = useState("");   // operator whose style rules apply
   const [editing, setEditing] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
@@ -606,34 +607,55 @@ export default function GISCanvasPage() {
   /* ── hit testing ── */
   /* Vertices first, then edges. A boundary's corners are often off
      screen, so requiring a vertex hit made it unselectable. */
-  function featureAt(px, py) {
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const f = visible[i];
-      for (const m of f.Geometry || []) {
-        const p = toPx(m);
-        if (Math.hypot(p.x - px, p.y - py) <= HIT_PX) return f;
-      }
-    }
-    for (let i = visible.length - 1; i >= 0; i--) {
-      const f = visible[i];
-      if (f.Feature_Type === "point") continue;
+  /* Everything within reach of the click, not just the first thing
+     found.
+
+     The old version returned on the first vertex within tolerance,
+     newest feature first. Auto Service puts a service trench's end and
+     every cable's middle vertex exactly on the plot seed, and those are
+     drawn after it — so the seed could never be clicked. Coincident
+     geometry is the normal case here, not an edge case.
+
+     Ranked rather than ordered by age: a point beats a line at the same
+     spot, because a point is the smaller target and is what you were
+     aiming at, and a vertex beats an edge for the same reason. */
+  function candidatesAt(px, py) {
+    const out = [];
+    for (const f of visible) {
       const g = f.Geometry || [];
-      const closed = f.Feature_Type === "polygon";
-      const n = closed ? g.length : g.length - 1;
-      for (let k = 0; k < n; k++) {
-        const a = toPx(g[k]);
-        const b = toPx(g[(k + 1) % g.length]);
-        const vx = b.x - a.x, vy = b.y - a.y;
-        const len2 = vx * vx + vy * vy;
-        if (!len2) continue;
-        let t = ((px - a.x) * vx + (py - a.y) * vy) / len2;
-        t = Math.max(0, Math.min(1, t));
-        const d = Math.hypot(a.x + t * vx - px, a.y + t * vy - py);
-        if (d <= HIT_PX) return f;
+      let best = null;
+
+      for (const m of g) {
+        const p = toPx(m);
+        const d = Math.hypot(p.x - px, p.y - py);
+        if (d <= HIT_PX && (!best || d < best.d)) best = { d, via: "vertex" };
       }
+
+      if (f.Feature_Type !== "point") {
+        const closed = f.Feature_Type === "polygon";
+        const segs = closed ? g.length : g.length - 1;
+        for (let k = 0; k < segs; k++) {
+          const a = toPx(g[k]);
+          const b = toPx(g[(k + 1) % g.length]);
+          const vx = b.x - a.x, vy = b.y - a.y;
+          const len2 = vx * vx + vy * vy;
+          if (!len2) continue;
+          let t = ((px - a.x) * vx + (py - a.y) * vy) / len2;
+          t = Math.max(0, Math.min(1, t));
+          const d = Math.hypot(a.x + t * vx - px, a.y + t * vy - py);
+          if (d <= HIT_PX && (!best || d < best.d)) best = { d, via: "edge" };
+        }
+      }
+
+      if (best) out.push({ feature: f, ...best });
     }
-    return null;
+
+    const rank = (c) => (c.feature.Feature_Type === "point" ? 0 : 1) * 100
+      + (c.via === "vertex" ? 0 : 10);
+    return out.sort((a, b) => rank(a) - rank(b) || a.d - b.d);
   }
+
+  const featureAt = (px, py) => candidatesAt(px, py)[0]?.feature ?? null;
 
   /* ── pointer ── */
   function onDown(e) {
@@ -695,7 +717,19 @@ export default function GISCanvasPage() {
       }
     }
 
-    const hit = featureAt(px, py);
+    const cands = candidatesAt(px, py);
+    /* More than one thing under the cursor, and none of them already
+       chosen — ask rather than pick. Shift keeps multi-select quick by
+       taking the best candidate, and a click on something already
+       selected goes straight to dragging it, so choosing once is
+       enough. */
+    if (cands.length > 1 && !e.shiftKey
+        && !cands.some((c) => selected.includes(c.feature.Feature_ID))) {
+      setPicker({ x: px, y: py, items: cands });
+      return;
+    }
+    setPicker(null);
+    const hit = cands[0]?.feature ?? null;
     if (hit) {
       const next = e.shiftKey
         ? (selected.includes(hit.Feature_ID)
@@ -1399,6 +1433,7 @@ export default function GISCanvasPage() {
   // keyboard
   useEffect(() => {
     const onKey = (e) => {
+      if (e.key === "Escape" && picker) { setPicker(null); return; }
       if (e.key === "Escape") { setDraft([]); setTool("select"); setSelected([]); stopPlacing(); }
       if (e.key === "Enter" && drawing) finishDrawing();
       if (e.key === "Backspace" && drawing && draft.length) {
@@ -1717,6 +1752,42 @@ export default function GISCanvasPage() {
               onContextMenu={(e) => e.preventDefault()}
               onAuxClick={(e) => e.preventDefault()}
             />
+            {picker && (
+              /* Offered where the click landed, nudged in from the
+                 edges so a click near the right or bottom doesn't put
+                 the list off the canvas. */
+              <div className="gis-picker" role="dialog" aria-label="Choose an object"
+                style={{
+                  left: Math.min(picker.x + 10, (wrapRef.current?.clientWidth ?? 900) - 250),
+                  top: Math.min(picker.y + 10, (wrapRef.current?.clientHeight ?? 600) - 60
+                    - picker.items.length * 30),
+                }}>
+                <p className="gp-head">{picker.items.length} objects here</p>
+                {picker.items.map(({ feature: f, via }) => (
+                  <button key={f.Feature_ID} className="gp-item"
+                    onMouseEnter={() => setSelected([f.Feature_ID])}
+                    onClick={() => { setSelected([f.Feature_ID]); setPicker(null); }}>
+                    <span className="gp-sw" style={{
+                      background: f.Feature_Role === "plot"
+                        ? bedColour(f.Attributes?.Bedrooms).bg
+                        : styleFor(f).colour,
+                      borderRadius: f.Feature_Type === "point" ? "50%" : "2px",
+                    }} />
+                    <span className="gp-name">
+                      {f.Label || classLabel(f, lineTypes) || "Unnamed"}
+                    </span>
+                    <span className="gp-kind">
+                      {classLabel(f, lineTypes)}
+                      {via === "vertex" && f.Feature_Type !== "point" && " \u00B7 end"}
+                    </span>
+                  </button>
+                ))}
+                <button className="gp-cancel" onClick={() => setPicker(null)}>
+                  Cancel &middot; <kbd>Esc</kbd>
+                </button>
+              </div>
+            )}
+
             <div className="gis-hud">
               <span className="hud-scale">
                 <span className="hud-bar" style={{ width: barM * view.scale }} />
@@ -1827,6 +1898,22 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+.gis-picker { position: absolute; z-index: 6; width: 240px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 8px; padding: 5px;
+  box-shadow: 0 10px 28px rgba(15,23,42,.18); }
+.gp-head { margin: 3px 7px 5px; font-size: 10px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--muted); }
+.gp-item { display: grid; grid-template-columns: 12px 1fr; gap: 2px 8px; width: 100%;
+  text-align: left; background: none; border: none; border-radius: 5px; padding: 5px 7px;
+  cursor: pointer; font: inherit; color: var(--text); align-items: center; }
+.gp-item:hover { background: var(--accent-light); }
+.gp-sw { width: 12px; height: 12px; grid-row: 1 / 3; }
+.gp-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
+  white-space: nowrap; }
+.gp-kind { grid-column: 2; font-size: 10.5px; color: var(--muted); }
+.gp-cancel { width: 100%; background: none; border: none; border-top: 1px solid var(--border);
+  margin-top: 4px; padding: 6px; cursor: pointer; font: 500 11px inherit; color: var(--muted); }
+.gp-cancel:hover { color: var(--text); }
 .gis-hud { position: absolute; left: 12px; bottom: 12px; display: flex; align-items: center; gap: 14px;
   background: rgba(255,255,255,.94); border: 1px solid var(--border); border-radius: 7px;
   padding: 6px 12px; font-size: 11px; color: var(--muted); }

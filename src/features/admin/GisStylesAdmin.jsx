@@ -17,7 +17,7 @@ import { appearance, symbolPath, STROKE_ONLY, SYMBOLS } from "../../lib/gisStyle
 
 const BLANK = {
   Style_Name: "", Layer_Key: "", Line_Type: "", Feature_Role: "",
-  Utility_ID: "", Organisation_ID: "",
+  Utility_ID: "", Organisation_ID: "", Site: "",
   Colour: "#64748b", Dashed: false, Dash_Pattern: "", Symbol: "",
   Width_Px: "", Width_M: "", Scale_Width: false,
   Min_Width_Px: "", Max_Width_Px: "", Symbol_Size_Px: "",
@@ -176,7 +176,7 @@ export default function GisStylesAdmin() {
 
   const scopeOf = (r) => [
     r.Organisation_ID && opName(r.Organisation_ID),
-    r.Line_Type, r.Feature_Role, r.Layer_Key, r.Utility_ID && utName(r.Utility_ID),
+    r.Site, r.Line_Type, r.Feature_Role, r.Layer_Key, r.Utility_ID && utName(r.Utility_ID),
   ].filter(Boolean).join(" \u00B7 ") || "Everything";
 
   if (loading) return <div className="loading">Loading styles&hellip;</div>;
@@ -272,6 +272,14 @@ export default function GisStylesAdmin() {
                   <datalist id="gs-layers">
                     {layers.map((l) => <option key={l} value={l} />)}
                   </datalist>
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-site">Site</label>
+                  <select id="gs-site" value={draft.Site} onChange={set("Site")}>
+                    <option value="">Any</option>
+                    <option value="On-site">On-site</option>
+                    <option value="Off-site">Off-site</option>
+                  </select>
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-role">Point role</label>

@@ -28,7 +28,7 @@ const MOCK_LINE_TYPES = [
 export async function listGis(projectId) {
   if (USE_MOCKS) {
     await delay(180);
-    return { features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES, styles: [] };
+    return { features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES, styles: [], surfaceTypes: [] };
   }
   return http.get(`/projects/${projectId}/gis`);
 }

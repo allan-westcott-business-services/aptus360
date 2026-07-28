@@ -14,9 +14,14 @@
    entered in. */
 
 const WEIGHT = {
-  Organisation_ID: 16,
+  Organisation_ID: 32,
   Line_Type: 8,
   Feature_Role: 4,
+  /* Above the line type on purpose. Off site is a fact about consent and
+     cost that should read at a glance whatever the run happens to be, so
+     it wins over "this is a gas main" — but still loses to an operator's
+     own standard, which is the whole point of choosing one. */
+  Site: 16,
   Utility_ID: 2,
   Layer_Key: 1,
 };
@@ -38,6 +43,7 @@ export function styleMatches(style, subject, ctx = {}) {
   if (style.Layer_Key != null && !same(style.Layer_Key, subject.Layer_Key)) return false;
   if (style.Line_Type != null && !same(style.Line_Type, subject.Line_Type)) return false;
   if (style.Feature_Role != null && !same(style.Feature_Role, subject.Feature_Role)) return false;
+  if (style.Site != null && !same(style.Site, subject.Site)) return false;
   if (style.Utility_ID != null && !same(style.Utility_ID, subject.Utility_ID)) return false;
   /* An operator-scoped row only applies when drawing to that operator's
      standard. With no standard chosen, none of them apply and the base
@@ -60,6 +66,7 @@ export function subjectOf(feature, layers = []) {
     Layer_Key: feature.Layer_Key ?? null,
     Line_Type: feature.Attributes?.Line_Type ?? null,
     Feature_Role: feature.Feature_Role ?? null,
+    Site: feature.Attributes?.Site ?? null,
     Utility_ID: layer?.Utility_ID ?? null,
   };
 }

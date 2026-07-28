@@ -86,12 +86,12 @@ export async function assignMeters(projectId, maxM = 30) {
    coloured, and the utilities this project needs meters for. */
 export async function listPlacementPlots(projectId) {
   if (USE_MOCKS) { await delay(180); return { plots: [], utilities: [] }; }
-  return http.get(`/projects/${projectId}/gis?what=plots`);
+  return http.get(`/projects/${projectId}/gis-plots`);
 }
 
 /* Create any plots in the range that don't exist, then return the whole
    range ready to place. */
 export async function ensurePlots(projectId, payload) {
   if (USE_MOCKS) { await delay(400); return { created: 0, plots: [] }; }
-  return http.post(`/projects/${projectId}/gis?action=ensure-plots`, payload);
+  return http.post(`/projects/${projectId}/gis-ensure-plots`, payload);
 }

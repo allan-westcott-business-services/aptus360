@@ -21,59 +21,6 @@ export default async function handler(req, context) {
       return json({ features: f.data || [], layers: l.data || [], lineTypes: t.data || [] });
     }
 
-    /* Which plots are still to place, and which utilities need meters.
-       Both come from the database so the canvas doesn't have to work out
-       what "unplaced" means. */
-    if (req.method === "GET" && url.searchParams.get("what") === "plots") {
-      const [plots, utils] = await Promise.all([
-        db.rpc("gis_unplaced_plots", { p_project: Number(projectId) }),
-        db.rpc("gis_project_utilities", { p_project: Number(projectId) }),
-      ]);
-      if (plots.error) throw plots.error;
-      if (utils.error) throw utils.error;
-      return json({ plots: plots.data || [], utilities: utils.data || [] });
-    }
-
-    /* Create any plots in the range that don't exist yet, then hand the
-       whole range back ready to place. The original did both in one step
-       — a range you're about to draw is usually a range you're also
-       about to add. */
-    if (req.method === "POST" && url.searchParams.get("action") === "ensure-plots") {
-      const {
-        numbers = [], property_config_id = null, heat_source_id = null,
-        developer_id = null, ref_prefix = null,
-      } = await req.json();
-      if (!numbers.length) return json({ error: "No plot numbers given" }, 400);
-
-      const { data: existing, error: exErr } = await db.from("Plot")
-        .select("Plot_ID,Plot_Number").eq("Project_ID", projectId);
-      if (exErr) throw exErr;
-      const have = new Set((existing || []).map((p) => String(p.Plot_Number)));
-
-      const toMake = numbers.filter((n) => !have.has(String(n)));
-      if (toMake.length) {
-        const rows = toMake.map((n) => ({
-          Project_ID: Number(projectId),
-          Plot_Number: String(n),
-          Property_Config_ID: property_config_id ? Number(property_config_id) : null,
-          Heat_Source_ID: heat_source_id ? Number(heat_source_id) : null,
-          Project_Developer_ID: developer_id ? Number(developer_id) : null,
-        }));
-        const { error } = await db.from("Plot").insert(rows);
-        if (error) throw error;
-      }
-
-      const { data: all, error: allErr } = await db.rpc("gis_unplaced_plots", {
-        p_project: Number(projectId),
-      });
-      if (allErr) throw allErr;
-
-      return json({
-        created: toMake.length,
-        plots: (all || []).filter((p) => numbers.map(String).includes(String(p.plot_number))),
-      });
-    }
-
     if (req.method === "POST") {
       const body = await req.json();
       const { data, error } = await db.from("GIS_Feature")

@@ -11,6 +11,12 @@ export async function checkInvoiced(projectId, utilityId) {
   if (USE_MOCKS) { await delay(150); return { invoiced: [] }; }
   return http.post("/av-invoices?op=check", { project_id: projectId, utility_id: utilityId });
 }
+/* Turn the contract references in the file into projects and plots. */
+export async function resolveContracts(contracts) {
+  if (USE_MOCKS) { await delay(200); return { projects: [], plots: [], invoiced: [] }; }
+  return http.post("/av-invoices?op=resolve", { contracts });
+}
+
 export async function generateInvoices(payload) {
   if (USE_MOCKS) { await delay(700); return { created: [], failed: [] }; }
   return http.post("/av-invoices?op=generate", payload);

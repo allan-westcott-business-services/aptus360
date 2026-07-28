@@ -1,42 +1,39 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import * as XLSX from "xlsx";
-import { listProjects } from "../../api/projects.js";
-import { listPlots } from "../../api/plots.js";
 import { getLookups } from "../../api/lookups.js";
-import { checkInvoiced, generateInvoices } from "../../api/avInvoices.js";
-import { parseAvFile, matchRowsToPlots, groupByContract, parseInvoiceReport } from "./parseAvFile.js";
 import { adminList } from "../../api/admin.js";
-import { utilityById, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
+import { resolveContracts, generateInvoices } from "../../api/avInvoices.js";
+import {
+  parseAvFile, groupByContract, resolveGroups, parseInvoiceReport,
+} from "./parseAvFile.js";
 
 /* Generate AV Invoices.
 
-   The operator's schedule arrives as a spreadsheet of plots and values.
-   This matches it against our plots, groups it into an invoice per
-   contract and utility, and shows what will happen before anything is
-   written. Nothing is created until the preview is confirmed. */
+   The operator's export decides everything: which sites are being paid
+   for, which plots, and how much. There is no project picker — the
+   contract reference in the file is matched against Aptus, and one
+   invoice is produced per contract and network number.
+
+   Two steps in, then a preview. Nothing is written until the preview is
+   confirmed. */
 
 const money = (n) =>
   n == null ? "—" : `£${Number(n).toLocaleString("en-GB", { minimumFractionDigits: 2 })}`;
 
-const STEPS = ["Source mapping", "Preview", "Done"];
-
 export default function GenerateAvInvoices() {
-  const [step, setStep] = useState(0);
-  const [projects, setProjects] = useState([]);
-  const [projectId, setProjectId] = useState("");
-  const [utilityId, setUtilityId] = useState("");
-  const [idnoId, setIdnoId] = useState("");
-  const [lookups, setLookups] = useState({});
+  const [phase, setPhase] = useState("idle");   // idle | preview | done
   const [mappings, setMappings] = useState([]);
   const [mappingId, setMappingId] = useState("");
+  const [lookups, setLookups] = useState({});
+  const [file, setFile] = useState(null);
   const [reportFile, setReportFile] = useState(null);
   const [report, setReport] = useState(null);
-  const [file, setFile] = useState(null);
   const [parsed, setParsed] = useState(null);
-  const [matched, setMatched] = useState([]);
-  const [alreadyBilled, setAlreadyBilled] = useState([]);
-  const [excluded, setExcluded] = useState([]);
+  const [groups, setGroups] = useState([]);
+  const [excludedGroups, setExcludedGroups] = useState([]);
+  const [excludedLines, setExcludedLines] = useState([]);
+  const [expanded, setExpanded] = useState([]);
   const [assignNumbers, setAssignNumbers] = useState(true);
   const [raisedBy, setRaisedBy] = useState("");
   const [busy, setBusy] = useState(false);
@@ -44,7 +41,6 @@ export default function GenerateAvInvoices() {
   const [result, setResult] = useState(null);
 
   useEffect(() => {
-    listProjects({ limit: 500 }).then((r) => setProjects(r.rows || [])).catch(() => {});
     getLookups().then(setLookups).catch(() => {});
     adminList("IDNO_Source_Mapping")
       .then((r) => setMappings((r.rows || []).filter((m) => m.Is_Active !== false)))
@@ -55,74 +51,94 @@ export default function GenerateAvInvoices() {
     (m) => String(m.IDNO_Source_Mapping_ID) === String(mappingId)
   );
   const config = mapping?.Config || {};
+  const canProcess = !!mappingId && !!file;
 
-  const project = projects.find((p) => String(p.Project_ID) === String(projectId));
+  function pickFile(e) {
+    const f = e.target.files?.[0];
+    if (f) { setFile(f); setError(""); }
+  }
 
-  async function onReportFile(e) {
+  async function pickReport(e) {
     const f = e.target.files?.[0];
     if (!f) return;
     try {
-      const r = await parseInvoiceReport(f);
+      setReport(await parseInvoiceReport(f));
       setReportFile(f);
-      setReport(r);
       setError("");
     } catch (e2) { setError(`Couldn't read the invoice report: ${e2.message}`); }
     finally { e.target.value = ""; }
   }
 
-  async function onFile(e) {
-    const f = e.target.files?.[0];
-    if (!f) return;
-    if (!mappingId) return setError("Pick a source mapping — it says how to read the file.");
-    if (!projectId) return setError("Choose a project first — plots are matched against it.");
-    if (!utilityId) return setError("Choose which utility this schedule is for.");
-
+  async function process() {
     setBusy(true);
     setError("");
     try {
-      const p = await parseAvFile(f, config);
-      const plotsRes = await listPlots(projectId);
-      const rows = matchRowsToPlots(p.rows, plotsRes.rows || []);
-      const billed = await checkInvoiced(projectId, utilityId);
+      const p = await parseAvFile(file, config);
+      if (!p.rows.length) throw new Error("No usable rows — check the mapping's filters.");
 
-      setFile(f);
+      const raw = groupByContract(p.rows);
+      const contracts = [...new Set(raw.map((g) => g.contract).filter(Boolean))];
+      if (!contracts.length) {
+        throw new Error(
+          `No contract reference found. The mapping reads it from "${
+            config.ap_number || "(not set)"}" — check that column exists.`
+        );
+      }
+
+      const res = await resolveContracts(contracts);
+      const resolved = resolveGroups(raw, res.projects, res.plots, res.invoiced);
+
       setParsed(p);
-      setMatched(rows);
-      setAlreadyBilled(billed.invoiced || []);
-      /* Start with the unusable rows already excluded, so the count on
-         the button is the count that will actually be written. */
-      const billedIds = new Set((billed.invoiced || []).map((b) => b.plot_id));
-      setExcluded(rows
-        .filter((r) => !r.matched || billedIds.has(r.plot?.Plot_ID))
-        .map((r) => r.sourceRow));
-      setStep(1);
-    } catch (e2) {
-      setError(e2.message);
-    } finally {
-      setBusy(false);
-      e.target.value = "";
-    }
+      setGroups(resolved);
+      /* Groups with no project can't be invoiced, so they start excluded
+         and the counts on the button are the counts that will be written. */
+      setExcludedGroups(resolved.filter((g) => !g.project).map((g) => g.key));
+      setExcludedLines(
+        resolved.flatMap((g) => g.lines
+          .filter((l) => !l.matched || l.billedOn)
+          .map((l) => `${g.key}|${l.sourceRow}`))
+      );
+      setExpanded(resolved.length === 1 ? [resolved[0].key] : []);
+      setPhase("preview");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(false); }
   }
 
-  const billedByPlot = useMemo(() => {
-    const m = new Map();
-    alreadyBilled.forEach((b) => m.set(b.plot_id, b));
-    return m;
-  }, [alreadyBilled]);
-
-  const rowState = (r) => {
-    if (!r.matched) return { key: "unmatched", label: "No matching plot", tone: "bad" };
-    const b = billedByPlot.get(r.plot.Plot_ID);
-    if (b) return { key: "billed", label: `Already on ${b.invoice_number || "an invoice"}`, tone: "warn" };
-    if (excluded.includes(r.sourceRow)) return { key: "excluded", label: "Excluded", tone: "muted" };
+  const lineState = (g, l) => {
+    if (!g.project) return { key: "noproject", label: "No matching contract", tone: "bad" };
+    if (!l.matched) return { key: "unmatched", label: "No matching plot", tone: "bad" };
+    if (l.billedOn) return { key: "billed", label: `On ${l.billedOn}`, tone: "warn" };
+    if (excludedLines.includes(`${g.key}|${l.sourceRow}`)) {
+      return { key: "excluded", label: "Excluded", tone: "muted" };
+    }
     return { key: "ok", label: "Ready", tone: "ok" };
   };
 
-  const included = matched.filter((r) => rowState(r).key === "ok");
-  const total = included.reduce((s, r) => s + r.value, 0);
+  const included = useMemo(() => groups
+    .filter((g) => g.project && !excludedGroups.includes(g.key))
+    .map((g) => ({ ...g, use: g.lines.filter((l) => lineState(g, l).key === "ok") }))
+    .filter((g) => g.use.length),
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+    [groups, excludedGroups, excludedLines]);
 
-  const toggle = (row) =>
-    setExcluded((x) => (x.includes(row) ? x.filter((v) => v !== row) : [...x, row]));
+  const totalLines = included.reduce((s, g) => s + g.use.length, 0);
+  const totalValue = included.reduce(
+    (s, g) => s + g.use.reduce((t, l) => t + l.value, 0), 0);
+
+  const toggleGroup = (k) =>
+    setExcludedGroups((x) => (x.includes(k) ? x.filter((v) => v !== k) : [...x, k]));
+  const toggleLine = (k) =>
+    setExcludedLines((x) => (x.includes(k) ? x.filter((v) => v !== k) : [...x, k]));
+  const toggleExpand = (k) =>
+    setExpanded((x) => (x.includes(k) ? x.filter((v) => v !== k) : [...x, k]));
+
+  const utilityIdFor = (g) => {
+    const name = (g.use?.[0]?.service || g.lines?.[0]?.service || "").toLowerCase();
+    if (/elec/.test(name)) return 1;
+    if (/gas/.test(name)) return 2;
+    if (/water/.test(name)) return 3;
+    return config.utility_id ?? null;
+  };
 
   async function generate() {
     if (!included.length) return setError("Nothing to invoice.");
@@ -132,258 +148,249 @@ export default function GenerateAvInvoices() {
         assign_numbers: assignNumbers && !config.no_invoice_number,
         raised_by: raisedBy || null,
         source_file: file?.name || null,
-        groups: [{
-          key: `${projectId}-${utilityId}`,
-          project_id: Number(projectId),
-          utility_id: Number(utilityId),
-          idno_id: idnoId ? Number(idnoId) : null,
-          contract_number: project?.Contract_Number || null,
+        groups: included.map((g) => ({
+          key: g.key,
+          project_id: g.project.Project_ID,
+          utility_id: utilityIdFor(g),
+          idno_id: mapping?.IDNO_ID || null,
           agreement_type_id: mapping?.AV_Agreement_Type_ID || null,
+          contract_number: g.contract,
           vat_rate: config.default_vat_rate ?? 20,
-          lines: included.map((r) => ({
-            plot_id: r.plot.Plot_ID,
-            plot_ref: r.plot.Plot_Ref || r.plotRef,
-            description: r.description || null,
-            net_value: r.value,
-            source_row: r.sourceRow,
+          lines: g.use.map((l) => ({
+            plot_id: l.plot.Plot_ID,
+            plot_ref: l.plot.Plot_Ref || l.plotRef,
+            description: l.description || null,
+            net_value: l.value,
+            source_row: l.sourceRow,
           })),
-        }],
+        })),
       });
       setResult(res);
-      setStep(2);
+      setPhase("done");
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
   }
 
-  /* The finance system's bulk upload. Column names are theirs, so they're
-     spelled out rather than generated from ours. */
   function downloadBulk() {
-    const inv = result?.created?.[0];
-    const rows = included.map((r) => ({
-      "Invoice Number": inv?.Invoice_Number || "",
-      "Contract Number": project?.Contract_Number || "",
-      "Client Name": lookups.idnos?.find((i) => String(i.IDNO_ID) === String(idnoId))?.IDNO_Name || "",
-      "Raised By": raisedBy || "",
-      "Date Raised": inv?.Invoice_Date || new Date().toISOString().slice(0, 10),
-      "Invoice Type": "Asset Value",
-      "Plot": r.plot.Plot_Number,
-      "Plot Value": r.value,
-      "Comments": [config.comments_prefix, r.description || `plot ${r.plot.Plot_Number}`]
-        .filter(Boolean).join(" — "),
-    }));
-    const ws = XLSX.utils.json_to_sheet(rows);
+    const byContract = new Map();
+    (result?.created || []).forEach((i) => byContract.set(i.Contract_Number, i));
+    const rows = included.flatMap((g) => {
+      const inv = byContract.get(g.contract);
+      return g.use.map((l) => ({
+        "Invoice Number": inv?.Invoice_Number || "",
+        "Contract Number": g.contract,
+        "Client Name": config.client_short_name
+          || lookups.idnos?.find((i) => i.IDNO_ID === mapping?.IDNO_ID)?.IDNO_Name || "",
+        "Raised By": raisedBy || "",
+        "Date Raised": inv?.Invoice_Date || new Date().toISOString().slice(0, 10),
+        "Invoice Type": config.invoice_subtype || "Asset Value",
+        "Plot": l.plot.Plot_Number,
+        "Plot Value": l.value,
+        "Comments": [config.comments_prefix, `plot ${l.plot.Plot_Number}`]
+          .filter(Boolean).join(" — "),
+      }));
+    });
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, ws, "Bulk Upload");
-    XLSX.writeFile(wb, `AV Bulk Upload ${inv?.Invoice_Number || "draft"}.xlsx`.replace(/\//g, "-"));
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Bulk Upload");
+    XLSX.writeFile(wb, `AV Bulk Upload ${new Date().toISOString().slice(0, 10)}.xlsx`);
   }
 
   function reset() {
-    setStep(0); setFile(null); setParsed(null); setMatched([]); setReport(null); setReportFile(null);
-    setExcluded([]); setResult(null); setError("");
+    setPhase("idle"); setFile(null); setParsed(null); setGroups([]);
+    setExcludedGroups([]); setExcludedLines([]); setResult(null); setError("");
+    setReport(null); setReportFile(null);
   }
 
   return (
     <div className="gav">
       <style>{CSS}</style>
-
-      <div className="gav-steps">
-        {STEPS.map((s, i) => (
-          <span key={s} className={i === step ? "gs on" : i < step ? "gs done" : "gs"}>
-            <span className="gs-n">{i < step ? "\u2713" : i + 1}</span>{s}
-          </span>
-        ))}
-      </div>
-
       {error && <Banner kind="error">{error}</Banner>}
 
-      {step === 0 && (
-        <div className="gav-panel">
-          <p className="gav-step-title">1 of 3 &mdash; Source mapping</p>
+      {phase === "idle" && (
+        <div className="gav-card">
+          <p className="gav-step">1 of 2 &mdash; Source mapping</p>
           <p className="gav-lede">
-            Pick the operator and agreement type you&rsquo;re invoicing for. The mapping says
-            how to read their export &mdash; which columns hold the plot and the value, and
-            which rows to keep.
+            Pick the IDNO and agreement type you&rsquo;re invoicing for. The mapping tells
+            us how to read the source file.
           </p>
-          <div className="fld">
-            <label htmlFor="gav-mapping">Source mapping <span className="req">*</span></label>
-            <select id="gav-mapping" value={mappingId} onChange={(e) => setMappingId(e.target.value)}>
-              <option value="">&mdash; Select a source mapping &mdash;</option>
-              {mappings.map((m) => (
-                <option key={m.IDNO_Source_Mapping_ID} value={m.IDNO_Source_Mapping_ID}>
-                  {m.Mapping_Name}
-                </option>
-              ))}
-            </select>
-            {mappings.length === 0 && (
-              <p className="hint warn">
-                No mappings set up. Add them in Admin &rarr; IDNO Source Mapping.
-              </p>
-            )}
-            {mapping && (
-              <p className="hint">
-                Reads <strong>{config.plot || "?"}</strong> as the plot and{" "}
-                <strong>{config.value || "?"}</strong> as the value, from row{" "}
-                {config.header_row || 1}.
-                {config.status_filter && <> Only rows marked &ldquo;{config.status_filter}&rdquo;.</>}
-                {config.no_invoice_number && <> These aren&rsquo;t given invoice numbers.</>}
-              </p>
-            )}
+          <select className="gav-select" value={mappingId}
+            aria-label="Source mapping" onChange={(e) => setMappingId(e.target.value)}>
+            <option value="">&mdash; Select a source mapping &mdash;</option>
+            {mappings.map((m) => (
+              <option key={m.IDNO_Source_Mapping_ID} value={m.IDNO_Source_Mapping_ID}>
+                {m.Mapping_Name}
+              </option>
+            ))}
+          </select>
+          {mappings.length === 0 && (
+            <p className="gav-warn">
+              No mappings set up &mdash; add them in Admin &rarr; IDNO Source Mapping.
+            </p>
+          )}
+          {mapping && (
+            <p className="gav-fine">
+              Reads <strong>{config.plot || "?"}</strong> as the plot,{" "}
+              <strong>{config.value || "?"}</strong> as the value and{" "}
+              <strong>{config.ap_number || "?"}</strong> as the contract, from row{" "}
+              {config.header_row || 1}.
+              {config.status_filter && <> Only rows marked &ldquo;{config.status_filter}&rdquo;.</>}
+              {config.no_invoice_number && <> These aren&rsquo;t given invoice numbers.</>}
+            </p>
+          )}
+
+          <p className="gav-step">2 of 2 &mdash; Source export</p>
+          <p className="gav-lede">
+            Upload the .xlsx from the IDNO (e.g. ESP&rsquo;s &ldquo;Available to Invoice
+            Connections&rdquo; report).
+          </p>
+          <div className="gav-file">
+            <label className="gav-choose">
+              Choose file&hellip;
+              <input type="file" accept=".xlsx,.xls,.csv" onChange={pickFile} />
+            </label>
+            <span className="gav-fname">{file ? file.name : "No file selected"}</span>
           </div>
 
-          <p className="gav-step-title">2 of 3 &mdash; Where it belongs</p>
-          <div className="gav-row">
-            <div className="fld grow">
-              <label htmlFor="gav-project">Project <span className="req">*</span></label>
-              <select id="gav-project" value={projectId} onChange={(e) => setProjectId(e.target.value)}>
-                <option value="">&mdash; Select &mdash;</option>
-                {projects.map((p) => (
-                  <option key={p.Project_ID} value={p.Project_ID}>
-                    {p.Project_Ref} &mdash; {p.Site_Name || "Unnamed site"}
-                    {p.Contract_Number ? ` (${p.Contract_Number})` : ""}
-                  </option>
-                ))}
-              </select>
-              {project && !project.Contract_Number && !config.no_invoice_number && (
-                <p className="hint warn">
-                  No contract number &mdash; invoices can&rsquo;t be numbered without one.
-                </p>
-              )}
-            </div>
-            <div className="fld">
-              <label htmlFor="gav-utility">Utility <span className="req">*</span></label>
-              <select id="gav-utility" value={utilityId} onChange={(e) => setUtilityId(e.target.value)}>
-                <option value="">&mdash; Select &mdash;</option>
-                {RESIDENTIAL_UTILITIES.map((u) => (
-                  <option key={u.id} value={u.id}>{u.name}</option>
-                ))}
-              </select>
-            </div>
-            <div className="fld">
-              <label htmlFor="gav-idno">Operator</label>
-              <select id="gav-idno" value={idnoId || mapping?.IDNO_ID || ""}
-                onChange={(e) => setIdnoId(e.target.value)}>
-                <option value="">&mdash; None &mdash;</option>
-                {(lookups.idnos || []).map((i) => (
-                  <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
-                ))}
-              </select>
-            </div>
-          </div>
-
-          <p className="gav-step-title">3 of 3 &mdash; Source export</p>
-          <p className="gav-lede">
-            The spreadsheet from the operator &mdash; ESP&rsquo;s &ldquo;Available to Invoice
-            Connections&rdquo; report, or whatever this mapping expects.
-          </p>
-          <div className="gav-row">
-            <div className="fld grow">
-              <label htmlFor="gav-file">Source export <span className="req">*</span></label>
-              <input id="gav-file" type="file" accept=".xlsx,.xls,.csv"
-                disabled={busy || !mappingId || !projectId || !utilityId} onChange={onFile} />
-            </div>
-            <div className="fld grow">
-              <label htmlFor="gav-report">Invoice report <span className="opt">(optional)</span></label>
-              <input id="gav-report" type="file" accept=".xlsx,.xls,.csv" onChange={onReportFile} />
-              <p className="hint">
+          <details className="gav-more">
+            <summary>Invoice report (optional)</summary>
+            <p className="gav-lede">
+              Your finance export, read only to continue invoice numbering from the
+              highest number already issued.
+            </p>
+            <div className="gav-file">
+              <label className="gav-choose alt">
+                Choose file&hellip;
+                <input type="file" accept=".xlsx,.xls,.csv" onChange={pickReport} />
+              </label>
+              <span className="gav-fname">
                 {report
-                  ? `Read ${reportFile?.name} — highest numbers found for ${
-                      Object.keys(report.highestByContract).length} contract(s).`
-                  : "Used to continue invoice numbering from what finance already holds."}
-              </p>
+                  ? `${reportFile?.name} — ${Object.keys(report.highestByContract).length} contract(s)`
+                  : "No file selected"}
+              </span>
             </div>
+          </details>
+
+          <div className="gav-foot">
+            <button className="btn ghost" onClick={reset}>Reset</button>
+            <button className="btn accent" disabled={!canProcess || busy} onClick={process}>
+              {busy ? "Processing\u2026" : "Process \u2192"}
+            </button>
           </div>
         </div>
       )}
 
-      {step === 1 && parsed && (
+      {phase === "preview" && (
         <>
           <div className="gav-summary">
-            <span className="gs-pill">{matched.length} rows read</span>
-            <span className="gs-pill ok">{included.length} to invoice</span>
-            <span className="gs-pill warn">
-              {matched.filter((r) => rowState(r).key === "billed").length} already billed
+            <span className="gp">{groups.length} contract{groups.length === 1 ? "" : "s"} in file</span>
+            <span className="gp ok">{included.length} to invoice</span>
+            <span className="gp bad">
+              {groups.filter((g) => !g.project).length} unmatched contract(s)
             </span>
-            <span className="gs-pill bad">
-              {matched.filter((r) => !r.matched).length} unmatched
-            </span>
-            <span className="gs-total">{money(total)} net</span>
+            <span className="gp">{totalLines} plots</span>
+            <span className="gav-total">{money(totalValue)} net</span>
           </div>
 
-          <p className="gav-cols">
-            Read <strong>{parsed.columns.plotRef}</strong> as the plot and{" "}
-            <strong>{parsed.columns.value}</strong> as the value, from sheet{" "}
-            <strong>{parsed.sheetName}</strong>.
+          <p className="gav-fine">
+            Read sheet <strong>{parsed.sheetName}</strong>, headings row {parsed.headerRow}.
             {parsed.skipped.length > 0 && (
-              <span className="gav-skip"> {parsed.skipped.length} row(s) skipped: {
-                parsed.skipped.slice(0, 3).map((s) => `${s.plotRef} (${s.reason})`).join("; ")
-              }</span>
+              <> {parsed.skipped.length} row(s) skipped by the mapping&rsquo;s filters.</>
             )}
           </p>
 
-          <div className="gav-table-wrap">
-            <table className="gav-table">
-              <thead>
-                <tr>
-                  <th className="mid">Use</th><th>Row</th><th>In file</th><th>Plot</th>
-                  <th>Description</th><th className="num">Value</th><th>Status</th>
-                </tr>
-              </thead>
-              <tbody>
-                {matched.map((r) => {
-                  const st = rowState(r);
-                  const usable = r.matched && !billedByPlot.has(r.plot?.Plot_ID);
-                  return (
-                    <tr key={r.sourceRow} className={st.key}>
-                      <td className="mid">
-                        <input type="checkbox" disabled={!usable}
-                          checked={usable && !excluded.includes(r.sourceRow)}
-                          onChange={() => toggle(r.sourceRow)} />
-                      </td>
-                      <td className="muted">{r.sourceRow}</td>
-                      <td className="mono">{r.plotRef}</td>
-                      <td className="mono">{r.plot?.Plot_Number ?? "\u2014"}</td>
-                      <td>{r.description || "\u2014"}</td>
-                      <td className="num">{money(r.value)}</td>
-                      <td><span className={`gav-pill ${st.tone}`}>{st.label}</span></td>
-                    </tr>
-                  );
-                })}
-              </tbody>
-            </table>
+          <div className="gav-groups">
+            {groups.map((g) => {
+              const off = excludedGroups.includes(g.key) || !g.project;
+              const open = expanded.includes(g.key);
+              const ready = g.lines.filter((l) => lineState(g, l).key === "ok").length;
+              return (
+                <div className={off ? "gg off" : "gg"} key={g.key}>
+                  <div className="gg-head">
+                    <input type="checkbox" disabled={!g.project}
+                      checked={!off} onChange={() => toggleGroup(g.key)} />
+                    <button className="gg-toggle" onClick={() => toggleExpand(g.key)}>
+                      {open ? "\u25BE" : "\u25B8"}
+                    </button>
+                    <span className="gg-ap mono">{g.contract || "(no contract)"}</span>
+                    {g.network && <span className="gg-net">network {g.network}</span>}
+                    <span className="gg-site">
+                      {g.project
+                        ? g.project.Site_Name || g.project.Project_Ref
+                        : <span className="gg-miss">not in Aptus</span>}
+                    </span>
+                    <span className="gg-count">{ready} of {g.lines.length} plots</span>
+                    <span className="gg-val">
+                      {money(g.lines.filter((l) => lineState(g, l).key === "ok")
+                        .reduce((s, l) => s + l.value, 0))}
+                    </span>
+                  </div>
+
+                  {open && (
+                    <table className="gg-table">
+                      <thead>
+                        <tr>
+                          <th className="mid">Use</th><th>Row</th><th>In file</th>
+                          <th>Plot</th><th className="num">Value</th><th>Status</th>
+                        </tr>
+                      </thead>
+                      <tbody>
+                        {g.lines.map((l) => {
+                          const st = lineState(g, l);
+                          const usable = g.project && l.matched && !l.billedOn;
+                          const key = `${g.key}|${l.sourceRow}`;
+                          return (
+                            <tr key={key} className={st.key}>
+                              <td className="mid">
+                                <input type="checkbox" disabled={!usable}
+                                  checked={usable && !excludedLines.includes(key)}
+                                  onChange={() => toggleLine(key)} />
+                              </td>
+                              <td className="muted">{l.sourceRow}</td>
+                              <td className="mono">{l.plotRef}</td>
+                              <td className="mono">{l.plot?.Plot_Number ?? "\u2014"}</td>
+                              <td className="num">{money(l.value)}</td>
+                              <td><span className={`gav-pill ${st.tone}`}>{st.label}</span></td>
+                            </tr>
+                          );
+                        })}
+                      </tbody>
+                    </table>
+                  )}
+                </div>
+              );
+            })}
           </div>
 
-          <div className="gav-actions">
+          <div className="gav-foot wide">
             <label className="gav-check">
               <input type="checkbox" checked={assignNumbers && !config.no_invoice_number}
                 disabled={!!config.no_invoice_number}
                 onChange={(e) => setAssignNumbers(e.target.checked)} />
               {config.no_invoice_number
                 ? "This mapping doesn't use invoice numbers"
-                : "Assign an invoice number"}
-              {project?.Contract_Number && (
-                <span className="gav-next"> &mdash; next is {project.Contract_Number}/…</span>
-              )}
+                : "Generate invoice numbers"}
             </label>
             <input className="gav-by" value={raisedBy} placeholder="Raised by"
               aria-label="Raised by" onChange={(e) => setRaisedBy(e.target.value)} />
             <span className="gav-spacer" />
             <button className="btn ghost" onClick={reset}>Start again</button>
             <button className="btn accent" disabled={busy || !included.length} onClick={generate}>
-              {busy ? "Generating\u2026" : `Create invoice for ${included.length} plots`}
+              {busy ? "Generating\u2026"
+                : `Create ${included.length} invoice${included.length === 1 ? "" : "s"}`}
             </button>
           </div>
         </>
       )}
 
-      {step === 2 && result && (
-        <div className="gav-panel">
+      {phase === "done" && result && (
+        <div className="gav-card">
           {result.created?.length > 0 ? (
             <>
               <Banner kind="ok">
                 {result.created.length} invoice{result.created.length === 1 ? "" : "s"} created.
               </Banner>
-              <table className="gav-table done">
+              <table className="gg-table done">
                 <thead>
                   <tr><th>Number</th><th>Contract</th><th className="num">Net</th>
                     <th className="num">VAT</th><th className="num">Gross</th><th>Status</th></tr>
@@ -402,17 +409,16 @@ export default function GenerateAvInvoices() {
                 </tbody>
               </table>
             </>
-          ) : (
-            <Banner kind="error">No invoices were created.</Banner>
-          )}
+          ) : <Banner kind="error">No invoices were created.</Banner>}
 
           {result.failed?.length > 0 && (
             <Banner kind="warn">
-              {result.failed.length} failed: {result.failed.map((f) => f.error).join("; ")}
+              {result.failed.length} failed &mdash;{" "}
+              {result.failed.map((f) => `${f.group}: ${f.error}`).join("; ")}
             </Banner>
           )}
 
-          <div className="gav-actions">
+          <div className="gav-foot">
             <button className="btn ghost" onClick={downloadBulk}>Download bulk upload</button>
             <span className="gav-spacer" />
             <button className="btn accent" onClick={reset}>Do another</button>
@@ -424,56 +430,66 @@ export default function GenerateAvInvoices() {
 }
 
 const CSS = `
-.gav-steps { display: flex; gap: 6px; margin-bottom: 14px; }
-.gs { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
-  color: var(--muted); padding: 6px 13px; border: 1px solid var(--border); border-radius: 999px; }
-.gs.on { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-.gs.done { color: var(--ok-text); border-color: var(--ok-border); background: var(--ok-bg); }
-.gs-n { width: 17px; height: 17px; border-radius: 50%; background: var(--bg);
-  display: flex; align-items: center; justify-content: center; font-size: 10px; }
-.gav-panel { border: 1px solid var(--border); border-radius: var(--radius);
-  padding: 18px; display: flex; flex-direction: column; gap: 14px; }
-.gav-step-title { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .07em; color: var(--accent); margin: 4px 0 0; }
-.opt { font-weight: 400; text-transform: none; color: var(--muted); }
-.gav-lede { margin: 0; font-size: 12.5px; color: var(--muted); max-width: 76ch; line-height: 1.55; }
-.gav-row { display: flex; gap: 12px; }
-.gav-row .fld.grow { flex: 1; }
-.hint.warn { color: var(--warn-text); font-weight: 600; }
-.gav-summary { display: flex; align-items: center; gap: 8px; margin-bottom: 10px; flex-wrap: wrap; }
-.gs-pill { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 4px 13px;
+.gav-card { border: 1px solid var(--border); border-radius: 12px; padding: 22px 24px;
+  max-width: 720px; margin: 0 auto; background: var(--white); }
+.gav-step { font-size: 10.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .07em; color: var(--accent); margin: 0 0 6px; }
+.gav-step:not(:first-child) { margin-top: 22px; }
+.gav-lede { margin: 0 0 10px; font-size: 12.5px; color: var(--text); line-height: 1.55; }
+.gav-select { width: 100%; font-size: 13px; }
+.gav-fine { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; line-height: 1.55; }
+.gav-warn { font-size: 11.5px; color: var(--warn-text); font-weight: 600; margin: 8px 0 0; }
+.gav-file { display: flex; align-items: center; gap: 12px; }
+.gav-choose { display: inline-block; background: var(--accent); color: #fff; border-radius: 7px;
+  padding: 9px 18px; font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .05em; cursor: pointer; }
+.gav-choose.alt { background: var(--muted); }
+.gav-choose input { display: none; }
+.gav-fname { font-size: 12.5px; color: var(--muted); }
+.gav-more { margin-top: 18px; }
+.gav-more summary { font-size: 12px; font-weight: 600; color: var(--accent); cursor: pointer; }
+.gav-more > * { margin-top: 10px; }
+.gav-foot { display: flex; align-items: center; gap: 9px; margin-top: 24px;
+  padding-top: 16px; border-top: 1px solid var(--border); justify-content: flex-end; }
+.gav-foot.wide { justify-content: flex-start; }
+.gav-spacer { flex: 1; }
+.gav-summary { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; margin-bottom: 8px; }
+.gp { font-size: 12px; font-weight: 700; border-radius: 999px; padding: 4px 13px;
   background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
-.gs-pill.ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
-.gs-pill.warn { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
-.gs-pill.bad { background: var(--err-bg); border-color: var(--err-border); color: var(--err-text); }
-.gs-total { margin-left: auto; font-size: 15px; font-weight: 700; color: var(--accent); }
-.gav-cols { font-size: 11.5px; color: var(--muted); margin: 0 0 10px; line-height: 1.5; }
-.gav-skip { color: var(--warn-text); }
-.gav-table-wrap { border: 1px solid var(--border); border-radius: var(--radius);
-  overflow: auto; max-height: 54vh; }
-.gav-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.gav-table th { position: sticky; top: 0; background: var(--accent); color: #fff; text-align: left;
-  font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em; padding: 8px 10px; }
-.gav-table td { padding: 6px 10px; border-top: 1px solid var(--border); }
-.gav-table tr.unmatched td { background: #fef2f2; }
-.gav-table tr.billed td { background: #fffbeb; }
-.gav-table tr.excluded td { opacity: .5; }
-.gav-table .num { text-align: right; }
-.gav-table .mid { text-align: center; }
-.gav-table .muted { color: var(--muted); }
-.gav-table .strong { font-weight: 700; }
-.gav-table.done { border: 1px solid var(--border); border-radius: var(--radius); }
-.gav-pill { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 2px 7px;
-  white-space: nowrap; }
+.gp.ok { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
+.gp.bad { background: var(--err-bg); border-color: var(--err-border); color: var(--err-text); }
+.gav-total { margin-left: auto; font-size: 16px; font-weight: 700; color: var(--accent); }
+.gav-groups { display: flex; flex-direction: column; gap: 7px; margin-top: 12px; }
+.gg { border: 1px solid var(--border); border-radius: var(--radius); overflow: hidden; }
+.gg.off { opacity: .55; }
+.gg-head { display: flex; align-items: center; gap: 10px; padding: 9px 12px; background: var(--white); }
+.gg-toggle { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px; }
+.gg-ap { font-weight: 700; font-size: 13px; }
+.gg-net { font-size: 10px; font-weight: 700; background: var(--accent-light); color: var(--accent);
+  border-radius: 4px; padding: 1px 7px; }
+.gg-site { flex: 1; font-size: 12.5px; color: var(--muted); min-width: 0;
+  overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.gg-miss { color: var(--err-text); font-weight: 600; }
+.gg-count { font-size: 11.5px; color: var(--muted); }
+.gg-val { font-size: 13px; font-weight: 700; min-width: 92px; text-align: right; }
+.gg-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.gg-table th { background: var(--bg); text-align: left; font-size: 10px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--muted); padding: 6px 10px; }
+.gg-table td { padding: 5px 10px; border-top: 1px solid var(--border); }
+.gg-table tr.unmatched td, .gg-table tr.noproject td { background: #fef2f2; }
+.gg-table tr.billed td { background: #fffbeb; }
+.gg-table tr.excluded td { opacity: .5; }
+.gg-table .num { text-align: right; }
+.gg-table .mid { text-align: center; }
+.gg-table .muted { color: var(--muted); }
+.gg-table .strong { font-weight: 700; }
+.gav-pill { font-size: 10px; font-weight: 700; border-radius: 4px; padding: 2px 7px; white-space: nowrap; }
 .gav-pill.ok { background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border); }
 .gav-pill.warn { background: var(--warn-bg); color: var(--warn-text); border: 1px solid var(--warn-border); }
 .gav-pill.bad { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); }
 .gav-pill.muted { background: var(--bg); color: var(--muted); border: 1px solid var(--border); }
-.gav-actions { display: flex; align-items: center; gap: 10px; margin-top: 12px; }
-.gav-spacer { flex: 1; }
 .gav-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 0; cursor: pointer; }
-.gav-next { color: var(--muted); }
 .gav-by { width: 150px; font-size: 12.5px; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 `;

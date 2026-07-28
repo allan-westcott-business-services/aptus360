@@ -44,6 +44,7 @@ export async function parseAvFile(file, config = {}) {
     apNumber: columnIndex(headers, config.ap_number),
     customerRef: columnIndex(headers, config.customer_ref),
     status: columnIndex(headers, config.status_column || config.status),
+    network: columnIndex(headers, config.network),
     description: columnIndex(headers, config.description),
   };
 
@@ -100,6 +101,7 @@ export async function parseAvFile(file, config = {}) {
       service: cols.service >= 0 ? String(r[cols.service] ?? "").trim() : "",
       apNumber: cols.apNumber >= 0 ? String(r[cols.apNumber] ?? "").trim() : "",
       customerRef: cols.customerRef >= 0 ? String(r[cols.customerRef] ?? "").trim() : "",
+      network: cols.network >= 0 ? String(r[cols.network] ?? "").trim() : "",
       description: cols.description >= 0 ? String(r[cols.description] ?? "").trim() : "",
     });
   }
@@ -141,17 +143,67 @@ export function matchRowsToPlots(rows, plots) {
   });
 }
 
-/* The original grouped one invoice per contract. Where the export
-   carries its own scheme reference, that decides the grouping; where it
-   doesn't, everything belongs to the project you chose. */
-export function groupByContract(rows, fallbackContract) {
+/* One invoice per contract and network.
+
+   The contract reference comes from the file, not from the user — the
+   export covers whatever sites the operator is paying for, which may be
+   several. Network number splits it further because some operators
+   (ESP Gas) require a separate invoice per network. */
+export function groupByContract(rows) {
   const groups = new Map();
   rows.forEach((r) => {
-    const key = (r.apNumber || fallbackContract || "").trim() || "(no contract)";
-    if (!groups.has(key)) groups.set(key, { contract: key, rows: [] });
+    const ap = (r.apNumber || "").trim().toUpperCase();
+    const network = (r.network || "").trim();
+    const key = `${ap}|${network}`;
+    if (!groups.has(key)) {
+      groups.set(key, {
+        key,
+        contract: ap,
+        network,
+        customerRef: r.customerRef || "",
+        rows: [],
+      });
+    }
     groups.get(key).rows.push(r);
   });
-  return [...groups.values()];
+  return [...groups.values()].sort((a, b) => a.contract.localeCompare(b.contract));
+}
+
+/* Attach the project and matched plots to each group. A group whose
+   contract reference isn't in Aptus can't be invoiced — it's reported
+   rather than dropped, since a missing project is usually a data problem
+   worth seeing. */
+export function resolveGroups(groups, projects, plots, invoiced) {
+  const byContract = new Map();
+  projects.forEach((p) => byContract.set(String(p.Contract_Number || "").toUpperCase(), p));
+
+  const plotsByProject = new Map();
+  plots.forEach((pl) => {
+    if (!plotsByProject.has(pl.Project_ID)) plotsByProject.set(pl.Project_ID, []);
+    plotsByProject.get(pl.Project_ID).push(pl);
+  });
+
+  const billed = new Set((invoiced || []).map((l) => `${l.Plot_ID}|${l.Utility_ID}`));
+  const billedRef = new Map();
+  (invoiced || []).forEach((l) => billedRef.set(l.Plot_ID, l.AV_Invoice?.Invoice_Number));
+
+  return groups.map((g) => {
+    const project = byContract.get(g.contract) || null;
+    if (!project) {
+      return { ...g, project: null, lines: g.rows.map((r) => ({ ...r, plot: null })), matched: 0 };
+    }
+    const lines = matchRowsToPlots(g.rows, plotsByProject.get(project.Project_ID) || []);
+    return {
+      ...g,
+      project,
+      lines: lines.map((l) => ({
+        ...l,
+        billedOn: l.plot ? billedRef.get(l.plot.Plot_ID) : null,
+      })),
+      matched: lines.filter((l) => l.matched).length,
+      total: lines.reduce((s, l) => s + l.value, 0),
+    };
+  });
 }
 
 /* An Invoice Report from the finance system, read only to learn which

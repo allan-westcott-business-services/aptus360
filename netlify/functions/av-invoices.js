@@ -17,9 +17,44 @@ export default async function handler(req, context) {
       return json({ rows: data || [] });
     }
 
-    /* Which of these plot refs are already billed for this utility, so
-       the preview can grey them rather than letting them through and
-       failing on the unique index. */
+    /* Resolve the contract references found in the file against projects,
+       and return their plots. The file decides which project a row belongs
+       to — there is no picker — so this is what turns an AP number into
+       something invoiceable. */
+    if (req.method === "POST" && op === "resolve") {
+      const { contracts = [] } = await req.json();
+      if (!contracts.length) return json({ projects: [], plots: [] });
+
+      const wanted = contracts.map((c) => String(c).trim().toUpperCase()).filter(Boolean);
+
+      const { data: projects, error: pErr } = await db.from("Project")
+        .select("Project_ID,Project_Ref,Contract_Number,Site_Name,Revision,Project_Status_ID")
+        .in("Contract_Number", wanted);
+      if (pErr) throw pErr;
+
+      const ids = (projects || []).map((p) => p.Project_ID);
+      let plots = [];
+      if (ids.length) {
+        const { data, error } = await db.from("Plot")
+          .select("Plot_ID,Project_ID,Plot_Number,Plot_Ref")
+          .in("Project_ID", ids);
+        if (error) throw error;
+        plots = data || [];
+      }
+
+      /* Everything already invoiced for these projects, so the preview can
+         mark rows rather than letting them fail on the unique index. */
+      let invoiced = [];
+      if (ids.length) {
+        const { data } = await db.from("AV_Invoice_Line")
+          .select("Plot_ID,Plot_Ref,Utility_ID,AV_Invoice!inner(Invoice_Number,Project_ID,Status)")
+          .in("AV_Invoice.Project_ID", ids);
+        invoiced = (data || []).filter((l) => l.AV_Invoice?.Status !== "Cancelled");
+      }
+
+      return json({ projects: projects || [], plots, invoiced });
+    }
+
     if (req.method === "POST" && op === "check") {
       const { project_id, utility_id } = await req.json();
       const { data, error } = await db.rpc("av_invoiced_plots", {

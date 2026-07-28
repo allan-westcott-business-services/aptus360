@@ -134,7 +134,7 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
   const [selected, setSelected] = useState([]);
-  const [bulk, setBulk] = useState({ Property_Config_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
+  const [bulk, setBulk] = useState({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [mode, setMode] = useState("list");
   const [plots, setPlots] = useState([]);
@@ -270,6 +270,23 @@ export default function PlotsTab({ projectId, projectRef }) {
   async function applyBulk() {
     const changes = {};
     if (bulk.Property_Config_ID) changes.Property_Config_ID = Number(bulk.Property_Config_ID);
+
+    /* "__default" clears the plot's own value so it follows the project
+       default again — a plot needs a way back to inheriting, not just a
+       way to depart from it. */
+    if (bulk.Heat_Source_ID === "__default") {
+      changes.Heat_Source_ID = null;
+      changes.Heat_Pump_Model_ID = null;
+    } else if (bulk.Heat_Source_ID) {
+      changes.Heat_Source_ID = Number(bulk.Heat_Source_ID);
+      /* A heat pump model only means anything on a heat pump plot.
+         Switching to gas and leaving the model behind is how a plot ends
+         up costed for both — the same rule FeatureEditor applies. */
+      const hs = (lookups?.heatSources || [])
+        .find((h) => String(h.Heat_Source_ID) === String(bulk.Heat_Source_ID));
+      if (!/pump|ashp|gshp|wshp/i.test(hs?.Heat_Source || "")) changes.Heat_Pump_Model_ID = null;
+    }
+
     if (bulk.Heat_Pump_Model_ID) changes.Heat_Pump_Model_ID = Number(bulk.Heat_Pump_Model_ID);
     if (bulk.KVA_Load !== "") changes.KVA_Load = Number(bulk.KVA_Load);
     if (bulk.PV) changes.PV = bulk.PV === "y";
@@ -281,7 +298,7 @@ export default function PlotsTab({ projectId, projectRef }) {
         setBulkDev("");
       }
       if (Object.keys(changes).length) await bulkUpdatePlots(projectId, selected, changes);
-      setBulk({ Property_Config_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
+      setBulk({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
       setSelected([]);
       await load();
     } catch (e) {
@@ -448,6 +465,14 @@ export default function PlotsTab({ projectId, projectRef }) {
                     {c.Code} — {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
                   </option>
                 ))}
+              </select>
+              <select value={bulk.Heat_Source_ID}
+                onChange={(e) => setBulk((b) => ({ ...b, Heat_Source_ID: e.target.value }))}>
+                <option value="">Heat source&hellip;</option>
+                {(lookups?.heatSources || []).map((h) => (
+                  <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>{h.Heat_Source}</option>
+                ))}
+                <option value="__default">&mdash; Use project default &mdash;</option>
               </select>
               <select value={bulk.Heat_Pump_Model_ID}
                 onChange={(e) => setBulk((b) => ({ ...b, Heat_Pump_Model_ID: e.target.value }))}>

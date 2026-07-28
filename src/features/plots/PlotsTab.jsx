@@ -115,8 +115,13 @@ const COLS = (cfg, typeName, hpName) => [
   { key: "sel",    label: "",             width: 38,  type: "none" },
   { key: "ref",    label: "Plot ref",     width: 140, type: "text",  raw: (p) => p.Plot_Ref || "" },
   { key: "num",    label: "Plot",         width: 80,  type: "text",  raw: (p) => p.Plot_Number },
-  { key: "type",   label: "House type",   width: 230, type: "multi", raw: (p) => p.Property_Config_ID },
+  /* The code alone. It is what the house type is called on the drawing,
+     in the schedule and by everyone on site, and the long description
+     took a third of the table to repeat what the code already says. The
+     full name is still on the filter list and in the editor. */
+  { key: "type",   label: "House type",   width: 110, type: "multi", raw: (p) => p.Property_Config_ID },
   { key: "dev",    label: "Developer",    width: 170, type: "multi", raw: (p) => p.Project_Developer_ID },
+  { key: "heat",   label: "Heat source",  width: 150, type: "multi", raw: (p) => p.Heat_Source_ID },
   { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Load ?? null },
   { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
   { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
@@ -216,6 +221,9 @@ export default function PlotsTab({ projectId, projectRef }) {
   const hpName = (id) =>
     (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
 
+  const hsName = (id) =>
+    (lookups?.heatSources || []).find((h) => String(h.Heat_Source_ID) === String(id))?.Heat_Source
+    || null;
   const columns = useMemo(() => COLS(configFor, typeName, hpName), [lookups]);
   const layout = useTableLayout("plots", columns);
 
@@ -227,6 +235,8 @@ export default function PlotsTab({ projectId, projectRef }) {
       }));
     if (key === "hp")
       return (lookups?.heatPumpModels || []).map((m) => ({ id: m.Heat_Pump_Model_ID, label: m.Model }));
+    if (key === "heat")
+      return (lookups?.heatSources || []).map((h) => ({ id: h.Heat_Source_ID, label: h.Heat_Source }));
     if (key === "dev")
       return developers.map((d) => ({ id: d.Project_Developer_ID, label: devName(d.Project_Developer_ID) }));
     return [];
@@ -522,8 +532,25 @@ export default function PlotsTab({ projectId, projectRef }) {
                               onChange={() => setSelected((s) => on ? s.filter((x) => x !== p.Plot_ID) : [...s, p.Plot_ID])} />
                           ) : col.key === "ref" ? <span className="mono ref">{p.Plot_Ref || "\u2014"}</span>
                             : col.key === "num" ? <span className="mono">{p.Plot_Number}</span>
-                            : col.key === "type" ? (c ? <><span className="code-chip">{c.Code}</span> {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}</> : "\u2014")
+                            : col.key === "type" ? (c
+                                ? <span className="code-chip"
+                                    title={`${c.Bedrooms} Bed ${typeName(c.Property_Type_ID)}`}>
+                                    {c.Code}
+                                  </span>
+                                : "\u2014")
                             : col.key === "dev" ? devName(p.Project_Developer_ID)
+                            /* A plot with none of its own follows the project
+                               default, which is what the design will actually
+                               use — showing a dash would hide a real value. */
+                            : col.key === "heat" ? (
+                                hsName(p.Heat_Source_ID)
+                                || (hsName(savedDefaults.Default_Heat_Source_ID)
+                                    ? <span className="inherited"
+                                        title="From the project default, not set on this plot">
+                                        {hsName(savedDefaults.Default_Heat_Source_ID)}
+                                      </span>
+                                    : "\u2014")
+                              )
                             : col.key === "kva" ? (p.KVA_Load ?? "\u2014")
                             : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")
@@ -600,6 +627,7 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .empty p { margin: 0 0 14px; font-size: 12.5px; color: var(--muted); }
 .mono { font-family: ui-monospace, Menlo, Consolas, monospace; }
 .dt .ref { color: var(--accent); font-weight: 600; }
+.inherited { color: var(--muted); font-style: italic; }
 .tick { color: #059669; font-weight: 700; }
 .code-chip { font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }

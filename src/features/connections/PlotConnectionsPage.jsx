@@ -469,7 +469,7 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 .bulk-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--accent);
   color: #fff; border-radius: var(--radius); padding: 9px 12px; margin-bottom: 10px; }
 .bulk-count { font-size: 12px; font-weight: 700; }
-.bulk-bar select, .bulk-bar input { width: auto; min-width: 140px; font-size: 12px; padding: 5px 8px; }
+.bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 140px; font-size: 12px; padding: 5px 8px; }
 .bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }
 .bulk-x { background: none; border: none; color: #fff; cursor: pointer; font-size: 12px; margin-left: auto; }
 .dt td { padding: 3px 6px; }

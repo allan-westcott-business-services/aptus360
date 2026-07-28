@@ -706,7 +706,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .col-menu-head button { background: none; border: none; cursor: pointer; color: var(--accent); font: inherit; }
 .col-opt { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 4px;
   text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; margin: 0; cursor: pointer; }
-.col-opt input { width: auto; }
+
 
 .proj-table-wrap { border: 1px solid var(--border); border-radius: var(--radius); overflow: auto; max-height: 68vh; }
 .proj-table { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
@@ -773,7 +773,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .fc-pop input[type=date] { font-size: 11.5px; padding: 4px 6px; margin-bottom: 7px; }
 .fc-check { display: flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 4px 0 8px; cursor: pointer; }
-.fc-check input { width: auto; }
+
 .fc-clear { width: 100%; background: var(--bg); border: 1px solid var(--border);
   border-radius: 5px; padding: 4px; font: 600 11.5px inherit; color: var(--muted); cursor: pointer; }
 .fc-actions { display: flex; gap: 5px; margin-bottom: 6px; }
@@ -785,6 +785,6 @@ body.resizing { cursor: col-resize; user-select: none; }
   cursor: pointer; white-space: normal; border-radius: 4px; }
 .fc-opt:hover { background: var(--bg); }
 .fc-opt.on { background: var(--accent-light); color: var(--accent); font-weight: 600; }
-.fc-opt input { width: auto; }
+
 .fc-opt em { font-style: italic; color: var(--muted); }
 `;

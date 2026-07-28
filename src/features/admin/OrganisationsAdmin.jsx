@@ -749,7 +749,7 @@ const CSS = `
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .oa-inline { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 0; }
-.oa-inline input { width: auto; }
+
 .btn.sm { padding: 4px 12px; font-size: 11.5px; }
 .row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
   font: 600 11.5px inherit; padding: 3px 7px; border-radius: 4px; }

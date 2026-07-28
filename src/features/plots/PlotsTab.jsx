@@ -587,7 +587,7 @@ const CSS = TABLE_CSS + FILTER_CSS + `
   padding: 9px 12px; margin-bottom: 10px;
 }
 .bulk-count { font-size: 12px; font-weight: 700; white-space: nowrap; }
-.bulk-bar select, .bulk-bar input { width: auto; min-width: 118px; font-size: 12px; padding: 5px 8px; }
+.bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 118px; font-size: 12px; padding: 5px 8px; }
 .bulk-kva { width: 78px !important; min-width: 0 !important; }
 .bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }
 .bulk-bar .btn.ghost.danger { color: #b91c1c; }

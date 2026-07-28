@@ -441,7 +441,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 .od-table select, .od-table input[type=date], .od-table input[type=number] {
   width: 100%; font-size: 12px; padding: 4px 6px; border-radius: 5px;
 }
-.od-table input[type=checkbox] { width: auto; height: 16px; }
+
 .od-table .mid { text-align: center; }
 .late-date { border-color: #fca5a5 !important; background: #fef2f2 !important; }
 

@@ -166,7 +166,7 @@ const CSS = `
 .be-row { display: grid; grid-template-columns: 1fr 1fr; gap: 12px; }
 .be-check { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 10px 0 0; }
-.be-check input { width: auto; }
+
 .be-summary { font-size: 12px; color: var(--text); margin: 14px 0 0; padding-top: 11px;
   border-top: 1px solid var(--border); }
 .be-idle { color: var(--muted); font-style: italic; }

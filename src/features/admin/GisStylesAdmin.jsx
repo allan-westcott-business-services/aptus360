@@ -447,7 +447,7 @@ const CSS = `
 .gs-colrow input[type=color] { width: 40px; padding: 2px; flex: none; }
 .gs-check { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 9px 0 0; }
-.gs-check input { width: auto; }
+
 .gs-hint { margin: -4px 0 8px; max-width: 76ch; }
 .gs-preview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 11px; }

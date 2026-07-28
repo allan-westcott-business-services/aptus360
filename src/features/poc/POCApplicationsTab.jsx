@@ -570,9 +570,8 @@ const CSS = TABLE_CSS + FILTER_CSS + `
 
 /* Don't set width here — that's what was collapsing the checkbox to a
    sliver. Size comes from the global input rules; only scale it up. */
-.prov input[type="checkbox"] { width: 18px; height: 18px; border-radius: 5px; border-width: 2px; }
+.prov input[type="checkbox"] { width: 18px; height: 18px; min-width: 18px; border-radius: 5px; }
 .prov input[type="radio"] { width: 18px; height: 18px; border-width: 2px; }
-.prov input[type="checkbox"]:checked::after { left: 5px; top: 1.5px; width: 5px; height: 9px; }
 .badge { font-size: 9px; font-weight: 700; letter-spacing: .05em; border-radius: 4px;
   padding: 2px 6px; flex: none; }
 .badge.idno { background: var(--accent); color: #fff; }

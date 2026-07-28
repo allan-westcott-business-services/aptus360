@@ -293,7 +293,14 @@ export default function GenerateAvInvoices() {
           </div>
 
           <p className="gav-fine">
-            Read sheet <strong>{parsed.sheetName}</strong>, headings row {parsed.headerRow}.
+            Read sheet <strong>{parsed.sheetName}</strong>, headings row {parsed.headerRow}
+            {" \u2014 "}<strong>{parsed.columns.plot}</strong> as the plot,{" "}
+            <strong>{parsed.columns.value}</strong> as the value.
+            {parsed.headerRowMoved && (
+              <span className="gav-moved">
+                {" "}The mapping expected row {parsed.headerRowMoved}; worth updating it.
+              </span>
+            )}
             {parsed.skipped.length > 0 && (
               <> {parsed.skipped.length} row(s) skipped by the mapping&rsquo;s filters.</>
             )}
@@ -437,6 +444,7 @@ const CSS = `
 .gav-step:not(:first-child) { margin-top: 22px; }
 .gav-lede { margin: 0 0 10px; font-size: 12.5px; color: var(--text); line-height: 1.55; }
 .gav-select { width: 100%; font-size: 13px; }
+.gav-moved { color: var(--warn-text); font-weight: 600; }
 .gav-fine { font-size: 11.5px; color: var(--muted); margin: 8px 0 0; line-height: 1.55; }
 .gav-warn { font-size: 11.5px; color: var(--warn-text); font-weight: 600; margin: 8px 0 0; }
 .gav-file { display: flex; align-items: center; gap: 12px; }

@@ -31,12 +31,49 @@ export async function parseAvFile(file, config = {}) {
   });
   if (!grid.length) throw new Error("That file has no rows.");
 
-  const headerRow = Math.max(0, (Number(config.header_row) || 1) - 1);
-  if (headerRow >= grid.length) {
-    throw new Error(`The mapping expects headings on row ${headerRow + 1}, but the file has ${grid.length} rows.`);
+  /* The mapping says which columns to read; finding the row they're on
+     is the parser's job. Exports carry title rows, blank lines and
+     report banners above the headings, and those move — a fixed row
+     number turns a cosmetic change into a failed run.
+
+     The configured row is tried first, then the rest scanned for one
+     that carries the columns the mapping asks for. */
+  const wantPlot = config.plot;
+  const wantValue = config.value;
+  const SCAN_LIMIT = Math.min(grid.length, 30);
+
+  const rowHasColumns = (row) => {
+    const hs = row.map((h) => String(h || "").trim());
+    return columnIndex(hs, wantPlot) >= 0 && columnIndex(hs, wantValue) >= 0;
+  };
+
+  const configured = Math.max(0, (Number(config.header_row) || 1) - 1);
+  let headerRow = -1;
+
+  if (configured < grid.length && rowHasColumns(grid[configured])) {
+    headerRow = configured;
+  } else {
+    for (let i = 0; i < SCAN_LIMIT; i++) {
+      if (rowHasColumns(grid[i])) { headerRow = i; break; }
+    }
+  }
+
+  if (headerRow < 0) {
+    /* Show what was actually there, a few rows of it — the usual cause
+       is a mapping pointed at the wrong export. */
+    const sample = grid.slice(0, Math.min(6, grid.length))
+      .map((r, i) => `  row ${i + 1}: ${r.map((c) => String(c || "").trim())
+        .filter(Boolean).slice(0, 6).join(" | ") || "(empty)"}`)
+      .join("\n");
+    throw new Error(
+      `This file doesn't match the mapping — no row carries both ` +
+      `"${wantPlot || "(plot not set)"}" and "${wantValue || "(value not set)"}".\n\n` +
+      `What's in the first rows:\n${sample}`
+    );
   }
 
   const headers = grid[headerRow].map((h) => String(h || "").trim());
+  const foundElsewhere = headerRow !== configured;
   const cols = {
     plot: columnIndex(headers, config.plot),
     value: columnIndex(headers, config.value),
@@ -47,18 +84,6 @@ export async function parseAvFile(file, config = {}) {
     network: columnIndex(headers, config.network),
     description: columnIndex(headers, config.description),
   };
-
-  /* Say what's missing rather than producing an empty preview — a
-     mapping pointed at the wrong export is the likeliest failure. */
-  const missing = [];
-  if (cols.plot < 0) missing.push(`plot column "${config.plot || "(not set)"}"`);
-  if (cols.value < 0) missing.push(`value column "${config.value || "(not set)"}"`);
-  if (missing.length) {
-    throw new Error(
-      `This file doesn't match the mapping — couldn't find ${missing.join(" or ")}. ` +
-      `Headings on row ${headerRow + 1}: ${headers.filter(Boolean).slice(0, 8).join(", ")}.`
-    );
-  }
 
   const statusFilter = config.status_filter
     ? String(config.status_filter).trim().toLowerCase()
@@ -110,6 +135,7 @@ export async function parseAvFile(file, config = {}) {
     sheetName,
     headers,
     headerRow: headerRow + 1,
+    headerRowMoved: foundElsewhere ? configured + 1 : null,
     columns: Object.fromEntries(
       Object.entries(cols).map(([k, i]) => [k, i >= 0 ? headers[i] : null])
     ),

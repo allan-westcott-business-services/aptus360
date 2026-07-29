@@ -271,3 +271,146 @@ export function junctionNodes(model) {
   }
   return out;
 }
+
+
+/* ── Trench connectivity ──
+   Which parts of the trench network are joined to which.
+
+   Cables can only route along trenches that connect back to the
+   substation, so a trench drawn a metre short of the one it was meant to
+   meet is invisible to the feeder builder — and looks perfectly
+   connected on screen at any sensible zoom. This finds those gaps by
+   asking a question with an unambiguous answer: how many separate pieces
+   is the network in?
+
+   Same node rule as the routing, deliberately. A check that used a
+   looser tolerance than the builder would call a network connected that
+   the builder then refused to route, which is worse than no check. */
+/* ── Connectivity ──
+   Which trenches are actually joined to the rest.
+
+   A trench that looks connected on screen but isn't is the single most
+   expensive fault on a GIS plan: cables won't route down it, meters
+   beyond it drop off the feeder build, and nothing says why. Two ends a
+   few centimetres apart read as joined at any sensible zoom.
+
+   So: group the trenches into connected components, name the one holding
+   the substation as the network, and report everything else — with the
+   size of the gap and where to close it, because "orphaned" without a
+   distance is a search rather than a fix. */
+
+export function trenchComponents(features = [], opts = {}) {
+  const { lineTypes = [], eps = CONNECT_EPS, mainsOnly = true } = opts;
+
+  const runs = features.filter((f) =>
+    f.Feature_Type === "line"
+    && isTrench(f, lineTypes)
+    && (f.Geometry || []).length >= 2
+    /* Service spurs hang off the mains by design, so counting them would
+       report every plot as an orphan. */
+    && (!mainsOnly || !isService(f)));
+
+  if (!runs.length) return { error: "No trenches drawn yet." };
+
+  /* Vertices, deduplicated by proximity — the same node model the feeder
+     build uses, so the two agree about what is connected. */
+  const nodes = [];
+  const intern = (p) => {
+    for (let i = 0; i < nodes.length; i++) if (dist(nodes[i], p) <= eps) return i;
+    nodes.push([p[0], p[1]]);
+    return nodes.length - 1;
+  };
+
+  const adj = new Map();
+  const runNodes = new Map();
+  const link = (a, b) => {
+    if (!adj.has(a)) adj.set(a, new Set());
+    if (!adj.has(b)) adj.set(b, new Set());
+    adj.get(a).add(b);
+    adj.get(b).add(a);
+  };
+
+  for (const f of runs) {
+    const ids = (f.Geometry || []).map(intern);
+    runNodes.set(f.Feature_ID, ids);
+    for (let i = 0; i + 1 < ids.length; i++) link(ids[i], ids[i + 1]);
+  }
+
+  /* Flood fill from each unvisited node. */
+  const comp = new Array(nodes.length).fill(-1);
+  let nComp = 0;
+  for (let i = 0; i < nodes.length; i++) {
+    if (comp[i] >= 0) continue;
+    const queue = [i];
+    comp[i] = nComp;
+    while (queue.length) {
+      const u = queue.shift();
+      for (const v of adj.get(u) || []) {
+        if (comp[v] < 0) { comp[v] = nComp; queue.push(v); }
+      }
+    }
+    nComp += 1;
+  }
+
+  const groups = Array.from({ length: nComp }, (_, id) => ({
+    id, featureIds: [], nodeIndexes: [], metres: 0,
+  }));
+  for (const [fid, ids] of runNodes) {
+    const g = groups[comp[ids[0]]];
+    g.featureIds.push(fid);
+    const f = runs.find((x) => x.Feature_ID === fid);
+    g.metres += Number(f.Attributes?.Length_m ?? 0) || polylineLength(f.Geometry);
+  }
+  for (let i = 0; i < nodes.length; i++) groups[comp[i]].nodeIndexes.push(i);
+
+  /* The component holding the substation is the network. Without one, the
+     largest by length is the best guess — and saying which assumption was
+     made matters, because the answer changes if it is wrong. */
+  const sub = features.find((f) => f.Feature_Role === "substation" && (f.Geometry || []).length);
+  let rootId = -1;
+  let rootBy = "none";
+  if (sub) {
+    let bd = Infinity;
+    for (let i = 0; i < nodes.length; i++) {
+      const d = dist(nodes[i], sub.Geometry[0]);
+      if (d < bd) { bd = d; rootId = comp[i]; }
+    }
+    rootBy = "substation";
+  }
+  if (rootId < 0 && groups.length) {
+    rootId = groups.reduce((best, g) => (g.metres > groups[best].metres ? g.id : best), 0);
+    rootBy = "largest";
+  }
+
+  /* For each orphan, the closest it comes to the network and where. That
+     pair of points is the gap to close. */
+  const rootNodes = rootId >= 0 ? groups[rootId].nodeIndexes : [];
+  for (const g of groups) {
+    if (g.id === rootId || !rootNodes.length) { g.gap = null; continue;
+    }
+    let best = null;
+    for (const a of g.nodeIndexes) {
+      for (const b of rootNodes) {
+        const d = dist(nodes[a], nodes[b]);
+        if (!best || d < best.d) best = { d, from: nodes[a], to: nodes[b] };
+      }
+    }
+    g.gap = best ? { metres: Math.round(best.d * 100) / 100, from: best.from, to: best.to } : null;
+  }
+
+  const orphans = groups
+    .filter((g) => g.id !== rootId)
+    .sort((a, b) => (a.gap?.metres ?? Infinity) - (b.gap?.metres ?? Infinity));
+
+  return {
+    groups, rootId, rootBy, orphans, nodes,
+    connected: rootId >= 0 ? groups[rootId] : null,
+    totalRuns: runs.length,
+  };
+}
+
+function polylineLength(pts = []) {
+  let t = 0;
+  for (let i = 0; i + 1 < pts.length; i++) t += dist(pts[i], pts[i + 1]);
+  return Math.round(t * 100) / 100;
+}

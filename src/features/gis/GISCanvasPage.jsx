@@ -32,7 +32,8 @@ import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuToggle } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
-import { feederSections, junctionNodes, cablesFor } from "./feeder.js";
+import { feederSections, junctionNodes, cablesFor, trenchComponents } from "./feeder.js";
+import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -95,6 +96,8 @@ export default function GISCanvasPage() {
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   const [reportOpen, setReportOpen] = useState(false);
+  const [connCheck, setConnCheck] = useState(null);   // trench connectivity result
+  const [trenchCheck, setTrenchCheck] = useState(null);
   /* A ref, not state: the loop below has to read the current value
      between awaits, and a state read there would see the value from the
      render that started it. */
@@ -2272,6 +2275,14 @@ export default function GISCanvasPage() {
                     <MenuItem label="Bill of materials"
                       hint="quantities by site and surface"
                       disabled={!projectId} onClick={() => setBomOpen(true)} />
+                    <MenuItem label="Check trench connectivity"
+                      hint="finds trenches that don't join up"
+                      disabled={!projectId}
+                      onClick={() => {
+                        const r = trenchComponents(features, { lineTypes });
+                        if (r.error) { setError(r.error); return; }
+                        setTrenchCheck(r);
+                      }} />
                     <MenuItem label={busy === "autoservice" ? "Auto service\u2026" : "Auto service"}
                       hint="trench, meters and services per seed"
                       disabled={busy === "autoservice"} onClick={runAutoService} />
@@ -2324,6 +2335,22 @@ export default function GISCanvasPage() {
           />
         );
       })()}
+
+      {trenchCheck && (
+        <TrenchCheck
+          result={trenchCheck}
+          /* Selecting puts the group on the canvas selection, so the next
+             action is dragging an end onto the piece it should join
+             rather than hunting for it. */
+          onSelect={(ids) => {
+            setSelected(ids);
+            setTrenchCheck(null);
+            setStatus(`${ids.length} trench(es) selected \u2014 drag an end onto the network to join it`);
+            setTimeout(() => setStatus(""), 8000);
+          }}
+          onClose={() => setTrenchCheck(null)}
+        />
+      )}
 
       {editing && (
         <FeatureEditor
@@ -2544,6 +2571,64 @@ export default function GISCanvasPage() {
               );
             })()}
 
+            {connCheck && (
+              <div className="gis-trace" role="dialog" aria-label="Trench connectivity">
+                <div className="gt-head">
+                  <strong>Trench connectivity</strong>
+                  <button className="fe-x" onClick={() => setConnCheck(null)}
+                    aria-label="Close">&times;</button>
+                </div>
+
+                {connCheck.error && <p className="gt-none">{connCheck.error}</p>}
+
+                {!connCheck.error && (
+                  <>
+                    <p className="tc-sum">
+                      {connCheck.totalRuns} mains run(s) in{" "}
+                      {connCheck.groups.length} piece{connCheck.groups.length === 1 ? "" : "s"}.
+                      {connCheck.rootBy === "largest" && (
+                        <em> No substation, so the largest piece is taken as the network.</em>
+                      )}
+                    </p>
+
+                    {connCheck.orphans.length === 0 ? (
+                      <p className="tc-ok">All mains trenches are connected.</p>
+                    ) : (
+                      <table className="gt-tbl">
+                        <thead>
+                          <tr><th>Adrift</th><th className="num">Length</th><th className="num">Gap</th></tr>
+                        </thead>
+                        <tbody>
+                          {connCheck.orphans.map((o) => (
+                            /* Selecting it is the point: the next thing
+                               anyone does is drag its end onto the
+                               network, and they have to find it first. */
+                            <tr key={o.id} className="tc-row"
+                              onClick={() => { setSelected(o.featureIds); setTool("select"); }}
+                              title="Select these runs on the drawing">
+                              <td>{o.featureIds.length} run(s)</td>
+                              <td className="num">{o.metres.toFixed(1)} m</td>
+                              <td className="num">
+                                {o.gap ? `${o.gap.metres.toFixed(2)} m` : "\u2014"}
+                              </td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {connCheck.orphans.length > 0 && (
+                      <p className="tc-hint">
+                        Gap is how far the piece sits from the connected network at its
+                        nearest point. Click a row to select it, then drag its end onto
+                        the network &mdash; that records the join as well as moving it.
+                      </p>
+                    )}
+                  </>
+                )}
+              </div>
+            )}
+
             {trace && (
               <div className="gis-trace" role="dialog" aria-label="Full trace">
                 <div className="gt-head">
@@ -2709,6 +2794,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+.tc-sum { font-size: 12px; margin: 0 0 8px; }
+.tc-sum em { font-style: normal; color: #92400e; }
+.tc-ok { font-size: 12.5px; font-weight: 600; color: var(--ok-text); margin: 0; }
+.tc-row { cursor: pointer; }
+.tc-row:hover { background: var(--accent-light); }
+.tc-hint { font-size: 10.5px; color: var(--muted); margin: 7px 0 0; }
 .gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;

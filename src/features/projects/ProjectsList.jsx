@@ -18,7 +18,9 @@ import { UTILITIES } from "../../lib/utilities.js";
 const COLUMNS = [
   { key: "menu",     label: "",              width: 44,  type: "none", raw: () => "" },
   { key: "ref",      label: "Project Ref",   width: 118, type: "text",  raw: (p) => p.Project_Ref },
-  { key: "rev",      label: "Rev",           width: 56,  type: "text",  align: "center", raw: (p) => (p.Revision ? `r${p.Revision}` : "") },
+  /* Revision 0 is the first issue, not the absence of one — and it is
+     falsy, so testing the value hid every new project's revision. */
+  { key: "rev",      label: "Rev",           width: 56,  type: "text",  align: "center", raw: (p) => String(p.Revision ?? 0) },
   { key: "sitename", label: "Site Name",     width: 200, type: "text",  raw: (p) => p.Site_Name },
   { key: "date",     label: "Date Received", width: 130, type: "date",  raw: (p) => p.Date_Received },
   { key: "kpi",      label: "KPI Date",      width: 130, type: "date",  raw: (p) => p.KPI_Date },

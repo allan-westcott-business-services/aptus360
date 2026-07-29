@@ -675,7 +675,7 @@ const CSS = FILTER_CSS + `
   border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; margin: 0; cursor: pointer; }
 .up.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
-.ph-actions { display: flex; align-items: center; gap: 10px; }
+/* .ph-actions is in styles.css — one spec for every page toolbar. */
 .pc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .pc-toolbar select { width: auto; min-width: 132px; font-size: 12px; padding: 5px 8px; }

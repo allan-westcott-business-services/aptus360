@@ -4,14 +4,14 @@ import { listProjects } from "../../api/projects.js";
 import { getLookups } from "../../api/lookups.js";
 import ProjectDetail from "../projects/ProjectDetail.jsx";
 
-/* Customers, with their projects underneath.
+/* Customer branches, with their projects underneath.
 
-   The Projects table answers "what is going on", sorted and filtered
-   across everything. This answers a different question — what a
-   particular customer has with us — which otherwise means filtering the
-   projects table by customer and reading the count off the header.
+   Grouped by branch rather than customer, because that is the level work
+   is actually placed at: Anwyl Homes Lancashire and Anwyl Homes Wales
+   run separate programmes with separate contacts, and rolling them
+   together answers a question nobody asks.
 
-   Collapsed by default. A customer with forty projects is one line until
+   Collapsed by default. A branch with forty projects is one line until
    you want the detail, which is the point of grouping at all. */
 
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
@@ -44,10 +44,6 @@ export default function CustomerProjectsPage() {
     (id) => (lookups?.projectStatuses || []).find((s) => s.Project_Status_ID === id),
     [lookups]
   );
-  const branchById = useCallback(
-    (id) => (lookups?.branches || []).find((b) => b.Branch_ID === id),
-    [lookups]
-  );
   const personName = useCallback(
     (id) => (lookups?.people || []).find((p) => p.Person_ID === id)?.Person_Name ?? "\u2014",
     [lookups]
@@ -55,43 +51,50 @@ export default function CustomerProjectsPage() {
 
   const groups = useMemo(() => {
     if (!lookups) return [];
+    const branches = lookups.branches || [];
     const customers = lookups.customers || [];
     const q = search.trim().toLowerCase();
 
-    const rows = projects.filter((p) => {
-      if (hideClosed && statusById(p.Project_Status_ID)?.Is_Terminal) return false;
-      return true;
-    });
+    const rows = projects.filter((p) =>
+      !(hideClosed && statusById(p.Project_Status_ID)?.Is_Terminal));
 
-    const byCustomer = new Map();
+    const byBranch = new Map();
     for (const p of rows) {
-      const key = p.Customer_ID ?? 0;
-      if (!byCustomer.has(key)) byCustomer.set(key, []);
-      byCustomer.get(key).push(p);
+      const key = p.Branch_ID ?? 0;
+      if (!byBranch.has(key)) byBranch.set(key, []);
+      byBranch.get(key).push(p);
     }
 
-    /* Every customer, including those with nothing on. A customer absent
-       from the list reads as "no such customer" rather than "nothing
-       live", and the two matter differently to whoever is asking. */
-    const out = customers.map((c) => ({
-      id: c.Customer_ID,
-      name: c.Customer_Name,
-      projects: (byCustomer.get(c.Customer_ID) || [])
-        .sort((a, b) => String(b.Project_Ref).localeCompare(String(a.Project_Ref))),
+    /* Every branch, including those with nothing on. A branch absent from
+       the list reads as "no such branch" rather than "no live work", and
+       the two matter differently to whoever is asking.
+
+       Branch_Dropdown already reads "Anwyl Homes (Wales)" — it is
+       maintained by a trigger, so it follows a customer rename without
+       anything here having to join. */
+    const custName = (id) =>
+      customers.find((c) => c.Customer_ID === id)?.Customer_Name ?? "";
+    const out = branches.map((b) => ({
+      id: b.Branch_ID,
+      name: b.Branch_Dropdown || `${custName(b.Customer_ID)} (${b.Branch_Name})`,
+      customer: custName(b.Customer_ID),
+      projects: (byBranch.get(b.Branch_ID) || [])
+        .sort((a, b2) => String(b2.Project_Ref).localeCompare(String(a.Project_Ref))),
     }));
 
-    const orphans = byCustomer.get(0) || [];
-    if (orphans.length) out.push({ id: 0, name: "No customer set", projects: orphans });
+    const orphans = byBranch.get(0) || [];
+    if (orphans.length) out.push({ id: 0, name: "No branch set", customer: "", projects: orphans });
 
     return out
       .filter((g) => !q
         || g.name.toLowerCase().includes(q)
+        || g.customer.toLowerCase().includes(q)
         || g.projects.some((p) => `${p.Project_Ref} ${p.Site_Name}`.toLowerCase().includes(q)))
       .sort((a, b) => a.name.localeCompare(b.name));
   }, [projects, lookups, search, hideClosed, statusById]);
 
   const totals = useMemo(() => ({
-    customers: groups.length,
+    branches: groups.length,
     withWork: groups.filter((g) => g.projects.length > 0).length,
     projects: groups.reduce((t, g) => t + g.projects.length, 0),
   }), [groups]);
@@ -113,15 +116,15 @@ export default function CustomerProjectsPage() {
 
       <div className="ph-head">
         <div>
-          <h2 className="admin-title">Customers &amp; projects</h2>
+          <h2 className="admin-title">Customer branches &amp; projects</h2>
           <p className="tab-sub">
-            {totals.withWork} of {totals.customers} customers with{" "}
+            {totals.withWork} of {totals.branches} branches with{" "}
             {totals.projects} project{totals.projects === 1 ? "" : "s"}
             {hideClosed ? " open" : ""}. Open one to see them.
           </p>
         </div>
         <div className="ph-actions">
-          <input className="cp-search" value={search} placeholder="Customer, ref or site&hellip;"
+          <input className="cp-search" value={search} placeholder="Branch, customer, ref or site&hellip;"
             onChange={(e) => setSearch(e.target.value)} />
           <label className={hideClosed ? "cp-chk on" : "cp-chk"}>
             <input type="checkbox" checked={hideClosed}
@@ -174,7 +177,6 @@ export default function CustomerProjectsPage() {
                         <th style={{ width: 110 }}>Ref</th>
                         <th style={{ width: 46 }}>Rev</th>
                         <th>Site</th>
-                        <th style={{ width: 150 }}>Branch</th>
                         <th style={{ width: 130 }}>Status</th>
                         <th style={{ width: 110 }}>Received</th>
                         <th style={{ width: 110 }}>Secured</th>
@@ -192,9 +194,8 @@ export default function CustomerProjectsPage() {
                                on both screens. */
                             style={st?.Row_Colour ? { background: st.Row_Colour } : undefined}>
                             <td className="mono strong">{p.Project_Ref}</td>
-                            <td className="mono">{p.Revision ? `r${p.Revision}` : ""}</td>
+                            <td className="mono">{p.Revision ?? 0}</td>
                             <td>{p.Site_Name || <span className="cp-dim">unnamed</span>}</td>
-                            <td>{branchById(p.Branch_ID)?.Branch_Name ?? "\u2014"}</td>
                             <td>{st?.Status ?? "\u2014"}</td>
                             <td>{fmt(p.Date_Received)}</td>
                             <td>{fmt(p.Secured_Date)}</td>
@@ -215,10 +216,12 @@ export default function CustomerProjectsPage() {
 }
 
 const CSS = `
-.cp-search { width: 230px; flex: none; }
+/* Height, alignment and spacing come from .ph-actions in styles.css.
+   Only the width and the chip styling are this screen's business. */
+.cp-search { width: 230px; }
 .cp-chk { display: inline-flex; align-items: center; gap: 6px; font-size: 12px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--muted); margin: 0; cursor: pointer;
-  border: 1px solid var(--border); border-radius: 20px; padding: 6px 12px; height: 36px; }
+  border: 1px solid var(--border); border-radius: 20px; padding: 0 14px; }
 .cp-chk.on { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .cp-none { color: var(--muted); font-size: 13px; padding: 30px; text-align: center; }
 .cp-list { display: flex; flex-direction: column; gap: 8px; margin-top: 12px; }

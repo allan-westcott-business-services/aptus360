@@ -629,7 +629,7 @@ const CSS = FILTER_CSS + `
 .pd-save { padding: 6px 14px; font-size: 12.5px; }
 .pd-note { font-size: 11px; color: var(--muted); margin-left: auto; align-self: center; }
 
-.ph-actions { display: flex; gap: 8px; }
+/* .ph-actions is in styles.css — one spec for every page toolbar. */
 .gen-panel { border: 1.5px solid var(--border); border-radius: 12px; background: #f8f9fb;
   padding: 16px; margin-bottom: 16px; }
 .util-pick { display: flex; flex-wrap: wrap; gap: 6px; margin: 10px 0 12px; }

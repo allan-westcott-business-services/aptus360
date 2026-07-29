@@ -435,3 +435,37 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* Alignment helpers, here rather than repeated per screen. */
 .dt .num { text-align: right; font-variant-numeric: tabular-nums; }
 .dt .mid { text-align: center; }
+
+
+/* ── Page toolbars ────────────────────────────────────────────────
+   The row of controls beside a page heading. One spec here rather than
+   per screen: .ph-actions was defined twice with different gaps and
+   omitted by two of the four screens using it, so a toolbar looked
+   different depending on which page had rendered last.
+
+   Everything in it is the same height and vertically centred. Buttons
+   size to their content and don't wrap — a two-word caption should
+   widen the button, not stack inside it. */
+.ph-actions {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+  flex-wrap: wrap;
+  justify-content: flex-end;
+}
+.ph-actions > .btn,
+.ph-actions > input,
+.ph-actions > select,
+.ph-actions > label,
+.ph-actions > .col-menu-wrap > .btn {
+  height: 36px;
+  padding-top: 0;
+  padding-bottom: 0;
+  white-space: nowrap;
+  flex: none;
+}
+.ph-actions > .btn,
+.ph-actions > .col-menu-wrap > .btn {
+  display: inline-flex;
+  align-items: center;
+}

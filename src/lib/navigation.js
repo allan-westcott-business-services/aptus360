@@ -19,6 +19,7 @@ export const NAV_SECTIONS = [
          pickers have moved across, but new work belongs here. */
       { view: "organisations", label: "Organisations", built: true },
       { view: "customers", label: "Customers" },
+      { view: "customer-projects", label: "Customers & Projects", built: true },
       { view: "customer-feedback", label: "Customer Feedback" },
       { view: "dnos", label: "DNOs" },
       { view: "idnos", label: "IDNOs" },

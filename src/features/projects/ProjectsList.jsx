@@ -390,8 +390,12 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   if (loading) return <div className="loading">Loading projects&hellip;</div>;
   if (error) return <Banner kind="error">Couldn&rsquo;t load projects: {error}</Banner>;
 
+  /* Closes any open column filter. It used to close the Columns menu
+     too, but that state moved into the shared ColumnsMenu component,
+     which closes itself — the call was left behind and would have thrown
+     on any click of the page background. */
   return (
-    <div onClick={() => { setOpenFilter(null); setMenuOpen(false); }}>
+    <div onClick={() => setOpenFilter(null)}>
       <style>{CSS}</style>
 
       {revising && (
@@ -745,7 +749,7 @@ body.resizing { cursor: col-resize; user-select: none; }
 /* flex: none, not just a width: as a flex item the input would otherwise
    be free to grow into spare space or shrink below its stated size, and
    the width alone would be a suggestion rather than a measurement. */
-.list-tools .search { width: 115px; flex: none; }
+.list-tools .search { width: 230px; flex: none; }
 /* The Columns menu and its styles live in components/ColumnsMenu.jsx. */
 .col-opt { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 4px;
   text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; margin: 0; cursor: pointer; }

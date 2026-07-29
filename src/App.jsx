@@ -16,6 +16,7 @@ const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
    would drift, and the difference between the two would be invisible
    until someone edited a branch in the wrong one. */
 const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmin.jsx"));
+const CustomerProjectsPage = lazy(() => import("./features/customers/CustomerProjectsPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -78,6 +79,7 @@ function Shell() {
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
+  else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

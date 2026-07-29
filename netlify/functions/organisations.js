@@ -1,6 +1,6 @@
 import { supabase, json, fail } from "./_supabase.js";
 
-const ORG = "Organisation_ID,Name,Trading_Name,Code,Registration_Number,Address_1,Address_2,Town,County,Postcode,Phone,Email,Website,Notes,Is_Active";
+const ORG = "Organisation_ID,Name,Trading_Name,Code,Registration_Number,Address_1,Address_2,Town,County,Postcode,Phone,Email,Website,VAT_Registered,VAT_Rate,Notes,Is_Active";
 const BRANCH = "Organisation_Branch_ID,Organisation_ID,Branch_Name,Branch_Dropdown,Region_ID,Address_1,Town,Postcode,Phone,Is_Active";
 const CONTACT = "Organisation_Contact_ID,Organisation_Branch_ID,Organisation_Type_ID,Contact_Name,Job_Title,Email,Phone,Mobile,Is_Primary,Notes,Is_Active";
 /* A role's type is its identity — the unique constraint is on the

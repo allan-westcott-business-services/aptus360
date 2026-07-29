@@ -353,6 +353,28 @@ export default function OrganisationsAdmin() {
                         onChange={(e) => setOrgDraft((d) => ({ ...d, [col]: e.target.value }))} />
                     </div>
                   ))}
+                  {/* VAT belongs to the organisation, not to each invoice
+                      raised against it. Two fields rather than one: a rate
+                      of 0 and "not registered" are different facts, and an
+                      invoice needs to know which. */}
+                  <div className="fld">
+                    <label htmlFor="oa-vatreg">VAT</label>
+                    <label className="oa-inline oa-vat">
+                      <input id="oa-vatreg" type="checkbox"
+                        checked={!!orgDraft.VAT_Registered}
+                        onChange={(e) => setOrgDraft((d) => ({ ...d, VAT_Registered: e.target.checked }))} />
+                      Registered
+                    </label>
+                  </div>
+                  <div className="fld">
+                    <label htmlFor="oa-vatrate">VAT rate (%)</label>
+                    <input id="oa-vatrate" type="number" step="0.5"
+                      value={orgDraft.VAT_Rate ?? ""}
+                      disabled={!orgDraft.VAT_Registered}
+                      placeholder={orgDraft.VAT_Registered ? "standard" : "n/a"}
+                      onChange={(e) => setOrgDraft((d) => ({ ...d, VAT_Rate: e.target.value }))} />
+                    <p className="hint">Blank takes the standard rate.</p>
+                  </div>
                   <div className="fld oa-full">
                     <label htmlFor="oa-Notes">Notes</label>
                     <textarea id="oa-Notes" value={orgDraft.Notes ?? ""}
@@ -376,6 +398,11 @@ export default function OrganisationsAdmin() {
                     {org.Phone && <span>&#9742; {org.Phone}</span>}
                     {org.Email && <span>&#9993; {org.Email}</span>}
                     {org.Website && <span>{org.Website}</span>}
+                    {org.VAT_Registered && (
+                      <span className="oa-vatchip">
+                        VAT {org.VAT_Rate != null ? `${org.VAT_Rate}%` : "standard"}
+                      </span>
+                    )}
                     {(org.Town || org.Postcode) && <span>{org.Town} {org.Postcode}</span>}
                     {!org.Phone && !org.Email && (
                       <span className="oa-muted">No general contact details</span>
@@ -747,6 +774,8 @@ const CSS = `
   border-radius: 3px; padding: 1px 5px; }
 .oc-role, .oc-email, .oc-phone { flex: 1; color: var(--muted); min-width: 0;
   overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.oa-vat { margin-top: 6px; }
+.oa-vatchip { font-weight: 700; color: var(--accent); }
 .oa-inline { display: flex; align-items: center; gap: 6px; font-size: 11.5px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 0; }
 

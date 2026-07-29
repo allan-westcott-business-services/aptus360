@@ -48,7 +48,7 @@ export default async function handler() {
          already excludes inactive organisations and inactive roles. An
          organisation holding both roles comes back twice — once per
          role — which is correct for a role-scoped list. */
-      orgOperators:    db.from("Organisation_By_Role").select("Organisation_ID,Name,Code,Type_Key,role_label,Reference").in("Type_Key", ["dno", "idno"]).order("Name"),
+      orgOperators:    db.from("Organisation_By_Role").select("Organisation_ID,Name,Code,Type_Key,role_label,Reference,VAT_Registered,VAT_Rate").in("Type_Key", ["dno", "idno"]).order("Name"),
     };
 
     const keys = Object.keys(queries);

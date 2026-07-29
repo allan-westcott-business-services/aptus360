@@ -25,13 +25,11 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
   const [busy, setBusy] = useState(false);
 
   const [picked, setPicked] = useState({});      // plot_utility_id -> value
-  const [utility, setUtility] = useState("");
   const [agreement, setAgreement] = useState("");
-  const [idno, setIdno] = useState("");
+  const [operator, setOperator] = useState("");
   const [docType, setDocType] = useState("Invoice");
   const [invoiceDate, setInvoiceDate] = useState(new Date().toISOString().slice(0, 10));
   const [invoiceNumber, setInvoiceNumber] = useState("");
-  const [vatRate, setVatRate] = useState(20);
   const [each, setEach] = useState("");
 
   useEffect(() => {
@@ -48,19 +46,39 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
     return () => { live = false; };
   }, [projectId]);
 
-  /* One invoice covers one utility: the agreement, the operator and the
-     VAT treatment all follow from it, so a mixed invoice would have to
-     pick one of them arbitrarily. */
+  /* The agreement type carries the utility, so choosing one narrows the
+     plots without a second question. Electric, Gas, Water, Water NAV
+     Clean and Water NAV Waste all name a utility; the last two both
+     mean water. Asking for the utility as well would let the two
+     disagree, and then the invoice would have to pick one. */
+  const agreementTypes = lookups?.avAgreementTypes || [];
+  const chosenAgreement = agreementTypes
+    .find((a) => String(a.AV_Agreement_Type_ID) === String(agreement));
+  const utilityId = chosenAgreement?.Utility_ID ?? null;
+
   const forUtility = useMemo(
-    () => (utility ? billable.filter((r) => String(r.utility_id) === String(utility)) : billable),
-    [billable, utility]
+    () => (utilityId ? billable.filter((r) => String(r.utility_id) === String(utilityId)) : billable),
+    [billable, utilityId]
   );
 
-  const utilities = useMemo(
-    () => [...new Map(billable.map((r) => [r.utility_id, r.utility])).entries()]
-      .map(([id, name]) => ({ id, name })),
-    [billable]
+  /* Operators are organisations holding an IDNO or DNO role. The VAT
+     position travels with them, so picking one settles the rate rather
+     than leaving it to be typed. */
+  const operators = useMemo(
+    () => [...new Map((lookups?.orgOperators || [])
+      .map((o) => [o.Organisation_ID, o])).values()],
+    [lookups]
   );
+  const chosenOperator = operators
+    .find((o) => String(o.Organisation_ID) === String(operator));
+
+  /* Not registered means no VAT, which is different from a zero rate
+     that happens to be zero. Registered with no rate set takes the
+     standard one. */
+  const STANDARD_VAT = 20;
+  const vatRate = !chosenOperator ? STANDARD_VAT
+    : !chosenOperator.VAT_Registered ? 0
+    : (chosenOperator.VAT_Rate ?? STANDARD_VAT);
 
   const chosen = forUtility.filter((r) => picked[r.plot_utility_id] !== undefined);
   const net = chosen.reduce((t, r) => t + Number(picked[r.plot_utility_id] || 0), 0);
@@ -84,9 +102,9 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
     try {
       const res = await raiseAvInvoice({
         Project_ID: projectId,
-        Utility_ID: utility || chosen[0]?.utility_id || null,
+        Utility_ID: utilityId || chosen[0]?.utility_id || null,
         AV_Agreement_Type_ID: agreement || null,
-        IDNO_ID: idno || null,
+        IDNO_Organisation_ID: operator || null,
         Invoice_Number: invoiceNumber.trim() || null,
         Invoice_Date: invoiceDate,
         Document_Type: docType,
@@ -139,12 +157,14 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
             <>
               <div className="ri-grid">
                 <div className="fld">
-                  <label htmlFor="ri-util">Utility</label>
-                  <select id="ri-util" value={utility}
-                    onChange={(e) => { setUtility(e.target.value); setPicked({}); }}>
+                  <label htmlFor="ri-agr">Agreement type</label>
+                  <select id="ri-agr" value={agreement}
+                    onChange={(e) => { setAgreement(e.target.value); setPicked({}); }}>
                     <option value="">All ({billable.length} plots)</option>
-                    {utilities.map((u) => (
-                      <option key={u.id} value={u.id}>{u.name}</option>
+                    {agreementTypes.map((a) => (
+                      <option key={a.AV_Agreement_Type_ID} value={a.AV_Agreement_Type_ID}>
+                        {a.AV_Agreement_Type}
+                      </option>
                     ))}
                   </select>
                 </div>
@@ -166,29 +186,30 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                   </select>
                 </div>
                 <div className="fld">
-                  <label htmlFor="ri-agr">Agreement type</label>
-                  <select id="ri-agr" value={agreement} onChange={(e) => setAgreement(e.target.value)}>
+                  <label htmlFor="ri-op">IDNO / DNO</label>
+                  <select id="ri-op" value={operator} onChange={(e) => setOperator(e.target.value)}>
                     <option value="">&mdash;</option>
-                    {(lookups?.avAgreementTypes || []).map((a) => (
-                      <option key={a.AV_Agreement_Type_ID} value={a.AV_Agreement_Type_ID}>
-                        {a.AV_Agreement_Type}
+                    {operators.map((o) => (
+                      <option key={o.Organisation_ID} value={o.Organisation_ID}>
+                        {o.Name}{o.Code ? ` (${o.Code})` : ""}
                       </option>
                     ))}
                   </select>
                 </div>
                 <div className="fld">
-                  <label htmlFor="ri-idno">IDNO</label>
-                  <select id="ri-idno" value={idno} onChange={(e) => setIdno(e.target.value)}>
-                    <option value="">&mdash;</option>
-                    {(lookups?.idnos || []).map((i) => (
-                      <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
-                    ))}
-                  </select>
-                </div>
-                <div className="fld">
-                  <label htmlFor="ri-vat">VAT rate (%)</label>
-                  <input id="ri-vat" type="number" step="0.5" value={vatRate}
-                    onChange={(e) => setVatRate(e.target.value)} />
+                  <label>VAT rate</label>
+                  {/* Read from the operator, not entered. Change it on the
+                      organisation in Admin, where it applies to every
+                      invoice raised against them. */}
+                  <p className="ri-vat">
+                    {vatRate}%
+                    <span>
+                      {!chosenOperator ? "standard \u2014 no operator chosen"
+                        : !chosenOperator.VAT_Registered ? `${chosenOperator.Name} isn\u2019t VAT registered`
+                        : chosenOperator.VAT_Rate == null ? "standard rate"
+                        : `set on ${chosenOperator.Name}`}
+                    </span>
+                  </p>
                 </div>
                 <div className="fld">
                   <label htmlFor="ri-each">Value per plot</label>
@@ -286,5 +307,7 @@ const CSS = `
 .ri-totals { display: flex; gap: 18px; align-items: center; margin-top: 12px; padding-top: 11px;
   border-top: 1px solid var(--border); font-size: 12.5px; color: var(--muted); }
 .ri-totals strong { color: var(--text); font-variant-numeric: tabular-nums; }
+.ri-vat { margin: 0; font-size: 14px; font-weight: 700; display: flex; flex-direction: column; }
+.ri-vat span { font-size: 10.5px; font-weight: 500; color: var(--muted); }
 .ri-by { margin-left: auto; }
 `;

@@ -22,7 +22,10 @@ export default async function handler() {
       roles:          db.from("Role").select("Role_ID,Role,Role_Code,Sort_Order").eq("Is_Active", true).order("Sort_Order"),
       utilities:      db.from("Utility").select("Utility_ID,Utility,Is_Lighting").order("Sort_Order"),
       fireServices:   db.from("Fire_Service").select("Fire_Service_ID,Fire_Service_Name").order("Fire_Service_Name"),
-      idnos:          db.from("IDNO").select("IDNO_ID,IDNO_Name").order("IDNO_Name"),
+      /* Through the view so the picker knows which utilities each one
+         covers. An empty utility_ids means unassigned, which the picker
+         treats as unrestricted rather than as matching nothing. */
+      idnos:          db.from("IDNO_With_Utilities").select("IDNO_ID,IDNO_Name,Organisation_ID,utility_ids").order("IDNO_Name"),
       propertyTypes:   db.from("Property_Type").select("Property_Type_ID,Property_Type").eq("Is_Active", true).order("Sort_Order"),
       propertyConfigs: db.from("Property_Config").select("Property_Config_ID,Bedrooms,Property_Type_ID,Code").eq("Is_Active", true).order("Bedrooms"),
       heatSources:    db.from("Heat_Source").select("Heat_Source_ID,Heat_Source").order("Heat_Source"),
@@ -53,6 +56,7 @@ export default async function handler() {
          organisation holding both roles comes back twice — once per
          role — which is correct for a role-scoped list. */
       orgOperators:    db.from("Organisation_By_Role").select("Organisation_ID,Name,Code,Type_Key,role_label,Reference,VAT_Registered,VAT_Rate").in("Type_Key", ["dno", "idno"]).order("Name"),
+      operatorUtilities: db.from("Operator_Utility").select("Organisation_ID,Name,Code,utility_ids,role_keys").order("Name"),
     };
 
     const keys = Object.keys(queries);

@@ -42,6 +42,14 @@ export async function addRole(body) {
 /* Only the reference and the active flag. Changing which role it is
    means removing it and adding the other one — the unique constraint is
    on organisation + type + subtype. */
+/* The whole set, not a delta. Three checkboxes are small enough that
+   sending the intended state is simpler and safer than sending changes. */
+export async function saveOrgUtilities(id, utility_ids) {
+  clearLookupCache();
+  if (USE_MOCKS) { await delay(120); return { utilities: utility_ids }; }
+  return http.put(`/organisations?what=utilities&id=${id}`, { utility_ids });
+}
+
 export async function saveRole(id, body) {
   clearLookupCache();
   if (USE_MOCKS) { await delay(150); return body; }

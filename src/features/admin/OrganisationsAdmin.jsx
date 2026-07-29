@@ -3,8 +3,9 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import {
   listOrganisations, getOrgTypes, getOrganisation, saveOrganisation,
-  saveBranch, saveContact, addRole, saveRole, removeRecord,
+  saveBranch, saveContact, addRole, saveRole, saveOrgUtilities, removeRecord,
 } from "../../api/organisations.js";
+import { UTILITIES } from "../../lib/utilities.js";
 
 /* Organisations.
 
@@ -53,6 +54,7 @@ export default function OrganisationsAdmin() {
   const [types, setTypes] = useState([]);
   const [subtypes, setSubtypes] = useState([]);
   const [regions, setRegions] = useState([]);
+  const [utilities, setUtilities] = useState([]);   // utility ids this operator covers
   const [selected, setSelected] = useState(null);
   const [detail, setDetail] = useState(null);
   const [search, setSearch] = useState("");
@@ -93,8 +95,11 @@ export default function OrganisationsAdmin() {
 
   const loadDetail = useCallback(async (id) => {
     if (!id) { setDetail(null); return; }
-    try { setDetail(await getOrganisation(id)); }
-    catch (e) { setError(e.message); }
+    try {
+      const d = await getOrganisation(id);
+      setDetail(d);
+      setUtilities(d.utilities || []);
+    } catch (e) { setError(e.message); }
   }, []);
 
   useEffect(() => { loadDetail(selected); }, [selected, loadDetail]);
@@ -153,6 +158,20 @@ export default function OrganisationsAdmin() {
       await Promise.all([loadList(), loadDetail(selected)]);
       setError("");
     } catch (e) { setError(e.message); }
+  }
+
+  /* Only asked for where it changes anything. A subcontractor does not
+     operate a network, so the question would be noise on most records. */
+  const isOperator = (detail?.roles || []).some((r) =>
+    ["idno", "dno"].includes(typeById(r.Organisation_Type_ID)?.Type_Key));
+
+  async function toggleUtility(utilityId) {
+    const next = utilities.includes(utilityId)
+      ? utilities.filter((u) => u !== utilityId)
+      : [...utilities, utilityId];
+    setUtilities(next);
+    try { await saveOrgUtilities(selected, next); setError(""); }
+    catch (e) { setError(e.message); setUtilities(utilities); }
   }
 
   async function detachRole(roleId) {
@@ -412,6 +431,26 @@ export default function OrganisationsAdmin() {
                     )}
                   </div>
                   {org.Notes && <p className="oa-notes">{org.Notes}</p>}
+                </>
+              )}
+
+              {isOperator && (
+                <>
+                  <p className="panel-label">Utilities operated</p>
+                  <div className="oa-utils">
+                    {UTILITIES.filter((u) => u.group === "Residential").map((u) => (
+                      <label key={u.id} className={utilities.includes(u.id) ? "oa-util on" : "oa-util"}>
+                        <input type="checkbox" checked={utilities.includes(u.id)}
+                          onChange={() => toggleUtility(u.id)} />
+                        <span className="dot" style={{ background: u.colour }} />
+                        {u.name}
+                      </label>
+                    ))}
+                  </div>
+                  <p className="hint oa-uhint">
+                    Decides which asset value agreements this operator can be a partner to.
+                    Leave all clear and it stays available on every type.
+                  </p>
                 </>
               )}
 
@@ -738,6 +777,12 @@ const CSS = `
 .oa-form-actions { grid-column: 1 / -1; display: flex; align-items: center; gap: 12px;
   flex-wrap: wrap; }
 .oa-form-actions .hint { margin: 0; flex: 1; }
+.oa-utils { display: flex; flex-wrap: wrap; gap: 8px; margin-bottom: 4px; }
+.oa-util { display: inline-flex; align-items: center; gap: 7px; font-size: 12.5px; font-weight: 600;
+  text-transform: none; letter-spacing: 0; color: var(--text); margin: 0; cursor: pointer;
+  border: 1px solid var(--border); border-radius: 20px; padding: 4px 12px 4px 9px; }
+.oa-util.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); }
+.oa-uhint { margin: 0 0 10px; max-width: 70ch; }
 .oa-roles-list { display: flex; flex-wrap: wrap; gap: 6px; margin-bottom: 9px; }
 .oa-role { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
   background: var(--accent-light); border: 1px solid var(--accent); color: var(--accent);

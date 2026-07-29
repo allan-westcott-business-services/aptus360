@@ -53,14 +53,16 @@ export default async function handler(req, context) {
 
     /* ── Everything about one organisation ── */
     if (req.method === "GET" && what === "detail" && id) {
-      const [org, roles, branches] = await Promise.all([
+      const [org, roles, branches, utils] = await Promise.all([
         db.from("Organisation").select(ORG).eq("Organisation_ID", id).single(),
         db.from("Organisation_Role").select("*").eq("Organisation_ID", id),
         db.from("Organisation_Branch").select(BRANCH).eq("Organisation_ID", id).order("Branch_Name"),
+        db.from("Organisation_Utility").select("Utility_ID").eq("Organisation_ID", id),
       ]);
       if (org.error) throw org.error;
       if (roles.error) throw roles.error;
       if (branches.error) throw branches.error;
+      if (utils.error) throw utils.error;
 
       const branchIds = (branches.data || []).map((b) => b.Organisation_Branch_ID);
       let contacts = [];
@@ -70,7 +72,10 @@ export default async function handler(req, context) {
         if (error) throw error;
         contacts = data || [];
       }
-      return json({ organisation: org.data, roles: roles.data || [], branches: branches.data || [], contacts });
+      return json({
+        organisation: org.data, roles: roles.data || [], branches: branches.data || [], contacts,
+        utilities: (utils.data || []).map((u) => u.Utility_ID),
+      });
     }
 
     /* ── The list, with role summary from the view ── */
@@ -80,6 +85,25 @@ export default async function handler(req, context) {
         .order("Name");
       if (error) throw error;
       return json({ rows: data || [] });
+    }
+
+    /* Which utilities an operator works in. Replaced wholesale rather
+       than diffed: the set is three checkboxes, and sending the whole
+       set means the request says what should be true rather than what
+       changed — no chance of two edits interleaving into a state neither
+       person chose. */
+    if (req.method === "PUT" && what === "utilities" && id) {
+      const { utility_ids = [] } = await req.json();
+      const { error: delErr } = await db.from("Organisation_Utility")
+        .delete().eq("Organisation_ID", id);
+      if (delErr) throw delErr;
+      if (utility_ids.length) {
+        const { error } = await db.from("Organisation_Utility").insert(
+          utility_ids.map((u) => ({ Organisation_ID: Number(id), Utility_ID: Number(u) }))
+        );
+        if (error) throw error;
+      }
+      return json({ utilities: utility_ids.map(Number) });
     }
 
     if (req.method === "POST") {

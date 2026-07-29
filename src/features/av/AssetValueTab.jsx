@@ -111,6 +111,19 @@ export default function AssetValueTab({ projectId }) {
     (lookups?.avAgreementTypes || []).find((t) => t.AV_Agreement_Type_ID === id)?.AV_Agreement_Type ?? "\u2014";
   const agreedTotal = agreements.reduce((s2, a) => s2 + (Number(a.AV_Value) || 0), 0);
 
+  /* The utility the chosen agreement type resolves to, and the operators
+     that work in it. Empty utility_ids means unassigned, which counts as
+     unrestricted — the alternative is that every operator disappears
+     until someone has been through them all. */
+  const draftUtilityId = (lookups?.avAgreementTypes || [])
+    .find((t) => String(t.AV_Agreement_Type_ID) === String(agDraft.AV_Agreement_Type_ID))?.Utility_ID;
+  const allIdnos = lookups?.idnos || [];
+  const eligibleIdnos = !draftUtilityId ? allIdnos : allIdnos.filter((i) => {
+    const ids = i.utility_ids || [];
+    return ids.length === 0 || ids.map(Number).includes(Number(draftUtilityId));
+  });
+  const hiddenIdnos = allIdnos.length - eligibleIdnos.length;
+
   async function submitAgreement() {
     /* The agreement type is what an agreement is. Utility follows from
        it — a trigger sets it on write — so asking for both would let the
@@ -346,13 +359,25 @@ export default function AssetValueTab({ projectId }) {
                   ))}
                 </select></div>
               <div className="fld"><label>IDNO</label>
+                {/* Only operators that work in this agreement's utility.
+                    A water operator covers Water, Water NAV Clean and
+                    Water NAV Waste — all three resolve to water — and is
+                    not offered on Electric. An operator with no utilities
+                    assigned stays available on every type, so an
+                    unconfigured one is usable rather than invisible. */}
                 <select value={agDraft.IDNO_ID}
                   onChange={(e) => setAgDraft((d) => ({ ...d, IDNO_ID: e.target.value }))}>
                   <option value="">&mdash;</option>
-                  {(lookups.idnos || []).map((i) => (
+                  {eligibleIdnos.map((i) => (
                     <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
                   ))}
-                </select></div>
+                </select>
+                {agDraft.AV_Agreement_Type_ID && hiddenIdnos > 0 && (
+                  <p className="hint">
+                    {hiddenIdnos} operator(s) hidden &mdash; they don&rsquo;t work in this utility.
+                    Set that on the organisation.
+                  </p>
+                )}</div>
               <div className="fld"><label>IDNO reference</label>
                 <input value={agDraft.IDNO_Reference}
                   placeholder="Their reference for this agreement"

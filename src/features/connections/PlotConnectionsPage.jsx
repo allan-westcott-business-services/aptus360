@@ -5,6 +5,7 @@ import { listAllConnections, updateConnection, bulkUpdateConnections } from "../
 import { UTILITIES, RESIDENTIAL_UTILITIES, utilityById } from "../../lib/utilities.js";
 import NewScheduleModal from "./NewScheduleModal.jsx";
 import { useTableLayout } from "../../lib/useTableLayout.js";
+import ColumnsMenu from "../../components/ColumnsMenu.jsx";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
 /* Plot connections — one row per plot per utility, tracked from
@@ -22,10 +23,10 @@ const nat = (a, b) => {
 };
 
 const COLS = [
-  { key: "sel",     label: "",           width: 38,  type: "none", raw: () => "" },
+  { key: "sel",     label: "Select",     width: 38,  type: "none", fixed: true, raw: () => "" },
   { key: "project", label: "Project",    width: 110, type: "multi", raw: (r) => r._projectId },
   { key: "site",    label: "Site",       width: 180, type: "text",  raw: (r) => r._siteName || "" },
-  { key: "plot",    label: "Plot",       width: 80,  type: "text",  align: "left", raw: (r) => r._plotNumber || "" },
+  { key: "plot",    label: "Plot",       width: 80,  type: "text",  align: "left", fixed: true, raw: (r) => r._plotNumber || "" },
   { key: "utility", label: "Utility",    width: 140, type: "multi", raw: (r) => r.Utility_ID },
   { key: "prog",    label: "Programmed", width: 128, type: "date", raw: (r) => r.Programmed_Date },
   { key: "conn",    label: "Connected",  width: 128, type: "date", raw: (r) => r.Connection_Date },
@@ -34,8 +35,6 @@ const COLS = [
   { key: "pack",    label: "Status",     width: 140, type: "multi", raw: (r) => r.Pack_Status_ID },
   { key: "meter",   label: "Meter no.",  width: 140, type: "text", raw: (r) => r.Meter_Number || "" },
   { key: "scsub",   label: "SC submitted", width: 128, type: "date", raw: (r) => r.Service_Card_Submission_Date },
-  { key: "adopter", label: "Adopter",    width: 140, type: "multi", raw: (r) => r.IDNO_ID },
-  { key: "av",      label: "AV value",   width: 104, type: "num",  align: "right", raw: (r) => r.AV_Value ?? null },
 ];
 
 /* Grouping by a field makes that column redundant — the heading already
@@ -98,7 +97,6 @@ export default function PlotConnectionsPage() {
   );
 
   const packName = (id) => (lookups?.packStatuses || []).find((s) => s.Pack_Status_ID === id)?.Pack_Status ?? "\u2014";
-  const idnoName = (id) => (lookups?.idnos || []).find((i) => i.IDNO_ID === id)?.IDNO_Name ?? "\u2014";
 
   const projectOptions = useMemo(() => {
     const m = new Map();
@@ -110,7 +108,6 @@ export default function PlotConnectionsPage() {
     if (key === "project") return projectOptions;
     if (key === "utility") return RESIDENTIAL_UTILITIES.map((u) => ({ id: u.id, label: u.name }));
     if (key === "pack") return (lookups?.packStatuses || []).map((s) => ({ id: s.Pack_Status_ID, label: s.Pack_Status }));
-    if (key === "adopter") return (lookups?.idnos || []).map((i) => ({ id: i.IDNO_ID, label: i.IDNO_Name }));
     return [];
   };
 
@@ -169,6 +166,10 @@ export default function PlotConnectionsPage() {
      COLS directly here was the bug: a dropped column updated the saved
      order and the table went on rendering in the original sequence, so
      the drag looked like it had failed. */
+  /* Two different kinds of hiding, deliberately kept apart: the grouping
+     folds away the column it is grouping by, and layout.visible carries
+     what the user chose in the Columns picker. Merging them would make a
+     grouping change look like it had forgotten their choice. */
   const cols = layout.visible.filter((c) => !hidden.includes(c.key));
 
   const activeToolbar =
@@ -226,6 +227,12 @@ export default function PlotConnectionsPage() {
           </p>
         </div>
         <div className="ph-actions">
+          <ColumnsMenu
+            columns={COLS}
+            hidden={layout.hidden}
+            onToggle={layout.toggleColumn}
+            onReset={layout.reset}
+          />
           <button className="btn ghost" onClick={() => { setLoading(true); load(); }}>&#8635; Refresh</button>
           <button className="btn accent" onClick={() => setScheduleOpen(true)}>+ New Schedule</button>
         </div>
@@ -382,7 +389,7 @@ export default function PlotConnectionsPage() {
                           col.key === "sel" ? "mid"
                           : col.key === "project" ? "mono ref"
                           : col.key === "plot" ? "mono strong plot-cell"
-                          : col.key === "av" ? "num" : undefined}>
+                          : undefined}>
 
                         {col.key === "sel" ? (
                           <input type="checkbox" checked={on}
@@ -436,18 +443,12 @@ export default function PlotConnectionsPage() {
                           <input className="in" type="date" value={r.Service_Card_Submission_Date || ""}
                             onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} />)
 
-                        : col.key === "adopter" ? (
-                          <select className="in" value={r.IDNO_ID ?? ""}
-                            onChange={(e) => patch(r, "IDNO_ID", e.target.value ? Number(e.target.value) : null)}>
-                            <option value="">&mdash;</option>
-                            {(lookups.idnos || []).map((i) => (
-                              <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
-                            ))}
-                          </select>)
-
-                        : (
-                          <input className="in num" type="number" step="0.01" value={r.AV_Value ?? ""}
-                            onChange={(e) => patch(r, "AV_Value", e.target.value)} />)}
+                        /* A column with no branch renders empty rather
+                           than falling through to whichever cell happens
+                           to be last — that was how the old chain worked,
+                           and it would put the wrong control in any
+                           column added later. */
+                        : null}
                       </td>
                     ))}
                   </tr>

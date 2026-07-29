@@ -74,9 +74,15 @@ export function useColumnReorder(setPrefs, save) {
 
 export function useTableLayout(storageKey, columns) {
   const KEY = `aptus_tbl_${storageKey}`;
+  /* A column marked hiddenByDefault starts off but stays in the Columns
+     picker, so it can be turned on. Nothing sets it at the moment —
+     Plot Connections briefly did, before those two columns were dropped
+     altogether — but it costs a line and the picker makes it useful. */
+  const DEFAULTS_V = columns.filter((c) => c.hiddenByDefault).map((c) => c.key).join(",");
   const defaults = () => ({
+    v: DEFAULTS_V,
     order: columns.map((c) => c.key),
-    hidden: [],
+    hidden: columns.filter((c) => c.hiddenByDefault).map((c) => c.key),
     widths: Object.fromEntries(columns.map((c) => [c.key, c.width || 130])),
   });
 
@@ -89,11 +95,17 @@ export function useTableLayout(storageKey, columns) {
       const valid = new Set(def.order);
       const order = (p.order || []).filter((k) => valid.has(k));
       def.order.forEach((k) => !order.includes(k) && order.push(k));
-      return {
-        order,
-        hidden: (p.hidden || []).filter((k) => valid.has(k)),
-        widths: { ...def.widths, ...(p.widths || {}) },
-      };
+      /* Saved preferences win, except the first time the set of
+         default-hidden columns changes. Without that, a column newly
+         defaulted off would stay visible for everyone who had ever used
+         the table — which is everyone. The stamp makes it a one-off
+         rather than something that overrides the choice every load. */
+      const hidden = (p.hidden || []).filter((k) => valid.has(k));
+      const migrated = p.v !== def.v;
+      if (migrated) {
+        for (const k of def.hidden) if (!hidden.includes(k)) hidden.push(k);
+      }
+      return { v: def.v, order, hidden, widths: { ...def.widths, ...(p.widths || {}) } };
     } catch {
       return def;
     }

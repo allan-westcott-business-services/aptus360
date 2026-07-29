@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listProjects, setPriority, deleteProject, resurrectProject } from "../../api/projects.js";
 import { useColumnReorder } from "../../lib/useTableLayout.js";
+import ColumnsMenu from "../../components/ColumnsMenu.jsx";
 import BurgerMenu, { BURGER_CSS } from "../../components/BurgerMenu.jsx";
 import CreateRevisionModal from "./CreateRevisionModal.jsx";
 import { UTILITIES } from "../../lib/utilities.js";
@@ -93,7 +94,6 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   /* This page keeps its own prefs rather than using useTableLayout, but
      the reordering is the same behaviour and comes from the same place. */
   const { reorderProps } = useColumnReorder(setPrefs, savePrefs);
-  const [menuOpen, setMenuOpen] = useState(false);
   const [openFilter, setOpenFilter] = useState(null);
   const [revising, setRevising] = useState(null);
   const [priorityOnly, setPriorityOnly] = useState(false);
@@ -436,24 +436,12 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
           {(activeCount > 0 || !!search || priorityOnly || utilFilter.length > 0) && (
             <button className="btn ghost" onClick={clearAll}>Clear filters</button>
           )}
-          <div className="col-menu-wrap">
-            <button className="btn ghost" onClick={() => setMenuOpen((o) => !o)}>Columns</button>
-            {menuOpen && (
-              <div className="col-menu">
-                <div className="col-menu-head">
-                  <span>Show columns</span>
-                  <button onClick={resetColumns}>Reset</button>
-                </div>
-                {COLUMNS.map((c) => (
-                  <label key={c.key} className="col-opt">
-                    <input type="checkbox" checked={!prefs.hidden.includes(c.key)}
-                      onChange={() => toggleColumn(c.key)} />
-                    {c.label}
-                  </label>
-                ))}
-              </div>
-            )}
-          </div>
+          <ColumnsMenu
+            columns={COLUMNS}
+            hidden={prefs.hidden}
+            onToggle={toggleColumn}
+            onReset={resetColumns}
+          />
           {onNew && <button className="btn accent" onClick={onNew}>+ New project</button>}
         </div>
       </div>
@@ -738,18 +726,7 @@ body.resizing { cursor: col-resize; user-select: none; }
    be free to grow into spare space or shrink below its stated size, and
    the width alone would be a suggestion rather than a measurement. */
 .list-tools .search { width: 115px; flex: none; }
-.col-menu-wrap { position: relative; }
-.col-menu {
-  position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 40;
-  background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
-  box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 8px; width: 190px; max-height: 340px; overflow-y: auto;
-}
-.col-menu-head {
-  display: flex; justify-content: space-between; align-items: center; font-size: 10.5px;
-  font-weight: 700; text-transform: uppercase; letter-spacing: .07em; color: var(--muted);
-  padding: 2px 4px 8px; border-bottom: 1px solid var(--border); margin-bottom: 6px;
-}
-.col-menu-head button { background: none; border: none; cursor: pointer; color: var(--accent); font: inherit; }
+/* The Columns menu and its styles live in components/ColumnsMenu.jsx. */
 .col-opt { display: flex; align-items: center; gap: 7px; font-size: 12.5px; padding: 4px;
   text-transform: none; letter-spacing: 0; color: var(--text); font-weight: 400; margin: 0; cursor: pointer; }
 

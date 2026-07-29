@@ -13,6 +13,11 @@ export const NAV_SECTIONS = [
     icon: "\u{1F3E2}",
     colour: "#a78bfa",
     items: [
+      /* First in the section, because it is the one record the others are
+         becoming. Customers, DNOs, IDNOs and Fire Authorities are the
+         five parallel tables Organisations replaces — they stay until the
+         pickers have moved across, but new work belongs here. */
+      { view: "organisations", label: "Organisations", built: true },
       { view: "customers", label: "Customers" },
       { view: "customer-feedback", label: "Customer Feedback" },
       { view: "dnos", label: "DNOs" },

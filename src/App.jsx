@@ -12,6 +12,10 @@ const PlotConnectionsPage = lazy(() => import("./features/connections/PlotConnec
 const GISCanvasPage = lazy(() => import("./features/gis/GISCanvasPage.jsx"));
 const GenerateAvInvoices = lazy(() => import("./features/av/GenerateAvInvoices.jsx"));
 const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
+/* The same screen the Admin suite uses. One implementation: a second
+   would drift, and the difference between the two would be invisible
+   until someone edited a branch in the wrong one. */
+const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmin.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -73,6 +77,7 @@ function Shell() {
   else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
+  else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

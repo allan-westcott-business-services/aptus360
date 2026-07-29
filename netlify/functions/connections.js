@@ -5,7 +5,7 @@ const COLS = [
   "Meter_Number","Meter_Reference","Meter_Date","Service_Card_Date",
   "Service_Card_Submission_Date","Meter_Card_Submission_Date","Pack_Status_ID","Visit_Outcome",
   "IDNO_ID","Reference","AV_Value","AV_Invoice_Number","AV_Invoiced_Date","Self_Lay_Provider","Notes",
-  "Dead_Jointed_Date","Visit_Outcome_ID",
+  "Dead_Jointed_Date","Visit_Outcome_ID","Team_ID",
 ].join(",");
 
 const WRITABLE = new Set(COLS.split(",").filter((c) => c !== "Plot_Utility_ID"));
@@ -26,7 +26,11 @@ export default async function handler(req, context) {
       const ids = (plots || []).map((p) => p.Plot_ID);
       let rows = [];
       if (ids.length) {
-        const { data, error } = await db.from("Plot_Utility").select(COLS).in("Plot_ID", ids);
+        /* Read from the view rather than the table: it carries the IDNO
+           from the project's AV agreement, the plot's self-lay flag and a
+           photo count, none of which live on the connection. Writes still
+           go to Plot_Utility — a view is not something to update. */
+        const { data, error } = await db.from("Plot_Connection_Detail").select("*").in("Plot_ID", ids);
         if (error) throw error;
         rows = data || [];
       }

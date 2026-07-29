@@ -4,6 +4,7 @@ import { getLookups } from "../../api/lookups.js";
 import { listAllConnections, updateConnection, bulkUpdateConnections } from "../../api/connections.js";
 import { UTILITIES, RESIDENTIAL_UTILITIES, utilityById } from "../../lib/utilities.js";
 import NewScheduleModal from "./NewScheduleModal.jsx";
+import PhotoPanel from "./PhotoPanel.jsx";
 import { useTableLayout } from "../../lib/useTableLayout.js";
 import ColumnsMenu from "../../components/ColumnsMenu.jsx";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
@@ -28,14 +29,25 @@ const COLS = [
   { key: "site",    label: "Site",       width: 180, type: "text",  raw: (r) => r._siteName || "" },
   { key: "plot",    label: "Plot",       width: 80,  type: "text",  align: "left", fixed: true, raw: (r) => r._plotNumber || "" },
   { key: "utility", label: "Utility",    width: 140, type: "multi", raw: (r) => r.Utility_ID },
+  { key: "slp",     label: "SLP",        width: 62,  type: "multi", align: "center", raw: (r) => (r._slp ? "Yes" : "No") },
+  { key: "idno",    label: "IDNO",       width: 150, type: "text",  raw: (r) => r._idnoName || "" },
   { key: "prog",    label: "Programmed", width: 128, type: "date", raw: (r) => r.Programmed_Date },
-  { key: "conn",    label: "Connected",  width: 128, type: "date", raw: (r) => r.Connection_Date },
-  { key: "laid",    label: "As laid",    width: 128, type: "date", raw: (r) => r.As_Laid_Date },
-  { key: "outcome", label: "Outcome",    width: 150, type: "multi", raw: (r) => r.Visit_Outcome_ID },
+  { key: "team",    label: "Team",       width: 140, type: "multi", raw: (r) => r.Team_ID },
   { key: "pack",    label: "Status",     width: 140, type: "multi", raw: (r) => r.Pack_Status_ID },
+  { key: "outcome", label: "Outcome",    width: 150, type: "multi", raw: (r) => r.Visit_Outcome_ID },
+  { key: "conn",    label: "Connected",  width: 128, type: "date", raw: (r) => r.Connection_Date },
   { key: "meter",   label: "Meter no.",  width: 140, type: "text", raw: (r) => r.Meter_Number || "" },
   { key: "scsub",   label: "SC submitted", width: 128, type: "date", raw: (r) => r.Service_Card_Submission_Date },
+  { key: "mcsub",   label: "MC submitted", width: 128, type: "date", raw: (r) => r.Meter_Card_Submission_Date },
+  { key: "laid",    label: "As laid",    width: 128, type: "date", raw: (r) => r.As_Laid_Date },
+  { key: "photo",   label: "Photos",     width: 92,  type: "none", align: "center", raw: () => "" },
 ];
+
+/* Electric meters are the operator's, not ours: there is no meter number
+   to record and no meter card to submit. Showing the fields empty invites
+   someone to fill them in, so they read N/A instead. */
+const ELECTRIC = 1;
+const NA_FOR_ELECTRIC = ["meter", "mcsub"];
 
 /* Grouping by a field makes that column redundant — the heading already
    says it, so showing it repeats the same value down every row. */
@@ -54,13 +66,17 @@ const GROUP_HIDES = { project: ["project", "site"], region: [], utility: ["utili
    connected on paper and untouched on site. Nothing after Outcome until
    there is one, for the same reason — a pack status against a visit with
    no known result says nothing. */
-const at = (k) => COLS.findIndex((c) => c.key === k);
-const AFTER_PROG = COLS.slice(at("prog") + 1).map((c) => c.key);
-const AFTER_OUTCOME = COLS.slice(at("outcome") + 1).map((c) => c.key);
+/* Listed rather than derived from the column order. The two gates are a
+   fact about the work — you cannot record a result for a visit that was
+   never booked, or a meter reading for a visit with no known result —
+   and the columns can be dragged into any order without that changing. */
+const NEEDS_PROG = ["team", "idno", "pack", "outcome"];
+const NEEDS_OUTCOME = ["conn", "meter", "scsub", "mcsub", "laid", "photo"];
 
 const lockedReason = (colKey, r) => {
-  if (AFTER_OUTCOME.includes(colKey) && !r.Visit_Outcome_ID) return "Set an outcome first";
-  if (AFTER_PROG.includes(colKey) && !r.Programmed_Date) return "Set a programmed date first";
+  if (NA_FOR_ELECTRIC.includes(colKey) && Number(r.Utility_ID) === ELECTRIC) return "na";
+  if (NEEDS_OUTCOME.includes(colKey) && !r.Visit_Outcome_ID) return "Set an outcome first";
+  if (NEEDS_PROG.includes(colKey) && !r.Programmed_Date) return "Set a programmed date first";
   return null;
 };
 
@@ -68,12 +84,14 @@ const lockedReason = (colKey, r) => {
    column gates it. */
 const BULK_FIELDS = [
   { field: "Programmed_Date", label: "Programmed", type: "date", col: "prog" },
-  { field: "Connection_Date", label: "Connected", type: "date", col: "conn" },
-  { field: "As_Laid_Date", label: "As laid", type: "date", col: "laid" },
-  { field: "Visit_Outcome_ID", label: "Outcome", type: "outcome", col: "outcome" },
+  { field: "Team_ID", label: "Team", type: "team", col: "team" },
   { field: "Pack_Status_ID", label: "Status", type: "pack", col: "pack" },
+  { field: "Visit_Outcome_ID", label: "Outcome", type: "outcome", col: "outcome" },
+  { field: "Connection_Date", label: "Connected", type: "date", col: "conn" },
   { field: "Meter_Number", label: "Meter no.", type: "text", col: "meter" },
   { field: "Service_Card_Submission_Date", label: "SC submitted", type: "date", col: "scsub" },
+  { field: "Meter_Card_Submission_Date", label: "MC submitted", type: "date", col: "mcsub" },
+  { field: "As_Laid_Date", label: "As laid", type: "date", col: "laid" },
 ];
 
 export default function PlotConnectionsPage() {
@@ -91,6 +109,7 @@ export default function PlotConnectionsPage() {
   /* One draft per field, empty meaning "leave alone". A bulk form
      pre-filled from one row is how the other forty get overwritten. */
   const [bulkDraft, setBulkDraft] = useState({});
+  const [photoFor, setPhotoFor] = useState(null);
   const [busy, setBusy] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -299,6 +318,10 @@ export default function PlotConnectionsPage() {
         </div>
       </div>
 
+      {photoFor && (
+        <PhotoPanel connection={photoFor} onClose={() => setPhotoFor(null)} onChanged={load} />
+      )}
+
       {scheduleOpen && (
         <NewScheduleModal
           onClose={() => setScheduleOpen(false)}
@@ -400,10 +423,14 @@ export default function PlotConnectionsPage() {
                     ...d, [b.field]: e.target.value ? Number(e.target.value) : "",
                   }))}>
                   <option value="">&mdash;</option>
-                  {(b.type === "outcome" ? lookups.visitOutcomes : lookups.packStatuses || []).map((x) => (
+                  {(b.type === "outcome" ? (lookups.visitOutcomes || [])
+                    : b.type === "team" ? (lookups.teams || [])
+                    : (lookups.packStatuses || [])).map((x) => (
                     b.type === "outcome"
                       ? <option key={x.Visit_Outcome_ID} value={x.Visit_Outcome_ID}>{x.Visit_Outcome}</option>
-                      : <option key={x.Pack_Status_ID} value={x.Pack_Status_ID}>{x.Pack_Status}</option>
+                      : b.type === "team"
+                        ? <option key={x.Team_ID} value={x.Team_ID}>{x.Team_Name}</option>
+                        : <option key={x.Pack_Status_ID} value={x.Pack_Status_ID}>{x.Pack_Status}</option>
                   ))}
                 </select>
               )}
@@ -517,6 +544,12 @@ export default function PlotConnectionsPage() {
                          hover, rather than hidden — an empty cell that
                          can't be typed into looks broken without it. */
                       const locked = lockedReason(col.key, r);
+                      /* Not applicable rather than merely locked. An empty
+                         disabled box invites someone to work out how to
+                         fill it in; N/A says there is nothing to record. */
+                      if (locked === "na") {
+                        return <td key={col.key} className="na" title="Not applicable to electric">N/A</td>;
+                      }
                       return (
                       <td key={col.key}
                         title={locked || undefined}
@@ -578,6 +611,34 @@ export default function PlotConnectionsPage() {
                         : col.key === "scsub" ? (
                           <input className="in" type="date" value={r.Service_Card_Submission_Date || ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} />)
+
+                        : col.key === "mcsub" ? (
+                          <input className="in" type="date" value={r.Meter_Card_Submission_Date || ""} disabled={!!locked}
+                            onChange={(e) => patch(r, "Meter_Card_Submission_Date", e.target.value)} />)
+
+                        /* Read-only: it belongs to the project's AV agreement
+                           for this utility, so changing it here would mean
+                           changing it on every connection under that
+                           agreement. */
+                        : col.key === "idno" ? (r._idnoName || <span className="pc-none">no agreement</span>)
+
+                        : col.key === "slp" ? (r._slp ? "Yes" : "No")
+
+                        : col.key === "team" ? (
+                          <select className="in" value={r.Team_ID ?? ""} disabled={!!locked}
+                            onChange={(e) => patch(r, "Team_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(lookups.teams || []).map((t) => (
+                              <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
+                            ))}
+                          </select>)
+
+                        : col.key === "photo" ? (
+                          <button className="pc-photo" disabled={!!locked}
+                            onClick={() => setPhotoFor(r)}
+                            title={locked ? undefined : "Attach or view photographs"}>
+                            &#128247;{r._photos > 0 && <span className="pc-pn">{r._photos}</span>}
+                          </button>)
 
                         /* A column with no branch renders empty rather
                            than falling through to whichever cell happens
@@ -652,6 +713,13 @@ const CSS = FILTER_CSS + `
   font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.8); }
 .bulk-f input, .bulk-f select { width: auto; min-width: 108px; font-size: 12px; padding: 4px 7px; }
 .dt.pc td.locked { background: #f8fafc; }
+.dt.pc td.na { background: #f8fafc; color: var(--muted); font-size: 11px; text-align: center; }
+.pc-none { color: var(--muted); font-style: italic; font-size: 11.5px; }
+.pc-photo { background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
+  padding: 2px 8px; font-size: 12px; display: inline-flex; align-items: center; gap: 4px; }
+.pc-photo:hover:not(:disabled) { border-color: var(--accent); background: var(--accent-light); }
+.pc-photo:disabled { opacity: .4; cursor: not-allowed; }
+.pc-pn { font-size: 10px; font-weight: 700; color: var(--accent); }
 .dt.pc td.locked .in { opacity: .45; cursor: not-allowed; }
 .bulk-count { font-size: 12px; font-weight: 700; }
 .bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 140px; font-size: 12px; padding: 5px 8px; }

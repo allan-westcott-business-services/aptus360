@@ -137,6 +137,13 @@ export const ADMIN_TABLES = [
       { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },
     ] },
 
+  { key: "Team", label: "Teams", pk: "Team_ID", fields: [
+      { col: "Team_Name", label: "Team", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Notes", label: "Notes", type: "text" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
+
   { key: "VAT_Rate", label: "VAT Rates", pk: "VAT_Rate_ID", fields: [
       { col: "Label", label: "Rate name", type: "text", required: true },
       { col: "Rate", label: "Rate (%)", type: "number", required: true },

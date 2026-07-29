@@ -37,6 +37,7 @@ export default async function handler() {
       avStatuses:      db.from("AV_Status").select("AV_Status_ID,AV_Status,Row_Colour").eq("Is_Active", true).order("Sort_Order"),
       quotationStatuses: db.from("Quotation_Status").select("Quotation_Status_ID,Quotation_Status").eq("Is_Active", true).order("Sort_Order"),
       voltageRatings:    db.from("Voltage_Rating").select("Voltage_Rating_ID,Voltage_Rating").order("Sort_Order"),
+      teams:           db.from("Team").select("Team_ID,Team_Name,Sort_Order").eq("Is_Active", true).order("Sort_Order").order("Team_Name"),
       visitOutcomes:   db.from("Visit_Outcome").select("Visit_Outcome_ID,Visit_Outcome,Is_Aborted").eq("Is_Active", true).order("Sort_Order"),
       packStatuses:    db.from("Pack_Status").select("Pack_Status_ID,Pack_Status").eq("Is_Active", true).order("Sort_Order"),
       nrsSubTypes:     db.from("NRS_Sub_Type").select("NRS_Sub_Type_ID,Label").eq("Is_Active", true).order("Sort_Order"),

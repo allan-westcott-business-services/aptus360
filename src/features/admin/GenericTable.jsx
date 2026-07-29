@@ -122,6 +122,22 @@ export default function GenericTable({ table }) {
                   checked={!!draft[f.col]}
                   onChange={(e) => setDraft((d) => ({ ...d, [f.col]: e.target.checked }))}
                 />
+              ) : f.type === "colour" ? (
+                /* Swatch and hex together: the picker is quick, and the
+                   text box is how a brand colour gets pasted in. Blank
+                   is allowed and means "no colour", which is different
+                   from white. */
+                <div className="col-field">
+                  <input type="color" value={draft[f.col] || "#ffffff"}
+                    aria-label={`${f.label} swatch`}
+                    onChange={(e) => setDraft((d) => ({ ...d, [f.col]: e.target.value }))} />
+                  <input type="text" value={draft[f.col] ?? ""} placeholder="none"
+                    onChange={(e) => setDraft((d) => ({ ...d, [f.col]: e.target.value }))} />
+                  {draft[f.col] && (
+                    <button type="button" className="col-clear"
+                      onClick={() => setDraft((d) => ({ ...d, [f.col]: null }))}>Clear</button>
+                  )}
+                </div>
               ) : f.type === "select" ? (
                 <Select
                   value={draft[f.col] ?? ""}
@@ -176,7 +192,14 @@ export default function GenericTable({ table }) {
                 <tr key={r[table.pk]}>
                   {table.fields.map((f) => (
                     <td key={f.col}>
-                      {f.type === "checkbox"
+                      {f.type === "colour"
+                        ? (r[f.col]
+                            ? <span className="col-chip">
+                                <span className="col-dot" style={{ background: r[f.col] }} />
+                                {r[f.col]}
+                              </span>
+                            : <span className="col-none">none</span>)
+                        : f.type === "checkbox"
                         ? r[f.col] ? <span className="tick">&#10003;</span> : ""
                         : f.type === "json"
                           ? <span className="json-cell">
@@ -227,5 +250,15 @@ const CSS = `
 .row-actions button:hover { background: var(--accent-light); }
 .row-actions .del { color: #ef4444; }
 .row-actions .del:hover { background: #fef2f2; }
+.col-field { display: flex; align-items: center; gap: 7px; }
+.col-field input[type=color] { width: 40px; height: 30px; padding: 2px; flex: none; cursor: pointer; }
+.col-field input[type=text] { flex: 1; font-family: ui-monospace, Menlo, monospace; font-size: 12px; }
+.col-clear { background: none; border: none; cursor: pointer; color: var(--muted);
+  font: 600 11px inherit; padding: 2px 6px; }
+.col-clear:hover { color: var(--text); }
+.col-chip { display: inline-flex; align-items: center; gap: 7px;
+  font: 12px ui-monospace, Menlo, monospace; }
+.col-dot { width: 14px; height: 14px; border-radius: 4px; border: 1px solid var(--border); }
+.col-none { color: var(--muted); font-style: italic; font-size: 12px; }
 .tick { color: #059669; font-weight: 700; }
 `;

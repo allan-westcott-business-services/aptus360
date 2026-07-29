@@ -260,6 +260,17 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
     .filter(Boolean);
 
   const activeCount = COLUMNS.filter((c) => isActive(filters[c.key], c.type)).length;
+
+  /* Guarded, because the value is typed by hand in Admin and a stray
+     string in a style attribute is a silent no-op that looks like the
+     setting being ignored. */
+  const statusColour = (id) => {
+    const c = (lookups?.projectStatuses || [])
+      .find((s) => String(s.Project_Status_ID) === String(id))?.Row_Colour;
+    if (!c) return null;
+    const hex = c.startsWith("#") ? c : `#${c}`;
+    return /^#[0-9a-f]{3,8}$/i.test(hex) ? hex : null;
+  };
   const hiddenCount = rows.filter((p) => hiddenStatusIds.has(p.Project_Status_ID)).length;
 
   const setFilter = (key, val) => setFilters((f) => ({ ...f, [key]: val }));
@@ -512,7 +523,16 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
             {filtered.length === 0 ? (
               <tr><td colSpan={visible.length} className="no-rows">No projects match these filters.</td></tr>
             ) : filtered.map((p) => (
-              <tr key={p.Project_ID} onClick={() => onOpen && onOpen(p, "details")} className={p.Is_Priority ? "priority" : ""}>
+              <tr key={p.Project_ID} onClick={() => onOpen && onOpen(p, "details")}
+                className={p.Is_Priority ? "priority" : ""}
+                /* The status's own colour, set in Admin › Project Status.
+                   Priority keeps its own highlight and wins, because a
+                   flagged project should stand out whatever it is at.
+                   Unset means no tint rather than white — the stripes and
+                   the hover still show through. */
+                style={statusColour(p.Project_Status_ID)
+                  ? { background: statusColour(p.Project_Status_ID) }
+                  : undefined}>
                 {visible.map((c) => (
                   <td key={c.key} style={{ textAlign: c.align || "left" }}>
                     {c.key === "ref" && p.Is_Priority && <span className="pri" title="Priority">&#9733;</span>}

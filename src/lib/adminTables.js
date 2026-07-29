@@ -30,6 +30,10 @@ export const ADMIN_TABLES = [
       { col: "Stage", label: "Stage", type: "select", options: ["Tender", "Contract"], required: true },
       { col: "Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
+      /* Tints the row on the Projects list. The column has been on
+         Project_Status since 0001, carried over from the original's
+         Tender_Status, but nothing has ever set it. */
+      { col: "Row_Colour", label: "Row Colour", type: "colour" },
       { col: "Is_Terminal", label: "Terminal", type: "checkbox" },
     ] },
   { key: "Scope_Status", label: "Scope Status", pk: "Scope_Status_ID", fields: [

@@ -445,15 +445,11 @@ export default function POCApplicationsTab({ projectId }) {
               </p>
               <div className="dt-wrap">
                 <table className="dt">
-                  <colgroup>{COLS.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}</colgroup>
-                  {/* No reorder handlers here yet: this table's body is written as a
-    fixed run of cells, so a moved header would leave its data behind.
-    The handlers go back on once the body renders per column, as
-    PlotsTab, Outline Designs and Plot Connections now do. */}
-              <thead>
+                  <colgroup>{layout.visible.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}</colgroup>
+                  <thead>
                     <tr className="head-row">
-                      {COLS.map((c) => (
-                        <th key={c.key} style={{ textAlign: c.align || "left" }}
+                      {layout.visible.map((c) => (
+                        <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
                             onClick={() => c.type !== "none" && toggleSort(c.key)}>
                           {c.label}
                           {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
@@ -464,7 +460,7 @@ export default function POCApplicationsTab({ projectId }) {
                       ))}
                     </tr>
                     <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
-                      {COLS.map((c) => (
+                      {layout.visible.map((c) => (
                         <th key={c.key}>
                           {c.type !== "none" && (
                             <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
@@ -480,43 +476,65 @@ export default function POCApplicationsTab({ projectId }) {
                   <tbody>
                     {sortRows(list).map((r) => (
                       <tr key={r.POC_Application_ID}>
-                        <td>{u?.name}</td>
-                        <td className="op-name">
-                          <span className={`badge ${r.DNO_ID ? "dno" : "idno"}`}>{r.DNO_ID ? "DNO" : "IDNO"}</span>
-                          {" "}{providerName(r)}
-                        </td>
-                        <td><span className="ptype">{typeName(r.POC_Type_ID)}</span></td>
-                        <td>
-                          <select className="inline-sel" value={r.POC_Status_ID ?? ""}
-                            onChange={(e) => patch(r, "POC_Status_ID", e.target.value ? Number(e.target.value) : null)}>
-                            <option value="">&mdash;</option>
-                            {(lookups.pocStatuses || []).map((s) => (
-                              <option key={s.POC_Status_ID} value={s.POC_Status_ID}>{s.POC_Status}</option>
-                            ))}
-                          </select>
-                        </td>
-                        <td>{fmt(r.Application_Date)}</td>
-                        <td>{fmt(r.Expected_Rx_Date)}</td>
-                        <td className="num">{r.Requested_kVA ?? "\u2014"}</td>
-                        <td className="num">{r.Plot_Count ?? "\u2014"}</td>
-                        <td className="mono">{r.Quote_Reference || "\u2014"}</td>
-                        <td className="num">{money(r.Estimated_Cost)}</td>
-                        <td className="mid nowrap">
-                          <button className="row-edit"
-                            onClick={() => setExpanded(expanded === r.POC_Application_ID ? null : r.POC_Application_ID)}
-                            title="Options and quotations">
-                            {expanded === r.POC_Application_ID ? "\u25BE" : "\u25B8"} Options
-                          </button>
-                          <button className="row-edit" onClick={() => editRow(r)} title="Edit">Edit</button>
-                          <button className="row-del" onClick={() => remove(r)} title="Delete">&#10005;</button>
-                        </td>
+                        {/* Per column, so a reordered header carries its
+                            data with it. A fixed run of cells shears away
+                            from its headings the moment one is moved. */}
+                        {layout.visible.map((col) => (
+                          <td key={col.key}
+                            className={
+                              col.key === "operator" ? "op-name"
+                              : col.key === "quoteref" ? "mono"
+                              : col.key === "act" ? "mid nowrap"
+                              : col.align === "right" ? "num" : undefined}>
+
+                            {col.key === "utility" ? u?.name
+
+                            : col.key === "operator" ? (<>
+                              <span className={`badge ${r.DNO_ID ? "dno" : "idno"}`}>
+                                {r.DNO_ID ? "DNO" : "IDNO"}
+                              </span>
+                              {" "}{providerName(r)}
+                            </>)
+
+                            : col.key === "type" ? (
+                              <span className="ptype">{typeName(r.POC_Type_ID)}</span>)
+
+                            : col.key === "status" ? (
+                              <select className="inline-sel" value={r.POC_Status_ID ?? ""}
+                                onChange={(e) => patch(r, "POC_Status_ID", e.target.value ? Number(e.target.value) : null)}>
+                                <option value="">&mdash;</option>
+                                {(lookups.pocStatuses || []).map((x) => (
+                                  <option key={x.POC_Status_ID} value={x.POC_Status_ID}>{x.POC_Status}</option>
+                                ))}
+                              </select>)
+
+                            : col.key === "applied"  ? fmt(r.Application_Date)
+                            : col.key === "expected" ? fmt(r.Expected_Rx_Date)
+                            : col.key === "kva"      ? (r.Requested_kVA ?? "\u2014")
+                            : col.key === "plots"    ? (r.Plot_Count ?? "\u2014")
+                            : col.key === "quoteref" ? (r.Quote_Reference || "\u2014")
+                            : col.key === "cost"     ? money(r.Estimated_Cost)
+
+                            : col.key === "act" ? (<>
+                              <button className="row-edit"
+                                onClick={() => setExpanded(expanded === r.POC_Application_ID ? null : r.POC_Application_ID)}
+                                title="Options and quotations">
+                                {expanded === r.POC_Application_ID ? "\u25BE" : "\u25B8"} Options
+                              </button>
+                              <button className="row-edit" onClick={() => editRow(r)} title="Edit">Edit</button>
+                              <button className="row-del" onClick={() => remove(r)} title="Delete">&#10005;</button>
+                            </>)
+
+                            : null}
+                          </td>
+                        ))}
                       </tr>
                     )).flatMap((row, i) => {
                       const r = sortRows(list)[i];
                       return expanded === r.POC_Application_ID
                         ? [row, (
                             <tr className="opt-row" key={`o${r.POC_Application_ID}`}>
-                              <td colSpan={COLS.length}>
+                              <td colSpan={layout.visible.length}>
                                 <OptionsPanel appId={r.POC_Application_ID} projectId={projectId}
                                   providerName={providerName(r)} onChanged={load} />
                                 <div className="app-notes">

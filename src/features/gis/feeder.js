@@ -353,13 +353,24 @@ export function trenchComponents(features = [], opts = {}) {
   }
 
   const groups = Array.from({ length: nComp }, (_, id) => ({
-    id, featureIds: [], nodeIndexes: [], metres: 0,
+    id, featureIds: [], features: [], nodeIndexes: [], metres: 0,
   }));
   for (const [fid, ids] of runNodes) {
     const g = groups[comp[ids[0]]];
-    g.featureIds.push(fid);
     const f = runs.find((x) => x.Feature_ID === fid);
-    g.metres += Number(f.Attributes?.Length_m ?? 0) || polylineLength(f.Geometry);
+    const metres = Number(f.Attributes?.Length_m ?? 0) || polylineLength(f.Geometry);
+    g.featureIds.push(fid);
+    /* The runs themselves, not just their ids. A panel listing an orphan
+       has to name its trenches for anyone to go and find them, and a
+       list of numbers is not a name. */
+    g.features.push({
+      id: fid,
+      label: f.Label || `Trench ${fid}`,
+      lineType: f.Attributes?.Line_Type ?? null,
+      metres,
+      at: f.Geometry?.[0] ?? null,
+    });
+    g.metres += metres;
   }
   for (let i = 0; i < nodes.length; i++) groups[comp[i]].nodeIndexes.push(i);
 
@@ -402,10 +413,25 @@ export function trenchComponents(features = [], opts = {}) {
     .filter((g) => g.id !== rootId)
     .sort((a, b) => (a.gap?.metres ?? Infinity) - (b.gap?.metres ?? Infinity));
 
+  /* Which piece holds the substation, per group, so a panel doesn't have
+     to compare ids to find out. */
+  for (const g of groups) g.hasSubstation = g.id === rootId;
+
+  /* The connected piece first: it is the one nobody has to go and find,
+     and everything else is measured against it. */
+  groups.sort((a, b) => Number(b.hasSubstation) - Number(a.hasSubstation));
+
   return {
     groups, rootId, rootBy, orphans, nodes,
-    connected: rootId >= 0 ? groups[rootId] : null,
+    connected: rootId >= 0 ? groups.find((g) => g.hasSubstation) ?? null : null,
     totalRuns: runs.length,
+    /* Named for what a reader asks: how many pieces, is there a
+       substation, and is it actually on the network. The last two are
+       different questions — a substation placed beside the trenches
+       rather than on them is a common and confusing case. */
+    total: groups.length,
+    hasSubstation: !!sub,
+    substationOnNetwork: rootBy === "substation",
   };
 }
 

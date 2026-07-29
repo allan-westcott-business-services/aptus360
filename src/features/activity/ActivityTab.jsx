@@ -2,6 +2,17 @@ import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getActivity, addComment, deleteComment } from "../../api/activity.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
+import { useTableLayout } from "../../lib/useTableLayout.js";
+
+/* Columns as data, so the header, the widths and the body all read one
+   list and a reordered column takes its cells with it. */
+const HIST_COLS = [
+  { key: "when",  label: "When",  width: 150, cell: (h, f) => f.when(h.Changed_At) },
+  { key: "field", label: "Field", width: 170, cell: (h, f) => f.label(h.Field) },
+  { key: "from",  label: "From",  width: 220, cell: (h, f) => f.resolve(h.Field, h.Old_Value) },
+  { key: "to",    label: "To",    width: 220, cell: (h, f) => f.resolve(h.Field, h.New_Value) },
+  { key: "by",    label: "By",    width: 150, cell: (h) => h.Changed_By || "\u2014" },
+];
 import { getLookups } from "../../api/lookups.js";
 
 /* Change history and comments. History rows are written by a database
@@ -53,6 +64,7 @@ export default function ActivityTab({ projectId, view = "history" }) {
   const [draft, setDraft] = useState("");
   const [author, setAuthor] = useState("");
   const { user, authEnabled } = useAuth() || {};
+  const layout = useTableLayout("history", HIST_COLS);
 
   /* The signed-in person, matched on email — the only thing an auth
      session and a Person row have in common, and Person.Email is unique.
@@ -224,19 +236,31 @@ export default function ActivityTab({ projectId, view = "history" }) {
                   component style block would reach every table in the
                   app the moment this screen rendered. */}
               <table className="dt hist">
+                <colgroup>
+                  {layout.visible.map((c) => (
+                    <col key={c.key} style={{ width: layout.widths[c.key] }} />
+                  ))}
+                </colgroup>
                 <thead>
                   <tr className="head-row">
-                    <th>When</th><th>Field</th><th>From</th><th>To</th><th>By</th>
+                    {layout.visible.map((c) => (
+                      <th key={c.key} {...layout.reorderProps(c.key)}>
+                        {c.label}
+                        <span className="resizer" draggable={false}
+                          onDragStart={(e) => e.preventDefault()}
+                          onMouseDown={(e) => layout.startResize(e, c.key)} />
+                      </th>
+                    ))}
                   </tr>
                 </thead>
                 <tbody>
                   {history.map((h) => (
                     <tr key={h.History_ID}>
-                      <td className="hist-when">{when(h.Changed_At)}</td>
-                      <td className="hist-field">{FIELD_LABELS[h.Field] || h.Field}</td>
-                      <td className="hist-old">{resolve(h.Field, h.Old_Value)}</td>
-                      <td className="hist-new">{resolve(h.Field, h.New_Value)}</td>
-                      <td className="hist-by">{h.Changed_By || "\u2014"}</td>
+                      {layout.visible.map((c) => (
+                        <td key={c.key} className={`hist-${c.key}`}>
+                          {c.cell(h, { when, resolve, label: (f) => FIELD_LABELS[f] || f })}
+                        </td>
+                      ))}
                     </tr>
                   ))}
                 </tbody>
@@ -274,8 +298,8 @@ const CSS = `
 .cmt-as em { font-style: normal; color: #b45309; }
 .hist-when { white-space: nowrap; color: var(--muted); font-size: 11.5px; }
 .hist-field { font-weight: 600; white-space: nowrap; }
-.hist-old { color: var(--muted); text-decoration: line-through; }
-.hist-new { color: var(--ok-text); font-weight: 600; }
+.hist-from { color: var(--muted); text-decoration: line-through; }
+.hist-to { color: var(--ok-text); font-weight: 600; }
 .hist-by { color: var(--muted); font-size: 11.5px; }
 .empty-val { color: var(--muted); font-style: italic; text-decoration: none; }
 .empty { text-align: center; padding: 44px 20px; border: 1px dashed var(--border); border-radius: var(--radius); background: var(--bg); }

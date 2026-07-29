@@ -2,6 +2,7 @@ import { useState, useEffect, useMemo, useRef, useLayoutEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listProjects, setPriority, deleteProject, resurrectProject } from "../../api/projects.js";
+import { useColumnReorder } from "../../lib/useTableLayout.js";
 import BurgerMenu, { BURGER_CSS } from "../../components/BurgerMenu.jsx";
 import CreateRevisionModal from "./CreateRevisionModal.jsx";
 import { UTILITIES } from "../../lib/utilities.js";
@@ -89,6 +90,9 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   const [search, setSearch] = useState("");
   const [sort, setSort] = useState({ key: "date", dir: "desc" });
   const [prefs, setPrefs] = useState(loadPrefs);
+  /* This page keeps its own prefs rather than using useTableLayout, but
+     the reordering is the same behaviour and comes from the same place. */
+  const { reorderProps } = useColumnReorder(setPrefs, savePrefs);
   const [menuOpen, setMenuOpen] = useState(false);
   const [openFilter, setOpenFilter] = useState(null);
   const [revising, setRevising] = useState(null);
@@ -491,10 +495,13 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
             <tr className="head-row">
               {visible.map((c) => (
                 <th key={c.key} style={{ textAlign: c.align || "left" }}
+                    {...reorderProps(c.key)}
                     onClick={() => c.type !== "none" && toggleSort(c.key)}>
                   <span className="th-label">{c.label}</span>
                   {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}
-                  <span className="resizer" onMouseDown={(e) => startResize(e, c.key)} />
+                  <span className="resizer" draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                    onMouseDown={(e) => startResize(e, c.key)} />
                 </th>
               ))}
             </tr>
@@ -708,15 +715,29 @@ body.resizing { cursor: col-resize; user-select: none; }
    A single height on both the buttons and the input is what makes them
    line up: the shared .btn has more vertical padding than the shared
    input rule, so left to themselves they differ by about 4px. */
-.list-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+/* One row, right aligned, everything the same height.
+
+   flex-end matters even though the row already sits right: .list-tools is
+   a flex item of .list-head, and when its content is narrower than the
+   space it was given, the controls would otherwise bunch to the left of
+   their own box.
+
+   Wrapping is kept as a fallback for a genuinely narrow window — better
+   a second row there than controls disappearing off the edge — but at
+   any normal width they now fit on one. */
+.list-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap;
+  justify-content: flex-end; }
 .list-tools .btn,
 .list-tools .search {
   height: 36px;
   padding-top: 0; padding-bottom: 0;
   white-space: nowrap;
 }
-.list-tools .btn { display: inline-flex; align-items: center; }
-.search { width: 230px; }
+.list-tools .btn { display: inline-flex; align-items: center; flex: none; }
+/* flex: none, not just a width: as a flex item the input would otherwise
+   be free to grow into spare space or shrink below its stated size, and
+   the width alone would be a suggestion rather than a measurement. */
+.list-tools .search { width: 115px; flex: none; }
 .col-menu-wrap { position: relative; }
 .col-menu {
   position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 40;

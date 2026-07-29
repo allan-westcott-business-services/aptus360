@@ -10,6 +10,68 @@ import { useState, useEffect, useRef } from "react";
      layout.widths[key]      // current width
      layout.startResize(e, key)
 */
+/* Column reordering, on its own so a table that keeps its own prefs can
+   have it too. Any screen with an { order } and a way to save it gets
+   the same drag behaviour from one implementation rather than a copy.
+
+   HTML5 drag rather than pointer maths: it gives the drag image, the
+   cursor and escape-to-cancel for nothing, and a table header is exactly
+   the coarse target it suits. */
+export function useColumnReorder(setPrefs, save) {
+  const dragCol = useRef(null);
+  const [overCol, setOverCol] = useState(null);
+
+  function moveColumn(fromKey, toKey) {
+    if (!fromKey || !toKey || fromKey === toKey) return;
+    setPrefs((p) => {
+      const order = p.order.filter((k) => k !== fromKey);
+      const at = order.indexOf(toKey);
+      if (at < 0) return p;
+      /* Dropping right of where it started puts it after that column,
+         left puts it before — which is what the marker shows and what
+         the movement feels like. */
+      const wasBefore = p.order.indexOf(fromKey) < p.order.indexOf(toKey);
+      order.splice(wasBefore ? at + 1 : at, 0, fromKey);
+      const next = { ...p, order };
+      save(next);
+      return next;
+    });
+  }
+
+  function reorderProps(key) {
+    return {
+      draggable: true,
+      onDragStart: (e) => {
+        dragCol.current = key;
+        e.dataTransfer.effectAllowed = "move";
+        /* Firefox won't start a drag without data set on it. */
+        try { e.dataTransfer.setData("text/plain", key); } catch { /* ignore */ }
+      },
+      onDragOver: (e) => {
+        if (!dragCol.current || dragCol.current === key) return;
+        /* preventDefault here is what makes the element a valid drop
+           target. Without it the drop event never fires and the drag
+           just springs back. */
+        e.preventDefault();
+        e.dataTransfer.dropEffect = "move";
+        if (overCol !== key) setOverCol(key);
+      },
+      onDragLeave: () => { if (overCol === key) setOverCol(null); },
+      onDrop: (e) => {
+        e.preventDefault();
+        e.stopPropagation();
+        moveColumn(dragCol.current, key);
+        dragCol.current = null;
+        setOverCol(null);
+      },
+      onDragEnd: () => { dragCol.current = null; setOverCol(null); },
+      className: overCol === key ? "col-drop" : undefined,
+    };
+  }
+
+  return { reorderProps, moveColumn };
+}
+
 export function useTableLayout(storageKey, columns) {
   const KEY = `aptus_tbl_${storageKey}`;
   const defaults = () => ({
@@ -41,8 +103,7 @@ export function useTableLayout(storageKey, columns) {
     try { localStorage.setItem(KEY, JSON.stringify(p)); } catch { /* private mode */ }
   };
   const drag = useRef(null);
-  const dragCol = useRef(null);
-  const [overCol, setOverCol] = useState(null);
+  const { reorderProps, moveColumn } = useColumnReorder(setPrefs, save);
 
   useEffect(() => {
     const move = (e) => {
@@ -80,58 +141,6 @@ export function useTableLayout(storageKey, columns) {
       save(next);
       return next;
     });
-  }
-
-  /* Drag a header onto another to move the column there.
-
-     HTML5 drag rather than pointer maths: it gives the drag image, the
-     cursor and the escape-to-cancel for nothing, and a table header is
-     exactly the kind of coarse target it suits. The resizer opts out
-     with draggable={false}, or dragging its edge would reorder instead
-     of resize. */
-  function moveColumn(fromKey, toKey) {
-    if (!fromKey || !toKey || fromKey === toKey) return;
-    setPrefs((p) => {
-      const order = p.order.filter((k) => k !== fromKey);
-      const at = order.indexOf(toKey);
-      if (at < 0) return p;
-      /* Dropping on a column to the right puts it after that column,
-         to the left puts it before — which is what the drop indicator
-         shows and what the movement feels like. */
-      const wasBefore = p.order.indexOf(fromKey) < p.order.indexOf(toKey);
-      order.splice(wasBefore ? at + 1 : at, 0, fromKey);
-      const next = { ...p, order };
-      save(next);
-      return next;
-    });
-  }
-
-  function reorderProps(key) {
-    return {
-      draggable: true,
-      onDragStart: (e) => {
-        dragCol.current = key;
-        e.dataTransfer.effectAllowed = "move";
-        /* Firefox won't start a drag without data set on it. */
-        try { e.dataTransfer.setData("text/plain", key); } catch { /* ignore */ }
-      },
-      onDragOver: (e) => {
-        if (!dragCol.current || dragCol.current === key) return;
-        e.preventDefault();
-        e.dataTransfer.dropEffect = "move";
-        if (overCol !== key) setOverCol(key);
-      },
-      onDragLeave: () => { if (overCol === key) setOverCol(null); },
-      onDrop: (e) => {
-        e.preventDefault();
-        e.stopPropagation();
-        moveColumn(dragCol.current, key);
-        dragCol.current = null;
-        setOverCol(null);
-      },
-      onDragEnd: () => { dragCol.current = null; setOverCol(null); },
-      className: overCol === key ? "col-drop" : undefined,
-    };
   }
 
   function reset() {

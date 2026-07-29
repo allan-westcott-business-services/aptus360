@@ -218,7 +218,9 @@ const CSS = `
 .dev-note { font-size: 11.5px; color: var(--muted); }
 .dev-code { width: 74px; font-family: ui-monospace, Menlo, monospace; font-weight: 700;
   text-align: center; text-transform: uppercase; }
-.dev-code.inline { width: 62px; padding: 4px 6px; font-size: 12px; }
+/* flex: none so the row can neither stretch nor squeeze it — the width
+   is the whole point of a four-character code field. */
+.dev-code.inline { width: 62px; flex: none; padding: 4px 6px; font-size: 12px; }
 .dev-plots { font-size: 12px; font-weight: 700; color: var(--muted);
   background: var(--white); border: 1px solid var(--border); border-radius: 999px; padding: 3px 11px; }
 .dev-act { display: flex; gap: 5px; }

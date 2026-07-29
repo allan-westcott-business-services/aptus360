@@ -165,7 +165,11 @@ export default function PlotConnectionsPage() {
   }, [shown, groupBy, lookups]);
 
   const hidden = GROUP_HIDES[groupBy] || [];
-  const cols = COLS.filter((c) => !hidden.includes(c.key));
+  /* The layout's order, minus whatever this grouping folds away. Reading
+     COLS directly here was the bug: a dropped column updated the saved
+     order and the table went on rendering in the original sequence, so
+     the drag looked like it had failed. */
+  const cols = layout.visible.filter((c) => !hidden.includes(c.key));
 
   const activeToolbar =
     !!(search || region || util || state || progFrom || progTo || hideLaid);
@@ -369,55 +373,83 @@ export default function PlotConnectionsPage() {
                 const on = selected.includes(r.Plot_Utility_ID);
                 return (
                   <tr key={r.Plot_Utility_ID} className={on ? "row-sel" : r.Connection_Date ? "done" : ""}>
-                    {cols.some((c) => c.key === "sel") && (
-                    <td className="mid">
-                      <input type="checkbox" checked={on}
-                        onChange={() => setSelected((s) => on ? s.filter((x) => x !== r.Plot_Utility_ID) : [...s, r.Plot_Utility_ID])} />
-                    </td>)}
-                    {!hidden.includes("project") && <td className="mono ref">{r._projectRef}</td>}
-                    {!hidden.includes("site") && <td>{r._siteName}</td>}
-                    <td className="mono strong plot-cell">{r._plotNumber}</td>
-                    {!hidden.includes("utility") && <td><span className="dot" style={{ background: u?.colour }} /> {u?.name}</td>}
-                    {!hidden.includes("prog") && (
-                    <td><input className="in" type="date" value={r.Programmed_Date || ""}
-                      onChange={(e) => patch(r, "Programmed_Date", e.target.value)} /></td>)}
-                    <td><input className="in" type="date" value={r.Connection_Date || ""}
-                      onChange={(e) => patch(r, "Connection_Date", e.target.value)} /></td>
-                    <td><input className="in" type="date" value={r.As_Laid_Date || ""}
-                      onChange={(e) => patch(r, "As_Laid_Date", e.target.value)} /></td>
-                    <td>
-                      <select className="in" value={r.Visit_Outcome_ID ?? ""}
-                        onChange={(e) => patch(r, "Visit_Outcome_ID", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {(lookups.visitOutcomes || []).map((v) => (
-                          <option key={v.Visit_Outcome_ID} value={v.Visit_Outcome_ID}>{v.Visit_Outcome}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td>
-                      <select className="in" value={r.Pack_Status_ID ?? ""}
-                        onChange={(e) => patch(r, "Pack_Status_ID", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {(lookups.packStatuses || []).map((s) => (
-                          <option key={s.Pack_Status_ID} value={s.Pack_Status_ID}>{s.Pack_Status}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td><input className="in mono" value={r.Meter_Number || ""}
-                      onChange={(e) => patch(r, "Meter_Number", e.target.value)} /></td>
-                    <td><input className="in" type="date" value={r.Service_Card_Submission_Date || ""}
-                      onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} /></td>
-                    <td>
-                      <select className="in" value={r.IDNO_ID ?? ""}
-                        onChange={(e) => patch(r, "IDNO_ID", e.target.value ? Number(e.target.value) : null)}>
-                        <option value="">&mdash;</option>
-                        {(lookups.idnos || []).map((i) => (
-                          <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
-                        ))}
-                      </select>
-                    </td>
-                    <td className="num"><input className="in num" type="number" step="0.01" value={r.AV_Value ?? ""}
-                      onChange={(e) => patch(r, "AV_Value", e.target.value)} /></td>
+                    {/* Per column, so a reordered header takes its data
+                        with it. Cells written in a fixed sequence shear
+                        away from their headings the moment one moves. */}
+                    {cols.map((col) => (
+                      <td key={col.key}
+                        className={
+                          col.key === "sel" ? "mid"
+                          : col.key === "project" ? "mono ref"
+                          : col.key === "plot" ? "mono strong plot-cell"
+                          : col.key === "av" ? "num" : undefined}>
+
+                        {col.key === "sel" ? (
+                          <input type="checkbox" checked={on}
+                            onChange={() => setSelected((sx) => on
+                              ? sx.filter((x) => x !== r.Plot_Utility_ID)
+                              : [...sx, r.Plot_Utility_ID])} />)
+
+                        : col.key === "project" ? r._projectRef
+                        : col.key === "site" ? r._siteName
+                        : col.key === "plot" ? r._plotNumber
+
+                        : col.key === "utility" ? (<>
+                          <span className="dot" style={{ background: u?.colour }} /> {u?.name}
+                        </>)
+
+                        : col.key === "prog" ? (
+                          <input className="in" type="date" value={r.Programmed_Date || ""}
+                            onChange={(e) => patch(r, "Programmed_Date", e.target.value)} />)
+
+                        : col.key === "conn" ? (
+                          <input className="in" type="date" value={r.Connection_Date || ""}
+                            onChange={(e) => patch(r, "Connection_Date", e.target.value)} />)
+
+                        : col.key === "laid" ? (
+                          <input className="in" type="date" value={r.As_Laid_Date || ""}
+                            onChange={(e) => patch(r, "As_Laid_Date", e.target.value)} />)
+
+                        : col.key === "outcome" ? (
+                          <select className="in" value={r.Visit_Outcome_ID ?? ""}
+                            onChange={(e) => patch(r, "Visit_Outcome_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(lookups.visitOutcomes || []).map((v) => (
+                              <option key={v.Visit_Outcome_ID} value={v.Visit_Outcome_ID}>{v.Visit_Outcome}</option>
+                            ))}
+                          </select>)
+
+                        : col.key === "pack" ? (
+                          <select className="in" value={r.Pack_Status_ID ?? ""}
+                            onChange={(e) => patch(r, "Pack_Status_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(lookups.packStatuses || []).map((x) => (
+                              <option key={x.Pack_Status_ID} value={x.Pack_Status_ID}>{x.Pack_Status}</option>
+                            ))}
+                          </select>)
+
+                        : col.key === "meter" ? (
+                          <input className="in mono" value={r.Meter_Number || ""}
+                            onChange={(e) => patch(r, "Meter_Number", e.target.value)} />)
+
+                        : col.key === "scsub" ? (
+                          <input className="in" type="date" value={r.Service_Card_Submission_Date || ""}
+                            onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} />)
+
+                        : col.key === "adopter" ? (
+                          <select className="in" value={r.IDNO_ID ?? ""}
+                            onChange={(e) => patch(r, "IDNO_ID", e.target.value ? Number(e.target.value) : null)}>
+                            <option value="">&mdash;</option>
+                            {(lookups.idnos || []).map((i) => (
+                              <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
+                            ))}
+                          </select>)
+
+                        : (
+                          <input className="in num" type="number" step="0.01" value={r.AV_Value ?? ""}
+                            onChange={(e) => patch(r, "AV_Value", e.target.value)} />)}
+                      </td>
+                    ))}
                   </tr>
                 );
                 }),

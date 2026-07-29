@@ -446,10 +446,14 @@ export default function POCApplicationsTab({ projectId }) {
               <div className="dt-wrap">
                 <table className="dt">
                   <colgroup>{COLS.map((c) => <col key={c.key} style={{ width: layout.widths[c.key] }} />)}</colgroup>
-                  <thead>
+                  {/* No reorder handlers here yet: this table's body is written as a
+    fixed run of cells, so a moved header would leave its data behind.
+    The handlers go back on once the body renders per column, as
+    PlotsTab, Outline Designs and Plot Connections now do. */}
+              <thead>
                     <tr className="head-row">
                       {COLS.map((c) => (
-                        <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
+                        <th key={c.key} style={{ textAlign: c.align || "left" }}
                             onClick={() => c.type !== "none" && toggleSort(c.key)}>
                           {c.label}
                           {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}

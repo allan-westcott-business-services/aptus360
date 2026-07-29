@@ -96,18 +96,25 @@ label {
 
 /* Checkboxes and radios are excluded: width:100% stretches them across
    the row and appearance:none removes the box and the tick. They get
-   their own rule below. */
-input:not([type="checkbox"]):not([type="radio"]), select, textarea {
+   their own rule below.
+
+   The exclusion is wrapped in :where() so it costs no specificity. Bare
+   :not() selectors count, which would lift this rule from (0,0,1) to
+   (0,2,1) — above every `.some-class { width: … }` in the app, so every
+   sized input would silently become full width. :where() keeps it at the
+   weight a plain element selector has, which is what all those class
+   rules were written against. */
+input:where(:not([type="checkbox"]):not([type="radio"])), select, textarea {
   width: 100%; background: var(--bg); border: 1px solid var(--border);
   border-radius: var(--radius); padding: 6px 10px; font-family: "DM Sans", sans-serif;
   font-size: 13px; color: var(--text);
   transition: border-color 0.15s, box-shadow 0.15s; appearance: none; -webkit-appearance: none;
 }
 textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
-input:not([type="checkbox"]):not([type="radio"]):focus, select:focus, textarea:focus {
+input:where(:not([type="checkbox"]):not([type="radio"])):focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(57, 70, 123, 0.14);
 }
-input:not([type="checkbox"]):not([type="radio"]):disabled, select:disabled {
+input:where(:not([type="checkbox"]):not([type="radio"])):disabled, select:disabled {
   background: #f9fafb; color: var(--muted); cursor: not-allowed;
 }
 

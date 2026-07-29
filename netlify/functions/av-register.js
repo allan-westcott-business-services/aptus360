@@ -57,6 +57,75 @@ export default async function handler(req) {
       return json({ updated: (data || []).length, rows: data || [] });
     }
 
+    /* Raising an invoice against a set of plots.
+
+       Header and lines in one call: an invoice with no lines is not a
+       half-finished invoice, it is a wrong one, and two round trips
+       leaves that state reachable whenever the second fails.
+
+       Raised_By is resolved here from the caller's email rather than
+       taken from the browser, for the same reason comment authors are:
+       the Person table is right here, and what gets stored matters more
+       than what was displayed while typing. */
+    if (req.method === "POST" && url.searchParams.get("op") === "raise") {
+      const b = await req.json();
+      if (!b.Project_ID) return json({ error: "A project is required." }, 400);
+      const lines = Array.isArray(b.lines) ? b.lines.filter((l) => l.Plot_Ref) : [];
+      if (!lines.length) return json({ error: "An invoice needs at least one plot." }, 400);
+
+      let raisedBy = (b.Raised_By || "").trim() || null;
+      const email = (b.Raised_By_Email || "").trim();
+      if (!raisedBy && email) {
+        const { data: person } = await db.from("Person")
+          .select("Person_Name").ilike("Email", email).eq("Is_Active", true).maybeSingle();
+        raisedBy = person?.Person_Name || email;
+      }
+
+      const net = lines.reduce((t, l) => t + Number(l.Net_Value || 0), 0);
+      const rate = b.VAT_Rate == null || b.VAT_Rate === "" ? 20 : Number(b.VAT_Rate);
+      const vat = Math.round(net * rate) / 100;
+
+      const { data: inv, error: invErr } = await db.from("AV_Invoice").insert({
+        Project_ID: Number(b.Project_ID),
+        Utility_ID: b.Utility_ID ? Number(b.Utility_ID) : null,
+        IDNO_ID: b.IDNO_ID ? Number(b.IDNO_ID) : null,
+        AV_Agreement_Type_ID: b.AV_Agreement_Type_ID ? Number(b.AV_Agreement_Type_ID) : null,
+        Invoice_Number: b.Invoice_Number || null,
+        D365_Number: b.D365_Number || null,
+        Contract_Number: b.Contract_Number || null,
+        Invoice_Date: b.Invoice_Date || new Date().toISOString().slice(0, 10),
+        Document_Type: b.Document_Type === "Credit" ? "Credit" : "Invoice",
+        Net_Value: net,
+        VAT_Rate: rate,
+        VAT_Value: vat,
+        Gross_Value: Math.round((net + vat) * 100) / 100,
+        Status: "Draft",
+        Raised_By: raisedBy,
+        Notes: b.Notes || null,
+      }).select("*").single();
+      if (invErr) throw invErr;
+
+      const { error: lineErr } = await db.from("AV_Invoice_Line").insert(
+        lines.map((l, i) => ({
+          AV_Invoice_ID: inv.AV_Invoice_ID,
+          Plot_ID: l.Plot_ID ? Number(l.Plot_ID) : null,
+          Plot_Ref: String(l.Plot_Ref),
+          Description: l.Description || null,
+          Notes: l.Notes || null,
+          Net_Value: Number(l.Net_Value || 0),
+          Source_Row: i + 1,
+        }))
+      );
+      /* The header exists and its lines don't, which is exactly the
+         state this call was meant to avoid — so undo it rather than
+         leave an empty invoice behind. */
+      if (lineErr) {
+        await db.from("AV_Invoice").delete().eq("AV_Invoice_ID", inv.AV_Invoice_ID);
+        throw lineErr;
+      }
+      return json({ ...inv, line_count: lines.length }, 201);
+    }
+
     /* Editing one invoice, or one line. Column lists rather than a
        spread, so a field added to the table has to be brought in
        deliberately instead of becoming writable by accident. */

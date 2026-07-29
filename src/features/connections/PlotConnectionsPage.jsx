@@ -335,7 +335,7 @@ export default function PlotConnectionsPage() {
             <thead>
               <tr className="head-row">
                 {cols.map((c) => (
-                  <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
+                  <th key={c.key} {...layout.reorderProps(c.key)}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.key === "sel" ? (
                       <input type="checkbox" checked={allSelected} onClick={(e) => e.stopPropagation()}

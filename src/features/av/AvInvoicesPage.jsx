@@ -279,7 +279,7 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
           <thead>
             <tr className="head-row">
               {layout.visible.map((c) => (
-                <th key={c.key} style={{ textAlign: c.align || "left" }}
+                <th key={c.key}
                   {...layout.reorderProps(c.key)}>
                   {c.key === "sel" ? (
                     <input type="checkbox"

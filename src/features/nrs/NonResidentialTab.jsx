@@ -228,7 +228,7 @@ export default function NonResidentialTab({ projectId }) {
               <thead>
               <tr className="head-row">
                 {COLS.map((c) => (
-                  <th key={c.key} style={{ textAlign: c.align || "left" }}
+                  <th key={c.key}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
                     {c.label}
                     {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}

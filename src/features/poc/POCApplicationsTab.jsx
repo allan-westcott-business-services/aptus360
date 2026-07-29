@@ -449,7 +449,7 @@ export default function POCApplicationsTab({ projectId }) {
                   <thead>
                     <tr className="head-row">
                       {layout.visible.map((c) => (
-                        <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
+                        <th key={c.key} {...layout.reorderProps(c.key)}
                             onClick={() => c.type !== "none" && toggleSort(c.key)}>
                           {c.label}
                           {sort.key === c.key && <span className="arrow">{sort.dir === "asc" ? "\u25B2" : "\u25BC"}</span>}

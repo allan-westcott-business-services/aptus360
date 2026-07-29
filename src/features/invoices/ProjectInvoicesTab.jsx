@@ -4,6 +4,9 @@ import {
   getProjectInvoices, saveAvInvoice, saveAvInvoiceLine,
   deleteAvInvoice, deleteAvInvoiceLine,
 } from "../../api/avRegister.js";
+import { useTableLayout } from "../../lib/useTableLayout.js";
+import ColumnsMenu from "../../components/ColumnsMenu.jsx";
+import RaiseInvoiceModal from "./RaiseInvoiceModal.jsx";
 
 /* Asset value invoices for one project.
 
@@ -19,6 +22,23 @@ import {
 
 const STATUSES = ["Draft", "Issued", "Exported", "Paid", "Cancelled"];
 const DOC_TYPES = ["Invoice", "Credit"];
+
+/* Columns as data, so header, widths, filters and cells all read one
+   list and a dragged column takes its data with it. */
+const COLS = [
+  { key: "open",      label: "",              width: 34,  fixed: true },
+  { key: "date",      label: "Invoice date",  width: 120 },
+  { key: "number",    label: "Invoice number", width: 140, fixed: true },
+  { key: "d365",      label: "D365 no.",      width: 120 },
+  { key: "sub",       label: "Sub total",     width: 110, align: "right" },
+  { key: "vat",       label: "VAT",           width: 100, align: "right" },
+  { key: "total",     label: "Invoice total", width: 118, align: "right" },
+  { key: "raised",    label: "Raised by",     width: 130 },
+  { key: "doc",       label: "Type",          width: 96 },
+  { key: "agreement", label: "Agreement",     width: 130 },
+  { key: "status",    label: "Status",        width: 110 },
+  { key: "act",       label: "Actions",       width: 120, align: "right", fixed: true },
+];
 
 const money = (v) => (v == null || v === ""
   ? "\u2014"
@@ -48,6 +68,8 @@ export default function ProjectInvoicesTab({ projectId, projectRef }) {
   const [draft, setDraft] = useState({});
   const [editLine, setEditLine] = useState(null); // line id
   const [lineDraft, setLineDraft] = useState({});
+  const [raising, setRaising] = useState(false);
+  const layout = useTableLayout("project-invoices", COLS);
 
   const [f, setF] = useState({
     dateFrom: "", dateBlank: false,
@@ -156,6 +178,8 @@ export default function ProjectInvoicesTab({ projectId, projectRef }) {
           </p>
         </div>
         <div className="pi-actions">
+          <ColumnsMenu columns={COLS} hidden={layout.hidden}
+            onToggle={layout.toggleColumn} onReset={layout.reset} />
           <button className="btn ghost"
             onClick={() => setOpen(shown.reduce((a, i) => ({ ...a, [i.AV_Invoice_ID]: true }), {}))}>
             Expand all
@@ -164,74 +188,93 @@ export default function ProjectInvoicesTab({ projectId, projectRef }) {
           <button className="btn ghost" onClick={() => { setLoading(true); load(); }}>
             &#8635; Refresh
           </button>
+          <button className="btn accent" onClick={() => setRaising(true)}>+ Raise invoice</button>
         </div>
       </div>
 
       {error && <Banner kind="error">{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
 
+      {raising && (
+        <RaiseInvoiceModal
+          projectId={projectId}
+          projectRef={projectRef}
+          onClose={() => setRaising(false)}
+          onRaised={async (inv) => {
+            await load();
+            setStatus(`Invoice raised for ${inv.line_count} plot(s) \u2014 Draft`);
+            setTimeout(() => setStatus(""), 6000);
+          }}
+        />
+      )}
+
       <div className="dt-wrap">
         <table className="dt pi">
+          <colgroup>
+            {layout.visible.map((c) => (
+              <col key={c.key} style={{ width: layout.widths[c.key] }} />
+            ))}
+          </colgroup>
           <thead>
             <tr className="head-row">
-              <th style={{ width: 34 }} />
-              <th style={{ width: 120 }}>Invoice date</th>
-              <th style={{ width: 140 }}>Invoice number</th>
-              <th style={{ width: 120 }}>D365 no.</th>
-              <th style={{ width: 110, textAlign: "right" }}>Sub total</th>
-              <th style={{ width: 100, textAlign: "right" }}>VAT</th>
-              <th style={{ width: 118, textAlign: "right" }}>Invoice total</th>
-              <th style={{ width: 130 }}>Raised by</th>
-              <th style={{ width: 96 }}>Type</th>
-              <th style={{ width: 130 }}>Agreement</th>
-              <th style={{ width: 110 }}>Status</th>
-              <th style={{ width: 120, textAlign: "right" }}>Actions</th>
+              {layout.visible.map((c) => (
+                <th key={c.key} {...layout.reorderProps(c.key)}>
+                  {c.label}
+                  <span className="resizer" draggable={false}
+                    onDragStart={(e) => e.preventDefault()}
+                    onMouseDown={(e) => layout.startResize(e, c.key)} />
+                </th>
+              ))}
             </tr>
             <tr className="filter-row">
-              <th />
-              <th>
-                <input type="date" value={f.dateFrom} disabled={f.dateBlank}
-                  aria-label="Invoice date on or after"
-                  onChange={(e) => set("dateFrom")(e.target.value)} />
-                <Blank on={f.dateBlank} onChange={set("dateBlank")} />
-              </th>
-              <th><input value={f.number} placeholder="Filter"
-                onChange={(e) => set("number")(e.target.value)} /></th>
-              <th>
-                <input value={f.d365} placeholder="Filter" disabled={f.d365Blank}
-                  onChange={(e) => set("d365")(e.target.value)} />
-                <Blank on={f.d365Blank} onChange={set("d365Blank")} />
-              </th>
-              <NumFilter v={f.sub} op={f.subOp} blank={f.subBlank}
-                onV={set("sub")} onOp={set("subOp")} onBlank={set("subBlank")} />
-              <NumFilter v={f.vat} op={f.vatOp} blank={f.vatBlank}
-                onV={set("vat")} onOp={set("vatOp")} onBlank={set("vatBlank")} />
-              <NumFilter v={f.total} op={f.totalOp} blank={f.totalBlank}
-                onV={set("total")} onOp={set("totalOp")} onBlank={set("totalBlank")} />
-              <th>
-                <select value={f.raised} onChange={(e) => set("raised")(e.target.value)}>
-                  <option value="">&mdash; All &mdash;</option>
-                  {raisedBy.map((r) => <option key={r} value={r}>{r}</option>)}
-                </select>
-              </th>
-              <th>
-                <select value={f.doc} onChange={(e) => set("doc")(e.target.value)}>
-                  <option value="">&mdash; All &mdash;</option>
-                  {DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
-                </select>
-              </th>
-              <th>
-                <select value={f.agreement} onChange={(e) => set("agreement")(e.target.value)}>
-                  <option value="">&mdash; All &mdash;</option>
-                  {agreements.map((a) => <option key={a} value={a}>{a}</option>)}
-                </select>
-              </th>
-              <th colSpan={2} />
+              {layout.visible.map((c) => (
+                <th key={c.key}>
+                  {c.key === "date" ? (<>
+                    <input type="date" value={f.dateFrom} disabled={f.dateBlank}
+                      aria-label="Invoice date on or after"
+                      onChange={(e) => set("dateFrom")(e.target.value)} />
+                    <Blank on={f.dateBlank} onChange={set("dateBlank")} />
+                  </>)
+                  : c.key === "number" ? (
+                    <input value={f.number} placeholder="Filter"
+                      onChange={(e) => set("number")(e.target.value)} />)
+                  : c.key === "d365" ? (<>
+                    <input value={f.d365} placeholder="Filter" disabled={f.d365Blank}
+                      onChange={(e) => set("d365")(e.target.value)} />
+                    <Blank on={f.d365Blank} onChange={set("d365Blank")} />
+                  </>)
+                  : c.key === "sub" ? (
+                    <NumFilter v={f.sub} op={f.subOp} blank={f.subBlank}
+                      onV={set("sub")} onOp={set("subOp")} onBlank={set("subBlank")} />)
+                  : c.key === "vat" ? (
+                    <NumFilter v={f.vat} op={f.vatOp} blank={f.vatBlank}
+                      onV={set("vat")} onOp={set("vatOp")} onBlank={set("vatBlank")} />)
+                  : c.key === "total" ? (
+                    <NumFilter v={f.total} op={f.totalOp} blank={f.totalBlank}
+                      onV={set("total")} onOp={set("totalOp")} onBlank={set("totalBlank")} />)
+                  : c.key === "raised" ? (
+                    <select value={f.raised} onChange={(e) => set("raised")(e.target.value)}>
+                      <option value="">&mdash; All &mdash;</option>
+                      {raisedBy.map((r) => <option key={r} value={r}>{r}</option>)}
+                    </select>)
+                  : c.key === "doc" ? (
+                    <select value={f.doc} onChange={(e) => set("doc")(e.target.value)}>
+                      <option value="">&mdash; All &mdash;</option>
+                      {DOC_TYPES.map((d) => <option key={d} value={d}>{d}</option>)}
+                    </select>)
+                  : c.key === "agreement" ? (
+                    <select value={f.agreement} onChange={(e) => set("agreement")(e.target.value)}>
+                      <option value="">&mdash; All &mdash;</option>
+                      {agreements.map((a) => <option key={a} value={a}>{a}</option>)}
+                    </select>)
+                  : null}
+                </th>
+              ))}
             </tr>
           </thead>
           <tbody>
             {shown.length === 0 && (
-              <tr><td colSpan={12} className="no-rows">No invoices match these filters.</td></tr>
+              <tr><td colSpan={layout.visible.length} className="no-rows">No invoices match these filters.</td></tr>
             )}
             {shown.map((i) => {
               const rows = linesOf(i.AV_Invoice_ID);
@@ -239,7 +282,7 @@ export default function ProjectInvoicesTab({ projectId, projectRef }) {
               const isEditing = editing === i.AV_Invoice_ID;
               return (
                 <FragmentInvoice key={i.AV_Invoice_ID}
-                  inv={i} rows={rows} isOpen={isOpen} isEditing={isEditing}
+                  cols={layout.visible} inv={i} rows={rows} isOpen={isOpen} isEditing={isEditing}
                   draft={draft} setDraft={setDraft}
                   onToggle={() => setOpen((o) => ({ ...o, [i.AV_Invoice_ID]: !o[i.AV_Invoice_ID] }))}
                   onEdit={() => {
@@ -297,66 +340,76 @@ const NumFilter = ({ v, op, blank, onV, onOp, onBlank }) => (
 );
 
 function FragmentInvoice({
-  inv, rows, isOpen, isEditing, draft, setDraft, onToggle, onEdit, onCancel, onSave, onDelete,
+  cols, inv, rows, isOpen, isEditing, draft, setDraft, onToggle, onEdit, onCancel, onSave, onDelete,
   editLine, lineDraft, setLineDraft, onEditLine, onCancelLine, onSaveLine, onDeleteLine,
 }) {
   const d = (k) => (e) => setDraft((x) => ({ ...x, [k]: e.target.value }));
   return (
     <>
       <tr className={isOpen ? "pi-inv open" : "pi-inv"}>
-        <td className="mid" onClick={onToggle} style={{ cursor: "pointer" }}>
-          <span className="pi-caret">{isOpen ? "\u25BE" : "\u25B8"}</span>
-        </td>
-        {isEditing ? (
-          <>
-            <td><input type="date" value={draft.Invoice_Date} onChange={d("Invoice_Date")} /></td>
-            <td><input value={draft.Invoice_Number} onChange={d("Invoice_Number")} /></td>
-            <td><input value={draft.D365_Number} onChange={d("D365_Number")} /></td>
-            <td><input type="number" step="0.01" className="num"
-              value={draft.Net_Value} onChange={d("Net_Value")} /></td>
-            <td><input type="number" step="0.01" className="num"
-              value={draft.VAT_Value} onChange={d("VAT_Value")} /></td>
-            <td><input type="number" step="0.01" className="num"
-              value={draft.Gross_Value} onChange={d("Gross_Value")} /></td>
-            <td><input value={draft.Raised_By} onChange={d("Raised_By")} /></td>
-            <td>
+        {/* Per column, so a dragged heading carries its data with it. */}
+        {cols.map((c) => (
+          <td key={c.key}
+            className={c.key === "open" ? "mid"
+              : c.key === "number" ? "mono strong"
+              : c.key === "d365" ? "mono"
+              : c.align === "right" ? "num nowrap" : undefined}
+            onClick={c.key === "open" ? onToggle : undefined}
+            style={c.key === "open" ? { cursor: "pointer" } : undefined}>
+
+            {c.key === "open" ? <span className="pi-caret">{isOpen ? "\u25BE" : "\u25B8"}</span>
+
+            : isEditing && c.key === "date" ? (
+              <input type="date" value={draft.Invoice_Date} onChange={d("Invoice_Date")} />)
+            : isEditing && c.key === "number" ? (
+              <input value={draft.Invoice_Number} onChange={d("Invoice_Number")} />)
+            : isEditing && c.key === "d365" ? (
+              <input value={draft.D365_Number} onChange={d("D365_Number")} />)
+            : isEditing && c.key === "sub" ? (
+              <input type="number" step="0.01" className="num"
+                value={draft.Net_Value} onChange={d("Net_Value")} />)
+            : isEditing && c.key === "vat" ? (
+              <input type="number" step="0.01" className="num"
+                value={draft.VAT_Value} onChange={d("VAT_Value")} />)
+            : isEditing && c.key === "total" ? (
+              <input type="number" step="0.01" className="num"
+                value={draft.Gross_Value} onChange={d("Gross_Value")} />)
+            : isEditing && c.key === "raised" ? (
+              <input value={draft.Raised_By} onChange={d("Raised_By")} />)
+            : isEditing && c.key === "doc" ? (
               <select value={draft.Document_Type} onChange={d("Document_Type")}>
                 {DOC_TYPES.map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-            </td>
-            <td>{inv.AV_Agreement_Type || "\u2014"}</td>
-            <td>
+              </select>)
+            : isEditing && c.key === "status" ? (
               <select value={draft.Status} onChange={d("Status")}>
                 {STATUSES.map((x) => <option key={x} value={x}>{x}</option>)}
-              </select>
-            </td>
-            <td className="num nowrap">
+              </select>)
+            : isEditing && c.key === "act" ? (<>
               <button className="btn accent sm" onClick={onSave}>Save</button>
               <button className="btn ghost sm" onClick={onCancel}>Cancel</button>
-            </td>
-          </>
-        ) : (
-          <>
-            <td>{fmt(inv.Invoice_Date)}</td>
-            <td className="mono strong">{inv.Invoice_Number || <span className="pi-none">not numbered</span>}</td>
-            <td className="mono">{inv.D365_Number || "\u2014"}</td>
-            <td className="num">{money(inv.Net_Value)}</td>
-            <td className="num">{money(inv.VAT_Value)}</td>
-            <td className="num strong">{money(inv.Gross_Value)}</td>
-            <td>{inv.Raised_By || "\u2014"}</td>
-            <td>{inv.Document_Type || "Invoice"}</td>
-            <td>{inv.AV_Agreement_Type || "\u2014"}</td>
-            <td>
+            </>)
+
+            : c.key === "date"   ? fmt(inv.Invoice_Date)
+            : c.key === "number" ? (inv.Invoice_Number
+                || <span className="pi-none">not numbered</span>)
+            : c.key === "d365"   ? (inv.D365_Number || "\u2014")
+            : c.key === "sub"    ? money(inv.Net_Value)
+            : c.key === "vat"    ? money(inv.VAT_Value)
+            : c.key === "total"  ? money(inv.Gross_Value)
+            : c.key === "raised" ? (inv.Raised_By || "\u2014")
+            : c.key === "doc"    ? (inv.Document_Type || "Invoice")
+            : c.key === "agreement" ? (inv.AV_Agreement_Type || "\u2014")
+            : c.key === "status" ? (
               <span className={`av-st av-${String(inv.Status || "").toLowerCase()}`}>
                 {inv.Status}
-              </span>
-            </td>
-            <td className="num nowrap">
+              </span>)
+            : c.key === "act" ? (<>
               <button className="row-edit" onClick={onEdit}>Edit</button>
               <button className="row-del" onClick={onDelete}>&#10005;</button>
-            </td>
-          </>
-        )}
+            </>)
+            : null}
+          </td>
+        ))}
       </tr>
 
       {/* The header carries a total and so do the lines. When they
@@ -364,7 +417,7 @@ function FragmentInvoice({
           use than quietly showing one of them. */}
       {inv.totals_disagree && (
         <tr className="pi-warn">
-          <td colSpan={12}>
+          <td colSpan={cols.length}>
             Header sub total {money(inv.Net_Value)} doesn&rsquo;t match its lines
             ({money(inv.lines_total)} across {inv.line_count}).
           </td>
@@ -373,7 +426,7 @@ function FragmentInvoice({
 
       {isOpen && (
         <tr className="pi-lines">
-          <td colSpan={12}>
+          <td colSpan={cols.length}>
             <table className="dt pil">
               <thead>
                 <tr className="head-row">

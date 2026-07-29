@@ -493,7 +493,7 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
           <thead>
             <tr className="head-row">
               {visible.map((c) => (
-                <th key={c.key} style={{ textAlign: c.align || "left" }}
+                <th key={c.key}
                     {...reorderProps(c.key)}
                     onClick={() => c.type !== "none" && toggleSort(c.key)}>
                   <span className="th-label">{c.label}</span>

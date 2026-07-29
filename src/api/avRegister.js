@@ -37,3 +37,10 @@ export async function deleteAvInvoiceLine(id) {
   if (USE_MOCKS) return { deleted: true };
   return http.del(`/av-register?line=${id}`);
 }
+
+/* Raise an invoice against a set of plots. Header and lines go together
+   — an invoice with no lines is wrong, not half-finished. */
+export async function raiseAvInvoice(body) {
+  if (USE_MOCKS) return { AV_Invoice_ID: 1, ...body };
+  return http.post("/av-register?op=raise", body);
+}

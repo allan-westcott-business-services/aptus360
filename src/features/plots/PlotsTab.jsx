@@ -517,7 +517,7 @@ export default function PlotsTab({ projectId, projectRef }) {
               <thead>
                 <tr className="head-row">
                   {layout.visible.map((c) => (
-                    <th key={c.key} style={{ textAlign: c.align || "left" }} {...layout.reorderProps(c.key)}
+                    <th key={c.key} {...layout.reorderProps(c.key)}
                         onClick={() => c.type !== "none" && toggleSort(c.key)}>
                       {c.key === "sel" ? (
                         <input type="checkbox" checked={allSelected}

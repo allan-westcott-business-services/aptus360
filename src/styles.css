@@ -401,7 +401,13 @@ body.resizing { cursor: col-resize; user-select: none; }
 .dt thead .head-row th {
   position: sticky; top: 0; z-index: 3; background: var(--accent); color: #fff;
   font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-  padding: 8px 10px; text-align: left; cursor: pointer; user-select: none;
+  padding: 8px 10px; cursor: pointer; user-select: none;
+  /* Headings centre; the cells beneath keep their own alignment, so a
+     money column still reads right-aligned where it counts. A heading
+     that follows its column's alignment leaves the row looking ragged
+     when half the columns are numeric. Set here rather than inline,
+     because an inline style on a th would beat this rule. */
+  text-align: center;
 }
 .dt thead .head-row th:hover { background: var(--accent-dark); }
 .dt .arrow { margin-left: 4px; font-size: 8px; }

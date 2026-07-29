@@ -415,10 +415,21 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
             className={showHidden ? "btn toggle on" : "btn toggle"}
             onClick={() => setShowHidden((v) => !v)}
             aria-pressed={showHidden}
+            title={showHidden
+              ? "Hide projects at a closed status again"
+              : "Also show projects at a closed status"}
           >
-            Show Hidden{hiddenCount > 0 && ` (${hiddenCount})`}
+            {/* The caption is the action, not the state: while they are
+                hidden it offers to show them, and once shown it offers
+                to hide them again. A toggle labelled the same in both
+                positions makes you click it to find out. */}
+            {showHidden ? "Hide Closed" : `Show Closed${hiddenCount > 0 ? ` (${hiddenCount})` : ""}`}
           </button>
-          {(activeCount > 0 || search || priorityOnly || utilFilter.length) && (
+          {/* Every part of this guard must be a boolean. React renders
+              0 as text — only false, null and undefined disappear — so a
+              bare .length printed a stray 0 where this button sits
+              whenever no utility chips were ticked. */}
+          {(activeCount > 0 || !!search || priorityOnly || utilFilter.length > 0) && (
             <button className="btn ghost" onClick={clearAll}>Clear filters</button>
           )}
           <div className="col-menu-wrap">
@@ -447,7 +458,7 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
         <div className="hidden-note">
           <span className="hn-icon" aria-hidden="true">&#8505;</span>
           Projects at <strong>{hiddenStatusNames.join(", ")}</strong> are hidden by default.
-          Use <strong>Show Hidden</strong> to reveal them.
+          Use <strong>Show Closed</strong> to reveal them.
           <span className="hn-count">{hiddenCount}</span>
         </div>
       )}
@@ -690,7 +701,21 @@ body.resizing { cursor: col-resize; user-select: none; }
 .uf.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
 .uf-dot { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
 .uf-clear { background: none; border: none; color: var(--accent); font: 600 11.5px inherit; cursor: pointer; }
-.list-tools { display: flex; gap: 8px; align-items: flex-start; }
+/* One row deep, all of them. align-items was flex-start, so each control
+   sized to its own content and a two-word caption wrapped rather than
+   widening — which is what put "Show Hidden (1)" on three lines.
+
+   A single height on both the buttons and the input is what makes them
+   line up: the shared .btn has more vertical padding than the shared
+   input rule, so left to themselves they differ by about 4px. */
+.list-tools { display: flex; gap: 8px; align-items: center; flex-wrap: wrap; }
+.list-tools .btn,
+.list-tools .search {
+  height: 36px;
+  padding-top: 0; padding-bottom: 0;
+  white-space: nowrap;
+}
+.list-tools .btn { display: inline-flex; align-items: center; }
 .search { width: 230px; }
 .col-menu-wrap { position: relative; }
 .col-menu {

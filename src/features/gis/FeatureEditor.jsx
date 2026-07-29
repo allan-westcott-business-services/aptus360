@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
@@ -106,12 +107,17 @@ export default function FeatureEditor({
     catch (e) { setError(e.message); setBusy(false); }
   }
 
+  const drag = useDragHandle();
+
   return (
-    <div className="fe-backdrop" onClick={onClose}>
-      <div className="fe" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Edit feature">
+    <div className="fe-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="fe" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog" aria-label="Edit feature">
         <style>{CSS}</style>
 
-        <div className="fe-head" style={{ borderTopColor: layer?.Colour }}>
+        <div className="fe-head" {...drag.handleProps}
+          /* Merged, not replaced: a bare style prop after the spread
+             would drop the grab cursor the handle sets. */
+          style={{ ...drag.handleProps.style, borderTopColor: layer?.Colour }}>
           <div>
             <h3>{kind}</h3>
             <p className="fe-sub">

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { getAvRegister, raiseAvInvoice } from "../../api/avRegister.js";
 import { listPlots } from "../../api/plots.js";
@@ -178,13 +179,15 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
     } catch (e) { setError(e.message); setBusy(false); }
   }
 
+  const drag = useDragHandle();
+
   return (
-    <div className="fe-backdrop" onClick={onClose}>
-      <div className="ri" onClick={(e) => e.stopPropagation()} role="dialog"
+    <div className="fe-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="ri" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog"
         aria-label="Raise an asset value invoice">
         <style>{CSS}</style>
 
-        <div className="ri-head">
+        <div className="ri-head" {...drag.handleProps}>
           <div>
             <h3>Raise an invoice</h3>
             <p className="ri-sub">

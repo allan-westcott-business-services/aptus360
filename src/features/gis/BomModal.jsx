@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import * as XLSX from "xlsx";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
@@ -102,13 +103,15 @@ export default function BomModal({ projectId, projectName, onClose }) {
     XLSX.writeFile(wb, `BOM ${safe} ${stamp}.xlsx`);
   }
 
+  const drag = useDragHandle();
+
   return (
-    <div className="fe-backdrop" onClick={onClose}>
-      <div className="bom" onClick={(e) => e.stopPropagation()} role="dialog"
+    <div className="fe-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="bom" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog"
         aria-label="Bill of materials">
         <style>{CSS}</style>
 
-        <div className="bom-head">
+        <div className="bom-head" {...drag.handleProps}>
           <div>
             <h3>Bill of materials</h3>
             <p className="bom-sub">

@@ -72,8 +72,18 @@ export default function NewScheduleModal({ onClose, onSaved }) {
           .filter((v) => v.Is_Aborted).map((v) => v.Visit_Outcome_ID));
         const map = {};
         for (const c of rows) {
+          /* A Plot_Utility row is not the same as a scheduled visit.
+             Rows exist for plot-utility pairs that have never been
+             programmed — they carry a meter number, an adopter, an as-laid
+             date — and treating their mere existence as "scheduled" made
+             every such plot unselectable.
+
+             Scheduled means a date: programmed, or already connected.
+             Anything else is an empty row waiting for this form. */
+          if (!c.Programmed_Date && !c.Connection_Date) continue;
+          /* An aborted visit didn't happen, so the plot is free again. */
           if (aborted.has(c.Visit_Outcome_ID)) continue;
-          (map[c.Plot_ID] ||= {})[c.Utility_ID] = c.Programmed_Date || null;
+          (map[c.Plot_ID] ||= {})[c.Utility_ID] = c.Programmed_Date || c.Connection_Date || null;
         }
         setExisting(map);
       })

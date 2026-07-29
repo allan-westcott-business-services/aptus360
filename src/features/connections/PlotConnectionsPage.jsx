@@ -72,6 +72,13 @@ export default function PlotConnectionsPage() {
   const [progTo, setProgTo] = useState("");
   const [hideLaid, setHideLaid] = useState(false);
   const [groupBy, setGroupBy] = useState("project");
+  /* Which groups are shut. Collapsed rather than expanded is the state
+     worth storing: a set of the few that are shut stays small, and a new
+     group appearing on the next load is open by default rather than
+     hidden because nobody had opened it yet. Keyed by label, so
+     regrouping starts everything open — the keys mean something
+     different then. */
+  const [collapsed, setCollapsed] = useState({});
 
   async function load() {
     try {
@@ -292,6 +299,18 @@ export default function PlotConnectionsPage() {
           </select>
         </span>
 
+        {/* Only worth offering while there are groups to work through. */}
+        {groupBy !== "none" && (
+          <span className="tb-group">
+            <button className="tb-link" onClick={() => setCollapsed({})}>Expand all</button>
+            <button className="tb-link"
+              onClick={() => setCollapsed(Object.fromEntries(
+                groups.filter(([label]) => label).map(([label]) => [label, true])))}>
+              Collapse all
+            </button>
+          </span>
+        )}
+
         <label className={hideLaid ? "tb-chk on" : "tb-chk"}>
           <input type="checkbox" checked={hideLaid} onChange={(e) => setHideLaid(e.target.checked)} />
           Hide rows with an as-laid date
@@ -369,13 +388,25 @@ export default function PlotConnectionsPage() {
                 <tr><td colSpan={cols.length} className="no-rows">No connections match these filters.</td></tr>
               ) : groups.flatMap(([label, list]) => [
                 ...(label ? [(
-                  <tr className="grp-row" key={`g:${label}`}>
+                  <tr className="grp-row" key={`g:${label}`}
+                    onClick={() => setCollapsed((c) => ({ ...c, [label]: !c[label] }))}>
                     <td colSpan={cols.length}>
+                      <button className="grp-toggle" aria-expanded={!collapsed[label]}
+                        aria-label={`${collapsed[label] ? "Expand" : "Collapse"} ${label}`}
+                        onClick={(e) => {
+                          /* The whole row is the target, so the button is
+                             for the keyboard and for the arrow itself —
+                             without this it would toggle twice. */
+                          e.stopPropagation();
+                          setCollapsed((c) => ({ ...c, [label]: !c[label] }));
+                        }}>
+                        {collapsed[label] ? "\u25B8" : "\u25BE"}
+                      </button>
                       {label} <span className="grp-count">{list.length}</span>
                     </td>
                   </tr>
                 )] : []),
-                ...list.map((r) => {
+                ...(label && collapsed[label] ? [] : list.map((r) => {
                 const u = utilityById(r.Utility_ID);
                 const on = selected.includes(r.Plot_Utility_ID);
                 return (
@@ -453,7 +484,7 @@ export default function PlotConnectionsPage() {
                     ))}
                   </tr>
                 );
-                }),
+                })),
               ])}
             </tbody>
           </table>
@@ -482,6 +513,9 @@ const CSS = FILTER_CSS + `
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }
 .pc-toolbar select { width: auto; min-width: 132px; font-size: 12px; padding: 5px 8px; }
 .tb-search { width: 230px; font-size: 12px; padding: 5px 9px; }
+.tb-link { background: none; border: none; cursor: pointer; color: var(--accent);
+  font: 600 11.5px inherit; padding: 2px 4px; border-radius: 4px; }
+.tb-link:hover { background: var(--accent-light); }
 .tb-dates, .tb-group { display: inline-flex; align-items: center; gap: 6px;
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius); padding: 3px 8px; }
 .tb-lbl { font-size: 10.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em; color: var(--muted); }
@@ -492,6 +526,10 @@ const CSS = FILTER_CSS + `
   border: 1px solid var(--border); border-radius: var(--radius); padding: 6px 11px; margin: 0; cursor: pointer; }
 .tb-chk.on { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
 .tb-clear { background: none; border: none; color: var(--accent); font: 600 12px inherit; cursor: pointer; }
+.grp-row { cursor: pointer; }
+.grp-row:hover td { background: #e4e8f2 !important; }
+.grp-toggle { background: none; border: none; cursor: pointer; color: var(--accent);
+  font-size: 11px; padding: 0 7px 0 0; line-height: 1; }
 .grp-row td { background: #eef0f4 !important; font-size: 11.5px; font-weight: 700;
   color: var(--accent); padding: 6px 10px !important; position: sticky; top: 60px; z-index: 1; }
 .grp-count { font-weight: 700; background: var(--accent); color: #fff; border-radius: 20px;

@@ -2,7 +2,7 @@ import { useState, useEffect } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import { listPlots } from "../../api/plots.js";
-import { generateConnections } from "../../api/connections.js";
+import { generateConnections, listConnections } from "../../api/connections.js";
 import { UTILITIES } from "../../lib/utilities.js";
 import { getLookups } from "../../api/lookups.js";
 
@@ -25,6 +25,11 @@ export default function NewScheduleModal({ onClose, onSaved }) {
   const [projectId, setProjectId] = useState("");
   const [plots, setPlots] = useState([]);
   const [loadingPlots, setLoadingPlots] = useState(false);
+  /* What is already scheduled, so a chip can say so before you pick it.
+     Scheduling the same plot and utility twice is the mistake this form
+     is most likely to make, and the only way to see it otherwise is to
+     save and find out. */
+  const [existing, setExisting] = useState({});   // plot id -> { utilityId: date }
   const [selected, setSelected] = useState([]);
   const [anchor, setAnchor] = useState(null);
   const [utils, setUtils] = useState([]);
@@ -51,6 +56,23 @@ export default function NewScheduleModal({ onClose, onSaved }) {
   useEffect(() => {
     if (!projectId) { setPlots([]); setSelected([]); return; }
     setLoadingPlots(true);
+    /* Aborted visits don't count: the work didn't happen, so the plot is
+       free to be scheduled again. Is_Aborted is a flag on the outcome
+       rather than a name match, so renaming an outcome can't quietly
+       change which rows are ignored. */
+    listConnections(projectId)
+      .then((r) => {
+        const aborted = new Set((lookups?.visitOutcomes || [])
+          .filter((v) => v.Is_Aborted).map((v) => v.Visit_Outcome_ID));
+        const map = {};
+        for (const c of r.rows || []) {
+          if (aborted.has(c.Visit_Outcome_ID)) continue;
+          (map[c.Plot_ID] ||= {})[c.Utility_ID] = c.Programmed_Date || null;
+        }
+        setExisting(map);
+      })
+      .catch(() => setExisting({}));
+
     listPlots(projectId)
       .then((r) => {
         setPlots((r.rows || []).sort((a, b) => nat(a.Plot_Number, b.Plot_Number)));
@@ -58,7 +80,7 @@ export default function NewScheduleModal({ onClose, onSaved }) {
       })
       .catch((e) => setError(e.message))
       .finally(() => setLoadingPlots(false));
-  }, [projectId]);
+  }, [projectId, lookups]);
 
   // Self-lay plots aren't ours to connect, so they can't be scheduled.
   const eligible = (p) => !p.Self_Lay_Provider;
@@ -163,6 +185,33 @@ export default function NewScheduleModal({ onClose, onSaved }) {
           </div>
 
           <div className="fld">
+            <label>Utilities to connect <span className="req">*</span></label>
+            <div className="ns-utils">
+              {UTILITIES.filter((u) => SCHEDULABLE.includes(u.id)).map((u) => (
+                <label key={u.id} className={utils.includes(u.id) ? "ns-util on" : "ns-util"}>
+                  <input type="checkbox" checked={utils.includes(u.id)}
+                    onChange={() => setUtils((g) => {
+                      const next = g.includes(u.id) ? g.filter((x) => x !== u.id) : [...g, u.id];
+                      /* A plot picked under the old selection may now have
+                         nothing left to give. Dropping it here keeps what
+                         is highlighted and what would actually save in
+                         step — the original does the same. */
+                      setSelected((sel) => sel.filter((pid) => {
+                        const takenIds = Object.keys(existing[pid] || {}).map(Number);
+                        return next.length === 0
+                          ? !SCHEDULABLE.every((x) => takenIds.includes(x))
+                          : next.some((x) => !takenIds.includes(x));
+                      }));
+                      return next;
+                    })} />
+                  <span className="dot" style={{ background: u.colour }} />
+                  {u.name}
+                </label>
+              ))}
+            </div>
+          </div>
+
+          <div className="fld">
             <label>
               Plots to connect <span className="req">*</span>
               {plots.length > 0 && (
@@ -181,12 +230,48 @@ export default function NewScheduleModal({ onClose, onSaved }) {
               ) : (
                 plots.map((p) => {
                   const on = selected.includes(p.Plot_ID);
-                  const off = !eligible(p);
+                  const taken = existing[p.Plot_ID] || {};
+                  const takenIds = Object.keys(taken).map(Number);
+                  const allTaken = SCHEDULABLE.every((id) => takenIds.includes(id));
+
+                  /* With nothing ticked, a plot is usable unless every
+                     utility is already scheduled. With utilities ticked,
+                     it needs at least one of them still free — offering a
+                     plot that can only produce duplicates is the same as
+                     offering nothing. */
+                  const canAccept = utils.length === 0
+                    ? !allTaken
+                    : utils.some((id) => !takenIds.includes(id));
+                  const off = !eligible(p) || !canAccept;
+
+                  const lines = takenIds.map((id) => {
+                    const u = UTILITIES.find((x) => x.id === id);
+                    const d = taken[id];
+                    return `${u?.name ?? `Utility ${id}`} \u2014 ${d
+                      ? `scheduled ${String(d).slice(0, 10).split("-").reverse().join("/")}`
+                      : "scheduled, no date"}`;
+                  });
+                  const title = !eligible(p) ? "Self-lay plot"
+                    : lines.length === 0 ? "Nothing scheduled yet"
+                    : `Already scheduled:\n${lines.join("\n")}`
+                      + (allTaken ? "\n\nAll utilities scheduled." : "");
+
                   return (
                     <button key={p.Plot_ID} type="button"
-                      className={["ns-plot", on ? "on" : "", off ? "off" : ""].filter(Boolean).join(" ")}
-                      disabled={off} title={off ? "Self-lay plot" : undefined}
+                      className={["ns-plot", on ? "on" : "", off ? "off" : "",
+                        allTaken ? "full" : ""].filter(Boolean).join(" ")}
+                      disabled={off} title={title}
                       onClick={(e) => clickPlot(p, e)}>
+                      {/* A dot per utility already scheduled, in a fixed
+                          order so the strip reads the same on every chip. */}
+                      {takenIds.length > 0 && (
+                        <span className="ns-strip">
+                          {SCHEDULABLE.filter((id) => takenIds.includes(id)).map((id) => (
+                            <span key={id} className="ns-sdot"
+                              style={{ background: UTILITIES.find((x) => x.id === id)?.colour }} />
+                          ))}
+                        </span>
+                      )}
                       {p.Plot_Number}
                     </button>
                   );
@@ -198,7 +283,13 @@ export default function NewScheduleModal({ onClose, onSaved }) {
                 Click to toggle, shift-click for a range.
                 {selfLay > 0 && ` ${selfLay} self-lay plot${selfLay === 1 ? "" : "s"} excluded.`}
                 {" "}
-                <button className="ns-link" onClick={() => setSelected(plots.filter(eligible).map((p) => p.Plot_ID))}>
+                <button className="ns-link" onClick={() => setSelected(plots.filter((p) => {
+                  if (!eligible(p)) return false;
+                  const takenIds = Object.keys(existing[p.Plot_ID] || {}).map(Number);
+                  return utils.length === 0
+                    ? !SCHEDULABLE.every((x) => takenIds.includes(x))
+                    : utils.some((x) => !takenIds.includes(x));
+                }).map((p) => p.Plot_ID))}>
                   Select all
                 </button>
                 {selected.length > 0 && (
@@ -206,20 +297,6 @@ export default function NewScheduleModal({ onClose, onSaved }) {
                 )}
               </p>
             )}
-          </div>
-
-          <div className="fld">
-            <label>Utilities to connect <span className="req">*</span></label>
-            <div className="ns-utils">
-              {UTILITIES.filter((u) => SCHEDULABLE.includes(u.id)).map((u) => (
-                <label key={u.id} className={utils.includes(u.id) ? "ns-util on" : "ns-util"}>
-                  <input type="checkbox" checked={utils.includes(u.id)}
-                    onChange={() => setUtils((g) => g.includes(u.id) ? g.filter((x) => x !== u.id) : [...g, u.id])} />
-                  <span className="dot" style={{ background: u.colour }} />
-                  {u.name}
-                </label>
-              ))}
-            </div>
           </div>
 
           <div className="ns-optional">
@@ -327,6 +404,12 @@ const CSS = `
   font: 600 11.5px ui-monospace, Menlo, monospace; color: var(--text); }
 .ns-plot:hover:not(:disabled) { border-color: var(--accent); }
 .ns-plot.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.ns-strip { display: inline-flex; gap: 2px; margin-right: 5px; }
+.ns-sdot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+/* Every utility already scheduled: nothing this form can add. Red rather
+   than simply greyed, because it is worth noticing before you look for
+   the plot and find it missing. */
+.ns-plot.full { border-color: #ef4444; }
 .ns-plot.off { background: #fef3c7; color: #92400e; border-color: #fde68a; cursor: not-allowed; }
 .ns-link { background: none; border: none; color: var(--accent); font: 600 11px inherit;
   cursor: pointer; padding: 0; }

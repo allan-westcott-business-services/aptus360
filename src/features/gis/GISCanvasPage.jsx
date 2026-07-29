@@ -96,6 +96,10 @@ export default function GISCanvasPage() {
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   const [reportOpen, setReportOpen] = useState(false);
+  /* Placing plots floats over the canvas rather than sitting in a
+     sidebar. It has to stay open while the canvas is clicked — two clicks
+     per plot — so it cannot be a modal with a backdrop. */
+  const [placeOpen, setPlaceOpen] = useState(false);
   const [trenchCheck, setTrenchCheck] = useState(null);
   /* A ref, not state: the loop below has to read the current value
      between awaits, and a state read there would see the value from the
@@ -2207,9 +2211,13 @@ export default function GISCanvasPage() {
                     <MenuItem label={basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
                       hint={basemap?.Metres_Per_Pixel ? "scaled" : "not set"}
                       onClick={() => setSetupOpen(true)} />
+                    <MenuItem label="Add plots by range"
+                      hint="create plots, then place them"
+                      onClick={() => setAddOpen(true)} />
                     <MenuItem label="Place plot seeds"
                       hint={`${plotList.filter((p) => !p.placed).length} unplaced`}
-                      onClick={() => setAddOpen(true)} />
+                      active={placeOpen || queue.length > 0}
+                      onClick={() => setPlaceOpen(true)} />
                     <div className="gm-sep" />
                     <MenuGroup label="Drawing standard" />
                     <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
@@ -2376,6 +2384,25 @@ export default function GISCanvasPage() {
                     <MenuItem label="Bill of materials"
                       hint="quantities by site and surface"
                       disabled={!projectId} onClick={() => setBomOpen(true)} />
+                    <MenuGroup label="Network" />
+                    <MenuItem label={busy === "joints" ? "Working\u2026" : "Place joints"}
+                      hint="joints where services meet mains"
+                      disabled={!!busy} onClick={() => runNetwork("joints")} />
+                    <MenuItem label={busy === "trace" ? "Tracing\u2026" : "Trace from source"}
+                      hint={selected.length === 1 ? undefined : "select one feature first"}
+                      disabled={!!busy || selected.length !== 1}
+                      onClick={() => runNetwork("trace")} />
+                    <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign meters"}
+                      hint="match meters to their plots"
+                      disabled={!!busy} onClick={() => runNetwork("meters")} />
+                    <div className="gm-sep" />
+                    <MenuGroup label="View" />
+                    <MenuItem label="Way and circuit labels" active={showLabels}
+                      hint={showLabels ? "on" : "off"}
+                      onClick={() => setShowLabels(!showLabels)} />
+                    <MenuItem label="Grid" active={showGrid} hint={`${GRID_M} m`}
+                      onClick={() => setShowGrid(!showGrid)} />
+                    <div className="gm-sep" />
                     <MenuItem label="Check trench connectivity"
                       hint="finds trenches that don't join up"
                       disabled={!projectId}
@@ -2526,77 +2553,6 @@ export default function GISCanvasPage() {
         </div>
       ) : (
         <div className="gis-main">
-          <div className="gis-layers">
-            <p className="gl-title">Layers</p>
-            {layers.map((l) => {
-              const off = hidden.includes(l.Layer_Key);
-              return (
-                <label key={l.Layer_Key} className={off ? "gl off" : "gl"}>
-                  <input type="checkbox" checked={!off}
-                    onChange={() => setHidden((h) =>
-                      h.includes(l.Layer_Key) ? h.filter((x) => x !== l.Layer_Key) : [...h, l.Layer_Key])} />
-                  <span className="gl-swatch" style={{ background: l.Colour }} />
-                  <span className="gl-name">{l.Label}</span>
-                  <span className="gl-count">{counts[l.Layer_Key] || 0}</span>
-                </label>
-              );
-            })}
-
-            <PlacementPanel
-              onAdd={() => setAddOpen(true)}
-              plots={plotList}
-              utilities={utilities}
-              queue={queue}
-              current={nextPlot}
-              meterFor={meterFor}
-              onStart={startPlacing}
-              onCancel={stopPlacing}
-            />
-
-            <p className="gl-title">Network</p>
-            <div className="gn-tools">
-              <button className="gn" disabled={!!busy} onClick={() => runNetwork("joints")}>
-                {busy === "joints" ? "Working\u2026" : "Place joints"}
-              </button>
-              <button className="gn" disabled={!!busy || selected.length !== 1}
-                title={selected.length === 1 ? "Trace from the selected feature" : "Select a source first"}
-                onClick={() => runNetwork("trace")}>
-                {busy === "trace" ? "Tracing\u2026" : "Trace from source"}
-              </button>
-              <button className="gn" disabled={!!busy} onClick={() => runNetwork("meters")}>
-                {busy === "meters" ? "Working\u2026" : "Assign meters"}
-              </button>
-              <label className="gn-check">
-                <input type="checkbox" checked={showLabels}
-                  onChange={(e) => setShowLabels(e.target.checked)} />
-                Show way &amp; circuit
-              </label>
-            </div>
-
-            <p className="gl-title">View</p>
-            <label className={showGrid ? "gl" : "gl off"}>
-              <input type="checkbox" checked={showGrid}
-                onChange={(e) => setShowGrid(e.target.checked)} />
-              <span className="gl-swatch grid" />
-              <span className="gl-name">Grid</span>
-              <span className="gl-count">{GRID_M}m</span>
-            </label>
-
-            <p className="gl-title">Help</p>
-            <ul className="gl-help">
-              <li>Right or middle drag to pan</li>
-              <li>Right-click an object to edit it</li>
-              <li>Scroll to zoom on the cursor</li>
-              <li>Shift-click to multi-select</li>
-              <li><kbd>Esc</kbd> cancels, <kbd>Del</kbd> removes</li>
-              {drawing && <li><kbd>Enter</kbd> finishes, <kbd>Backspace</kbd> undoes</li>}
-              {!drawing && <li>Select a line to drag its points</li>}
-              {!drawing && <li><kbd>Alt</kbd>-click a point to remove it</li>}
-              {!drawing && <li><kbd>Alt</kbd>-click a segment to add one</li>}
-              {!drawing && <li>Same class, sharing an end: Join</li>}
-            </ul>
-          </div>
-
           <div className="gis-canvas-wrap" ref={wrapRef}>
             <canvas
               ref={canvasRef}
@@ -2671,6 +2627,28 @@ export default function GISCanvasPage() {
                 </div>
               );
             })()}
+
+            {(placeOpen || queue.length > 0) && (
+              <div className="gis-place">
+                <PlacementPanel
+                  onAdd={() => setAddOpen(true)}
+                  plots={plotList}
+                  utilities={utilities}
+                  queue={queue}
+                  current={nextPlot}
+                  meterFor={meterFor}
+                  onStart={startPlacing}
+                  onCancel={() => { stopPlacing(); setPlaceOpen(false); }}
+                />
+                {/* Only closable when nothing is queued: shutting it
+                    mid-placement would leave a queue with no way to see
+                    or cancel it. */}
+                {queue.length === 0 && (
+                  <button className="fe-x gp-x" onClick={() => setPlaceOpen(false)}
+                    aria-label="Close">&times;</button>
+                )}
+              </div>
+            )}
 
             {trace && (
               <div className="gis-trace" role="dialog" aria-label="Full trace">
@@ -2805,30 +2783,7 @@ const CSS = `
 .btn.ghost.danger { color: #b91c1c; }
 
 .gis-main { flex: 1; display: grid; grid-template-columns: 210px 1fr; gap: 12px; min-height: 0; }
-.gis-layers { border: 1px solid var(--border); border-radius: var(--radius); padding: 10px;
-  overflow-y: auto; background: var(--white); }
-.gl-title { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
-  color: var(--muted); margin: 0 0 7px; }
-.gl-title:not(:first-child) { margin-top: 16px; }
-.gl { display: flex; align-items: center; gap: 8px; font-size: 12px; font-weight: 500;
-  text-transform: none; letter-spacing: 0; color: var(--text); padding: 4px 3px; margin: 0;
-  cursor: pointer; border-radius: 5px; }
-.gl:hover { background: var(--bg); }
-.gl.off .gl-name, .gl.off .gl-count { opacity: .4; }
-.gl-swatch { width: 10px; height: 10px; border-radius: 3px; flex: none; }
-.gl-swatch.grid { background: repeating-linear-gradient(0deg,#cbd5e1 0 1px,transparent 1px 4px),
-  repeating-linear-gradient(90deg,#cbd5e1 0 1px,transparent 1px 4px); }
-.gl-name { flex: 1; }
-.gl-count { font-size: 10.5px; font-weight: 700; color: var(--muted); }
-.gis-layers > .pp { margin-bottom: 14px; }
-.gn-tools { display: flex; flex-direction: column; gap: 5px; }
-.gn { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
-  padding: 7px 10px; cursor: pointer; font: 600 11.5px inherit; color: var(--text); text-align: left; }
-.gn:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); background: var(--accent-light); }
-.gn:disabled { opacity: .45; cursor: not-allowed; }
-.gn-check { display: flex; align-items: center; gap: 7px; font-size: 11px; font-weight: 500;
-  text-transform: none; letter-spacing: 0; color: var(--muted); margin: 4px 0 0; cursor: pointer; }
-.gl-help { margin: 0; padding-left: 16px; font-size: 11px; color: var(--muted); line-height: 1.7; }
+
 kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: var(--bg);
   border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
 
@@ -2837,6 +2792,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+/* Top left, clear of the panels that report on a selection — plots are
+   placed while looking at the drawing, not at a table. */
+.gis-place { position: absolute; left: 12px; top: 12px; z-index: 7; width: 258px;
+  max-height: 78%; overflow-y: auto; background: var(--white);
+  border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.18); }
+.gp-x { position: absolute; right: 8px; top: 8px; }
 .gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;

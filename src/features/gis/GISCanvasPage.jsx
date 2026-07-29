@@ -30,7 +30,7 @@ import {
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
-import { MenuBar, Menu, MenuGroup, MenuItem, MenuToggle } from "./GisMenus.jsx";
+import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
 import { feederSections, junctionNodes, cablesFor, trenchComponents } from "./feeder.js";
 import TrenchCheck from "./TrenchCheck.jsx";
@@ -184,9 +184,39 @@ export default function GISCanvasPage() {
     return c;
   }, [features, classKeys]);
 
+  /* Which class is soloed, if any. Kept alongside hidden rather than
+     derived from it: the two can look identical — soloing the only
+     visible layer leaves the same hidden set as hiding all the others —
+     and S has to know whether pressing it again means "show everything"
+     or "isolate this". */
+  const [solo, setSolo] = useState(null);
+
   const toggleClass = useCallback((key) => {
+    /* Hiding by hand ends a solo. Otherwise S would still be lit while
+       the visible set no longer matches what it isolated. */
+    setSolo(null);
     setHidden((h) => (h.includes(key) ? h.filter((x) => x !== key) : [...h, key]));
   }, []);
+
+  /* Isolate one class: hide every class key that isn't carried by a
+     feature carrying this one.
+
+     Working from the features rather than from a list of known classes
+     matters — a feature is hidden if ANY of its keys is hidden, so
+     soloing an electric line type has to leave "electric" visible or the
+     thing being soloed disappears with everything else. */
+  const soloClass = useCallback((key) => {
+    if (solo === key) { setSolo(null); setHidden([]); return; }
+    const keep = new Set();
+    const all = new Set();
+    for (const f of features) {
+      const ks = classKeys(f);
+      ks.forEach((k) => all.add(k));
+      if (ks.includes(key)) ks.forEach((k) => keep.add(k));
+    }
+    setSolo(key);
+    setHidden([...all].filter((k) => !keep.has(k)));
+  }, [features, classKeys, solo]);
 
   /* Every line type on one layer, for that utility's menu. */
   const typesOn = useCallback(
@@ -2148,7 +2178,9 @@ export default function GISCanvasPage() {
                       </select>
                     </div>
                     <div className="gm-sep" />
-                    <MenuToggle label="Snap to geometry" on={snapOn} onChange={setSnapOn} />
+                    <MenuItem label="Snap to geometry" active={snapOn}
+                      hint={snapOn ? "on" : "off"}
+                      onClick={() => setSnapOn(!snapOn)} />
                     <MenuItem label="Reset view"
                       onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
                   </Menu>
@@ -2157,41 +2189,51 @@ export default function GISCanvasPage() {
                     badge={hidden.length}>
                     <MenuGroup label="Show or hide" />
                     {layers.map((l) => (
-                      <MenuToggle key={l.Layer_Key} label={l.Label} colour={l.Colour}
+                      <MenuLayer key={l.Layer_Key} label={l.Label} colour={l.Colour}
                         count={classCount[l.Layer_Key] || 0}
-                        on={!hidden.includes(l.Layer_Key)}
-                        onChange={() => toggleClass(l.Layer_Key)} />
+                        hidden={hidden.includes(l.Layer_Key)}
+                        solo={solo === l.Layer_Key}
+                        onHide={() => toggleClass(l.Layer_Key)}
+                        onSolo={() => soloClass(l.Layer_Key)} />
                     ))}
-                    <MenuToggle label="Span nodes" colour="#334155"
+                    <MenuLayer label="Span nodes" colour="#334155"
                       count={classCount["role:spannode"] || 0}
-                      on={!hidden.includes("role:spannode")}
-                      onChange={() => toggleClass("role:spannode")} />
+                      hidden={hidden.includes("role:spannode")}
+                      solo={solo === "role:spannode"}
+                      onHide={() => toggleClass("role:spannode")}
+                      onSolo={() => soloClass("role:spannode")} />
                     <div className="gm-sep" />
                     <MenuItem label="Show everything" disabled={!hidden.length}
-                      onClick={() => setHidden([])} />
+                      onClick={() => { setHidden([]); setSolo(null); }} />
                   </Menu>
 
                   <Menu id="electric" label="Electric" open={open} setOpen={setOpen}>
                     <MenuGroup label="Show or hide" />
                     {typesOn("electric").map((t) => (
-                      <MenuToggle key={t.Type_Key} label={t.Label} colour={t.Colour}
+                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}
-                        on={!hidden.includes(`lt:${t.Type_Key}`)}
-                        onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
+                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                        solo={solo === `lt:${t.Type_Key}`}
+                        onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     {/* Electric meters specifically. Joints, link boxes,
                         substations and POCs only exist on electric, so
                         the plain role key is right for those. */}
-                    <MenuToggle label="Electric meters"
+                    <MenuLayer label="Electric meters"
                       count={classCount["electric:role:meter"] || 0}
-                      on={!hidden.includes("electric:role:meter")}
-                      onChange={() => toggleClass("electric:role:meter")} />
+                      hidden={hidden.includes("electric:role:meter")}
+                      solo={solo === "electric:role:meter"}
+                      onHide={() => toggleClass("electric:role:meter")}
+                      onSolo={() => soloClass("electric:role:meter")} />
                     {[["joint", "Joints"], ["linkbox", "Link boxes"],
                       ["substation", "Substations"], ["poc", "POCs"]].map(([role, label]) => (
-                        <MenuToggle key={role} label={label}
+                        <MenuLayer key={role} label={label}
                           count={classCount[`role:${role}`] || 0}
-                          on={!hidden.includes(`role:${role}`)}
-                          onChange={() => toggleClass(`role:${role}`)} />
+                          hidden={hidden.includes(`role:${role}`)}
+                          solo={solo === `role:${role}`}
+                          onHide={() => toggleClass(`role:${role}`)}
+                          onSolo={() => soloClass(`role:${role}`)} />
                       ))}
                     <div className="gm-sep" />
                     <MenuGroup label="Network" />
@@ -2237,19 +2279,26 @@ export default function GISCanvasPage() {
                         open={open} setOpen={setOpen}>
                         <MenuGroup label="Show or hide" />
                         {typesOn(key).map((t) => (
-                          <MenuToggle key={t.Type_Key} label={t.Label} colour={t.Colour}
+                          <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                             count={classCount[`lt:${t.Type_Key}`] || 0}
-                            on={!hidden.includes(`lt:${t.Type_Key}`)}
-                            onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
+                            hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                            solo={solo === `lt:${t.Type_Key}`}
+                            onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                            onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                         ))}
-                        <MenuToggle label="Meters"
+                        <MenuLayer label="Meters"
                           count={classCount[`${key}:role:meter`] || 0}
-                          on={!hidden.includes(`${key}:role:meter`)}
-                          onChange={() => toggleClass(`${key}:role:meter`)} />
+                          hidden={hidden.includes(`${key}:role:meter`)}
+                          solo={solo === `${key}:role:meter`}
+                          onHide={() => toggleClass(`${key}:role:meter`)}
+                          onSolo={() => soloClass(`${key}:role:meter`)} />
                         <div className="gm-sep" />
-                        <MenuToggle label={`Whole ${layer?.Label ?? key} layer`}
+                        <MenuLayer label={`Whole ${layer?.Label ?? key} layer`}
                           colour={layer?.Colour} count={classCount[key] || 0}
-                          on={!hidden.includes(key)} onChange={() => toggleClass(key)} />
+                          hidden={hidden.includes(key)}
+                          solo={solo === key}
+                          onHide={() => toggleClass(key)}
+                          onSolo={() => soloClass(key)} />
                       </Menu>
                     );
                   })}
@@ -2257,14 +2306,18 @@ export default function GISCanvasPage() {
                   <Menu id="lighting" label="Street lighting" open={open} setOpen={setOpen}>
                     <MenuGroup label="Show or hide" />
                     {typesOn("lighting").map((t) => (
-                      <MenuToggle key={t.Type_Key} label={t.Label} colour={t.Colour}
+                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}
-                        on={!hidden.includes(`lt:${t.Type_Key}`)}
-                        onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
+                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                        solo={solo === `lt:${t.Type_Key}`}
+                        onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
-                    <MenuToggle label="Columns" count={classCount["role:column"] || 0}
-                      on={!hidden.includes("role:column")}
-                      onChange={() => toggleClass("role:column")} />
+                    <MenuLayer label="Columns" count={classCount["role:column"] || 0}
+                      hidden={hidden.includes("role:column")}
+                      solo={solo === "role:column"}
+                      onHide={() => toggleClass("role:column")}
+                      onSolo={() => soloClass("role:column")} />
                     {!typesOn("lighting").length && (
                       <MenuItem label="Lighting layer missing" hint="run migration 0072" disabled />
                     )}

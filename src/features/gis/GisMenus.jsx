@@ -71,18 +71,29 @@ export function MenuItem({ label, hint, onClick, disabled, active, danger }) {
   );
 }
 
-/* A visibility toggle. Reads as a state rather than an action, because
-   that is what it is — the eye says what is true now, not what clicking
-   will do. */
-export function MenuToggle({ label, on, onChange, colour, count }) {
+/* A layer row: the name, and H and S beside it.
+
+   H hides just this one. S isolates it — everything else goes, which is
+   the quicker gesture when you want to look at one thing on a busy
+   drawing. A checkbox could only express the first, and getting to the
+   second meant unticking everything else by hand.
+
+   Both are buttons rather than a checkbox because both are actions with
+   an effect elsewhere: H changes this row, S changes every other. A
+   checkbox implies it only speaks for itself. */
+export function MenuLayer({ label, hidden, solo, onHide, onSolo, colour, count }) {
   return (
-    <button className={on ? "gm-tog on" : "gm-tog"} role="menuitemcheckbox"
-      aria-checked={on} data-keep-open onClick={() => onChange(!on)}>
-      <span className="gm-eye">{on ? "\u25C9" : "\u25CB"}</span>
+    <div className={hidden ? "gm-row off" : "gm-row"} data-keep-open>
       {colour && <span className="gm-dot" style={{ background: colour }} />}
       <span className="gm-lbl">{label}</span>
       {count != null && <em>{count}</em>}
-    </button>
+      <button className={hidden ? "gm-hs on" : "gm-hs"}
+        title={hidden ? `Show ${label}` : `Hide ${label}`}
+        aria-pressed={hidden} onClick={onHide}>H</button>
+      <button className={solo ? "gm-hs solo on" : "gm-hs solo"}
+        title={solo ? "Show everything again" : `Show only ${label}`}
+        aria-pressed={solo} onClick={onSolo}>S</button>
+    </div>
   );
 }
 
@@ -118,10 +129,20 @@ const CSS = `
   font-weight: 500; }
 .gm-item:disabled em { font-style: italic; }
 
-.gm-eye { font-size: 11px; color: var(--border); width: 12px; }
-.gm-tog.on .gm-eye { color: var(--accent); }
-.gm-tog:not(.on) .gm-lbl { color: var(--muted); }
+.gm-row { display: flex; align-items: center; gap: 8px; padding: 4px 6px 4px 9px;
+  border-radius: 6px; font-size: 12.5px; }
+.gm-row:hover { background: var(--bg); }
+.gm-row .gm-lbl { flex: 1; }
+.gm-row.off .gm-lbl { color: var(--muted); text-decoration: line-through; }
+.gm-row.off .gm-dot { opacity: .3; }
 .gm-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
-.gm-tog:not(.on) .gm-dot { opacity: .3; }
+/* Small, square and equal, so H and S read as a pair rather than as two
+   unrelated controls. */
+.gm-hs { width: 20px; height: 20px; flex: none; border: 1px solid var(--border);
+  background: var(--white); border-radius: 4px; cursor: pointer; font: 700 10px inherit;
+  color: var(--muted); display: inline-flex; align-items: center; justify-content: center; }
+.gm-hs:hover { border-color: var(--accent); color: var(--accent); }
+.gm-hs.on { background: #b91c1c; border-color: #b91c1c; color: #fff; }
+.gm-hs.solo.on { background: var(--accent); border-color: var(--accent); }
 .gm-sep { height: 1px; background: var(--border); margin: 5px 0; }
 `;

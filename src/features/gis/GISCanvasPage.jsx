@@ -2782,7 +2782,11 @@ const CSS = `
 .gt.on { background: var(--accent); color: #fff; }
 .btn.ghost.danger { color: #b91c1c; }
 
-.gis-main { flex: 1; display: grid; grid-template-columns: 210px 1fr; gap: 12px; min-height: 0; }
+/* One column now the sidebar has gone. It was `210px 1fr`, and with only
+   the canvas left inside it the canvas took the 210px column — which is
+   why the drawing appeared squeezed into the space the sidebar used to
+   occupy. */
+.gis-main { flex: 1; display: grid; grid-template-columns: 1fr; min-height: 0; }
 
 kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: var(--bg);
   border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }

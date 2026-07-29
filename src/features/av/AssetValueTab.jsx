@@ -17,7 +17,8 @@ const money = (n) => (n == null || n === "" ? "\u2014" : `£${Number(n).toLocale
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
 
 function blankAgreement() {
-  return { Utility_ID: "", IDNO_ID: "", AV_Agreement_Type_ID: "", AV_Value: "",
+  return { IDNO_ID: "", AV_Agreement_Type_ID: "", IDNO_Reference: "", AV_Value: "",
+    Initial_AV_Fee_Percent: "", Initial_AV_Fee: "",
     Estimated_Plot_AV_Value: "", Agreement_Date: "", Status: "" };
 }
 
@@ -111,13 +112,15 @@ export default function AssetValueTab({ projectId }) {
   const agreedTotal = agreements.reduce((s2, a) => s2 + (Number(a.AV_Value) || 0), 0);
 
   async function submitAgreement() {
-    if (!agDraft.Utility_ID) return setError("Choose a utility.");
+    /* The agreement type is what an agreement is. Utility follows from
+       it — a trigger sets it on write — so asking for both would let the
+       two disagree and then something downstream has to choose. */
+    if (!agDraft.AV_Agreement_Type_ID) return setError("Choose an agreement type.");
     try {
       await saveAgreement(projectId, {
         ...agDraft,
-        Utility_ID: Number(agDraft.Utility_ID),
         IDNO_ID: agDraft.IDNO_ID ? Number(agDraft.IDNO_ID) : null,
-        AV_Agreement_Type_ID: agDraft.AV_Agreement_Type_ID ? Number(agDraft.AV_Agreement_Type_ID) : null,
+        AV_Agreement_Type_ID: Number(agDraft.AV_Agreement_Type_ID),
       }, agEditing);
       setAgDraft(blankAgreement());
       setAgEditing(null);
@@ -332,13 +335,17 @@ export default function AssetValueTab({ projectId }) {
         {showAgForm && (
           <div className="ag-form">
             <div className="ag-grid">
-              <div className="fld"><label>Utility <span className="req">*</span></label>
-                <select value={agDraft.Utility_ID}
-                  onChange={(e) => setAgDraft((d) => ({ ...d, Utility_ID: e.target.value }))}>
+              <div className="fld"><label>Agreement type <span className="req">*</span></label>
+                <select value={agDraft.AV_Agreement_Type_ID}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, AV_Agreement_Type_ID: e.target.value }))}>
                   <option value="">&mdash;</option>
-                  {UTILITIES.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
+                  {(lookups.avAgreementTypes || []).map((t) => (
+                    <option key={t.AV_Agreement_Type_ID} value={t.AV_Agreement_Type_ID}>
+                      {t.AV_Agreement_Type}
+                    </option>
+                  ))}
                 </select></div>
-              <div className="fld"><label>Operator</label>
+              <div className="fld"><label>IDNO</label>
                 <select value={agDraft.IDNO_ID}
                   onChange={(e) => setAgDraft((d) => ({ ...d, IDNO_ID: e.target.value }))}>
                   <option value="">&mdash;</option>
@@ -346,20 +353,35 @@ export default function AssetValueTab({ projectId }) {
                     <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
                   ))}
                 </select></div>
-              <div className="fld"><label>Agreement type</label>
-                <select value={agDraft.AV_Agreement_Type_ID}
-                  onChange={(e) => setAgDraft((d) => ({ ...d, AV_Agreement_Type_ID: e.target.value }))}>
-                  <option value="">&mdash;</option>
-                  {(lookups.avAgreementTypes || []).map((t) => (
-                    <option key={t.AV_Agreement_Type_ID} value={t.AV_Agreement_Type_ID}>{t.AV_Agreement_Type}</option>
-                  ))}
-                </select></div>
+              <div className="fld"><label>IDNO reference</label>
+                <input value={agDraft.IDNO_Reference}
+                  placeholder="Their reference for this agreement"
+                  onChange={(e) => setAgDraft((d) => ({ ...d, IDNO_Reference: e.target.value }))} /></div>
               <div className="fld"><label>Agreement date</label>
                 <input className="dt" type="date" value={agDraft.Agreement_Date}
                   onChange={(e) => setAgDraft((d) => ({ ...d, Agreement_Date: e.target.value }))} /></div>
               <div className="fld"><label>Asset value</label>
                 <input type="number" step="0.01" value={agDraft.AV_Value}
                   onChange={(e) => setAgDraft((d) => ({ ...d, AV_Value: e.target.value }))} /></div>
+              {/* Percentage and amount both kept. The amount is what gets
+                  invoiced, and recalculating it from a percentage someone
+                  later edited would change what an old agreement appears
+                  to have charged. Typing a percentage fills the amount;
+                  the amount can then be overridden. */}
+              <div className="fld"><label>Initial AV fee %</label>
+                <input type="number" step="0.01" value={agDraft.Initial_AV_Fee_Percent}
+                  onChange={(e) => setAgDraft((d) => {
+                    const pct = e.target.value;
+                    const base = Number(d.AV_Value) || 0;
+                    return {
+                      ...d, Initial_AV_Fee_Percent: pct,
+                      Initial_AV_Fee: pct === "" ? d.Initial_AV_Fee
+                        : String(Math.round(base * Number(pct)) / 100),
+                    };
+                  })} /></div>
+              <div className="fld"><label>Initial AV fee</label>
+                <input type="number" step="0.01" value={agDraft.Initial_AV_Fee}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, Initial_AV_Fee: e.target.value }))} /></div>
               <div className="fld"><label>Est. per plot</label>
                 <input type="number" step="0.01" value={agDraft.Estimated_Plot_AV_Value}
                   onChange={(e) => setAgDraft((d) => ({ ...d, Estimated_Plot_AV_Value: e.target.value }))} /></div>
@@ -380,21 +402,45 @@ export default function AssetValueTab({ projectId }) {
         ) : (
           <table className="ag-table">
             <thead>
-              <tr><th>Utility</th><th>Type</th><th>Operator</th><th>Agreed</th>
-                <th className="num">Asset value</th><th className="num">Per plot</th><th>Status</th><th /></tr>
+              {/* Utility is gone as a column: the agreement type says it,
+                  and repeating it down every row spends width the
+                  invoiced and claimed figures need. */}
+              <tr><th>Agreement type</th><th>IDNO</th><th>IDNO reference</th>
+                <th className="num">Asset value</th>
+                <th className="num">Initial fee %</th><th className="num">Initial fee</th>
+                <th className="num">Value invoiced</th>
+                <th className="num">Total plots</th><th className="num">Plots claimed</th>
+                <th>Contract</th><th /></tr>
             </thead>
             <tbody>
               {agreements.map((a) => {
                 const u = utilityById(a.Utility_ID);
                 return (
                   <tr key={a.AV_Agreement_ID}>
-                    <td><span className="dot" style={{ background: u?.colour }} /> {u?.name ?? "\u2014"}</td>
-                    <td>{agTypeName(a.AV_Agreement_Type_ID)}</td>
-                    <td>{idnoName(a.IDNO_ID)}</td>
-                    <td>{fmt(a.Agreement_Date)}</td>
+                    <td>
+                      <span className="dot" style={{ background: u?.colour }} />
+                      {a.agreement_type || agTypeName(a.AV_Agreement_Type_ID)}
+                    </td>
+                    <td>{a.IDNO_Name || idnoName(a.IDNO_ID)}</td>
+                    <td className="mono">{a.IDNO_Reference || "\u2014"}</td>
                     <td className="num strong">{money(a.AV_Value)}</td>
-                    <td className="num">{money(a.Estimated_Plot_AV_Value)}</td>
-                    <td>{a.Status || "\u2014"}</td>
+                    <td className="num">
+                      {a.Initial_AV_Fee_Percent == null || a.Initial_AV_Fee_Percent === ""
+                        ? "\u2014" : `${a.Initial_AV_Fee_Percent}%`}
+                    </td>
+                    <td className="num">{money(a.Initial_AV_Fee)}</td>
+                    {/* Derived, not stored — every one of these moves when
+                        an invoice is raised. */}
+                    <td className="num">{money(a.value_invoiced)}</td>
+                    <td className="num">{a.total_plots ?? "\u2014"}</td>
+                    <td className={`num${a.plots_claimed > 0 ? " strong" : ""}`}>
+                      {a.plots_claimed ?? 0}
+                    </td>
+                    <td>
+                      {a.Contract_Path
+                        ? <span className="ag-has">Attached</span>
+                        : <span className="ag-none-inline">None</span>}
+                    </td>
                     <td className="nowrap">
                       <button className="row-edit"
                         onClick={() => { setAgEditing(a.AV_Agreement_ID); setAgDraft({ ...blankAgreement(), ...a }); setShowAgForm(true); }}>
@@ -476,6 +522,8 @@ const CSS = `
   padding: 14px; margin-bottom: 12px; }
 .ag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end; }
 .ag-grid .dt { width: 100%; }
+.ag-has { color: var(--ok-text); font-weight: 600; font-size: 11.5px; }
+.ag-none-inline { color: var(--muted); font-size: 11.5px; }
 .ag-none { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 0; }
 .ag-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .ag-table th { text-align: left; font-size: 9.5px; font-weight: 700; text-transform: uppercase;

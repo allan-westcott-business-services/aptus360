@@ -1,6 +1,9 @@
 import { supabase, json, fail } from "./_supabase.js";
 
-const A = "AV_Agreement_ID,Project_ID,Utility_ID,IDNO_ID,AV_Agreement_Type_ID,AV_Value,Estimated_Plot_AV_Value,Agreement_Date,Status,Notes";
+/* Utility_ID is writable but not asked for: a trigger sets it from the
+   agreement type, so whatever arrives here is overwritten with the right
+   one rather than trusted. */
+const A = "AV_Agreement_ID,Project_ID,Utility_ID,IDNO_ID,AV_Agreement_Type_ID,AV_Value,Estimated_Plot_AV_Value,Agreement_Date,Status,Notes,IDNO_Reference,Initial_AV_Fee_Percent,Initial_AV_Fee,Contract_Path";
 const W = new Set(A.split(",").filter((x) => x !== "AV_Agreement_ID"));
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)).map(([k, v]) => [k, v === "" ? null : v]));
@@ -12,8 +15,12 @@ export default async function handler(req, context) {
 
   try {
     if (req.method === "GET") {
-      const { data, error } = await db.from("AV_Agreement")
-        .select(A).eq("Project_ID", projectId).order("Utility_ID");
+      /* Read from the view: it carries the invoiced value, the plot count
+         and how many have been claimed, none of which are stored — they
+         change every time an invoice is raised. Writes still go to the
+         table below. */
+      const { data, error } = await db.from("AV_Agreement_Detail")
+        .select("*").eq("Project_ID", projectId).order("AV_Agreement_Type_ID");
       if (error) throw error;
       return json({ rows: data || [] });
     }

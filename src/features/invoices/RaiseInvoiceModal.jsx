@@ -3,6 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { getAvRegister, raiseAvInvoice } from "../../api/avRegister.js";
 import { listPlots } from "../../api/plots.js";
+import { listAgreements } from "../../api/av.js";
 import { getLookups } from "../../api/lookups.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 
@@ -28,6 +29,7 @@ const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/"
 
 export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRaised }) {
   const { user } = useAuth() || {};
+  const [agreements, setAgreements] = useState([]);
   const [register, setRegister] = useState([]);   // every plot-utility on the project
   const [plots, setPlots] = useState([]);         // every plot, connected or not
   const [mode, setMode] = useState("ready");      // ready | connected
@@ -50,11 +52,14 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
        record at all is absent from the register entirely, and "it isn't
        in the list" is a much worse answer than "it has no connection
        record yet". */
-    Promise.all([getAvRegister(projectId), getLookups(), listPlots(projectId)])
-      .then(([reg, lk, pl]) => {
+    Promise.all([
+      getAvRegister(projectId), getLookups(), listPlots(projectId), listAgreements(projectId),
+    ])
+      .then(([reg, lk, pl, ag]) => {
         if (!live) return;
         setRegister(reg.rows || []);
         setPlots(pl.rows || pl || []);
+        setAgreements(ag.rows || []);
         setLookups(lk);
         setError("");
       })
@@ -102,16 +107,35 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
   const connectedPlotIds = new Set(register.map((r) => r.plot_id));
   const unconnected = plots.filter((p) => !connectedPlotIds.has(p.Plot_ID));
 
-  /* Operators are organisations holding an IDNO or DNO role. The VAT
-     position travels with them, so picking one settles the rate rather
-     than leaving it to be typed. */
+  /* The agreement for this type, if the project has one. It names the
+     operator, so the invoice does not ask — an invoice raised against
+     the wrong operator is a credit note and an apology. */
+  /* agreement holds the chosen type's id; this is the project's actual
+     agreement for it, if one exists. */
+  const activeAgreement = agreements.find(
+    (a) => agreement && String(a.AV_Agreement_Type_ID) === String(agreement));
+
+  /* Operators are organisations holding an IDNO or DNO role. Only asked
+     for when no agreement covers the chosen type — otherwise the
+     agreement decides and the field is read-only. */
   const operators = useMemo(
     () => [...new Map((lookups?.orgOperators || [])
       .map((o) => [o.Organisation_ID, o])).values()],
     [lookups]
   );
-  const chosenOperator = operators
-    .find((o) => String(o.Organisation_ID) === String(operator));
+  /* From the agreement where there is one, otherwise whatever was
+     picked. Shaped the same either way so the VAT rule below doesn't
+     care which it got. */
+  const fromAgreement = activeAgreement?.idno_organisation_id
+    ? {
+        Organisation_ID: activeAgreement.idno_organisation_id,
+        Name: activeAgreement.idno_organisation_name || activeAgreement.IDNO_Name,
+        VAT_Registered: activeAgreement.idno_vat_registered,
+        VAT_Rate: activeAgreement.idno_vat_rate,
+      }
+    : null;
+  const chosenOperator = fromAgreement
+    || operators.find((o) => String(o.Organisation_ID) === String(operator));
 
   /* The standard rate in force on the invoice date, from the VAT_Rate
      table rather than a constant. It has been 17.5, 15, 17.5 and 20
@@ -158,7 +182,7 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
         Project_ID: projectId,
         Utility_ID: utilityId || chosen[0]?.utility_id || null,
         AV_Agreement_Type_ID: agreement || null,
-        IDNO_Organisation_ID: operator || null,
+        IDNO_Organisation_ID: chosenOperator?.Organisation_ID || null,
         Invoice_Number: invoiceNumber.trim() || null,
         Invoice_Date: invoiceDate,
         Document_Type: docType,
@@ -272,14 +296,35 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                 </div>
                 <div className="fld">
                   <label htmlFor="ri-op">IDNO / DNO</label>
-                  <select id="ri-op" value={operator} onChange={(e) => setOperator(e.target.value)}>
-                    <option value="">&mdash;</option>
-                    {operators.map((o) => (
-                      <option key={o.Organisation_ID} value={o.Organisation_ID}>
-                        {o.Name}{o.Code ? ` (${o.Code})` : ""}
-                      </option>
-                    ))}
-                  </select>
+                  {fromAgreement ? (
+                    /* Read-only: the agreement for this type says who it
+                       is with, and letting the invoice differ from its own
+                       agreement is how one gets raised against the wrong
+                       operator. */
+                    <p className="ri-fixed">
+                      {fromAgreement.Name}
+                      <span>
+                        from the {activeAgreement.agreement_type} agreement
+                        {activeAgreement.IDNO_Reference ? ` \u00B7 ${activeAgreement.IDNO_Reference}` : ""}
+                      </span>
+                    </p>
+                  ) : (
+                    <>
+                      <select id="ri-op" value={operator} onChange={(e) => setOperator(e.target.value)}>
+                        <option value="">&mdash;</option>
+                        {operators.map((o) => (
+                          <option key={o.Organisation_ID} value={o.Organisation_ID}>
+                            {o.Name}{o.Code ? ` (${o.Code})` : ""}
+                          </option>
+                        ))}
+                      </select>
+                      <p className="hint">
+                        {agreement
+                          ? "No agreement for this type \u2014 add one on the Asset Value tab."
+                          : "Choose an agreement type, or pick an operator."}
+                      </p>
+                    </>
+                  )}
                 </div>
                 <div className="fld">
                   <label>VAT rate</label>
@@ -397,6 +442,8 @@ const CSS = `
 .ri-totals strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .ri-vat { margin: 0; font-size: 14px; font-weight: 700; display: flex; flex-direction: column; }
 .ri-vat span { font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.ri-fixed { margin: 0; font-size: 13px; font-weight: 600; display: flex; flex-direction: column; }
+.ri-fixed span { font-size: 10.5px; font-weight: 500; color: var(--muted); }
 .ri-why { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
   padding: 7px 10px; background: var(--bg); border-radius: 7px; }
 .ri-mode { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 11px;

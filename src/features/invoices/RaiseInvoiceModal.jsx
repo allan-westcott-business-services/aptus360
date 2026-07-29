@@ -1,24 +1,35 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getAvRegister, raiseAvInvoice } from "../../api/avRegister.js";
+import { listPlots } from "../../api/plots.js";
 import { getLookups } from "../../api/lookups.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 
 /* Raising an asset value invoice.
 
    It opens on the plots that have earned one and haven't been billed —
-   the same "billable" rule the register uses, so this can't offer a plot
-   the register says is already claimed. Picking from a list beats typing
-   plot numbers: it is the difference between an invoice that reconciles
-   and one that has to be chased.
+   the same rule the register uses, so it can never offer a plot that has
+   already been claimed. Picking from a list beats typing plot numbers:
+   it is the difference between an invoice that reconciles and one that
+   has to be chased.
+
+   A plot is absent for one of three reasons, and the note at the top
+   says which: already invoiced, connected but with no meter date, or no
+   connection record at all. The last is the one that looks like a bug
+   and isn't — the register is built from connection records, so a plot
+   the connections screen has never seen cannot appear here.
 
    Raised By is the signed-in person, resolved server-side from their
    email against the Person table. It is not a field to fill in: whoever
    raised it is a fact the app already knows, and a typed name is one
    that can be wrong. */
+const fmtDate = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "today");
+
 export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRaised }) {
   const { user } = useAuth() || {};
-  const [billable, setBillable] = useState([]);
+  const [register, setRegister] = useState([]);   // every plot-utility on the project
+  const [plots, setPlots] = useState([]);         // every plot, connected or not
+  const [mode, setMode] = useState("ready");      // ready | connected
   const [lookups, setLookups] = useState(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -34,10 +45,15 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
 
   useEffect(() => {
     let live = true;
-    Promise.all([getAvRegister(projectId), getLookups()])
-      .then(([reg, lk]) => {
+    /* The plot list as well as the register: a plot with no connection
+       record at all is absent from the register entirely, and "it isn't
+       in the list" is a much worse answer than "it has no connection
+       record yet". */
+    Promise.all([getAvRegister(projectId), getLookups(), listPlots(projectId)])
+      .then(([reg, lk, pl]) => {
         if (!live) return;
-        setBillable((reg.rows || []).filter((r) => r.billable));
+        setRegister(reg.rows || []);
+        setPlots(pl.rows || pl || []);
         setLookups(lk);
         setError("");
       })
@@ -56,10 +72,31 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
     .find((a) => String(a.AV_Agreement_Type_ID) === String(agreement));
   const utilityId = chosenAgreement?.Utility_ID ?? null;
 
+  /* Ready means earned and not already claimed. Connected widens it to
+     everything with a connection record, so a plot that is on the
+     network but has no meter date yet can still be billed deliberately
+     — the original lets you, and refusing outright would just move the
+     work to a spreadsheet.
+
+     Already-claimed rows are never offered: that is a double invoice,
+     not a judgement call. */
+  const candidates = useMemo(() => {
+    const base = register.filter((r) => !r.claimed);
+    return mode === "ready" ? base.filter((r) => r.billable) : base;
+  }, [register, mode]);
+
   const forUtility = useMemo(
-    () => (utilityId ? billable.filter((r) => String(r.utility_id) === String(utilityId)) : billable),
-    [billable, utilityId]
+    () => (utilityId ? candidates.filter((r) => String(r.utility_id) === String(utilityId)) : candidates),
+    [candidates, utilityId]
   );
+
+  /* Counts worth showing rather than leaving to be inferred from a short
+     list. */
+  const readyCount = register.filter((r) => r.billable).length;
+  const connectedNotReady = register.filter((r) => !r.claimed && !r.billable).length;
+  const claimedCount = register.filter((r) => r.claimed).length;
+  const connectedPlotIds = new Set(register.map((r) => r.plot_id));
+  const unconnected = plots.filter((p) => !connectedPlotIds.has(p.Plot_ID));
 
   /* Operators are organisations holding an IDNO or DNO role. The VAT
      position travels with them, so picking one settles the rate rather
@@ -72,13 +109,26 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
   const chosenOperator = operators
     .find((o) => String(o.Organisation_ID) === String(operator));
 
-  /* Not registered means no VAT, which is different from a zero rate
-     that happens to be zero. Registered with no rate set takes the
-     standard one. */
-  const STANDARD_VAT = 20;
-  const vatRate = !chosenOperator ? STANDARD_VAT
+  /* The standard rate in force on the invoice date, from the VAT_Rate
+     table rather than a constant. It has been 17.5, 15, 17.5 and 20
+     inside twenty years, so a credit against an old invoice has to be
+     able to reach the rate that invoice was raised at.
+
+     Rates come back newest first, so the first one that started on or
+     before the date is the one that was in force. */
+  const standardRate = useMemo(() => {
+    const on = invoiceDate || new Date().toISOString().slice(0, 10);
+    const hit = (lookups?.vatRates || [])
+      .find((r) => r.Label === "Standard" && String(r.Effective_From).slice(0, 10) <= on);
+    return hit ? Number(hit.Rate) : null;
+  }, [lookups, invoiceDate]);
+
+  /* Not registered means no VAT, which is a different fact from a rate
+     that happens to be zero. Registered with no rate of their own takes
+     the standard one for the day. */
+  const vatRate = !chosenOperator ? (standardRate ?? 0)
     : !chosenOperator.VAT_Registered ? 0
-    : (chosenOperator.VAT_Rate ?? STANDARD_VAT);
+    : (chosenOperator.VAT_Rate ?? standardRate ?? 0);
 
   const chosen = forUtility.filter((r) => picked[r.plot_utility_id] !== undefined);
   const net = chosen.reduce((t, r) => t + Number(picked[r.plot_utility_id] || 0), 0);
@@ -146,21 +196,48 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
           {error && <Banner kind="error">{error}</Banner>}
           {loading && <p className="ri-empty">Finding billable plots&hellip;</p>}
 
-          {!loading && !billable.length && (
+          {!loading && (
+            <div className="ri-why">
+              <label className="ri-mode">
+                <span>Show</span>
+                <select value={mode} onChange={(e) => { setMode(e.target.value); setPicked({}); }}>
+                  <option value="ready">Ready to bill ({readyCount})</option>
+                  <option value="connected">
+                    Any connected plot ({readyCount + connectedNotReady})
+                  </option>
+                </select>
+              </label>
+              <span className="ri-why-note">
+                {connectedNotReady > 0 && (
+                  <>{connectedNotReady} connected without a meter date. </>
+                )}
+                {claimedCount > 0 && <>{claimedCount} already invoiced. </>}
+                {unconnected.length > 0 && (
+                  <strong>
+                    {unconnected.length} plot(s) have no connection record at all &mdash;
+                    add one on Plot Connections before they can be billed.
+                  </strong>
+                )}
+              </span>
+            </div>
+          )}
+
+          {!loading && !candidates.length && (
             <p className="ri-empty">
-              Nothing to bill. Every plot with a meter on this project has already been
-              invoiced.
+              {readyCount === 0 && connectedNotReady === 0
+                ? "No plot on this project has a connection record yet."
+                : "Nothing left to bill under this filter."}
             </p>
           )}
 
-          {!loading && billable.length > 0 && (
+          {!loading && candidates.length > 0 && (
             <>
               <div className="ri-grid">
                 <div className="fld">
                   <label htmlFor="ri-agr">Agreement type</label>
                   <select id="ri-agr" value={agreement}
                     onChange={(e) => { setAgreement(e.target.value); setPicked({}); }}>
-                    <option value="">All ({billable.length} plots)</option>
+                    <option value="">All ({candidates.length} plots)</option>
                     {agreementTypes.map((a) => (
                       <option key={a.AV_Agreement_Type_ID} value={a.AV_Agreement_Type_ID}>
                         {a.AV_Agreement_Type}
@@ -204,9 +281,11 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                   <p className="ri-vat">
                     {vatRate}%
                     <span>
-                      {!chosenOperator ? "standard \u2014 no operator chosen"
+                      {standardRate == null && (!chosenOperator || chosenOperator.VAT_Rate == null)
+                        ? "no standard rate set for this date"
+                        : !chosenOperator ? `standard on ${fmtDate(invoiceDate)}`
                         : !chosenOperator.VAT_Registered ? `${chosenOperator.Name} isn\u2019t VAT registered`
-                        : chosenOperator.VAT_Rate == null ? "standard rate"
+                        : chosenOperator.VAT_Rate == null ? `standard on ${fmtDate(invoiceDate)}`
                         : `set on ${chosenOperator.Name}`}
                     </span>
                   </p>
@@ -239,7 +318,7 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                         <span className="ri-conn">
                           {r.connection_date
                             ? String(r.connection_date).slice(0, 10).split("-").reverse().join("/")
-                            : <em>no date</em>}
+                            : <em className="ri-nodate">no meter date</em>}
                         </span>
                         <input type="number" step="0.01" className="ri-val" disabled={!on}
                           value={on ? picked[r.plot_utility_id] : ""}
@@ -309,5 +388,13 @@ const CSS = `
 .ri-totals strong { color: var(--text); font-variant-numeric: tabular-nums; }
 .ri-vat { margin: 0; font-size: 14px; font-weight: 700; display: flex; flex-direction: column; }
 .ri-vat span { font-size: 10.5px; font-weight: 500; color: var(--muted); }
+.ri-why { display: flex; align-items: center; gap: 12px; flex-wrap: wrap; margin-bottom: 10px;
+  padding: 7px 10px; background: var(--bg); border-radius: 7px; }
+.ri-mode { display: flex; align-items: center; gap: 7px; margin: 0; font-size: 11px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: var(--muted); }
+.ri-mode select { width: auto; font-size: 12px; }
+.ri-why-note { font-size: 11.5px; color: var(--muted); flex: 1; }
+.ri-why-note strong { color: #92400e; font-weight: 600; }
+.ri-nodate { color: #b45309; font-style: normal; }
 .ri-by { margin-left: auto; }
 `;

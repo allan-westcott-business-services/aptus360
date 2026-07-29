@@ -150,7 +150,7 @@ export default function GenericTable({ table }) {
                 </Select>
               ) : (
                 <input
-                  type={f.type === "number" ? "number" : "text"}
+                  type={f.type === "number" ? "number" : f.type === "date" ? "date" : "text"}
                   value={draft[f.col] ?? ""}
                   onChange={(e) => setDraft((d) => ({ ...d, [f.col]: e.target.value }))}
                 />

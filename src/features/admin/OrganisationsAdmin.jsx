@@ -373,7 +373,10 @@ export default function OrganisationsAdmin() {
                       disabled={!orgDraft.VAT_Registered}
                       placeholder={orgDraft.VAT_Registered ? "standard" : "n/a"}
                       onChange={(e) => setOrgDraft((d) => ({ ...d, VAT_Rate: e.target.value }))} />
-                    <p className="hint">Blank takes the standard rate.</p>
+                    <p className="hint">
+                      Blank takes the standard rate in force on the invoice date,
+                      from Admin &rsaquo; VAT Rates.
+                    </p>
                   </div>
                   <div className="fld oa-full">
                     <label htmlFor="oa-Notes">Notes</label>

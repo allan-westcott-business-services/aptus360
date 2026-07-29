@@ -137,6 +137,15 @@ export const ADMIN_TABLES = [
       { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },
     ] },
 
+  { key: "VAT_Rate", label: "VAT Rates", pk: "VAT_Rate_ID", fields: [
+      { col: "Label", label: "Rate name", type: "text", required: true },
+      { col: "Rate", label: "Rate (%)", type: "number", required: true },
+      /* The day it took effect. A rate runs until the next one starts,
+         so there is no end date to keep in step. */
+      { col: "Effective_From", label: "Effective From", type: "date", required: true },
+      { col: "Notes", label: "Notes", type: "text" },
+    ] },
+
   { separator: true, label: "Drawings" },
   { key: "GIS_Style", label: "GIS Styles", special: "gisstyles" },
 ];

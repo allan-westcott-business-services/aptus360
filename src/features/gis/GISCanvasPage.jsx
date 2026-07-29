@@ -1017,8 +1017,11 @@ export default function GISCanvasPage() {
             const t = teed.find((y) => y.Feature_ID === x.Feature_ID);
             return t ? { ...x, Geometry: t.Geometry } : x;
           });
-          const others = connectedTo(f.Geometry, withTees.filter(
-            (x) => !hidden.some((k) => classKeys(x).includes(k))), f.Feature_ID);
+          /* Every feature, not the visible ones. A join to something
+             switched off is still a join, and recording it only when the
+             other end happens to be on screen would make the network
+             depend on what someone was looking at. */
+          const others = connectedTo(f.Geometry, withTees, f.Feature_ID);
           const before = [...(f.Attributes?.Connects || [])].sort().join(",");
           if (others.sort().join(",") !== before) {
             const updates = [{
@@ -1246,7 +1249,12 @@ export default function GISCanvasPage() {
        With no boundary drawn, site comes back null and one feature is
        created as before. Calling everything on-site because nobody has
        drawn the red line yet would put the wrong figure in a quote. */
-    const runs = splitByBoundary(draft, boundaryPolygons(visible));
+    /* features, not visible. Hiding the boundary layer is a view
+       preference; it must not stop what is drawn being classified. That
+       is why trenches drawn inside the boundary were coming out
+       Unclassified — the boundary was switched off, so as far as this
+       line was concerned there wasn't one. */
+    const runs = splitByBoundary(draft, boundaryPolygons(features));
 
     try {
       const made = [];
@@ -1266,7 +1274,7 @@ export default function GISCanvasPage() {
             Site: run.site,
             // Recorded at draw time using the metre tolerance, not the
             // pixel one — what it touches, not what it looked near.
-            Connects: connectedTo(run.geometry, visible, null),
+            Connects: connectedTo(run.geometry, features, null),
           },
         }));
       }
@@ -1841,11 +1849,13 @@ export default function GISCanvasPage() {
       return;
     }
 
-    const trenches = mainsTrenches(visible, (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    /* Every trench, whether shown or not. A hidden mains trench is still
+       the one a service should tee into. */
+    const trenches = mainsTrenches(features, (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes));
     if (!trenches.length) { setError("Draw a mains trench first."); return; }
 
     const serviceType = lineTypes.find((t) => t.Type_Key === "trench_service") || {};
-    const polys = boundaryPolygons(visible);
+    const polys = boundaryPolygons(features);
 
     /* A seed is already done if a service trench is bound to it. The
        link is stored on the trench rather than inferred from position,
@@ -1921,7 +1931,7 @@ export default function GISCanvasPage() {
               Site: run.site,
               Surface_Type: surfaceFor(run.site, null, surfaceTypes),
               Seed_Feature_ID: plan.seed.Feature_ID,
-              Connects: connectedTo(run.geometry, visible, null),
+              Connects: connectedTo(run.geometry, features, null),
             },
           }));
           trenchCount++;
@@ -1965,7 +1975,7 @@ export default function GISCanvasPage() {
               Line_Type: lineTypes.find((t) => t.Layer_Key === c.utility.layer_key
                 && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
               Seed_Feature_ID: plan.seed.Feature_ID,
-              Connects: connectedTo(c.geometry, visible, null),
+              Connects: connectedTo(c.geometry, features, null),
             },
           });
           cableCount++;

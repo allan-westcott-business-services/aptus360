@@ -24,13 +24,15 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
 import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
-  assignWay, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom, circuitReport,
+  assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
+  circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuToggle } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
+import { feederSections, junctionNodes, cablesFor } from "./feeder.js";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -1442,6 +1444,199 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Taking meters out of a circuit. The circuit itself stays — this is
+     the ordinary correction, a plot that turned out to belong on the
+     next feeder along. The meters keep everything else; only their
+     membership is cleared. */
+  async function removeFromCircuit(meterIds, circuit) {
+    if (!meterIds.length) return;
+    setBusy("circuit");
+    try {
+      const rows = features.filter((f) => meterIds.includes(f.Feature_ID));
+      await bulkUpdateFeatures(projectId, rows.map((m) => {
+        const A = { ...m.Attributes };
+        delete A.Circuit_ID; delete A.Circuit_Name; delete A.Circuit_Letter;
+        return { Feature_ID: m.Feature_ID, Attributes: A };
+      }));
+      await load(projectId);
+      setStatus(`${meterIds.length} meter(s) taken out of ${circuit.name}`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Deleting a circuit unassigns its meters, frees its way on the
+     substation and removes its span nodes. The meters and the trenches
+     stay: they are physical things that exist whatever the circuit plan
+     says, and deleting them would turn a planning change into a redraw. */
+  async function deleteCircuit(circuit) {
+    const meters = features.filter((f) =>
+      f.Feature_Role === "meter" && Number(f.Attributes?.Circuit_ID) === Number(circuit.id));
+    const nodes = features.filter((f) =>
+      f.Feature_Role === "spannode" && Number(f.Attributes?.Circuit_ID) === Number(circuit.id));
+
+    if (!window.confirm(
+      `Delete ${circuit.name}?\n\n`
+      + `${meters.length} meter(s) will be unassigned and ${nodes.length} span node(s) removed. `
+      + `The meters and trenches stay.`
+    )) return;
+
+    setBusy("circuit");
+    try {
+      if (meters.length) {
+        await bulkUpdateFeatures(projectId, meters.map((m) => {
+          const A = { ...m.Attributes };
+          delete A.Circuit_ID; delete A.Circuit_Name; delete A.Circuit_Letter;
+          return { Feature_ID: m.Feature_ID, Attributes: A };
+        }));
+      }
+      /* One call rather than a loop: the span nodes of a circuit go
+         together, and a partial failure halfway through a loop would
+         leave a circuit that is neither deleted nor intact. */
+      if (nodes.length) await deleteFeatures(projectId, nodes.map((nd) => nd.Feature_ID));
+
+      /* The way it held goes back into the pool, or the substation fills
+         up with circuits that no longer exist. */
+      const sub = features.find((f) => f.Feature_Role === "substation");
+      if (sub) {
+        const rel = releaseWays(sub, circuit.id);
+        if (rel.changed) {
+          await updateFeature(projectId, sub.Feature_ID, {
+            Attributes: { ...sub.Attributes, Way_Circuits: rel.map },
+          });
+        }
+      }
+      await load(projectId);
+      setStatus(`${circuit.name} deleted \u2014 ${meters.length} meter(s) unassigned`);
+      setTimeout(() => setStatus(""), 7000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Build the LV feeder network.
+
+     Routes each circuit's cables along the trenches from the substation
+     out to its plots, breaking runs at junctions, at ends, and wherever
+     the cable count changes. A port of the original's
+     gisBuildLvFeederNetwork.
+
+     Rebuilds rather than adds: generated feeders are deleted first, so
+     running it twice gives the same answer as running it once. Only
+     generated ones — a cable drawn by hand is somebody's decision and
+     survives. */
+  async function buildLvNetwork() {
+    const circuits = circuitsFrom(features);
+    if (!features.some((f) => f.Feature_Role === "substation")) {
+      return setError("Place a substation first \u2014 feeders route back to it.");
+    }
+    if (!circuits.length) {
+      return setError("No circuits defined yet \u2014 use Link to Circuit first.");
+    }
+
+    const old = features.filter((f) =>
+      f.Attributes?.Line_Type === "elec_feeder" && f.Attributes?.Generated);
+
+    if (!window.confirm(
+      `Build the LV feeder network for ${circuits.length} circuit(s)?`
+      + (old.length ? `\n\nThis redraws ${old.length} existing feeder cable(s).` : "")
+    )) return;
+
+    setBusy("feeder");
+    setProgress({ done: 0, total: circuits.length, label: "Routing feeders" });
+    try {
+      if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
+
+      let runs = 0, cables = 0, nodesMade = 0;
+      const failed = [];
+      const stranded = [];
+      let done = 0;
+
+      for (const c of circuits) {
+        setProgress({ done, total: circuits.length, label: `${c.name} (${c.letter})` });
+
+        /* Scoped to this circuit's seeds, so a plot on another feeder
+           doesn't pull its load onto this one. */
+        const seedIds = new Set();
+        for (const m of c.meters) {
+          const sid = m.Attributes?.Seed_Feature_ID;
+          if (sid != null) { seedIds.add(Number(sid)); continue; }
+          const seed = features.find((f) => f.Feature_Role === "plot"
+            && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
+          if (seed) seedIds.add(Number(seed.Feature_ID));
+        }
+
+        const r = feederSections(features, {
+          lineTypes,
+          plotById: (id) => plotList.find((p) => p.plot_id === id),
+          seedIds,
+        });
+        if (r.error || !r.sections.length) { failed.push(c.name); done++; continue; }
+        if (r.skipped?.length) stranded.push(...r.skipped);
+
+        for (const [i, sec] of r.sections.entries()) {
+          await createFeature(projectId, {
+            Layer_Key: "electric",
+            Feature_Type: "line",
+            Geometry: sec.pts,
+            Label: `${c.letter}${i + 1}`,
+            Attributes: {
+              Line_Type: "elec_feeder",
+              Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
+              Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
+              /* What makes the next rebuild safe. */
+              Generated: true,
+            },
+          });
+          runs++;
+          cables += sec.cables;
+        }
+
+        /* Junction span nodes, so the network is marked up without
+           anyone having to run a trace first — the original does this
+           as part of the build for the same reason. */
+        const existingNodes = features.filter((f) => f.Feature_Role === "spannode"
+          && Number(f.Attributes?.Circuit_ID) === Number(c.id));
+        let seq = existingNodes.reduce(
+          (t, f) => Math.max(t, Number(f.Attributes?.Span_Seq) || 0), 0);
+
+        for (const j of junctionNodes(r.model)) {
+          const near = existingNodes.some((f) =>
+            Math.hypot(f.Geometry[0][0] - j.point[0], f.Geometry[0][1] - j.point[1]) < 1);
+          if (near) continue;
+          seq += 1;
+          await createFeature(projectId, {
+            Layer_Key: "electric",
+            Feature_Type: "point",
+            Feature_Role: "spannode",
+            Geometry: [j.point],
+            Label: `Point ${spanLabel(c.letter, seq)}`,
+            Attributes: {
+              Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
+              Span_Seq: seq, Span_Label: spanLabel(c.letter, seq),
+            },
+          });
+          nodesMade++;
+        }
+        done++;
+      }
+
+      await load(projectId);
+      setStatus(
+        `LV network: ${runs} run(s), ${cables} cable(s) across ${circuits.length - failed.length} circuit(s)`
+        + (nodesMade ? `, ${nodesMade} junction node(s)` : "")
+        + (stranded.length
+          ? ` \u2014 ${stranded.length} meter(s) not on the trench network`
+          : "")
+        + (failed.length ? ` \u2014 couldn't route ${failed.join(", ")}` : "")
+      );
+      setTimeout(() => setStatus(""), 12000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
+  }
+
   async function runAutoService() {
     const seeds = selected.length
       ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
@@ -1918,7 +2113,11 @@ export default function GISCanvasPage() {
                         reads as broken rather than unbuilt. */}
                     <MenuItem label="HV route POC to substation"
                       hint="future feature" disabled />
-                    <MenuItem label="Build LV network" hint="future feature" disabled />
+                    <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV network"}
+                      hint={`${cablesFor(features.filter((f) => f.Feature_Role === "meter"
+                        && f.Layer_Key === "electric" && f.Attributes?.Circuit_ID != null).length)} cable(s) minimum`}
+                      disabled={busy === "feeder" || !circuitsFrom(features).length}
+                      onClick={buildLvNetwork} />
                   </Menu>
 
                   {["gas", "water"].map((key) => {
@@ -2011,6 +2210,9 @@ export default function GISCanvasPage() {
             pocOutput={poc?.Attributes?.Output != null && poc.Attributes.Output !== ""
               ? Number(poc.Attributes.Output) : null}
             onClose={() => setReportOpen(false)}
+            busy={busy === "circuit"}
+            onRemoveFromCircuit={removeFromCircuit}
+            onDeleteCircuit={deleteCircuit}
           />
         );
       })()}

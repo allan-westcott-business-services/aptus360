@@ -22,10 +22,26 @@ const num = (v) => (v == null ? "\u2014" : v);
 const kvaF = (v) => `${(Math.round((v || 0) * 10) / 10).toFixed(1)} kVA`;
 const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 
-export default function CircuitReport({ report, projectRef, siteName, pocOutput, onClose }) {
+export default function CircuitReport({
+  report, projectRef, siteName, pocOutput, onClose, onRemoveFromCircuit, onDeleteCircuit, busy,
+}) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
   const [filters, setFilters] = useState({});
+  /* Selection spans circuits: someone tidying up picks meters from two
+     feeders at once and moves them together. Kept as a set of meter ids
+     rather than per circuit, so the buttons only have to work out which
+     of their own rows are in it. */
+  const [picked, setPicked] = useState([]);
+
+  const toggle = (id) => setPicked((p) =>
+    (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
+
+  const setMany = (ids, on) => setPicked((p) => (on
+    ? [...new Set([...p, ...ids])]
+    : p.filter((x) => !ids.includes(x))));
+
+  const allMeterIds = report.circuits.flatMap((c) => c.meters.map((m) => m.id));
 
   const setFilter = (k) => (v) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -98,6 +114,15 @@ export default function CircuitReport({ report, projectRef, siteName, pocOutput,
               {pocOutput != null && ` (POC capacity ${kvaF(pocOutput)})`}
             </p>
           </div>
+          <label className="cr-all">
+            <input type="checkbox"
+              checked={allMeterIds.length > 0 && picked.length === allMeterIds.length}
+              ref={(el) => {
+                if (el) el.indeterminate = picked.length > 0 && picked.length < allMeterIds.length;
+              }}
+              onChange={(e) => setPicked(e.target.checked ? allMeterIds : [])} />
+            Select all meters
+          </label>
           <button className="btn accent sm" onClick={exportXlsx}>Export</button>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
@@ -121,6 +146,8 @@ export default function CircuitReport({ report, projectRef, siteName, pocOutput,
 
           {report.circuits.map((c) => {
             const rows = sortRows(match(c.meters));
+            const ids = c.meters.map((m) => m.id);
+            const pickedHere = picked.filter((id) => ids.includes(id));
             return (
               <section key={c.id}>
                 <div className="cr-ch">
@@ -136,12 +163,43 @@ export default function CircuitReport({ report, projectRef, siteName, pocOutput,
                   {anyFilter && (
                     <button className="cr-clear" onClick={() => setFilters({})}>Clear filters</button>
                   )}
+                  {/* Only a real circuit can be unassigned from or deleted.
+                      The unlinked group is the absence of a circuit, not
+                      one of its own. */}
+                  {c.id !== "unlinked" && (
+                    <>
+                      <button className="cr-act" disabled={!pickedHere.length || busy}
+                        title={pickedHere.length
+                          ? `Take ${pickedHere.length} meter(s) out of ${c.name}`
+                          : "Tick the meters to take out"}
+                        onClick={() => onRemoveFromCircuit?.(pickedHere, c)}>
+                        Remove selected from circuit
+                      </button>
+                      <button className="cr-act cr-del" disabled={busy}
+                        title="Unassigns every meter and frees the circuit's way on the substation. The meters and trenches stay."
+                        onClick={() => onDeleteCircuit?.(c)}>
+                        Delete circuit
+                      </button>
+                    </>
+                  )}
                 </div>
 
                 <div className="dt-wrap cr-wrap">
                   <table className="dt cr-tbl">
                     <thead>
                       <tr className="head-row">
+                        {c.id !== "unlinked" && (
+                          <th style={{ width: 34 }}>
+                            <input type="checkbox"
+                              aria-label={`Select every meter in ${c.name}`}
+                              checked={ids.length > 0 && pickedHere.length === ids.length}
+                              ref={(el) => {
+                                if (el) el.indeterminate =
+                                  pickedHere.length > 0 && pickedHere.length < ids.length;
+                              }}
+                              onChange={(e) => setMany(ids, e.target.checked)} />
+                          </th>
+                        )}
                         {[["meter", "Meter"], ["plot", "Plot"], ["houseType", "House type"],
                           ["distM", "Dist. from substation"], ["kva", "kVA"]].map(([k, l]) => (
                             <th key={k} onClick={() => setSort((s) => ({
@@ -152,6 +210,7 @@ export default function CircuitReport({ report, projectRef, siteName, pocOutput,
                           ))}
                       </tr>
                       <tr className="filter-row">
+                        {c.id !== "unlinked" && <th />}
                         {["meter", "plot", "houseType"].map((k) => (
                           <th key={k}>
                             <input value={filters[k] ?? ""} placeholder="Filter&hellip;"
@@ -163,10 +222,19 @@ export default function CircuitReport({ report, projectRef, siteName, pocOutput,
                     </thead>
                     <tbody>
                       {rows.length === 0 && (
-                        <tr><td colSpan={5} className="no-rows">Nothing matches that filter.</td></tr>
+                        <tr><td colSpan={c.id === "unlinked" ? 5 : 6} className="no-rows">
+                          Nothing matches that filter.
+                        </td></tr>
                       )}
                       {rows.map((m) => (
-                        <tr key={m.id}>
+                        <tr key={m.id} className={picked.includes(m.id) ? "cr-on" : ""}>
+                          {c.id !== "unlinked" && (
+                            <td className="mid">
+                              <input type="checkbox" checked={picked.includes(m.id)}
+                                aria-label={`Select ${m.meter}`}
+                                onChange={() => toggle(m.id)} />
+                            </td>
+                          )}
                           <td>{m.meter}</td>
                           <td className="mono">{num(m.plot)}</td>
                           <td className="mono">{m.houseType}</td>
@@ -240,6 +308,13 @@ const CSS = `
 .cr-meta { font-size: 11.5px; color: var(--muted); flex: 1; }
 .cr-clear { background: none; border: 1px solid var(--border); border-radius: 6px; cursor: pointer;
   font: 600 11px inherit; padding: 3px 10px; color: var(--muted); }
+.cr-all { display: flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 700;
+  text-transform: uppercase; letter-spacing: .05em; color: var(--muted); margin: 0; cursor: pointer; }
+.cr-act { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 6px;
+  cursor: pointer; font: 600 11px inherit; padding: 3px 10px; }
+.cr-act:disabled { opacity: .45; cursor: not-allowed; }
+.cr-del { border-width: 1.5px; border-color: #dc2626; font-weight: 700; }
+.dt.cr-tbl tbody tr.cr-on { background: var(--accent-light); }
 .cr-wrap { max-height: none; }
 .dt.cr-tbl { width: 100%; }
 .dt.cr-tbl td { padding: 5px 10px; }

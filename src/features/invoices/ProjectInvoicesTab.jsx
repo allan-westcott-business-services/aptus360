@@ -365,15 +365,24 @@ function FragmentInvoice({
               <input value={draft.Invoice_Number} onChange={d("Invoice_Number")} />)
             : isEditing && c.key === "d365" ? (
               <input value={draft.D365_Number} onChange={d("D365_Number")} />)
+            /* Derived, not entered. Net is the sum of the lines, VAT
+               follows from net and the rate, and gross from both — a
+               database trigger recalculates all three on every write, so
+               anything typed here would be replaced without warning.
+               Change a line value, or the operator's VAT rate. */
             : isEditing && c.key === "sub" ? (
-              <input type="number" step="0.01" className="num"
-                value={draft.Net_Value} onChange={d("Net_Value")} />)
+              <span className="pi-derived" title="Sum of the invoice lines">
+                {money(inv.Net_Value)}
+              </span>)
             : isEditing && c.key === "vat" ? (
-              <input type="number" step="0.01" className="num"
-                value={draft.VAT_Value} onChange={d("VAT_Value")} />)
+              <span className="pi-derived"
+                title={`${inv.VAT_Rate ?? 0}% of the net value`}>
+                {money(inv.VAT_Value)}
+              </span>)
             : isEditing && c.key === "total" ? (
-              <input type="number" step="0.01" className="num"
-                value={draft.Gross_Value} onChange={d("Gross_Value")} />)
+              <span className="pi-derived" title="Net plus VAT">
+                {money(inv.Gross_Value)}
+              </span>)
             : isEditing && c.key === "raised" ? (
               <input value={draft.Raised_By} onChange={d("Raised_By")} />)
             : isEditing && c.key === "doc" ? (
@@ -489,6 +498,11 @@ const CSS = `
 .dt.pi tbody tr.pi-inv.open { background: var(--accent-light); }
 .pi-caret { color: var(--accent); font-size: 12px; }
 .pi-none { color: var(--muted); font-style: italic; }
+/* Shown while editing, but not editable: dotted underline rather than a
+   box, so it reads as a figure rather than an input someone has failed
+   to fill in. */
+.pi-derived { color: var(--muted); border-bottom: 1px dotted var(--border);
+  cursor: help; font-variant-numeric: tabular-nums; }
 .dt.pi tbody tr.pi-warn td { background: #fffbeb; color: #92400e; font-size: 11.5px;
   padding: 5px 12px 5px 42px; border-top: none; }
 .dt.pi tbody tr.pi-lines > td { padding: 0 0 10px 42px; background: #fbfcfe; }

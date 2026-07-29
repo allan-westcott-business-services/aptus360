@@ -114,9 +114,14 @@ export default async function handler(req) {
        deliberately instead of becoming writable by accident. */
     if (req.method === "POST" && url.searchParams.get("op") === "invoice") {
       const { AV_Invoice_ID, ...body } = await req.json();
+      /* Net, VAT and Gross are not here. Net follows the lines and the
+         other two follow net and the rate, all by trigger — accepting
+         them would be a request that appears to succeed while changing
+         nothing, which is harder to diagnose than a rejection. VAT_Rate
+         stays writable: it is an input, and the trigger recalculates
+         from it. */
       const cols = ["Invoice_Number", "D365_Number", "Invoice_Date", "Due_Date",
-        "Document_Type", "Status", "Raised_By", "Notes", "PDF_Path",
-        "Net_Value", "VAT_Rate", "VAT_Value", "Gross_Value"];
+        "Document_Type", "Status", "Raised_By", "Notes", "PDF_Path", "VAT_Rate"];
       const patch = Object.fromEntries(
         Object.entries(body).filter(([k]) => cols.includes(k)).map(([k, v]) => [k, v === "" ? null : v])
       );

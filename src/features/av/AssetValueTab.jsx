@@ -17,7 +17,7 @@ const money = (n) => (n == null || n === "" ? "\u2014" : `£${Number(n).toLocale
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
 
 function blankAgreement() {
-  return { IDNO_ID: "", AV_Agreement_Type_ID: "", IDNO_Reference: "", AV_Value: "",
+  return { IDNO_Organisation_ID: "", AV_Agreement_Type_ID: "", IDNO_Reference: "", AV_Value: "",
     Initial_AV_Fee_Percent: "", Initial_AV_Fee: "",
     Estimated_Plot_AV_Value: "", Agreement_Date: "", Status: "" };
 }
@@ -112,17 +112,33 @@ export default function AssetValueTab({ projectId }) {
   const agreedTotal = agreements.reduce((s2, a) => s2 + (Number(a.AV_Value) || 0), 0);
 
   /* The utility the chosen agreement type resolves to, and the operators
-     that work in it. Empty utility_ids means unassigned, which counts as
-     unrestricted — the alternative is that every operator disappears
-     until someone has been through them all. */
+     that work in it.
+
+     Strictly: an operator must be mapped to this utility to be offered.
+     An unmapped one is not a safe default — it is an operator nobody has
+     said anything about, and letting it stand in for "works in
+     everything" is how ESP Water ends up on the gas agreement.
+
+     The cost is that an unmapped operator disappears rather than being
+     merely wrong, so the hint below names them and says which of the two
+     reasons applies. Silently short lists are the thing to avoid, not
+     short lists. */
   const draftUtilityId = (lookups?.avAgreementTypes || [])
     .find((t) => String(t.AV_Agreement_Type_ID) === String(agDraft.AV_Agreement_Type_ID))?.Utility_ID;
-  const allIdnos = lookups?.idnos || [];
-  const eligibleIdnos = !draftUtilityId ? allIdnos : allIdnos.filter((i) => {
-    const ids = i.utility_ids || [];
-    return ids.length === 0 || ids.map(Number).includes(Number(draftUtilityId));
-  });
-  const hiddenIdnos = allIdnos.length - eligibleIdnos.length;
+  /* Organisations holding an IDNO or DNO role, not the legacy IDNO
+     table. That table only contains operators that existed before the
+     move to Organisations, so anything added since — ESP Water, and
+     every DNO — could never appear here however it was mapped. */
+  const allIdnos = lookups?.operatorUtilities || [];
+  const eligibleIdnos = !draftUtilityId ? allIdnos : allIdnos.filter((i) =>
+    (i.utility_ids || []).map(Number).includes(Number(draftUtilityId)));
+
+  const hidden = !draftUtilityId ? [] : allIdnos.filter((i) => !eligibleIdnos.includes(i));
+  const hiddenUnmapped = hidden.filter((i) => !(i.utility_ids || []).length);
+  /* Named, not counted. "3 mapped to other utilities" leaves you guessing
+     which three, and the ones you expected to see are exactly the ones
+     worth naming. */
+  const hiddenOtherList = hidden.filter((i) => (i.utility_ids || []).length);
 
   async function submitAgreement() {
     /* The agreement type is what an agreement is. Utility follows from
@@ -132,7 +148,8 @@ export default function AssetValueTab({ projectId }) {
     try {
       await saveAgreement(projectId, {
         ...agDraft,
-        IDNO_ID: agDraft.IDNO_ID ? Number(agDraft.IDNO_ID) : null,
+        IDNO_Organisation_ID: agDraft.IDNO_Organisation_ID
+          ? Number(agDraft.IDNO_Organisation_ID) : null,
         AV_Agreement_Type_ID: Number(agDraft.AV_Agreement_Type_ID),
       }, agEditing);
       setAgDraft(blankAgreement());
@@ -359,23 +376,38 @@ export default function AssetValueTab({ projectId }) {
                   ))}
                 </select></div>
               <div className="fld"><label>IDNO</label>
-                {/* Only operators that work in this agreement's utility.
-                    A water operator covers Water, Water NAV Clean and
-                    Water NAV Waste — all three resolve to water — and is
-                    not offered on Electric. An operator with no utilities
-                    assigned stays available on every type, so an
-                    unconfigured one is usable rather than invisible. */}
-                <select value={agDraft.IDNO_ID}
-                  onChange={(e) => setAgDraft((d) => ({ ...d, IDNO_ID: e.target.value }))}>
+                {/* Only operators mapped to this agreement's utility. A
+                    water operator covers Water, Water NAV Clean and Water
+                    NAV Waste — all three resolve to water — and is not
+                    offered on Electric. */}
+                <select value={agDraft.IDNO_Organisation_ID}
+                  onChange={(e) => setAgDraft((d) => ({ ...d, IDNO_Organisation_ID: e.target.value }))}>
                   <option value="">&mdash;</option>
                   {eligibleIdnos.map((i) => (
-                    <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
+                    <option key={i.Organisation_ID} value={i.Organisation_ID}>
+                      {i.Name}{i.Code ? ` (${i.Code})` : ""}
+                    </option>
                   ))}
                 </select>
-                {agDraft.AV_Agreement_Type_ID && hiddenIdnos > 0 && (
+                {agDraft.AV_Agreement_Type_ID && hidden.length > 0 && (
                   <p className="hint">
-                    {hiddenIdnos} operator(s) hidden &mdash; they don&rsquo;t work in this utility.
-                    Set that on the organisation.
+                    {hidden.length} hidden.
+                    {hiddenOtherList.length > 0 && (
+                      <> {hiddenOtherList.length} mapped to other utilities
+                        ({hiddenOtherList.slice(0, 4).map((i) => i.Name).join(", ")}
+                        {hiddenOtherList.length > 4 ? "\u2026" : ""}).</>
+                    )}
+                    {hiddenUnmapped.length > 0 && (
+                      <> {hiddenUnmapped.length} have no utilities set
+                        ({hiddenUnmapped.slice(0, 3).map((i) => i.Name).join(", ")}
+                        {hiddenUnmapped.length > 3 ? "\u2026" : ""}) &mdash;
+                        tick them on the organisation.</>
+                    )}
+                  </p>
+                )}
+                {agDraft.AV_Agreement_Type_ID && eligibleIdnos.length === 0 && (
+                  <p className="hint oa-warn">
+                    No operator is mapped to this utility yet.
                   </p>
                 )}</div>
               <div className="fld"><label>IDNO reference</label>
@@ -446,7 +478,7 @@ export default function AssetValueTab({ projectId }) {
                       <span className="dot" style={{ background: u?.colour }} />
                       {a.agreement_type || agTypeName(a.AV_Agreement_Type_ID)}
                     </td>
-                    <td>{a.IDNO_Name || idnoName(a.IDNO_ID)}</td>
+                    <td>{a.idno_organisation_name || a.IDNO_Name || idnoName(a.IDNO_ID)}</td>
                     <td className="mono">{a.IDNO_Reference || "\u2014"}</td>
                     <td className="num strong">{money(a.AV_Value)}</td>
                     <td className="num">
@@ -547,6 +579,7 @@ const CSS = `
   padding: 14px; margin-bottom: 12px; }
 .ag-grid { display: grid; grid-template-columns: repeat(4, 1fr); gap: 10px; align-items: end; }
 .ag-grid .dt { width: 100%; }
+.oa-warn { color: #92400e; font-weight: 600; }
 .ag-has { color: var(--ok-text); font-weight: 600; font-size: 11.5px; }
 .ag-none-inline { color: var(--muted); font-size: 11.5px; }
 .ag-none { font-size: 12.5px; color: var(--muted); font-style: italic; margin: 0; }

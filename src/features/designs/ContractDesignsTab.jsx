@@ -1,6 +1,6 @@
 import Banner from "../../components/Banner.jsx";
 
-/* Placeholder. Contract designs need a modelling decision first — see
+/* Placeholder. Detailed designs need a modelling decision first — see
    below. Kept visible rather than hidden so the gap stays obvious. */
 export default function ContractDesignsTab({ projectRef }) {
   return (
@@ -8,7 +8,7 @@ export default function ContractDesignsTab({ projectRef }) {
       <style>{CSS}</style>
       <div className="tab-head">
         <div>
-          <h3>Contract designs</h3>
+          <h3>Detailed designs</h3>
           <p className="tab-sub">
             The detailed design produced after award, as distinct from the outline
             design done at tender stage.
@@ -21,38 +21,38 @@ export default function ContractDesignsTab({ projectRef }) {
       </Banner>
 
       <div className="cd-plan">
-        <p className="panel-label">Where should a contract design live?</p>
+        <p className="panel-label">Where should a detailed design live?</p>
 
         <div className="cd-opt">
           <h4>Columns on <code>Project_Scope</code></h4>
           <p>
-            A contract design is the same scope carried forward, so
+            A detailed design is the same scope carried forward, so
             <code> CD_Designer_ID</code>, <code>CD_Design_Status_ID</code>,
             <code> CD_Target_Date</code> and so on sit alongside the outline fields.
-            One row per utility covers both stages, and the Outline and Contract
+            One row per utility covers both stages, and the Outline and Detailed
             tabs are two views of the same row.
           </p>
           <p className="cd-when">
-            Right if a contract design always follows its outline design one-for-one.
+            Right if a detailed design always follows its outline design one-for-one.
           </p>
         </div>
 
         <div className="cd-opt">
-          <h4>Its own <code>Contract_Design</code> table</h4>
+          <h4>Its own <code>Detailed_Design</code> table</h4>
           <p>
             Keyed on <code>Project_ID</code> and <code>Utility_ID</code>, with its own
-            revisions and dates. A scope can then carry several contract designs, or
+            revisions and dates. A scope can then carry several detailed designs, or
             one where no outline design existed.
           </p>
           <p className="cd-when">
-            Right if contract designs revise independently, or exist without a matching
+            Right if detailed designs revise independently, or exist without a matching
             outline design.
           </p>
         </div>
 
         <p className="cd-foot">
           The original app kept these as separate log screens &mdash; Outline Design Log
-          and Contract Design Log &mdash; but both read from
+          and Detailed Design Log &mdash; but both read from
           <code> Utility_Outline_Design</code>, which suggests one row served both. Worth
           confirming against how your designers actually work before I build it.
         </p>

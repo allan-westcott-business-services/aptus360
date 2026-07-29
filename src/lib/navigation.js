@@ -38,6 +38,7 @@ export const NAV_SECTIONS = [
       { view: "asset-value-dashboard", label: "Asset Value Dashboard" },
       { view: "av-meter-recon", label: "Meter Date Reconciliation" },
       { view: "generate-av-invoices", label: "Generate AV Invoices", built: true },
+      { view: "av-invoices", label: "AV Invoices", built: true },
       { view: "invoice-plot-extractor", label: "Import Audacia Invoice Data" },
       { view: "mains-install-tracking", label: "Mains Install Tracking" },
       { view: "update-av-asset-values", label: "Update AV Asset Values" },
@@ -69,7 +70,7 @@ export const NAV_SECTIONS = [
     colour: "#fbbf24",
     items: [
       { view: "electric-outline-design", label: "Electric Outline Design", soon: true },
-      { view: "electric-contract-design", label: "Electric Contract Design", soon: true },
+      { view: "electric-contract-design", label: "Electric Detailed Design", soon: true },
       { view: "generator-hire", label: "Generator Hire" },
       { view: "street-lighting", label: "Street Lighting" },
       { view: "feeder-pillar", label: "Feeder Pillars" },
@@ -84,7 +85,7 @@ export const NAV_SECTIONS = [
     colour: "#fb923c",
     items: [
       { view: "gas-outline-design", label: "Gas Outline Design", soon: true },
-      { view: "gas-contract-design", label: "Gas Contract Design", soon: true },
+      { view: "gas-contract-design", label: "Gas Detailed Design", soon: true },
     ],
   },
   {
@@ -94,7 +95,7 @@ export const NAV_SECTIONS = [
     colour: "#22d3ee",
     items: [
       { view: "water-outline-design", label: "Water Outline Design", soon: true },
-      { view: "water-contract-design", label: "Water Contract Design", soon: true },
+      { view: "water-contract-design", label: "Water Detailed Design", soon: true },
       { view: "fire-hydrants", label: "Fire Hydrants" },
     ],
   },
@@ -132,7 +133,7 @@ export const NAV_SECTIONS = [
     items: [
       { view: "poc-log", label: "POC Applications Log" },
       { view: "outline-design-log", label: "Outline Design Log" },
-      { view: "contract-design-log", label: "Contract Design Log" },
+      { view: "contract-design-log", label: "Detailed Design Log" },
     ],
   },
 ];

@@ -21,10 +21,12 @@ const TABS = [
   { id: "poc", label: "POC Applications" },
   { id: "designs", label: "Outline Designs" },
   { id: "av", label: "Asset Value" },
-  { id: "contract-designs", label: "Contract Designs" },
+  { id: "contract-designs", label: "Detailed Designs" },
+  /* Invoices sits next to the designs it bills for, rather than at the
+     far end after History and Comments. */
+  { id: "invoices", label: "Invoices" },
   { id: "history", label: "History" },
   { id: "comments", label: "Comments" },
-  { id: "invoices", label: "Invoices" },
 ];
 
 export default function ProjectDetail({ project, initialTab = "details", onBack }) {
@@ -71,7 +73,9 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
         {tab === "poc" && <POCApplicationsTab projectId={project.Project_ID} />}
         {tab === "av" && <AssetValueTab projectId={project.Project_ID} />}
         {tab === "contract-designs" && <ContractDesignsTab projectRef={project.Project_Ref} />}
-        {tab === "invoices" && <InvoicesTab projectRef={project.Project_Ref} />}
+        {tab === "invoices" && (
+          <InvoicesTab projectId={project.Project_ID} projectRef={project.Project_Ref} />
+        )}
         {tab === "stakeholder" && <StakeholderTab projectId={project.Project_ID} />}
         {tab === "plots" && (
           <PlotsTab projectId={project.Project_ID} projectRef={project.Project_Ref} />

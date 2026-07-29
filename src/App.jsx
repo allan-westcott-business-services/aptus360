@@ -11,6 +11,7 @@ const AdminPage = lazy(() => import("./features/admin/AdminPage.jsx"));
 const PlotConnectionsPage = lazy(() => import("./features/connections/PlotConnectionsPage.jsx"));
 const GISCanvasPage = lazy(() => import("./features/gis/GISCanvasPage.jsx"));
 const GenerateAvInvoices = lazy(() => import("./features/av/GenerateAvInvoices.jsx"));
+const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -71,6 +72,7 @@ function Shell() {
   else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage /></div>;
   else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
+  else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else content = <NotBuilt view={view} />;
 
   return (

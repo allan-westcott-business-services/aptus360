@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import { listPlots } from "../../api/plots.js";
@@ -139,12 +140,14 @@ export default function NewScheduleModal({ onClose, onSaved }) {
     : "";
   const electricOnly = utils.length === 1 && utils[0] === 1;
 
+  const drag = useDragHandle();
+
   return (
-    <div className="ns-backdrop" onClick={onClose}>
-      <div className="ns-modal" onClick={(e) => e.stopPropagation()}>
+    <div className="ns-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="ns-modal" onClick={(e) => e.stopPropagation()} style={drag.panelStyle}>
         <style>{CSS}</style>
 
-        <div className="ns-head">
+        <div className="ns-head" {...drag.handleProps}>
           <h3>New plot connection schedule</h3>
           <button className="ns-x" onClick={onClose}>&#10005;</button>
         </div>

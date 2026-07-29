@@ -1,4 +1,5 @@
 import { useState, useEffect } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { getProject, createRevision } from "../../api/projects.js";
 import { getLookups } from "../../api/lookups.js";
@@ -56,12 +57,14 @@ export default function CreateRevisionModal({ project, onClose, onCreated }) {
     }
   }
 
+  const drag = useDragHandle();
+
   return (
-    <div className="cr-backdrop" onClick={onClose}>
-      <div className="cr" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Create revision">
+    <div className="cr-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="cr" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog" aria-label="Create revision">
         <style>{CSS}</style>
 
-        <div className="cr-head">
+        <div className="cr-head" {...drag.handleProps}>
           <div>
             <h3>Create revision {nextRev}</h3>
             <p className="cr-sub">

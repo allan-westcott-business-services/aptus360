@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { getBasemap, saveBasemap, removeBasemap, uploadBasemap, readImageSize } from "../../api/basemap.js";
 import { pdfPageCount, pdfPageSize } from "./pdfToImage.js";
@@ -168,12 +169,14 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
     place: !!basemap,
   };
 
+  const drag = useDragHandle();
+
   return (
-    <div className="bs-backdrop" onClick={onClose}>
-      <div className="bs" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Background plan setup">
+    <div className="bs-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="bs" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog" aria-label="Background plan setup">
         <style>{CSS}</style>
 
-        <div className="bs-head">
+        <div className="bs-head" {...drag.handleProps}>
           <div>
             <h3>Background plan</h3>
             <p className="bs-sub">Set the drawing up before placing plots or trenches.</p>

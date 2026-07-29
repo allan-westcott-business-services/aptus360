@@ -1,4 +1,5 @@
 import { useState, useMemo } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { parsePlotRange, MAX_PLOTS } from "./plotRange.js";
@@ -60,12 +61,14 @@ export default function AddPlotsModal({
     }
   }
 
+  const drag = useDragHandle();
+
   return (
-    <div className="ap-backdrop" onClick={onClose}>
-      <div className="ap" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Add plots by range">
+    <div className="ap-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="ap" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog" aria-label="Add plots by range">
         <style>{CSS}</style>
 
-        <div className="ap-head">
+        <div className="ap-head" {...drag.handleProps}>
           <span className="ap-icon">&#8853;</span>
           <h3>Add Plots by Range</h3>
           <button className="ap-x" onClick={onClose} aria-label="Close">&times;</button>

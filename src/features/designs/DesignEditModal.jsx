@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 
@@ -30,12 +31,15 @@ export default function DesignEditModal({ design, lookups, designers, checkers, 
     }
   }
 
+  const drag = useDragHandle();
+
   return (
-    <div className="dm-backdrop" onClick={onClose}>
-      <div className="dm" onClick={(e) => e.stopPropagation()} role="dialog" aria-label="Edit outline design">
+    <div className="dm-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
+      <div className="dm" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog" aria-label="Edit outline design">
         <style>{CSS}</style>
 
-        <div className="dm-head" style={{ borderTopColor: u?.colour }}>
+        <div className="dm-head" {...drag.handleProps}
+          style={{ ...drag.handleProps.style, borderTopColor: u?.colour }}>
           <div>
             <h3>
               <span className="dm-dot" style={{ background: u?.colour }} />

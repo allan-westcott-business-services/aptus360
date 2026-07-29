@@ -11,8 +11,13 @@
 --   anywhere to put a column or a lighting cable.
 --
 --   HV is a second electric class. An HV cable and an LV cable are not
---   the same drawing object: different colour, different width, and the
---   HV route from the POC to the substation is a distinct run again.
+--   the same drawing object: different colour and width, and mistaking
+--   one for the other is a safety matter rather than a tidiness one.
+--
+--   The HV route from the POC to the substation is deliberately NOT a
+--   line type. It is a future feature — a routing tool — not something
+--   drawn by hand, so giving it a type now would leave a visibility
+--   toggle for a class that can never have members.
 --
 --   Link boxes and lighting columns are point roles.
 -- ════════════════════════════════════════════════════════════════
@@ -36,10 +41,22 @@ INSERT INTO "GIS_Line_Type" ("Type_Key","Label","Layer_Key","Colour","Width_px",
   -- one for the other on a drawing is a safety matter rather than a
   -- tidiness one.
   ('elec_hv',       'HV cable',            'electric', '#b91c1c', 4.5, false, 12),
-  ('elec_hv_route', 'HV route POC to sub', 'electric', '#b91c1c', 4.5, true,  14),
   ('light_main',    'Lighting cable',      'lighting', '#eab308', 2.2, false, 56),
   ('light_service', 'Lighting service',    'lighting', '#eab308', 1.4, false, 58)
 ON CONFLICT ("Type_Key") DO NOTHING;
+
+
+-- An earlier draft of this migration created elec_hv_route as a line
+-- type. It is removed where nothing has been drawn with it — a type
+-- still in use stays, because deleting it would leave those features
+-- with a type that no longer exists.
+DELETE FROM "GIS_Line_Type" t
+ WHERE t."Type_Key" = 'elec_hv_route'
+   AND NOT EXISTS (SELECT 1 FROM "GIS_Feature" f
+                    WHERE f."Attributes" ->> 'Line_Type' = 'elec_hv_route');
+
+UPDATE "GIS_Line_Type" SET "Is_Active" = false
+ WHERE "Type_Key" = 'elec_hv_route';
 
 
 -- ── Point roles ──────────────────────────────────────────────────

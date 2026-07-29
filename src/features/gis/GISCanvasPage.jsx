@@ -24,12 +24,13 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
 import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
-  assignWay, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
+  assignWay, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom, circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuToggle } from "./GisMenus.jsx";
+import CircuitReport from "./CircuitReport.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -91,7 +92,7 @@ export default function GISCanvasPage() {
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
-  const [circuitReport, setCircuitReport] = useState(false);
+  const [reportOpen, setReportOpen] = useState(false);
   /* A ref, not state: the loop below has to read the current value
      between awaits, and a state read there would see the value from the
      render that started it. */
@@ -159,6 +160,11 @@ export default function GISCanvasPage() {
     f.Layer_Key,
     f.Attributes?.Line_Type ? `lt:${f.Attributes.Line_Type}` : null,
     f.Feature_Role && f.Feature_Role !== "shape" ? `role:${f.Feature_Role}` : null,
+    /* Layer and role together, so a utility menu can hide its own meters
+       without hiding everyone's. Every meter carries role:meter, which is
+       what the Electric menu's entry uses; gas:role:meter is narrower. */
+    f.Layer_Key && f.Feature_Role && f.Feature_Role !== "shape"
+      ? `${f.Layer_Key}:role:${f.Feature_Role}` : null,
   ].filter(Boolean), []);
 
   const visible = useMemo(
@@ -1868,9 +1874,15 @@ export default function GISCanvasPage() {
                         on={!hidden.includes(`lt:${t.Type_Key}`)}
                         onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
                     ))}
-                    {[["meter", "Electric meters"], ["joint", "Joints"],
-                      ["linkbox", "Link boxes"], ["substation", "Substations"],
-                      ["poc", "POCs"]].map(([role, label]) => (
+                    {/* Electric meters specifically. Joints, link boxes,
+                        substations and POCs only exist on electric, so
+                        the plain role key is right for those. */}
+                    <MenuToggle label="Electric meters"
+                      count={classCount["electric:role:meter"] || 0}
+                      on={!hidden.includes("electric:role:meter")}
+                      onChange={() => toggleClass("electric:role:meter")} />
+                    {[["joint", "Joints"], ["linkbox", "Link boxes"],
+                      ["substation", "Substations"], ["poc", "POCs"]].map(([role, label]) => (
                         <MenuToggle key={role} label={label}
                           count={classCount[`role:${role}`] || 0}
                           on={!hidden.includes(`role:${role}`)}
@@ -1889,15 +1901,24 @@ export default function GISCanvasPage() {
                         setTool(tool === "circuit" ? "select" : "circuit");
                         setSelected([]); setDraft([]);
                       }} />
-                    <MenuItem label="Circuit report" hint={`${circuitsFrom(features).length} defined`}
-                      disabled={!circuitsFrom(features).length}
-                      onClick={() => setCircuitReport(true)} />
+                    <MenuItem label="Circuit report"
+                      hint="meters by feeder, with distances"
+                      disabled={!features.some((f) => f.Feature_Role === "substation")}
+                      onClick={() => setReportOpen(true)} />
                     <MenuItem label="Full trace from here"
                       disabled={!selectedFeatures.some((f) => f.Feature_Role === "spannode")}
                       hint={selectedFeatures.some((f) => f.Feature_Role === "spannode")
                         ? undefined : "select a span node"}
                       onClick={runFullTrace} />
-                    <MenuItem label="Build LV network" hint="not built yet" disabled />
+                    <div className="gm-sep" />
+                    <MenuGroup label="Not built yet" />
+                    {/* Both are routing tools rather than things drawn by
+                        hand, so neither has a line type — a visibility
+                        toggle for a class that can never have members
+                        reads as broken rather than unbuilt. */}
+                    <MenuItem label="HV route POC to substation"
+                      hint="future feature" disabled />
+                    <MenuItem label="Build LV network" hint="future feature" disabled />
                   </Menu>
 
                   {["gas", "water"].map((key) => {
@@ -1912,9 +1933,10 @@ export default function GISCanvasPage() {
                             on={!hidden.includes(`lt:${t.Type_Key}`)}
                             onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
                         ))}
-                        <MenuToggle label="Meters" count={classCount[`${key}:meter`] || 0}
-                          on={!hidden.includes(`${key}:meter`)}
-                          onChange={() => toggleClass(`${key}:meter`)} />
+                        <MenuToggle label="Meters"
+                          count={classCount[`${key}:role:meter`] || 0}
+                          on={!hidden.includes(`${key}:role:meter`)}
+                          onChange={() => toggleClass(`${key}:role:meter`)} />
                         <div className="gm-sep" />
                         <MenuToggle label={`Whole ${layer?.Label ?? key} layer`}
                           colour={layer?.Colour} count={classCount[key] || 0}
@@ -1969,6 +1991,29 @@ export default function GISCanvasPage() {
           </>
         )}
       </div>
+
+      {reportOpen && (() => {
+        const r = circuitReport(features, (id) => plotList.find((p) => p.plot_id === id));
+        if (r.error) {
+          setReportOpen(false);
+          setError(r.error);
+          return null;
+        }
+        const poc = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === "electric");
+        return (
+          <CircuitReport
+            report={r}
+            projectRef={project?.Project_Ref}
+            siteName={project?.Site_Name}
+            /* The capacity the whole drawing is working within, so the
+               report can say when it has been exceeded rather than
+               leaving it to be worked out. */
+            pocOutput={poc?.Attributes?.Output != null && poc.Attributes.Output !== ""
+              ? Number(poc.Attributes.Output) : null}
+            onClose={() => setReportOpen(false)}
+          />
+        );
+      })()}
 
       {editing && (
         <FeatureEditor
@@ -2188,43 +2233,6 @@ export default function GISCanvasPage() {
                 </div>
               );
             })()}
-
-            {circuitReport && (
-              <div className="gis-trace" role="dialog" aria-label="Circuit report">
-                <div className="gt-head">
-                  <strong>Circuits</strong>
-                  <button className="fe-x" onClick={() => setCircuitReport(false)}
-                    aria-label="Close">&times;</button>
-                </div>
-                <table className="gt-tbl">
-                  <thead>
-                    <tr><th>Circuit</th><th className="num">Plots</th><th className="num">kVA</th></tr>
-                  </thead>
-                  <tbody>
-                    {circuitsFrom(features).map((c) => {
-                      const kva = circuitKva(c.meters, (id) => plotList.find((p) => p.plot_id === id));
-                      return (
-                        <tr key={c.id}>
-                          <td><strong>{c.letter}</strong> {c.name}</td>
-                          <td className="num">{c.meters.length}</td>
-                          <td className="num">{kva}</td>
-                        </tr>
-                      );
-                    })}
-                    <tr className="gt-tot">
-                      <td>{circuitsFrom(features).length} circuit(s)</td>
-                      <td className="num">
-                        {circuitsFrom(features).reduce((t, c) => t + c.meters.length, 0)}
-                      </td>
-                      <td className="num">
-                        {Math.round(circuitsFrom(features).reduce((t, c) => t
-                          + circuitKva(c.meters, (id) => plotList.find((p) => p.plot_id === id)), 0) * 10) / 10}
-                      </td>
-                    </tr>
-                  </tbody>
-                </table>
-              </div>
-            )}
 
             {trace && (
               <div className="gis-trace" role="dialog" aria-label="Full trace">

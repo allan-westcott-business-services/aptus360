@@ -295,3 +295,136 @@ export function traceFrom(startId, features, rootId) {
   for (const k of branches) walk(start, k, 0, [], startLabel);
   return { legs, startLabel };
 }
+
+
+/* ── Circuit report ──
+   A port of the original's gisCircuitData. Electric meters grouped by
+   the feeder that serves them, with each meter's distance from the
+   substation measured along the network rather than as the crow flies —
+   a meter 50 m away across a garden may be 400 m of cable, and it is the
+   cable that has to be sized.
+
+   The original walks a geometric node tree from gisFeederModel. This
+   walks the Connects graph, the same one Full Trace uses, so the two
+   cannot disagree about what is connected to what.
+
+   Three groups, as the original has them, because they need different
+   things doing about them:
+
+     circuits    — meters with a circuit, from Link to Circuit
+     unlinked    — reachable from the substation but not yet in a circuit
+     unreachable — not connected back to the substation at all, which is
+                   a drawing fault rather than a planning one
+*/
+
+/* Distance from the root to every feature, along the graph. Accumulates
+   the length of each line passed through; points add nothing of their
+   own, since a meter has no length. */
+export function distancesFrom(features, rootId) {
+  const graph = buildGraph(features);
+  const root = Number(rootId);
+  if (!graph.byId.has(root)) return new Map();
+
+  const dist = new Map([[root, 0]]);
+  const queue = [root];
+  while (queue.length) {
+    const cur = queue.shift();
+    for (const next of graph.adj.get(cur) || []) {
+      if (dist.has(next)) continue;
+      const f = graph.byId.get(next);
+      dist.set(next, dist.get(cur) + lengthOf(f));
+      queue.push(next);
+    }
+  }
+  return dist;
+}
+
+export function circuitReport(features = [], plotById = () => null, opts = {}) {
+  const { fallbackKva = 0 } = opts;
+
+  const subs = features.filter((f) => f.Feature_Role === "substation");
+  const meters = features.filter(
+    (f) => f.Feature_Role === "meter" && f.Layer_Key === "electric");
+
+  if (!subs.length) {
+    return { error: "Place a substation first \u2014 circuits are traced from it." };
+  }
+  if (!meters.length) {
+    return { error: "No electric meters placed yet \u2014 nothing to report." };
+  }
+
+  const station = subs[0];
+  const dist = distancesFrom(features, station.Feature_ID);
+
+  const rec = (m) => {
+    const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
+    const kva = plot?.kva_load ?? plot?.KVA_Load;
+    const d = dist.get(Number(m.Feature_ID));
+    return {
+      id: m.Feature_ID,
+      meter: m.Label || `Meter ${m.Feature_ID}`,
+      plot: plot?.plot_number ?? plot?.Plot_Number ?? "",
+      houseType: plot?.config_code ?? plot?.Code ?? "\u2014",
+      kva: kva != null && kva !== "" ? Number(kva) : fallbackKva,
+      /* Rounded here rather than at display: the figure is quoted in
+         reports and a different rounding in the CSV than on screen is
+         the kind of discrepancy that costs an afternoon. */
+      distM: d == null ? null : Math.round(d * 10) / 10,
+      circuitId: m.Attributes?.Circuit_ID ?? null,
+      circuitName: m.Attributes?.Circuit_Name ?? null,
+      circuitLetter: m.Attributes?.Circuit_Letter ?? null,
+    };
+  };
+
+  const byCircuit = new Map();
+  const unlinked = [];
+  const unreachable = [];
+
+  for (const m of meters) {
+    const r = rec(m);
+    if (r.circuitId != null) {
+      const key = Number(r.circuitId);
+      if (!byCircuit.has(key)) {
+        byCircuit.set(key, {
+          id: key,
+          name: r.circuitName || `Circuit ${key}`,
+          letter: r.circuitLetter || circuitLetter(key),
+          meters: [],
+        });
+      }
+      byCircuit.get(key).meters.push(r);
+    } else if (r.distM != null) {
+      unlinked.push(r);
+    } else {
+      /* Not reachable and not in a circuit. Worth separating: the fix is
+         to the trenches, not to the circuit plan. */
+      unreachable.push(r);
+    }
+  }
+
+  const summarise = (name, letter, rows, id) => ({
+    id, name, letter,
+    meters: rows.sort((a, b) =>
+      String(a.plot).localeCompare(String(b.plot), undefined, { numeric: true })),
+    count: rows.length,
+    totalKva: Math.round(rows.reduce((t, r) => t + r.kva, 0) * 10) / 10,
+    maxDist: rows.reduce((t, r) => (r.distM != null && r.distM > t ? r.distM : t), 0),
+  });
+
+  const circuits = [...byCircuit.values()]
+    .sort((a, b) => a.id - b.id)
+    .map((c) => summarise(c.name, c.letter, c.meters, c.id));
+
+  if (unlinked.length) {
+    circuits.push(summarise("Electric meters (not linked to a circuit)", "", unlinked, "unlinked"));
+  }
+
+  return {
+    station: station.Label || "Substation",
+    circuits,
+    unreachable,
+    totalMeters: meters.length,
+    totalKva: Math.round(
+      [...circuits, { totalKva: 0 }].reduce((t, c) => t + (c.totalKva || 0), 0) * 10) / 10,
+  };
+}

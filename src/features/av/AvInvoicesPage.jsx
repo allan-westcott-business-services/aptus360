@@ -31,6 +31,10 @@ const COLS = [
   { key: "utility",  label: "Utility",   width: 100, type: "text" },
   { key: "conn",     label: "Connected", width: 112, type: "date" },
   { key: "meter",    label: "Meter",     width: 130, type: "text" },
+  /* The date the claim rides on. Connected and Meter stay as context —
+     they explain why a card is or isn't in — but this is the one that
+     decides whether a plot can be billed. */
+  { key: "sc",       label: "SC submitted", width: 122, type: "date" },
   { key: "invoice",  label: "Invoice",   width: 130, type: "text" },
   { key: "invdate",  label: "Inv. date", width: 112, type: "date" },
   { key: "status",   label: "Status",    width: 110, type: "text" },
@@ -53,7 +57,7 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
 
   /* The defaults are the point of the screen: what has been earned and
      not yet claimed. */
-  const [meterFilter, setMeterFilter] = useState("with");     // with | without | all
+  const [meterFilter, setMeterFilter] = useState("with");     // with | without | all — service card
   const [claimFilter, setClaimFilter] = useState("unclaimed"); // unclaimed | claimed | all
   const [search, setSearch] = useState("");
   const [statusFilter, setStatusFilter] = useState("");
@@ -78,8 +82,8 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
   useEffect(() => { load(); }, [load]);
 
   const shown = useMemo(() => rows.filter((r) => {
-    if (meterFilter === "with" && !r.has_meter) return false;
-    if (meterFilter === "without" && r.has_meter) return false;
+    if (meterFilter === "with" && !r.can_invoice) return false;
+    if (meterFilter === "without" && r.can_invoice) return false;
     if (claimFilter === "unclaimed" && r.claimed) return false;
     if (claimFilter === "claimed" && !r.claimed) return false;
     if (statusFilter && r.invoice_status !== statusFilter) return false;
@@ -142,6 +146,7 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
       Utility: r.utility,
       Connected: r.connection_date || "",
       Meter: r.meter_number || "",
+      "SC submitted": r.sc_submitted || "",
       Invoice: r.invoice_number || "",
       "Invoice date": r.invoice_date || "",
       Status: r.invoice_status || "",
@@ -163,6 +168,9 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
       case "utility": return r.utility;
       case "conn":    return fmt(r.connection_date);
       case "meter":   return r.meter_number || "\u2014";
+      case "sc":      return r.sc_submitted
+        ? fmt(r.sc_submitted)
+        : <span className="av-none">not submitted</span>;
       case "invoice": return r.invoice_number
         || <span className="av-none">not raised</span>;
       case "invdate": return fmt(r.invoice_date);
@@ -187,9 +195,9 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
               explanation is worth repeating. */}
           {!embedded && <h2 className="admin-title">Asset value invoices</h2>}
           <p className="tab-sub">
-            One row per plot per utility: what has been earned, and what has been claimed
+            One row per plot per utility: what can be claimed, and what has been claimed
             against it. {embedded ? "Shows" : "Opens on"} the work outstanding &mdash;
-            metered, not yet invoiced.
+            service card submitted, not yet invoiced.
           </p>
         </div>
         <div className="ph-actions">
@@ -209,7 +217,7 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
 
       <div className="av-cards">
         <div className="av-card av-bill">
-          <span className="ac-l">Earned, not claimed</span>
+          <span className="ac-l">Claimable, not claimed</span>
           <span className="ac-n">{totals.billable}</span>
         </div>
         <div className="av-card">
@@ -224,10 +232,10 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
 
       <div className="av-bar">
         <label className="av-f">
-          <span>Meter</span>
+          <span>Service card</span>
           <select value={meterFilter} onChange={(e) => setMeterFilter(e.target.value)}>
-            <option value="with">Metered</option>
-            <option value="without">Not metered</option>
+            <option value="with">Submitted</option>
+            <option value="without">Not submitted</option>
             <option value="all">All</option>
           </select>
         </label>
@@ -297,8 +305,8 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
             {shown.length === 0 && (
               <tr>
                 <td colSpan={layout.visible.length} className="no-rows">
-                  Nothing matches these filters. With Metered and Not invoiced set,
-                  an empty table means everything earned has been billed.
+                  Nothing matches these filters. With Submitted and Not invoiced set,
+                  an empty table means everything claimable has been billed.
                 </td>
               </tr>
             )}

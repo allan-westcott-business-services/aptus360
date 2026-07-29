@@ -72,14 +72,15 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
     .find((a) => String(a.AV_Agreement_Type_ID) === String(agreement));
   const utilityId = chosenAgreement?.Utility_ID ?? null;
 
-  /* Ready means earned and not already claimed. Connected widens it to
-     everything with a connection record, so a plot that is on the
-     network but has no meter date yet can still be billed deliberately
-     — the original lets you, and refusing outright would just move the
-     work to a spreadsheet.
+  /* Ready means the service card has been submitted and nothing has
+     been claimed against it yet. The service card is what the claim
+     rides on — a meter in the ground with no card submitted is work
+     done, not money owed.
 
-     Already-claimed rows are never offered: that is a double invoice,
-     not a judgement call. */
+     Connected widens it to every plot with a connection record, so one
+     can be billed ahead of its card deliberately. Already-claimed rows
+     are never offered under either: that is a double invoice, not a
+     judgement call. */
   const candidates = useMemo(() => {
     const base = register.filter((r) => !r.claimed);
     return mode === "ready" ? base.filter((r) => r.billable) : base;
@@ -94,6 +95,8 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
      list. */
   const readyCount = register.filter((r) => r.billable).length;
   const connectedNotReady = register.filter((r) => !r.claimed && !r.billable).length;
+  const meteredNoCard = register.filter(
+    (r) => !r.sc_submitted && (r.connection_date || r.meter_number)).length;
   const claimedCount = register.filter((r) => r.claimed).length;
   const connectedPlotIds = new Set(register.map((r) => r.plot_id));
   const unconnected = plots.filter((p) => !connectedPlotIds.has(p.Plot_ID));
@@ -208,8 +211,8 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                 </select>
               </label>
               <span className="ri-why-note">
-                {connectedNotReady > 0 && (
-                  <>{connectedNotReady} connected without a meter date. </>
+                {meteredNoCard > 0 && (
+                  <>{meteredNoCard} connected with no service card submitted. </>
                 )}
                 {claimedCount > 0 && <>{claimedCount} already invoiced. </>}
                 {unconnected.length > 0 && (
@@ -226,7 +229,9 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
             <p className="ri-empty">
               {readyCount === 0 && connectedNotReady === 0
                 ? "No plot on this project has a connection record yet."
-                : "Nothing left to bill under this filter."}
+                : readyCount === 0
+                  ? "No plot has a service card submitted yet, so nothing can be invoiced."
+                  : "Nothing left to bill under this filter."}
             </p>
           )}
 
@@ -237,7 +242,7 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                   <label htmlFor="ri-agr">Agreement type</label>
                   <select id="ri-agr" value={agreement}
                     onChange={(e) => { setAgreement(e.target.value); setPicked({}); }}>
-                    <option value="">All ({candidates.length} plots)</option>
+                    <option value="">&mdash;</option>
                     {agreementTypes.map((a) => (
                       <option key={a.AV_Agreement_Type_ID} value={a.AV_Agreement_Type_ID}>
                         {a.AV_Agreement_Type}
@@ -315,10 +320,11 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
                         <input type="checkbox" checked={on} onChange={() => toggle(r)} />
                         <span className="ri-plot">{r.plot_number}</span>
                         <span className="ri-util">{r.utility}</span>
+                        {/* The date the claim rides on, not the meter date. */}
                         <span className="ri-conn">
-                          {r.connection_date
-                            ? String(r.connection_date).slice(0, 10).split("-").reverse().join("/")
-                            : <em className="ri-nodate">no meter date</em>}
+                          {r.sc_submitted
+                            ? String(r.sc_submitted).slice(0, 10).split("-").reverse().join("/")
+                            : <em className="ri-nodate">no service card</em>}
                         </span>
                         <input type="number" step="0.01" className="ri-val" disabled={!on}
                           value={on ? picked[r.plot_utility_id] : ""}

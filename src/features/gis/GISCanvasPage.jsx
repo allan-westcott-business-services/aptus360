@@ -758,7 +758,15 @@ export default function GISCanvasPage() {
         const idx = vertexAt(f, px, py);
         if (idx >= 0) {
           if (e.altKey) { removeVertex(f, idx); return; }
-          drag.current = { mode: "vertex", featureId: f.Feature_ID, index: idx, startPx: [px, py] };
+          drag.current = {
+            mode: "vertex", featureId: f.Feature_ID, index: idx, startPx: [px, py],
+            /* Recorded at the start: which end it is, and what class the
+               line belongs to, so the move handler doesn't have to work
+               it out on every pointer event. */
+            isEnd: f.Feature_Type === "line"
+              && (idx === 0 || idx === (f.Geometry || []).length - 1),
+            lineType: f.Attributes?.Line_Type ?? null,
+          };
           setEditVertex({ featureId: f.Feature_ID, index: idx });
           return;
         }
@@ -807,13 +815,33 @@ export default function GISCanvasPage() {
      almost always continues from the run it belongs to, and once the
      first point is down the general rules take over — the far end is
      usually meeting something else entirely. */
-  function resolve(mx, my) {
+  /* opts.sameClass names a class to prefer, and opts.exclude a feature to
+     ignore — a vertex being dragged must not snap to its own line, which
+     is by definition the nearest geometry to it. */
+  function resolve(mx, my, opts = {}) {
     if (!snapOn) return { point: [mx, my], hit: null };
 
-    if (tool === "line" && draft.length === 0 && lineType) {
-      const own = targets.filter((t) => t.lineType === lineType);
+    const usable = opts.exclude != null
+      ? targets.filter((t) => t.featureId !== opts.exclude)
+      : targets;
+
+    /* Same class first, both when starting a line and when dragging an
+       end onto another. A cable end near a trench should join the cable
+       it belongs with, not the trench that happens to run past. */
+    const preferred = opts.sameClass ?? (tool === "line" && draft.length === 0 ? lineType : null);
+    if (preferred) {
+      const own = usable.filter((t) => t.lineType === preferred);
       const t = findSnap(own, [mx, my], view.scale, SNAP_PX);
       if (t) return { point: [...t.point], hit: { ...t, sameClass: true } };
+    }
+
+    if (opts.exclude != null) {
+      const t = findSnap(usable, [mx, my], view.scale, SNAP_PX);
+      if (t) return { point: [...t.point], hit: t };
+      const edge = nearestOnLines(
+        visible.filter((f) => f.Feature_ID !== opts.exclude), [mx, my], view.scale, SNAP_PX);
+      if (edge) return { point: [...edge.point], hit: edge };
+      return { point: [mx, my], hit: null };
     }
 
     const t = findSnap(targets, [mx, my], view.scale, SNAP_PX);
@@ -850,8 +878,16 @@ export default function GISCanvasPage() {
        took the whole drag with it. Anything added below here that needs
        no delta belongs above the line that takes one. */
     if (d.mode === "vertex") {
-      const { featureId, index } = d;
-      const { point } = resolve(raw[0], raw[1]);
+      const { featureId, index, isEnd, lineType: ownType } = d;
+      /* An end vertex is how one line is joined to another, so it gets
+         the same treatment as starting a line: its own class first, and
+         never its own geometry. A middle vertex is just being moved and
+         takes the ordinary snap. */
+      const { point, hit } = resolve(raw[0], raw[1], {
+        exclude: featureId,
+        sameClass: isEnd ? ownType : null,
+      });
+      setSnapHit(hit);
       setFeatures((fs) => fs.map((f) =>
         f.Feature_ID === featureId
           ? { ...f, Geometry: f.Geometry.map((g, i) => (i === index ? point : g)) }
@@ -883,11 +919,61 @@ export default function GISCanvasPage() {
     setEditVertex(null);
 
     if (d?.mode === "vertex") {
+      setSnapHit(null);
       const f = features.find((x) => x.Feature_ID === d.featureId);
-      if (f) {
-        try { await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]); }
-        catch (e) { setError(e.message); await load(projectId); }
-      }
+      if (!f) return;
+      try {
+        await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]);
+
+        /* Moving an end onto another line is how a connection is made,
+           so the connection has to be recorded — tracing walks Connects,
+           and a join that only exists geometrically stops the network
+           dead at exactly the point someone just joined it.
+
+           Recomputed rather than added to: dragging an end away from a
+           line breaks a connection as surely as dragging it on makes
+           one, and only recomputing catches both. */
+        if (d.isEnd) {
+          const others = connectedTo(f.Geometry, visible, f.Feature_ID);
+          const before = [...(f.Attributes?.Connects || [])].sort().join(",");
+          if (others.sort().join(",") !== before) {
+            const updates = [{
+              Feature_ID: f.Feature_ID,
+              Attributes: { ...f.Attributes, Connects: others },
+            }];
+
+            /* Both ends of a join have to know about it. The features it
+               now touches gain this one; the ones it used to touch and
+               no longer does lose it. */
+            const wasLinked = f.Attributes?.Connects || [];
+            const touched = [...new Set([...others, ...wasLinked])];
+            for (const id of touched) {
+              const o = features.find((x) => x.Feature_ID === id);
+              if (!o) continue;
+              const cur = o.Attributes?.Connects || [];
+              const want = others.includes(id)
+                ? [...new Set([...cur, f.Feature_ID])]
+                : cur.filter((x) => x !== f.Feature_ID);
+              if (want.sort().join(",") !== [...cur].sort().join(",")) {
+                updates.push({ Feature_ID: id, Attributes: { ...o.Attributes, Connects: want } });
+              }
+            }
+
+            await bulkUpdateFeatures(projectId, updates);
+            await load(projectId);
+
+            const gained = others.filter((id) => !wasLinked.includes(id)).length;
+            const lost = wasLinked.filter((id) => !others.includes(id)).length;
+            if (gained || lost) {
+              setStatus([
+                gained ? `joined to ${gained}` : null,
+                lost ? `disconnected from ${lost}` : null,
+              ].filter(Boolean).join(", "));
+              setTimeout(() => setStatus(""), 4000);
+            }
+          }
+        }
+      } catch (e) { setError(e.message); await load(projectId); }
       return;
     }
 

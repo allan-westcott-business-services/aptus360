@@ -41,11 +41,39 @@ const COLS = [
    says it, so showing it repeats the same value down every row. */
 const GROUP_HIDES = { project: ["project", "site"], region: [], utility: ["utility"], date: ["prog"] };
 
-const BULK_DATES = [
-  ["Programmed_Date", "Programmed"],
-  ["As_Laid_Date", "As laid"],
-  ["Connection_Date", "Connected"],
-  ["Service_Card_Submission_Date", "SC submitted"],
+/* The order work actually happens in, taken from the column order rather
+   than written out again — a column moved in COLS moves here with it.
+
+   Deliberately the declared order, not the on-screen one: dragging a
+   column changes where you look, not what has to be true before a field
+   can be filled in. A rule that followed the layout would let someone
+   unlock a field by rearranging the table.
+
+   Nothing after Programmed can be filled until a date is set: recording
+   a connection for a visit that was never booked is how a plot ends up
+   connected on paper and untouched on site. Nothing after Outcome until
+   there is one, for the same reason — a pack status against a visit with
+   no known result says nothing. */
+const at = (k) => COLS.findIndex((c) => c.key === k);
+const AFTER_PROG = COLS.slice(at("prog") + 1).map((c) => c.key);
+const AFTER_OUTCOME = COLS.slice(at("outcome") + 1).map((c) => c.key);
+
+const lockedReason = (colKey, r) => {
+  if (AFTER_OUTCOME.includes(colKey) && !r.Visit_Outcome_ID) return "Set an outcome first";
+  if (AFTER_PROG.includes(colKey) && !r.Programmed_Date) return "Set a programmed date first";
+  return null;
+};
+
+/* Every field the bulk editor can write, with what it is and which
+   column gates it. */
+const BULK_FIELDS = [
+  { field: "Programmed_Date", label: "Programmed", type: "date", col: "prog" },
+  { field: "Connection_Date", label: "Connected", type: "date", col: "conn" },
+  { field: "As_Laid_Date", label: "As laid", type: "date", col: "laid" },
+  { field: "Visit_Outcome_ID", label: "Outcome", type: "outcome", col: "outcome" },
+  { field: "Pack_Status_ID", label: "Status", type: "pack", col: "pack" },
+  { field: "Meter_Number", label: "Meter no.", type: "text", col: "meter" },
+  { field: "Service_Card_Submission_Date", label: "SC submitted", type: "date", col: "scsub" },
 ];
 
 export default function PlotConnectionsPage() {
@@ -60,8 +88,9 @@ export default function PlotConnectionsPage() {
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
-  const [bulkField, setBulkField] = useState("Programmed_Date");
-  const [bulkValue, setBulkValue] = useState("");
+  /* One draft per field, empty meaning "leave alone". A bulk form
+     pre-filled from one row is how the other forty get overwritten. */
+  const [bulkDraft, setBulkDraft] = useState({});
   const [busy, setBusy] = useState(false);
   const [scheduleOpen, setScheduleOpen] = useState(false);
   const [search, setSearch] = useState("");
@@ -197,21 +226,46 @@ export default function PlotConnectionsPage() {
   }
 
   async function applyBulk() {
-    if (!bulkValue) return setError("Pick a date first.");
+    const changes = Object.fromEntries(
+      Object.entries(bulkDraft).filter(([, v]) => v !== "" && v != null)
+    );
+    if (!Object.keys(changes).length) return setError("Nothing to apply \u2014 fill a field first.");
+
     setBusy(true);
     try {
-      /* Selections can span projects, so group by project rather than
-         assuming one — the endpoint is scoped per project. */
+      const rows = shown.filter((r) => selected.includes(r.Plot_Utility_ID));
+
+      /* The same rule the cells enforce. Without it the bulk bar is a way
+         round it, and the first thing anyone would do with forty rows is
+         exactly that. A row that can't take a field is skipped for that
+         field rather than for the whole change. */
+      let skipped = 0;
       const byProject = {};
-      shown.filter((r) => selected.includes(r.Plot_Utility_ID))
-           .forEach((r) => { (byProject[r._projectId] ||= []).push(r.Plot_Utility_ID); });
-      for (const [pid, ids] of Object.entries(byProject)) {
-        await bulkUpdateConnections(pid, ids, { [bulkField]: bulkValue });
+      for (const r of rows) {
+        const allowed = {};
+        for (const [field, value] of Object.entries(changes)) {
+          const col = BULK_FIELDS.find((b) => b.field === field)?.col;
+          /* Judged against the row as it will be after this change, so
+             setting a programmed date and a connected date together
+             works in one pass rather than needing two. */
+          const after = { ...r, ...changes };
+          if (col && lockedReason(col, after)) { skipped++; continue; }
+          allowed[field] = value;
+        }
+        if (!Object.keys(allowed).length) continue;
+        const key = `${r._projectId}|${JSON.stringify(allowed)}`;
+        (byProject[key] ||= { pid: r._projectId, changes: allowed, ids: [] })
+          .ids.push(r.Plot_Utility_ID);
       }
-      setFlash(`${selected.length} connection${selected.length === 1 ? "" : "s"} updated`);
+
+      for (const { pid, changes: ch, ids } of Object.values(byProject)) {
+        await bulkUpdateConnections(pid, ids, ch);
+      }
+      setBulkDraft({});
+      setFlash(`${rows.length} connection${rows.length === 1 ? "" : "s"} updated`
+        + (skipped ? ` \u2014 ${skipped} field(s) skipped, not unlocked yet` : ""));
       setTimeout(() => setFlash(""), 2600);
       setSelected([]);
-      setBulkValue("");
       await load();
     } catch (e) { setError(e.message); }
     finally { setBusy(false); }
@@ -331,14 +385,35 @@ export default function PlotConnectionsPage() {
       {selected.length > 0 && (
         <div className="bulk-bar">
           <span className="bulk-count">{selected.length} selected</span>
-          <select value={bulkField} onChange={(e) => setBulkField(e.target.value)}>
-            {BULK_DATES.map(([k, l]) => <option key={k} value={k}>Set {l}</option>)}
-          </select>
-          <input type="date" value={bulkValue} onChange={(e) => setBulkValue(e.target.value)} />
-          <button className="btn accent" disabled={busy || !bulkValue} onClick={applyBulk}>
+          {BULK_FIELDS.map((b) => (
+            <label key={b.field} className="bulk-f">
+              <span>{b.label}</span>
+              {b.type === "date" ? (
+                <input type="date" value={bulkDraft[b.field] ?? ""}
+                  onChange={(e) => setBulkDraft((d) => ({ ...d, [b.field]: e.target.value }))} />
+              ) : b.type === "text" ? (
+                <input value={bulkDraft[b.field] ?? ""} placeholder="\u2014"
+                  onChange={(e) => setBulkDraft((d) => ({ ...d, [b.field]: e.target.value }))} />
+              ) : (
+                <select value={bulkDraft[b.field] ?? ""}
+                  onChange={(e) => setBulkDraft((d) => ({
+                    ...d, [b.field]: e.target.value ? Number(e.target.value) : "",
+                  }))}>
+                  <option value="">&mdash;</option>
+                  {(b.type === "outcome" ? lookups.visitOutcomes : lookups.packStatuses || []).map((x) => (
+                    b.type === "outcome"
+                      ? <option key={x.Visit_Outcome_ID} value={x.Visit_Outcome_ID}>{x.Visit_Outcome}</option>
+                      : <option key={x.Pack_Status_ID} value={x.Pack_Status_ID}>{x.Pack_Status}</option>
+                  ))}
+                </select>
+              )}
+            </label>
+          ))}
+          <button className="btn accent" disabled={busy} onClick={applyBulk}>
             {busy ? "Applying\u2026" : "Apply"}
           </button>
-          <button className="bulk-x" onClick={() => setSelected([])} title="Clear">&#10005;</button>
+          <button className="bulk-x" onClick={() => { setSelected([]); setBulkDraft({}); }}
+            title="Clear">&#10005;</button>
         </div>
       )}
 
@@ -391,6 +466,28 @@ export default function PlotConnectionsPage() {
                   <tr className="grp-row" key={`g:${label}`}
                     onClick={() => setCollapsed((c) => ({ ...c, [label]: !c[label] }))}>
                     <td colSpan={cols.length}>
+                      {/* Selects this project's connections rather than the
+                          whole table. With several projects on screen,
+                          select-all in the header is almost never what was
+                          meant. */}
+                      <input type="checkbox" className="grp-sel"
+                        checked={list.length > 0 && list.every((r) => selected.includes(r.Plot_Utility_ID))}
+                        ref={(el) => {
+                          if (!el) return;
+                          const some = list.some((r) => selected.includes(r.Plot_Utility_ID));
+                          const all = list.every((r) => selected.includes(r.Plot_Utility_ID));
+                          /* Half-selected reads as "some of these", which a
+                             plain tick can't say. */
+                          el.indeterminate = some && !all;
+                        }}
+                        aria-label={`Select every connection in ${label}`}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => {
+                          const ids = list.map((r) => r.Plot_Utility_ID);
+                          setSelected((sel) => e.target.checked
+                            ? [...new Set([...sel, ...ids])]
+                            : sel.filter((x) => !ids.includes(x)));
+                        }} />
                       <button className="grp-toggle" aria-expanded={!collapsed[label]}
                         aria-label={`${collapsed[label] ? "Expand" : "Collapse"} ${label}`}
                         onClick={(e) => {
@@ -414,13 +511,21 @@ export default function PlotConnectionsPage() {
                     {/* Per column, so a reordered header takes its data
                         with it. Cells written in a fixed sequence shear
                         away from their headings the moment one moves. */}
-                    {cols.map((col) => (
+                    {cols.map((col) => {
+                      /* Locked until the step before it has been recorded.
+                         Shown as a disabled control with the reason on
+                         hover, rather than hidden — an empty cell that
+                         can't be typed into looks broken without it. */
+                      const locked = lockedReason(col.key, r);
+                      return (
                       <td key={col.key}
-                        className={
-                          col.key === "sel" ? "mid"
-                          : col.key === "project" ? "mono ref"
-                          : col.key === "plot" ? "mono strong plot-cell"
-                          : undefined}>
+                        title={locked || undefined}
+                        className={[
+                          col.key === "sel" ? "mid" : "",
+                          col.key === "project" ? "mono ref" : "",
+                          col.key === "plot" ? "mono strong plot-cell" : "",
+                          locked ? "locked" : "",
+                        ].filter(Boolean).join(" ") || undefined}>
 
                         {col.key === "sel" ? (
                           <input type="checkbox" checked={on}
@@ -437,19 +542,19 @@ export default function PlotConnectionsPage() {
                         </>)
 
                         : col.key === "prog" ? (
-                          <input className="in" type="date" value={r.Programmed_Date || ""}
+                          <input className="in" type="date" value={r.Programmed_Date || ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Programmed_Date", e.target.value)} />)
 
                         : col.key === "conn" ? (
-                          <input className="in" type="date" value={r.Connection_Date || ""}
+                          <input className="in" type="date" value={r.Connection_Date || ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Connection_Date", e.target.value)} />)
 
                         : col.key === "laid" ? (
-                          <input className="in" type="date" value={r.As_Laid_Date || ""}
+                          <input className="in" type="date" value={r.As_Laid_Date || ""} disabled={!!locked}
                             onChange={(e) => patch(r, "As_Laid_Date", e.target.value)} />)
 
                         : col.key === "outcome" ? (
-                          <select className="in" value={r.Visit_Outcome_ID ?? ""}
+                          <select className="in" value={r.Visit_Outcome_ID ?? ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Visit_Outcome_ID", e.target.value ? Number(e.target.value) : null)}>
                             <option value="">&mdash;</option>
                             {(lookups.visitOutcomes || []).map((v) => (
@@ -458,7 +563,7 @@ export default function PlotConnectionsPage() {
                           </select>)
 
                         : col.key === "pack" ? (
-                          <select className="in" value={r.Pack_Status_ID ?? ""}
+                          <select className="in" value={r.Pack_Status_ID ?? ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Pack_Status_ID", e.target.value ? Number(e.target.value) : null)}>
                             <option value="">&mdash;</option>
                             {(lookups.packStatuses || []).map((x) => (
@@ -467,11 +572,11 @@ export default function PlotConnectionsPage() {
                           </select>)
 
                         : col.key === "meter" ? (
-                          <input className="in mono" value={r.Meter_Number || ""}
+                          <input className="in mono" value={r.Meter_Number || ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Meter_Number", e.target.value)} />)
 
                         : col.key === "scsub" ? (
-                          <input className="in" type="date" value={r.Service_Card_Submission_Date || ""}
+                          <input className="in" type="date" value={r.Service_Card_Submission_Date || ""} disabled={!!locked}
                             onChange={(e) => patch(r, "Service_Card_Submission_Date", e.target.value)} />)
 
                         /* A column with no branch renders empty rather
@@ -481,7 +586,8 @@ export default function PlotConnectionsPage() {
                            column added later. */
                         : null}
                       </td>
-                    ))}
+                      );
+                    })}
                   </tr>
                 );
                 })),
@@ -528,6 +634,7 @@ const CSS = FILTER_CSS + `
 .tb-clear { background: none; border: none; color: var(--accent); font: 600 12px inherit; cursor: pointer; }
 .grp-row { cursor: pointer; }
 .grp-row:hover td { background: #e4e8f2 !important; }
+.grp-sel { margin-right: 9px; vertical-align: -2px; }
 .grp-toggle { background: none; border: none; cursor: pointer; color: var(--accent);
   font-size: 11px; padding: 0 7px 0 0; line-height: 1; }
 .grp-row td { background: #eef0f4 !important; font-size: 11.5px; font-weight: 700;
@@ -539,8 +646,13 @@ const CSS = FILTER_CSS + `
   background: var(--bg); border: 1px solid var(--border); color: var(--muted); }
 .cs-pill.laid { background: var(--warn-bg); border-color: var(--warn-border); color: var(--warn-text); }
 .cs-pill.conn { background: var(--ok-bg); border-color: var(--ok-border); color: var(--ok-text); }
-.bulk-bar { display: flex; align-items: center; gap: 8px; flex-wrap: wrap; background: var(--accent);
+.bulk-bar { display: flex; align-items: flex-end; gap: 10px; flex-wrap: wrap; background: var(--accent);
   color: #fff; border-radius: var(--radius); padding: 9px 12px; margin-bottom: 10px; }
+.bulk-f { display: flex; flex-direction: column; gap: 3px; margin: 0; font-size: 9.5px;
+  font-weight: 700; text-transform: uppercase; letter-spacing: .05em; color: rgba(255,255,255,.8); }
+.bulk-f input, .bulk-f select { width: auto; min-width: 108px; font-size: 12px; padding: 4px 7px; }
+.dt.pc td.locked { background: #f8fafc; }
+.dt.pc td.locked .in { opacity: .45; cursor: not-allowed; }
 .bulk-count { font-size: 12px; font-weight: 700; }
 .bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 140px; font-size: 12px; padding: 5px 8px; }
 .bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }

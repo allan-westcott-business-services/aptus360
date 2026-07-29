@@ -63,16 +63,23 @@ export default function NewScheduleModal({ onClose, onSaved }) {
        change which rows are ignored. */
     listConnections(projectId)
       .then((r) => {
+        /* This endpoint returns { plots, connections }, not { rows } like
+           most of the others. Reading the wrong key gives an empty map,
+           which looks exactly like "nothing is scheduled" — so every chip
+           reported itself free. */
+        const rows = r.connections || [];
         const aborted = new Set((lookups?.visitOutcomes || [])
           .filter((v) => v.Is_Aborted).map((v) => v.Visit_Outcome_ID));
         const map = {};
-        for (const c of r.rows || []) {
+        for (const c of rows) {
           if (aborted.has(c.Visit_Outcome_ID)) continue;
           (map[c.Plot_ID] ||= {})[c.Utility_ID] = c.Programmed_Date || null;
         }
         setExisting(map);
       })
-      .catch(() => setExisting({}));
+      /* Said out loud. A silent failure here is indistinguishable from a
+         project with nothing scheduled, which is what hid this. */
+      .catch((e) => { setExisting({}); setError(`Couldn't read existing connections: ${e.message}`); });
 
     listPlots(projectId)
       .then((r) => {
@@ -269,10 +276,14 @@ export default function NewScheduleModal({ onClose, onSaved }) {
                           order so the strip reads the same on every chip. */}
                       {takenIds.length > 0 && (
                         <span className="ns-strip">
-                          {SCHEDULABLE.filter((id) => takenIds.includes(id)).map((id) => (
-                            <span key={id} className="ns-sdot"
-                              style={{ background: UTILITIES.find((x) => x.id === id)?.colour }} />
-                          ))}
+                          {SCHEDULABLE.filter((id) => takenIds.includes(id)).map((id) => {
+                            const u = UTILITIES.find((x) => x.id === id);
+                            return (
+                              <span key={id} className="ns-sicon" title={`${u?.name} scheduled`}>
+                                {u?.icon}
+                              </span>
+                            );
+                          })}
                         </span>
                       )}
                       {p.Plot_Number}
@@ -407,8 +418,9 @@ const CSS = `
   font: 600 11.5px ui-monospace, Menlo, monospace; color: var(--text); }
 .ns-plot:hover:not(:disabled) { border-color: var(--accent); }
 .ns-plot.on { background: var(--accent); border-color: var(--accent); color: #fff; }
-.ns-strip { display: inline-flex; gap: 2px; margin-right: 5px; }
-.ns-sdot { width: 5px; height: 5px; border-radius: 50%; display: inline-block; }
+.ns-strip { display: inline-flex; gap: 1px; margin-right: 4px; }
+.ns-sicon { font-size: 9px; line-height: 1; opacity: .75; }
+.ns-plot.on .ns-sicon { opacity: 1; }
 /* Every utility already scheduled: nothing this form can add. Red rather
    than simply greyed, because it is worth noticing before you look for
    the plot and find it missing. */

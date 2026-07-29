@@ -865,6 +865,17 @@ export default function GISCanvasPage() {
       const own = usable.filter((t) => t.lineType === preferred);
       const t = findSnap(own, [mx, my], view.scale, SNAP_PX);
       if (t) return { point: [...t.point], hit: { ...t, sameClass: true } };
+
+      /* Anywhere along a line of the same class, not only its vertices
+         and midpoints. A trench is usually met part way along rather than
+         at a drawn point, and requiring a vertex would mean the join can
+         only be made where someone happened to click when drawing it. */
+      const ownLines = visible.filter((f) =>
+        f.Feature_Type === "line"
+        && f.Feature_ID !== opts.exclude
+        && (f.Attributes?.Line_Type ?? null) === preferred);
+      const e = nearestOnLines(ownLines, [mx, my], view.scale, SNAP_PX);
+      if (e) return { point: [...e.point], hit: { ...e, sameClass: true } };
     }
 
     if (opts.exclude != null) {
@@ -966,7 +977,44 @@ export default function GISCanvasPage() {
            line breaks a connection as surely as dragging it on makes
            one, and only recomputing catches both. */
         if (d.isEnd) {
-          const others = connectedTo(f.Geometry, visible, f.Feature_ID);
+          /* Landing part way along another line has to give that line a
+             vertex at the meeting point.
+
+             Two things depend on it. connectedTo measures against
+             vertices, so without one the join is invisible to tracing.
+             And the feeder router builds its graph from trench vertices —
+             two lines crossing with no shared vertex are two separate
+             networks to it, which is exactly the fault the connectivity
+             check reports and nobody can see on screen.
+
+             teeIntoMains returns null when a vertex is already close
+             enough, so nothing is inserted twice. */
+          const end = f.Geometry[d.index];
+          const ownType = f.Attributes?.Line_Type ?? null;
+          const teed = [];
+          for (const other of features) {
+            if (other.Feature_ID === f.Feature_ID) continue;
+            if (other.Feature_Type !== "line") continue;
+            if ((other.Attributes?.Line_Type ?? null) !== ownType) continue;
+            const g = teeIntoMains(other.Geometry, end, CONNECT_M);
+            if (g) teed.push({ Feature_ID: other.Feature_ID, Geometry: g });
+          }
+          if (teed.length) {
+            await moveFeatures(projectId, teed);
+            /* Read back before working out connections: connectedTo has
+               to see the vertices that were just inserted. */
+            setFeatures((fs) => fs.map((x) => {
+              const t = teed.find((y) => y.Feature_ID === x.Feature_ID);
+              return t ? { ...x, Geometry: t.Geometry } : x;
+            }));
+          }
+
+          const withTees = features.map((x) => {
+            const t = teed.find((y) => y.Feature_ID === x.Feature_ID);
+            return t ? { ...x, Geometry: t.Geometry } : x;
+          });
+          const others = connectedTo(f.Geometry, withTees.filter(
+            (x) => !hidden.some((k) => classKeys(x).includes(k))), f.Feature_ID);
           const before = [...(f.Attributes?.Connects || [])].sort().join(",");
           if (others.sort().join(",") !== before) {
             const updates = [{
@@ -980,7 +1028,7 @@ export default function GISCanvasPage() {
             const wasLinked = f.Attributes?.Connects || [];
             const touched = [...new Set([...others, ...wasLinked])];
             for (const id of touched) {
-              const o = features.find((x) => x.Feature_ID === id);
+              const o = withTees.find((x) => x.Feature_ID === id);
               if (!o) continue;
               const cur = o.Attributes?.Connects || [];
               const want = others.includes(id)
@@ -996,12 +1044,13 @@ export default function GISCanvasPage() {
 
             const gained = others.filter((id) => !wasLinked.includes(id)).length;
             const lost = wasLinked.filter((id) => !others.includes(id)).length;
-            if (gained || lost) {
+            if (gained || lost || teed.length) {
               setStatus([
                 gained ? `joined to ${gained}` : null,
+                teed.length ? `${teed.length} tee point(s) added` : null,
                 lost ? `disconnected from ${lost}` : null,
               ].filter(Boolean).join(", "));
-              setTimeout(() => setStatus(""), 4000);
+              setTimeout(() => setStatus(""), 5000);
             }
           }
         }

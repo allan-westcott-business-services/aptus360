@@ -1567,12 +1567,25 @@ export default function GISCanvasPage() {
           if (seed) seedIds.add(Number(seed.Feature_ID));
         }
 
+        /* An empty seed set filters every meter out, so the model would
+           report "no meters on the network" when the real problem is that
+           this circuit's meters aren't linked to a seed. Different fault,
+           different fix, so it is caught separately. */
+        if (!seedIds.size) {
+          failed.push(`${c.name}: its meters aren't linked to a plot seed`);
+          done++; continue;
+        }
+
         const r = feederSections(features, {
           lineTypes,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           seedIds,
         });
-        if (r.error || !r.sections.length) { failed.push(c.name); done++; continue; }
+        if (r.error) { failed.push(`${c.name}: ${r.error}`); done++; continue; }
+        if (!r.sections.length) {
+          failed.push(`${c.name}: nothing to route \u2014 its meters reach the network but no run leads back to the substation`);
+          done++; continue;
+        }
         if (r.skipped?.length) stranded.push(...r.skipped);
 
         for (const [i, sec] of r.sections.entries()) {
@@ -1623,16 +1636,25 @@ export default function GISCanvasPage() {
       }
 
       await load(projectId);
-      setStatus(
-        `LV network: ${runs} run(s), ${cables} cable(s) across ${circuits.length - failed.length} circuit(s)`
-        + (nodesMade ? `, ${nodesMade} junction node(s)` : "")
-        + (stranded.length
-          ? ` \u2014 ${stranded.length} meter(s) not on the trench network`
-          : "")
-        + (failed.length ? ` \u2014 couldn't route ${failed.join(", ")}` : "")
-      );
-      setTimeout(() => setStatus(""), 12000);
-      setError("");
+
+      /* Reported apart. A build that drew nothing is not a quieter
+         version of one that worked — it needs the reason, and burying it
+         at the end of a success line is how it gets missed. */
+      if (failed.length) {
+        setError(`Couldn\u2019t route: ${failed.join(" \u00B7 ")}`);
+      } else {
+        setError("");
+      }
+
+      setStatus(runs === 0
+        ? "No feeder cables drawn."
+        : `LV network: ${runs} run(s), ${cables} cable(s) across `
+          + `${circuits.length - failed.length} circuit(s)`
+          + (nodesMade ? `, ${nodesMade} junction node(s)` : "")
+          + (stranded.length
+            ? ` \u2014 ${stranded.length} meter(s) not on the trench network`
+            : ""));
+      setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
   }

@@ -2782,10 +2782,13 @@ const CSS = `
 .gt.on { background: var(--accent); color: #fff; }
 .btn.ghost.danger { color: #b91c1c; }
 
-/* One column now the sidebar has gone. It was `210px 1fr`, and with only
-   the canvas left inside it the canvas took the 210px column — which is
-   why the drawing appeared squeezed into the space the sidebar used to
-   occupy. */
+/* One column now the sidebar has gone. It was two tracks, 210px then
+   1fr, and with only the canvas left inside it the canvas took the
+   210px one — which is why the drawing appeared squeezed into the space
+   the sidebar used to occupy.
+
+   No backticks in here: this comment sits inside a template literal, so
+   one would close the string and the CSS after it becomes JavaScript. */
 .gis-main { flex: 1; display: grid; grid-template-columns: 1fr; min-height: 0; }
 
 kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: var(--bg);

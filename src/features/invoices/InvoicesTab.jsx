@@ -1,27 +1,26 @@
 import Banner from "../../components/Banner.jsx";
-import AvInvoicesPage from "../av/AvInvoicesPage.jsx";
+import ProjectInvoicesTab from "./ProjectInvoicesTab.jsx";
 
 /* Invoices for one project.
 
-   The same register as Commercial › AV Invoices, scoped to this project.
-   One implementation rather than a second view of the same rows: the
-   rules about what counts as earned and what counts as claimed live in
-   the AV_Register view, and a project-shaped copy of them would be one
-   more thing to keep in step.
+   The invoices themselves, each opening to the plot lines it bills for —
+   the shape the original's contract page uses. The register on
+   Commercial › AV Invoices answers the other question, what has been
+   earned and not yet claimed, and stays where it is.
 
-   Audacia CVR import is still outstanding — those are invoices coming
-   the other way, matched on contract number, and they need a schema
-   before they can be real. Said out loud rather than left as a silent
-   gap, since "Invoices" now shows something and could look complete. */
+   Audacia CVR import is still outstanding: those are invoices coming the
+   other way, matched on contract number, and they need a schema before
+   they can be real. Said out loud rather than left as a silent gap, now
+   that this tab shows something and could look finished. */
 export default function InvoicesTab({ projectId, projectRef }) {
   return (
     <div>
-      <AvInvoicesPage projectId={projectId} embedded />
+      <ProjectInvoicesTab projectId={projectId} projectRef={projectRef} />
 
       <Banner kind="muted">
-        Asset value only. Audacia CVR lines for{" "}
-        <strong>{projectRef}</strong> aren’t imported yet &mdash; they need an
-        <code> Invoice_Line</code> table and a match on contract number.
+        Asset value only. Audacia CVR lines for <strong>{projectRef}</strong> aren&rsquo;t
+        imported yet &mdash; they need an <code>Invoice_Line</code> table and a match on
+        contract number.
       </Banner>
     </div>
   );

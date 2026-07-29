@@ -29,6 +29,7 @@ import {
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
+import { MenuBar, Menu, MenuGroup, MenuItem, MenuToggle } from "./GisMenus.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
 /* GIS canvas — stage 1.
@@ -90,6 +91,7 @@ export default function GISCanvasPage() {
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
+  const [circuitReport, setCircuitReport] = useState(false);
   /* A ref, not state: the loop below has to read the current value
      between awaits, and a state read there would see the value from the
      render that started it. */
@@ -148,9 +150,38 @@ export default function GISCanvasPage() {
     [layers]
   );
 
+  /* Hiding used to be per layer. The menus ask for finer control — LV
+     cables separately from HV, meters separately from joints — so the
+     hidden set now holds three kinds of key and a feature is hidden if
+     any of its own match. Prefixed so a line type can never collide with
+     a layer that happens to share its name. */
+  const classKeys = useCallback((f) => [
+    f.Layer_Key,
+    f.Attributes?.Line_Type ? `lt:${f.Attributes.Line_Type}` : null,
+    f.Feature_Role && f.Feature_Role !== "shape" ? `role:${f.Feature_Role}` : null,
+  ].filter(Boolean), []);
+
   const visible = useMemo(
-    () => features.filter((f) => !hidden.includes(f.Layer_Key)),
-    [features, hidden]
+    () => features.filter((f) => !classKeys(f).some((k) => hidden.includes(k))),
+    [features, hidden, classKeys]
+  );
+
+  /* How many of each class exist, so a toggle can say whether it will
+     change anything before you click it. */
+  const classCount = useMemo(() => {
+    const c = {};
+    for (const f of features) for (const k of classKeys(f)) c[k] = (c[k] || 0) + 1;
+    return c;
+  }, [features, classKeys]);
+
+  const toggleClass = useCallback((key) => {
+    setHidden((h) => (h.includes(key) ? h.filter((x) => x !== key) : [...h, key]));
+  }, []);
+
+  /* Every line type on one layer, for that utility's menu. */
+  const typesOn = useCallback(
+    (layerKey) => lineTypes.filter((t) => t.Layer_Key === layerKey),
+    [lineTypes]
   );
   const visibleRef = useRef(visible);
   visibleRef.current = visible;
@@ -1738,6 +1769,9 @@ export default function GISCanvasPage() {
 
         {projectId && (
           <>
+            {/* Drawing tools stay out of the menus: they are modal, and
+                which one is active has to be visible without opening
+                anything. */}
             <div className="gis-tools" role="group" aria-label="Tools">
               <button className={tool === "select" ? "gt on" : "gt"} onClick={() => { setTool("select"); setDraft([]); }}>
                 Select
@@ -1751,6 +1785,7 @@ export default function GISCanvasPage() {
                 Boundary
               </button>
             </div>
+
             {tool === "line" && (
               <>
                 <select className="gis-type" value={lineType}
@@ -1764,8 +1799,6 @@ export default function GISCanvasPage() {
                     onChange={(e) => setSurface(e.target.value)}
                     title="Surface for any part outside the boundary. On-site runs are set to Unmade automatically.">
                     <option value="">Surface&hellip;</option>
-                    {/* On-site runs are set to Unmade automatically, so
-                        this only governs anything outside the boundary. */}
                     {surfaceTypes.map((x) => (
                       <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
                     ))}
@@ -1776,88 +1809,162 @@ export default function GISCanvasPage() {
                 )}
               </>
             )}
-            {/* Which operator's drawing standard applies. Deliberately a
-                choice rather than something derived: a project's DNO
-                lives on its POC applications and there can be several,
-                while the standard you are drawing to is a property of
-                the drawing you are producing. */}
-            <select className="gis-type" value={standard} aria-label="Drawing standard"
-              onChange={(e) => setStandard(e.target.value)}
-              title="Apply an operator's styling rules to this drawing">
-              <option value="">House style</option>
-              {[...new Map((lookups?.orgOperators || [])
-                .map((o) => [o.Organisation_ID, o])).values()]
-                .map((o) => (
-                  <option key={o.Organisation_ID} value={o.Organisation_ID}>
-                    {o.Name}{o.Code ? ` (${o.Code})` : ""}
-                  </option>
-                ))}
-            </select>
-            <label className={snapOn ? "gis-snap on" : "gis-snap"}
-              title="Snap to the points, ends and edges of existing geometry">
-              <input type="checkbox" checked={snapOn} onChange={(e) => setSnapOn(e.target.checked)} />
-              Snap
-            </label>
-            <button className={basemap?.Metres_Per_Pixel ? "btn ghost" : "btn accent"}
-              onClick={() => setSetupOpen(true)}>
-              {basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
-            </button>
-            <button className="btn ghost" onClick={() => setView({ x: 60, y: 60, scale: 4 })}>Reset view</button>
-            <button className="btn ghost" disabled={!projectId} onClick={() => placeNode("poc")}
-              title="Where this utility's network meets the DNO's. Snaps onto the nearest main.">
-              + POC
-            </button>
-            <button className="btn ghost" disabled={!projectId} onClick={() => placeNode("substation")}
-              title="On-site substation. Snaps onto the nearest trench so it joins the network.">
-              + Substation
-            </button>
-            {selectedFeatures.some((f) => f.Feature_Role === "spannode") && (
-              <button className="btn ghost" onClick={runFullTrace}
-                title="Walk everything downstream of this node, leg by leg">
-                Full trace from here
-              </button>
-            )}
-            <button className={tool === "circuit" ? "btn accent" : "btn ghost"}
-              disabled={!projectId}
-              onClick={() => {
-                setTool(tool === "circuit" ? "select" : "circuit");
-                setSelected([]); setDraft([]);
-              }}
-              title="Draw round the plot seeds a circuit should serve. Their electric meters are assigned to it.">
-              {tool === "circuit" ? "Drawing circuit\u2026" : "Link to Circuit"}
-            </button>
-            <button className="btn ghost" disabled={!projectId} onClick={() => setBomOpen(true)}
-              title="Quantities for everything drawn, by site, surface and utility">
-              BOM
-            </button>
-            <button className="btn ghost" disabled={busy === "autoservice"}
-              onClick={runAutoService}
-              title="Drop a service trench at right angles from the nearest mains trench to each plot seed, then place that plot's meters and services. Works on the selected seed, or every seed if none is selected.">
-              {busy === "autoservice" ? "Auto service\u2026" : "\u27C2 Auto Service"}
-            </button>
-            {selected.length > 1 && (
-              <button className="btn ghost" disabled={!selectionClass}
-                title={selectionClass
-                  ? `Edit all ${selected.length} ${classLabel(selectedFeatures[0], lineTypes)} together`
-                  : "Selection holds more than one kind of object"}
-                onClick={() => setBulkOpen(true)}>
-                Edit {selected.length}
-              </button>
-            )}
-            {joinable && (
-              <button className="btn ghost" disabled={busy === "join"} onClick={joinSelected}>
-                {busy === "join" ? "Joining\u2026" : `Join ${selected.length}`}
-              </button>
-            )}
+
+            <MenuBar>
+              {({ open, setOpen }) => (
+                <>
+                  <Menu id="setup" label="Setup" open={open} setOpen={setOpen}>
+                    <MenuItem label={basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
+                      hint={basemap?.Metres_Per_Pixel ? "scaled" : "not set"}
+                      onClick={() => setSetupOpen(true)} />
+                    <MenuItem label="Place plot seeds"
+                      hint={`${plotList.filter((p) => !p.placed).length} unplaced`}
+                      onClick={() => setAddOpen(true)} />
+                    <div className="gm-sep" />
+                    <MenuGroup label="Drawing standard" />
+                    <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
+                      <select className="gis-type" value={standard} aria-label="Drawing standard"
+                        style={{ width: "100%" }}
+                        onClick={(e) => e.stopPropagation()}
+                        onChange={(e) => setStandard(e.target.value)}>
+                        <option value="">House style</option>
+                        {[...new Map((lookups?.orgOperators || [])
+                          .map((o) => [o.Organisation_ID, o])).values()].map((o) => (
+                            <option key={o.Organisation_ID} value={o.Organisation_ID}>
+                              {o.Name}{o.Code ? ` (${o.Code})` : ""}
+                            </option>
+                          ))}
+                      </select>
+                    </div>
+                    <div className="gm-sep" />
+                    <MenuToggle label="Snap to geometry" on={snapOn} onChange={setSnapOn} />
+                    <MenuItem label="Reset view"
+                      onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
+                  </Menu>
+
+                  <Menu id="layers" label="Layers" open={open} setOpen={setOpen}
+                    badge={hidden.length}>
+                    <MenuGroup label="Show or hide" />
+                    {layers.map((l) => (
+                      <MenuToggle key={l.Layer_Key} label={l.Label} colour={l.Colour}
+                        count={classCount[l.Layer_Key] || 0}
+                        on={!hidden.includes(l.Layer_Key)}
+                        onChange={() => toggleClass(l.Layer_Key)} />
+                    ))}
+                    <MenuToggle label="Span nodes" colour="#334155"
+                      count={classCount["role:spannode"] || 0}
+                      on={!hidden.includes("role:spannode")}
+                      onChange={() => toggleClass("role:spannode")} />
+                    <div className="gm-sep" />
+                    <MenuItem label="Show everything" disabled={!hidden.length}
+                      onClick={() => setHidden([])} />
+                  </Menu>
+
+                  <Menu id="electric" label="Electric" open={open} setOpen={setOpen}>
+                    <MenuGroup label="Show or hide" />
+                    {typesOn("electric").map((t) => (
+                      <MenuToggle key={t.Type_Key} label={t.Label} colour={t.Colour}
+                        count={classCount[`lt:${t.Type_Key}`] || 0}
+                        on={!hidden.includes(`lt:${t.Type_Key}`)}
+                        onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
+                    ))}
+                    {[["meter", "Electric meters"], ["joint", "Joints"],
+                      ["linkbox", "Link boxes"], ["substation", "Substations"],
+                      ["poc", "POCs"]].map(([role, label]) => (
+                        <MenuToggle key={role} label={label}
+                          count={classCount[`role:${role}`] || 0}
+                          on={!hidden.includes(`role:${role}`)}
+                          onChange={() => toggleClass(`role:${role}`)} />
+                      ))}
+                    <div className="gm-sep" />
+                    <MenuGroup label="Network" />
+                    <MenuItem label="+ POC" hint="snaps to nearest main"
+                      disabled={!projectId} onClick={() => placeNode("poc")} />
+                    <MenuItem label="+ Substation" hint="snaps to nearest trench"
+                      disabled={!projectId} onClick={() => placeNode("substation")} />
+                    <MenuItem label={tool === "circuit" ? "Drawing circuit\u2026" : "Link to Circuit"}
+                      active={tool === "circuit"} disabled={!projectId}
+                      hint="draw round the seeds it serves"
+                      onClick={() => {
+                        setTool(tool === "circuit" ? "select" : "circuit");
+                        setSelected([]); setDraft([]);
+                      }} />
+                    <MenuItem label="Circuit report" hint={`${circuitsFrom(features).length} defined`}
+                      disabled={!circuitsFrom(features).length}
+                      onClick={() => setCircuitReport(true)} />
+                    <MenuItem label="Full trace from here"
+                      disabled={!selectedFeatures.some((f) => f.Feature_Role === "spannode")}
+                      hint={selectedFeatures.some((f) => f.Feature_Role === "spannode")
+                        ? undefined : "select a span node"}
+                      onClick={runFullTrace} />
+                    <MenuItem label="Build LV network" hint="not built yet" disabled />
+                  </Menu>
+
+                  {["gas", "water"].map((key) => {
+                    const layer = layers.find((l) => l.Layer_Key === key);
+                    return (
+                      <Menu key={key} id={key} label={layer?.Label ?? key}
+                        open={open} setOpen={setOpen}>
+                        <MenuGroup label="Show or hide" />
+                        {typesOn(key).map((t) => (
+                          <MenuToggle key={t.Type_Key} label={t.Label} colour={t.Colour}
+                            count={classCount[`lt:${t.Type_Key}`] || 0}
+                            on={!hidden.includes(`lt:${t.Type_Key}`)}
+                            onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
+                        ))}
+                        <MenuToggle label="Meters" count={classCount[`${key}:meter`] || 0}
+                          on={!hidden.includes(`${key}:meter`)}
+                          onChange={() => toggleClass(`${key}:meter`)} />
+                        <div className="gm-sep" />
+                        <MenuToggle label={`Whole ${layer?.Label ?? key} layer`}
+                          colour={layer?.Colour} count={classCount[key] || 0}
+                          on={!hidden.includes(key)} onChange={() => toggleClass(key)} />
+                      </Menu>
+                    );
+                  })}
+
+                  <Menu id="lighting" label="Street lighting" open={open} setOpen={setOpen}>
+                    <MenuGroup label="Show or hide" />
+                    {typesOn("lighting").map((t) => (
+                      <MenuToggle key={t.Type_Key} label={t.Label} colour={t.Colour}
+                        count={classCount[`lt:${t.Type_Key}`] || 0}
+                        on={!hidden.includes(`lt:${t.Type_Key}`)}
+                        onChange={() => toggleClass(`lt:${t.Type_Key}`)} />
+                    ))}
+                    <MenuToggle label="Columns" count={classCount["role:column"] || 0}
+                      on={!hidden.includes("role:column")}
+                      onChange={() => toggleClass("role:column")} />
+                    {!typesOn("lighting").length && (
+                      <MenuItem label="Lighting layer missing" hint="run migration 0072" disabled />
+                    )}
+                  </Menu>
+
+                  <Menu id="tools" label="Tools & reporting" open={open} setOpen={setOpen}>
+                    <MenuItem label="Bill of materials"
+                      hint="quantities by site and surface"
+                      disabled={!projectId} onClick={() => setBomOpen(true)} />
+                    <MenuItem label={busy === "autoservice" ? "Auto service\u2026" : "Auto service"}
+                      hint="trench, meters and services per seed"
+                      disabled={busy === "autoservice"} onClick={runAutoService} />
+                    <div className="gm-sep" />
+                    <MenuGroup label="Selection" />
+                    <MenuItem label={`Edit ${selected.length}`}
+                      disabled={selected.length < 2 || !selectionClass}
+                      hint={selected.length > 1 && !selectionClass ? "mixed selection" : undefined}
+                      onClick={() => setBulkOpen(true)} />
+                    <MenuItem label={busy === "join" ? "Joining\u2026" : `Join ${selected.length}`}
+                      disabled={!joinable || busy === "join"} onClick={joinSelected} />
+                    <MenuItem label={`Delete ${selected.length}`} danger
+                      disabled={!selected.length} onClick={removeSelected} />
+                  </Menu>
+                </>
+              )}
+            </MenuBar>
+
             {selected.length > 1 && !selectionClass && (
               <span className="gis-mixed">
                 Mixed selection &mdash; shift-click to narrow it to one kind
               </span>
-            )}
-            {selected.length > 0 && (
-              <button className="btn ghost danger" onClick={removeSelected}>
-                Delete {selected.length}
-              </button>
             )}
           </>
         )}
@@ -2081,6 +2188,43 @@ export default function GISCanvasPage() {
                 </div>
               );
             })()}
+
+            {circuitReport && (
+              <div className="gis-trace" role="dialog" aria-label="Circuit report">
+                <div className="gt-head">
+                  <strong>Circuits</strong>
+                  <button className="fe-x" onClick={() => setCircuitReport(false)}
+                    aria-label="Close">&times;</button>
+                </div>
+                <table className="gt-tbl">
+                  <thead>
+                    <tr><th>Circuit</th><th className="num">Plots</th><th className="num">kVA</th></tr>
+                  </thead>
+                  <tbody>
+                    {circuitsFrom(features).map((c) => {
+                      const kva = circuitKva(c.meters, (id) => plotList.find((p) => p.plot_id === id));
+                      return (
+                        <tr key={c.id}>
+                          <td><strong>{c.letter}</strong> {c.name}</td>
+                          <td className="num">{c.meters.length}</td>
+                          <td className="num">{kva}</td>
+                        </tr>
+                      );
+                    })}
+                    <tr className="gt-tot">
+                      <td>{circuitsFrom(features).length} circuit(s)</td>
+                      <td className="num">
+                        {circuitsFrom(features).reduce((t, c) => t + c.meters.length, 0)}
+                      </td>
+                      <td className="num">
+                        {Math.round(circuitsFrom(features).reduce((t, c) => t
+                          + circuitKva(c.meters, (id) => plotList.find((p) => p.plot_id === id)), 0) * 10) / 10}
+                      </td>
+                    </tr>
+                  </tbody>
+                </table>
+              </div>
+            )}
 
             {trace && (
               <div className="gis-trace" role="dialog" aria-label="Full trace">

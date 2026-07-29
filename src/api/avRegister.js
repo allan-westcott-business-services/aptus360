@@ -15,7 +15,7 @@ export async function setAvInvoiceStatus(invoiceIds, Status) {
 /* The project view: invoices with the plot lines they are made of. */
 export async function getProjectInvoices(projectId) {
   if (USE_MOCKS) return { invoices: [], lines: [] };
-  return http.get(`/av-register?view=invoices&project=${projectId}`);
+  return http.get(`/av-project-invoices?project=${projectId}`);
 }
 
 export async function saveAvInvoice(body) {

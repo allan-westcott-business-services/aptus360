@@ -23,23 +23,6 @@ export default async function handler(req) {
       return json({ rows: data || [] });
     }
 
-    /* The project view: invoices with their lines. Two selects rather
-       than an embedded join, because the lines carry a connected date
-       that comes from the plot's connection record, not from the line. */
-    if (req.method === "GET" && url.searchParams.get("view") === "invoices") {
-      const projectId = url.searchParams.get("project");
-      if (!projectId) return json({ error: "A project is required." }, 400);
-      const [inv, lines] = await Promise.all([
-        db.from("AV_Invoice_Detail").select("*")
-          .eq("Project_ID", Number(projectId)).order("Invoice_Date", { ascending: false }),
-        db.from("AV_Invoice_Line_Detail").select("*")
-          .eq("Project_ID", Number(projectId)).order("AV_Invoice_Line_ID"),
-      ]);
-      if (inv.error) throw inv.error;
-      if (lines.error) throw lines.error;
-      return json({ invoices: inv.data || [], lines: lines.data || [] });
-    }
-
     /* Bulk status change. The screen's whole purpose is working through
        a list, so moving twenty invoices at once is the normal case, not
        the exception. */

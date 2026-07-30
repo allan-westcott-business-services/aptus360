@@ -20,7 +20,7 @@ import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
 import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
-  ON_SITE, OFF_SITE } from "./boundary.js";
+  planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
@@ -102,6 +102,8 @@ export default function GISCanvasPage() {
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
   const [svcCheck, setSvcCheck] = useState(null);
+  const [classPlan, setClassPlan] = useState(null);
+  const [reclass, setReclass] = useState(false);
   /* Right-click menu: what was clicked, and where to put the menu.
      Held together so the two can never disagree about which feature the
      options apply to. */
@@ -2204,6 +2206,107 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); }
   }
 
+  /* Classify what is already drawn against the boundary.
+
+     Two kinds of change, and the second is why this asks first: a feature
+     wholly on one side just gets a Site, but one crossing the boundary
+     has to become two features, because one row cannot be both on and
+     off site and the reinstatement differs. */
+  function previewClassification() {
+    const plan = planClassification(features, {
+      polygons: boundaryPolygons(features),
+      surfaceTypes,
+      includeClassified: reclass,
+      isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
+    });
+    if (plan.error) { setError(plan.error); return; }
+    setClassPlan(plan);
+    setError("");
+  }
+
+  async function applyClassification(plan) {
+    setBusy("classify");
+    const total = plan.label.length + plan.split.length;
+    setProgress({ done: 0, total, label: "Classifying" });
+    try {
+      /* Labelling first: it changes no geometry, so if the splitting half
+         fails the drawing is improved rather than half-rebuilt. */
+      for (let i = 0; i < plan.label.length; i += 100) {
+        await bulkUpdateFeatures(projectId,
+          plan.label.slice(i, i + 100).map(({ feature, site, surface }) => ({
+            Feature_ID: feature.Feature_ID,
+            Attributes: {
+              ...feature.Attributes,
+              Site: site,
+              ...(surface !== undefined ? { Surface_Type: surface } : {}),
+            },
+          })));
+        setProgress({ done: Math.min(i + 100, plan.label.length), total, label: "Classifying" });
+      }
+
+      let made = 0;
+      let done = plan.label.length;
+      for (const { feature, runs } of plan.split) {
+        /* The original keeps the first run, so it keeps its Feature_ID and
+           with it every Connects entry other features hold against it. */
+        const [first, ...rest] = runs;
+        await moveFeatures(projectId, [
+          { Feature_ID: feature.Feature_ID, Geometry: first.geometry },
+        ]);
+        await bulkUpdateFeatures(projectId, [{
+          Feature_ID: feature.Feature_ID,
+          Attributes: {
+            ...feature.Attributes,
+            Site: first.site,
+            ...(first.surface !== undefined ? { Surface_Type: first.surface } : {}),
+          },
+        }]);
+        for (const r of rest) {
+          await createFeature(projectId, {
+            Layer_Key: feature.Layer_Key,
+            Feature_Type: "line",
+            Feature_Role: feature.Feature_Role,
+            Plot_ID: feature.Plot_ID ?? null,
+            Geometry: r.geometry,
+            Label: feature.Label,
+            Attributes: {
+              ...feature.Attributes,
+              Site: r.site,
+              ...(r.surface !== undefined ? { Surface_Type: r.surface } : {}),
+            },
+          });
+          made += 1;
+        }
+        done += 1;
+        setProgress({ done, total, label: `Splitting (${done} of ${total})` });
+      }
+
+      /* Links rebuilt from geometry once everything has moved: the runs
+         now meet each other, and a half that no longer reaches something
+         must stop claiming to. */
+      if (plan.split.length) {
+        const fresh = await listGis(projectId);
+        const all = fresh.features || [];
+        const updates = all.filter((x) => x.Feature_Type === "line").map((x) => ({
+          Feature_ID: x.Feature_ID,
+          Attributes: { ...x.Attributes, Connects: connectedTo(x.Geometry, all, x.Feature_ID) },
+        }));
+        for (let i = 0; i < updates.length; i += 100) {
+          await bulkUpdateFeatures(projectId, updates.slice(i, i + 100));
+        }
+      }
+
+      await load(projectId);
+      setClassPlan(null);
+      setStatus(`Classified ${plan.label.length} feature(s)`
+        + (plan.split.length
+          ? `, split ${plan.split.length} at the boundary into ${made} extra run(s)` : ""));
+      setTimeout(() => setStatus(""), 10000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
+  }
+
   async function runAutoService() {
     const seeds = selected.length
       ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
@@ -2610,6 +2713,10 @@ export default function GISCanvasPage() {
                     <div className="gm-sep" />
                     <MenuItem label="Snap to geometry" active={snapOn}
                       onClick={() => setSnapOn(!snapOn)} />
+                    <MenuItem label="Classify against the boundary\u2026"
+                      hint="Set on-site / off-site on what is already drawn"
+                      disabled={!projectId || !!busy}
+                      onClick={previewClassification} />
                     <MenuItem label="Grid" active={showGrid}
                       hint={`${GRID_M} m spacing`}
                       onClick={() => setShowGrid(!showGrid)} />
@@ -3150,6 +3257,53 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {classPlan && (
+              <div className="gis-trace" role="dialog" aria-label="Classify against the boundary">
+                <div className="gt-head">
+                  <strong>Classify against the boundary</strong>
+                  <button className="fe-x" onClick={() => setClassPlan(null)}
+                    aria-label="Close">&times;</button>
+                </div>
+
+                {classPlan.total === 0 ? (
+                  <p className="tc-ok">
+                    Everything is already classified{classPlan.skipped
+                      ? ` (${classPlan.skipped} checked)` : ""}.
+                  </p>
+                ) : (
+                  <>
+                    <table className="gt-tbl">
+                      <tbody>
+                        <tr><td>Label on or off site</td>
+                          <td className="num">{classPlan.label.length}</td></tr>
+                        <tr><td>Split at the boundary</td>
+                          <td className="num">{classPlan.split.length}</td></tr>
+                        {classPlan.newFeatures > 0 && (
+                          <tr><td>New runs from splitting</td>
+                            <td className="num">{classPlan.newFeatures}</td></tr>
+                        )}
+                      </tbody>
+                    </table>
+                    <p className="tc-hint">
+                      Splitting is the part that changes the drawing: a run crossing the
+                      boundary becomes two, because one row can&rsquo;t be both on and off
+                      site. On-site trenches are set to Unmade; off-site ones keep the
+                      surface already chosen.
+                    </p>
+                    <button className="btn accent sm" disabled={!!busy}
+                      onClick={() => applyClassification(classPlan)}>
+                      {busy === "classify" ? "Working\u2026" : "Apply"}
+                    </button>
+                  </>
+                )}
+                <label className="cl-again">
+                  <input type="checkbox" checked={reclass}
+                    onChange={(e) => { setReclass(e.target.checked); setClassPlan(null); }} />
+                  Re-check features that already have a classification
+                </label>
+              </div>
+            )}
+
             {svcCheck && (
               <div className="gis-trace" role="dialog" aria-label="Service trench check">
                 <div className="gt-head">
@@ -3386,6 +3540,17 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
   box-shadow: 0 10px 30px rgba(15,23,42,.18); }
 .gp-x { position: absolute; right: 8px; top: 8px; }
+/* Used by the service check and classification panels. Both were written
+   referring to these names after the styles had gone with an earlier
+   panel, so both were rendering unstyled. */
+.tc-sum { font-size: 12px; margin: 0 0 8px; }
+.tc-sum em { font-style: normal; color: #92400e; }
+.tc-ok { font-size: 12.5px; font-weight: 600; color: var(--ok-text); margin: 0; }
+.tc-row { cursor: pointer; }
+.tc-row:hover { background: var(--accent-light); }
+.tc-hint { font-size: 10.5px; color: var(--muted); margin: 7px 0 0; }
+.cl-again { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; font-size: 11px;
+  color: var(--muted); cursor: pointer; }
 .gis-ctx { position: absolute; z-index: 30; background: var(--white);
   border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 168px;
   box-shadow: 0 10px 28px rgba(15,23,42,.2); }

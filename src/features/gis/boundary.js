@@ -180,3 +180,77 @@ export function boundaryPolygons(features = []) {
       && (f.Geometry || []).length >= 3)
     .map((f) => f.Geometry);
 }
+
+
+/* ── Classifying what is already drawn ──
+   Everything drawn before a boundary existed carries no Site, so it has
+   no reinstatement basis and sits under "Unclassified" on the bill.
+
+   Working out what to do is separate from doing it, because the answer
+   includes splitting features — a trench crossing the boundary is partly
+   on site and partly off, and one row cannot be both. Splitting changes
+   what is on the drawing, so it is worth seeing the shape of the change
+   before agreeing to it. */
+export function planClassification(features = [], opts = {}) {
+  const { polygons = [], surfaceTypes = [], includeClassified = false,
+          isTrench = () => false } = opts;
+
+  if (!polygons.length) {
+    return { error: "No site boundary drawn yet \u2014 there is nothing to classify against." };
+  }
+
+  const label = [];   // one Site value, no geometry change
+  const split = [];   // crosses the boundary, becomes several runs
+  let skipped = 0;
+
+  for (const f of features) {
+    /* The boundary itself is not on or off site; it is the line between.
+       Notes are annotation and carry no quantity. */
+    if (f.Layer_Key === "boundary" || f.Layer_Key === "note") continue;
+    if (!includeClassified && f.Attributes?.Site) { skipped += 1; continue; }
+
+    const g = f.Geometry || [];
+    if (!g.length) continue;
+
+    if (f.Feature_Type === "point") {
+      const site = pointInAny(g[0], polygons) ? ON_SITE : OFF_SITE;
+      if (site !== f.Attributes?.Site) label.push({ feature: f, site });
+      continue;
+    }
+
+    if (f.Feature_Type !== "line") continue;
+
+    const runs = splitByBoundary(g, polygons);
+    if (runs.length <= 1) {
+      const site = runs[0]?.site ?? (pointInAny(g[0], polygons) ? ON_SITE : OFF_SITE);
+      if (site !== f.Attributes?.Site) {
+        label.push({
+          feature: f, site,
+          /* An on-site trench is Unmade by rule; off-site keeps whatever
+             surface it already had, because that was a choice someone
+             made and this routine has no better information. */
+          surface: isTrench(f)
+            ? surfaceFor(site, f.Attributes?.Surface_Type, surfaceTypes)
+            : undefined,
+        });
+      }
+      continue;
+    }
+
+    split.push({
+      feature: f,
+      runs: runs.map((r) => ({
+        ...r,
+        surface: isTrench(f)
+          ? surfaceFor(r.site, f.Attributes?.Surface_Type, surfaceTypes)
+          : undefined,
+      })),
+    });
+  }
+
+  return {
+    label, split, skipped,
+    total: label.length + split.length,
+    newFeatures: split.reduce((t, s2) => t + s2.runs.length - 1, 0),
+  };
+}

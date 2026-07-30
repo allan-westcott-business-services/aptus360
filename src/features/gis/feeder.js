@@ -533,3 +533,39 @@ export function serviceTrenchCheck(features = [], opts = {}) {
     connected: services.length - orphans.length,
   };
 }
+
+
+/* Where a feeder run stops.
+
+   The far end of a branch is the point every volt-drop and loop-impedance
+   figure is quoted at, so it wants a span node as much as a junction
+   does. The original marks junctions during the build; ends are the other
+   half of the same markup.
+
+   A node is an end when nothing carrying load continues past it — which
+   is not the same as having no children at all, since a service spur
+   hanging off it is not the feeder carrying on. */
+export function endOfLineNodes(model) {
+  const { nodes, parent, parSvc, cum, S } = model;
+
+  const mainsKids = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    if (parent[i] < 0 || parSvc[i] || cum[i] <= 0) continue;
+    if (!mainsKids.has(parent[i])) mainsKids.set(parent[i], []);
+    mainsKids.get(parent[i]).push(i);
+  }
+
+  const out = [];
+  for (let i = 0; i < nodes.length; i++) {
+    if (i === S) continue;
+    if (cum[i] <= 0) continue;
+    if (parent[i] < 0) continue;
+    /* Reached along a service spur, so it is a plot connection rather
+       than the end of the feeder. */
+    if (parSvc[i]) continue;
+    if ((mainsKids.get(i) || []).length === 0) {
+      out.push({ index: i, point: nodes[i], meters: cum[i] });
+    }
+  }
+  return out;
+}

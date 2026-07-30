@@ -33,7 +33,8 @@ import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { feederSections, junctionNodes, trenchComponents, serviceTrenchCheck } from "./feeder.js";
+import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck }
+  from "./feeder.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -1900,20 +1901,24 @@ export default function GISCanvasPage() {
     )) return;
 
     setBusy("feeder");
-    setProgress({ done: 0, total: circuits.length, label: "Routing feeders" });
     try {
-      if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
+      /* Plan every circuit before writing anything.
 
-      let runs = 0, cables = 0, nodesMade = 0;
+         Two reasons. A routing failure on the third circuit no longer
+         leaves the first two built and the third missing — either the
+         whole network is rebuilt or none of it is. And the total number
+         of runs is known before the first one is created, so the progress
+         bar can count runs rather than circuits: on two circuits a
+         per-circuit bar is two steps and gone before it registers. */
+      setProgress({ done: 0, total: circuits.length, label: "Routing" });
+
+      const planned = [];
       const failed = [];
       const stranded = [];
-      let done = 0;
 
-      for (const c of circuits) {
-        setProgress({ done, total: circuits.length, label: `${c.name} (${c.letter})` });
+      for (const [i, c] of circuits.entries()) {
+        setProgress({ done: i, total: circuits.length, label: `Routing ${c.name}` });
 
-        /* Scoped to this circuit's seeds, so a plot on another feeder
-           doesn't pull its load onto this one. */
         const seedIds = new Set();
         for (const m of c.meters) {
           const sid = m.Attributes?.Seed_Feature_ID;
@@ -1922,14 +1927,9 @@ export default function GISCanvasPage() {
             && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
           if (seed) seedIds.add(Number(seed.Feature_ID));
         }
-
-        /* An empty seed set filters every meter out, so the model would
-           report "no meters on the network" when the real problem is that
-           this circuit's meters aren't linked to a seed. Different fault,
-           different fix, so it is caught separately. */
         if (!seedIds.size) {
           failed.push(`${c.name}: its meters aren't linked to a plot seed`);
-          done++; continue;
+          continue;
         }
 
         const r = feederSections(features, {
@@ -1937,93 +1937,123 @@ export default function GISCanvasPage() {
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           seedIds,
         });
-        if (r.error) { failed.push(`${c.name}: ${r.error}`); done++; continue; }
+        if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
         if (!r.sections.length) {
           failed.push(`${c.name}: nothing to route \u2014 its meters reach the network but no run leads back to the substation`);
-          done++; continue;
+          continue;
         }
         if (r.skipped?.length) stranded.push(...r.skipped);
 
-        for (const [i, sec] of r.sections.entries()) {
+        /* Junctions and ends together. A junction is where the feeder
+           divides; an end is where it stops, and that far point is what
+           every volt-drop figure is quoted at — both want marking. */
+        planned.push({
+          circuit: c,
+          sections: r.sections,
+          nodes: [
+            ...junctionNodes(r.model).map((j) => ({ ...j, kind: "junction" })),
+            ...endOfLineNodes(r.model).map((e) => ({ ...e, kind: "end" })),
+          ],
+        });
+      }
+
+      const totalRuns = planned.reduce((t, x) => t + x.sections.length, 0);
+      const totalNodes = planned.reduce((t, x) => t + x.nodes.length, 0);
+      if (!totalRuns) {
+        setError(failed.length ? `Couldn\u2019t route: ${failed.join(" \u00B7 ")}`
+          : "Nothing to route.");
+        return;
+      }
+
+      const old = features.filter((f) => f.Attributes?.Generated);
+      if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
+
+      let step = 0;
+      const total = totalRuns + totalNodes;
+      let runs = 0, cables = 0, nodesMade = 0;
+
+      for (const { circuit: c, sections, nodes } of planned) {
+        for (const [i, sec] of sections.entries()) {
           await createFeature(projectId, {
             Layer_Key: "electric",
             Feature_Type: "line",
             Geometry: sec.pts,
             Label: `${c.letter}${i + 1}`,
             Attributes: {
-              /* A feeder is a main. What marks it out is that the
-                  router drew it, which Generated below records — the
-                  line type says what a cable is, not who drew it. */
               Line_Type: "elec_main",
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
-              /* What makes the next rebuild safe. */
               Generated: true,
             },
           });
-          runs++;
+          runs += 1;
           cables += sec.cables;
+          step += 1;
+          setProgress({ done: step, total, label: `${c.letter}: run ${i + 1} of ${sections.length}` });
         }
 
-        /* Junction span nodes, so the network is marked up without
-           anyone having to run a trace first — the original does this
-           as part of the build for the same reason. */
-        const existingNodes = features.filter((f) => f.Feature_Role === "spannode"
+        const existing = features.filter((f) => f.Feature_Role === "spannode"
           && Number(f.Attributes?.Circuit_ID) === Number(c.id));
-        let seq = existingNodes.reduce(
-          (t, f) => Math.max(t, Number(f.Attributes?.Span_Seq) || 0), 0);
+        let seq = existing.reduce((t, f) => Math.max(t, Number(f.Attributes?.Span_Seq) || 0), 0);
 
-        for (const j of junctionNodes(r.model)) {
-          const near = existingNodes.some((f) =>
-            Math.hypot(f.Geometry[0][0] - j.point[0], f.Geometry[0][1] - j.point[1]) < 1);
+        for (const nd of nodes) {
+          const near = existing.some((f) =>
+            Math.hypot(f.Geometry[0][0] - nd.point[0], f.Geometry[0][1] - nd.point[1]) < 1);
+          step += 1;
+          setProgress({ done: step, total, label: `${c.letter}: nodes` });
           if (near) continue;
           seq += 1;
           await createFeature(projectId, {
             Layer_Key: "electric",
             Feature_Type: "point",
             Feature_Role: "spannode",
-            Geometry: [j.point],
+            Geometry: [nd.point],
             Label: `Point ${spanLabel(c.letter, seq)}`,
             Attributes: {
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Span_Seq: seq, Span_Label: spanLabel(c.letter, seq),
+              /* Which kind it is, so a report can tell a branch from the
+                 far end of a run without measuring. */
+              Span_Kind: nd.kind,
             },
           });
-          nodesMade++;
+          nodesMade += 1;
         }
-        done++;
       }
 
       await load(projectId);
 
-      /* Reported apart. A build that drew nothing is not a quieter
-         version of one that worked — it needs the reason, and burying it
-         at the end of a success line is how it gets missed. */
-      if (failed.length) {
-        setError(`Couldn\u2019t route: ${failed.join(" \u00B7 ")}`);
-      } else {
-        setError("");
-      }
+      if (failed.length) setError(`Couldn\u2019t route: ${failed.join(" \u00B7 ")}`);
+      else setError("");
 
-      setStatus(runs === 0
-        ? "No feeder cables drawn."
-        : `LV network: ${runs} run(s), ${cables} cable(s) across `
-          + `${circuits.length - failed.length} circuit(s)`
-          + (nodesMade ? `, ${nodesMade} junction node(s)` : "")
-          + (stranded.length
-            ? ` \u2014 ${stranded.length} meter(s) not on the trench network`
-            : ""));
+      setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
+        + (nodesMade ? `, ${nodesMade} span node(s)` : "")
+        + (stranded.length ? ` \u2014 ${stranded.length} meter(s) not on the trench network` : ""));
       setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
   }
 
+  /* Start drawing a particular line type. The menus name the thing being
+     drawn — Mains trench, LV feeder — rather than putting the tool and a
+     type picker side by side and leaving them to be combined. */
+  const drawAs = useCallback((typeKey) => {
+    setLineType(typeKey);
+    setTool("line");
+    setSelected([]);
+    setDraft([]);
+  }, []);
+
+  /* isDrawing, not drawing: `drawing` above already means "is any drawing
+     tool active". Two different questions, and one name for both broke
+     the build once already. */
+  const isDrawing = (typeKey) => tool === "line" && lineType === typeKey;
+
   /* Bring a set of features into view.
 
      Selecting something on a plan the size of a housing estate is only
      half an answer — the thing selected is usually off screen. This
-     frames it, with room around it so it reads in context rather than
-     filling the canvas edge to edge. */
+     frames it, with room around it so it reads in context. */
   const zoomTo = useCallback((ids) => {
     const pts = features
       .filter((f) => ids.includes(f.Feature_ID))
@@ -2041,7 +2071,7 @@ export default function GISCanvasPage() {
     const pad = 60;
 
     /* A single point has no extent, so fitting to it would divide by
-       zero. Fall back to a sensible working scale and centre on it. */
+       zero. Fall back to a working scale and centre on it. */
     const spanX = Math.max(maxX - minX, 0.001);
     const spanY = Math.max(maxY - minY, 0.001);
     const scale = (maxX - minX < 0.01 && maxY - minY < 0.01)
@@ -2055,53 +2085,6 @@ export default function GISCanvasPage() {
       scale: clamped,
     });
   }, [features, view.scale]);
-
-  /* Start drawing a particular line type. The menus name the thing being
-     drawn — Mains trench, LV feeder — rather than putting the tool and a
-     type picker side by side and leaving them to be combined. */
-  const drawAs = useCallback((typeKey) => {
-    setLineType(typeKey);
-    setTool("line");
-    setSelected([]);
-    setDraft([]);
-  }, []);
-
-  /* isDrawing, not drawing: `drawing` above already means "is any
-     drawing tool active". Two different questions, and one name for both
-     is how the build broke. */
-  const isDrawing = (typeKey) => tool === "line" && lineType === typeKey;
-
-  /* Deleting a category. Batched rather than one at a time: the original
-     issued a request per feature and showed a progress bar to cover it,
-     which on four hundred trenches is four hundred round trips. Chunks
-     keep the progress honest without the cost. */
-  async function runBulkDelete(ids, catCount) {
-    if (!window.confirm(
-      `Delete ${ids.length} feature(s) across ${catCount} categor${catCount === 1 ? "y" : "ies"}?`
-      + "\n\nThis is permanent and cannot be undone."
-    )) return;
-
-    setBusy("bulkdel");
-    setProgress({ done: 0, total: ids.length, label: "Deleting" });
-    const CHUNK = 100;
-    try {
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const batch = ids.slice(i, i + CHUNK);
-        await deleteFeatures(projectId, batch);
-        const done = Math.min(i + batch.length, ids.length);
-        setProgress({ done, total: ids.length, label: `Deleting ${done} of ${ids.length}` });
-      }
-      setBulkDelOpen(false);
-      /* One reload at the end rather than after each chunk — the canvas
-         redrawing repeatedly is what made the original freeze it. */
-      await load(projectId);
-      setSelected([]);
-      setStatus(`Deleted ${ids.length} feature(s)`);
-      setTimeout(() => setStatus(""), 6000);
-      setError("");
-    } catch (e) { setError(e.message); await load(projectId); }
-    finally { setBusy(""); setProgress(null); }
-  }
 
   /* Breaking a line in two at a point.
 
@@ -2133,9 +2116,6 @@ export default function GISCanvasPage() {
       });
       await load(projectId);
 
-      /* Both halves, and anything either of them touches, get their
-         links rebuilt — otherwise the far half is still recorded as
-         joined to whatever the near half meets. */
       const fresh = await listGis(projectId);
       const all = fresh.features || [];
       const ids = new Set([f.Feature_ID, made?.Feature_ID]);
@@ -2158,13 +2138,40 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Deleting a category. Batched rather than one at a time: the original
+     issued a request per feature, which on four hundred trenches is four
+     hundred round trips. */
+  async function runBulkDelete(ids, catCount) {
+    if (!window.confirm(
+      `Delete ${ids.length} feature(s) across ${catCount} categor${catCount === 1 ? "y" : "ies"}?`
+      + "\n\nThis is permanent and cannot be undone."
+    )) return;
+
+    setBusy("bulkdel");
+    setProgress({ done: 0, total: ids.length, label: "Deleting" });
+    const CHUNK = 100;
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const batch = ids.slice(i, i + CHUNK);
+        await deleteFeatures(projectId, batch);
+        const done = Math.min(i + batch.length, ids.length);
+        setProgress({ done, total: ids.length, label: `Deleting ${done} of ${ids.length}` });
+      }
+      setBulkDelOpen(false);
+      await load(projectId);
+      setSelected([]);
+      setStatus(`Deleted ${ids.length} feature(s)`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
+  }
+
   /* Add the nodes that hand-drawn services are missing.
 
      A service touching the mains with no vertex at the meeting point is
-     connected on paper and invisible to routing. Twenty-four of those is
-     twenty-four drags; this does the same thing in one pass, using the
-     same teeIntoMains the drawing and drag paths use, so the result is
-     identical to having drawn them correctly. */
+     connected on paper and invisible to routing. This does in one pass
+     what dragging each end would, using the same teeIntoMains. */
   async function addMissingNodes(rows) {
     if (!rows.length) return;
     setBusy("tee");
@@ -2281,9 +2288,6 @@ export default function GISCanvasPage() {
         setProgress({ done, total, label: `Splitting (${done} of ${total})` });
       }
 
-      /* Links rebuilt from geometry once everything has moved: the runs
-         now meet each other, and a half that no longer reaches something
-         must stop claiming to. */
       if (plan.split.length) {
         const fresh = await listGis(projectId);
         const all = fresh.features || [];

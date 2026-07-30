@@ -422,6 +422,33 @@ export default function GISCanvasPage() {
         if (isSeed) {
           const ss = seedStyle(f, on);
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
+        } else if (f.Feature_Role === "spannode") {
+          /* A span node carries its own code — A0, B3 — inside the
+             circle rather than floating beside it. The label is the
+             thing being referred to on a schedule, and a label offset
+             from its point is ambiguous once several sit close together.
+
+             Sized to the text so a two-character code fits whatever the
+             style says; colour and the rest still come from the style. */
+          const ps = styleFor(f);
+          const code = f.Attributes?.Span_Label ?? "";
+          ctx.font = "700 10px ui-monospace, Menlo, monospace";
+          const r = Math.max(ps.symbolPx, ctx.measureText(code).width / 2 + 4) * (on ? 1.25 : 1);
+          ctx.beginPath();
+          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
+          ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
+          ctx.fill();
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+          if (code && view.scale > 1.2) {
+            ctx.fillStyle = "#fff";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            ctx.fillText(code, p.x, p.y);
+            ctx.textBaseline = "alphabetic";
+          }
+          ctx.beginPath();   // nothing further to fill for this feature
         } else {
           /* Symbol and size come from the style, so a DNO that draws
              meters as hexagons gets hexagons without a code change. */
@@ -439,7 +466,7 @@ export default function GISCanvasPage() {
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
-        if (f.Label && view.scale > 2.5 && !isMeter) {
+        if (f.Label && view.scale > 2.5 && !isMeter && f.Feature_Role !== "spannode") {
           ctx.fillStyle = "#0f172a";
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";
@@ -1714,8 +1741,10 @@ export default function GISCanvasPage() {
       return setError("No circuits defined yet \u2014 use Link to Circuit first.");
     }
 
-    const old = features.filter((f) =>
-      f.Attributes?.Line_Type === "elec_feeder" && f.Attributes?.Generated);
+    /* Generated is the discriminator, not the type: a rebuild must
+       replace what the router drew and leave alone what anyone drew by
+       hand, and both are electric mains. */
+    const old = features.filter((f) => f.Attributes?.Generated);
 
     if (!window.confirm(
       `Build the LV feeder network for ${circuits.length} circuit(s)?`
@@ -1774,7 +1803,10 @@ export default function GISCanvasPage() {
             Geometry: sec.pts,
             Label: `${c.letter}${i + 1}`,
             Attributes: {
-              Line_Type: "elec_feeder",
+              /* A feeder is a main. What marks it out is that the
+                  router drew it, which Generated below records — the
+                  line type says what a cable is, not who drew it. */
+              Line_Type: "elec_main",
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
               /* What makes the next rebuild safe. */
@@ -1837,6 +1869,44 @@ export default function GISCanvasPage() {
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
   }
+
+  /* Bring a set of features into view.
+
+     Selecting something on a plan the size of a housing estate is only
+     half an answer — the thing selected is usually off screen. This
+     frames it, with room around it so it reads in context rather than
+     filling the canvas edge to edge. */
+  const zoomTo = useCallback((ids) => {
+    const pts = features
+      .filter((f) => ids.includes(f.Feature_ID))
+      .flatMap((f) => f.Geometry || []);
+    if (!pts.length) return;
+
+    const xs = pts.map((q) => q[0]);
+    const ys = pts.map((q) => q[1]);
+    const minX = Math.min(...xs), maxX = Math.max(...xs);
+    const minY = Math.min(...ys), maxY = Math.max(...ys);
+
+    const el = canvasRef.current;
+    const w = el?.clientWidth ?? 800;
+    const h = el?.clientHeight ?? 500;
+    const pad = 60;
+
+    /* A single point has no extent, so fitting to it would divide by
+       zero. Fall back to a sensible working scale and centre on it. */
+    const spanX = Math.max(maxX - minX, 0.001);
+    const spanY = Math.max(maxY - minY, 0.001);
+    const scale = (maxX - minX < 0.01 && maxY - minY < 0.01)
+      ? Math.max(view.scale, 4)
+      : Math.min((w - pad * 2) / spanX, (h - pad * 2) / spanY);
+
+    const clamped = Math.max(0.05, Math.min(scale, 40));
+    setView({
+      x: w / 2 - ((minX + maxX) / 2) * clamped,
+      y: h / 2 - ((minY + maxY) / 2) * clamped,
+      scale: clamped,
+    });
+  }, [features, view.scale]);
 
   async function runAutoService() {
     const seeds = selected.length
@@ -2184,10 +2254,6 @@ export default function GISCanvasPage() {
                 onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
                 Draw line
               </button>
-              <button className={tool === "boundary" ? "gt on" : "gt"}
-                onClick={() => { setTool("boundary"); setSelected([]); setDraft([]); }}>
-                Boundary
-              </button>
             </div>
 
             {tool === "line" && (
@@ -2221,6 +2287,16 @@ export default function GISCanvasPage() {
                     <MenuItem label={basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
                       hint={basemap?.Metres_Per_Pixel ? "scaled" : "not set"}
                       onClick={() => setSetupOpen(true)} />
+                    {/* Drawing the boundary is a setup job done once, not a
+                        tool reached for while working, so it sits here
+                        rather than beside Select and Draw line. */}
+                    <MenuItem label={tool === "boundary" ? "Drawing boundary\u2026" : "Draw site boundary"}
+                      active={tool === "boundary"}
+                      hint="classifies runs as on or off site"
+                      onClick={() => {
+                        setTool(tool === "boundary" ? "select" : "boundary");
+                        setSelected([]); setDraft([]);
+                      }} />
                     <MenuItem label="Add plots by range"
                       hint="create plots, then place them"
                       onClick={() => setAddOpen(true)} />
@@ -2252,8 +2328,7 @@ export default function GISCanvasPage() {
                       onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
                   </Menu>
 
-                  <Menu id="layers" label="Layers" open={open} setOpen={setOpen}
-                    badge={hidden.length}>
+                  <Menu id="layers" label="Layers" open={open} setOpen={setOpen}>
                     <MenuGroup label="Show or hide" />
                     {layers.map((l) => (
                       <MenuLayer key={l.Layer_Key} label={l.Label} colour={l.Colour}
@@ -2482,6 +2557,10 @@ export default function GISCanvasPage() {
              rather than hunting for it. */
           onSelect={(ids) => {
             setSelected(ids);
+            /* Framing it matters as much as selecting it: on an estate-sized
+               plan the piece adrift is almost always off screen, and a
+               selection you cannot see is not an answer. */
+            zoomTo(ids);
             setTrenchCheck(null);
             setStatus(`${ids.length} trench(es) selected \u2014 drag an end onto the network to join it`);
             setTimeout(() => setStatus(""), 8000);

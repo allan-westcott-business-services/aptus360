@@ -1921,7 +1921,10 @@ export default function GISCanvasPage() {
     setDraft([]);
   }, []);
 
-  const drawing = (typeKey) => tool === "line" && lineType === typeKey;
+  /* isDrawing, not drawing: `drawing` above already means "is any
+     drawing tool active". Two different questions, and one name for both
+     is how the build broke. */
+  const isDrawing = (typeKey) => tool === "line" && lineType === typeKey;
 
   async function runAutoService() {
     const seeds = selected.length
@@ -2360,7 +2363,7 @@ export default function GISCanvasPage() {
                     <MenuGroup label="Draw" />
                     {typesOn("trench").map((t) => (
                       <MenuItem key={t.Type_Key} label={t.Label} indent
-                        active={drawing(t.Type_Key)}
+                        active={isDrawing(t.Type_Key)}
                         onClick={() => drawAs(t.Type_Key)} />
                     ))}
                     <div className="gm-sep" />
@@ -2433,7 +2436,7 @@ export default function GISCanvasPage() {
                       const t = lineTypes.find((x) => x.Type_Key === key);
                       return t ? (
                         <MenuItem key={key} label={label} indent
-                          active={drawing(key)} onClick={() => drawAs(key)} />
+                          active={isDrawing(key)} onClick={() => drawAs(key)} />
                       ) : null;
                     })}
 

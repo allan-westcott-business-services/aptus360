@@ -863,11 +863,44 @@ export default function GISCanvasPage() {
             : [...selected, hit.Feature_ID])
         : (selected.includes(hit.Feature_ID) ? selected : [hit.Feature_ID]);
       setSelected(next);
-      drag.current = { mode: "move", startPx: [px, py], ids: next, origin: {} };
+      drag.current = { mode: "move", startPx: [px, py], ids: next, origin: {}, rubber: [] };
       next.forEach((id) => {
         const f = features.find((x) => x.Feature_ID === id);
         if (f) drag.current.origin[id] = f.Geometry;
       });
+
+      /* Moving a point that a line ends on drags that end with it.
+
+         A meter or a joint sits on the network because a cable reaches
+         it; sliding the point away and leaving the cable behind breaks
+         a connection that was never meant to change. So each line end
+         within tolerance of a moved point is recorded here and moved by
+         the same delta.
+
+         Only ends, not middle vertices: a line passing near a point is
+         not attached to it, and treating it as though it were would drag
+         the network about whenever something was nudged. */
+      const movedPoints = next
+        .map((id) => features.find((x) => x.Feature_ID === id))
+        .filter((f) => f && f.Feature_Type === "point" && (f.Geometry || []).length);
+
+      for (const pt of movedPoints) {
+        const at = pt.Geometry[0];
+        for (const line of features) {
+          if (line.Feature_Type !== "line") continue;
+          if (next.includes(line.Feature_ID)) continue;   // already moving whole
+          const g = line.Geometry || [];
+          if (g.length < 2) continue;
+          for (const idx of [0, g.length - 1]) {
+            if (Math.hypot(g[idx][0] - at[0], g[idx][1] - at[1]) <= CONNECT_M) {
+              drag.current.rubber.push({ id: line.Feature_ID, index: idx });
+              if (!drag.current.origin[line.Feature_ID]) {
+                drag.current.origin[line.Feature_ID] = g;
+              }
+            }
+          }
+        }
+      }
     } else if (!e.shiftKey) {
       setSelected([]);
     }
@@ -983,9 +1016,22 @@ export default function GISCanvasPage() {
 
     const dm = [dx / view.scale, dy / view.scale];
     const origin = d.origin;
+    const rubber = d.rubber || [];
     setFeatures((fs) => fs.map((f) => {
       const orig = origin[f.Feature_ID];
       if (!orig) return f;
+
+      /* A line caught by a moved point moves only the ends that were
+         attached. The rest of it stays put, so the run stretches rather
+         than sliding — which is what "connected" means on a drawing. */
+      const ends = rubber.filter((r) => r.id === f.Feature_ID).map((r) => r.index);
+      if (ends.length && !d.ids.includes(f.Feature_ID)) {
+        return {
+          ...f,
+          Geometry: orig.map((pnt, i) =>
+            (ends.includes(i) ? [pnt[0] + dm[0], pnt[1] + dm[1]] : pnt)),
+        };
+      }
       return { ...f, Geometry: orig.map(([x, y]) => [x + dm[0], y + dm[1]]) };
     }));
   }
@@ -1096,13 +1142,23 @@ export default function GISCanvasPage() {
     }
 
     if (!d || d.mode !== "move") return;
-    const updates = d.ids
+    /* The lines dragged along by a moved point have to be saved too, or
+       they snap back to where they were on the next load and the
+       connection is lost. */
+    const touched = [...new Set([...d.ids, ...(d.rubber || []).map((r) => r.id)])];
+    const updates = touched
       .map((id) => features.find((f) => f.Feature_ID === id))
       .filter(Boolean)
       .map((f) => ({ Feature_ID: f.Feature_ID, Geometry: f.Geometry }));
     if (!updates.length) return;
-    try { await moveFeatures(projectId, updates); }
-    catch (e) { setError(e.message); await load(projectId); }
+    try {
+      await moveFeatures(projectId, updates);
+      const dragged = (d.rubber || []).length;
+      if (dragged) {
+        setStatus(`${dragged} connected line end(s) moved with it`);
+        setTimeout(() => setStatus(""), 4000);
+      }
+    } catch (e) { setError(e.message); await load(projectId); }
   }
 
   /* Registered natively with passive:false — React's onWheel is passive,

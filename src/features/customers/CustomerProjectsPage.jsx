@@ -104,6 +104,7 @@ export default function CustomerProjectsPage() {
       <ProjectDetail
         project={selected}
         onBack={() => { setSelected(null); load(); }}
+        onOpenOption={(o) => setSelected({ ...selected, ...o })}
       />
     );
   }

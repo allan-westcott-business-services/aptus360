@@ -5,7 +5,7 @@ import { supabase, json, fail } from "./_supabase.js";
    fallback — the failure mode that hid sixteen phantom columns in the
    legacy contract list. */
 const PROJECT_COLUMNS = [
-  "Project_ID", "Project_Ref", "Revision", "Option_Letter", "Project_Status_ID",
+  "Project_ID", "Project_Ref", "Revision", "Option_Letter", "Display_Ref", "Project_Status_ID",
   "Customer_ID", "Branch_ID", "Region_ID", "Sub_Region_ID",
   "Site_Name", "Site_Address", "Postcode", "Eastings", "Northings",
   "Date_Received", "KPI_Date", "Date_Sent", "Secured_Date", "Status_Changed_Date",

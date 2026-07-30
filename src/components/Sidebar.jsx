@@ -33,8 +33,11 @@ const SIDEBAR_CSS = `
 .sidebar-brand { padding: 14px 12px 10px; }
 .brand-plate {
   background: #fff; border-radius: 8px; padding: 10px 12px;
-  display: flex; align-items: center; gap: 10px;
+  display: flex; align-items: center; justify-content: center;
 }
+/* Scales to the sidebar rather than a fixed size, so it still fits when
+   the sidebar is narrowed. */
+.brand-logo { width: 100%; max-width: 190px; height: auto; display: block; }
 .brand-mark {
   width: 34px; height: 34px; flex: none; border-radius: 7px;
   background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
@@ -180,11 +183,10 @@ export default function Sidebar({ view, onNavigate, collapsed, onToggle }) {
       <aside id="app-sidebar" className={collapsed ? "collapsed" : ""}>
         <div className="sidebar-brand">
           <div className="brand-plate">
-            <span className="brand-mark">A360</span>
-            <span className="brand-text">
-              <strong>Aptus360</strong>
-              <em>End-to-End MU Management</em>
-            </span>
+            {/* The logo already carries the name and the strapline, so the
+                text beside it would be saying everything twice. */}
+            <img className="brand-logo" src="/aptus360-logo.png"
+              alt="Aptus360 — End-to-End MU Management" />
           </div>
         </div>
 

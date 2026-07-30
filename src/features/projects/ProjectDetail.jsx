@@ -1,4 +1,5 @@
-import { useState } from "react";
+import { useState, useEffect, useCallback } from "react";
+import { listOptions, addOptions, removeOption } from "../../api/projectOptions.js";
 import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
 import StakeholderTab from "../stakeholders/StakeholderTab.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
@@ -29,7 +30,38 @@ const TABS = [
   { id: "comments", label: "Comments" },
 ];
 
-export default function ProjectDetail({ project, initialTab = "details", onBack }) {
+export default function ProjectDetail({ project, initialTab = "details", onBack, onOpenOption }) {
+  /* The other versions of this enquiry: 2607.004(A), (B) and so on.
+     Fetched rather than passed in, because a project can be opened from
+     several places and only one of them knows about its siblings. */
+  const [options, setOptions] = useState([]);
+  const [busyOpt, setBusyOpt] = useState(false);
+
+  const loadOptions = useCallback(async () => {
+    try { setOptions((await listOptions(project.Project_ID)).rows || []); }
+    catch { setOptions([]); }
+  }, [project.Project_ID]);
+
+  useEffect(() => { loadOptions(); }, [loadOptions]);
+
+  async function addOne() {
+    setBusyOpt(true);
+    try { await addOptions(project.Project_ID, 1); await loadOptions(); }
+    finally { setBusyOpt(false); }
+  }
+
+  async function removeThis() {
+    /* Named in the prompt: the letters are short and one option looks
+       much like another two clicks in. */
+    if (!window.confirm(
+      `Delete option ${project.Option_Letter} of ${project.Project_Ref}?\n\n`
+      + "Its plots, developers and designs go with it. This cannot be undone."
+    )) return;
+    setBusyOpt(true);
+    try { await removeOption(project.Project_ID, project.Project_ID); onBack(); }
+    finally { setBusyOpt(false); }
+  }
+
   const [tab, setTab] = useState(initialTab);
   if (!project) return null;
 
@@ -43,10 +75,38 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
         </button>
         <div className="detail-title">
           <h2>
-            <span className="mono ref">{project.Project_Ref}</span>
+            <span className="mono ref">{project.Display_Ref ?? project.Project_Ref}</span>
             {project.Revision ? <span className="rev">r{project.Revision}</span> : null}
           </h2>
           <p className="page-sub">{project.Site_Name || "Unnamed site"}</p>
+        </div>
+
+        {/* Shown only when there is more than one, so an ordinary project
+            is not cluttered by a strip saying it has no alternatives. */}
+        {options.length > 1 && (
+          <div className="opt-strip" role="group" aria-label="Options">
+            {options.map((o) => (
+              <button key={o.Project_ID}
+                className={o.Project_ID === project.Project_ID ? "opt on" : "opt"}
+                title={o.Project_ID === project.Project_ID ? "You are here" : `Open ${o.Display_Ref}`}
+                onClick={() => o.Project_ID !== project.Project_ID && onOpenOption?.(o)}>
+                {o.Option_Letter ?? "\u2014"}
+              </button>
+            ))}
+          </div>
+        )}
+
+        <div className="opt-actions">
+          <button className="btn ghost sm" disabled={busyOpt} onClick={addOne}
+            title="Copy this project as the next option">
+            {busyOpt ? "Working\u2026" : "+ Option"}
+          </button>
+          {options.length > 1 && (
+            <button className="btn ghost sm danger" disabled={busyOpt} onClick={removeThis}
+              title="Delete this option and everything in it">
+              Remove {project.Option_Letter}
+            </button>
+          )}
         </div>
       </div>
 
@@ -86,6 +146,12 @@ export default function ProjectDetail({ project, initialTab = "details", onBack 
 }
 
 const CSS = `
+.opt-strip { display: flex; gap: 4px; align-items: center; }
+.opt { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--white);
+  border-radius: 7px; cursor: pointer; font: 700 12px inherit; color: var(--muted); }
+.opt:hover { border-color: var(--accent); color: var(--accent); }
+.opt.on { background: var(--accent); border-color: var(--accent); color: #fff; cursor: default; }
+.opt-actions { display: flex; gap: 6px; align-items: center; }
 .detail-head { display: flex; align-items: baseline; gap: 14px; margin-bottom: 12px; }
 .back-link {
   background: none; border: none; padding: 0; cursor: pointer;

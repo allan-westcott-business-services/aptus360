@@ -8,6 +8,7 @@ import StagePill from "../../components/StagePill.jsx";
 import ScopePicker from "./ScopePicker.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { createProject, nextProjectRef } from "../../api/projects.js";
+import { addOptions } from "../../api/projectOptions.js";
 import { statusesForStage, firstStatusForStage, peopleWithRole, ROLE, STAGES } from "../../lib/constants.js";
 
 const REQUIRED = [
@@ -43,6 +44,10 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(blank);
   const [scopes, setScopes] = useState([1, 2, 3]);
+  /* How many parallel versions of this enquiry to quote. One means an
+     ordinary project with no letter — a lone project is not "option A of
+     one". Two or more turns it into 2607.004(A), (B) and so on. */
+  const [options, setOptions] = useState(1);
   const [errors, setErrors] = useState([]);
   const [saving, setSaving] = useState(false);
   const [saved, setSaved] = useState(null);
@@ -93,7 +98,15 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
         Customer_ID: branch ? branch.Customer_ID : null,
         scopes: scopes.map((id) => ({ Utility_ID: id, Scope_Status_ID: 1 })),
       });
-      setSaved(result);
+
+      /* Options are created after the project, not as part of it: each
+         is a copy of what was just made, so there has to be something to
+         copy first. Asking here rather than later means the set exists
+         before anyone starts entering plots into one of them. */
+      if (options > 1 && result?.Project_ID) {
+        await addOptions(result.Project_ID, options - 1);
+      }
+      setSaved({ ...result, _options: options });
       if (onCreated) onCreated(result);
     } catch (e) {
       setErrors([e.message]);
@@ -104,6 +117,7 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
 
   function reset() {
     setSaved(null);
+    setOptions(1);
     if (onReset) onReset();
     setScopes([1, 2, 3]);
     setErrors([]);
@@ -276,6 +290,27 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
           isStreetLightingOnly={quoteTypeIsStreetLighting(f.Quote_Type_ID)}
           onToggle={(id) => setScopes((p) => (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]))}
         />
+      </Section>
+
+      <Section
+        title="Options"
+        intro="Parallel versions of the same enquiry, quoted differently. Each starts as a copy of this one, lettered from A. Not the same as POC application options."
+        right={<span className="sec-note">
+          {options === 1 ? "No options" : `${options} \u2014 A to ${String.fromCharCode(64 + options)}`}
+        </span>}
+      >
+        <div className="fld ap-opts">
+          <label htmlFor="ap-options">How many options?</label>
+          <input id="ap-options" type="number" min="1" max="26" value={options}
+            onChange={(e) => setOptions(Math.max(1, Math.min(26, Number(e.target.value) || 1)))} />
+          <p className="hint">
+            {options === 1
+              ? `${f.Project_Ref || "The project"} on its own.`
+              : `${f.Project_Ref || "The project"}(A) through `
+                + `${f.Project_Ref || ""}(${String.fromCharCode(64 + options)}), `
+                + "each with the same plots, developers and designs. Add or remove any of them later."}
+          </p>
+        </div>
       </Section>
 
       <Section title="Notes">

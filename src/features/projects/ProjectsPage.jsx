@@ -20,7 +20,12 @@ export default function ProjectsPage() {
 
   if (mode === "new") return <AddProjectPage onBack={backToList} />;
 
-  if (mode === "edit") return <ProjectDetail project={selected} initialTab={initialTab} onBack={backToList} />;
+  if (mode === "edit") return (
+    <ProjectDetail project={selected} initialTab={initialTab} onBack={backToList}
+      /* Switching option keeps you on the same screen rather than going
+         back to the list and finding the sibling by eye. */
+      onOpenOption={(o) => setSelected({ ...selected, ...o })} />
+  );
 
   return (
     <ProjectsList

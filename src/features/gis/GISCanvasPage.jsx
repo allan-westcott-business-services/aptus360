@@ -1430,6 +1430,36 @@ export default function GISCanvasPage() {
         }
       }
 
+      /* Give whatever this line landed on a node at the meeting point.
+
+         Snapping puts the end exactly on the other line, which looks
+         joined and records a connection — but the feeder router builds
+         its graph from vertices, so without one there the join is
+         invisible to routing. Auto Service and dragging an end already
+         tee; drawing did not, which is why a hand-drawn service trench
+         could touch the mains and still be unroutable.
+
+         teeIntoMains returns null when a vertex is already close enough,
+         so nothing is inserted twice. */
+      const teed = [];
+      for (const m of made) {
+        const g = m.Geometry || [];
+        if (g.length < 2) continue;
+        for (const end of [g[0], g[g.length - 1]]) {
+          for (const other of features) {
+            if (other.Feature_Type !== "line") continue;
+            if (made.some((x) => x.Feature_ID === other.Feature_ID)) continue;
+            const already = teed.find((x) => x.Feature_ID === other.Feature_ID);
+            const base = already ? already.Geometry : other.Geometry;
+            const next = teeIntoMains(base, end, CONNECT_M);
+            if (!next) continue;
+            if (already) already.Geometry = next;
+            else teed.push({ Feature_ID: other.Feature_ID, Geometry: next });
+          }
+        }
+      }
+      if (teed.length) await moveFeatures(projectId, teed);
+
       setDraft([]);
       setSnapHit(null);
       await load(projectId);
@@ -2124,6 +2154,54 @@ export default function GISCanvasPage() {
       setError("");
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); }
+  }
+
+  /* Add the nodes that hand-drawn services are missing.
+
+     A service touching the mains with no vertex at the meeting point is
+     connected on paper and invisible to routing. Twenty-four of those is
+     twenty-four drags; this does the same thing in one pass, using the
+     same teeIntoMains the drawing and drag paths use, so the result is
+     identical to having drawn them correctly. */
+  async function addMissingNodes(rows) {
+    if (!rows.length) return;
+    setBusy("tee");
+    setProgress({ done: 0, total: rows.length, label: "Adding nodes" });
+    try {
+      const teed = new Map();
+      let done = 0;
+      for (const row of rows) {
+        const sv = features.find((f) => f.Feature_ID === row.id);
+        const g = sv?.Geometry || [];
+        if (g.length >= 2) {
+          for (const end of [g[0], g[g.length - 1]]) {
+            for (const other of features) {
+              if (other.Feature_Type !== "line") continue;
+              if (other.Feature_ID === sv.Feature_ID) continue;
+              if (String(other.Attributes?.Line_Type || "").includes("service")) continue;
+              const base = teed.get(other.Feature_ID) ?? other.Geometry;
+              const next = teeIntoMains(base, end, CONNECT_M);
+              if (next) teed.set(other.Feature_ID, next);
+            }
+          }
+        }
+        done += 1;
+        setProgress({ done, total: rows.length, label: `Adding nodes (${done} of ${rows.length})` });
+      }
+
+      if (teed.size) {
+        await moveFeatures(projectId,
+          [...teed].map(([Feature_ID, Geometry]) => ({ Feature_ID, Geometry })));
+      }
+      await load(projectId);
+      setSvcCheck(null);
+      setStatus(teed.size
+        ? `Nodes added to ${teed.size} mains trench(es) \u2014 run the check again to confirm`
+        : "Nothing to add \u2014 they already have nodes.");
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
   }
 
   async function runAutoService() {
@@ -3122,6 +3200,11 @@ export default function GISCanvasPage() {
                           <em>{svcCheck.noNode.length} touch the mains but have no node
                             there, so routing can&rsquo;t follow them.</em>
                         </p>
+                        <button className="btn accent sm" disabled={!!busy}
+                          style={{ margin: "0 0 6px" }}
+                          onClick={() => addMissingNodes(svcCheck.noNode)}>
+                          {busy === "tee" ? "Adding\u2026" : `Add the ${svcCheck.noNode.length} missing node(s)`}
+                        </button>
                         <table className="gt-tbl">
                           <tbody>
                             {svcCheck.noNode.map((o) => (

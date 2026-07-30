@@ -60,13 +60,16 @@ export function Menu({ id, label, open, setOpen, children, badge }) {
 
 export const MenuGroup = ({ label }) => <p className="gm-group">{label}</p>;
 
-export function MenuItem({ label, hint, onClick, disabled, active, danger }) {
+/* hint goes to the tooltip, not beside the label. Shown inline it wrapped
+   under long labels and turned a tidy list into a wall of grey text —
+   and most of it is detail you want when hesitating over an item, not
+   while scanning past it. */
+export function MenuItem({ label, hint, onClick, disabled, active, danger, indent }) {
   return (
-    <button className={["gm-item", active ? "on" : "", danger ? "danger" : ""]
-      .filter(Boolean).join(" ")}
+    <button className={["gm-item", active ? "on" : "", danger ? "danger" : "",
+      indent ? "in" : ""].filter(Boolean).join(" ")}
       role="menuitem" disabled={disabled} onClick={onClick} title={hint}>
       <span>{label}</span>
-      {hint && <em>{hint}</em>}
     </button>
   );
 }
@@ -125,6 +128,9 @@ const CSS = `
 .gm-item.on { background: var(--accent-light); color: var(--accent); font-weight: 700; }
 .gm-item.danger { color: #b91c1c; }
 .gm-item span, .gm-tog .gm-lbl { flex: 1; }
+/* A nested action — Draw > Mains trench — reads as belonging to the one
+   above it rather than as another top-level choice. */
+.gm-item.in { padding-left: 24px; }
 .gm-item em, .gm-tog em { font-style: normal; font-size: 10.5px; color: var(--muted);
   font-weight: 500; }
 .gm-item:disabled em { font-style: italic; }

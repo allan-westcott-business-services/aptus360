@@ -417,7 +417,26 @@ export default function GISCanvasPage() {
     ctx.moveTo(o.x, o.y - 12); ctx.lineTo(o.x, o.y + 12);
     ctx.stroke();
 
-    visible.forEach((f) => {
+    /* Drawing order.
+
+       Features arrive in Feature_ID order, so what was created last is
+       drawn last and covers whatever is beneath it. That is wrong for
+       span nodes: they are deliberately placed where something else
+       already is — the origin node sits exactly on the substation, and a
+       junction node on a cable — so whichever was created more recently
+       won, and re-placing a substation would hide the node on it.
+
+       Span nodes are annotation over the network, so they go last and are
+       never covered. Everything else keeps its creation order, which is
+       what makes a later-drawn cable sit over an earlier one. */
+    /* Span nodes are drawn in a pass of their own, after everything —
+       see the end of this function. Being last within this loop was not
+       enough: they are deliberately placed where other things already
+       are, and anything drawn afterwards, including a line's own label
+       box or a marker, would cover them. */
+    const drawOrder = visible.filter((f) => f.Feature_Role !== "spannode");
+
+    drawOrder.forEach((f) => {
       const colour = layerOf(f.Layer_Key).Colour;
       const on = selected.includes(f.Feature_ID);
       const pts = (f.Geometry || []).map(toPx);
@@ -436,34 +455,7 @@ export default function GISCanvasPage() {
         if (isSeed) {
           const ss = seedStyle(f, on);
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
-        } else if (f.Feature_Role === "spannode") {
-          /* A span node carries its own code — A0, B3 — inside the
-             circle rather than floating beside it. The label is the
-             thing being referred to on a schedule, and a label offset
-             from its point is ambiguous once several sit close together.
-
-             Sized to the text so a two-character code fits whatever the
-             style says; colour and the rest still come from the style. */
-          const ps = styleFor(f);
-          const code = f.Attributes?.Span_Label ?? "";
-          ctx.font = "700 10px ui-monospace, Menlo, monospace";
-          const r = Math.max(ps.symbolPx, ctx.measureText(code).width / 2 + 4) * (on ? 1.25 : 1);
-          ctx.beginPath();
-          ctx.arc(p.x, p.y, r, 0, Math.PI * 2);
-          ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
-          ctx.fill();
-          ctx.strokeStyle = "#fff";
-          ctx.lineWidth = 1.5;
-          ctx.stroke();
-          if (code && view.scale > 1.2) {
-            ctx.fillStyle = "#fff";
-            ctx.textAlign = "center";
-            ctx.textBaseline = "middle";
-            ctx.fillText(code, p.x, p.y);
-            ctx.textBaseline = "alphabetic";
-          }
-          ctx.beginPath();   // nothing further to fill for this feature
-        } else {
+                } else {
           /* Symbol and size come from the style, so a DNO that draws
              meters as hexagons gets hexagons without a code change. */
           const ps = styleFor(f);
@@ -762,6 +754,44 @@ export default function GISCanvasPage() {
         ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
         ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
       });
+    }
+
+    /* ── Span nodes, above everything ──
+       A0 sits exactly on the substation and a junction node exactly on a
+       cable, so anything sharing their position and drawn later would
+       hide them. Drawn here, after every feature and every overlay, they
+       cannot be covered by construction rather than by ordering luck. */
+    for (const f of visible) {
+      if (f.Feature_Role !== "spannode") continue;
+      const g = f.Geometry || [];
+      if (!g.length) continue;
+      const q = toPx(g[0]);
+      const on = selected.includes(f.Feature_ID);
+      const ps = styleFor(f);
+      const code = f.Attributes?.Span_Label ?? "";
+
+      ctx.font = "700 10px ui-monospace, Menlo, monospace";
+      const r = Math.max(ps.symbolPx, ctx.measureText(code).width / 2 + 4) * (on ? 1.25 : 1);
+
+      /* A white ring under the fill, so the node reads as sitting on top
+         of whatever it covers rather than merging into it. */
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, r + 1.5, 0, Math.PI * 2);
+      ctx.fillStyle = "#fff";
+      ctx.fill();
+
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
+      ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
+      ctx.fill();
+
+      if (code && view.scale > 1.2) {
+        ctx.fillStyle = "#fff";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        ctx.fillText(code, q.x, q.y);
+        ctx.textBaseline = "alphabetic";
+      }
     }
   }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
 

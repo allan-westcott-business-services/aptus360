@@ -3333,28 +3333,30 @@ export default function GISCanvasPage() {
                       setCtx(null);
                     }}>Delete node</button>
                   </>
+                /* Two different operations sharing a word. A span node
+                   wants the downstream trace, which reports legs, lengths
+                   and meters in a table. Everything else wants the
+                   numbering pass, which walks the network from a source
+                   and writes ways and circuits onto the cables — useful,
+                   but it displays nothing, and calling it "trace" is why
+                   it looked as though nothing had happened.
+
+                   Chained rather than nested: a ternary branch is one
+                   expression, so a comment and an expression side by side
+                   inside its brackets is two, and the parser stops at the
+                   second. */
+                ) : ctx.feature.Feature_Role === "spannode" ? (
+                  <button className="gc-item" disabled={!!busy} onClick={() => {
+                    setSelected([ctx.feature.Feature_ID]);
+                    setCtx(null);
+                    setTimeout(() => runFullTrace(), 0);
+                  }}>Full Trace from Here</button>
                 ) : (
-                  {/* Two different operations sharing a word. A span node
-                      wants the downstream trace, which reports legs,
-                      lengths and meters in a table. Everything else wants
-                      the numbering pass, which walks the network from a
-                      source and writes ways and circuits onto the cables —
-                      useful, but it displays nothing, and calling it
-                      "trace" is why it looked as though nothing had
-                      happened. */}
-                  {ctx.feature.Feature_Role === "spannode" ? (
-                    <button className="gc-item" disabled={!!busy} onClick={() => {
-                      setSelected([ctx.feature.Feature_ID]);
-                      setCtx(null);
-                      setTimeout(() => runFullTrace(), 0);
-                    }}>Full Trace from Here</button>
-                  ) : (
-                    <button className="gc-item" disabled={!!busy} onClick={() => {
-                      setSelected([ctx.feature.Feature_ID]);
-                      setCtx(null);
-                      setTimeout(() => runNetwork("trace"), 0);
-                    }}>Number the Network from Here</button>
-                  )}
+                  <button className="gc-item" disabled={!!busy} onClick={() => {
+                    setSelected([ctx.feature.Feature_ID]);
+                    setCtx(null);
+                    setTimeout(() => runNetwork("trace"), 0);
+                  }}>Number the Network from Here</button>
                 )}
 
                 <div className="gc-sep" />

@@ -33,7 +33,7 @@ import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { feederSections, junctionNodes, trenchComponents } from "./feeder.js";
+import { feederSections, junctionNodes, trenchComponents, serviceTrenchCheck } from "./feeder.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -101,6 +101,7 @@ export default function GISCanvasPage() {
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
+  const [svcCheck, setSvcCheck] = useState(null);
   /* Right-click menu: what was clicked, and where to put the menu.
      Held together so the two can never disagree about which feature the
      options apply to. */
@@ -1003,6 +1004,24 @@ export default function GISCanvasPage() {
         exclude: featureId,
         sameClass: isEnd ? ownType : null,
       });
+
+      /* An end dragged onto its own next vertex means "shorten to there".
+         Self-snapping is excluded generally — a vertex would stick to its
+         own neighbour and never reach anything else — but for an end
+         landing on the one adjacent point it is the whole intent, so it
+         is allowed as a specific exception and marked for the release
+         handler to act on. */
+      if (isEnd) {
+        const f = features.find((x) => x.Feature_ID === featureId);
+        const g = f?.Geometry || [];
+        const neighbour = index === 0 ? 1 : g.length - 2;
+        if (g[neighbour]) {
+          const q = toPx(g[neighbour]);
+          const cursor = toPx(point);
+          drag.current.collapse =
+            Math.hypot(q.x - cursor.x, q.y - cursor.y) <= HIT_PX ? neighbour : null;
+        }
+      }
       setSnapHit(hit);
       setFeatures((fs) => fs.map((f) =>
         f.Feature_ID === featureId
@@ -1051,6 +1070,25 @@ export default function GISCanvasPage() {
       setSnapHit(null);
       const f = features.find((x) => x.Feature_ID === d.featureId);
       if (!f) return;
+
+      /* Dropped on its own neighbour: the end is removed rather than
+         left sitting on top of another point. Two coincident vertices
+         look like one and behave like two — they make a zero-length
+         segment that shows up as an extra node and confuses every
+         length and trace that walks the line. */
+      if (d.collapse != null) {
+        const g = f.Geometry || [];
+        if (g.length > 2) {
+          removeVertex(f, d.index);
+          setStatus("Line shortened to the next node");
+          setTimeout(() => setStatus(""), 4000);
+        } else {
+          setError("A line needs two points \u2014 delete the whole line instead.");
+          await load(projectId);
+        }
+        return;
+      }
+
       try {
         await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]);
 
@@ -1460,6 +1498,19 @@ export default function GISCanvasPage() {
      Attributes.Length_m on any change to it, so the stored length can't
      fall behind the shape, and the label on screen reads the live
      geometry so it moves while you drag. */
+  /* The closest vertex to a click, whether or not it is within the hit
+     radius. Delete node should act on what you were pointing at, and a
+     click a few pixels off a corner still means that corner. */
+  function nearestVertexIndex(f, px, py) {
+    let bi = -1, bd = Infinity;
+    (f.Geometry || []).forEach((m, i) => {
+      const q = toPx(m);
+      const d = Math.hypot(q.x - px, q.y - py);
+      if (d < bd) { bd = d; bi = i; }
+    });
+    return bi;
+  }
+
   function vertexAt(f, px, py) {
     return (f.Geometry || []).findIndex((m) => {
       const q = toPx(m);
@@ -2530,6 +2581,10 @@ export default function GISCanvasPage() {
                     <MenuItem label={busy === "autoservice" ? "Auto service\u2026" : "Auto service"}
                       hint="Trench, meters and services for each plot seed"
                       disabled={busy === "autoservice"} onClick={runAutoService} />
+                    <MenuItem label="Check services reach the mains"
+                      hint="Every service trench must meet a mains trench"
+                      disabled={!projectId}
+                      onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
                     <MenuItem label="Check trench connectivity"
                       hint="Find sections that aren't joined to the rest"
                       disabled={!projectId}
@@ -2984,6 +3039,16 @@ export default function GISCanvasPage() {
                       else setError("Couldn\u2019t find a segment at that point.");
                       setCtx(null);
                     }}>Insert node</button>
+                    {/* Alt-click does this too, but nobody discovers that.
+                        Acts on the nearest vertex to where you clicked, so
+                        it removes the one you were pointing at rather than
+                        an arbitrary end. */}
+                    <button className="gc-item" onClick={() => {
+                      const idx = nearestVertexIndex(ctx.feature, ctx.px, ctx.py);
+                      if (idx >= 0) removeVertex(ctx.feature, idx);
+                      else setError("No node near that point.");
+                      setCtx(null);
+                    }}>Delete node</button>
                   </>
                 ) : (
                   <button className="gc-item" disabled={!!busy} onClick={() => {
@@ -3004,6 +3069,81 @@ export default function GISCanvasPage() {
                     deleteFeature(f.Feature_ID);
                   }
                 }}>Delete</button>
+              </div>
+            )}
+
+            {svcCheck && (
+              <div className="gis-trace" role="dialog" aria-label="Service trench check">
+                <div className="gt-head">
+                  <strong>Services to mains</strong>
+                  <button className="fe-x" onClick={() => setSvcCheck(null)}
+                    aria-label="Close">&times;</button>
+                </div>
+
+                {svcCheck.error && <p className="gt-none">{svcCheck.error}</p>}
+
+                {!svcCheck.error && (
+                  <>
+                    <p className="tc-sum">
+                      {svcCheck.connected} of {svcCheck.services} service trenches
+                      reach a mains trench.
+                    </p>
+
+                    {svcCheck.orphans.length === 0 ? (
+                      <p className="tc-ok">Every service reaches the mains.</p>
+                    ) : (
+                      <table className="gt-tbl">
+                        <thead>
+                          <tr><th>Not connected</th><th className="num">Length</th>
+                            <th className="num">Gap</th></tr>
+                        </thead>
+                        <tbody>
+                          {svcCheck.orphans.map((o) => (
+                            <tr key={o.id} className="tc-row"
+                              onClick={() => { setSelected([o.id]); zoomTo([o.id]); setTool("select"); }}
+                              title="Select and zoom to it">
+                              <td>{o.label}</td>
+                              <td className="num">{o.metres.toFixed(1)} m</td>
+                              <td className="num">{o.gap.toFixed(2)} m</td>
+                            </tr>
+                          ))}
+                        </tbody>
+                      </table>
+                    )}
+
+                    {/* A second, quieter fault: physically touching but
+                        with no shared node, so the router cannot follow
+                        it. Worth separating — the fix is one drag, and
+                        the symptom is plots silently missing from a
+                        feeder build. */}
+                    {svcCheck.noNode.length > 0 && (
+                      <>
+                        <p className="tc-sum" style={{ marginTop: 10 }}>
+                          <em>{svcCheck.noNode.length} touch the mains but have no node
+                            there, so routing can&rsquo;t follow them.</em>
+                        </p>
+                        <table className="gt-tbl">
+                          <tbody>
+                            {svcCheck.noNode.map((o) => (
+                              <tr key={o.id} className="tc-row"
+                                onClick={() => { setSelected([o.id]); zoomTo([o.id]); setTool("select"); }}>
+                                <td>{o.label}</td>
+                                <td className="num">{o.metres.toFixed(1)} m</td>
+                              </tr>
+                            ))}
+                          </tbody>
+                        </table>
+                      </>
+                    )}
+
+                    {(svcCheck.orphans.length > 0 || svcCheck.noNode.length > 0) && (
+                      <p className="tc-hint">
+                        Click a row to find it, then drag its end onto the mains
+                        &mdash; that records the join and adds a node at the meeting point.
+                      </p>
+                    )}
+                  </>
+                )}
               </div>
             )}
 

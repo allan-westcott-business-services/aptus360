@@ -440,3 +440,96 @@ function polylineLength(pts = []) {
   for (let i = 0; i + 1 < pts.length; i++) t += dist(pts[i], pts[i + 1]);
   return Math.round(t * 100) / 100;
 }
+
+
+/* ── Service trenches must reach the mains ──
+   Every service trench exists to bring one plot onto the network, so one
+   that touches no mains trench serves nothing. It is a common fault and
+   an invisible one: a spur drawn a metre short reads as connected at any
+   sensible zoom, and the feeder router simply finds fewer plots than
+   expected without saying which.
+
+   Measured against mains segments, not mains vertices. A service meeting
+   a main part way along is physically connected, and a main drawn as two
+   points has no vertex in the middle to match — checking vertices alone
+   reports every correct tee as a fault.
+
+   But the router builds its graph from vertices, so a service touching a
+   main with no node at the meeting point is connected on paper and
+   invisible to routing. That is a second, quieter fault, and it gets its
+   own list rather than being lumped in with the first. */
+
+const distToSegment = (p, a, b) => {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const len2 = vx * vx + vy * vy;
+  if (!len2) return dist(p, a);
+  let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return dist(p, [a[0] + t * vx, a[1] + t * vy]);
+};
+
+export function serviceTrenchCheck(features = [], opts = {}) {
+  const { lineTypes = [], eps = CONNECT_EPS } = opts;
+
+  const trenches = features.filter((f) =>
+    f.Feature_Type === "line" && isTrench(f, lineTypes) && (f.Geometry || []).length >= 2);
+
+  const services = trenches.filter(isService);
+  const mains = trenches.filter((f) => !isService(f));
+
+  if (!services.length) return { error: "No service trenches drawn yet." };
+  if (!mains.length) {
+    return { error: "No mains trenches drawn \u2014 every service is unattached by definition." };
+  }
+
+  const nearestMain = (pt) => {
+    let best = Infinity;
+    for (const m of mains) {
+      const g = m.Geometry;
+      for (let i = 0; i + 1 < g.length; i++) {
+        const d = distToSegment(pt, g[i], g[i + 1]);
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  };
+
+  const nearestMainVertex = (pt) => {
+    let best = Infinity;
+    for (const m of mains) for (const q of m.Geometry) {
+      const d = dist(pt, q);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+
+  const orphans = [];
+  const noNode = [];
+
+  for (const sv of services) {
+    const g = sv.Geometry;
+    const ends = [g[0], g[g.length - 1]];
+    /* Either end will do: a spur runs from the plot to the main and
+       which end is which depends on the direction it was drawn. */
+    const gap = Math.min(...ends.map(nearestMain));
+    const row = {
+      id: sv.Feature_ID,
+      label: sv.Label || `Service trench ${sv.Feature_ID}`,
+      metres: Number(sv.Attributes?.Length_m ?? 0) || polylineLength(g),
+      gap: Math.round(gap * 100) / 100,
+      at: g[0],
+    };
+
+    if (gap > eps) { orphans.push(row); continue; }
+    if (Math.min(...ends.map(nearestMainVertex)) > eps) noNode.push(row);
+  }
+
+  orphans.sort((a, b) => a.gap - b.gap);
+  return {
+    services: services.length,
+    mains: mains.length,
+    orphans,
+    noNode,
+    connected: services.length - orphans.length,
+  };
+}

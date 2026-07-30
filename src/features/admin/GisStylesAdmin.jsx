@@ -22,6 +22,8 @@ const BLANK = {
   Width_Px: "", Width_M: "", Scale_Width: false,
   Min_Width_Px: "", Max_Width_Px: "", Symbol_Size_Px: "",
   Min_Scale: "", Max_Scale: "", Label_Min_Scale: "",
+  Marker_Text: "", Marker_Symbol: "", Marker_Interval_M: "", Marker_Size_Px: "",
+  Marker_Colour: "", Marker_Rotate: true, Marker_Offset_Px: "", Marker_Min_Gap_Px: "",
   Sort_Order: 0, Is_Active: true, Notes: "",
 };
 
@@ -91,6 +93,16 @@ export default function GisStylesAdmin() {
       Min_Scale: num(draft.Min_Scale),
       Max_Scale: num(draft.Max_Scale),
       Label_Min_Scale: num(draft.Label_Min_Scale),
+      /* The preview has to see these or it shows a plain line while the
+         canvas shows a lettered one. */
+      Marker_Text: draft.Marker_Text || null,
+      Marker_Symbol: draft.Marker_Symbol || null,
+      Marker_Interval_M: num(draft.Marker_Interval_M),
+      Marker_Size_Px: num(draft.Marker_Size_Px),
+      Marker_Colour: draft.Marker_Colour || null,
+      Marker_Rotate: !!draft.Marker_Rotate,
+      Marker_Offset_Px: num(draft.Marker_Offset_Px),
+      Marker_Min_Gap_Px: num(draft.Marker_Min_Gap_Px),
     }, previewScale);
   }, [draft, previewScale]);
 
@@ -372,6 +384,64 @@ export default function GisStylesAdmin() {
                   <input id="gs-lbl" type="number" step="0.5" value={draft.Label_Min_Scale}
                     onChange={set("Label_Min_Scale")} placeholder="always show" />
                 </div>
+                <div className="gs-span">
+                  <p className="panel-label">Markers along the line</p>
+                  <p className="hint">
+                    A letter or symbol repeated at a set interval &mdash; an E every
+                    ten metres, a tick along a ducted run. Leave both empty for a plain
+                    line. Only applies to lines.
+                  </p>
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-mtext">Letter or number</label>
+                  <input id="gs-mtext" maxLength={3} value={draft.Marker_Text}
+                    onChange={set("Marker_Text")} placeholder="E" />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-msym">Or a symbol</label>
+                  <select id="gs-msym" value={draft.Marker_Symbol} onChange={set("Marker_Symbol")}>
+                    <option value="">&mdash; none &mdash;</option>
+                    {SYMBOLS.map((x) => (
+                      <option key={x} value={x}>{x}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-mint">Every (m)</label>
+                  <input id="gs-mint" type="number" step="0.5" min="0.5"
+                    value={draft.Marker_Interval_M}
+                    onChange={set("Marker_Interval_M")} placeholder="10" />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-msize">Size (px)</label>
+                  <input id="gs-msize" type="number" value={draft.Marker_Size_Px}
+                    onChange={set("Marker_Size_Px")} placeholder="11" />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-mcol">Marker colour</label>
+                  <input id="gs-mcol" value={draft.Marker_Colour}
+                    onChange={set("Marker_Colour")} placeholder="follows the line" />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-moff">Offset from the line (px)</label>
+                  <input id="gs-moff" type="number" value={draft.Marker_Offset_Px}
+                    onChange={set("Marker_Offset_Px")} placeholder="0" />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-mgap">Thin out below (px apart)</label>
+                  <input id="gs-mgap" type="number" value={draft.Marker_Min_Gap_Px}
+                    onChange={set("Marker_Min_Gap_Px")} placeholder="28" />
+                  <p className="hint">
+                    Zoomed out, markers this close together become a smear, so the
+                    interval doubles rather than crowding.
+                  </p>
+                </div>
+                <label className="gs-check">
+                  <input type="checkbox" checked={!!draft.Marker_Rotate}
+                    onChange={set("Marker_Rotate")} />
+                  Turn the marker along the line
+                </label>
+
                 <div className="fld">
                   <label htmlFor="gs-sort">Sort order</label>
                   <input id="gs-sort" type="number" value={draft.Sort_Order} onChange={set("Sort_Order")} />
@@ -453,6 +523,10 @@ const CSS = `
 .gs-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr)); gap: 11px; }
 .gs-colrow { display: flex; gap: 6px; }
 .gs-colrow input[type=color] { width: 40px; padding: 2px; flex: none; }
+/* A heading and its note spanning the whole form grid, so a group of
+   related fields reads as a group rather than as more of the same. */
+.gs-span { grid-column: 1 / -1; margin-top: 6px; }
+.gs-span .panel-label { margin-bottom: 2px; }
 .gs-check { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 9px 0 0; }
 

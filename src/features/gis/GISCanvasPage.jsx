@@ -18,7 +18,8 @@ import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
 import AddPlotsModal from "./AddPlotsModal.jsx";
 import { bedColour } from "../../lib/bedColours.js";
-import { resolveStyle, appearance, subjectOf, symbolPath, STROKE_ONLY } from "../../lib/gisStyle.js";
+import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROKE_ONLY }
+  from "../../lib/gisStyle.js";
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
@@ -501,6 +502,54 @@ export default function GISCanvasPage() {
           ctx.fillStyle = colour + "18";
           ctx.fill();
         }
+        /* Markers repeated along the run — an E every ten metres, a tick
+           along a ducted section. Configured per style, so a drawing
+           standard is a row in GIS_Style rather than a code change.
+
+           Drawn after the stroke and before the vertices: on top of the
+           line it annotates, under the handles you grab. */
+        if (st.marker && f.Feature_Type === "line" && pts.length > 1) {
+          const mk = st.marker;
+          const colour = on ? "#1d4ed8" : (mk.colour ?? st.colour);
+          for (const { point, angle } of markerPositions(f.Geometry, mk.stepM)) {
+            const q = toPx(point);
+            ctx.save();
+            ctx.translate(q.x, q.y);
+            /* Turned along the run unless the style says otherwise. An
+               arrow has to follow the line; a letter usually should, but
+               not always. */
+            if (mk.rotate) ctx.rotate(angle);
+            if (mk.offsetPx) ctx.translate(0, mk.offsetPx);
+
+            /* A gap in the line behind the marker, so a letter sits in
+               the run rather than on top of it. */
+            if (mk.text) {
+              ctx.font = `700 ${mk.sizePx}px ui-monospace, Menlo, monospace`;
+              const w = ctx.measureText(mk.text).width;
+              ctx.fillStyle = "#fff";
+              ctx.fillRect(-w / 2 - 2, -mk.sizePx / 2 - 1, w + 4, mk.sizePx + 2);
+              ctx.fillStyle = colour;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              ctx.fillText(mk.text, 0, 0);
+              ctx.textBaseline = "alphabetic";
+            }
+            if (mk.symbol) {
+              ctx.beginPath();
+              symbolPath(ctx, mk.symbol, 0, 0, mk.sizePx / 2);
+              if (STROKE_ONLY.has(mk.symbol)) {
+                ctx.strokeStyle = colour;
+                ctx.lineWidth = 1.8;
+                ctx.stroke();
+              } else {
+                ctx.fillStyle = colour;
+                ctx.fill();
+              }
+            }
+            ctx.restore();
+          }
+        }
+
         // Vertices, so a selected line can be reshaped
         if (on) {
           pts.forEach((p, i) => {

@@ -119,6 +119,9 @@ const CSS = `
 .gm-group { margin: 7px 8px 4px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .07em; color: var(--muted); }
 .gm-group:first-child { margin-top: 3px; }
+/* A line of explanation under a group heading, for a control whose
+   behaviour isn't obvious from its label. */
+.gm-note { margin: 0 8px 6px; font-size: 10.5px; color: var(--muted); line-height: 1.35; }
 
 .gm-item, .gm-tog { display: flex; align-items: center; gap: 8px; width: 100%; background: none;
   border: none; border-radius: 6px; cursor: pointer; font: 500 12.5px inherit; color: var(--text);

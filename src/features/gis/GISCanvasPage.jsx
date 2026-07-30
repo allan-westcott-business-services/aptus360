@@ -2025,11 +2025,21 @@ export default function GISCanvasPage() {
 
         /* Junctions and ends together. A junction is where the feeder
            divides; an end is where it stops, and that far point is what
-           every volt-drop figure is quoted at — both want marking. */
+           every volt-drop figure is quoted at — both want marking.
+
+           The origin comes first and is numbered zero, because every
+           other node on the circuit is measured from it. Link to Circuit
+           creates one, but a circuit made before that did, or one whose
+           node has been deleted, would have none — so the build makes
+           sure rather than assuming. */
+        const originAt = features.find((f) => f.Feature_Role === "substation")?.Geometry?.[0];
+        const haveOrigin = !!originNodeFor(features, c.id);
         planned.push({
           circuit: c,
           sections: r.sections,
           nodes: [
+            ...(!haveOrigin && originAt
+              ? [{ point: originAt, kind: "origin", seq: 0 }] : []),
             ...junctionNodes(r.model).map((j) => ({ ...j, kind: "junction" })),
             ...endOfLineNodes(r.model).map((e) => ({ ...e, kind: "end" })),
           ],
@@ -2081,18 +2091,20 @@ export default function GISCanvasPage() {
           step += 1;
           setProgress({ done: step, total, label: `${c.letter}: nodes` });
           if (near) continue;
-          seq += 1;
+          /* The origin keeps its zero however many nodes precede it in
+             the list; everything else takes the next number. */
+          const num = nd.kind === "origin" ? 0 : (seq += 1);
           await createFeature(projectId, {
             Layer_Key: "electric",
             Feature_Type: "point",
             Feature_Role: "spannode",
             Geometry: [nd.point],
-            Label: `Point ${spanLabel(c.letter, seq)}`,
+            Label: `Point ${spanLabel(c.letter, num)}`,
             Attributes: {
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
-              Span_Seq: seq, Span_Label: spanLabel(c.letter, seq),
-              /* Which kind it is, so a report can tell a branch from the
-                 far end of a run without measuring. */
+              Span_Seq: num, Span_Label: spanLabel(c.letter, num),
+              /* Which kind it is, so a report can tell the substation
+                 origin from a branch or the far end of a run. */
               Span_Kind: nd.kind,
             },
           });
@@ -2712,7 +2724,7 @@ export default function GISCanvasPage() {
       <div className="gis-bar">
         <div className="gis-proj">
           <input className="gis-search" value={search} placeholder="&#128269; Find a project&hellip;"
-            aria-label="Search projects" onChange={(e) => setSearch(e.target.value)} />
+            aria-label="Search Projects" onChange={(e) => setSearch(e.target.value)} />
           <select value={projectId} onChange={(e) => { setProjectId(e.target.value); setSelected([]); }}
             aria-label="Project">
             <option value="">&mdash; Select a project &mdash;</option>
@@ -2745,7 +2757,7 @@ export default function GISCanvasPage() {
                 of the cable, set in the editor once drawn, not a mode to
                 be in while drawing. */}
             {tool === "line" && isTrenchType(lineType, lineTypes) && (
-              <select className="gis-type" value={surface} aria-label="Surface type"
+              <select className="gis-type" value={surface} aria-label="Surface Type"
                 onChange={(e) => setSurface(e.target.value)}
                 title="Surface for any part outside the boundary. On-site runs are set to Unmade automatically.">
                 <option value="">Surface&hellip;</option>
@@ -2759,10 +2771,10 @@ export default function GISCanvasPage() {
               {({ open, setOpen }) => (
                 <>
                   <Menu id="setup" label="Setup" open={open} setOpen={setOpen}>
-                    <MenuItem label={basemap?.Metres_Per_Pixel ? "Background plan" : "Set up plan & scale"}
+                    <MenuItem label={basemap?.Metres_Per_Pixel ? "Background Plan" : "Set Up Plan & Scale"}
                       hint={basemap?.Metres_Per_Pixel ? "Scaled" : "Not set yet"}
                       onClick={() => setSetupOpen(true)} />
-                    <MenuItem label={tool === "boundary" ? "Drawing boundary\u2026" : "Draw site boundary"}
+                    <MenuItem label={tool === "boundary" ? "Drawing Boundary\u2026" : "Draw Site Boundary"}
                       active={tool === "boundary"}
                       hint="Classifies runs as on or off site"
                       onClick={() => {
@@ -2778,9 +2790,9 @@ export default function GISCanvasPage() {
                       active={placeOpen || queue.length > 0}
                       onClick={() => setPlaceOpen(true)} />
                     <div className="gm-sep" />
-                    <MenuGroup label="Drawing standard" />
+                    <MenuGroup label="Drawing Standard" />
                     <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
-                      <select className="gis-type" value={standard} aria-label="Drawing standard"
+                      <select className="gis-type" value={standard} aria-label="Drawing Standard"
                         style={{ width: "100%" }}
                         onClick={(e) => e.stopPropagation()}
                         onChange={(e) => setStandard(e.target.value)}>
@@ -2794,21 +2806,24 @@ export default function GISCanvasPage() {
                       </select>
                     </div>
                     <div className="gm-sep" />
-                    <MenuItem label="Snap to geometry" active={snapOn}
+                    <MenuItem label="Snap to Geometry" active={snapOn}
                       onClick={() => setSnapOn(!snapOn)} />
-                    <MenuItem label="Classify against the boundary\u2026"
+                    <MenuItem label="Classify Against the Boundary\u2026"
                       hint="Set on-site / off-site on what is already drawn"
                       disabled={!projectId || !!busy}
                       onClick={previewClassification} />
                     <MenuItem label="Grid" active={showGrid}
                       hint={`${GRID_M} m spacing`}
                       onClick={() => setShowGrid(!showGrid)} />
-                    <MenuItem label="Reset view"
+                    <MenuItem label="Reset View"
                       onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
                   </Menu>
 
                   <Menu id="layers" label="Layers" open={open} setOpen={setOpen}>
-                    <MenuGroup label="Show or hide" />
+                    <MenuGroup label="Hide or Solo" />
+                    <p className="gm-note">
+                      Hide a layer or isolate it with the Solo button.
+                    </p>
                     {layers.map((l) => (
                       <MenuLayer key={l.Layer_Key} label={l.Label} colour={l.Colour}
                         count={classCount[l.Layer_Key] || 0}
@@ -2817,14 +2832,14 @@ export default function GISCanvasPage() {
                         onHide={() => toggleClass(l.Layer_Key)}
                         onSolo={() => soloClass(l.Layer_Key)} />
                     ))}
-                    <MenuLayer label="Span nodes" colour="#334155"
+                    <MenuLayer label="Span Nodes" colour="#334155"
                       count={classCount["role:spannode"] || 0}
                       hidden={hidden.includes("role:spannode")}
                       solo={solo === "role:spannode"}
                       onHide={() => toggleClass("role:spannode")}
                       onSolo={() => soloClass("role:spannode")} />
                     <div className="gm-sep" />
-                    <MenuItem label="Show everything" disabled={!hidden.length}
+                    <MenuItem label="Show Everything" disabled={!hidden.length}
                       onClick={() => { setHidden([]); setSolo(null); }} />
                   </Menu>
 
@@ -2836,7 +2851,7 @@ export default function GISCanvasPage() {
                         onClick={() => drawAs(t.Type_Key)} />
                     ))}
                     <div className="gm-sep" />
-                    <MenuGroup label="Show or hide" />
+                    <MenuGroup label="Show or Hide" />
                     {typesOn("trench").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}
@@ -2846,21 +2861,21 @@ export default function GISCanvasPage() {
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <div className="gm-sep" />
-                    <MenuItem label={busy === "autoservice" ? "Auto service\u2026" : "Auto service"}
+                    <MenuItem label={busy === "autoservice" ? "Auto Service\u2026" : "Auto Service"}
                       hint="Trench, meters and services for each plot seed"
                       disabled={busy === "autoservice"} onClick={runAutoService} />
-                    <MenuItem label="Check services reach the mains"
+                    <MenuItem label="Check Services Reach the Mains"
                       hint="Every service trench must meet a mains trench"
                       disabled={!projectId}
                       onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
-                    <MenuItem label="Check trench connectivity"
+                    <MenuItem label="Check Trench Connectivity"
                       hint="Find sections that aren't joined to the rest"
                       disabled={!projectId}
                       onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
                   </Menu>
 
                   <Menu id="electric" label="Electric" open={open} setOpen={setOpen}>
-                    <MenuGroup label="Show or hide" />
+                    <MenuGroup label="Show or Hide" />
                     {/* POC and substation first: they are the two fixed
                         points a designer orients by, and everything else
                         is described relative to them. */}
@@ -2880,7 +2895,7 @@ export default function GISCanvasPage() {
                         onHide={() => toggleClass(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
-                    <MenuLayer label="Electric meters"
+                    <MenuLayer label="Electric Meters"
                       count={classCount["electric:role:meter"] || 0}
                       hidden={hidden.includes("electric:role:meter")}
                       solo={solo === "electric:role:meter"}
@@ -2902,7 +2917,7 @@ export default function GISCanvasPage() {
                       disabled={!projectId} onClick={() => placeNode("poc")} />
                     <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
                       disabled={!projectId} onClick={() => placeNode("substation")} />
-                    <MenuItem label="Route POC to substation" hint="Not built yet" disabled />
+                    <MenuItem label="Route POC to Substation" hint="Not built yet" disabled />
 
                     <MenuGroup label="Draw" />
                     {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"]].map(([key, label]) => {
@@ -2913,28 +2928,28 @@ export default function GISCanvasPage() {
                       ) : null;
                     })}
 
-                    <MenuItem label={tool === "circuit" ? "Drawing circuit\u2026" : "Link to circuit"}
+                    <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
                       active={tool === "circuit"} disabled={!projectId}
                       hint="Draw round the plot seeds it serves"
                       onClick={() => {
                         setTool(tool === "circuit" ? "select" : "circuit");
                         setSelected([]); setDraft([]);
                       }} />
-                    <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV network"}
+                    <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
                       hint="Routes each circuit's cables along the trenches"
                       disabled={busy === "feeder" || !circuitsFrom(features).length}
                       onClick={buildLvNetwork} />
-                    <MenuItem label={busy === "joints" ? "Working\u2026" : "Place joints"}
+                    <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Joints"}
                       hint="Joints where services meet mains"
                       disabled={!!busy} onClick={() => runNetwork("joints")} />
 
                     <div className="gm-sep" />
-                    <MenuGroup label="Tools & reporting" />
-                    <MenuItem label="Circuit report"
+                    <MenuGroup label="Tools & Reporting" />
+                    <MenuItem label="Circuit Report"
                       hint="Meters by feeder, with distances from the substation"
                       disabled={!features.some((f) => f.Feature_Role === "substation")}
                       onClick={() => setReportOpen(true)} />
-                    <MenuItem label="Full trace from here"
+                    <MenuItem label="Full Trace from Here"
                       hint={selectedFeatures.some((f) => f.Feature_Role === "spannode")
                         ? "Everything downstream of the selected node"
                         : "Select a span node first"}
@@ -2947,7 +2962,7 @@ export default function GISCanvasPage() {
                     return (
                       <Menu key={key} id={key} label={layer?.Label ?? key}
                         open={open} setOpen={setOpen}>
-                        <MenuGroup label="Show or hide" />
+                        <MenuGroup label="Show or Hide" />
                         {typesOn(key).map((t) => (
                           <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                             count={classCount[`lt:${t.Type_Key}`] || 0}
@@ -2973,8 +2988,8 @@ export default function GISCanvasPage() {
                     );
                   })}
 
-                  <Menu id="lighting" label="Street lighting" open={open} setOpen={setOpen}>
-                    <MenuGroup label="Show or hide" />
+                  <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}>
+                    <MenuGroup label="Show or Hide" />
                     {typesOn("lighting").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}
@@ -2989,12 +3004,12 @@ export default function GISCanvasPage() {
                       onHide={() => toggleClass("role:column")}
                       onSolo={() => soloClass("role:column")} />
                     {!typesOn("lighting").length && (
-                      <MenuItem label="Lighting layer missing" hint="run migration 0072" disabled />
+                      <MenuItem label="Lighting Layer Missing" hint="run migration 0072" disabled />
                     )}
                   </Menu>
 
-                  <Menu id="tools" label="Tools & reporting" open={open} setOpen={setOpen}>
-                    <MenuItem label="Bill of materials"
+                  <Menu id="tools" label="Tools & Reporting" open={open} setOpen={setOpen}>
+                    <MenuItem label="Bill of Materials"
                       hint="Quantities by site, utility and surface"
                       disabled={!projectId} onClick={() => setBomOpen(true)} />
                     <div className="gm-sep" />
@@ -3002,18 +3017,18 @@ export default function GISCanvasPage() {
                     {/* Trace and assign are utility-agnostic, so they stay
                         here. Place joints went to Electric, where the
                         joints it places belong. */}
-                    <MenuItem label={busy === "trace" ? "Tracing\u2026" : "Trace from source"}
+                    <MenuItem label={busy === "trace" ? "Tracing\u2026" : "Trace from Source"}
                       hint={selected.length === 1
                         ? "Follow the network from the selected feature"
                         : "Select one feature first"}
                       disabled={!!busy || selected.length !== 1}
                       onClick={() => runNetwork("trace")} />
-                    <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign meters"}
+                    <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
                       hint="Match meters to their plots"
                       disabled={!!busy} onClick={() => runNetwork("meters")} />
                     <div className="gm-sep" />
                     <MenuGroup label="View" />
-                    <MenuItem label="Way and circuit labels" active={showLabels}
+                    <MenuItem label="Way and Circuit Labels" active={showLabels}
                       onClick={() => setShowLabels(!showLabels)} />
                     <div className="gm-sep" />
                     <MenuGroup label="Selection" />
@@ -3026,7 +3041,7 @@ export default function GISCanvasPage() {
                       disabled={!joinable || busy === "join"} onClick={joinSelected} />
                     <MenuItem label={`Delete ${selected.length}`} danger
                       disabled={!selected.length} onClick={removeSelected} />
-                    <MenuItem label="Bulk delete\u2026" danger
+                    <MenuItem label="Bulk Delete\u2026" danger
                       hint="Whole categories at once"
                       disabled={!projectId || !features.length}
                       onClick={() => setBulkDelOpen(true)} />
@@ -3203,7 +3218,7 @@ export default function GISCanvasPage() {
               /* Offered where the click landed, nudged in from the
                  edges so a click near the right or bottom doesn't put
                  the list off the canvas. */
-              <div className="gis-picker" role="dialog" aria-label="Choose an object"
+              <div className="gis-picker" role="dialog" aria-label="Choose an Object"
                 style={{
                   left: Math.min(picker.x + 10, (wrapRef.current?.clientWidth ?? 900) - 250),
                   top: Math.min(picker.y + 10, (wrapRef.current?.clientHeight ?? 600) - 60
@@ -3341,7 +3356,7 @@ export default function GISCanvasPage() {
             )}
 
             {classPlan && (
-              <div className="gis-trace" role="dialog" aria-label="Classify against the boundary">
+              <div className="gis-trace" role="dialog" aria-label="Classify Against the Boundary">
                 <div className="gt-head">
                   <strong>Classify against the boundary</strong>
                   <button className="fe-x" onClick={() => setClassPlan(null)}
@@ -3388,7 +3403,7 @@ export default function GISCanvasPage() {
             )}
 
             {svcCheck && (
-              <div className="gis-trace" role="dialog" aria-label="Service trench check">
+              <div className="gis-trace" role="dialog" aria-label="Service Trench Check">
                 <div className="gt-head">
                   <strong>Services to mains</strong>
                   <button className="fe-x" onClick={() => setSvcCheck(null)}
@@ -3468,7 +3483,7 @@ export default function GISCanvasPage() {
             )}
 
             {trace && (
-              <div className="gis-trace" role="dialog" aria-label="Full trace">
+              <div className="gis-trace" role="dialog" aria-label="Full Trace">
                 <div className="gt-head">
                   <strong>Full trace from {trace.startLabel}</strong>
                   <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">

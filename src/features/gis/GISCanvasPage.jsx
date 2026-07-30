@@ -2112,6 +2112,38 @@ export default function GISCanvasPage() {
         }
       }
 
+      /* Link everything the build has drawn.
+
+         The runs and nodes were created with no Connects, so as far as
+         tracing was concerned the whole generated network did not exist —
+         "Nothing runs downstream of A2" was literally true of the graph,
+         however the drawing looked. Connects cannot be written at
+         creation time because the features being linked to do not have
+         ids until they exist, so it is a pass of its own once they all
+         do.
+
+         Recomputed from geometry across every line and span node, not
+         just the new ones: a run that now meets an existing cable
+         changes that cable's links too. */
+      setProgress({ done: total, total, label: "Linking the network" });
+      const fresh = await listGis(projectId);
+      const all = fresh.features || [];
+      const links = all
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+        .map((f) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Connects: connectedTo(f.Geometry, all, f.Feature_ID) },
+        }))
+        /* Only where it changed, so a large drawing is not rewritten in
+           full every time the network is rebuilt. */
+        .filter((u) => {
+          const was = all.find((f) => f.Feature_ID === u.Feature_ID)?.Attributes?.Connects || [];
+          return [...was].sort().join(",") !== [...u.Attributes.Connects].sort().join(",");
+        });
+      for (let i = 0; i < links.length; i += 100) {
+        await bulkUpdateFeatures(projectId, links.slice(i, i + 100));
+      }
+
       await load(projectId);
 
       if (failed.length) setError(`Couldn\u2019t route: ${failed.join(" \u00B7 ")}`);
@@ -2119,6 +2151,7 @@ export default function GISCanvasPage() {
 
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
         + (nodesMade ? `, ${nodesMade} span node(s)` : "")
+        + (links.length ? `, ${links.length} link(s) recorded` : "")
         + (stranded.length ? ` \u2014 ${stranded.length} meter(s) not on the trench network` : ""));
       setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }

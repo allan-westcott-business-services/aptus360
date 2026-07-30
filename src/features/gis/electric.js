@@ -204,6 +204,11 @@ export function originNodeFor(features, circuitId) {
 
 const idsOf = (f) => (Array.isArray(f.Attributes?.Connects) ? f.Attributes.Connects.map(Number) : []);
 
+/* Two points this close are the same place. The same tolerance the
+   drawing uses to decide what touches what, so the trace and the canvas
+   agree. */
+const CONNECT_M = 0.25;
+
 export function buildGraph(features = []) {
   const byId = new Map(features.map((f) => [Number(f.Feature_ID), f]));
   const adj = new Map();
@@ -253,7 +258,42 @@ export function traceFrom(startId, features, rootId) {
   if (rootId == null || !graph.byId.has(Number(rootId))) {
     return { error: "No substation on the network to measure from." };
   }
-  const { children } = rootAt(graph, rootId);
+  const { children, parent } = rootAt(graph, rootId);
+
+  /* Where a trace actually starts.
+
+     A span node placed on a run is a leaf of the tree, not a link in it:
+     the runs either side of it meet each other as well as meeting the
+     node, so the walk from the substation reaches the far run through
+     the near one and never through the node. Asking for its children
+     then gives nothing, and the honest-looking answer "nothing runs
+     downstream" is true of the tree while being wrong about the network.
+
+     So for a span node, downstream means the runs passing through its
+     position that sit deeper in the tree than the shallowest one. The
+     shallowest is how the network arrives; the rest are where it goes. */
+  const depthOf = (id) => {
+    let d = 0, cur = Number(id);
+    while (parent.get(cur) != null && d < 10000) { cur = parent.get(cur); d += 1; }
+    return d;
+  };
+
+  const startFeature = graph.byId.get(start);
+  let roots = children.get(start) || [];
+
+  if (startFeature?.Feature_Role === "spannode" && !roots.length) {
+    const at = (startFeature.Geometry || [])[0];
+    const touching = at
+      ? features.filter((f) => Number(f.Feature_ID) !== start
+          && (f.Geometry || []).some((q) =>
+            Math.hypot(q[0] - at[0], q[1] - at[1]) <= CONNECT_M))
+      : [];
+    if (touching.length) {
+      const depths = touching.map((f) => ({ f, d: depthOf(f.Feature_ID) }));
+      const nearest = Math.min(...depths.map((x) => x.d));
+      roots = depths.filter((x) => x.d > nearest).map((x) => Number(x.f.Feature_ID));
+    }
+  }
 
   const isSpan = (f) => f.Feature_Role === "spannode";
   const isMeter = (f) => f.Feature_Role === "meter" && f.Layer_Key === "electric";
@@ -286,13 +326,11 @@ export function traceFrom(startId, features, rootId) {
     for (const k of kids) walk(cur, k, runningM, runningMeters, fromLabel);
   };
 
-  const startFeature = graph.byId.get(start);
-  const startLabel = startFeature.Attributes?.Span_Label ?? startFeature.Label ?? `#${start}`;
-  const branches = children.get(start) || [];
-  if (!branches.length) {
+  const startLabel = startFeature?.Attributes?.Span_Label ?? startFeature?.Label ?? `#${start}`;
+  if (!roots.length) {
     return { error: `Nothing runs downstream of ${startLabel}.`, legs: [] };
   }
-  for (const k of branches) walk(start, k, 0, [], startLabel);
+  for (const k of roots) walk(start, k, 0, [], startLabel);
   return { legs, startLabel };
 }
 

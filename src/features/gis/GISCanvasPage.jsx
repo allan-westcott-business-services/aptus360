@@ -787,16 +787,16 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
-    /* Right-click on something opens its editor; right-drag on empty
-       space pans. Middle always pans, whatever's under it. */
+    /* Right-click on something opens the context menu, which is built in
+       onContextMenu below. Nothing happens here beyond letting that run:
+       pointerdown fires first, so opening the editor here would beat the
+       menu to it and the menu would never be seen.
+
+       Right-drag on empty space still pans, and middle always pans. */
     if (e.button === 2) {
       e.preventDefault();
       const hit = featureAt(px, py);
-      if (hit && !placing && !drawing) {
-        setSelected([hit.Feature_ID]);
-        setEditing(hit);
-        return;
-      }
+      if (hit && !placing && !drawing) return;
       drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
       return;
     }

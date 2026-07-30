@@ -7,7 +7,7 @@ import {
 } from "../../api/gis.js";
 import {
   SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
-  classOf, classLabel, joinLines, isTrenchType,
+  classOf, classLabel, joinLines, isTrenchType, splitPolylineAt,
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
@@ -32,6 +32,7 @@ import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
+import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, trenchComponents } from "./feeder.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
@@ -99,6 +100,11 @@ export default function GISCanvasPage() {
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   const [reportOpen, setReportOpen] = useState(false);
+  const [bulkDelOpen, setBulkDelOpen] = useState(false);
+  /* Right-click menu: what was clicked, and where to put the menu.
+     Held together so the two can never disagree about which feature the
+     options apply to. */
+  const [ctx, setCtx] = useState(null);   // { feature, atM, x, y }
   /* Placing plots floats over the canvas rather than sitting in a
      sidebar. It has to stay open while the canvas is clicked — two clicks
      per plot — so it cannot be a modal with a backdrop. */
@@ -1982,6 +1988,93 @@ export default function GISCanvasPage() {
      is how the build broke. */
   const isDrawing = (typeKey) => tool === "line" && lineType === typeKey;
 
+  /* Deleting a category. Batched rather than one at a time: the original
+     issued a request per feature and showed a progress bar to cover it,
+     which on four hundred trenches is four hundred round trips. Chunks
+     keep the progress honest without the cost. */
+  async function runBulkDelete(ids, catCount) {
+    if (!window.confirm(
+      `Delete ${ids.length} feature(s) across ${catCount} categor${catCount === 1 ? "y" : "ies"}?`
+      + "\n\nThis is permanent and cannot be undone."
+    )) return;
+
+    setBusy("bulkdel");
+    setProgress({ done: 0, total: ids.length, label: "Deleting" });
+    const CHUNK = 100;
+    try {
+      for (let i = 0; i < ids.length; i += CHUNK) {
+        const batch = ids.slice(i, i + CHUNK);
+        await deleteFeatures(projectId, batch);
+        const done = Math.min(i + batch.length, ids.length);
+        setProgress({ done, total: ids.length, label: `Deleting ${done} of ${ids.length}` });
+      }
+      setBulkDelOpen(false);
+      /* One reload at the end rather than after each chunk — the canvas
+         redrawing repeatedly is what made the original freeze it. */
+      await load(projectId);
+      setSelected([]);
+      setStatus(`Deleted ${ids.length} feature(s)`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
+  }
+
+  /* Breaking a line in two at a point.
+
+     The second half is a new feature carrying the same attributes, so a
+     trench broken in half is still two trenches of the same type and
+     surface — the break is a change of extent, not of kind.
+
+     Connects is recomputed for both from geometry rather than copied:
+     the half that no longer reaches something must stop claiming to, and
+     the two now touch each other. */
+  async function breakLineAt(f, atM) {
+    const parts = splitPolylineAt(f.Geometry, atM, CONNECT_M * 4);
+    if (!parts) {
+      setError("Pick a point along the line, not one of its ends.");
+      return;
+    }
+    setBusy("break");
+    try {
+      const [head, tail] = parts;
+      await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: head }]);
+      const made = await createFeature(projectId, {
+        Layer_Key: f.Layer_Key,
+        Feature_Type: "line",
+        Feature_Role: f.Feature_Role,
+        Plot_ID: f.Plot_ID ?? null,
+        Geometry: tail,
+        Label: f.Label,
+        Attributes: { ...f.Attributes },
+      });
+      await load(projectId);
+
+      /* Both halves, and anything either of them touches, get their
+         links rebuilt — otherwise the far half is still recorded as
+         joined to whatever the near half meets. */
+      const fresh = await listGis(projectId);
+      const all = fresh.features || [];
+      const ids = new Set([f.Feature_ID, made?.Feature_ID]);
+      for (const x of all) {
+        for (const c of x.Attributes?.Connects || []) if (ids.has(c)) ids.add(x.Feature_ID);
+      }
+      const updates = [...ids].map((id) => all.find((x) => x.Feature_ID === id)).filter(Boolean)
+        .map((x) => ({
+          Feature_ID: x.Feature_ID,
+          Attributes: { ...x.Attributes, Connects: connectedTo(x.Geometry, all, x.Feature_ID) },
+        }));
+      if (updates.length) await bulkUpdateFeatures(projectId, updates);
+      await load(projectId);
+
+      setSelected(made?.Feature_ID ? [made.Feature_ID] : []);
+      setStatus("Line broken in two \u2014 the far half is selected");
+      setTimeout(() => setStatus(""), 5000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); }
+  }
+
   async function runAutoService() {
     const seeds = selected.length
       ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
@@ -2297,7 +2390,8 @@ export default function GISCanvasPage() {
         if (!e.target?.closest?.("input, textarea, select, [contenteditable]")) {
           e.preventDefault();
         }
-      }}>
+      }}
+      onClick={() => setCtx(null)}>
       <style>{CSS}</style>
 
       <div className="gis-bar">
@@ -2609,6 +2703,10 @@ export default function GISCanvasPage() {
                       disabled={!joinable || busy === "join"} onClick={joinSelected} />
                     <MenuItem label={`Delete ${selected.length}`} danger
                       disabled={!selected.length} onClick={removeSelected} />
+                    <MenuItem label="Bulk delete\u2026" danger
+                      hint="Whole categories at once"
+                      disabled={!projectId || !features.length}
+                      onClick={() => setBulkDelOpen(true)} />
                   </Menu>
 
                 </>
@@ -2685,6 +2783,17 @@ export default function GISCanvasPage() {
         />
       )}
 
+      {bulkDelOpen && projectId && (
+        <BulkDelete
+          features={features}
+          lineTypes={lineTypes}
+          layers={layers}
+          busy={busy === "bulkdel"}
+          onDelete={runBulkDelete}
+          onClose={() => setBulkDelOpen(false)}
+        />
+      )}
+
       {bomOpen && projectId && (
         <BomModal
           projectId={projectId}
@@ -2752,7 +2861,19 @@ export default function GISCanvasPage() {
               onPointerUp={(e) => { e.currentTarget.releasePointerCapture?.(e.pointerId); onUp(); }}
               onPointerCancel={() => { drag.current = null; setEditVertex(null); }}
               onPointerLeave={() => { drag.current = null; setCursor(null); }}
-              onContextMenu={(e) => e.preventDefault()}
+              onContextMenu={(e) => {
+                e.preventDefault();
+                /* Right-click opens the menu on whatever is under the
+                   cursor, and selects it — the options act on that
+                   feature, so it has to be the one highlighted. */
+                const r = e.currentTarget.getBoundingClientRect();
+                const px = e.clientX - r.left;
+                const py = e.clientY - r.top;
+                const hit = featureAt(px, py);
+                if (!hit) { setCtx(null); return; }
+                setSelected([hit.Feature_ID]);
+                setCtx({ feature: hit, atM: toM(px, py), px, py, x: px, y: py });
+              }}
               onAuxClick={(e) => e.preventDefault()}
             />
             {picker && (
@@ -2837,6 +2958,52 @@ export default function GISCanvasPage() {
                   <button className="fe-x gp-x" onClick={() => setPlaceOpen(false)}
                     aria-label="Close">&times;</button>
                 )}
+              </div>
+            )}
+
+            {ctx && (
+              /* Positioned inside the canvas wrapper, so it travels with
+                 the panel rather than sitting at a page coordinate that
+                 stops matching the moment anything scrolls. */
+              <div className="gis-ctx" style={{ left: ctx.x, top: ctx.y }}
+                role="menu" onClick={(e) => e.stopPropagation()}>
+                <p className="gc-head">{classLabel(ctx.feature, lineTypes)}</p>
+
+                <button className="gc-item" onClick={() => {
+                  setEditing(ctx.feature); setCtx(null);
+                }}>Edit</button>
+
+                {ctx.feature.Feature_Type === "line" ? (
+                  <>
+                    <button className="gc-item" disabled={!!busy} onClick={() => {
+                      breakLineAt(ctx.feature, ctx.atM); setCtx(null);
+                    }}>Break here</button>
+                    <button className="gc-item" onClick={() => {
+                      const seg = segmentAt(ctx.feature, ctx.px, ctx.py);
+                      if (seg) addVertex(ctx.feature, seg.index, seg.point);
+                      else setError("Couldn\u2019t find a segment at that point.");
+                      setCtx(null);
+                    }}>Insert node</button>
+                  </>
+                ) : (
+                  <button className="gc-item" disabled={!!busy} onClick={() => {
+                    /* Trace runs from the selection, so select it first —
+                       otherwise it traces from whatever happened to be
+                       selected before the right-click. */
+                    setSelected([ctx.feature.Feature_ID]);
+                    setCtx(null);
+                    setTimeout(() => runNetwork("trace"), 0);
+                  }}>Trace from here</button>
+                )}
+
+                <div className="gc-sep" />
+                <button className="gc-item danger" onClick={() => {
+                  const f = ctx.feature;
+                  setCtx(null);
+                  if (window.confirm(`Delete ${f.Label || classLabel(f, lineTypes)}?`)) {
+                    deleteFeature(f.Feature_ID);
+                  }
+                }}>Delete</button>
               </div>
             )}
 
@@ -2996,6 +3163,19 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border: 1px solid var(--border); border-radius: 10px; padding: 10px 12px;
   box-shadow: 0 10px 30px rgba(15,23,42,.18); }
 .gp-x { position: absolute; right: 8px; top: 8px; }
+.gis-ctx { position: absolute; z-index: 30; background: var(--white);
+  border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 168px;
+  box-shadow: 0 10px 28px rgba(15,23,42,.2); }
+.gc-head { margin: 3px 8px 5px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: .06em; color: var(--muted); }
+.gc-item { display: block; width: 100%; text-align: left; background: none; border: none;
+  border-radius: 6px; cursor: pointer; font: 500 12.5px inherit; color: var(--text);
+  padding: 6px 9px; }
+.gc-item:hover:not(:disabled) { background: var(--bg); }
+.gc-item:disabled { color: var(--muted); cursor: not-allowed; }
+.gc-item.danger { color: #b91c1c; }
+.gc-item.danger:hover { background: #fef2f2; }
+.gc-sep { height: 1px; background: var(--border); margin: 4px 0; }
 .gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;

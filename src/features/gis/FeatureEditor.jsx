@@ -148,6 +148,40 @@ export default function FeatureEditor({
             </select>
           </div>
 
+          {/* A span node, as the original shows it. Two quite different
+              cases: one that belongs to a circuit is numbered from the
+              substation and cannot be renamed, because the number is its
+              position in a sequence and editing it would break the
+              schedule it appears on. A standalone one is a named waypoint
+              and the letter is the whole point of it. */}
+          {feature.Feature_Role === "spannode" && (
+            <div className="fld">
+              {f.Attributes.Circuit_ID != null ? (
+                <>
+                  <label>Span node</label>
+                  <p className="sn-code">{f.Attributes.Span_Label}</p>
+                  <p className="hint">
+                    Point {f.Attributes.Span_Seq} on {f.Attributes.Circuit_Name}
+                    {Number(f.Attributes.Span_Seq) === 0
+                      ? " \u2014 the origin, at the substation."
+                      : ", numbered from the substation."}
+                    {" "}Not editable: the number is its place in the sequence.
+                  </p>
+                </>
+              ) : (
+                <>
+                  <label htmlFor="fe-span">Node letter</label>
+                  <input id="fe-span" maxLength={2} value={f.Attributes.Span_Label ?? ""}
+                    className="sn-input"
+                    onChange={(e) => setAttr("Span_Label")(e.target.value.toUpperCase())} />
+                  <p className="hint">
+                    Used as a span endpoint in call-offs &mdash; A&ndash;4, 6&ndash;B.
+                  </p>
+                </>
+              )}
+            </div>
+          )}
+
           {feature.Feature_Role === "poc" && (
             <div className="fld">
               <label htmlFor="fe-poc">Agreed output ({pocUnit(f.Layer_Key)})</label>
@@ -373,6 +407,10 @@ const CSS = `
 .fe-derived { margin: 0; font-size: 11.5px; color: var(--muted); background: var(--bg);
   border-radius: var(--radius); padding: 8px 10px; line-height: 1.5; }
 .fe-derived strong { color: var(--text); }
+.sn-code { margin: 0; font: 800 26px ui-monospace, Menlo, monospace; color: var(--accent);
+  line-height: 1.1; }
+.sn-input { width: 78px; text-transform: uppercase; font-size: 20px; font-weight: 800;
+  text-align: center; font-family: ui-monospace, Menlo, monospace; }
 .fe-ways { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .fe-way { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
   background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px;

@@ -187,3 +187,44 @@ export function joinLines(lines, tol = CONNECT_M) {
   }
   return { geometry: chain, used };
 }
+
+
+/* Splitting a line at a point.
+
+   Break here has to divide one run into two that still meet: the point
+   ends the first and begins the second, so nothing is lost at the join
+   and the two remain connected by geometry.
+
+   Returns null when the point is at an end — there is nothing on one
+   side of it, and a zero-length run is not a break. */
+export function splitPolylineAt(geometry = [], point, tol = CONNECT_M) {
+  const g = geometry;
+  if (g.length < 2 || !point) return null;
+
+  /* An existing vertex splits cleanly; anywhere else the point is
+     inserted into both halves so neither loses the corner. */
+  let atVertex = -1;
+  for (let i = 0; i < g.length; i++) {
+    if (Math.hypot(g[i][0] - point[0], g[i][1] - point[1]) <= tol) { atVertex = i; break; }
+  }
+
+  if (atVertex >= 0) {
+    if (atVertex === 0 || atVertex === g.length - 1) return null;
+    return [g.slice(0, atVertex + 1), g.slice(atVertex)];
+  }
+
+  /* Otherwise find the segment it falls on. */
+  let seg = -1, best = Infinity, at = null;
+  for (let i = 0; i + 1 < g.length; i++) {
+    /* projectOntoSegment returns { point, t }, not a bare pair. */
+    const { point: q } = projectOntoSegment(point, g[i], g[i + 1]);
+    const d = Math.hypot(q[0] - point[0], q[1] - point[1]);
+    if (d < best) { best = d; seg = i; at = q; }
+  }
+  if (seg < 0 || best > tol) return null;
+
+  const a = [...g.slice(0, seg + 1), at];
+  const b = [at, ...g.slice(seg + 1)];
+  if (a.length < 2 || b.length < 2) return null;
+  return [a, b];
+}

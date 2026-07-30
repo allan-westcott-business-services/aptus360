@@ -41,7 +41,7 @@ export default function ColumnsMenu({ columns, hidden, onToggle, onReset, label 
       </button>
 
       {open && (
-        <div className="col-menu" role="dialog" aria-label="Choose columns">
+        <div className="col-menu" role="dialog" aria-label="Choose Columns">
           <div className="col-menu-head">
             <span>Show columns</span>
             {onReset && <button onClick={onReset}>Reset</button>}

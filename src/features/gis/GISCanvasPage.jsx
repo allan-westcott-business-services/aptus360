@@ -2808,7 +2808,7 @@ export default function GISCanvasPage() {
                     <div className="gm-sep" />
                     <MenuItem label="Snap to Geometry" active={snapOn}
                       onClick={() => setSnapOn(!snapOn)} />
-                    <MenuItem label="Classify Against the Boundary\u2026"
+                    <MenuItem label="Classify Against the Boundary…"
                       hint="Set on-site / off-site on what is already drawn"
                       disabled={!projectId || !!busy}
                       onClick={previewClassification} />
@@ -3017,10 +3017,10 @@ export default function GISCanvasPage() {
                     {/* Trace and assign are utility-agnostic, so they stay
                         here. Place joints went to Electric, where the
                         joints it places belong. */}
-                    <MenuItem label={busy === "trace" ? "Tracing\u2026" : "Trace from Source"}
+                    <MenuItem label={busy === "trace" ? "Numbering\u2026" : "Number Ways and Circuits"}
                       hint={selected.length === 1
-                        ? "Follow the network from the selected feature"
-                        : "Select one feature first"}
+                        ? "Walks the network from the selected source and numbers the cables"
+                        : "Select the source first \u2014 a substation, POC or feeder pillar"}
                       disabled={!!busy || selected.length !== 1}
                       onClick={() => runNetwork("trace")} />
                     <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
@@ -3041,7 +3041,7 @@ export default function GISCanvasPage() {
                       disabled={!joinable || busy === "join"} onClick={joinSelected} />
                     <MenuItem label={`Delete ${selected.length}`} danger
                       disabled={!selected.length} onClick={removeSelected} />
-                    <MenuItem label="Bulk Delete\u2026" danger
+                    <MenuItem label="Bulk Delete…" danger
                       hint="Whole categories at once"
                       disabled={!projectId || !features.length}
                       onClick={() => setBulkDelOpen(true)} />
@@ -3334,14 +3334,27 @@ export default function GISCanvasPage() {
                     }}>Delete node</button>
                   </>
                 ) : (
-                  <button className="gc-item" disabled={!!busy} onClick={() => {
-                    /* Trace runs from the selection, so select it first —
-                       otherwise it traces from whatever happened to be
-                       selected before the right-click. */
-                    setSelected([ctx.feature.Feature_ID]);
-                    setCtx(null);
-                    setTimeout(() => runNetwork("trace"), 0);
-                  }}>Trace from here</button>
+                  {/* Two different operations sharing a word. A span node
+                      wants the downstream trace, which reports legs,
+                      lengths and meters in a table. Everything else wants
+                      the numbering pass, which walks the network from a
+                      source and writes ways and circuits onto the cables —
+                      useful, but it displays nothing, and calling it
+                      "trace" is why it looked as though nothing had
+                      happened. */}
+                  {ctx.feature.Feature_Role === "spannode" ? (
+                    <button className="gc-item" disabled={!!busy} onClick={() => {
+                      setSelected([ctx.feature.Feature_ID]);
+                      setCtx(null);
+                      setTimeout(() => runFullTrace(), 0);
+                    }}>Full Trace from Here</button>
+                  ) : (
+                    <button className="gc-item" disabled={!!busy} onClick={() => {
+                      setSelected([ctx.feature.Feature_ID]);
+                      setCtx(null);
+                      setTimeout(() => runNetwork("trace"), 0);
+                    }}>Number the Network from Here</button>
+                  )}
                 )}
 
                 <div className="gc-sep" />

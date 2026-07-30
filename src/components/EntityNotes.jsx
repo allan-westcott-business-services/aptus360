@@ -132,7 +132,7 @@ export default function EntityNotes({ entityType, entityId, labelFor }) {
             <div className="en-att-grid">
               <input placeholder="Document name" value={att.File_Name}
                 onChange={(e) => setAtt((a) => ({ ...a, File_Name: e.target.value }))} />
-              <input placeholder="Link (SharePoint, Drive, email\u2026)" value={att.File_Url}
+              <input placeholder="Link (SharePoint, Drive, email…)" value={att.File_Url}
                 onChange={(e) => setAtt((a) => ({ ...a, File_Url: e.target.value }))} />
               <input placeholder="Added by" value={att.Uploaded_By}
                 onChange={(e) => setAtt((a) => ({ ...a, Uploaded_By: e.target.value }))} />

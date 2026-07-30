@@ -415,7 +415,7 @@ export default function PlotConnectionsPage() {
                 <input type="date" value={bulkDraft[b.field] ?? ""}
                   onChange={(e) => setBulkDraft((d) => ({ ...d, [b.field]: e.target.value }))} />
               ) : b.type === "text" ? (
-                <input value={bulkDraft[b.field] ?? ""} placeholder="\u2014"
+                <input value={bulkDraft[b.field] ?? ""} placeholder="—"
                   onChange={(e) => setBulkDraft((d) => ({ ...d, [b.field]: e.target.value }))} />
               ) : (
                 <select value={bulkDraft[b.field] ?? ""}

@@ -170,7 +170,7 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
 
       <Section title="Project details">
         <div className="grid6">
-          <Field label="Project ref" span={2} hint="Generated \u2014 edit if you need a specific ref">
+          <Field label="Project ref" span={2} hint="Generated — edit if you need a specific ref">
             <input className="mono" value={f.Project_Ref} onChange={(e) => set("Project_Ref")(e.target.value)} />
           </Field>
           <Field label="Date received" required span={2}>
@@ -317,7 +317,7 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
         <textarea
           value={f.Notes}
           onChange={(e) => set("Notes")(e.target.value)}
-          placeholder="Anything the estimator should know\u2026"
+          placeholder="Anything the estimator should know…"
         />
       </Section>
 

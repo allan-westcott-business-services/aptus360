@@ -296,18 +296,29 @@ export default function FeatureEditor({
               <p className="hint">
                 One circuit per way. Defining a circuit takes the next free one.
               </p>
-              {Object.keys(f.Attributes.Way_Circuits || {}).length > 0 && (
-                <div className="fe-ways">
-                  {Object.entries(f.Attributes.Way_Circuits)
-                    .sort((a, b) => Number(a[0]) - Number(b[0]))
-                    .map(([way, cid]) => (
-                      <span className="fe-way" key={way}>
-                        Way {way}
-                        <strong>{circuitLetter(cid)}</strong>
-                      </span>
-                    ))}
-                </div>
-              )}
+              {/* Every way on the board, not only the ones in use. A list
+                  showing one entry against a drawing labelled 1B and 2A
+                  reads as a contradiction; showing all four says plainly
+                  that two are spare. */}
+              <div className="fe-ways">
+                {Array.from(
+                  { length: Number(f.Attributes.Ways ?? SUB_DEFAULTS.Ways) || 0 },
+                  (_, i) => i + 1,
+                ).map((way) => {
+                  const cid = (f.Attributes.Way_Circuits || {})[way];
+                  return (
+                    <span className={cid != null ? "fe-way" : "fe-way spare"} key={way}>
+                      Way {way}
+                      <strong>{cid != null ? circuitLetter(cid) : "\u2014"}</strong>
+                    </span>
+                  );
+                })}
+              </div>
+              <p className="hint">
+                Which circuit sits on each way. A dash is a spare way.
+                Cable labels read way then circuit, so <strong>2A</strong> is
+                circuit A on way 2.
+              </p>
             </>
           )}
 
@@ -513,6 +524,9 @@ const CSS = `
   line-height: 1.1; }
 .sn-input { width: 78px; text-transform: uppercase; font-size: 20px; font-weight: 800;
   text-align: center; font-family: ui-monospace, Menlo, monospace; }
+/* A way with nothing on it reads lighter, so the ones in use stand out
+   without having to count. */
+.fe-way.spare { opacity: .5; }
 .fe-ways { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 4px; }
 .fe-way { display: inline-flex; align-items: center; gap: 6px; font-size: 11px; font-weight: 600;
   background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px;

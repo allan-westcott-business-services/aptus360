@@ -587,14 +587,26 @@ export default function GISCanvasPage() {
             ? { x: anchor.x + off[0] * view.scale, y: anchor.y + off[1] * view.scale }
             : anchor;
           const a = f.Attributes || {};
-          /* Way and circuit, from the Number Ways and Circuits pass.
-             "1B" is way 1, circuit B — compact enough to sit on a cable
-             at any zoom, and spelled out once the line is selected, where
-             there is room and the question is being asked. */
-          const tag = a.Way ? `${a.Way}${a.Circuit ?? ""}` : "";
+          /* A real circuit if the cable belongs to one, and a hop count
+             otherwise — never both, and never the two confused.
+
+             Circuit_Letter comes from Link to Circuit and the feeder
+             build: B is a circuit you can point at. Hop_Letter comes
+             from the tracer and means how far out the cable sits. They
+             used to share the key 'Circuit', so 1B might have been
+             either and running the tracer overwrote the real one. */
+          const circuit = a.Circuit_Letter;
+          const tag = circuit
+            ? `${a.Way ?? ""}${circuit}`
+            : (a.Way ? `${a.Way}${a.Hop_Letter ?? ""}` : "");
+
+          const spelled = circuit
+            ? `${a.Way ? `Way ${a.Way} · ` : ""}Circuit ${circuit}`
+            : a.Way
+              ? `Feeder ${a.Way}${a.Hop ? ` · hop ${a.Hop}` : ""}`
+              : "";
           const txt = on
-            ? [a.Way ? `Way ${a.Way}${a.Circuit ? ` · Circuit ${a.Circuit}` : ""}` : "",
-               `${lineLength(f.Geometry).toFixed(1)} m`].filter(Boolean).join("  ")
+            ? [spelled, `${lineLength(f.Geometry).toFixed(1)} m`].filter(Boolean).join("  ")
             : tag;
           if (txt) {
             ctx.font = "700 11px ui-monospace, Menlo, monospace";
@@ -3221,6 +3233,16 @@ export default function GISCanvasPage() {
                       onHide={() => toggleClass("role:spannode")}
                       onSolo={() => soloClass("role:spannode")} />
                     <div className="gm-sep" />
+                    <MenuGroup label="Labels" />
+                    {/* Moved from Tools rather than added there as well:
+                        two controls for one setting is how they drift out
+                        of step. This menu is what you can see, and a
+                        label is something you can see. */}
+                    <MenuItem label="Way and Circuit Labels" active={showLabels}
+                      hint="Way and circuit on each cable, once zoomed in"
+                      onClick={() => setShowLabels(!showLabels)} />
+
+                    <div className="gm-sep" />
                     <MenuItem label="Show Everything" disabled={!hidden.length}
                       onClick={() => { setHidden([]); setSolo(null); }} />
                   </Menu>
@@ -3408,10 +3430,6 @@ export default function GISCanvasPage() {
                     <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
                       hint="Match meters to their plots"
                       disabled={!!busy} onClick={() => runNetwork("meters")} />
-                    <div className="gm-sep" />
-                    <MenuGroup label="View" />
-                    <MenuItem label="Way and Circuit Labels" active={showLabels}
-                      onClick={() => setShowLabels(!showLabels)} />
                     <div className="gm-sep" />
                     <MenuGroup label="Selection" />
                     <MenuItem label={`Edit ${selected.length}`}

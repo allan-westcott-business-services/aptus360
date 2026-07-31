@@ -11,7 +11,7 @@ import { useTableLayout } from "../../lib/useTableLayout.js";
 import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
-import { heatPumpLabel, heatPumpShort } from "../../lib/heatPump.js";
+import { heatPumpLabel, heatPumpShort, sourceTakesHeatPump } from "../../lib/heatPump.js";
 import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
@@ -144,6 +144,22 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [defaults, setDefaults] = useState({ Default_Heat_Source_ID: "", Heat_Pump_Model_ID: "" });
+
+  /* Changing the source away from ASHP clears the model rather than
+     hiding it with a value still set: a field nobody can see is a field
+     nobody can correct, and it would save silently. */
+  const setDefaultSource = (v) => setDefaults((d) => ({
+    ...d,
+    Default_Heat_Source_ID: v,
+    Heat_Pump_Model_ID: sourceTakesHeatPump(v, lookups?.heatSources || [])
+      ? d.Heat_Pump_Model_ID : "",
+  }));
+  const setBulkSource = (v) => setBulk((b) => ({
+    ...b,
+    Heat_Source_ID: v,
+    Heat_Pump_Model_ID: sourceTakesHeatPump(v, lookups?.heatSources || [])
+      ? b.Heat_Pump_Model_ID : "",
+  }));
   const [savedDefaults, setSavedDefaults] = useState({});
   const [savingDefaults, setSavingDefaults] = useState(false);
   const [genUtils, setGenUtils] = useState([]);
@@ -359,6 +375,7 @@ export default function PlotsTab({ projectId, projectRef }) {
         projectId={projectId}
         projectRef={projectRef}
         existingNumbers={plots.map((p) => String(p.Plot_Number))}
+        defaultHeatSourceId={defaults.Default_Heat_Source_ID}
         onDone={() => {
           setMode("list");
           load();
@@ -421,7 +438,7 @@ export default function PlotsTab({ projectId, projectRef }) {
           <label>Heat source</label>
           <Select
             value={defaults.Default_Heat_Source_ID}
-            onChange={(v) => setDefaults((d) => ({ ...d, Default_Heat_Source_ID: v }))}
+            onChange={setDefaultSource}
           >
             <option value="">&mdash; none &mdash;</option>
             {(lookups?.heatSources || []).map((h) => (
@@ -429,14 +446,20 @@ export default function PlotsTab({ projectId, projectRef }) {
             ))}
           </Select>
         </div>
-        <div className="pd-field">
-          <label>Heat pump model</label>
-          <HeatPumpPicker
-            models={lookups?.heatPumpModels || []}
-            value={defaults.Heat_Pump_Model_ID}
-            onChange={(v) => setDefaults((d) => ({ ...d, Heat_Pump_Model_ID: v }))}
-          />
-        </div>
+        {/* Only where it means something. The register is the MCS list of
+            air source units, so asking which heat pump a gas boiler is
+            would be a question with no answer — and a field sitting there
+            implies there is one. */}
+        {sourceTakesHeatPump(defaults.Default_Heat_Source_ID, lookups?.heatSources || []) && (
+          <div className="pd-field">
+            <label>Heat pump model</label>
+            <HeatPumpPicker
+              models={lookups?.heatPumpModels || []}
+              value={defaults.Heat_Pump_Model_ID}
+              onChange={(v) => setDefaults((d) => ({ ...d, Heat_Pump_Model_ID: v }))}
+            />
+          </div>
+        )}
         <button className="btn accent pd-save" disabled={!defaultsDirty || savingDefaults} onClick={saveDefaults}>
           {savingDefaults ? "Saving\u2026" : defaultsDirty ? "Save" : "Saved"}
         </button>
@@ -468,7 +491,7 @@ export default function PlotsTab({ projectId, projectRef }) {
                 ))}
               </select>
               <select value={bulk.Heat_Source_ID}
-                onChange={(e) => setBulk((b) => ({ ...b, Heat_Source_ID: e.target.value }))}>
+                onChange={(e) => setBulkSource(e.target.value)}>
                 <option value="">Heat source&hellip;</option>
                 {(lookups?.heatSources || []).map((h) => (
                   <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>{h.Heat_Source}</option>
@@ -479,13 +502,15 @@ export default function PlotsTab({ projectId, projectRef }) {
                   the register has 1,255 entries and choosing one is two
                   or three steps, which a bar of single selects cannot
                   hold. */}
-              <div className="bulk-hp">
-                <HeatPumpPicker
-                  models={lookups?.heatPumpModels || []}
-                  value={bulk.Heat_Pump_Model_ID}
-                  onChange={(v) => setBulk((b) => ({ ...b, Heat_Pump_Model_ID: v }))}
-                />
-              </div>
+              {sourceTakesHeatPump(bulk.Heat_Source_ID, lookups?.heatSources || []) && (
+                <div className="bulk-hp">
+                  <HeatPumpPicker
+                    models={lookups?.heatPumpModels || []}
+                    value={bulk.Heat_Pump_Model_ID}
+                    onChange={(v) => setBulk((b) => ({ ...b, Heat_Pump_Model_ID: v }))}
+                  />
+                </div>
+              )}
               <input type="number" step="0.1" placeholder="kVA" className="bulk-kva"
                 value={bulk.KVA_Load} onChange={(e) => setBulk((b) => ({ ...b, KVA_Load: e.target.value }))} />
               <select value={bulk.PV} onChange={(e) => setBulk((b) => ({ ...b, PV: e.target.value }))}>

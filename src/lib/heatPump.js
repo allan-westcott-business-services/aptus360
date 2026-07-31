@@ -25,3 +25,23 @@ export function heatPumpLabel(m, { withKva = true } = {}) {
    already says which plot it belongs to. */
 export const heatPumpShort = (m) =>
   (m ? [m.Make, m.Model].filter(Boolean).join(" ") : "");
+
+
+/* Which heat sources take a heat pump model.
+
+   The register is the MCS list of air source units, so the model picker
+   belongs with ASHP and nowhere else — asking someone to choose a heat
+   pump for a gas boiler is a question with no answer, and the field
+   sitting there implies there is one.
+
+   Matched on the name rather than an id: the ids are whatever the
+   Heat_Source table was seeded with, and a lookup renamed in Admin
+   should still work. */
+export const takesHeatPump = (heatSource) =>
+  /\bashp\b|air\s*source/i.test(String(heatSource || ""));
+
+export function sourceTakesHeatPump(heatSourceId, heatSources = []) {
+  if (!heatSourceId) return false;
+  const hs = heatSources.find((h) => String(h.Heat_Source_ID) === String(heatSourceId));
+  return takesHeatPump(hs?.Heat_Source);
+}

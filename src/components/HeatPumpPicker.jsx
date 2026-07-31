@@ -38,8 +38,14 @@ export default function HeatPumpPicker({ models = [], value, onChange, allowNone
     () => [...new Set(models.filter((m) => m.Make === make).map((m) => m.Model))].sort(),
     [models, make]
   );
+  /* Sorted by load, not by reference. Daikin list 234 units under
+     "Altherma" with 25 distinct loads between them, and nobody knows
+     which reference they want — they know what the supply has to carry.
+     Ordering by kVA turns an unreadable list into a scale. */
   const entries = useMemo(
-    () => models.filter((m) => m.Make === make && m.Model === model),
+    () => models
+      .filter((m) => m.Make === make && m.Model === model)
+      .sort((a, b) => (Number(a.Rated_Power_kVA) || 0) - (Number(b.Rated_Power_kVA) || 0)),
     [models, make, model]
   );
 
@@ -123,11 +129,11 @@ export default function HeatPumpPicker({ models = [], value, onChange, allowNone
                   if (m) pick(m);
                 }}>
                 <option value="">
-                  {entries.length} entries &mdash; pick a reference&hellip;
+                  {entries.length} entries, by load&hellip;
                 </option>
                 {entries.map((m) => (
                   <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
-                    {m.Model_Reference} &middot; {Number(m.Rated_Power_kVA)} kVA
+                    {Number(m.Rated_Power_kVA)} kVA &middot; {m.Model_Reference}
                   </option>
                 ))}
               </select>
@@ -136,8 +142,11 @@ export default function HeatPumpPicker({ models = [], value, onChange, allowNone
 
           {entries.length > 1 && (
             <p className="hpp-note">
-              This model is listed {entries.length} times with different references
-              {new Set(entries.map((m) => m.Rated_Power_kVA)).size > 1 && " and different loads"}.
+              {entries.length} entries under this name
+              {new Set(entries.map((m) => m.Rated_Power_kVA)).size > 1
+                && `, from ${Number(entries[0].Rated_Power_kVA)} to `
+                   + `${Number(entries[entries.length - 1].Rated_Power_kVA)} kVA`}.
+              The reference is what tells them apart.
             </p>
           )}
         </>

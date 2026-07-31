@@ -7,6 +7,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, createPlots } from "../../api/plots.js";
 import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
+import { sourceTakesHeatPump } from "../../lib/heatPump.js";
 
 /* Mirrors the "Add Plots to Tender" flow from the original app:
    shared attributes, two ways to enter numbers, a preview that flags
@@ -27,7 +28,9 @@ function naturalCompare(a, b) {
   return a.localeCompare(b, undefined, { numeric: true });
 }
 
-export default function AddPlotsForm({ projectId, projectRef = "", existingNumbers = null, onDone }) {
+export default function AddPlotsForm({
+  projectId, projectRef = "", existingNumbers = null, defaultHeatSourceId = null, onDone,
+}) {
   const [lookups, setLookups] = useState(null);
   const [existing, setExisting] = useState([]);
   const [pending, setPending] = useState([]);
@@ -172,13 +175,18 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
               onChange={(e) => setAttr("KVA_Load")(e.target.value)}
             />
           </Field>
-          <Field label="Heat pump model" span={2}>
-            <HeatPumpPicker
-              models={lookups.heatPumpModels || []}
-              value={attrs.Heat_Pump_Model_ID}
-              onChange={setAttr("Heat_Pump_Model_ID")}
-            />
-          </Field>
+          {/* This form has no heat source of its own — plots created here
+              take the project's — so it gates on that. Without it the
+              field would offer a heat pump for a site heated by gas. */}
+          {sourceTakesHeatPump(defaultHeatSourceId, lookups.heatSources || []) && (
+            <Field label="Heat pump model" span={2}>
+              <HeatPumpPicker
+                models={lookups.heatPumpModels || []}
+                value={attrs.Heat_Pump_Model_ID}
+                onChange={setAttr("Heat_Pump_Model_ID")}
+              />
+            </Field>
+          )}
           <Field label="Options" span={6}>
             <div className="toggle-row">
               <Toggle checked={attrs.PV} onChange={setAttr("PV")} label="PV" />

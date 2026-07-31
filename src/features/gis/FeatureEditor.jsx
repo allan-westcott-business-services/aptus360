@@ -468,7 +468,10 @@ export default function FeatureEditor({
                 <option value="">&mdash; not on a circuit &mdash;</option>
                 {circuits.map((c) => (
                   <option key={c.id} value={c.id}>
-                    {c.name} ({c.letter}) &middot; {c.meters} meter(s)
+                    {/* meters is the array of meter features, not a
+                        count — rendering it directly put objects into the
+                        DOM. */}
+                    {c.name} ({c.letter}) &middot; {c.meters.length} meter(s)
                   </option>
                 ))}
               </select>

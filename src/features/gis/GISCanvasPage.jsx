@@ -32,6 +32,7 @@ import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
+import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
@@ -105,6 +106,12 @@ export default function GISCanvasPage() {
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
   const [traceLeg, setTraceLeg] = useState(null);   // which leg is highlighted
+  /* Space held down turns a left-drag into a pan. Middle-button panning
+     is the usual route, but a Magic Mouse has no middle button, and
+     right-drag is now the context menu's alone. */
+  const [spaceHeld, setSpaceHeld] = useState(false);
+  /* Where each label landed this frame, so one can be picked up. */
+  const labelHits = useRef([]);
   const [svcCheck, setSvcCheck] = useState(null);
   const [classPlan, setClassPlan] = useState(null);
   const [reclass, setReclass] = useState(false);
@@ -443,6 +450,9 @@ export default function GISCanvasPage() {
        enough: they are deliberately placed where other things already
        are, and anything drawn afterwards, including a line's own label
        box or a marker, would cover them. */
+    /* Cleared each frame, filled as labels are drawn. */
+    labelHits.current = [];
+
     const drawOrder = visible.filter((f) => f.Feature_Role !== "spannode");
 
     drawOrder.forEach((f) => {
@@ -563,16 +573,57 @@ export default function GISCanvasPage() {
             ctx.stroke();
           });
         }
-        // Way, circuit and length, once there's room
+        /* Way, circuit and length, once there's room.
+
+           The label can be dragged off the cable, because on a dense
+           drawing the midpoint of one run is often on top of another. A
+           label that has been moved gets a leader back to the point it
+           belongs to — without one, a tag floating between two cables
+           belongs to neither as far as anyone reading it can tell. */
         if (pts.length > 1 && st.showLabel && view.scale > 1.5 && (on || showLabels)) {
-          const mid = pts[Math.floor(pts.length / 2)];
+          const anchor = pts[Math.floor(pts.length / 2)];
+          const off = f.Attributes?.Label_Offset;
+          const mid = off
+            ? { x: anchor.x + off[0] * view.scale, y: anchor.y + off[1] * view.scale }
+            : anchor;
           const a = f.Attributes || {};
+          /* Way and circuit, from the Number Ways and Circuits pass.
+             "1B" is way 1, circuit B — compact enough to sit on a cable
+             at any zoom, and spelled out once the line is selected, where
+             there is room and the question is being asked. */
           const tag = a.Way ? `${a.Way}${a.Circuit ?? ""}` : "";
-          const txt = on ? `${tag ? tag + "  " : ""}${lineLength(f.Geometry).toFixed(1)} m` : tag;
+          const txt = on
+            ? [a.Way ? `Way ${a.Way}${a.Circuit ? ` · Circuit ${a.Circuit}` : ""}` : "",
+               `${lineLength(f.Geometry).toFixed(1)} m`].filter(Boolean).join("  ")
+            : tag;
           if (txt) {
             ctx.font = "700 11px ui-monospace, Menlo, monospace";
             ctx.textAlign = "center";
             const w = ctx.measureText(txt).width + 10;
+
+            /* A leader from the label back to the cable, drawn only when
+               it has been moved far enough that the connection is no
+               longer obvious. */
+            if (off && Math.hypot(mid.x - anchor.x, mid.y - anchor.y) > 14) {
+              ctx.save();
+              ctx.strokeStyle = "#94a3b8";
+              ctx.lineWidth = 1;
+              ctx.setLineDash([3, 3]);
+              ctx.beginPath();
+              ctx.moveTo(anchor.x, anchor.y);
+              ctx.lineTo(mid.x, mid.y - 12);
+              ctx.stroke();
+              ctx.restore();
+            }
+
+            /* Where the label sits on screen, so a pointer can find it.
+               Rebuilt every frame rather than stored: it moves with the
+               view, and a stale rect catches clicks in the wrong place. */
+            labelHits.current.push({
+              id: f.Feature_ID, anchor,
+              x: mid.x - w / 2, y: mid.y - 20, w, h: 15,
+            });
+
             ctx.fillStyle = "rgba(255,255,255,.9)";
             ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
             ctx.fillStyle = "#0f172a";
@@ -899,17 +950,15 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
-    /* Right-click on something opens the context menu, which is built in
-       onContextMenu below. Nothing happens here beyond letting that run:
-       pointerdown fires first, so opening the editor here would beat the
-       menu to it and the menu would never be seen.
+    /* Right-click is for the context menu and nothing else — it used to
+       pan on empty space as well, which meant a right-click that missed
+       a feature by a few pixels moved the drawing instead of offering a
+       menu. Panning is the middle button, and space-drag below.
 
-       Right-drag on empty space still pans, and middle always pans. */
+       Nothing happens here: onContextMenu builds the menu, and
+       pointerdown fires first, so acting now would beat it to it. */
     if (e.button === 2) {
       e.preventDefault();
-      const hit = featureAt(px, py);
-      if (hit && !placing && !drawing) return;
-      drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
       return;
     }
     if (e.button === 1) {
@@ -918,6 +967,28 @@ export default function GISCanvasPage() {
       return;
     }
     if (e.button !== 0) return;
+
+    /* Space and drag, for a mouse with no middle button. */
+    if (spaceHeld) {
+      drag.current = { mode: "pan", startPx: [px, py], startView: { ...view } };
+      return;
+    }
+
+    /* A label is picked up before the feature under it: it sits on top,
+       and anyone clicking a label means the label. Searched newest first
+       so the one drawn last — the one visibly on top — wins. */
+    if (!drawing && !placing) {
+      const lab = [...labelHits.current].reverse().find((r) =>
+        px >= r.x && px <= r.x + r.w && py >= r.y - 4 && py <= r.y + r.h + 4);
+      if (lab) {
+        const f = features.find((x) => x.Feature_ID === lab.id);
+        drag.current = {
+          mode: "label", featureId: lab.id, startPx: [px, py],
+          startOffset: f?.Attributes?.Label_Offset ?? [0, 0],
+        };
+        return;
+      }
+    }
 
     if (drawing) {
       const raw = toM(px, py);
@@ -1105,6 +1176,17 @@ export default function GISCanvasPage() {
        startPx — reading one above this branch threw on every move and
        took the whole drag with it. Anything added below here that needs
        no delta belongs above the line that takes one. */
+    if (d.mode === "label") {
+      /* Held in metres, not pixels, so a label stays where it was put
+         when the drawing is zoomed. */
+      const dm = [(px - d.startPx[0]) / view.scale, (py - d.startPx[1]) / view.scale];
+      setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId
+        ? { ...f, Attributes: { ...f.Attributes,
+            Label_Offset: [d.startOffset[0] + dm[0], d.startOffset[1] + dm[1]] } }
+        : f)));
+      return;
+    }
+
     if (d.mode === "vertex") {
       const { featureId, index, isEnd, lineType: ownType } = d;
       /* An end vertex is how one line is joined to another, so it gets
@@ -1176,6 +1258,18 @@ export default function GISCanvasPage() {
     const d = drag.current;
     drag.current = null;
     setEditVertex(null);
+
+    if (d?.mode === "label") {
+      const f = features.find((x) => x.Feature_ID === d.featureId);
+      if (!f) return;
+      try {
+        await bulkUpdateFeatures(projectId, [{
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Label_Offset: f.Attributes.Label_Offset },
+        }]);
+      } catch (e) { setError(e.message); await load(projectId); }
+      return;
+    }
 
     if (d?.mode === "vertex") {
       setSnapHit(null);
@@ -2748,6 +2842,60 @@ export default function GISCanvasPage() {
      root rather than at the node's own position, because the origin node
      marks where the circuit begins rather than sitting somewhere along
      it — so tracing from A0 means tracing the whole circuit. */
+  /* Legs ordered by where each starts, then by where it goes.
+
+     The walk produces them depth first, which follows the cable but
+     reads as a jumble in a table: A0, A1, A5, A5, A7, A11, A13, A13,
+     A11. Grouping by start puts every leg out of a node together, which
+     is how anyone reads a schedule — and A11 sorts after A5, not
+     between A1 and A13, because the number is a number. */
+  const nodeOrder = (label) => {
+    const m = /^([A-Z]+)(\d+)$/.exec(String(label ?? ""));
+    return m ? [m[1], Number(m[2])] : [String(label ?? ""), 0];
+  };
+
+  const tracePlan = useMemo(() => {
+    if (!trace?.legs) return [];
+    return trace.legs
+      .map((leg, i) => ({ leg, i }))
+      .sort((a, b) => {
+        const [al, an] = nodeOrder(a.leg.from);
+        const [bl, bn] = nodeOrder(b.leg.from);
+        if (al !== bl) return al < bl ? -1 : 1;
+        if (an !== bn) return an - bn;
+        const [tl, tn] = nodeOrder(a.leg.to);
+        const [ul, un] = nodeOrder(b.leg.to);
+        if (tl !== ul) return tl < ul ? -1 : 1;
+        return tn - un;
+      });
+  }, [trace]);
+
+  function exportTrace() {
+    if (!trace) return;
+    const rows = tracePlan.map(({ leg: l }) => ({
+      From: l.from,
+      To: l.to ?? "dead end",
+      "Length (m)": l.metres,
+      Distribution: l.distribution,
+      Terminal: l.terminal,
+      ...(trace.hasVd && !l.vd?.missing ? {
+        "Phase current (A)": Number(l.vd.amps.toFixed(1)),
+        "Loop impedance (ohms)": Number(l.vd.ohms.toFixed(4)),
+        "Volt drop (%)": Number(l.vd.pct.toFixed(3)),
+      } : trace.hasVd ? {
+        "Phase current (A)": null,
+        "Loop impedance (ohms)": null,
+        "Volt drop (%)": null,
+      } : {}),
+    }));
+    const wb = XLSX.utils.book_new();
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Trace");
+    const stamp = new Date().toISOString().slice(0, 10);
+    XLSX.writeFile(wb,
+      `Trace ${project?.Project_Ref ?? ""} ${trace.circuitName} from ${trace.from} ${stamp}.xlsx`
+        .replace(/\s+/g, " ").trim());
+  }
+
   function runFullTrace() {
     const node = selectedFeatures.find((f) => f.Feature_Role === "spannode");
     if (!node) { setError("Select a span node to trace from."); return; }
@@ -2921,6 +3069,17 @@ export default function GISCanvasPage() {
           e.preventDefault();
         }
       }}
+      tabIndex={-1}
+      onKeyDown={(e) => {
+        /* Not while typing: space belongs to the field that has focus. */
+        if (e.key === " " && !e.target?.closest?.("input, textarea, select, [contenteditable]")) {
+          e.preventDefault();
+          setSpaceHeld(true);
+        }
+      }}
+      onKeyUp={(e) => { if (e.key === " ") setSpaceHeld(false); }}
+      /* Losing focus mid-drag would leave it stuck on. */
+      onBlur={() => setSpaceHeld(false)}
       onClick={() => setCtx(null)}>
       <style>{CSS}</style>
 
@@ -3396,7 +3555,7 @@ export default function GISCanvasPage() {
           <div className="gis-canvas-wrap" ref={wrapRef}>
             <canvas
               ref={canvasRef}
-              className={drawing || placing ? "crosshair" : ""}
+              className={spaceHeld ? "grab" : (drawing || placing ? "crosshair" : "")}
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={(e) => { e.currentTarget.releasePointerCapture?.(e.pointerId); onUp(); }}
@@ -3563,6 +3722,37 @@ export default function GISCanvasPage() {
                 )}
 
                 <div className="gc-sep" />
+                {/* Hiding from here saves hunting for the right entry in
+                    the Layers menu when the thing you want out of the way
+                    is under the cursor. */}
+                <button className="gc-item" onClick={() => {
+                  toggleClass(ctx.feature.Layer_Key);
+                  setCtx(null);
+                }}>
+                  Hide {layerOf(ctx.feature.Layer_Key).Label ?? "this"} layer
+                </button>
+                {ctx.feature.Attributes?.Line_Type && (
+                  <button className="gc-item" onClick={() => {
+                    toggleClass(`lt:${ctx.feature.Attributes.Line_Type}`);
+                    setCtx(null);
+                  }}>
+                    Hide {classLabel(ctx.feature, lineTypes)} only
+                  </button>
+                )}
+                {ctx.feature.Attributes?.Label_Offset && (
+                  <button className="gc-item" onClick={() => {
+                    const f = ctx.feature;
+                    setCtx(null);
+                    const A = { ...f.Attributes };
+                    delete A.Label_Offset;
+                    setFeatures((fs) => fs.map((x) =>
+                      (x.Feature_ID === f.Feature_ID ? { ...x, Attributes: A } : x)));
+                    bulkUpdateFeatures(projectId, [{ Feature_ID: f.Feature_ID, Attributes: A }])
+                      .catch((e) => setError(e.message));
+                  }}>Put the label back</button>
+                )}
+
+                <div className="gc-sep" />
                 <button className="gc-item danger" onClick={() => {
                   const f = ctx.feature;
                   setCtx(null);
@@ -3711,6 +3901,7 @@ export default function GISCanvasPage() {
                       {trace.totalMeters} meter(s) beyond this point
                     </p>
                   </div>
+                  <button className="btn accent sm" onClick={exportTrace}>Export</button>
                   <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">
                     &times;
                   </button>
@@ -3739,7 +3930,7 @@ export default function GISCanvasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {trace.legs.map((l, i) => (
+                    {tracePlan.map(({ leg: l, i }) => (
                       <tr key={i} className={traceLeg === i ? "gt-on" : undefined}>
                         <td>
                           {/* Each leg carries its own start: the table is
@@ -3911,6 +4102,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
+.gis-canvas-wrap canvas.grab { cursor: grab; }
+.gis-canvas-wrap canvas.grab:active { cursor: grabbing; }
 /* Top left, clear of the panels that report on a selection — plots are
    placed while looking at the drawing, not at a table. */
 .gis-place { position: absolute; left: 12px; top: 12px; z-index: 7; width: 258px;

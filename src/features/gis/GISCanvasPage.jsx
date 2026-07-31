@@ -2110,7 +2110,7 @@ export default function GISCanvasPage() {
 
       let step = 0;
       const total = totalRuns + totalNodes;
-      let runs = 0, cables = 0, nodesMade = 0;
+      let runs = 0, cables = 0, nodesMade = 0, renumbered = 0;
 
       for (const { circuit: c, sections, nodes } of planned) {
         for (const [i, sec] of sections.entries()) {
@@ -2133,28 +2133,68 @@ export default function GISCanvasPage() {
           setProgress({ done: step, total, label: `${c.letter}: run ${i + 1} of ${sections.length}` });
         }
 
+        /* Every node on this circuit is renumbered, not just the new
+           ones.
+
+           Numbering used to continue from the highest existing sequence,
+           so a rebuild left old nodes on their old numbers and gave new
+           ones A18, A19, A20 — the numbering became a function of how
+           many times the network had been built rather than of the
+           network. If the build decides where nodes go it has to decide
+           what they are called, or the two disagree.
+
+           A node already within a metre of a planned position keeps its
+           identity — its cable, and anything referring to its id — and
+           takes the new number. */
         const existing = features.filter((f) => f.Feature_Role === "spannode"
           && Number(f.Attributes?.Circuit_ID) === Number(c.id));
-        let seq = existing.reduce((t, f) => Math.max(t, Number(f.Attributes?.Span_Seq) || 0), 0);
+        const claimed = new Set();
+        const renumber = [];
+        let seq = 0;
 
         for (const nd of nodes) {
-          const near = existing.some((f) =>
-            Math.hypot(f.Geometry[0][0] - nd.point[0], f.Geometry[0][1] - nd.point[1]) < 1);
           step += 1;
           setProgress({ done: step, total, label: `${c.letter}: nodes` });
-          if (near) continue;
-          /* The origin keeps its zero however many nodes precede it in
-             the list; everything else takes the next number. */
+
           const num = nd.kind === "origin" ? 0 : (seq += 1);
+          const label = spanLabel(c.letter, num);
+
+          const match = existing.find((f) => !claimed.has(f.Feature_ID)
+            && Math.hypot(f.Geometry[0][0] - nd.point[0],
+                          f.Geometry[0][1] - nd.point[1]) < 1);
+
+          if (match) {
+            claimed.add(match.Feature_ID);
+            /* Only where something actually differs — a rebuild that
+               changes nothing should write nothing. */
+            if (String(match.Attributes?.Span_Seq) !== String(num)
+                || match.Attributes?.Span_Kind !== nd.kind) {
+              renumber.push({
+                Feature_ID: match.Feature_ID,
+                Label: `Point ${label}`,
+                Attributes: {
+                  ...match.Attributes,
+                  Span_Seq: num, Span_Label: label, Span_Kind: nd.kind,
+                  /* A node that had no cable gets the default; one that
+                     has a cable someone chose keeps it. */
+                  ...(startCable && nd.kind !== "origin"
+                      && match.Attributes?.VD_Cable_Size_ID == null
+                    ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
+                },
+              });
+            }
+            continue;
+          }
+
           await createFeature(projectId, {
             Layer_Key: "electric",
             Feature_Type: "point",
             Feature_Role: "spannode",
             Geometry: [nd.point],
-            Label: `Point ${spanLabel(c.letter, num)}`,
+            Label: `Point ${label}`,
             Attributes: {
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
-              Span_Seq: num, Span_Label: spanLabel(c.letter, num),
+              Span_Seq: num, Span_Label: label,
               /* Which kind it is, so a report can tell the substation
                  origin from a branch or the far end of a run. */
               Span_Kind: nd.kind,
@@ -2165,6 +2205,27 @@ export default function GISCanvasPage() {
             },
           });
           nodesMade += 1;
+        }
+
+        /* Nodes the build did not place — put there by hand, or left
+           behind by an earlier network. Numbered after the walk rather
+           than deleted: someone put them there on purpose. */
+        for (const f of existing) {
+          if (claimed.has(f.Feature_ID)) continue;
+          if (Number(f.Attributes?.Span_Seq) === 0) continue;   // the origin
+          seq += 1;
+          const label = spanLabel(c.letter, seq);
+          if (f.Attributes?.Span_Label === label) continue;
+          renumber.push({
+            Feature_ID: f.Feature_ID,
+            Label: `Point ${label}`,
+            Attributes: { ...f.Attributes, Span_Seq: seq, Span_Label: label },
+          });
+        }
+
+        if (renumber.length) {
+          await bulkUpdateFeatures(projectId, renumber);
+          renumbered += renumber.length;
         }
       }
 
@@ -2207,6 +2268,7 @@ export default function GISCanvasPage() {
 
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
         + (nodesMade ? `, ${nodesMade} span node(s)` : "")
+        + (renumbered ? `, ${renumbered} renumbered` : "")
         + (startCable
           ? `, on ${cableName(startCable)}`
           : ", no LV cable in the catalogue to default to")

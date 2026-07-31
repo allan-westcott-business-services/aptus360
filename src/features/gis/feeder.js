@@ -785,12 +785,50 @@ export function orderNodesFromRoot(model, indexes = []) {
     kids.get(parent[i]).push(i);
   }
 
-  /* At a junction, the shorter leg first. A spur is usually a few metres
-     and the main run continues, so this numbers the spur and comes back
-     rather than disappearing down the network and returning much later. */
+  /* How far along each branch the next marked node actually is.
+
+     Ordering by the first segment's length was wrong, and wrong in a way
+     that looked almost right: a branch beginning with a short segment
+     but running 130 m before its first node beat one whose first segment
+     was long but reached a node after 7 m. What matters is the distance
+     to the next node, not to the next corner.
+
+     Measured down the tree once, so a junction can sort its branches by
+     what is actually beyond them. */
+  const reach = new Array(nodes.length).fill(Infinity);
+  const order = [];
+  const seenR = new Set();
+  const stack = [S];
+  while (stack.length) {
+    const u = stack.pop();
+    if (seenR.has(u)) continue;
+    seenR.add(u);
+    order.push(u);
+    for (const k of kids.get(u) || []) stack.push(k);
+  }
+  /* Backwards down the visit order, so a node is answered only after
+     everything beyond it has been. */
+  for (let i = order.length - 1; i >= 0; i--) {
+    const u = order[i];
+    if (want.has(u) && u !== S) { reach[u] = 0; continue; }
+    let best = Infinity;
+    for (const k of kids.get(u) || []) {
+      const d = reach[k] + dist(nodes[u], nodes[k]);
+      if (d < best) best = d;
+    }
+    reach[u] = best;
+  }
+
   const nearestFirst = (from) => (kids.get(from) || [])
     .slice()
-    .sort((a, b) => dist(nodes[from], nodes[a]) - dist(nodes[from], nodes[b]));
+    .sort((a, b) => {
+      const da = reach[a] + dist(nodes[from], nodes[a]);
+      const db = reach[b] + dist(nodes[from], nodes[b]);
+      if (da !== db) return da - db;
+      /* Neither branch has a node on it, or they are equidistant: fall
+         back to the nearer corner so the order is at least stable. */
+      return dist(nodes[from], nodes[a]) - dist(nodes[from], nodes[b]);
+    });
 
   const out = [];
   const seen = new Set();

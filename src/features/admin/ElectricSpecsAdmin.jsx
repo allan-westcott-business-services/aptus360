@@ -110,8 +110,13 @@ export default function ElectricSpecsAdmin() {
   };
 
   const COLUMNS = useMemo(() => ({
-    trans: [["Rating_kVA", "Rating kVA", "number"], ["Label", "Label"], ["Sort_Order", "Sort", "number"]],
-    types: [["Cable_Type", "Cable type"], ["Cable_Code", "Code"], ["Sort_Order", "Sort", "number"]],
+    /* Loop impedance is the baseline every volt drop figure on a circuit
+       adds to, so it belongs beside the rating rather than in a separate
+       screen. */
+    trans: [["Rating_kVA", "Rating kVA", "number"], ["Label", "Label"],
+            ["Loop_Impedance_Ohm", "Loop Z \u2126", "number"], ["Sort_Order", "Sort", "number"]],
+    types: [["Cable_Type", "Cable type"], ["Cable_Code", "Code"],
+            ["Usage_Type", "Usage"], ["Sort_Order", "Sort", "number"]],
     joints: [["Joint_Type", "Joint type"], ["Joint_Code", "Code"], ["Description", "Description"], ["Sort_Order", "Sort", "number"]],
     voltage: [["Voltage_Rating", "Rating"], ["Sort_Order", "Sort", "number"]],
   }), []);
@@ -164,7 +169,13 @@ export default function ElectricSpecsAdmin() {
         <>
           <table className="es-table">
             <thead>
-              <tr><th>Cable type</th><th>Size</th><th>CSA mm&sup2;</th><th>Rating A</th>
+              {/* Loop Z and VD base are the two the volt drop sum reads.
+                  R and X hold the same physics more precisely but the
+                  calculation works from the flat figures, so both are
+                  shown rather than one being hidden. */}
+              <tr><th>Cable type</th><th>Size</th><th>Material</th><th>CSA mm&sup2;</th>
+                <th>Rating A</th><th>Fuse A</th>
+                <th>Loop Z &#8486;/km</th><th>VD base</th>
                 <th>mV/A/m</th><th>R &#8486;/km</th><th>X &#8486;/km</th><th>Sort</th><th /></tr>
             </thead>
             <tbody>
@@ -172,8 +183,12 @@ export default function ElectricSpecsAdmin() {
                 <tr key={r[pk]}>
                   <td>{pick(r, "Cable_Type_ID", data.types || [], "Cable_Type_ID", "Cable_Type")}</td>
                   <td>{cell(r, "Size_Label")}</td>
+                  <td>{cell(r, "Material")}</td>
                   <td>{cell(r, "CSA_mm2", "number")}</td>
                   <td>{cell(r, "Rating_Amps", "number")}</td>
+                  <td>{cell(r, "Preferred_Fuse_A", "number")}</td>
+                  <td>{cell(r, "Loop_Impedance_Ohm", "number")}</td>
+                  <td>{cell(r, "Volt_Drop_Base", "number")}</td>
                   <td>{cell(r, "Volt_Drop_mV_A_m", "number")}</td>
                   <td>{cell(r, "Resistance_Ohms_km", "number")}</td>
                   <td>{cell(r, "Reactance_Ohms_km", "number")}</td>

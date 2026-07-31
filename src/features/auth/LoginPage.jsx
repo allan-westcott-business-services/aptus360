@@ -10,6 +10,7 @@ export default function LoginPage() {
   const [mode, setMode] = useState("signin");   // signin | forgot | reset
   const [email, setEmail] = useState("");
   const [password, setPassword] = useState("");
+  const [reveal, setReveal] = useState(false);
   const [confirm, setConfirm] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
@@ -41,6 +42,8 @@ export default function LoginPage() {
 
   async function submit(e) {
     e.preventDefault();
+    /* Whatever happens next, the password stops being visible. */
+    setReveal(false);
     setBusy(true);
     setError("");
     setNotice("");
@@ -96,8 +99,20 @@ export default function LoginPage() {
         {mode === "signin" && (
           <div className="fld">
             <label htmlFor="lp-password">Password</label>
-            <input id="lp-password" type="password" required autoComplete="current-password"
-              value={password} onChange={(e) => setPassword(e.target.value)} />
+            {/* Reveal while typing. A password typed blind is a password
+                typed twice, and on a phone keyboard three times. It hides
+                itself again on submit, so a revealed password does not
+                stay on screen after sign-in. */}
+            <div className="lp-pw">
+              <input id="lp-password" type={reveal ? "text" : "password"} required
+                autoComplete="current-password"
+                value={password} onChange={(e) => setPassword(e.target.value)} />
+              <button type="button" className="lp-eye" onClick={() => setReveal(!reveal)}
+                aria-pressed={reveal}
+                aria-label={reveal ? "Hide password" : "Show password"}>
+                {reveal ? "Hide" : "Show"}
+              </button>
+            </div>
           </div>
         )}
 
@@ -105,14 +120,26 @@ export default function LoginPage() {
           <>
             <div className="fld">
               <label htmlFor="lp-new">New password</label>
-              <input id="lp-new" type="password" required autoComplete="new-password"
-                aria-describedby="lp-new-hint" value={password}
-                onChange={(e) => setPassword(e.target.value)} />
-              <p className="hint" id="lp-new-hint">At least 8 characters.</p>
+              <div className="lp-pw">
+                <input id="lp-new" type={reveal ? "text" : "password"} required
+                  autoComplete="new-password"
+                  aria-describedby="lp-new-hint" value={password}
+                  onChange={(e) => setPassword(e.target.value)} />
+                <button type="button" className="lp-eye" onClick={() => setReveal(!reveal)}
+                  aria-pressed={reveal}
+                  aria-label={reveal ? "Hide password" : "Show password"}>
+                  {reveal ? "Hide" : "Show"}
+                </button>
+              </div>
+              <p className="hint" id="lp-new-hint">
+                At least 8 characters.
+                {reveal && " Both fields are showing."}
+              </p>
             </div>
             <div className="fld">
               <label htmlFor="lp-confirm">Confirm password</label>
-              <input id="lp-confirm" type="password" required autoComplete="new-password"
+              <input id="lp-confirm" type={reveal ? "text" : "password"} required
+                autoComplete="new-password"
                 value={confirm} onChange={(e) => setConfirm(e.target.value)} />
             </div>
           </>
@@ -147,6 +174,14 @@ const CSS = `
   background: var(--bg); padding: 24px; }
 /* min-height reserves the space the card will occupy, so nothing below
    it moves when the font finishes loading. */
+/* The field and its toggle share a line, with room reserved on the right
+   so the text never runs under the button. */
+.lp-pw { position: relative; }
+.lp-pw input { width: 100%; box-sizing: border-box; padding-right: 62px; }
+.lp-eye { position: absolute; right: 6px; top: 50%; transform: translateY(-50%);
+  background: none; border: none; cursor: pointer; font: 600 11.5px inherit;
+  color: var(--muted); padding: 4px 6px; }
+.lp-eye:hover { color: var(--accent); }
 .lp-card { min-height: 396px; background: var(--white); border: 1px solid var(--border); border-radius: 12px;
   box-shadow: 0 8px 30px rgba(0,0,0,.09); padding: 28px; width: 100%; max-width: 380px;
   display: flex; flex-direction: column; gap: 14px; }

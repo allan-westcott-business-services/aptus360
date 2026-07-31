@@ -1877,8 +1877,20 @@ export default function GISCanvasPage() {
   }
 
   async function deleteFeature(id) {
+    const gone = features.find((x) => x.Feature_ID === id);
     setFeatures((f) => f.filter((x) => x.Feature_ID !== id));
     setSelected((sel) => sel.filter((x) => x !== id));
+
+    /* Deleting a seed frees its plot to be placed again.
+
+       Placing marks a plot placed in this list, but nothing marked it
+       back, so a deleted seed left the plot looking placed until the page
+       was reloaded — and the placement panel would not offer it. */
+    if (gone?.Feature_Role === "plot" && gone.Plot_ID != null) {
+      setPlotList((l) => l.map((x) =>
+        (Number(x.plot_id) === Number(gone.Plot_ID) ? { ...x, placed: false } : x)));
+    }
+
     try { await deleteFeatures(projectId, [id]); }
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }

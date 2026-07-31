@@ -2,6 +2,10 @@ import { useState, useMemo } from "react";
 import { bedColour } from "../../lib/bedColours.js";
 import { parsePlotRange, MAX_PLOTS, DIRECTION_NAME } from "./plotRange.js";
 
+/* How many unplaced plots to offer as buttons before the list becomes a
+   wall. Past this the range box is the better tool anyway. */
+const PICK_LIMIT = 24;
+
 /* Choosing which plots to place, and tracking progress through them.
 
    Two clicks per plot, as the original: one for the position, one to say
@@ -120,7 +124,29 @@ export default function PlacementPanel({
       ) : (
         <>
           <p className="pp-or">or place existing plots</p>
-          <label className="pp-label" htmlFor="pp-range">Plot range</label>
+
+          {/* Click one to place it. Typing a single number in the box
+              below has always worked, but the field is labelled "range"
+              with a range in the placeholder, so nothing said so — and
+              re-placing one plot after deleting its seed is the commonest
+              reason to be here at all. */}
+          <label className="pp-label">Pick one</label>
+          <div className="pp-pick">
+            {unplaced.slice(0, PICK_LIMIT).map((p) => (
+              <button key={p.plot_id} className="pp-one" onClick={() => onStart([p])}
+                title={`Place plot ${p.plot_number}`}
+                style={{ background: bedColour(p.bedrooms).bg, color: bedColour(p.bedrooms).fg }}>
+                {p.plot_number}
+              </button>
+            ))}
+            {unplaced.length > PICK_LIMIT && (
+              <span className="pp-more">
+                +{unplaced.length - PICK_LIMIT} more &mdash; use the box below
+              </span>
+            )}
+          </div>
+
+          <label className="pp-label" htmlFor="pp-range">Or several at once</label>
           <input id="pp-range" className="pp-input" value={range}
             placeholder="1-50  or  1,2,5-10,22-30"
             onChange={(e) => setRange(e.target.value)} />
@@ -187,6 +213,11 @@ const CSS = `
 .pp-none { font-size: 11.5px; color: var(--muted); font-style: italic; margin: 0; }
 .pp-label { display: block; font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); margin-bottom: 3px; }
+.pp-pick { display: flex; flex-wrap: wrap; gap: 4px; margin: 0 0 10px; max-height: 132px;
+  overflow-y: auto; }
+.pp-one { border: none; border-radius: 5px; cursor: pointer; font: 700 11px inherit;
+  padding: 4px 8px; }
+.pp-one:hover { outline: 2px solid var(--accent); outline-offset: 1px; }
 .pp-input { width: 100%; font: 600 13px inherit; padding: 6px 8px; }
 .pp-fine { font-size: 10.5px; color: var(--muted); margin: 4px 0 8px; line-height: 1.4; }
 .pp-preview { font-size: 11.5px; color: var(--muted); margin: 0 0 6px; line-height: 1.45; }

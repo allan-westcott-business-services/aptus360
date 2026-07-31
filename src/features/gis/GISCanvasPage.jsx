@@ -2743,9 +2743,17 @@ export default function GISCanvasPage() {
     /* A seed is already done if a service trench is bound to it. The
        link is stored on the trench rather than inferred from position,
        so moving either afterwards doesn't make the plot look unserved
-       and get a second trench on the next run. */
+       and get a second trench on the next run.
+
+       It has to be the trench specifically. Cables and meters carry
+       Seed_Feature_ID too, so accepting any of them let a plot with a
+       meter but no dig count as serviced — the planner skipped it and
+       the repair below found no trench to work from, leaving it in a
+       state neither path would touch. */
     const serviced = new Set(features
-      .filter((f) => f.Attributes?.Seed_Feature_ID != null)
+      .filter((f) => f.Attributes?.Seed_Feature_ID != null
+        && f.Feature_Type === "line"
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes))
       .map((f) => Number(f.Attributes.Seed_Feature_ID)));
 
     const utilitiesFor = (seed) => {
@@ -2770,16 +2778,71 @@ export default function GISCanvasPage() {
       return m ? (m.Geometry || [])[0] ?? null : null;
     };
 
-    /* Cables missing from trenches that already exist.
+    /* Mains geometry as this run has it, with every tee worked out so
+       far already composed in.
+
+       Kept in one map rather than written where each tee is decided,
+       because the mains is PATCHed as a whole array. Two plots teeing
+       into the same run would each read the original geometry and write
+       it back with only their own vertex added, so the second write
+       discarded the first — and a plot whose vertex was discarded sits
+       exactly on a mains it is not joined to. That is invisible on the
+       drawing and shows up only as a meter the Circuit Report cannot
+       trace back to the substation. */
+    const teeGeom = new Map();
+    const liveGeom = (f) => teeGeom.get(Number(f.Feature_ID)) ?? f.Geometry;
+
+    /* Give a main a vertex where a service meets it.
+
+       connectedTo matches endpoints against vertices, never against
+       segments, so a service ending part-way along a run is on the line
+       and connected to nothing. The vertex goes at the foot of the
+       perpendicular rather than at the service's own end, which keeps
+       the main straight; the two are within CONNECT_M of each other by
+       the time we get here, which is what makes the link form.
+
+       teeIntoMains returns null when a vertex is already close enough,
+       so running this over work that is already teed changes nothing. */
+    const teeAt = (candidates, point) => {
+      if (!point) return;
+      let best = null;
+      for (const f of candidates) {
+        const g = liveGeom(f);
+        if ((g || []).length < 2) continue;
+        const r = nearestOnPolyline(point, g);
+        if (r && (!best || r.d < best.r.d)) best = { f, g, r };
+      }
+      if (!best || best.r.d > CONNECT_M) return;
+      const next = teeIntoMains(best.g, best.r.q, CONNECT_M);
+      if (next) teeGeom.set(Number(best.f.Feature_ID), next);
+    };
+
+    /* The utility's own main, for the service cable. Teeing the dig into
+       the mains trench joins the trenches to each other; the cable still
+       has to meet the cable, or an electric trace stops at the junction
+       even though the trenches are continuous. */
+    const mainsOf = (layerKey) => features.filter((f) =>
+      f.Feature_Type === "line"
+      && f.Layer_Key === layerKey
+      && (f.Geometry || []).length >= 2
+      && String(f.Attributes?.Line_Type || "").endsWith("_main"));
+
+    /* Repairs to services that already exist.
 
        A seed with a service trench is skipped as done, which is right
        when the trench and its cables were drawn together and wrong once
        a cable has been deleted — the plot then has a dig with nothing in
        it, and the only way back was to draw it by hand.
 
+       Two separate repairs, deliberately independent. A plot can have
+       every cable it needs and still not be joined to the mains, so the
+       tee is checked whether or not a cable is missing; making it
+       conditional on the cable was why re-running reported nothing to do
+       and changed nothing.
+
        The cable follows the trench, so redrawing it needs no routing at
        all: the trench geometry is the route. Done before planning, so a
-       seed that only needs a cable is repaired rather than skipped. */
+       seed that only needs a repair is repaired rather than skipped. */
     const refill = [];
     for (const seed of seeds) {
       const sid = Number(seed.Feature_ID);
@@ -2790,11 +2853,25 @@ export default function GISCanvasPage() {
         && isTrenchType(f.Attributes?.Line_Type, lineTypes));
       if (!trench || (trench.Geometry || []).length < 2) continue;
 
+      /* Both ends. The planner builds the dig as [foot, seed], but a
+         service split at the boundary can arrive either way round, and
+         only an end genuinely within CONNECT_M of a main tees at all. */
+      teeAt(trenches, trench.Geometry[0]);
+      teeAt(trenches, trench.Geometry[trench.Geometry.length - 1]);
+
       for (const u of utilitiesFor(seed)) {
-        const has = features.some((f) => f.Feature_Type === "line"
+        const cable = features.find((f) => f.Feature_Type === "line"
           && f.Layer_Key === u.layer_key
           && Number(f.Attributes?.Seed_Feature_ID) === sid);
-        if (has) continue;
+        if (cable) {
+          const cg = cable.Geometry || [];
+          if (cg.length >= 2) {
+            const mains = mainsOf(u.layer_key);
+            teeAt(mains, cg[0]);
+            teeAt(mains, cg[cg.length - 1]);
+          }
+          continue;
+        }
 
         /* Along the whole trench, then on to the meter.
 
@@ -2822,7 +2899,7 @@ export default function GISCanvasPage() {
       alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
       existingMeter,
     });
-    if (!plans.length && !refill.length) {
+    if (!plans.length && !refill.length && !teeGeom.size) {
       setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped (${skipped[0]?.why ?? "unknown"}).`);
       return;
     }
@@ -2909,16 +2986,22 @@ export default function GISCanvasPage() {
               Connects: connectedTo(c.geometry, features, null),
             },
           });
+          /* The cable has to meet its own main as well as sharing the
+             dig, or the trenches trace through and the network doesn't. */
+          teeAt(mainsOf(c.utility.layer_key), c.geometry[0]);
           cableCount++;
         }
 
         /* Give the mains a vertex where the service tees in. Without it
            the two lines cross without meeting and tracing stops at the
-           junction. */
-        const teed = teeIntoMains(plan.mains.Geometry, plan.foot, CONNECT_M);
-        if (teed) {
-          await moveFeatures(projectId, [{ Feature_ID: plan.mains.Feature_ID, Geometry: teed }]);
-        }
+           junction.
+
+           Composed into teeGeom and written once at the end rather than
+           PATCHed here: the geometry read is the live one, so a second
+           plot teeing into the same run adds to the first plot's vertex
+           instead of replacing it. */
+        const teed = teeIntoMains(liveGeom(plan.mains), plan.foot, CONNECT_M);
+        if (teed) teeGeom.set(Number(plan.mains.Feature_ID), teed);
         doneCount++;
         setProgress((p) => (p ? { ...p, done: doneCount } : p));
       }
@@ -2943,6 +3026,19 @@ export default function GISCanvasPage() {
         });
         refilled += 1;
         cableCount += 1;
+      }
+
+      /* Mains geometry, one write per run rather than one per tee, with
+         every vertex this run worked out already composed in. Written
+         before the relink below so the rebuilt links see the vertices. */
+      let teedCount = 0;
+      if (teeGeom.size) {
+        const teeUpdates = [...teeGeom.entries()]
+          .map(([Feature_ID, Geometry]) => ({ Feature_ID, Geometry }));
+        for (let i = 0; i < teeUpdates.length; i += 100) {
+          await moveFeatures(projectId, teeUpdates.slice(i, i + 100));
+        }
+        teedCount = teeUpdates.length;
       }
 
       /* Link everything this run drew, from fresh data.
@@ -2977,6 +3073,7 @@ export default function GISCanvasPage() {
         (stopped ? `Stopped after ${doneCount} of ${plans.length} plot(s). ` : "")
         + `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
         + (refilled ? `, ${refilled} put back into an existing trench` : "")
+        + (teedCount ? `, ${teedCount} main(s) teed` : "")
         + (relink.length ? `, ${relink.length} link(s) rebuilt` : "")
         + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
         + (skipped.length ? `, ${skipped.length} skipped` : "")

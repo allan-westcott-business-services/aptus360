@@ -34,8 +34,8 @@ import BomModal from "./BomModal.jsx";
 import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck }
-  from "./feeder.js";
+import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
+  spanTrace } from "./feeder.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -103,6 +103,7 @@ export default function GISCanvasPage() {
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
+  const [traceLeg, setTraceLeg] = useState(null);   // which leg is highlighted
   const [svcCheck, setSvcCheck] = useState(null);
   const [classPlan, setClassPlan] = useState(null);
   const [reclass, setReclass] = useState(false);
@@ -756,6 +757,26 @@ export default function GISCanvasPage() {
       });
     }
 
+    /* The highlighted leg, drawn over the network but under the span
+       nodes — the nodes are what a leg runs between, so they stay
+       readable on top of it. */
+    if (trace && traceLeg != null && trace.legs[traceLeg]?.path?.length > 1) {
+      const path = trace.legs[traceLeg].path;
+      ctx.save();
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.lineWidth = 7;
+      ctx.globalAlpha = 0.35;
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+      ctx.beginPath();
+      path.forEach((m, i) => {
+        const q = toPx(m);
+        if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+      });
+      ctx.stroke();
+      ctx.restore();
+    }
+
     /* ── Span nodes, above everything ──
        A0 sits exactly on the substation and a junction node exactly on a
        cable, so anything sharing their position and drawn later would
@@ -793,7 +814,7 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "alphabetic";
       }
     }
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -2614,16 +2635,30 @@ export default function GISCanvasPage() {
 
      Downstream is defined by distance from the substation, which is the
      only definition that makes a leg length mean anything. */
+  /* Full trace from a span node.
+
+     Built on the feeder model, as the original is. The Connects graph
+     cannot answer this properly: it has no notion of which circuit a
+     branch serves, so a shared trench leading to another circuit's plots
+     came back as part of this one — and it has no running count of what
+     lies beyond a point, which is the figure that decides the cable
+     into it.
+
+     A0 is the substation. Sequence zero starts the walk at the model's
+     root rather than at the node's own position, because the origin node
+     marks where the circuit begins rather than sitting somewhere along
+     it — so tracing from A0 means tracing the whole circuit. */
   function runFullTrace() {
     const node = selectedFeatures.find((f) => f.Feature_Role === "spannode");
     if (!node) { setError("Select a span node to trace from."); return; }
-    const station = features.find((f) => f.Feature_Role === "substation");
-    if (!station) { setError("No substation on the network to measure from."); return; }
 
-    const { legs, error: why, startLabel } = traceFrom(node.Feature_ID, features, station.Feature_ID);
-    if (why) { setError(why); return; }
+    const r = spanTrace(features, node.Feature_ID, {
+      lineTypes,
+      plotById: (id) => plotList.find((p) => p.plot_id === id),
+    });
+    if (r.error) { setError(r.error); setTrace(null); return; }
 
-    setTrace({ startLabel, legs });
+    setTrace(r);
     setError("");
   }
 
@@ -3531,39 +3566,66 @@ export default function GISCanvasPage() {
             )}
 
             {trace && (
-              <div className="gis-trace" role="dialog" aria-label="Full Trace">
+              <div className="gis-trace gt-wide" role="dialog" aria-label="Full trace">
                 <div className="gt-head">
-                  <strong>Full trace from {trace.startLabel}</strong>
+                  <div>
+                    <strong>Full trace from {trace.from}</strong>
+                    <p className="gt-sub">
+                      {trace.circuitName} &middot; {trace.totalMeters} meter(s) beyond this point
+                    </p>
+                  </div>
                   <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">
                     &times;
                   </button>
                 </div>
-                {!trace.legs.length && <p className="gt-none">Nothing downstream.</p>}
-                {trace.legs.length > 0 && (
-                  <table className="gt-tbl">
-                    <thead>
-                      <tr><th>Leg</th><th className="num">Length</th><th className="num">Meters</th></tr>
-                    </thead>
-                    <tbody>
-                      {trace.legs.map((l, i) => (
-                        <tr key={i}>
-                          <td>{l.from} &rarr; {l.to ?? "end"}</td>
-                          <td className="num">{l.metres.toFixed(1)} m</td>
-                          <td className="num">{l.meters.length}</td>
-                        </tr>
-                      ))}
-                      <tr className="gt-tot">
-                        <td>{trace.legs.length} leg(s)</td>
-                        <td className="num">
-                          {trace.legs.reduce((t, l) => t + l.metres, 0).toFixed(1)} m
+
+                <table className="gt-tbl">
+                  <thead>
+                    <tr>
+                      <th>Leg</th>
+                      <th className="num">Length</th>
+                      {/* The original's two figures, and the pair is the
+                          point: Distribution is what this length of cable
+                          feeds directly, Terminal is everything beyond its
+                          far end. A leg carrying nothing but passing forty
+                          meters on still needs sizing for forty. */}
+                      <th className="num" title="Meters fed along this leg">Dist.</th>
+                      <th className="num" title="Meters beyond the end of this leg">Term.</th>
+                      <th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {trace.legs.map((l, i) => (
+                      <tr key={i} className={traceLeg === i ? "gt-on" : undefined}>
+                        <td>
+                          <strong>{trace.from}</strong> &rarr;{" "}
+                          {l.to ?? <em className="gt-dead">dead end, no meter</em>}
                         </td>
+                        <td className="num">{l.metres.toFixed(1)} m</td>
+                        <td className="num">{l.distribution}</td>
+                        <td className="num strong">{l.terminal}</td>
                         <td className="num">
-                          {trace.legs.reduce((t, l) => t + l.meters.length, 0)}
+                          {/* Reading a leg off a table is one thing;
+                              finding it on an estate-sized plan is
+                              another. */}
+                          <button className="gt-hi"
+                            onClick={() => setTraceLeg(traceLeg === i ? null : i)}>
+                            {traceLeg === i ? "Hide" : "Show"}
+                          </button>
                         </td>
                       </tr>
-                    </tbody>
-                  </table>
-                )}
+                    ))}
+                    <tr className="gt-tot">
+                      <td>{trace.legs.length} leg(s)</td>
+                      <td className="num">{trace.totalMetres.toFixed(1)} m</td>
+                      <td className="num">
+                        {trace.legs.reduce((t, l) => t + l.distribution, 0)}
+                      </td>
+                      <td className="num">{trace.totalMeters}</td>
+                      <td />
+                    </tr>
+                  </tbody>
+                </table>
               </div>
             )}
 
@@ -3710,6 +3772,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gc-item.danger { color: #b91c1c; }
 .gc-item.danger:hover { background: #fef2f2; }
 .gc-sep { height: 1px; background: var(--border); margin: 4px 0; }
+.gt-wide { width: 380px; }
+.gt-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+.gt-dead { color: var(--muted); font-style: italic; font-size: 11.5px; }
+.gt-hi { background: none; border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  font: 600 10.5px inherit; padding: 2px 7px; color: var(--muted); }
+.gt-hi:hover { border-color: var(--accent); color: var(--accent); }
+.dt .gt-on, .gt-tbl tr.gt-on { background: var(--accent-light); }
 .gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;

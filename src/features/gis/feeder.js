@@ -569,3 +569,176 @@ export function endOfLineNodes(model) {
   }
   return out;
 }
+
+
+/* ── Full trace from a span node ──
+   A port of the original's gisTraceSpanNode.
+
+   Built on the feeder model rather than the Connects graph, which
+   matters for three reasons the graph cannot give:
+
+     The model is scoped to one circuit's seeds, so a shared trench
+     leading to another circuit's plots is pruned out rather than
+     reported as part of this one.
+
+     cum[] already holds how many meters lie beyond every node, which is
+     the "terminal" figure — everything past the end of a leg. Counting
+     that from a graph walk would mean re-walking each subtree.
+
+     And A0 is the substation. The original starts the walk at the
+     model's root S when span_seq is 0, not at the node's own position —
+     the origin node marks the substation rather than sitting somewhere
+     along the network, so tracing "from" it means tracing the circuit.
+
+   A leg runs from the start to the first other span node it meets, or to
+   a dead end. Anything beyond that span node belongs to the next leg,
+   not this one — which is what makes the result a schedule of spans
+   rather than one long list. */
+
+export function spanTrace(features = [], nodeId, opts = {}) {
+  const { lineTypes = [], plotById = () => null } = opts;
+
+  const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
+  if (!node || node.Feature_Role !== "spannode") {
+    return { error: "Select a span node." };
+  }
+  const circuitId = node.Attributes?.Circuit_ID;
+  if (circuitId == null) {
+    return { error: "That span node doesn't belong to a circuit." };
+  }
+  const circuitName = node.Attributes?.Circuit_Name || `Circuit ${circuitId}`;
+
+  /* Only this circuit's plots, so the model prunes branches serving
+     someone else's. */
+  const seedIds = new Set();
+  for (const m of features) {
+    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
+    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    const sid = m.Attributes?.Seed_Feature_ID;
+    if (sid != null) { seedIds.add(Number(sid)); continue; }
+    const seed = features.find((f) => f.Feature_Role === "plot"
+      && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
+    if (seed) seedIds.add(Number(seed.Feature_ID));
+  }
+  if (!seedIds.size) {
+    return { error: `${circuitName} has no metered plots — nothing to trace.` };
+  }
+
+  const M = buildFeederModel(features, { lineTypes, plotById, seedIds });
+  if (M.error) return { error: M.error };
+  const { nodes, parent, parSvc, cum, S } = M;
+
+  const nearest = (p) => {
+    let bi = -1, bd = Infinity;
+    for (let i = 0; i < nodes.length; i++) {
+      const d = dist(nodes[i], p);
+      if (d < bd) { bd = d; bi = i; }
+    }
+    return bi;
+  };
+
+  /* Sequence zero is the substation itself. */
+  const startIdx = Number(node.Attributes?.Span_Seq) === 0
+    ? S
+    : nearest((node.Geometry || [])[0] || [0, 0]);
+  if (startIdx < 0) return { error: "Couldn't locate this node on the circuit." };
+
+  /* Mains children carrying load. parSvc drops service spurs; cum > 0
+     drops branches that lead nowhere for this circuit. */
+  const kids = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    if (parent[i] < 0 || parSvc[i] || cum[i] <= 0) continue;
+    if (!kids.has(parent[i])) kids.set(parent[i], []);
+    kids.get(parent[i]).push(i);
+  }
+
+  /* Every other span node on this circuit, by the graph node it sits on —
+     these are where legs stop. */
+  const stops = new Map();
+  for (const sn of features) {
+    if (sn.Feature_Role !== "spannode") continue;
+    if (Number(sn.Feature_ID) === Number(nodeId)) continue;
+    if (Number(sn.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    const idx = Number(sn.Attributes?.Span_Seq) === 0
+      ? S : nearest((sn.Geometry || [])[0] || [0, 0]);
+    if (idx >= 0) stops.set(idx, sn);
+  }
+
+  /* This circuit's meters, at the node they attach to — the seed's
+     position on the network, as the model itself uses. */
+  const metersAt = new Map();
+  for (const m of features) {
+    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
+    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    const sid = m.Attributes?.Seed_Feature_ID;
+    const seed = sid != null
+      ? features.find((f) => f.Feature_Role === "plot" && Number(f.Feature_ID) === Number(sid))
+      : features.find((f) => f.Feature_Role === "plot"
+          && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
+    const anchor = (seed?.Geometry || [])[0] || (m.Geometry || [])[0];
+    if (!anchor) continue;
+    const idx = nearest(anchor);
+    if (idx < 0) continue;
+    if (!metersAt.has(idx)) metersAt.set(idx, []);
+    metersAt.get(idx).push(m);
+  }
+
+  const legs = [];
+  const walk = (prev, cur, metres, along, path) => {
+    const len = metres + dist(nodes[prev], nodes[cur]);
+    const here = metersAt.get(cur) || [];
+    const trail = [...path, cur];
+
+    if (stops.has(cur)) {
+      legs.push({
+        to: stops.get(cur).Attributes?.Span_Label
+          ?? stops.get(cur).Label ?? `#${stops.get(cur).Feature_ID}`,
+        stopId: stops.get(cur).Feature_ID,
+        metres: Math.round(len * 10) / 10,
+        /* Meters picked up along the way — the load this length of cable
+           carries directly. */
+        distribution: along.length,
+        /* Everything beyond the far end, which is what decides the cable
+           into it. */
+        terminal: cum[cur] || 0,
+        meters: along,
+        path: trail.map((i) => nodes[i]),
+      });
+      return;
+    }
+
+    const next = kids.get(cur) || [];
+    if (!next.length) {
+      legs.push({
+        to: here.length
+          ? here.map((m) => m.Label || `Meter ${m.Feature_ID}`).join(", ")
+          : null,
+        stopId: null,
+        metres: Math.round(len * 10) / 10,
+        distribution: along.length,
+        terminal: here.length,
+        meters: [...along, ...here],
+        path: trail.map((i) => nodes[i]),
+      });
+      return;
+    }
+    for (const k of next) walk(cur, k, len, [...along, ...here], trail);
+  };
+
+  const branches = kids.get(startIdx) || [];
+  if (!branches.length) {
+    return {
+      error: `No circuit cable runs downstream of `
+        + `${node.Attributes?.Span_Label ?? "this node"} on ${circuitName}.`,
+    };
+  }
+  for (const b of branches) walk(startIdx, b, 0, [], [startIdx]);
+
+  return {
+    from: node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`,
+    circuitName,
+    legs,
+    totalMetres: Math.round(legs.reduce((t, l) => t + l.metres, 0) * 10) / 10,
+    totalMeters: cum[startIdx] || 0,
+  };
+}

@@ -15,7 +15,11 @@ import { getGisBom } from "../../api/gis.js";
    a number of meters is worse than no total. Each unit is summed
    separately and labelled. */
 
-const SITE_ORDER = ["On-site", "Off-site", "Unclassified"];
+/* Trench is the only thing split by site — what a trench is dug through
+   and reinstated to differs either side of the boundary, and so does the
+   rate. A metre of cable costs what it costs wherever it is laid, so
+   those rows come back with no site and group on their own. */
+const SITE_ORDER = ["On-site", "Off-site", "Unclassified", ""];
 
 export default function BomModal({ projectId, projectName, onClose }) {
   const [rows, setRows] = useState([]);
@@ -40,17 +44,29 @@ export default function BomModal({ projectId, projectName, onClose }) {
       if (!out.has(key)) out.set(key, { site: r.site, utility: r.utility, items: [] });
       out.get(key).items.push(r);
     }
+    const rank = (x) => {
+      const i = SITE_ORDER.indexOf(x.site);
+      return i < 0 ? SITE_ORDER.length : i;
+    };
     return [...out.values()].sort((a, b) =>
-      SITE_ORDER.indexOf(a.site) - SITE_ORDER.indexOf(b.site)
-      || a.utility.localeCompare(b.utility));
+      rank(a) - rank(b) || a.utility.localeCompare(b.utility));
   }, [rows]);
 
   const totalsFor = (items, unit) =>
     items.filter((r) => r.unit === unit).reduce((t, r) => t + Number(r.quantity), 0);
 
+  /* Totals per site cover trench only, because only trench has a site.
+     The unsplit rows get their own line rather than being folded in —
+     adding cable metres to trench metres would produce a figure nobody
+     wants. */
   const siteTotals = useMemo(() => SITE_ORDER.map((site) => {
     const items = rows.filter((r) => r.site === site);
-    return { site, metres: totalsFor(items, "m"), count: totalsFor(items, "no."), items: items.length };
+    return {
+      site: site || "Not site-dependent",
+      metres: totalsFor(items, "m"),
+      count: totalsFor(items, "no."),
+      items: items.length,
+    };
   }).filter((s) => s.items), [rows]);
 
   const unclassified = rows.filter((r) => r.site === "Unclassified").length;
@@ -64,7 +80,7 @@ export default function BomModal({ projectId, projectName, onClose }) {
        text and every sum downstream returns zero. The unit has its own
        column for the same reason. */
     const detail = rows.map((r) => ({
-      Site: r.site,
+      Site: r.site || "n/a",
       Utility: r.utility,
       Item: r.item,
       Surface: r.surface || "",
@@ -155,9 +171,14 @@ export default function BomModal({ projectId, projectName, onClose }) {
               {groups.map((g) => (
                 <div className="bom-grp" key={`${g.site}-${g.utility}`}>
                   <p className="bom-grp-head">
-                    <span className={`bom-pill bom-${g.site.toLowerCase().replace("-", "")}`}>
-                      {g.site}
-                    </span>
+                    {/* No pill where there is no site: an empty badge
+                        reads as a missing value rather than as a row that
+                        does not have one. */}
+                    {g.site && (
+                      <span className={`bom-pill bom-${g.site.toLowerCase().replace("-", "")}`}>
+                        {g.site}
+                      </span>
+                    )}
                     {g.utility}
                   </p>
                   <table className="bom-tbl">

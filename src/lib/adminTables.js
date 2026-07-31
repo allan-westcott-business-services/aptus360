@@ -16,16 +16,6 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
-  { key: "Heat_Pump_Model", label: "Heat Pump Models", pk: "Heat_Pump_Model_ID", fields: [
-      { col: "Register_Number", label: "Register No.", type: "text" },
-      { col: "Make", label: "Make", type: "text", required: true },
-      { col: "Model", label: "Model", type: "text", required: true },
-      /* Not decoration: 150 make-and-model pairs repeat, so this is the
-         only thing telling two of them apart. */
-      { col: "Model_Reference", label: "Model Reference", type: "text" },
-      { col: "Rated_Power_kVA", label: "Rated Power (kVA)", type: "number" },
-      { col: "Is_Active", label: "Active", type: "checkbox" },
-    ] },
 
   { separator: true, label: "Projects & Design" },
   { key: "Quote_Type", label: "Quote Type", pk: "Quote_Type_ID", fields: [
@@ -83,10 +73,6 @@ export const ADMIN_TABLES = [
     ] },
   { key: "Quotation_Status", label: "Quotation Status", pk: "Quotation_Status_ID", fields: [
       { col: "Quotation_Status", label: "Status Name", type: "text", required: true },
-      { col: "Sort_Order", label: "Sort Order", type: "number" },
-    ] },
-  { key: "Voltage_Rating", label: "Voltage Rating", pk: "Voltage_Rating_ID", fields: [
-      { col: "Voltage_Rating", label: "Rating", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
     ] },
   { key: "POC_Status", label: "POC Status", pk: "POC_Status_ID", fields: [

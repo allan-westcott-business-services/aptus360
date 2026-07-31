@@ -22,7 +22,7 @@ import { useTableLayout } from "../../lib/useTableLayout.js";
    anyone would expect from a column headed "Cable type". */
 
 export default function SpecTable({
-  storageKey, columns, rows, pk, onCell, onCommit, onDelete,
+  storageKey, columns, rows, pk, onCell, onCommit, onDelete, cap = 300,
 }) {
   const [sort, setSort] = useState({ key: null, dir: "asc" });
   const [filters, setFilters] = useState({});
@@ -67,6 +67,14 @@ export default function SpecTable({
     }
     return out;
   }, [rows, columns, filters, sort]);   // eslint-disable-line react-hooks/exhaustive-deps
+
+  /* Every row is a set of live inputs, so a table of 1,255 is several
+     thousand of them and the browser feels it. Showing the first few
+     hundred keeps the page responsive, and the filters above are how you
+     reach the rest — which is how anyone finds one row in a thousand
+     anyway. */
+  const capped = view.length > cap;
+  const page = capped ? view.slice(0, cap) : view;
 
   const toggleSort = (key) => setSort((s) =>
     (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -126,11 +134,17 @@ export default function SpecTable({
             </tr>
           )}
 
-          {view.map((r) => (
+          {page.map((r) => (
             <tr key={r[pk]}>
               {layout.visible.map((c) => (
                 <td key={c.key}>
-                  {c.type === "select" ? (
+                  {c.type === "checkbox" ? (
+                    <input type="checkbox" checked={!!r[c.key]}
+                      onChange={(e) => {
+                        onCell(r[pk], c.key, e.target.checked);
+                        onCommit(r[pk], c.key, e.target.checked);
+                      }} />
+                  ) : c.type === "select" ? (
                     <select className="es-in" value={r[c.key] ?? ""}
                       onChange={(e) => {
                         const v = e.target.value ? Number(e.target.value) : null;
@@ -165,6 +179,12 @@ export default function SpecTable({
           ))}
         </tbody>
       </table>
+
+      {capped && (
+        <p className="es-cap">
+          Showing {cap} of {view.length}. Filter above to narrow it down.
+        </p>
+      )}
     </div>
   );
 }
@@ -186,4 +206,5 @@ const CSS = `
 .es-x { background: none; border: none; cursor: pointer; color: var(--muted);
   font-size: 13px; line-height: 1; padding: 2px 5px; }
 .es-x:hover { color: #b91c1c; }
+.es-cap { margin: 6px 2px 0; font-size: 11px; color: var(--muted); }
 `;

@@ -17,6 +17,10 @@ const TABS = [
   { id: "joints",  label: "Joints" },
   { id: "voltage", label: "Voltage Rating" },
   { id: "cons",    label: "House Type Consumption" },
+  /* The register sits here rather than in the sidebar: a heat pump's
+     rated load is electric design data, and it was the only lookup in
+     the app with 1,255 rows sitting among tables of five. */
+  { id: "hp",      label: "Heat Pump Models" },
   { id: "vd",      label: "Volt Drop Limits" },
 ];
 
@@ -28,6 +32,7 @@ const TABLE_FOR = {
   joints: ["Electric_Joint", "Joint_ID"],
   voltage: ["Voltage_Rating", "Voltage_Rating_ID"],
   cons: ["House_Type_Consumption", "Consumption_ID"],
+  hp: ["Heat_Pump_Model", "Heat_Pump_Model_ID"],
   vd: ["Electric_VD_Setting", "VD_Setting_ID"],
 };
 
@@ -157,6 +162,16 @@ export default function ElectricSpecsAdmin() {
     voltage: [
       { key: "Voltage_Rating", label: "Rating", width: 140 },
       { key: "Sort_Order", label: "Sort", type: "number", width: 70 },
+    ],
+    hp: [
+      { key: "Register_Number", label: "Register no.", width: 120 },
+      { key: "Make", label: "Make", width: 160 },
+      { key: "Model", label: "Model", width: 200 },
+      /* Not decoration: 150 make-and-model pairs repeat and this is the
+         only thing telling them apart. */
+      { key: "Model_Reference", label: "Reference", width: 160 },
+      { key: "Rated_Power_kVA", label: "Rated kVA", type: "number", width: 110 },
+      { key: "Is_Active", label: "Active", type: "checkbox", width: 80 },
     ],
     cons: [
       { key: "Bedrooms", label: "Bedrooms", type: "number", width: 100 },

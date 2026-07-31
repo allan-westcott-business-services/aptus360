@@ -26,6 +26,13 @@ export default function FeatureEditor({
   /* Read from the draft, not the saved row, so switching a cable to a
      trench swaps the fields immediately rather than after a save. */
   const isTrench = isTrenchType(f.Attributes?.Line_Type, lineTypes);
+  /* An electric line picks its cable from the catalogue. Judged by the
+     layer its type belongs to rather than by the key's spelling, so a
+     type added later lands in the right branch without a code change. */
+  const isElectric = feature.Feature_Type === "line" && !isTrench && (() => {
+    const t = lineTypes.find((x) => x.Type_Key === f.Attributes?.Line_Type);
+    return t ? t.Layer_Key === "electric" : feature.Layer_Key === "electric";
+  })();
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
@@ -328,6 +335,42 @@ export default function FeatureEditor({
                       ))}
                     </select>
                     <p className="hint">What it is dug through. Drives reinstatement.</p>
+                  </div>
+                ) : isElectric ? (
+                  /* Electric lines pick from the catalogue rather than
+                     typing a size. The free-text field was fine when
+                     nothing read it, but a cable now carries impedance
+                     and volt drop figures, and "185mm² WF" typed by hand
+                     matches no row and calculates nothing.
+
+                     Build LV Network sets this on every run it draws, so
+                     a generated feeder arrives with a cable already on
+                     it — this is where you see and change it. */
+                  <div className="fld">
+                    <label htmlFor="fe-cablesize">Cable</label>
+                    <select id="fe-cablesize" value={f.Attributes.VD_Cable_Size_ID ?? ""}
+                      onChange={(e) => setAttr("VD_Cable_Size_ID")(
+                        e.target.value ? Number(e.target.value) : null)}>
+                      <option value="">&mdash; not set &mdash;</option>
+                      {(lookups?.cableSizes || []).map((c) => {
+                        const t = (lookups?.cableTypes || [])
+                          .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+                        const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
+                        return (
+                          <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
+                            {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
+                            {c.Material ? ` (${c.Material})` : ""}
+                            {usable ? "" : " \u2014 no figures"}
+                          </option>
+                        );
+                      })}
+                    </select>
+                    {f.Attributes.Generated && (
+                      <p className="hint">
+                        Drawn by Build LV Network. Changing it here is kept;
+                        rebuilding will not overwrite a cable you have chosen.
+                      </p>
+                    )}
                   </div>
                 ) : (
                   <div className="fld">

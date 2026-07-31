@@ -6,7 +6,7 @@ import Toggle from "../../components/Toggle.jsx";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, createPlots } from "../../api/plots.js";
-import { heatPumpLabel } from "../../lib/heatPump.js";
+import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
 
 /* Mirrors the "Add Plots to Tender" flow from the original app:
    shared attributes, two ways to enter numbers, a preview that flags
@@ -173,14 +173,11 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
             />
           </Field>
           <Field label="Heat pump model" span={2}>
-            <Select value={attrs.Heat_Pump_Model_ID} onChange={setAttr("Heat_Pump_Model_ID")}>
-              <option value="">&mdash; none &mdash;</option>
-              {(lookups.heatPumpModels || []).map((m) => (
-                <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
-                  {heatPumpLabel(m)}
-                </option>
-              ))}
-            </Select>
+            <HeatPumpPicker
+              models={lookups.heatPumpModels || []}
+              value={attrs.Heat_Pump_Model_ID}
+              onChange={setAttr("Heat_Pump_Model_ID")}
+            />
           </Field>
           <Field label="Options" span={6}>
             <div className="toggle-row">

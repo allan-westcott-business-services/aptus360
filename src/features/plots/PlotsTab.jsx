@@ -12,6 +12,7 @@ import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
 import { heatPumpLabel, heatPumpShort } from "../../lib/heatPump.js";
+import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
    and B1, so compare the numeric prefix when both rows have one. */
@@ -430,17 +431,11 @@ export default function PlotsTab({ projectId, projectRef }) {
         </div>
         <div className="pd-field">
           <label>Heat pump model</label>
-          <Select
+          <HeatPumpPicker
+            models={lookups?.heatPumpModels || []}
             value={defaults.Heat_Pump_Model_ID}
             onChange={(v) => setDefaults((d) => ({ ...d, Heat_Pump_Model_ID: v }))}
-          >
-            <option value="">&mdash; none &mdash;</option>
-            {(lookups?.heatPumpModels || []).map((m) => (
-              <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
-                {heatPumpLabel(m)}
-              </option>
-            ))}
-          </Select>
+          />
         </div>
         <button className="btn accent pd-save" disabled={!defaultsDirty || savingDefaults} onClick={saveDefaults}>
           {savingDefaults ? "Saving\u2026" : defaultsDirty ? "Save" : "Saved"}
@@ -480,13 +475,17 @@ export default function PlotsTab({ projectId, projectRef }) {
                 ))}
                 <option value="__default">&mdash; Use project default &mdash;</option>
               </select>
-              <select value={bulk.Heat_Pump_Model_ID}
-                onChange={(e) => setBulk((b) => ({ ...b, Heat_Pump_Model_ID: e.target.value }))}>
-                <option value="">Heat pump&hellip;</option>
-                {(lookups?.heatPumpModels || []).map((m) => (
-                  <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>{m.Model}</option>
-                ))}
-              </select>
+              {/* Its own panel rather than another control in the row:
+                  the register has 1,255 entries and choosing one is two
+                  or three steps, which a bar of single selects cannot
+                  hold. */}
+              <div className="bulk-hp">
+                <HeatPumpPicker
+                  models={lookups?.heatPumpModels || []}
+                  value={bulk.Heat_Pump_Model_ID}
+                  onChange={(v) => setBulk((b) => ({ ...b, Heat_Pump_Model_ID: v }))}
+                />
+              </div>
               <input type="number" step="0.1" placeholder="kVA" className="bulk-kva"
                 value={bulk.KVA_Load} onChange={(e) => setBulk((b) => ({ ...b, KVA_Load: e.target.value }))} />
               <select value={bulk.PV} onChange={(e) => setBulk((b) => ({ ...b, PV: e.target.value }))}>
@@ -651,6 +650,7 @@ const CSS = FILTER_CSS + `
 }
 .bulk-count { font-size: 12px; font-weight: 700; white-space: nowrap; }
 .bulk-bar select, .bulk-bar input:not([type=checkbox]) { width: auto; min-width: 118px; font-size: 12px; padding: 5px 8px; }
+.bulk-hp { min-width: 250px; }
 .bulk-kva { width: 78px !important; min-width: 0 !important; }
 .bulk-bar .btn { padding: 5px 13px; font-size: 12.5px; }
 .bulk-bar .btn.ghost.danger { color: #b91c1c; }

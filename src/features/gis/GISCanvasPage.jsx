@@ -3560,6 +3560,7 @@ export default function GISCanvasPage() {
           surfaceTypes={surfaceTypes}
           plotList={plotList}
           lookups={lookups}
+          allFeatures={features}
           onSave={saveFeature}
           onSavePlot={savePlot}
           onDelete={deleteFeature}

@@ -1,9 +1,9 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
-import { pocUnit, circuitLetter, SUB_DEFAULTS } from "./electric.js";
+import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS } from "./electric.js";
 
 /* Editing whatever you right-clicked.
 
@@ -12,6 +12,9 @@ import { pocUnit, circuitLetter, SUB_DEFAULTS } from "./electric.js";
    of. The parts that differ appear only when they apply. */
 export default function FeatureEditor({
   feature, layers, lineTypes, surfaceTypes = [], plotList, lookups,
+  /* The whole drawing, so a meter can be offered the circuits that
+     already exist on it. */
+  allFeatures = [],
   onSave, onSavePlot, onDelete, onClose,
 }) {
   const [f, setF] = useState({
@@ -36,6 +39,11 @@ export default function FeatureEditor({
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
+
+  /* The circuits already on this drawing, with how many meters each
+     holds — the count is what tells one circuit from another when the
+     names are all "Circuit 1", "Circuit 2". */
+  const circuits = useMemo(() => circuitsFrom(allFeatures || []), [allFeatures]);
 
   const setAttr = (k) => (v) =>
     setF((p) => ({ ...p, Attributes: { ...p.Attributes, [k]: v === "" ? null : v } }));
@@ -425,6 +433,55 @@ export default function FeatureEditor({
               <label htmlFor="fe-mpan">Meter reference</label>
               <input id="fe-mpan" className="mono" value={f.Attributes.Meter_Ref ?? ""}
                 onChange={(e) => setAttr("Meter_Ref")(e.target.value)} />
+            </div>
+          )}
+
+          {/* Which circuit this meter is on.
+
+              Link to Circuit lassoes seeds and always makes a new
+              circuit, which is right when setting a scheme out and wrong
+              when one plot is added afterwards — there was no way to put
+              a single meter onto a circuit that already exists. This is
+              that way.
+
+              Changing it moves the load: the circuit gains a plot and
+              the one it left loses one, so both totals and both traces
+              change. Rebuild the LV network afterwards to redraw the
+              cable that now has to reach it. */}
+          {isMeter && feature.Layer_Key === "electric" && (
+            <div className="fld">
+              <label htmlFor="fe-circuit">Circuit</label>
+              <select id="fe-circuit" value={f.Attributes.Circuit_ID ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value ? Number(e.target.value) : null;
+                  const c = circuits.find((x) => Number(x.id) === id);
+                  setF((prev) => ({
+                    ...prev,
+                    Attributes: {
+                      ...prev.Attributes,
+                      Circuit_ID: id,
+                      Circuit_Name: c?.name ?? null,
+                      Circuit_Letter: c?.letter ?? null,
+                    },
+                  }));
+                }}>
+                <option value="">&mdash; not on a circuit &mdash;</option>
+                {circuits.map((c) => (
+                  <option key={c.id} value={c.id}>
+                    {c.name} ({c.letter}) &middot; {c.meters} meter(s)
+                  </option>
+                ))}
+              </select>
+              {circuits.length === 0 && (
+                <p className="hint">
+                  No circuits yet. Use Electric &rsaquo; Link to Circuit to make the first one.
+                </p>
+              )}
+              {f.Attributes.Circuit_ID !== feature.Attributes?.Circuit_ID && (
+                <p className="hint">
+                  Rebuild the LV network after saving, so the cable reaches it.
+                </p>
+              )}
             </div>
           )}
 

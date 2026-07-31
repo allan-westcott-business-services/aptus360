@@ -1,6 +1,6 @@
 import { useState, useEffect } from "react";
 import { useAuth } from "../../lib/AuthContext.jsx";
-import { supabase } from "../../lib/supabaseClient.js";
+import { getSupabase, authEnabled } from "../../lib/supabaseClient.js";
 
 /* Sign in, forgot password, and the set-a-new-password step people land
    on from the reset email. One screen with three modes rather than three
@@ -18,12 +18,25 @@ export default function LoginPage() {
   /* Supabase puts the user in a recovery session when they follow the
      reset link, so switch straight to the new-password step. */
   useEffect(() => {
-    if (!supabase) return;
-    const { data: sub } = supabase.auth.onAuthStateChange((event) => {
-      if (event === "PASSWORD_RECOVERY") setMode("reset");
-    });
+    if (!authEnabled) return undefined;
+
+    /* The hash is readable straight away, so the reset step can be shown
+       before the client has finished loading — the listener below is a
+       second route to the same conclusion, not the only one. */
     if (window.location.hash.includes("type=recovery")) setMode("reset");
-    return () => sub.subscription.unsubscribe();
+
+    let sub = null;
+    let live = true;
+    getSupabase().then((sb) => {
+      if (!live || !sb) return;
+      sub = sb.auth.onAuthStateChange((event) => {
+        if (event === "PASSWORD_RECOVERY") setMode("reset");
+      }).data.subscription;
+    });
+    /* live guards the case where the component unmounts before the client
+       arrives: without it the subscription is created after cleanup has
+       run and never torn down. */
+    return () => { live = false; sub?.unsubscribe(); };
   }, []);
 
   async function submit(e) {

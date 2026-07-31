@@ -1,5 +1,5 @@
 import { createContext, useContext, useEffect, useRef, useState, useCallback } from "react";
-import { supabase, authEnabled } from "./supabaseClient.js";
+import { getSupabase, authEnabled } from "./supabaseClient.js";
 
 const AuthCtx = createContext(null);
 export const useAuth = () => useContext(AuthCtx);
@@ -15,7 +15,8 @@ export function AuthProvider({ children }) {
   const timer = useRef(null);
 
   const signOut = useCallback(async (wasIdle = false) => {
-    if (supabase) await supabase.auth.signOut();
+    const sb = await getSupabase();
+    if (sb) await sb.auth.signOut();
     localStorage.removeItem(LAST_ACTIVE_KEY);
     setSession(null);
     setIdleOut(wasIdle);
@@ -23,7 +24,10 @@ export function AuthProvider({ children }) {
 
   useEffect(() => {
     if (!authEnabled) { setLoading(false); return; }
-    supabase.auth.getSession().then(({ data }) => {
+    /* The client arrives a moment after first paint now, so the session
+       check is chained onto it rather than run at module scope. Nothing
+       downstream notices: loading was already true until this resolved. */
+    getSupabase().then((sb) => sb.auth.getSession()).then(({ data }) => {
       /* Returning after a long absence counts as idle too — otherwise
          "log out after 10 minutes" only holds while the tab is open,
          which is the opposite of what it's for. */
@@ -35,8 +39,16 @@ export function AuthProvider({ children }) {
       }
       setLoading(false);
     });
-    const { data: sub } = supabase.auth.onAuthStateChange((_e, s) => setSession(s));
-    return () => sub.subscription.unsubscribe();
+    let sub = null;
+    let live = true;
+    getSupabase().then((sb) => {
+      if (!live || !sb) return;
+      sub = sb.auth.onAuthStateChange((_e, s) => setSession(s)).data.subscription;
+    });
+    /* live guards the case where this unmounts before the client arrives:
+       without it the subscription is created after cleanup has run and
+       never torn down. */
+    return () => { live = false; sub?.unsubscribe(); };
   }, [signOut]);
 
   // idle timer
@@ -70,11 +82,13 @@ export function AuthProvider({ children }) {
     idleOut,
     authEnabled,
     clearIdleNotice: () => setIdleOut(false),
-    signIn: (email, password) => supabase.auth.signInWithPassword({ email, password }),
+    signIn: async (email, password) =>
+      (await getSupabase()).auth.signInWithPassword({ email, password }),
     signOut,
     resetPassword: (email) =>
-      supabase.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/` }),
-    updatePassword: (password) => supabase.auth.updateUser({ password }),
+      getSupabase().then((sb) =>
+        sb.auth.resetPasswordForEmail(email, { redirectTo: `${window.location.origin}/` })),
+    updatePassword: async (password) => (await getSupabase()).auth.updateUser({ password }),
   };
 
   return <AuthCtx.Provider value={value}>{children}</AuthCtx.Provider>;

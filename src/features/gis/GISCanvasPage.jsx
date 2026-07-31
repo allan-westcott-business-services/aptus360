@@ -3707,7 +3707,8 @@ export default function GISCanvasPage() {
                   <div>
                     <strong>Full trace from {trace.from}</strong>
                     <p className="gt-sub">
-                      {trace.circuitName} &middot; {trace.totalMeters} meter(s) beyond this point
+                      {trace.circuitName} &middot; {trace.legs.length} leg(s) &middot;{" "}
+                      {trace.totalMeters} meter(s) beyond this point
                     </p>
                   </div>
                   <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">
@@ -3741,7 +3742,10 @@ export default function GISCanvasPage() {
                     {trace.legs.map((l, i) => (
                       <tr key={i} className={traceLeg === i ? "gt-on" : undefined}>
                         <td>
-                          <strong>{trace.from}</strong> &rarr;{" "}
+                          {/* Each leg carries its own start: the table is
+                              a route down the network, not a list of
+                              things measured from one point. */}
+                          <strong>{l.from}</strong> &rarr;{" "}
                           {l.to ?? <em className="gt-dead">dead end, no meter</em>}
                         </td>
                         <td className="num">{l.metres.toFixed(1)} m</td>

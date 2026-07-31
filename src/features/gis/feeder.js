@@ -684,15 +684,32 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   }
 
   const legs = [];
-  const walk = (prev, cur, metres, along, path) => {
+
+  /* A leg runs from one span node to the next, and the walk carries on
+     past that node rather than stopping there.
+
+     The original stops: each leg is span to span and anything further
+     belongs to "the next leg", which means a trace from the origin
+     reports one row and you walk the network a node at a time. Since
+     this is called Full Trace, it reports the whole schedule — every
+     span-to-span leg downstream, in every direction, in one table.
+
+     Each leg carries its own from and to, so the reading is a route
+     rather than a list of things measured from the same place. */
+  const labelOf = (i) => {
+    const f = stops.get(i);
+    return f?.Attributes?.Span_Label ?? f?.Label ?? `#${f?.Feature_ID ?? i}`;
+  };
+
+  const walk = (prev, cur, metres, along, path, fromLabel) => {
     const len = metres + dist(nodes[prev], nodes[cur]);
     const here = metersAt.get(cur) || [];
     const trail = [...path, cur];
 
     if (stops.has(cur)) {
       legs.push({
-        to: stops.get(cur).Attributes?.Span_Label
-          ?? stops.get(cur).Label ?? `#${stops.get(cur).Feature_ID}`,
+        from: fromLabel,
+        to: labelOf(cur),
         stopId: stops.get(cur).Feature_ID,
         metres: Math.round(len * 10) / 10,
         /* The graph node this leg ends at, so volt drop can be totalled
@@ -707,12 +724,18 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         meters: along,
         path: trail.map((i) => nodes[i]),
       });
+      /* Carry on from here, as a new leg: the length and the meters
+         picked up start again from this node. */
+      for (const k of kids.get(cur) || []) {
+        walk(cur, k, 0, [], [cur], labelOf(cur));
+      }
       return;
     }
 
     const next = kids.get(cur) || [];
     if (!next.length) {
       legs.push({
+        from: fromLabel,
         to: here.length
           ? here.map((m) => m.Label || `Meter ${m.Feature_ID}`).join(", ")
           : null,
@@ -726,7 +749,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       });
       return;
     }
-    for (const k of next) walk(cur, k, len, [...along, ...here], trail);
+    for (const k of next) walk(cur, k, len, [...along, ...here], trail, fromLabel);
   };
 
   const branches = kids.get(startIdx) || [];
@@ -736,7 +759,8 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         + `${node.Attributes?.Span_Label ?? "this node"} on ${circuitName}.`,
     };
   }
-  for (const b of branches) walk(startIdx, b, 0, [], [startIdx]);
+  const startLabel = node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`;
+  for (const b of branches) walk(startIdx, b, 0, [], [startIdx], startLabel);
 
   return {
     from: node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`,

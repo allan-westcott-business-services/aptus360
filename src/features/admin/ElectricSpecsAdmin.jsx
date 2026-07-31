@@ -196,8 +196,15 @@ export default function ElectricSpecsAdmin() {
       {tab !== "vd" && (
         <>
           <SpecTable
-            /* Keyed per tab so a column moved on Cable Specs stays moved
-               there, rather than every tab sharing one layout. */
+            /* key remounts it when the tab changes. useTableLayout builds
+               its column order once, in a useState initialiser, so
+               without this the order stays whatever the first tab had —
+               and only columns present in both survive the mapping. That
+               is why Cable Types showed one column and Impedances none.
+
+               storageKey keeps each tab's arrangement separate; key is
+               what makes the component read it. */
+            key={tab}
             storageKey={`espec_${tab}`}
             columns={SPEC_COLUMNS[tab]}
             rows={rows}

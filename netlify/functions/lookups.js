@@ -28,7 +28,11 @@ export default async function handler() {
       idnos:          db.from("IDNO_With_Utilities").select("IDNO_ID,IDNO_Name,Organisation_ID,utility_ids").order("IDNO_Name"),
       propertyTypes:   db.from("Property_Type").select("Property_Type_ID,Property_Type").eq("Is_Active", true).order("Sort_Order"),
       propertyConfigs: db.from("Property_Config").select("Property_Config_ID,Bedrooms,Property_Type_ID,Code").eq("Is_Active", true).order("Bedrooms"),
-      heatSources:    db.from("Heat_Source").select("Heat_Source_ID,Heat_Source").order("Heat_Source"),
+      /* Active only, and in design order rather than alphabetical —
+         a deactivated source should stop being offered, not merely be
+         discouraged. */
+      heatSources:    db.from("Heat_Source").select("Heat_Source_ID,Heat_Source")
+        .eq("Is_Active", true).order("Sort_Order").order("Heat_Source"),
       /* Ordered newest first so resolving a rate for a date is a find(),
          not a sort. */
       /* Column names are 0027's — Cable_Size_ID, not

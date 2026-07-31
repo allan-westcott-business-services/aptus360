@@ -13,6 +13,8 @@ export const ADMIN_TABLES = [
     ] },
   { key: "Heat_Source", label: "Heat Source", pk: "Heat_Source_ID", fields: [
       { col: "Heat_Source", label: "Heat Source", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
   { key: "Heat_Pump_Model", label: "Heat Pump Models", pk: "Heat_Pump_Model_ID", fields: [
       { col: "Register_Number", label: "Register No.", type: "text" },

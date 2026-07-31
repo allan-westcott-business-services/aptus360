@@ -1091,7 +1091,19 @@ export default function GISCanvasPage() {
         }
       }
     } else if (!e.shiftKey) {
-      setSelected([]);
+      /* Nothing under the pointer, so drag the drawing.
+
+         This is what a map does, and it does not depend on having a
+         middle button — a Magic Mouse has none, and on macOS a
+         third-party one is often taken by the system before the browser
+         sees it. Middle-drag and space-drag still work; this is the
+         route that always does.
+
+         The selection is cleared on release rather than now, and only if
+         the pointer barely moved: a drag is a pan, a click is a click. */
+      drag.current = {
+        mode: "pan", startPx: [px, py], startView: { ...view }, mayClear: true,
+      };
     }
   }
 
@@ -1227,6 +1239,8 @@ export default function GISCanvasPage() {
     const dx = px - d.startPx[0], dy = py - d.startPx[1];
 
     if (d.mode === "pan") {
+      /* Once it has moved, it is a pan and not a click. */
+      if (!d.moved && Math.hypot(px - d.startPx[0], py - d.startPx[1]) > 3) d.moved = true;
       const { x: sx, y: sy } = d.startView;
       setView((v) => ({ ...v, x: sx + dx, y: sy + dy }));
       return;
@@ -1258,6 +1272,12 @@ export default function GISCanvasPage() {
     const d = drag.current;
     drag.current = null;
     setEditVertex(null);
+
+    if (d?.mode === "pan") {
+      /* A click on empty space clears the selection; a drag does not. */
+      if (d.mayClear && !d.moved) setSelected([]);
+      return;
+    }
 
     if (d?.mode === "label") {
       const f = features.find((x) => x.Feature_ID === d.featureId);
@@ -3555,7 +3575,9 @@ export default function GISCanvasPage() {
           <div className="gis-canvas-wrap" ref={wrapRef}>
             <canvas
               ref={canvasRef}
-              className={spaceHeld ? "grab" : (drawing || placing ? "crosshair" : "")}
+              className={spaceHeld ? "grab"
+                : drawing || placing ? "crosshair"
+                : "pannable"}
               onPointerDown={onDown}
               onPointerMove={onMove}
               onPointerUp={(e) => { e.currentTarget.releasePointerCapture?.(e.pointerId); onUp(); }}
@@ -4103,6 +4125,9 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   touch-action: none; overscroll-behavior: contain; }
 .gis-canvas-wrap canvas.crosshair, .gis-canvas-wrap canvas.crosshair:active { cursor: crosshair; }
 .gis-canvas-wrap canvas.grab { cursor: grab; }
+/* Empty space invites a drag, so say so — but only in select mode,
+   where a click is not about to draw something. */
+.gis-canvas-wrap canvas.pannable:active { cursor: grabbing; }
 .gis-canvas-wrap canvas.grab:active { cursor: grabbing; }
 /* Top left, clear of the panels that report on a selection — plots are
    placed while looking at the drawing, not at a table. */

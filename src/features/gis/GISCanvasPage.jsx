@@ -580,7 +580,15 @@ export default function GISCanvasPage() {
            label that has been moved gets a leader back to the point it
            belongs to — without one, a tag floating between two cables
            belongs to neither as far as anyone reading it can tell. */
-        if (pts.length > 1 && st.showLabel && view.scale > 1.5 && (on || showLabels)) {
+        /* Long enough on screen to carry a label. A tag wider than the
+           cable it names points at nothing in particular, and a service
+           stub does not need a way number. */
+        const drawnLenPx = pts.length > 1
+          ? pts.reduce((t, q, i) => (i ? t + Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y) : 0), 0)
+          : 0;
+
+        if (pts.length > 1 && st.showLabel && view.scale > 1.5
+            && (on || (showLabels && drawnLenPx > 34))) {
           const anchor = pts[Math.floor(pts.length / 2)];
           const off = f.Attributes?.Label_Offset;
           const mid = off
@@ -608,7 +616,25 @@ export default function GISCanvasPage() {
           const txt = on
             ? [spelled, `${lineLength(f.Geometry).toFixed(1)} m`].filter(Boolean).join("  ")
             : tag;
-          if (txt) {
+          /* One tag per place.
+
+             Several cables meeting at a plot each label themselves at
+             their own midpoint, and on short stubs those midpoints are
+             within a few pixels of each other — so the same "1B"
+             appeared three times over one point, once per cable. They
+             are not different facts; they are one fact drawn repeatedly.
+
+             A label is skipped if the same text has already been drawn
+             nearby this frame. The first one drawn wins, which is stable
+             because the draw order is. A selected line is exempt: if you
+             have clicked it you want its label, whatever else is there.
+
+             Moved labels are exempt too — dragging one somewhere clear
+             is a deliberate request to see it. */
+          const dup = !on && !off && txt && labelHits.current.some((r) =>
+            r.txt === txt && Math.hypot(r.cx - mid.x, r.cy - mid.y) < 26);
+
+          if (txt && !dup) {
             ctx.font = "700 11px ui-monospace, Menlo, monospace";
             ctx.textAlign = "center";
             const w = ctx.measureText(txt).width + 10;
@@ -632,7 +658,8 @@ export default function GISCanvasPage() {
                Rebuilt every frame rather than stored: it moves with the
                view, and a stale rect catches clicks in the wrong place. */
             labelHits.current.push({
-              id: f.Feature_ID, anchor,
+              id: f.Feature_ID, anchor, txt,
+              cx: mid.x, cy: mid.y,
               x: mid.x - w / 2, y: mid.y - 20, w, h: 15,
             });
 
@@ -3418,15 +3445,22 @@ export default function GISCanvasPage() {
                       disabled={!projectId} onClick={() => setBomOpen(true)} />
                     <div className="gm-sep" />
                     <MenuGroup label="Network" />
-                    {/* Trace and assign are utility-agnostic, so they stay
-                        here. Place joints went to Electric, where the
-                        joints it places belong. */}
-                    <MenuItem label={busy === "trace" ? "Numbering\u2026" : "Number Ways and Circuits"}
-                      hint={selected.length === 1
-                        ? "Walks the network from the selected source and numbers the cables"
-                        : "Select the source first \u2014 a substation, POC or feeder pillar"}
-                      disabled={!!busy || selected.length !== 1}
-                      onClick={() => runNetwork("trace")} />
+                    {/* Number Ways and Circuits is hidden rather than
+                        removed.
+
+                        It predates the circuit and feeder work: for
+                        electric, Build LV Network now assigns real
+                        circuits and their ways, and all the tracer adds
+                        is a hop count nothing reads. Its remaining use is
+                        gas and water, where there are no circuits and
+                        "which main leaves the source" is the right
+                        question — so the code, the endpoint and the
+                        function stay, and this is one line to restore.
+
+                        runNetwork("trace") is still called by the context
+                        menu on a point, which is deliberate: it is
+                        reachable when wanted without sitting in a menu
+                        that is otherwise about circuits. */}
                     <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
                       hint="Match meters to their plots"
                       disabled={!!busy} onClick={() => runNetwork("meters")} />

@@ -147,3 +147,47 @@ export function cumulativeToNode({
     overPct: s.maxVoltDropPct != null && pct > s.maxVoltDropPct,
   };
 }
+
+
+/* The cable a generated feeder starts on.
+
+   Design works upward: put the smallest cable on everything, run the
+   trace, and upsize the legs that fail. Starting from the largest would
+   hide every problem and cost a fortune; starting from nothing means the
+   trace reports "cable not set" on a network the router has just drawn.
+
+   Smallest is read as highest impedance per km rather than by parsing a
+   size label — 95 sorts before 185 as text, but "1c 630" would not, and
+   impedance is the property that actually orders them.
+
+   Restricted to LV mains: a service cable or an HV triplex is not what a
+   feeder is built from, and a cable with no figures cannot be reported
+   on even if it is chosen. */
+export function defaultFeederCable(cableSizes = [], cableTypes = [], opts = {}) {
+  const { voltageRatingId = 1, usage = "Mains" } = opts;
+
+  const usable = cableSizes.filter((c) => {
+    if (c.Loop_Impedance_Ohm == null && c.Volt_Drop_Base == null) return false;
+    const t = cableTypes.find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+    if (!t) return false;
+    /* Voltage rating is null on some types — Earth Cable, for one. An
+       unrated type is excluded rather than allowed through: defaulting to
+       a cable nobody has said is LV is worse than defaulting to nothing,
+       and an earth cable has the highest impedance in the catalogue so it
+       would win outright. */
+    if (Number(t.Voltage_Rating_ID) !== voltageRatingId) return false;
+    if (t.Usage_Type && t.Usage_Type !== usage) return false;
+    return true;
+  });
+  if (!usable.length) return null;
+
+  return usable.slice().sort((a, b) => {
+    const ai = a.Loop_Impedance_Ohm == null ? -Infinity : Number(a.Loop_Impedance_Ohm);
+    const bi = b.Loop_Impedance_Ohm == null ? -Infinity : Number(b.Loop_Impedance_Ohm);
+    if (bi !== ai) return bi - ai;
+    /* Same cable in two constructions — 3c and 4c WAVE 95 are identical
+       on impedance. Lowest id wins, which is the order they were entered
+       and so the one anyone would think of first. */
+    return Number(a.Cable_Size_ID) - Number(b.Cable_Size_ID);
+  })[0];
+}

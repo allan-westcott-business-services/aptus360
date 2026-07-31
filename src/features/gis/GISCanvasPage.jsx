@@ -36,7 +36,7 @@ import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace } from "./feeder.js";
-import { cumulativeToNode, VD_DEFAULTS } from "./voltDrop.js";
+import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -262,6 +262,13 @@ export default function GISCanvasPage() {
     && selectedFeatures.every((f) => f.Feature_Type === "line");
 
   const drawing = tool === "boundary" || tool === "line" || tool === "circuit";
+
+  /* A cable's full name, for a status line or a tooltip. */
+  const cableName = (c) => {
+    if (!c) return "";
+    const t = (lookups?.cableTypes || []).find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+    return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
+  };
   const placing = queue.some((q) => !q.done);
   const nextPlot = meterFor?.plot || queue.find((q) => !q.done) || null;
 
@@ -2068,6 +2075,14 @@ export default function GISCanvasPage() {
         });
       }
 
+      /* Every generated run and every node it creates starts on the
+         smallest LV mains cable. Design works upward — put the smallest
+         on everything, trace, and upsize what fails — and it means a
+         freshly built network reports real figures rather than "cable
+         not set" on every leg. Anything set by hand is left alone. */
+      const startCable = defaultFeederCable(
+        lookups?.cableSizes || [], lookups?.cableTypes || []);
+
       const totalRuns = planned.reduce((t, x) => t + x.sections.length, 0);
       const totalNodes = planned.reduce((t, x) => t + x.nodes.length, 0);
       if (!totalRuns) {
@@ -2094,6 +2109,7 @@ export default function GISCanvasPage() {
               Line_Type: "elec_main",
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
+              ...(startCable ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
               Generated: true,
             },
           });
@@ -2128,6 +2144,10 @@ export default function GISCanvasPage() {
               /* Which kind it is, so a report can tell the substation
                  origin from a branch or the far end of a run. */
               Span_Kind: nd.kind,
+              /* The cable feeding this point. Nothing feeds the origin,
+                 so it gets none — the sum starts at the transformer. */
+              ...(startCable && nd.kind !== "origin"
+                ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
             },
           });
           nodesMade += 1;
@@ -2173,6 +2193,9 @@ export default function GISCanvasPage() {
 
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
         + (nodesMade ? `, ${nodesMade} span node(s)` : "")
+        + (startCable
+          ? `, on ${cableName(startCable)}`
+          : ", no LV cable in the catalogue to default to")
         + (links.length ? `, ${links.length} link(s) recorded` : "")
         + (stranded.length ? ` \u2014 ${stranded.length} meter(s) not on the trench network` : ""));
       setTimeout(() => setStatus(""), 14000);

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import SpecTable from "./SpecTable.jsx";
 import Banner from "../../components/Banner.jsx";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 
@@ -94,14 +95,6 @@ export default function ElectricSpecsAdmin() {
     />
   );
 
-  const pick = (r, col, options, valKey, labelKey) => (
-    <select className="es-in" value={r[col] ?? ""}
-      onChange={(e) => { const v = e.target.value ? Number(e.target.value) : null; setCell(r[pk], col, v); commit(r[pk], col, v); }}>
-      <option value="">&mdash;</option>
-      {options.map((o) => <option key={o[valKey]} value={o[valKey]}>{o[labelKey]}</option>)}
-    </select>
-  );
-
   const cableLabel = (id) => {
     const c = (data.sizes || []).find((x) => x.Cable_Size_ID === id);
     if (!c) return "\u2014";
@@ -109,17 +102,71 @@ export default function ElectricSpecsAdmin() {
     return `${t ? t.Cable_Type + " " : ""}${c.Size_Label}`;
   };
 
-  const COLUMNS = useMemo(() => ({
-    /* Loop impedance is the baseline every volt drop figure on a circuit
-       adds to, so it belongs beside the rating rather than in a separate
-       screen. */
-    trans: [["Rating_kVA", "Rating kVA", "number"], ["Label", "Label"],
-            ["Loop_Impedance_Ohm", "Loop Z \u2126", "number"], ["Sort_Order", "Sort", "number"]],
-    types: [["Cable_Type", "Cable type"], ["Cable_Code", "Code"],
-            ["Usage_Type", "Usage"], ["Sort_Order", "Sort", "number"]],
-    joints: [["Joint_Type", "Joint type"], ["Joint_Code", "Code"], ["Description", "Description"], ["Sort_Order", "Sort", "number"]],
-    voltage: [["Voltage_Rating", "Rating"], ["Sort_Order", "Sort", "number"]],
-  }), []);
+  /* Every tab's columns in one place. Width is a starting point; the
+     table remembers what anyone drags it to. */
+  const SPEC_COLUMNS = useMemo(() => ({
+    trans: [
+      { key: "Rating_kVA", label: "Rating kVA", type: "number", width: 110 },
+      { key: "Label", label: "Label", width: 150 },
+      { key: "Loop_Impedance_Ohm", label: "Loop Z \u2126", type: "number", width: 110 },
+      { key: "Sort_Order", label: "Sort", type: "number", width: 70 },
+    ],
+    types: [
+      { key: "Cable_Type", label: "Cable type", width: 200 },
+      { key: "Cable_Code", label: "Code", width: 90 },
+      { key: "Usage_Type", label: "Usage", width: 100 },
+      { key: "Voltage_Rating_ID", label: "Voltage", type: "select", width: 100,
+        options: (data.voltage || []).map((v) => ({
+          value: v.Voltage_Rating_ID, label: v.Voltage_Rating })) },
+      { key: "Sort_Order", label: "Sort", type: "number", width: 70 },
+    ],
+    sizes: [
+      { key: "Cable_Type_ID", label: "Cable type", type: "select", width: 180,
+        options: (data.types || []).map((t) => ({
+          value: t.Cable_Type_ID, label: t.Cable_Type })) },
+      { key: "Size_Label", label: "Size", width: 90 },
+      { key: "Material", label: "Material", width: 110 },
+      { key: "CSA_mm2", label: "CSA mm\u00B2", type: "number", width: 90 },
+      { key: "Rating_Amps", label: "Rating A", type: "number", width: 90 },
+      { key: "Preferred_Fuse_A", label: "Fuse A", type: "number", width: 85 },
+      /* The two the volt drop sum reads. */
+      { key: "Loop_Impedance_Ohm", label: "Loop Z \u2126/km", type: "number", width: 110 },
+      { key: "Volt_Drop_Base", label: "VD base", type: "number", width: 90 },
+      { key: "Volt_Drop_mV_A_m", label: "mV/A/m", type: "number", width: 90 },
+      { key: "Resistance_Ohms_km", label: "R \u2126/km", type: "number", width: 90 },
+      { key: "Reactance_Ohms_km", label: "X \u2126/km", type: "number", width: 90 },
+      { key: "Sort_Order", label: "Sort", type: "number", width: 70 },
+    ],
+    imp: [
+      { key: "Cable_Size_ID", label: "Cable", type: "select", width: 200,
+        options: (data.sizes || []).map((c) => ({
+          value: c.Cable_Size_ID, label: cableLabel(c.Cable_Size_ID) })) },
+      { key: "Transformer_Size_ID", label: "Transformer", type: "select", width: 150,
+        options: (data.trans || []).map((t) => ({
+          value: t.Transformer_Size_ID, label: t.Label })) },
+      { key: "Fuse_Rating_Amps", label: "Fuse A", type: "number", width: 90 },
+      { key: "Loop_Impedance_Ohms", label: "Loop Z \u2126", type: "number", width: 110 },
+      { key: "Volt_Drop_Pct", label: "Volt drop %", type: "number", width: 110 },
+    ],
+    joints: [
+      { key: "Joint_Type", label: "Joint type", width: 180 },
+      { key: "Joint_Code", label: "Code", width: 90 },
+      { key: "Description", label: "Description", width: 260 },
+      { key: "Sort_Order", label: "Sort", type: "number", width: 70 },
+    ],
+    voltage: [
+      { key: "Voltage_Rating", label: "Rating", width: 140 },
+      { key: "Sort_Order", label: "Sort", type: "number", width: 70 },
+    ],
+    cons: [
+      { key: "Bedrooms", label: "Bedrooms", type: "number", width: 100 },
+      { key: "Heat_Source_ID", label: "Heat source", type: "select", width: 160,
+        options: heatSources.map((h) => ({
+          value: h.Heat_Source_ID, label: h.Heat_Source })) },
+      { key: "Consumption_kVA", label: "Consumption kVA", type: "number", width: 140 },
+      { key: "Notes", label: "Notes", width: 260 },
+    ],
+  }), [data, heatSources]);   // eslint-disable-line react-hooks/exhaustive-deps
 
   if (loading) return <div className="loading">Loading electric specs&hellip;</div>;
 
@@ -146,113 +193,20 @@ export default function ElectricSpecsAdmin() {
       </div>
 
       {/* simple lookups share one renderer */}
-      {COLUMNS[tab] && (
+      {tab !== "vd" && (
         <>
-          <table className="es-table">
-            <thead>
-              <tr>{COLUMNS[tab].map(([, label]) => <th key={label}>{label}</th>)}<th /></tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r[pk]}>
-                  {COLUMNS[tab].map(([col, , type]) => <td key={col}>{cell(r, col, type)}</td>)}
-                  <td className="mid"><button className="es-x" onClick={() => delRow(r[pk])}>&#10005;</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
+          <SpecTable
+            /* Keyed per tab so a column moved on Cable Specs stays moved
+               there, rather than every tab sharing one layout. */
+            storageKey={`espec_${tab}`}
+            columns={SPEC_COLUMNS[tab]}
+            rows={rows}
+            pk={pk}
+            onCell={setCell}
+            onCommit={commit}
+            onDelete={delRow}
+          />
           <button className="es-add" onClick={() => addRow({})}>+ Add row</button>
-        </>
-      )}
-
-      {tab === "sizes" && (
-        <>
-          <table className="es-table">
-            <thead>
-              {/* Loop Z and VD base are the two the volt drop sum reads.
-                  R and X hold the same physics more precisely but the
-                  calculation works from the flat figures, so both are
-                  shown rather than one being hidden. */}
-              <tr><th>Cable type</th><th>Size</th><th>Material</th><th>CSA mm&sup2;</th>
-                <th>Rating A</th><th>Fuse A</th>
-                <th>Loop Z &#8486;/km</th><th>VD base</th>
-                <th>mV/A/m</th><th>R &#8486;/km</th><th>X &#8486;/km</th><th>Sort</th><th /></tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r[pk]}>
-                  <td>{pick(r, "Cable_Type_ID", data.types || [], "Cable_Type_ID", "Cable_Type")}</td>
-                  <td>{cell(r, "Size_Label")}</td>
-                  <td>{cell(r, "Material")}</td>
-                  <td>{cell(r, "CSA_mm2", "number")}</td>
-                  <td>{cell(r, "Rating_Amps", "number")}</td>
-                  <td>{cell(r, "Preferred_Fuse_A", "number")}</td>
-                  <td>{cell(r, "Loop_Impedance_Ohm", "number")}</td>
-                  <td>{cell(r, "Volt_Drop_Base", "number")}</td>
-                  <td>{cell(r, "Volt_Drop_mV_A_m", "number")}</td>
-                  <td>{cell(r, "Resistance_Ohms_km", "number")}</td>
-                  <td>{cell(r, "Reactance_Ohms_km", "number")}</td>
-                  <td>{cell(r, "Sort_Order", "number")}</td>
-                  <td className="mid"><button className="es-x" onClick={() => delRow(r[pk])}>&#10005;</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button className="es-add" onClick={() => addRow({ Size_Label: "New size" })}>+ Add cable size</button>
-        </>
-      )}
-
-      {tab === "imp" && (
-        <>
-          <p className="es-hint">
-            Loop impedance and volt drop for a cable size against a transformer and fuse
-            rating &mdash; one row per combination the sizing check needs.
-          </p>
-          <table className="es-table">
-            <thead>
-              <tr><th>Cable</th><th>Transformer</th><th>Fuse A</th>
-                <th>Loop Z &#8486;</th><th>Volt drop %</th><th /></tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r[pk]}>
-                  <td>{pick(r, "Cable_Size_ID", (data.sizes || []).map((c) => ({ ...c, _l: cableLabel(c.Cable_Size_ID) })), "Cable_Size_ID", "_l")}</td>
-                  <td>{pick(r, "Transformer_Size_ID", data.trans || [], "Transformer_Size_ID", "Label")}</td>
-                  <td>{cell(r, "Fuse_Rating_Amps", "number")}</td>
-                  <td>{cell(r, "Loop_Impedance_Ohms", "number")}</td>
-                  <td>{cell(r, "Volt_Drop_Pct", "number")}</td>
-                  <td className="mid"><button className="es-x" onClick={() => delRow(r[pk])}>&#10005;</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button className="es-add" onClick={() => addRow({})}>+ Add impedance row</button>
-        </>
-      )}
-
-      {tab === "cons" && (
-        <>
-          <p className="es-hint">
-            Load per dwelling by bedrooms and heat source &mdash; what turns a plot
-            schedule into a demand figure.
-          </p>
-          <table className="es-table">
-            <thead>
-              <tr><th>Bedrooms</th><th>Heat source</th><th>Consumption kVA</th><th>Notes</th><th /></tr>
-            </thead>
-            <tbody>
-              {rows.map((r) => (
-                <tr key={r[pk]}>
-                  <td>{cell(r, "Bedrooms", "number")}</td>
-                  <td>{pick(r, "Heat_Source_ID", heatSources, "Heat_Source_ID", "Heat_Source")}</td>
-                  <td>{cell(r, "Consumption_kVA", "number")}</td>
-                  <td>{cell(r, "Notes")}</td>
-                  <td className="mid"><button className="es-x" onClick={() => delRow(r[pk])}>&#10005;</button></td>
-                </tr>
-              ))}
-            </tbody>
-          </table>
-          <button className="es-add" onClick={() => addRow({ Bedrooms: 3 })}>+ Add consumption row</button>
         </>
       )}
 
@@ -294,16 +248,10 @@ const CSS = `
   margin-bottom: -1px; cursor: pointer; font: 600 12.5px inherit; color: var(--muted); white-space: nowrap; }
 .es-tab:hover { color: var(--text); }
 .es-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
-.es-table { width: 100%; border-collapse: collapse; font-size: 12.5px; }
-.es-table th { padding: 8px 10px; font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .05em; color: var(--muted); border-bottom: 2px solid var(--border);
-  text-align: left; white-space: nowrap; }
-.es-table td { padding: 4px 6px; border-bottom: 1px solid var(--border); }
 .es-in { width: 100%; box-sizing: border-box; padding: 6px 8px; border: 1.5px solid var(--border);
   border-radius: 6px; font-size: 13px; font-family: inherit; }
 .es-in.num { text-align: right; }
 .es-in:focus { border-color: var(--accent); outline: none; }
-.es-table .mid { text-align: center; }
 .es-x { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;
   padding: 3px 6px; border-radius: 4px; }
 .es-x:hover { background: #fef2f2; color: #ef4444; }

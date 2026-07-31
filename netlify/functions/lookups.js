@@ -31,6 +31,18 @@ export default async function handler() {
       heatSources:    db.from("Heat_Source").select("Heat_Source_ID,Heat_Source").order("Heat_Source"),
       /* Ordered newest first so resolving a rate for a date is a find(),
          not a sort. */
+      /* Column names are 0027's — Cable_Size_ID, not
+         Electric_Cable_Size_ID. The table names carry the prefix; the
+         keys inside them do not. */
+      cableSizes: db.from("Electric_Cable_Size")
+        .select("Cable_Size_ID,Cable_Type_ID,Size_Label,Loop_Impedance_Ohm,Volt_Drop_Base,CSA_mm2,Rating_Amps,Material,Preferred_Fuse_A")
+        .eq("Is_Active", true).order("Sort_Order"),
+      cableTypes: db.from("Electric_Cable_Type")
+        .select("Cable_Type_ID,Cable_Type,Cable_Code,Usage_Type,Voltage_Rating_ID").eq("Is_Active", true).order("Sort_Order"),
+      transformerSizes: db.from("Electric_Transformer_Size")
+        .select("Transformer_Size_ID,Label,Rating_kVA,Loop_Impedance_Ohm")
+        .eq("Is_Active", true).order("Sort_Order"),
+      vdSettings: db.from("Electric_VD_Setting").select("*").limit(1),
       vatRates:       db.from("VAT_Rate").select("VAT_Rate_ID,Rate,Effective_From,Label").order("Effective_From", { ascending: false }),
       /* Make and reference travel with the model because the model name
          alone is ambiguous — the register lists the same name under

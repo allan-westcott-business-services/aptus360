@@ -182,6 +182,65 @@ export default function FeatureEditor({
             </div>
           )}
 
+          {/* The cable feeding this point — the run from the previous
+              span node to this one, which is why it belongs on the node
+              rather than on a cable. Volt drop is totalled span by span,
+              so a node without one makes everything beyond it unknowable
+              rather than merely approximate.
+
+              Not offered on the origin: nothing feeds the substation. */}
+          {feature.Feature_Role === "spannode"
+            && Number(f.Attributes.Span_Seq) !== 0 && (
+            <div className="fld">
+              <label htmlFor="fe-cable">Cable feeding this point</label>
+              <select id="fe-cable" value={f.Attributes.VD_Cable_Size_ID ?? ""}
+                onChange={(e) => setAttr("VD_Cable_Size_ID")(
+                  e.target.value ? Number(e.target.value) : null)}>
+                <option value="">&mdash; not set &mdash;</option>
+                {(lookups?.cableSizes || []).map((c) => {
+                  const t = (lookups?.cableTypes || [])
+                    .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+                  /* Most of the catalogue is names only. Saying so here
+                     is the difference between choosing a cable and
+                     wondering later why the leg reports nothing. */
+                  const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
+                  return (
+                    <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
+                      {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
+                      {c.Material ? ` (${c.Material})` : ""}
+                      {usable ? "" : " — no figures"}
+                    </option>
+                  );
+                })}
+              </select>
+              {!(lookups?.cableSizes || []).length && (
+                <p className="hint">
+                  No cable sizes yet &mdash; add them in Admin &rsaquo; Cable Sizes.
+                </p>
+              )}
+            </div>
+          )}
+
+          {feature.Feature_Role === "substation" && (
+            <div className="fld">
+              <label htmlFor="fe-tx">Transformer</label>
+              <select id="fe-tx" value={f.Attributes.VD_Transformer_Size_ID ?? ""}
+                onChange={(e) => setAttr("VD_Transformer_Size_ID")(
+                  e.target.value ? Number(e.target.value) : null)}>
+                <option value="">&mdash; not set &mdash;</option>
+                {(lookups?.transformerSizes || []).map((x) => (
+                  <option key={x.Transformer_Size_ID} value={x.Transformer_Size_ID}>
+                    {x.Label || `${x.Rating_kVA} kVA`}
+                    {x.Label && x.Rating_kVA ? ` · ${x.Rating_kVA} kVA` : ""}
+                  </option>
+                ))}
+              </select>
+              <p className="hint">
+                Sets the baseline loop impedance every downstream figure adds to.
+              </p>
+            </div>
+          )}
+
           {feature.Feature_Role === "poc" && (
             <div className="fld">
               <label htmlFor="fe-poc">Agreed output ({pocUnit(f.Layer_Key)})</label>

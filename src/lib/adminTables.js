@@ -25,6 +25,59 @@ export const ADMIN_TABLES = [
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
 
+  { separator: true, label: "Electric Specs" },
+
+  { key: "Electric_Cable_Type", label: "Cable Types", pk: "Cable_Type_ID", fields: [
+      { col: "Cable_Type", label: "Type", type: "text", required: true },
+      { col: "Cable_Code", label: "Code", type: "text" },
+      { col: "Voltage_Rating_ID", label: "Voltage", type: "lookup",
+        table: "Voltage_Rating", value: "Voltage_Rating_ID", text: "Voltage_Rating" },
+      { col: "Usage_Type", label: "Usage", type: "select", options: ["Mains", "Service"] },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
+
+  { key: "Electric_Cable_Size", label: "Cable Sizes", pk: "Cable_Size_ID", fields: [
+      { col: "Cable_Type_ID", label: "Type", type: "lookup",
+        table: "Electric_Cable_Type", value: "Cable_Type_ID", text: "Cable_Type" },
+      { col: "Size_Label", label: "Size", type: "text", required: true },
+      { col: "CSA_mm2", label: "CSA (mm²)", type: "number" },
+      { col: "Material", label: "Material", type: "select",
+        options: ["Aluminium", "Copper"] },
+      { col: "Construction", label: "Construction", type: "text" },
+      { col: "Rating_Amps", label: "Rating (A)", type: "number" },
+      { col: "Preferred_Fuse_A", label: "Preferred Fuse (A)", type: "number" },
+      /* The two the volt drop sum reads. 0027's resistance and reactance
+         hold the same physics more precisely, but the sheet works from a
+         single flat figure and a converted one would embed assumptions
+         it never states. */
+      { col: "Loop_Impedance_Ohm", label: "Loop Impedance (Ω/km)", type: "number" },
+      { col: "Volt_Drop_Base", label: "Volt Drop Base (×10⁻⁶)", type: "number" },
+      { col: "Resistance_Ohms_km", label: "Resistance (Ω/km)", type: "number" },
+      { col: "Reactance_Ohms_km", label: "Reactance (Ω/km)", type: "number" },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
+
+  { key: "Electric_Transformer_Size", label: "Transformer Sizes",
+    pk: "Transformer_Size_ID", fields: [
+      { col: "Label", label: "Label", type: "text" },
+      { col: "Rating_kVA", label: "Rating (kVA)", type: "number", required: true },
+      /* The baseline every downstream figure adds to. */
+      { col: "Loop_Impedance_Ohm", label: "Loop Impedance (Ω)", type: "number" },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
+
+  { key: "Electric_VD_Setting", label: "Volt Drop Limits", pk: "VD_Setting_ID", fields: [
+      { col: "Max_Loop_Ohms", label: "Max Loop Impedance (Ω)", type: "number" },
+      { col: "Max_Volt_Drop_Pct", label: "Max Volt Drop (%)", type: "number" },
+      { col: "Unbalanced", label: "Unbalanced Network", type: "checkbox" },
+      { col: "Unbalanced_Constant", label: "Unbalanced Constant", type: "number" },
+      { col: "Distributed_Load_Factor", label: "Distributed Load Factor", type: "number" },
+      { col: "RAG_Amber_Pct", label: "Amber at (% of limit)", type: "number" },
+    ] },
+
   { separator: true, label: "Projects & Design" },
   { key: "Quote_Type", label: "Quote Type", pk: "Quote_Type_ID", fields: [
       { col: "Quote_Type", label: "Quote Type", type: "text", required: true },

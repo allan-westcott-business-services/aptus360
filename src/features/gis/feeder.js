@@ -695,6 +695,9 @@ export function spanTrace(features = [], nodeId, opts = {}) {
           ?? stops.get(cur).Label ?? `#${stops.get(cur).Feature_ID}`,
         stopId: stops.get(cur).Feature_ID,
         metres: Math.round(len * 10) / 10,
+        /* The graph node this leg ends at, so volt drop can be totalled
+           to exactly this point. */
+        endIdx: cur,
         /* Meters picked up along the way — the load this length of cable
            carries directly. */
         distribution: along.length,
@@ -715,6 +718,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
           : null,
         stopId: null,
         metres: Math.round(len * 10) / 10,
+        endIdx: cur,
         distribution: along.length,
         terminal: here.length,
         meters: [...along, ...here],
@@ -738,6 +742,17 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     from: node.Attributes?.Span_Label ?? node.Label ?? `#${nodeId}`,
     circuitName,
     legs,
+    /* Handed back so volt drop can be worked out per leg without
+       rebuilding the model or re-matching span nodes to graph nodes. */
+    model: M,
+    spanNodes: [...stops].map(([index, f]) => ({
+      index,
+      feature: f,
+      cableSizeId: f.Attributes?.VD_Cable_Size_ID ?? null,
+    })).concat([{
+      index: startIdx, feature: node,
+      cableSizeId: node.Attributes?.VD_Cable_Size_ID ?? null,
+    }]),
     totalMetres: Math.round(legs.reduce((t, l) => t + l.metres, 0) * 10) / 10,
     totalMeters: cum[startIdx] || 0,
   };

@@ -42,6 +42,11 @@ function JsonField({ value, onChange }) {
 
 export default function GenericTable({ table }) {
   const [rows, setRows] = useState([]);
+  /* Rows of other tables, for fields that point at one. A cable size
+     belongs to a cable type, and the alternative to fetching it is
+     denormalising the type's name onto every size — which then has to be
+     corrected in as many places as there are sizes when it is renamed. */
+  const [refRows, setRefRows] = useState({});
   const [draft, setDraft] = useState({});
   const [editing, setEditing] = useState(null);
   const [loading, setLoading] = useState(true);
@@ -50,6 +55,14 @@ export default function GenericTable({ table }) {
   async function load() {
     setLoading(true);
     try {
+      /* Anything this table points at, alongside the table itself. */
+      const refs = [...new Set((table.fields || [])
+        .filter((f) => f.type === "lookup" && f.table).map((f) => f.table))];
+      if (refs.length) {
+        const loaded = await Promise.all(refs.map((t) =>
+          adminList(t).then((r) => [t, r.rows || []]).catch(() => [t, []])));
+        setRefRows(Object.fromEntries(loaded));
+      }
       const res = await adminList(table.key);
       setRows(res.rows || []);
       setError("");
@@ -138,6 +151,16 @@ export default function GenericTable({ table }) {
                       onClick={() => setDraft((d) => ({ ...d, [f.col]: null }))}>Clear</button>
                   )}
                 </div>
+              ) : f.type === "lookup" ? (
+                <Select
+                  value={draft[f.col] ?? ""}
+                  onChange={(v) => setDraft((d) => ({ ...d, [f.col]: v ? Number(v) : null }))}
+                >
+                  <option value="">&mdash;</option>
+                  {(refRows[f.table] || []).map((o) => (
+                    <option key={o[f.value]} value={o[f.value]}>{o[f.text]}</option>
+                  ))}
+                </Select>
               ) : f.type === "select" ? (
                 <Select
                   value={draft[f.col] ?? ""}
@@ -205,6 +228,12 @@ export default function GenericTable({ table }) {
                           ? <span className="json-cell">
                               {Object.keys(r[f.col] || {}).length} setting(s)
                             </span>
+                        /* Show what it points at, not the id it points
+                           with — a column of numbers is unreadable. */
+                        : f.type === "lookup"
+                          ? ((refRows[f.table] || [])
+                              .find((o) => String(o[f.value]) === String(r[f.col]))?.[f.text]
+                              ?? "")
                           : r[f.col] ?? ""}
                     </td>
                   ))}

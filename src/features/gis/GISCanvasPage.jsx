@@ -36,6 +36,7 @@ import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace } from "./feeder.js";
+import { cumulativeToNode, VD_DEFAULTS } from "./voltDrop.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -2658,6 +2659,41 @@ export default function GISCanvasPage() {
     });
     if (r.error) { setError(r.error); setTrace(null); return; }
 
+    /* Volt drop per leg, if the specs are there to work it out from. The
+       columns appear only when a cable catalogue exists — a table of
+       dashes would suggest the figures are zero rather than unknown. */
+    const cables = lookups?.cableSizes || [];
+    const settings = { ...VD_DEFAULTS, ...(lookups?.vdSettings?.[0] ? {
+      unbalanced: !!lookups.vdSettings[0].Unbalanced,
+      maxLoopOhms: Number(lookups.vdSettings[0].Max_Loop_Ohms),
+      maxVoltDropPct: Number(lookups.vdSettings[0].Max_Volt_Drop_Pct),
+      unbalancedConstant: Number(lookups.vdSettings[0].Unbalanced_Constant),
+      distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
+    } : {}) };
+
+    if (cables.length) {
+      const station = features.find((f) => f.Feature_Role === "substation");
+      const transformer = (lookups?.transformerSizes || []).find((t) =>
+        String(t.Transformer_Size_ID)
+          === String(station?.Attributes?.VD_Transformer_Size_ID));
+      const voltageV = Number(station?.Attributes?.Output_V) || 400;
+
+      for (const leg of r.legs) {
+        leg.vd = cumulativeToNode({
+          model: r.model,
+          targetIdx: leg.endIdx,
+          spanNodes: r.spanNodes,
+          cableById: (id) => cables.find((c) =>
+            String(c.Cable_Size_ID) === String(id)) || null,
+          transformer: transformer || null,
+          voltageV,
+          settings,
+        });
+      }
+      r.hasVd = true;
+      r.limits = settings;
+    }
+
     setTrace(r);
     setError("");
   }
@@ -3566,7 +3602,8 @@ export default function GISCanvasPage() {
             )}
 
             {trace && (
-              <div className="gis-trace gt-wide" role="dialog" aria-label="Full trace">
+              <div className={trace.hasVd ? "gis-trace gt-wide gt-vd" : "gis-trace gt-wide"}
+                role="dialog" aria-label="Full trace">
                 <div className="gt-head">
                   <div>
                     <strong>Full trace from {trace.from}</strong>
@@ -3591,6 +3628,13 @@ export default function GISCanvasPage() {
                           meters on still needs sizing for forty. */}
                       <th className="num" title="Meters fed along this leg">Dist.</th>
                       <th className="num" title="Meters beyond the end of this leg">Term.</th>
+                      {trace.hasVd && (
+                        <>
+                          <th className="num" title="Phase current at the end of this leg">A</th>
+                          <th className="num" title="Loop impedance from the substation">&#937;</th>
+                          <th className="num" title="Volt drop from the substation">%VD</th>
+                        </>
+                      )}
                       <th />
                     </tr>
                   </thead>
@@ -3604,6 +3648,26 @@ export default function GISCanvasPage() {
                         <td className="num">{l.metres.toFixed(1)} m</td>
                         <td className="num">{l.distribution}</td>
                         <td className="num strong">{l.terminal}</td>
+                        {trace.hasVd && (l.vd?.missing ? (
+                          /* Named rather than dashed: which spec is
+                             missing decides where to go and put it. */
+                          <td colSpan={3} className="num vd-gap"
+                            title={l.vd.missingTransformer
+                              ? "Set a transformer on the substation"
+                              : "Set a cable on every span node along this route"}>
+                            {l.vd.missingTransformer ? "transformer not set" : "cable not set"}
+                          </td>
+                        ) : (
+                          <>
+                            <td className="num">{l.vd.amps.toFixed(1)}</td>
+                            <td className={l.vd.overOhms ? "num vd-over" : "num"}>
+                              {l.vd.ohms.toFixed(3)}
+                            </td>
+                            <td className={l.vd.overPct ? "num vd-over" : "num"}>
+                              {l.vd.pct.toFixed(2)}
+                            </td>
+                          </>
+                        ))}
                         <td className="num">
                           {/* Reading a leg off a table is one thing;
                               finding it on an estate-sized plan is
@@ -3622,6 +3686,9 @@ export default function GISCanvasPage() {
                         {trace.legs.reduce((t, l) => t + l.distribution, 0)}
                       </td>
                       <td className="num">{trace.totalMeters}</td>
+                      {trace.hasVd && <td colSpan={3} className="num vd-note">
+                        limits {trace.limits.maxLoopOhms}&#937; / {trace.limits.maxVoltDropPct}%
+                      </td>}
                       <td />
                     </tr>
                   </tbody>
@@ -3773,6 +3840,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gc-item.danger:hover { background: #fef2f2; }
 .gc-sep { height: 1px; background: var(--border); margin: 4px 0; }
 .gt-wide { width: 380px; }
+.gis-trace.gt-vd { width: 560px; }
+.vd-over { color: #dc2626; font-weight: 700; }
+.vd-gap { font-size: 10.5px; color: #b45309; font-style: italic; }
+.vd-note { font-size: 10px; color: var(--muted); font-weight: 500; }
 .gt-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
 .gt-dead { color: var(--muted); font-style: italic; font-size: 11.5px; }
 .gt-hi { background: none; border: 1px solid var(--border); border-radius: 5px; cursor: pointer;

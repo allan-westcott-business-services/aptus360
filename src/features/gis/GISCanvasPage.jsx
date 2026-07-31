@@ -35,7 +35,7 @@ import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
-  spanTrace } from "./feeder.js";
+  spanTrace, orderNodesFromRoot } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
@@ -2063,14 +2063,28 @@ export default function GISCanvasPage() {
            sure rather than assuming. */
         const originAt = features.find((f) => f.Feature_Role === "substation")?.Geometry?.[0];
         const haveOrigin = !!originNodeFor(features, c.id);
+
+        /* Numbered by a walk outward from the substation, nearest branch
+           first, rather than by the order the graph produced them. A
+           schedule then reads down the network instead of jumping about
+           it: A1 is the node closest to the substation, and everything
+           A1 feeds is numbered before anything on another branch. */
+        const marks = [
+          ...junctionNodes(r.model).map((j) => ({ ...j, kind: "junction" })),
+          ...endOfLineNodes(r.model).map((e) => ({ ...e, kind: "end" })),
+        ];
+        const byIndex = new Map(marks.map((m) => [m.index, m]));
+        const walked = orderNodesFromRoot(r.model, marks.map((m) => m.index))
+          .map((i) => byIndex.get(i))
+          .filter(Boolean);
+
         planned.push({
           circuit: c,
           sections: r.sections,
           nodes: [
             ...(!haveOrigin && originAt
               ? [{ point: originAt, kind: "origin", seq: 0 }] : []),
-            ...junctionNodes(r.model).map((j) => ({ ...j, kind: "junction" })),
-            ...endOfLineNodes(r.model).map((e) => ({ ...e, kind: "end" })),
+            ...walked,
           ],
         });
       }

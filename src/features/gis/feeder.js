@@ -757,3 +757,59 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     totalMeters: cum[startIdx] || 0,
   };
 }
+
+
+/* Numbering span nodes in the order someone would walk them.
+
+   They were numbered as the graph happened to produce them, which is
+   index order and means nothing on a drawing: A2 next to the substation,
+   A5 beyond it, A15 on a short spur and A14 at the far end.
+
+   The order that reads is a walk outward from the substation, taking the
+   nearest branch first and following it to its end before coming back
+   for the next. So the node closest to the substation is 1, everything
+   fed from it is numbered before anything on another branch, and a
+   schedule reads down the network rather than jumping about it.
+
+   Depth first rather than by distance alone: distance ordering would
+   interleave two branches, so a node and the things it feeds could end
+   up numbered either side of a node somewhere else entirely. */
+export function orderNodesFromRoot(model, indexes = []) {
+  const { nodes, parent, parSvc, cum, S } = model;
+  const want = new Set(indexes.map(Number));
+
+  const kids = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    if (parent[i] < 0 || parSvc[i] || cum[i] <= 0) continue;
+    if (!kids.has(parent[i])) kids.set(parent[i], []);
+    kids.get(parent[i]).push(i);
+  }
+
+  /* At a junction, the shorter leg first. A spur is usually a few metres
+     and the main run continues, so this numbers the spur and comes back
+     rather than disappearing down the network and returning much later. */
+  const nearestFirst = (from) => (kids.get(from) || [])
+    .slice()
+    .sort((a, b) => dist(nodes[from], nodes[a]) - dist(nodes[from], nodes[b]));
+
+  const out = [];
+  const seen = new Set();
+  const walk = (u) => {
+    if (seen.has(u)) return;
+    seen.add(u);
+    if (want.has(u) && u !== S) out.push(u);
+    for (const k of nearestFirst(u)) walk(k);
+  };
+  walk(S);
+
+  /* Anything the walk could not reach — a node on a branch carrying no
+     load, or off the network entirely. Numbered last rather than
+     dropped: it exists on the drawing and needs a label. */
+  for (const i of indexes) {
+    const n = Number(i);
+    /* The substation is never numbered — it is where the numbering
+       starts from, and A0 already marks it. */
+    if (n !== S && !out.includes(n)) out.push(n);
+  }
+  return out;
+}

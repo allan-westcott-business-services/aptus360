@@ -397,6 +397,11 @@ body.resizing { cursor: col-resize; user-select: none; }
   overflow: auto; max-height: 62vh; }
 .dt { border-collapse: separate; border-spacing: 0; font-size: 12.5px; table-layout: fixed; }
 .dt th, .dt td { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+/* A cell holding a control rather than text has nothing to truncate, and
+   an ellipsis after a checkbox reads as a menu nobody can open. .mid is
+   the centred-content class, which in practice means a checkbox or a
+   small button. */
+.dt th.mid, .dt td.mid { text-overflow: clip; }
 
 .dt thead .head-row th {
   position: sticky; top: 0; z-index: 3; background: var(--accent); color: #fff;

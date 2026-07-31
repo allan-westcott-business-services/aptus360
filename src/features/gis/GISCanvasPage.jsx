@@ -2945,12 +2945,39 @@ export default function GISCanvasPage() {
         cableCount += 1;
       }
 
+      /* Link everything this run drew, from fresh data.
+
+         Connects was computed against `features` as it stood before the
+         run, so a cable drawn late could miss a mains that was teed
+         earlier in the same pass — and a meter never had its own links
+         rebuilt at all, which is why one could sit on a cable and still
+         be unreachable from the substation.
+
+         Recomputed across every line and every meter, and written only
+         where it changed. */
+      const fresh = await listGis(projectId);
+      const all = fresh.features || [];
+      const relink = all
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "meter")
+        .map((f) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Connects: connectedTo(f.Geometry, all, f.Feature_ID) },
+        }))
+        .filter((u) => {
+          const was = all.find((f) => f.Feature_ID === u.Feature_ID)?.Attributes?.Connects || [];
+          return [...was].sort().join(",") !== [...u.Attributes.Connects].sort().join(",");
+        });
+      for (let i = 0; i < relink.length; i += 100) {
+        await bulkUpdateFeatures(projectId, relink.slice(i, i + 100));
+      }
+
       await load(projectId);
       setError("");
       setStatus(
         (stopped ? `Stopped after ${doneCount} of ${plans.length} plot(s). ` : "")
         + `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
         + (refilled ? `, ${refilled} put back into an existing trench` : "")
+        + (relink.length ? `, ${relink.length} link(s) rebuilt` : "")
         + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
         + (skipped.length ? `, ${skipped.length} skipped` : "")
         + (selected.length ? " \u2014 selected plot only" : "")

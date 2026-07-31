@@ -399,17 +399,6 @@ export default function FeatureEditor({
                       onChange={(e) => setAttr("Size")(e.target.value)} />
                   </div>
                 )}
-                {/* Depth belongs to what is laid, not to the hole it
-                    is laid in — a trench's depth follows from the
-                    deepest service in it. */}
-                {!isTrench && (
-                  <div className="fld">
-                    <label htmlFor="fe-depth">Depth (m)</label>
-                    <input id="fe-depth" type="number" step="0.05"
-                      value={f.Attributes.Depth_m ?? ""}
-                      onChange={(e) => setAttr("Depth_m")(e.target.value)} />
-                  </div>
-                )}
               </div>
               {f.Attributes.Site && (
                 <p className="fe-derived">

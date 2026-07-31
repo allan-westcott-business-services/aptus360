@@ -2796,14 +2796,24 @@ export default function GISCanvasPage() {
           && Number(f.Attributes?.Seed_Feature_ID) === sid);
         if (has) continue;
 
-        /* From the trench foot to the meter if there is one, otherwise to
-           the trench's far end — the same two points the trench runs
-           between. */
+        /* Along the whole trench, then on to the meter.
+
+           The planner builds a cable as [foot, seed, meter] — it follows
+           the dig and then makes the short hop to the meter position. An
+           earlier version of this dropped the trench's far end and ran
+           from the foot straight to the meter, which cut the corner and
+           drew a cable across ground nobody had dug.
+
+           The meter point is only added when it is actually somewhere
+           else; a meter sitting on the trench end would otherwise leave a
+           zero-length segment. */
         const meterAt = existingMeter(seed, u);
-        const end = meterAt ?? trench.Geometry[trench.Geometry.length - 1];
+        const last = trench.Geometry[trench.Geometry.length - 1];
+        const apart = meterAt
+          && Math.hypot(meterAt[0] - last[0], meterAt[1] - last[1]) > CONNECT_M;
         refill.push({
           seed, utility: u,
-          geometry: [...trench.Geometry.slice(0, -1), end],
+          geometry: apart ? [...trench.Geometry, meterAt] : [...trench.Geometry],
         });
       }
     }

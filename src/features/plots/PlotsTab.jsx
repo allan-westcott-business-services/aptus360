@@ -11,6 +11,7 @@ import { useTableLayout } from "../../lib/useTableLayout.js";
 import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
+import { heatPumpLabel, heatPumpShort } from "../../lib/heatPump.js";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
    and B1, so compare the numeric prefix when both rows have one. */
@@ -189,7 +190,8 @@ export default function PlotsTab({ projectId, projectRef }) {
   const typeName = (id) =>
     (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "\u2014";
   const heatPumpName = (id) =>
-    (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
+    heatPumpShort((lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id))
+    || "\u2014";
 
   const defaultsDirty =
     defaults.Default_Heat_Source_ID !== savedDefaults.Default_Heat_Source_ID ||
@@ -219,7 +221,8 @@ export default function PlotsTab({ projectId, projectRef }) {
   };
 
   const hpName = (id) =>
-    (lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id)?.Model ?? "\u2014";
+    heatPumpShort((lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id))
+    || "\u2014";
 
   const hsName = (id) =>
     (lookups?.heatSources || []).find((h) => String(h.Heat_Source_ID) === String(id))?.Heat_Source
@@ -237,7 +240,8 @@ export default function PlotsTab({ projectId, projectRef }) {
         label: c.Code,
       }));
     if (key === "hp")
-      return (lookups?.heatPumpModels || []).map((m) => ({ id: m.Heat_Pump_Model_ID, label: m.Model }));
+      return (lookups?.heatPumpModels || [])
+        .map((m) => ({ id: m.Heat_Pump_Model_ID, label: heatPumpLabel(m) }));
     if (key === "heat")
       return (lookups?.heatSources || []).map((h) => ({ id: h.Heat_Source_ID, label: h.Heat_Source }));
     if (key === "dev")
@@ -432,7 +436,9 @@ export default function PlotsTab({ projectId, projectRef }) {
           >
             <option value="">&mdash; none &mdash;</option>
             {(lookups?.heatPumpModels || []).map((m) => (
-              <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>{m.Model}</option>
+              <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
+                {heatPumpLabel(m)}
+              </option>
             ))}
           </Select>
         </div>

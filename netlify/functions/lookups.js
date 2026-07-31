@@ -32,7 +32,12 @@ export default async function handler() {
       /* Ordered newest first so resolving a rate for a date is a find(),
          not a sort. */
       vatRates:       db.from("VAT_Rate").select("VAT_Rate_ID,Rate,Effective_From,Label").order("Effective_From", { ascending: false }),
-      heatPumpModels: db.from("Heat_Pump_Model").select("Heat_Pump_Model_ID,Model").order("Model"),
+      /* Make and reference travel with the model because the model name
+         alone is ambiguous — the register lists the same name under
+         several entries with different loads. */
+      heatPumpModels: db.from("Heat_Pump_Model")
+        .select("Heat_Pump_Model_ID,Register_Number,Make,Model,Model_Reference,Rated_Power_kVA")
+        .eq("Is_Active", true).order("Make").order("Model"),
       projectStatuses: db.from("Project_Status").select("Project_Status_ID,Stage,Status,Sort_Order,Row_Colour,Is_Terminal").order("Sort_Order"),
       scopeStatuses:   db.from("Scope_Status").select("Scope_Status_ID,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
       localAuthorities: db.from("Local_Authority").select("Local_Authority_ID,Authority_Name,Authority_Type,Contact_Name,Telephone,Email").eq("Is_Active", true).order("Authority_Name"),

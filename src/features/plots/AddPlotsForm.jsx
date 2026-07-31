@@ -6,6 +6,7 @@ import Toggle from "../../components/Toggle.jsx";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPlots, createPlots } from "../../api/plots.js";
+import { heatPumpLabel } from "../../lib/heatPump.js";
 
 /* Mirrors the "Add Plots to Tender" flow from the original app:
    shared attributes, two ways to enter numbers, a preview that flags
@@ -176,7 +177,7 @@ export default function AddPlotsForm({ projectId, projectRef = "", existingNumbe
               <option value="">&mdash; none &mdash;</option>
               {(lookups.heatPumpModels || []).map((m) => (
                 <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
-                  {m.Model}
+                  {heatPumpLabel(m)}
                 </option>
               ))}
             </Select>

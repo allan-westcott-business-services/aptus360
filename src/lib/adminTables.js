@@ -14,8 +14,15 @@ export const ADMIN_TABLES = [
   { key: "Heat_Source", label: "Heat Source", pk: "Heat_Source_ID", fields: [
       { col: "Heat_Source", label: "Heat Source", type: "text", required: true },
     ] },
-  { key: "Heat_Pump_Model", label: "Heat Pump Model", pk: "Heat_Pump_Model_ID", fields: [
+  { key: "Heat_Pump_Model", label: "Heat Pump Models", pk: "Heat_Pump_Model_ID", fields: [
+      { col: "Register_Number", label: "Register No.", type: "text" },
+      { col: "Make", label: "Make", type: "text", required: true },
       { col: "Model", label: "Model", type: "text", required: true },
+      /* Not decoration: 150 make-and-model pairs repeat, so this is the
+         only thing telling two of them apart. */
+      { col: "Model_Reference", label: "Model Reference", type: "text" },
+      { col: "Rated_Power_kVA", label: "Rated Power (kVA)", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
 
   { separator: true, label: "Projects & Design" },

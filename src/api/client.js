@@ -14,7 +14,8 @@ export const USE_MOCKS = import.meta.env.VITE_USE_MOCKS !== "false";
    auth isn't configured. */
 async function authHeader() {
   try {
-    const { supabase } = await import("../lib/supabaseClient.js");
+    const { getSupabase } = await import("../lib/supabaseClient.js");
+    const supabase = await getSupabase();
     if (!supabase) return {};
     const { data } = await supabase.auth.getSession();
     const token = data?.session?.access_token;

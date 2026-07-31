@@ -1,5 +1,5 @@
 import { http, USE_MOCKS } from "./client.js";
-import { supabase } from "../lib/supabaseClient.js";
+import { getSupabase } from "../lib/supabaseClient.js";
 
 const BUCKET = "connection-photos";
 
@@ -17,6 +17,7 @@ export async function addPhoto(connectionId, file, { caption, email } = {}) {
 
   const ext = (file.name.split(".").pop() || "jpg").toLowerCase();
   const path = `${connectionId}/${Date.now()}-${Math.random().toString(36).slice(2, 8)}.${ext}`;
+  const supabase = await getSupabase();
   const { error } = await supabase.storage.from(BUCKET)
     .upload(path, file, { cacheControl: "31536000", upsert: false, contentType: file.type });
   if (error) {

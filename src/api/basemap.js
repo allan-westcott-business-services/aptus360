@@ -1,5 +1,5 @@
 import { http, USE_MOCKS } from "./client.js";
-import { supabase } from "../lib/supabaseClient.js";
+import { getSupabase } from "../lib/supabaseClient.js";
 
 
 const delay = (ms) => new Promise((r) => setTimeout(r, ms));
@@ -39,6 +39,7 @@ export async function uploadBasemap(projectId, file, onProgress) {
   const path = `${projectId}/${Date.now()}.${ext}`;
 
   onProgress && onProgress(20);
+  const supabase = await getSupabase();
   const { error } = await supabase.storage.from("basemaps")
     .upload(path, file, {
       cacheControl: "31536000",

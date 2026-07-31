@@ -2770,11 +2770,49 @@ export default function GISCanvasPage() {
       return m ? (m.Geometry || [])[0] ?? null : null;
     };
 
+    /* Cables missing from trenches that already exist.
+
+       A seed with a service trench is skipped as done, which is right
+       when the trench and its cables were drawn together and wrong once
+       a cable has been deleted — the plot then has a dig with nothing in
+       it, and the only way back was to draw it by hand.
+
+       The cable follows the trench, so redrawing it needs no routing at
+       all: the trench geometry is the route. Done before planning, so a
+       seed that only needs a cable is repaired rather than skipped. */
+    const refill = [];
+    for (const seed of seeds) {
+      const sid = Number(seed.Feature_ID);
+      if (!serviced.has(sid)) continue;      // no trench: the planner handles it
+
+      const trench = features.find((f) => f.Feature_Type === "line"
+        && Number(f.Attributes?.Seed_Feature_ID) === sid
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+      if (!trench || (trench.Geometry || []).length < 2) continue;
+
+      for (const u of utilitiesFor(seed)) {
+        const has = features.some((f) => f.Feature_Type === "line"
+          && f.Layer_Key === u.layer_key
+          && Number(f.Attributes?.Seed_Feature_ID) === sid);
+        if (has) continue;
+
+        /* From the trench foot to the meter if there is one, otherwise to
+           the trench's far end — the same two points the trench runs
+           between. */
+        const meterAt = existingMeter(seed, u);
+        const end = meterAt ?? trench.Geometry[trench.Geometry.length - 1];
+        refill.push({
+          seed, utility: u,
+          geometry: [...trench.Geometry.slice(0, -1), end],
+        });
+      }
+    }
+
     const { plans, skipped } = planAutoService(seeds, trenches, utilitiesFor, {
       alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
       existingMeter,
     });
-    if (!plans.length) {
+    if (!plans.length && !refill.length) {
       setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped (${skipped[0]?.why ?? "unknown"}).`);
       return;
     }
@@ -2875,11 +2913,34 @@ export default function GISCanvasPage() {
         setProgress((p) => (p ? { ...p, done: doneCount } : p));
       }
 
+      /* Cables put back into trenches that already existed. Drawn after
+         the planned work so the geometry they connect to is current. */
+      let refilled = 0;
+      for (const r of refill) {
+        if (cancelRef.current) break;
+        await createFeature(projectId, {
+          Layer_Key: r.utility.layer_key,
+          Feature_Type: "line",
+          Geometry: r.geometry,
+          Label: `${r.utility.utility} service ${r.seed.Label ?? ""}`.trim(),
+          Plot_ID: r.seed.Plot_ID ?? null,
+          Attributes: {
+            Line_Type: lineTypes.find((t) => t.Layer_Key === r.utility.layer_key
+              && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
+            Seed_Feature_ID: r.seed.Feature_ID,
+            Connects: connectedTo(r.geometry, features, null),
+          },
+        });
+        refilled += 1;
+        cableCount += 1;
+      }
+
       await load(projectId);
       setError("");
       setStatus(
         (stopped ? `Stopped after ${doneCount} of ${plans.length} plot(s). ` : "")
         + `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
+        + (refilled ? `, ${refilled} put back into an existing trench` : "")
         + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
         + (skipped.length ? `, ${skipped.length} skipped` : "")
         + (selected.length ? " \u2014 selected plot only" : "")

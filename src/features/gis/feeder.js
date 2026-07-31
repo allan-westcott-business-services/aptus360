@@ -664,8 +664,27 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     if (idx >= 0) stops.set(idx, sn);
   }
 
-  /* This circuit's meters, at the node they attach to — the seed's
-     position on the network, as the model itself uses. */
+  /* This circuit's meters, at the node where their load joins the mains.
+
+     Which is the foot of the service trench, not the plot seed. A seed
+     sits at the dwelling, so the nearest graph node to it is the far end
+     of its own service spur — and the walk deliberately skips service
+     spurs, so a meter anchored there is never passed and counts as
+     distribution on no leg at all.
+
+     The service trench runs foot to seed, so its first point is where it
+     meets the mains. That node is on the walked route, which is what
+     makes the meter countable. The seed is the fallback for a plot with
+     no service trench drawn, and the meter itself the last resort. */
+  const serviceFootFor = (seedId) => {
+    const svc = features.find((t) =>
+      t.Feature_Type === "line"
+      && isService(t)
+      && Number(t.Attributes?.Seed_Feature_ID) === Number(seedId)
+      && (t.Geometry || []).length);
+    return svc ? svc.Geometry[0] : null;
+  };
+
   const metersAt = new Map();
   for (const m of features) {
     if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
@@ -675,7 +694,10 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       ? features.find((f) => f.Feature_Role === "plot" && Number(f.Feature_ID) === Number(sid))
       : features.find((f) => f.Feature_Role === "plot"
           && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
-    const anchor = (seed?.Geometry || [])[0] || (m.Geometry || [])[0];
+
+    const anchor = (seed ? serviceFootFor(seed.Feature_ID) : null)
+      || (seed?.Geometry || [])[0]
+      || (m.Geometry || [])[0];
     if (!anchor) continue;
     const idx = nearest(anchor);
     if (idx < 0) continue;

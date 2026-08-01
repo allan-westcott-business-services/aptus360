@@ -3,7 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
-import { heatPumpLabel, sourceTakesHeatPump } from "../../lib/heatPump.js";
+import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS } from "./electric.js";
 
 /* Editing whatever you right-clicked.
@@ -621,15 +621,18 @@ export default function FeatureEditor({
                 <div className="fe-kva">
                   {plot?.kva_load == null
                     ? <span className="fe-kva-unset">
-                        No load &mdash; set a heating source, or enter one on the Plots tab
+                        {/* The reason, not just the absence. An air source plot
+                            with no unit chosen and a plot with no heating
+                            source at all are different jobs. */}
+                        {plot?.kva_source === "no heat pump"
+                          ? "No load \u2014 choose a heat pump model"
+                          : plot?.kva_source === "no gas base"
+                            ? "No load \u2014 no gas figure for this house type"
+                            : "No load \u2014 set a heating source, or enter one on the Plots tab"}
                       </span>
                     : <>
                         <strong>{Number(plot.kva_load).toFixed(1)} kVA</strong>
-                        <span className="fe-kva-src">
-                          {plot.kva_source === "entered"
-                            ? "entered on this plot"
-                            : "from the house type"}
-                        </span>
+                        <span className="fe-kva-src">{kvaSourceText(plot.kva_source)}</span>
                       </>}
                 </div>
               </div>

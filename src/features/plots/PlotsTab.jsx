@@ -11,7 +11,7 @@ import { useTableLayout } from "../../lib/useTableLayout.js";
 import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
 import FilterCell, { blankFilter, isActive, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import Select from "../../components/Select.jsx";
-import { heatPumpLabel, heatPumpShort, sourceTakesHeatPump } from "../../lib/heatPump.js";
+import { heatPumpLabel, heatPumpShort, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import HeatPumpPicker from "../../components/HeatPumpPicker.jsx";
 
 /* "10" sorts after "9", not before — Plot_Number is text because of 43A
@@ -622,9 +622,7 @@ export default function PlotsTab({ projectId, projectRef }) {
                             : col.key === "kva" ? (
                                 (p.KVA_Resolved ?? p.KVA_Load) == null
                                   ? <span className="kva-unset" title="No load: set a heat source, or enter a figure on the plot">&#8212;</span>
-                                  : <span title={p.KVA_Source === "entered"
-                                      ? "Entered on this plot"
-                                      : "From the house type (bedrooms + heat source)"}>
+                                  : <span title={kvaSourceText(p.KVA_Source)}>
                                       {p.KVA_Resolved ?? p.KVA_Load}
                                       {p.KVA_Source === "entered" && <span className="kva-own">*</span>}
                                     </span>

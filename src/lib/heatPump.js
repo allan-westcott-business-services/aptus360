@@ -45,3 +45,30 @@ export function sourceTakesHeatPump(heatSourceId, heatSources = []) {
   const hs = heatSources.find((h) => String(h.Heat_Source_ID) === String(heatSourceId));
   return takesHeatPump(hs?.Heat_Source);
 }
+
+
+/* What a plot's load was arrived at from.
+
+   The database decides this and hands back a word for it; these are the
+   readable forms. Kept beside the heat pump helpers because two of the
+   values exist only for air source plots, whose load is composed from a
+   gas base plus half the fitted unit rather than read from a single row.
+
+   Shared so the plots table and the seed editor cannot describe the same
+   plot differently — the sort of drift that has someone comparing two
+   screens and doubting both. */
+export const KVA_SOURCE_TEXT = {
+  entered:        "entered on this plot",
+  "house type":   "from the house type",
+  "heat pump":    "gas base + half the heat pump",
+  "no heat pump": "no heat pump model set",
+  "no gas base":  "no gas figure for this house type",
+  "not set":      "no load recorded",
+};
+
+/* Whether that word means a figure exists. The two 'no ...' values are
+   gaps with a reason rather than loads, and read as an absence. */
+export const kvaSourceIsGap = (s) =>
+  s === "no heat pump" || s === "no gas base" || s === "not set" || s == null;
+
+export const kvaSourceText = (s) => KVA_SOURCE_TEXT[s] ?? "no load recorded";

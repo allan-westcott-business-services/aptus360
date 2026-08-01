@@ -25,7 +25,7 @@ const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 
 export default function CircuitReport({
   report, projectRef, siteName, pocOutput, onClose,
-  onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, busy,
+  onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, onMoveToCircuit, busy,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -40,6 +40,9 @@ export default function CircuitReport({
      a phrase the designer already has, and a great many clicks. */
   const [range, setRange] = useState("");
   const [rangeNote, setRangeNote] = useState("");
+  /* Which circuit the move buttons point at, held per circuit so two
+     sections cannot fight over one selection. */
+  const [moveTo, setMoveTo] = useState({});
 
   const toggle = (id) => setPicked((p) =>
     (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -186,6 +189,11 @@ export default function CircuitReport({
             const rows = sortRows(match(c.meters));
             const ids = c.meters.map((m) => m.id);
             const pickedHere = picked.filter((id) => ids.includes(id));
+            /* Every other real circuit — the unlinked group is the
+               absence of a circuit, not somewhere to move a meter to.
+               Use Remove from circuit for that. */
+            const others = report.circuits.filter((x) =>
+              x.id !== "unlinked" && x.id !== c.id);
             return (
               <section key={c.id}>
                 <div className="cr-ch">
@@ -216,6 +224,44 @@ export default function CircuitReport({
                         onClick={() => onRemoveFromCircuit?.(pickedHere, c)}>
                         Remove selected from circuit
                       </button>
+                      {/* Moving to another circuit, rather than taking
+                          out and putting back. The ways on the
+                          substation do not change — only which meters
+                          hang off them — and unassigning first would
+                          leave the meters on no circuit if the second
+                          write failed. */}
+                      {others.length > 0 && (
+                        <span className="cr-move">
+                          <select value={moveTo[c.id] ?? ""}
+                            aria-label={`Circuit to move the selected meters from ${c.name} to`}
+                            onChange={(e) => setMoveTo((m) => ({ ...m, [c.id]: e.target.value }))}>
+                            <option value="">Move to&hellip;</option>
+                            {others.map((o) => (
+                              <option key={o.id} value={o.id}>
+                                {o.letter ? `${o.letter} \u00B7 ` : ""}{o.name}
+                              </option>
+                            ))}
+                          </select>
+                          <button className="cr-act cr-move-b"
+                            disabled={!pickedHere.length || !moveTo[c.id] || busy}
+                            title={!pickedHere.length
+                              ? "Tick the meters to move"
+                              : !moveTo[c.id]
+                                ? "Choose the circuit to move them to"
+                                : `Move ${pickedHere.length} meter(s) out of ${c.name}`}
+                            onClick={() => {
+                              onMoveToCircuit?.(pickedHere, Number(moveTo[c.id]));
+                              /* Cleared because the rows are about to
+                                 belong somewhere else, and a selection
+                                 pointing at another circuit's rows is a
+                                 trap for the next button pressed. */
+                              setPicked([]);
+                              setMoveTo((m) => ({ ...m, [c.id]: "" }));
+                            }}>
+                            Move
+                          </button>
+                        </span>
+                      )}
                       <button className="cr-act cr-del" disabled={busy}
                         title="Unassigns every meter and frees the circuit's way on the substation. The meters and trenches stay."
                         onClick={() => onDeleteCircuit?.(c)}>
@@ -392,6 +438,10 @@ const CSS = `
 .cr-range { border: 1px solid var(--border); border-radius: 6px; font: 600 11px inherit;
   padding: 3px 8px; width: 120px; }
 .cr-new { background: #ecfdf5; border-color: #6ee7b7; color: #047857; }
+.cr-move { display: inline-flex; align-items: center; gap: 4px; }
+.cr-move select { border: 1px solid var(--border); border-radius: 6px; font: 600 11px inherit;
+  padding: 3px 6px; max-width: 150px; }
+.cr-move-b { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
 .cr-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
 .cr-gap { color: #b45309; font-weight: 600; }
 .dt.cr-tbl tbody tr.cr-on { background: var(--accent-light); }

@@ -2236,6 +2236,78 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Moving meters from one circuit to another.
+
+     Not a remove followed by an add: the two circuits' ways on the
+     substation do not change, only which meters hang off them, and
+     unassigning first would leave the meters circuitless if the second
+     write failed.
+
+     The feeder cables are the thing that has to follow. A meter that
+     has moved to another circuit is still physically fed by the cable
+     the old circuit drew, and the drawing would show it that way until
+     someone happened to rebuild — so the rebuild happens here, but only
+     where a network already exists to be wrong. */
+  async function moveToCircuit(meterIds = [], targetCircuitId) {
+    const ids = meterIds.map(Number);
+    const target = circuitsFrom(features)
+      .find((c) => Number(c.id) === Number(targetCircuitId));
+    if (!target) { setError("That circuit no longer exists."); return; }
+
+    const rows = features.filter((f) =>
+      f.Feature_Role === "meter"
+      && f.Layer_Key === "electric"
+      && ids.includes(Number(f.Feature_ID))
+      && Number(f.Attributes?.Circuit_ID) !== Number(target.id));
+    if (!rows.length) {
+      setError(`Those meters are already on ${target.name}.`);
+      return;
+    }
+
+    /* Whether the router has ever run. Generated is the discriminator
+       the rebuild itself uses, so the two agree about what counts as a
+       built network. */
+    const built = features.some((f) => f.Attributes?.Generated);
+
+    if (!window.confirm(
+      `Move ${rows.length} meter(s) to ${target.name}?`
+      + (built ? "\n\nThe LV feeder network will be rebuilt." : "")
+    )) return;
+
+    setBusy("circuit");
+    try {
+      await bulkUpdateFeatures(projectId, rows.map((m) => ({
+        Feature_ID: m.Feature_ID,
+        Attributes: {
+          ...m.Attributes,
+          Circuit_ID: target.id,
+          Circuit_Name: target.name,
+          Circuit_Letter: target.letter,
+        },
+      })));
+
+      /* Read back before rebuilding, and hand the result to the rebuild
+         directly. State set above has not reached this closure, so the
+         router would otherwise plan against the membership as it was
+         before the move. */
+      const fresh = await listGis(projectId);
+      setFeatures(fresh.features || []);
+
+      setStatus(`${rows.length} meter(s) moved to ${target.name}`
+        + (built ? " \u2014 rebuilding the network\u2026" : ""));
+
+      if (built) {
+        setBusy("");
+        await buildLvNetwork({ silent: true, srcFeatures: fresh.features || [] });
+      } else {
+        await load(projectId);
+        setTimeout(() => setStatus(""), 6000);
+      }
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); }
+  }
+
   /* Deleting a circuit unassigns its meters, frees its way on the
      substation and removes its span nodes. The meters and the trenches
      stay: they are physical things that exist whatever the circuit plan
@@ -2296,9 +2368,24 @@ export default function GISCanvasPage() {
      running it twice gives the same answer as running it once. Only
      generated ones — a cable drawn by hand is somebody's decision and
      survives. */
-  async function buildLvNetwork() {
-    const circuits = circuitsFrom(features);
-    if (!features.some((f) => f.Feature_Role === "substation")) {
+  async function buildLvNetwork(opts = {}) {
+    /* The drawing to route from, and whether to ask first.
+
+       Both exist for the automatic rebuild after a meter is moved
+       between circuits. That runs straight after a save, and `features`
+       in this closure is still the state from before it — React has not
+       re-rendered yet — so routing from it would rebuild the network
+       against the old circuit membership and quietly undo the move.
+       The caller passes what it just read back instead.
+
+       silent skips the confirmation: the person has already agreed to
+       the move, and asking again about the consequence they were told
+       about is a second question for one decision. */
+    const { silent = false, srcFeatures = null } = (opts && opts.nativeEvent) ? {} : opts;
+    const src = srcFeatures || features;
+
+    const circuits = circuitsFrom(src);
+    if (!src.some((f) => f.Feature_Role === "substation")) {
       return setError("Place a substation first \u2014 feeders route back to it.");
     }
     if (!circuits.length) {
@@ -2308,9 +2395,9 @@ export default function GISCanvasPage() {
     /* Generated is the discriminator, not the type: a rebuild must
        replace what the router drew and leave alone what anyone drew by
        hand, and both are electric mains. */
-    const old = features.filter((f) => f.Attributes?.Generated);
+    const old = src.filter((f) => f.Attributes?.Generated);
 
-    if (!window.confirm(
+    if (!silent && !window.confirm(
       `Build the LV feeder network for ${circuits.length} circuit(s)?`
       + (old.length ? `\n\nThis redraws ${old.length} existing feeder cable(s).` : "")
     )) return;
@@ -2338,7 +2425,7 @@ export default function GISCanvasPage() {
         for (const m of c.meters) {
           const sid = m.Attributes?.Seed_Feature_ID;
           if (sid != null) { seedIds.add(Number(sid)); continue; }
-          const seed = features.find((f) => f.Feature_Role === "plot"
+          const seed = src.find((f) => f.Feature_Role === "plot"
             && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
           if (seed) seedIds.add(Number(seed.Feature_ID));
         }
@@ -2347,7 +2434,7 @@ export default function GISCanvasPage() {
           continue;
         }
 
-        const r = feederSections(features, {
+        const r = feederSections(src, {
           lineTypes,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           seedIds,
@@ -2368,8 +2455,8 @@ export default function GISCanvasPage() {
            creates one, but a circuit made before that did, or one whose
            node has been deleted, would have none — so the build makes
            sure rather than assuming. */
-        const originAt = features.find((f) => f.Feature_Role === "substation")?.Geometry?.[0];
-        const haveOrigin = !!originNodeFor(features, c.id);
+        const originAt = src.find((f) => f.Feature_Role === "substation")?.Geometry?.[0];
+        const haveOrigin = !!originNodeFor(src, c.id);
 
         /* Numbered by a walk outward from the substation, nearest branch
            first, rather than by the order the graph produced them. A
@@ -2412,7 +2499,7 @@ export default function GISCanvasPage() {
         return;
       }
 
-      const old = features.filter((f) => f.Attributes?.Generated);
+      const old = src.filter((f) => f.Attributes?.Generated);
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       let step = 0;
@@ -2453,7 +2540,7 @@ export default function GISCanvasPage() {
            A node already within a metre of a planned position keeps its
            identity — its cable, and anything referring to its id — and
            takes the new number. */
-        const existing = features.filter((f) => f.Feature_Role === "spannode"
+        const existing = src.filter((f) => f.Feature_Role === "spannode"
           && Number(f.Attributes?.Circuit_ID) === Number(c.id));
         const claimed = new Set();
         const renumber = [];
@@ -3718,7 +3805,7 @@ export default function GISCanvasPage() {
                     <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
                       hint="Routes each circuit's cables along the trenches"
                       disabled={busy === "feeder" || !circuitsFrom(features).length}
-                      onClick={buildLvNetwork} />
+                      onClick={() => buildLvNetwork()} />
                     <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Joints"}
                       hint="Joints where services meet mains"
                       disabled={!!busy} onClick={() => runNetwork("joints")} />
@@ -3866,6 +3953,7 @@ export default function GISCanvasPage() {
             onRemoveFromCircuit={removeFromCircuit}
             onDeleteCircuit={deleteCircuit}
             onCreateCircuit={createCircuitFromMeters}
+          onMoveToCircuit={moveToCircuit}
           />
         );
       })()}

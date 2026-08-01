@@ -217,17 +217,47 @@ export default function GISCanvasPage() {
      without disturbing the other. */
   const [isolatedCircuit, setIsolatedCircuit] = useState(null);
 
+  /* Which circuit an electric service cable belongs to.
+
+     Circuit membership is written on the meter and nowhere else, so a
+     service cable carries only the seed it was drawn for. Isolating a
+     circuit therefore hid the meters of other circuits and left their
+     service cables on the drawing, running to nothing.
+
+     Derived from the meter on the same seed rather than stamped onto the
+     cable. Membership then has one home: moving a meter to another
+     circuit takes its service cable with it, with nothing to keep in
+     step and nothing to go stale. */
+  const circuitBySeed = useMemo(() => {
+    const m = new Map();
+    for (const f of features) {
+      if (f.Feature_Role !== "meter" || f.Layer_Key !== "electric") continue;
+      const seed = f.Attributes?.Seed_Feature_ID;
+      const cid = f.Attributes?.Circuit_ID;
+      if (seed != null && cid != null) m.set(String(seed), String(cid));
+    }
+    return m;
+  }, [features]);
+
+  /* The circuit a feature belongs to, if any — its own, or the one its
+     plot's electric meter is on. */
+  const circuitOf = useCallback((f) => {
+    if (f.Layer_Key !== "electric") return null;
+    if (f.Attributes?.Circuit_ID != null) return String(f.Attributes.Circuit_ID);
+    const seed = f.Attributes?.Seed_Feature_ID;
+    return seed != null ? (circuitBySeed.get(String(seed)) ?? null) : null;
+  }, [circuitBySeed]);
+
   /* Electric only, and checked rather than assumed. A circuit is a fact
      about the LV network; anything on another layer that happens to
      carry a Circuit_ID — a water service tagged when it shared a trench,
      a copied feature — is not part of that circuit and must not vanish
      when one is isolated. */
-  const outsideCircuit = useCallback((f, cid) => (
-    cid != null
-    && f.Layer_Key === "electric"
-    && f.Attributes?.Circuit_ID != null
-    && String(f.Attributes.Circuit_ID) !== String(cid)
-  ), []);
+  const outsideCircuit = useCallback((f, cid) => {
+    if (cid == null || f.Layer_Key !== "electric") return false;
+    const own = circuitOf(f);
+    return own != null && own !== String(cid);
+  }, [circuitOf]);
 
   const visible = useMemo(
     () => features.filter((f) =>
@@ -2297,6 +2327,76 @@ export default function GISCanvasPage() {
       `picked from the report${skipped ? `, ${skipped} already on a circuit skipped` : ""}`);
   }
 
+  /* Force every span node's cable to match the run that feeds it.
+
+     The saving path carries a cable through as it is changed, but only
+     onto a node that had not been set to something else — a node someone
+     chose deliberately is a decision and must not be overwritten because
+     a section beneath it was edited. That guard is right for one edit
+     and useless for a drawing where the two have already drifted apart,
+     which is every drawing where a cable was changed before the carry
+     existed.
+
+     So this is the deliberate reconciliation: it says how many disagree,
+     names them, and only then writes. What the trace reads becomes what
+     the sections say. */
+  async function syncNodeCables() {
+    const lines = features.filter((f) =>
+      f.Feature_Type === "line"
+      && f.Layer_Key === "electric"
+      && f.Attributes?.Circuit_ID != null
+      && f.Attributes?.VD_Cable_Size_ID != null);
+
+    const updates = new Map();
+    for (const line of lines) {
+      const node = nodeFedBy(line);
+      if (!node) continue;
+      const want = line.Attributes.VD_Cable_Size_ID;
+      if (String(node.Attributes?.VD_Cable_Size_ID ?? "") === String(want)) continue;
+      /* Last one wins where two sections meet at a node, which cannot
+         happen on a routed network — a node has one run feeding it. */
+      updates.set(node.Feature_ID, {
+        node,
+        Attributes: { ...node.Attributes, VD_Cable_Size_ID: want },
+      });
+    }
+
+    if (!updates.size) {
+      setStatus("Every span node already matches the run feeding it.");
+      setTimeout(() => setStatus(""), 6000);
+      return;
+    }
+
+    const sizeName = (id) => (lookups?.cableSizes || [])
+      .find((c) => String(c.Cable_Size_ID) === String(id))?.Size_Label ?? id;
+    const names = [...updates.values()]
+      .map((u) => `${u.node.Attributes?.Span_Label ?? u.node.Feature_ID}`
+        + ` \u2192 ${sizeName(u.Attributes.VD_Cable_Size_ID)}`)
+      .slice(0, 12);
+
+    if (!window.confirm(
+      `Set the cable on ${updates.size} span node(s) to match the run feeding each?\n\n`
+      + names.join("\n")
+      + (updates.size > names.length ? `\n\u2026and ${updates.size - names.length} more` : "")
+      + "\n\nThe trace reads these figures, so its results will change."
+    )) return;
+
+    setBusy("circuit");
+    try {
+      const rows = [...updates.values()].map((u) => ({
+        Feature_ID: u.node.Feature_ID, Attributes: u.Attributes,
+      }));
+      for (let i = 0; i < rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+      }
+      await load(projectId);
+      setStatus(`${rows.length} span node cable(s) updated \u2014 re-run the trace to see it`);
+      setTimeout(() => setStatus(""), 9000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   /* Renaming a circuit.
 
      The name is not held in one place — it is stamped on every meter,
@@ -3969,6 +4069,10 @@ export default function GISCanvasPage() {
                         : "Select a span node first"}
                       disabled={!selectedFeatures.some((f) => f.Feature_Role === "spannode")}
                       onClick={runFullTrace} />
+                    <MenuItem label="Apply Cable Sizes to Span Nodes"
+                      hint="Sets each span node's cable to match the run feeding it \u2014 that is what the trace reads"
+                      disabled={!!busy}
+                      onClick={syncNodeCables} />
                   </Menu>
 
                   {["gas", "water"].map((key) => {

@@ -220,23 +220,44 @@ export default function GISCanvasPage() {
   /* Which circuit an electric service cable belongs to.
 
      Circuit membership is written on the meter and nowhere else, so a
-     service cable carries only the seed it was drawn for. Isolating a
+     service cable carries only the plot it was drawn for. Isolating a
      circuit therefore hid the meters of other circuits and left their
      service cables on the drawing, running to nothing.
 
-     Derived from the meter on the same seed rather than stamped onto the
-     cable. Membership then has one home: moving a meter to another
-     circuit takes its service cable with it, with nothing to keep in
-     step and nothing to go stale. */
-  const circuitBySeed = useMemo(() => {
-    const m = new Map();
+     Derived from the meter rather than stamped onto the cable.
+     Membership then has one home: moving a meter to another circuit
+     takes its service cable with it, with nothing to keep in step and
+     nothing to go stale.
+
+     Resolved by every route the rest of the app uses, because the link
+     is not made the same way everywhere — a meter may name its seed
+     directly or only share a Plot_ID with it, and the same is true of
+     the cable. Following only one of them left half the cables behind. */
+  const circuitLookup = useMemo(() => {
+    const seedToPlot = new Map();     // seed Feature_ID -> Plot_ID
+    const plotToSeed = new Map();     // Plot_ID        -> seed Feature_ID
+    for (const f of features) {
+      if (f.Feature_Role !== "plot" || f.Plot_ID == null) continue;
+      seedToPlot.set(String(f.Feature_ID), String(f.Plot_ID));
+      plotToSeed.set(String(f.Plot_ID), String(f.Feature_ID));
+    }
+
+    const bySeed = new Map();
+    const byPlot = new Map();
     for (const f of features) {
       if (f.Feature_Role !== "meter" || f.Layer_Key !== "electric") continue;
-      const seed = f.Attributes?.Seed_Feature_ID;
       const cid = f.Attributes?.Circuit_ID;
-      if (seed != null && cid != null) m.set(String(seed), String(cid));
+      if (cid == null) continue;
+      const seed = f.Attributes?.Seed_Feature_ID != null
+        ? String(f.Attributes.Seed_Feature_ID)
+        : (f.Plot_ID != null ? plotToSeed.get(String(f.Plot_ID)) : null);
+      if (seed != null) bySeed.set(seed, String(cid));
+      const plot = f.Plot_ID != null
+        ? String(f.Plot_ID)
+        : (seed != null ? seedToPlot.get(seed) : null);
+      if (plot != null) byPlot.set(plot, String(cid));
     }
-    return m;
+    return { bySeed, byPlot, seedToPlot };
   }, [features]);
 
   /* The circuit a feature belongs to, if any — its own, or the one its
@@ -244,9 +265,24 @@ export default function GISCanvasPage() {
   const circuitOf = useCallback((f) => {
     if (f.Layer_Key !== "electric") return null;
     if (f.Attributes?.Circuit_ID != null) return String(f.Attributes.Circuit_ID);
+
+    const { bySeed, byPlot, seedToPlot } = circuitLookup;
     const seed = f.Attributes?.Seed_Feature_ID;
-    return seed != null ? (circuitBySeed.get(String(seed)) ?? null) : null;
-  }, [circuitBySeed]);
+    if (seed != null) {
+      const bs = bySeed.get(String(seed));
+      if (bs != null) return bs;
+      const plot = seedToPlot.get(String(seed));
+      if (plot != null) {
+        const bp = byPlot.get(plot);
+        if (bp != null) return bp;
+      }
+    }
+    if (f.Plot_ID != null) {
+      const bp = byPlot.get(String(f.Plot_ID));
+      if (bp != null) return bp;
+    }
+    return null;
+  }, [circuitLookup]);
 
   /* Electric only, and checked rather than assumed. A circuit is a fact
      about the LV network; anything on another layer that happens to

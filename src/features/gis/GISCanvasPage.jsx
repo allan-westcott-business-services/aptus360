@@ -4152,8 +4152,23 @@ export default function GISCanvasPage() {
                       onClick={() => setShowLabels(!showLabels)} />
 
                     <div className="gm-sep" />
-                    <MenuItem label="Show Everything" disabled={!hidden.length}
-                      onClick={() => { setHidden([]); setSolo(null); }} />
+                    {/* Everything back, whatever put it away.
+
+                        Circuit isolation is held apart from the hidden
+                        set so the two do not undo each other, and this
+                        was the cost of that: with a circuit isolated and
+                        nothing else hidden, the one item that brings
+                        things back was greyed out, and the only way out
+                        was a right-click on a feature of the isolated
+                        circuit. Anyone who could not find one was stuck
+                        with meters they could not see and no way to say
+                        so. */}
+                    <MenuItem label="Show Everything"
+                      disabled={!hidden.length && isolatedCircuit == null}
+                      hint="Unhides every layer and ends any circuit isolation"
+                      onClick={() => {
+                        setHidden([]); setSolo(null); setIsolatedCircuit(null);
+                      }} />
                   </Menu>
 
                   <Menu id="trench" label="Trench" open={open} setOpen={setOpen}>
@@ -4650,6 +4665,34 @@ export default function GISCanvasPage() {
                   Cancel &middot; <kbd>Esc</kbd>
                 </button>
               </div>
+            )}
+
+            {/* Anything not on screen says so.
+
+                Hiding is easy to do and easy to forget, and the drawing
+                gives no sign of it — features simply are not there, which
+                looks exactly like features that were never drawn or have
+                been deleted. Someone hunting for meters that are merely
+                hidden has no way to tell which. So: a standing note of
+                what is put away, and one click to bring it back. */}
+            {(hidden.length > 0 || isolatedCircuit != null) && (
+              <button className="gis-hidden"
+                title="Unhide every layer and end any circuit isolation"
+                onClick={() => { setHidden([]); setSolo(null); setIsolatedCircuit(null); }}>
+                {isolatedCircuit != null && (
+                  <span>
+                    Showing {circuitsFrom(features)
+                      .find((c) => String(c.id) === String(isolatedCircuit))?.name
+                      ?? `circuit ${isolatedCircuit}`} only
+                  </span>
+                )}
+                {hidden.length > 0 && (
+                  <span>
+                    {hidden.length} layer{hidden.length === 1 ? "" : "s"} hidden
+                  </span>
+                )}
+                <strong>Show everything</strong>
+              </button>
             )}
 
             {/* What is defined so far: the POC's agreed output and the
@@ -5241,6 +5284,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gp-stop { background: none; border: none; cursor: pointer; font: 600 11px inherit;
   color: #b91c1c; padding: 2px 6px; border-radius: 4px; }
 .gp-stop:hover { background: #fef2f2; }
+.gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
+  align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;
+  color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;
+  font: 600 11.5px inherit; box-shadow: 0 4px 14px rgba(15,23,42,.12); }
+.gis-hidden:hover { border-color: #d97706; }
+.gis-hidden strong { text-decoration: underline; }
 .gis-elec { position: absolute; right: 12px; top: 12px; z-index: 5; display: flex;
   align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 45%; }
 .ge-poc { background: #0f766e; color: #fff; border-radius: 20px; padding: 2px 10px;

@@ -60,6 +60,12 @@ export default function FeatureEditor({
   });
   const setPlotField = (k) => (v) => setPlotFields((p) => ({ ...p, [k]: v }));
 
+  /* Whether the plot record carried a heat pump model at all. Absent is
+     not the same as empty: a record without the property tells us
+     nothing about the plot, whereas null tells us there is no model. */
+  const pumpKnown = plot != null && "heat_pump_model_id" in plot;
+  const [pumpTouched, setPumpTouched] = useState(false);
+
   /* Whether the fields the load is derived from have been changed but
      not yet saved. Compared as strings because the selects hand back
      strings and the plot record holds numbers, so a straight !== reports
@@ -102,13 +108,32 @@ export default function FeatureEditor({
         const config = (lookups?.propertyConfigs || [])
           .find((c) => String(c.Property_Config_ID) === String(plotFields.Property_Config_ID));
 
-        await onSavePlot(feature.Plot_ID, {
+        /* Only the fields this editor actually loaded.
+
+           A plot record that arrives without heat_pump_model_id — as it
+           did before the column was added to gis_unplaced_plots — gives
+           the picker an empty value indistinguishable from "no model
+           chosen". Sending that back cleared the model from every plot
+           whose seed was opened and saved, silently, with the editor
+           showing exactly what it had just destroyed.
+
+           So a field absent from the record is left alone unless someone
+           has touched it. Belt and braces alongside the migration: the
+           next column added to that function should not be able to do
+           this again. */
+        const changes = {
           Property_Config_ID: plotFields.Property_Config_ID || null,
           Heat_Source_ID: plotFields.Heat_Source_ID || null,
+        };
+        if (pumpKnown || pumpTouched) {
           // Clearing the pump when the source isn't one, so a stale model
           // can't sit against a gas plot
-          Heat_Pump_Model_ID: needsPump ? (plotFields.Heat_Pump_Model_ID || null) : null,
-        }, {
+          changes.Heat_Pump_Model_ID = needsPump
+            ? (plotFields.Heat_Pump_Model_ID || null)
+            : null;
+        }
+
+        await onSavePlot(feature.Plot_ID, changes, {
           Bedrooms: config?.Bedrooms ?? null,
           Config: config?.Code ?? null,
         });
@@ -525,7 +550,10 @@ export default function FeatureEditor({
                 <div className="fld">
                   <label htmlFor="fe-pump">Heat pump model</label>
                   <select id="fe-pump" value={plotFields.Heat_Pump_Model_ID}
-                    onChange={(e) => setPlotField("Heat_Pump_Model_ID")(e.target.value)}>
+                    onChange={(e) => {
+                      setPumpTouched(true);
+                      setPlotField("Heat_Pump_Model_ID")(e.target.value);
+                    }}>
                     <option value="">&mdash; None &mdash;</option>
                     {(lookups?.heatPumpModels || []).map((m) => (
                       <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
@@ -540,6 +568,18 @@ export default function FeatureEditor({
                     ))}
                   </select>
                 </div>
+              )}
+
+              {/* The model is on the plot but this screen was not given
+                  it — the plot list does not carry the column yet. Said
+                  plainly rather than shown as "None", which is the same
+                  thing the picker says about a plot that genuinely has
+                  no model. */}
+              {needsPump && !pumpKnown && (
+                <p className="fe-derived fe-kva-stale">
+                  This screen can&rsquo;t read the heat pump model yet &mdash; check the
+                  Plots tab. Saving here won&rsquo;t change it.
+                </p>
               )}
 
               {/* What the chosen unit is, from the register. Read-only —

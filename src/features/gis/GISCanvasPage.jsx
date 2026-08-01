@@ -104,6 +104,13 @@ export default function GISCanvasPage() {
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
+  /* The drawing as it was when the trace was computed. The trace is a
+     snapshot — nothing recomputes it — so changing a cable or the
+     substation leaves a table of figures that look current and are not.
+     Compared rather than recomputed automatically: rewriting numbers
+     under someone reading them is its own hazard, and a table that says
+     it is out of date is more use than one that silently changes. */
+  const [traceAt, setTraceAt] = useState(null);
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
   const [traceLeg, setTraceLeg] = useState(null);   // which leg is highlighted
@@ -1965,9 +1972,79 @@ export default function GISCanvasPage() {
     writeGeometry(f.Feature_ID, next);
   }
 
+  /* The span node a cable run feeds.
+
+     Volt drop is totalled span by span and each stretch uses the cable
+     of the node it arrives at, so the figure the trace reads lives on
+     the node rather than on the drawn section. Changing the cable on a
+     section therefore changed nothing anyone could see: both pickers
+     look the same and are filled from the same catalogue, and only one
+     of them is read.
+
+     Which node a section feeds is decided by Span_Seq rather than by
+     which end of the geometry it is, because a line redrawn or joined
+     can run either way round while the numbering always counts outward
+     from the substation. The node with the higher sequence is the one
+     downstream, and downstream is what the run feeds. */
+  const nodeFedBy = useCallback((line) => {
+    const g = line?.Geometry || [];
+    if (g.length < 2) return null;
+    const cid = line.Attributes?.Circuit_ID;
+    if (cid == null) return null;
+    const ends = [g[0], g[g.length - 1]];
+
+    const near = features.filter((f) =>
+      f.Feature_Role === "spannode"
+      && String(f.Attributes?.Circuit_ID) === String(cid)
+      && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
+      && (f.Geometry || []).length
+      && ends.some((e) =>
+        Math.hypot(f.Geometry[0][0] - e[0], f.Geometry[0][1] - e[1]) <= CONNECT_M));
+
+    if (!near.length) return null;
+    return near.reduce((a, b) =>
+      (Number(b.Attributes?.Span_Seq ?? -1) > Number(a.Attributes?.Span_Seq ?? -1) ? b : a));
+  }, [features]);
+
   async function saveFeature(id, changes) {
+    const before = features.find((x) => x.Feature_ID === id);
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
-    try { await updateFeature(projectId, id, changes); }
+    try {
+      await updateFeature(projectId, id, changes);
+
+      /* Carry a changed cable through to the node that reads it.
+
+         Only when it actually changed, and only onto a node that was
+         carrying the old size — a node someone has deliberately set to
+         something else is a decision, and overwriting it because a
+         section beneath it was edited would undo that silently. A node
+         with nothing set is filled in, since no figure at all makes
+         everything beyond it unknowable. */
+      const wasCable = before?.Attributes?.VD_Cable_Size_ID ?? null;
+      const nowCable = changes?.Attributes?.VD_Cable_Size_ID ?? null;
+      const isFeeder = before?.Feature_Type === "line"
+        && before?.Layer_Key === "electric";
+
+      if (isFeeder && nowCable != null && String(nowCable) !== String(wasCable)) {
+        const node = nodeFedBy({ ...before, ...changes });
+        const nodeCable = node?.Attributes?.VD_Cable_Size_ID ?? null;
+        if (node && (nodeCable == null || String(nodeCable) === String(wasCable))) {
+          const attrs = { ...node.Attributes, VD_Cable_Size_ID: nowCable };
+          setFeatures((f) => f.map((x) =>
+            (x.Feature_ID === node.Feature_ID ? { ...x, Attributes: attrs } : x)));
+          await updateFeature(projectId, node.Feature_ID, { Attributes: attrs });
+          setStatus(`Cable also set on ${node.Attributes?.Span_Label ?? "the span node"} `
+            + "\u2014 that is the figure the trace reads");
+          setTimeout(() => setStatus(""), 8000);
+        } else if (node && nodeCable != null) {
+          /* Left alone, but said out loud: the trace will go on using
+             the node's figure and the two now disagree. */
+          setStatus(`${node.Attributes?.Span_Label ?? "The span node"} keeps its own cable `
+            + "\u2014 the trace reads that, not this section");
+          setTimeout(() => setStatus(""), 9000);
+        }
+      }
+    }
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
 
@@ -3477,6 +3554,7 @@ export default function GISCanvasPage() {
     }
 
     setTrace(r);
+    setTraceAt({ features, lookups });
     setError("");
   }
 
@@ -4546,6 +4624,12 @@ export default function GISCanvasPage() {
                     </p>
                   </div>
                   <button className="btn accent sm" onClick={exportTrace}>Export</button>
+                  {(traceAt && (traceAt.features !== features || traceAt.lookups !== lookups)) && (
+                    <button className="btn sm tr-stale" onClick={runFullTrace}
+                      title="The drawing has changed since these figures were worked out">
+                      Out of date &mdash; re-run
+                    </button>
+                  )}
                   <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">
                     &times;
                   </button>
@@ -4769,6 +4853,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .tc-hint { font-size: 10.5px; color: var(--muted); margin: 7px 0 0; }
 .cl-again { display: flex; align-items: center; gap: 7px; margin: 10px 0 0; font-size: 11px;
   color: var(--muted); cursor: pointer; }
+.tr-stale { background: #fffbeb; border: 1px solid #fcd34d; color: #92400e;
+  border-radius: 6px; cursor: pointer; font: 700 11px inherit; padding: 4px 10px;
+  margin-right: 8px; }
+.tr-stale:hover { border-color: #d97706; }
 .gis-ctx { position: absolute; z-index: 30; background: var(--white);
   border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 168px;
   box-shadow: 0 10px 28px rgba(15,23,42,.2); }

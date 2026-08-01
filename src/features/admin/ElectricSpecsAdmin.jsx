@@ -134,6 +134,10 @@ export default function ElectricSpecsAdmin() {
       { key: "CSA_mm2", label: "CSA mm\u00B2", type: "number", width: 90 },
       { key: "Rating_Amps", label: "Rating A", type: "number", width: 90 },
       { key: "Preferred_Fuse_A", label: "Fuse A", type: "number", width: 85 },
+      /* How much comes on one drum. A run longer than this is jointed at
+         each multiple, so an empty cell means no drum joints are placed
+         for that size — not that the drum is unlimited. */
+      { key: "Drum_Length_m", label: "Drum m", type: "number", width: 90 },
       /* The two the volt drop sum reads. */
       { key: "Loop_Impedance_Ohm", label: "Loop Z \u2126/km", type: "number", width: 110 },
       { key: "Volt_Drop_Base", label: "VD base", type: "number", width: 90 },

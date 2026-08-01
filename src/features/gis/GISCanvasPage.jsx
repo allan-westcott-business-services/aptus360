@@ -39,6 +39,7 @@ import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, servic
   spanTrace, orderNodesFromRoot } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
+import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -2007,9 +2008,79 @@ export default function GISCanvasPage() {
     return best;
   }
 
+  /* Two features that must not be linked to each other.
+
+     Circuits are separate networks: each takes its own way on the
+     substation, and two of them sharing a trench are not joined however
+     close their cables run. Linking them put a span node of one circuit
+     into the graph of another, and Connects is what distancesFrom walks
+     for the circuit report — so a meter could be measured back to the
+     substation along a cable that does not feed it.
+
+     Only where both carry a circuit. A trench, a substation or a service
+     cable belongs to no circuit and links to whatever it touches. */
+  const linkable = useCallback((a, b) => {
+    const ca = a?.Attributes?.Circuit_ID;
+    const cb = b?.Attributes?.Circuit_ID;
+    if (ca == null || cb == null) return true;
+    return String(ca) === String(cb);
+  }, []);
+
+  const linksFor = useCallback((f, pool) =>
+    connectedTo(f.Geometry, pool.filter((x) => linkable(f, x)), f.Feature_ID),
+  [linkable]);
+
+  /* Moving something changes what it is joined to.
+
+     Connects is computed from geometry, so a feature that moves is
+     joined to whatever is at its new position and no longer joined to
+     what was at the old one — but nothing recomputed it, and the graph
+     went on describing where things used to be. Dragging a span node a
+     few metres to see the routing more clearly left it linked to cables
+     it no longer touched, and the circuit report went on measuring
+     through those links.
+
+     Recomputed for the feature and for everything on either side of the
+     move: what it used to touch has to be asked again too, or those
+     features keep a link to something that has left. That set is small —
+     the neighbours of one feature — so this costs a handful of rows
+     rather than a pass over the drawing. */
   async function writeGeometry(id, geometry) {
-    setFeatures((fs) => fs.map((f) => (f.Feature_ID === id ? { ...f, Geometry: geometry } : f)));
-    try { await moveFeatures(projectId, [{ Feature_ID: id, Geometry: geometry }]); }
+    const before = features.find((f) => f.Feature_ID === id);
+    const moved = { ...(before || {}), Feature_ID: id, Geometry: geometry };
+    const next = features.map((f) => (f.Feature_ID === id ? moved : f));
+    setFeatures(next);
+
+    try {
+      await moveFeatures(projectId, [{ Feature_ID: id, Geometry: geometry }]);
+
+      /* Only features that carry links are worth recomputing: a plot
+         seed or a meter holds none and cannot go stale. */
+      const wasLinked = (before?.Attributes?.Connects || []).map(Number);
+      const nowLinked = linksFor(moved, next).map(Number);
+      const touched = new Set([id, ...wasLinked, ...nowLinked]);
+
+      const rows = next
+        .filter((f) => touched.has(Number(f.Feature_ID))
+          && (f.Feature_Type === "line" || f.Feature_Role === "spannode"))
+        .map((f) => ({ f, Connects: linksFor(f, next) }))
+        .filter(({ f, Connects }) => {
+          const was = f.Attributes?.Connects || [];
+          return [...was].sort().join(",") !== [...Connects].sort().join(",");
+        })
+        .map(({ f, Connects }) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Connects },
+        }));
+
+      if (rows.length) {
+        setFeatures((fs) => fs.map((f) => {
+          const u = rows.find((r) => r.Feature_ID === f.Feature_ID);
+          return u ? { ...f, Attributes: u.Attributes } : f;
+        }));
+        await bulkUpdateFeatures(projectId, rows);
+      }
+    }
     catch (e) { setError(e.message); await load(projectId); }
   }
 
@@ -2431,6 +2502,111 @@ export default function GISCanvasPage() {
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
+  }
+
+  /* Joints on the LV feeders, classified by what meets at each point.
+
+     Breech where a feeder divides, service where a service cable leaves
+     it, straight where the cable changes — either because the customer
+     count has crossed another cable's worth or because a different size
+     has been specified beyond that point.
+
+     Worked out from the routed network rather than from where line ends
+     happen to coincide, which is what the older database routine does:
+     that groups endpoints across every line in the drawing, so it cannot
+     tell a feeder from a water main nor a service from a spur, and calls
+     everything either "tee" or "straight".
+
+     Feature_Role is set, which the database routine never did — the
+     Electric menu's Joints row and Bulk Delete's "All joints" both look
+     for it, so joints placed by that routine appear in neither. */
+  async function placeFeederJoints({ silent = false, srcFeatures = null } = {}) {
+    const src = srcFeatures || features;
+    const circuits = circuitsFrom(src);
+    if (!circuits.length) {
+      if (!silent) setError("No circuits defined yet — use Link to Circuit first.");
+      return 0;
+    }
+
+    const planned = planJoints(src, circuits, {
+      lineTypes,
+      plotById: (id) => plotList.find((p) => p.plot_id === id),
+      /* For the drum rule: how much cable comes on one drum, per size.
+         A size with none recorded places no drum joints. */
+      cableById: (id) => (lookups?.cableSizes || [])
+        .find((c) => String(c.Cable_Size_ID) === String(id)) || null,
+    });
+    const existing = src.filter((f) =>
+      f.Feature_Role === "joint" || f.Attributes?.Joint_Type != null);
+    const { add, update, stale } = reconcileJoints(planned, existing, CONNECT_M);
+
+    if (!add.length && !update.length) {
+      if (!silent) {
+        setStatus(planned.length
+          ? `All ${planned.length} joint(s) already in place`
+          : "No joints needed on the feeders yet");
+        setTimeout(() => setStatus(""), 6000);
+      }
+      return 0;
+    }
+
+    const tally = (list, get) => {
+      const t = {};
+      for (const x of list) { const k = get(x); t[k] = (t[k] || 0) + 1; }
+      return Object.entries(t).map(([k, n]) => `${n} ${JOINT_KINDS[k]?.label ?? k}`).join(", ");
+    };
+
+    if (!silent && !window.confirm(
+      `Place joints on the LV feeders?\n\n`
+      + (add.length ? `Add: ${tally(add, (j) => j.kind)}\n` : "")
+      + (update.length ? `Reclassify: ${tally(update, (u) => u.plan.kind)}\n` : "")
+      + (stale.length ? `\n${stale.length} existing joint(s) the network no longer calls for `
+        + "will be left alone.\n" : "")
+    )) return 0;
+
+    const attrsFor = (j) => ({
+      Joint_Type: j.kind,
+      Joint_Code: JOINT_KINDS[j.kind]?.code ?? null,
+      /* Every reason, not only the winning one, so a breech that is also
+         serving a plot can still say so. */
+      Joint_Reasons: j.reasons,
+      Ways_In: j.ways,
+      Services: j.services,
+      Circuit_ID: j.circuits?.length === 1 ? j.circuits[0] : null,
+      Circuits: j.circuits ?? [],
+      Generated: true,
+    });
+
+    if (!silent) setBusy("joints");
+    try {
+      for (const j of add) {
+        await createFeature(projectId, {
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: "joint",
+          Geometry: [j.point],
+          Label: JOINT_KINDS[j.kind]?.label ?? "Joint",
+          Attributes: attrsFor(j),
+        });
+      }
+      if (update.length) {
+        const rows = update.map((u) => ({
+          Feature_ID: u.feature.Feature_ID,
+          Attributes: { ...u.feature.Attributes, ...attrsFor(u.plan) },
+        }));
+        for (let i = 0; i < rows.length; i += 100) {
+          await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+        }
+      }
+      if (!silent) await load(projectId);
+      setStatus(`${add.length} joint(s) placed`
+        + (update.length ? `, ${update.length} reclassified` : "")
+        + (stale.length ? `, ${stale.length} left alone` : ""));
+      setTimeout(() => setStatus(""), 9000);
+      setError("");
+      return add.length + update.length;
+    } catch (e) { setError(e.message); return 0; }
+    finally { if (!silent) setBusy(""); }
   }
 
   /* Renaming a circuit.
@@ -2896,7 +3072,7 @@ export default function GISCanvasPage() {
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
-          Attributes: { ...f.Attributes, Connects: connectedTo(f.Geometry, all, f.Feature_ID) },
+          Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
         }))
         /* Only where it changed, so a large drawing is not rewritten in
            full every time the network is rebuilt. */
@@ -2908,12 +3084,28 @@ export default function GISCanvasPage() {
         await bulkUpdateFeatures(projectId, links.slice(i, i + 100));
       }
 
+      /* Joints, from what has just been routed.
+
+         Classified against `all` — the drawing as read back after the
+         runs and nodes were created — and not against `features`, which
+         in this closure is still the drawing as it was before the build
+         and would place joints for the network as it used to be.
+
+         The link pass above only writes Connects, which nothing here
+         reads: the classification works from geometry and load, so the
+         set read before those writes is the right one. */
+      let jointsMade = 0;
+      try {
+        jointsMade = await placeFeederJoints({ silent: true, srcFeatures: all });
+      } catch { /* A joint that cannot be placed must not fail the build. */ }
+
       await load(projectId);
 
       if (failed.length) setError(`Couldn\u2019t route: ${failed.join(" \u00B7 ")}`);
       else setError("");
 
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
+        + (jointsMade ? `, ${jointsMade} joint(s)` : "")
         + (nodesMade ? `, ${nodesMade} span node(s)` : "")
         + (renumbered ? `, ${renumbered} renumbered` : "")
         + (startCable
@@ -3017,7 +3209,7 @@ export default function GISCanvasPage() {
       const updates = [...ids].map((id) => all.find((x) => x.Feature_ID === id)).filter(Boolean)
         .map((x) => ({
           Feature_ID: x.Feature_ID,
-          Attributes: { ...x.Attributes, Connects: connectedTo(x.Geometry, all, x.Feature_ID) },
+          Attributes: { ...x.Attributes, Connects: linksFor(x, all) },
         }));
       if (updates.length) await bulkUpdateFeatures(projectId, updates);
       await load(projectId);
@@ -3185,7 +3377,7 @@ export default function GISCanvasPage() {
         const all = fresh.features || [];
         const updates = all.filter((x) => x.Feature_Type === "line").map((x) => ({
           Feature_ID: x.Feature_ID,
-          Attributes: { ...x.Attributes, Connects: connectedTo(x.Geometry, all, x.Feature_ID) },
+          Attributes: { ...x.Attributes, Connects: linksFor(x, all) },
         }));
         for (let i = 0; i < updates.length; i += 100) {
           await bulkUpdateFeatures(projectId, updates.slice(i, i + 100));
@@ -3539,7 +3731,7 @@ export default function GISCanvasPage() {
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "meter")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
-          Attributes: { ...f.Attributes, Connects: connectedTo(f.Geometry, all, f.Feature_ID) },
+          Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
         }))
         .filter((u) => {
           const was = all.find((f) => f.Feature_ID === u.Feature_ID)?.Attributes?.Connects || [];
@@ -4089,6 +4281,10 @@ export default function GISCanvasPage() {
                       hint="Routes each circuit's cables along the trenches"
                       disabled={busy === "feeder" || !circuitsFrom(features).length}
                       onClick={() => buildLvNetwork()} />
+                    <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
+                      hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes"
+                      disabled={!!busy || !circuitsFrom(features).length}
+                      onClick={() => placeFeederJoints()} />
                     <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Joints"}
                       hint="Joints where services meet mains"
                       disabled={!!busy} onClick={() => runNetwork("joints")} />

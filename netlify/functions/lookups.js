@@ -39,7 +39,7 @@ export default async function handler() {
          Electric_Cable_Size_ID. The table names carry the prefix; the
          keys inside them do not. */
       cableSizes: db.from("Electric_Cable_Size")
-        .select("Cable_Size_ID,Cable_Type_ID,Size_Label,Loop_Impedance_Ohm,Volt_Drop_Base,CSA_mm2,Rating_Amps,Material,Preferred_Fuse_A")
+        .select("Cable_Size_ID,Cable_Type_ID,Size_Label,Loop_Impedance_Ohm,Volt_Drop_Base,CSA_mm2,Rating_Amps,Material,Preferred_Fuse_A,Drum_Length_m")
         .eq("Is_Active", true).order("Sort_Order"),
       cableTypes: db.from("Electric_Cable_Type")
         .select("Cable_Type_ID,Cable_Type,Cable_Code,Usage_Type,Voltage_Rating_ID").eq("Is_Active", true).order("Sort_Order"),

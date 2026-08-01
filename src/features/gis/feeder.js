@@ -196,15 +196,29 @@ export function feederSections(features = [], opts = {}) {
   }
   /* A service spur feeds one plot; the feeder does not run along it. */
   const mainsChildren = (u) => (children.get(u) || []).filter((c) => !parSvc[c]);
-  const isBreak = (u) => u === S || mainsChildren(u).length !== 1;
+
+  /* The branches this circuit actually draws load through.
+
+     The graph is the whole trench network, shared by every circuit, so a
+     node where one circuit forks has two mains children in every
+     circuit's model — including the circuits that only use one of them.
+     Counting those broke a run at a junction it passes straight through:
+     circuit A was cut at B1 because circuit B forks there, and came back
+     as two cables where the ground holds one.
+
+     Load is what makes a branch part of this circuit. Filtering on it is
+     also what junctionNodes already does when placing span nodes, so the
+     two now agree about where a run divides — they must, because a
+     section end and a span node are meant to be the same place. */
+  const loadChildren = (u) => mainsChildren(u).filter((c) => cum[c] > 0);
+  const isBreak = (u) => u === S || loadChildren(u).length !== 1;
 
   const sections = [];
   const kvaAt = (i) => Math.round((cumKva[i] || 0) * 10) / 10;
 
   for (let u = 0; u < nodes.length; u++) {
     if (!isBreak(u)) continue;
-    for (const first of mainsChildren(u)) {
-      if (cum[first] <= 0) continue;
+    for (const first of loadChildren(u)) {
 
       let cur = first;
       let pts = [nodes[u].slice(), nodes[first].slice()];
@@ -214,10 +228,9 @@ export function feederSections(features = [], opts = {}) {
       let cables = cablesFor(cum[first], perCable);
 
       while (!isBreak(cur)) {
-        const mc = mainsChildren(cur);
+        const mc = loadChildren(cur);
         if (mc.length !== 1) break;
         const next = mc[0];
-        if (cum[next] <= 0) break;
 
         const nextCables = cablesFor(cum[next], perCable);
         if (nextCables !== cables) {

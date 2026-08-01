@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { listProjects } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
+  restoreFeatures, listUndo, recordUndo, markUndone, clearUndo,
   placeJoints, traceNetwork, assignMeters, bulkUpdateFeatures,
 } from "../../api/gis.js";
 import {
@@ -40,6 +41,11 @@ import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, servic
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
+import {
+  diffFeatures, isEmptyDelta, deltaSize, planMany, emptyStack,
+  record as recordEntry, canUndo, canRedo, popUndo, popRedo,
+  undoLabel, redoLabel,
+} from "./undoStack.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -185,6 +191,9 @@ export default function GISCanvasPage() {
   }, [projects]);
 
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
+  /* The history for this project, read once when it opens. Separate from
+     load so a history that fails to read cannot stop the drawing. */
+  useEffect(() => { if (projectId) loadHistory(projectId); }, [projectId, loadHistory]);
 
   const layerOf = useCallback(
     (key) => layers.find((l) => l.Layer_Key === key) || { Colour: "#64748b", Label: key },
@@ -2008,6 +2017,168 @@ export default function GISCanvasPage() {
     return best;
   }
 
+  /* ── Undo and redo ──
+
+     The unit is the feature row. An action records the rows it changed —
+     as they were, and as they became — and nothing else, so an entry
+     costs what the action touched rather than what the drawing contains.
+     Auto Service over sixty plots is one entry, because it was one thing
+     that was asked for.
+
+     Inverses are recorded, not derived: working out how to reverse each
+     action separately would be twenty-five reversals to get right and to
+     keep right, whereas a before-and-after of the rows is the same shape
+     whatever did the changing.
+
+     The history lives in the database, so it survives a reload — which is
+     when it is most wanted, since the drawing that needs undoing is often
+     the one that made you reload. */
+  const [stack, setStack] = useState(emptyStack());
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  /* The drawing as it stands, readable from inside an async action
+     without waiting for a re-render. */
+  const featuresRef = useRef(features);
+  featuresRef.current = features;
+
+  const loadHistory = useCallback(async (pid) => {
+    if (!pid) return;
+    try {
+      const h = await listUndo(pid);
+      setStack({
+        past: (h.past || []).map((r) => ({
+          id: r.Undo_ID, label: r.Label, delta: r.Delta, at: r.Created_At,
+        })),
+        future: (h.future || []).map((r) => ({
+          id: r.Undo_ID, label: r.Label, delta: r.Delta, at: r.Created_At,
+        })),
+      });
+    } catch { /* No history is not a reason to fail the page. */ }
+  }, []);
+
+  /* Record what an action did, given the drawing either side of it.
+
+     Both sides are read from the server rather than from component
+     state: state after an await has not necessarily re-rendered, and a
+     delta computed against a stale "after" would record an action as
+     having done less than it did — which is worse than not recording it,
+     because undo would then half-reverse it. */
+  const recordAction = useCallback(async (label, before, after) => {
+    const delta = diffFeatures(before, after);
+    if (isEmptyDelta(delta)) return;
+
+    let id = null;
+    try {
+      const r = await recordUndo(projectId, label, delta);
+      id = r?.entry?.Undo_ID ?? null;
+    } catch {
+      /* A history that cannot be written must not fail the work: the
+         action itself has already succeeded. */
+      return;
+    }
+    /* Through the stack helper so the limit and the "a new action clears
+       the future" rule are applied in one place, then the server's id
+       put on the entry it just made. */
+    setStack((st) => {
+      const next = recordEntry(st, label, delta);
+      const past = next.past.slice(0, -1).concat([{ id, label, delta }]);
+      return { past, future: [] };
+    });
+  }, [projectId]);
+
+  /* Wrap an action so it lands in the history as one step.
+
+     Reads the drawing before and after. That is one extra fetch per
+     action, which is nothing beside what these actions do — they are the
+     bulk operations, not a mouse drag. */
+  const withUndo = useCallback(async (label, fn) => {
+    let before = null;
+    try { before = (await listGis(projectId)).features || []; }
+    catch { /* Carry on without history rather than blocking the work. */ }
+
+    const result = await fn();
+
+    if (before) {
+      try {
+        const after = (await listGis(projectId)).features || [];
+        await recordAction(label, before, after);
+      } catch { /* as above */ }
+    }
+    return result;
+  }, [projectId, recordAction]);
+
+  /* Applying a delta, in either direction.
+
+     Restore, remove and update are three separate calls because they are
+     three different things: a deleted row has to come back under the id
+     it had, since Connects is an array of ids and a row restored under a
+     new one is referenced by nothing. */
+  const applyPlan = useCallback(async (plan) => {
+    if (plan.restore.length) {
+      for (let i = 0; i < plan.restore.length; i += 100) {
+        await restoreFeatures(projectId, plan.restore.slice(i, i + 100));
+      }
+    }
+    if (plan.update.length) {
+      for (let i = 0; i < plan.update.length; i += 100) {
+        await restoreFeatures(projectId, plan.update.slice(i, i + 100));
+      }
+    }
+    if (plan.remove.length) {
+      for (let i = 0; i < plan.remove.length; i += 100) {
+        await deleteFeatures(projectId, plan.remove.slice(i, i + 100));
+      }
+    }
+  }, [projectId]);
+
+  /* Step back, or several steps at once.
+
+     The features are written first and the pointer moved only once that
+     has worked, so a failed write cannot leave the history claiming a
+     step that did not happen. */
+  const runUndo = useCallback(async (count = 1) => {
+    if (!canUndo(stack) || undoBusy) return;
+    const n = Math.max(1, Math.min(count, stack.past.length));
+    const entries = stack.past.slice(-n);
+
+    setUndoBusy(true);
+    try {
+      await applyPlan(planMany(entries, "undo"));
+      await markUndone(projectId, entries.map((e) => e.id).filter(Boolean), true);
+      let st = stack;
+      for (let i = 0; i < n; i++) st = popUndo(st).stack;
+      setStack(st);
+      await load(projectId);
+      setStatus(n === 1
+        ? `Undone: ${entries[entries.length - 1].label}`
+        : `${n} steps undone`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(`Couldn\u2019t undo: ${e.message}`); await load(projectId); }
+    finally { setUndoBusy(false); }
+  }, [stack, undoBusy, applyPlan, projectId, load]);
+
+  const runRedo = useCallback(async (count = 1) => {
+    if (!canRedo(stack) || undoBusy) return;
+    const n = Math.max(1, Math.min(count, stack.future.length));
+    const entries = stack.future.slice(-n).reverse();
+
+    setUndoBusy(true);
+    try {
+      await applyPlan(planMany(entries, "redo"));
+      await markUndone(projectId, entries.map((e) => e.id).filter(Boolean), false);
+      let st = stack;
+      for (let i = 0; i < n; i++) st = popRedo(st).stack;
+      setStack(st);
+      await load(projectId);
+      setStatus(n === 1 ? `Redone: ${entries[0].label}` : `${n} steps redone`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(`Couldn\u2019t redo: ${e.message}`); await load(projectId); }
+    finally { setUndoBusy(false); }
+  }, [stack, undoBusy, applyPlan, projectId, load]);
+
   /* Two features that must not be linked to each other.
 
      Circuits are separate networks: each takes its own way on the
@@ -2200,7 +2371,13 @@ export default function GISCanvasPage() {
         (Number(x.plot_id) === Number(gone.Plot_ID) ? { ...x, placed: false } : x)));
     }
 
-    try { await deleteFeatures(projectId, [id]); }
+    try {
+      await deleteFeatures(projectId, [id]);
+      /* Recorded from the row itself rather than by reading the drawing
+         twice: what was deleted is already in hand, so the delta is
+         exact and costs nothing. */
+      if (gone) await recordAction(`Delete ${classLabel(gone, lineTypes) || "feature"}`, [gone], []);
+    }
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
 
@@ -3228,8 +3405,13 @@ export default function GISCanvasPage() {
   async function runBulkDelete(ids, catCount) {
     if (!window.confirm(
       `Delete ${ids.length} feature(s) across ${catCount} categor${catCount === 1 ? "y" : "ies"}?`
-      + "\n\nThis is permanent and cannot be undone."
+      + "\n\nUndo will bring them back, but not anything else that has "
+      + "happened since."
     )) return;
+
+    /* Captured before the first batch goes, or there is nothing left to
+       record: the rows are the only description of what was deleted. */
+    const doomed = features.filter((f) => ids.includes(f.Feature_ID));
 
     setBusy("bulkdel");
     setProgress({ done: 0, total: ids.length, label: "Deleting" });
@@ -3241,6 +3423,7 @@ export default function GISCanvasPage() {
         const done = Math.min(i + batch.length, ids.length);
         setProgress({ done, total: ids.length, label: `Deleting ${done} of ${ids.length}` });
       }
+      await recordAction(`Delete ${ids.length} feature(s)`, doomed, []);
       setBulkDelOpen(false);
       await load(projectId);
       setSelected([]);
@@ -3944,8 +4127,10 @@ export default function GISCanvasPage() {
     if (withPlots.length && !window.confirm(
       `${withPlots.length} of these are plot markers. Deleting removes the marker, not the plot. Continue?`
     )) return;
+    const rows = features.filter((f) => selected.includes(f.Feature_ID));
     try {
       await deleteFeatures(projectId, selected);
+      await recordAction(`Delete ${rows.length} feature(s)`, rows, []);
       setSelected([]);
       await load(projectId);
     } catch (e) { setError(e.message); }
@@ -3954,6 +4139,29 @@ export default function GISCanvasPage() {
   // keyboard
   useEffect(() => {
     const onKey = (e) => {
+      /* Undo and redo, but never while someone is typing.
+
+         A label field, a filter box and a plot range all take Z, and a
+         browser's own undo inside a text box is what anyone pressing it
+         there means. Checking the focused element is the only way to
+         tell the two apart. */
+      const el = e.target;
+      const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA"
+        || el.tagName === "SELECT" || el.isContentEditable);
+      if (!typing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
+        e.preventDefault();
+        if (e.shiftKey) runRedo(1); else runUndo(1);
+        return;
+      }
+      /* Ctrl+Y as well: it is redo on Windows and costs nothing to
+         accept alongside Ctrl+Shift+Z. */
+      if (!typing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "y") {
+        e.preventDefault();
+        runRedo(1);
+        return;
+      }
+
+      if (e.key === "Escape" && historyOpen) { setHistoryOpen(false); return; }
       if (e.key === "Escape" && picker) { setPicker(null); return; }
       if (e.key === "Escape") { setDraft([]); setTool("select"); setSelected([]); stopPlacing(); }
       if (e.key === "Enter" && drawing) finishDrawing();
@@ -4052,6 +4260,52 @@ export default function GISCanvasPage() {
                 onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
                 Draw line
               </button>
+            </div>
+
+            {/* Undo and redo.
+
+                Named, not bare arrows: "Undo" alone leaves you pressing
+                it and watching to find out what it did, which on an
+                action that redrew sixty plots is no way to work. The
+                caret opens the history so several steps can go at once —
+                undoing four things one at a time means four round trips
+                and four intermediate states nobody wanted to see. */}
+            <div className="gis-undo" role="group" aria-label="History">
+              <button className="gu-b" disabled={!canUndo(stack) || undoBusy}
+                title={undoLabel(stack)}
+                onClick={() => runUndo(1)}>
+                &#8630; Undo
+              </button>
+              <button className="gu-b" disabled={!canRedo(stack) || undoBusy}
+                title={redoLabel(stack)}
+                onClick={() => runRedo(1)}>
+                Redo &#8631;
+              </button>
+              <button className="gu-c" disabled={!canUndo(stack) || undoBusy}
+                title="Undo several steps at once"
+                aria-label="History"
+                onClick={() => setHistoryOpen((v) => !v)}>
+                &#9662;
+              </button>
+
+              {historyOpen && canUndo(stack) && (
+                <div className="gu-list" role="menu">
+                  <p className="gu-head">Undo back to&hellip;</p>
+                  {/* Newest first, and pressing one undoes everything
+                      down to and including it — which is what "go back to
+                      before I did that" means. */}
+                  {[...stack.past].reverse().map((e, i) => (
+                    <button key={e.id ?? i} className="gu-item"
+                      onClick={() => { setHistoryOpen(false); runUndo(i + 1); }}>
+                      <span>{e.label}</span>
+                      <span className="gu-n">
+                        {i === 0 ? "last" : `${i + 1} steps`}
+                        {" \u00B7 "}{deltaSize(e.delta)} feature(s)
+                      </span>
+                    </button>
+                  ))}
+                </div>
+              )}
             </div>
 
             {/* The line type is chosen from a menu now — Trench > Mains,
@@ -4191,7 +4445,8 @@ export default function GISCanvasPage() {
                     <div className="gm-sep" />
                     <MenuItem label={busy === "autoservice" ? "Auto Service\u2026" : "Auto Service"}
                       hint="Trench, meters and services for each plot seed"
-                      disabled={busy === "autoservice"} onClick={runAutoService} />
+                      disabled={busy === "autoservice"}
+                      onClick={() => withUndo("Auto Service", runAutoService)} />
                     <MenuItem label="Check Services Reach the Mains"
                       hint="Every service trench must meet a mains trench"
                       disabled={!projectId}
@@ -4295,11 +4550,11 @@ export default function GISCanvasPage() {
                     <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
                       hint="Routes each circuit's cables along the trenches"
                       disabled={busy === "feeder" || !circuitsFrom(features).length}
-                      onClick={() => buildLvNetwork()} />
+                      onClick={() => withUndo("Build LV Network", () => buildLvNetwork())} />
                     <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
                       hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes"
                       disabled={!!busy || !circuitsFrom(features).length}
-                      onClick={() => placeFeederJoints()} />
+                      onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
                     <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Joints"}
                       hint="Joints where services meet mains"
                       disabled={!!busy} onClick={() => runNetwork("joints")} />
@@ -4319,7 +4574,7 @@ export default function GISCanvasPage() {
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
                       hint="Sets each span node's cable to match the run feeding it \u2014 that is what the trace reads"
                       disabled={!!busy}
-                      onClick={syncNodeCables} />
+                      onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
                   </Menu>
 
                   {["gas", "water"].map((key) => {
@@ -4462,10 +4717,16 @@ export default function GISCanvasPage() {
               ? Number(poc.Attributes.Output) : null}
             onClose={() => setReportOpen(false)}
             busy={busy === "circuit"}
-            onRemoveFromCircuit={removeFromCircuit}
-            onDeleteCircuit={deleteCircuit}
-            onCreateCircuit={createCircuitFromMeters}
-          onMoveToCircuit={moveToCircuit}
+            onRemoveFromCircuit={(ids, c) =>
+              withUndo(`Remove ${ids.length} meter(s) from ${c.name}`,
+                () => removeFromCircuit(ids, c))}
+            onDeleteCircuit={(c) => withUndo(`Delete ${c.name}`, () => deleteCircuit(c))}
+            onCreateCircuit={(ids) =>
+              withUndo("Assign meters to a new circuit",
+                () => createCircuitFromMeters(ids))}
+            onMoveToCircuit={(ids, target) =>
+              withUndo(`Move ${ids.length} meter(s) to another circuit`,
+                () => moveToCircuit(ids, target))}
           />
         );
       })()}
@@ -5284,6 +5545,25 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gp-stop { background: none; border: none; cursor: pointer; font: 600 11px inherit;
   color: #b91c1c; padding: 2px 6px; border-radius: 4px; }
 .gp-stop:hover { background: #fef2f2; }
+.gis-undo { position: relative; display: inline-flex; align-items: center; gap: 2px;
+  margin-left: 6px; }
+.gu-b, .gu-c { background: var(--white); border: 1px solid var(--border); cursor: pointer;
+  font: 600 11.5px inherit; padding: 5px 10px; color: var(--text); }
+.gu-b:first-child { border-radius: 7px 0 0 7px; }
+.gu-c { border-radius: 0 7px 7px 0; padding: 5px 7px; }
+.gu-b:disabled, .gu-c:disabled { opacity: .4; cursor: not-allowed; }
+.gu-b:not(:disabled):hover, .gu-c:not(:disabled):hover { border-color: var(--accent);
+  color: var(--accent); }
+.gu-list { position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 40;
+  background: var(--white); border: 1px solid var(--border); border-radius: 8px;
+  padding: 5px; width: 300px; box-shadow: 0 10px 28px rgba(15,23,42,.18); }
+.gu-head { margin: 3px 7px 5px; font: 700 10px inherit; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); }
+.gu-item { display: grid; gap: 1px; width: 100%; text-align: left; background: none;
+  border: none; border-radius: 5px; padding: 5px 8px; cursor: pointer; font: inherit; }
+.gu-item:hover { background: var(--accent-light); }
+.gu-item > span:first-child { font-size: 12.5px; font-weight: 600; }
+.gu-n { font-size: 10.5px; color: var(--muted); }
 .gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
   align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;
   color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;

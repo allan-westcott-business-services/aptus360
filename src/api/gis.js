@@ -134,3 +134,52 @@ export async function ensurePlots(projectId, payload) {
   if (USE_MOCKS) { await delay(400); return { created: 0, plots: [] }; }
   return http.post(`/projects/${projectId}/gis-ensure-plots`, payload);
 }
+
+/* ── Undo / redo ──
+
+   Two endpoints rather than one, deliberately. Restoring feature rows
+   and moving the history pointer are separate requests so a failed write
+   cannot leave the pointer claiming a step that never happened: the
+   canvas writes the features first and records the move only once that
+   has come back clean. */
+
+/* Feature rows put back exactly as they were, under the ids they had.
+   Not createFeature, which strips Feature_ID — Connects is an array of
+   ids, so a row restored under a new one is joined to nothing. */
+export async function restoreFeatures(projectId, rows) {
+  if (USE_MOCKS) {
+    await delay(200);
+    const byId = new Map(rows.map((r) => [Number(r.Feature_ID), r]));
+    store = store.map((f) => byId.get(Number(f.Feature_ID)) ?? f);
+    for (const [id, r] of byId) {
+      if (!store.some((f) => Number(f.Feature_ID) === id)) store = [...store, r];
+    }
+    return { restored: rows.length, rows };
+  }
+  return http.post(`/projects/${projectId}/gis-restore`, { rows });
+}
+
+/* The history for this project and this user, already split into what
+   can be undone and what can be redone. */
+export async function listUndo(projectId) {
+  if (USE_MOCKS) { await delay(120); return { past: [], future: [], limit: 25 }; }
+  return http.get(`/projects/${projectId}/gis-undo`);
+}
+
+export async function recordUndo(projectId, label, delta) {
+  if (USE_MOCKS) { await delay(120); return { entry: null, pruned: 0 }; }
+  return http.post(`/projects/${projectId}/gis-undo`, { label, delta });
+}
+
+/* Moves the pointer by naming the entries that moved, rather than by
+   direction — a partial failure on the canvas then cannot record more
+   than actually happened. */
+export async function markUndone(projectId, ids, undone) {
+  if (USE_MOCKS) { await delay(80); return { updated: ids.length }; }
+  return http.patch(`/projects/${projectId}/gis-undo`, { ids, undone });
+}
+
+export async function clearUndo(projectId) {
+  if (USE_MOCKS) { await delay(80); return { cleared: true }; }
+  return http.del(`/projects/${projectId}/gis-undo`);
+}

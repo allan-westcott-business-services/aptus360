@@ -1380,6 +1380,11 @@ export default function GISCanvasPage() {
           if (e.altKey) { removeVertex(f, idx); return; }
           drag.current = {
             mode: "vertex", featureId: f.Feature_ID, index: idx, startPx: [px, py],
+            /* The shape before the drag. Dragging rewrites the feature in
+               state as it moves, so by the time the button comes up the
+               original is gone — and without it there is nothing for undo
+               to put back. Copied, not referenced, for the same reason. */
+            startGeom: (f.Geometry || []).map((q) => [...q]),
             /* Recorded at the start: which end it is, and what class the
                line belongs to, so the move handler doesn't have to work
                it out on every pointer event. */
@@ -1682,6 +1687,13 @@ export default function GISCanvasPage() {
       try {
         await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]);
 
+        /* Reshaping is the easiest thing to do by accident on this
+           canvas — a cable is dragged out of place with one slip of the
+           mouse — so it is the thing undo most has to cover. Recorded
+           from the shape captured when the drag began, since the feature
+           in state has already been rewritten. */
+        await recordAction("Reshape line", [{ ...f, Geometry: d.startGeom }], [f]);
+
         /* Moving an end onto another line is how a connection is made,
            so the connection has to be recorded — tracing walks Connects,
            and a join that only exists geometrically stops the network
@@ -1787,6 +1799,33 @@ export default function GISCanvasPage() {
     if (!updates.length) return;
     try {
       await moveFeatures(projectId, updates);
+
+      /* Dragging something out of place is the accident undo exists for.
+
+         The before-state comes from d.origin, which the drag captured at
+         the start and rebuilds from on every frame rather than mutating —
+         so it still holds the geometry as it was. Line ends dragged along
+         by a moved point are in there too, and they have to be, or undo
+         would put the point back and leave the cables stretched to where
+         it used to be. */
+      const beforeRows = updates
+        .map((u) => {
+          const now = features.find((f) => f.Feature_ID === u.Feature_ID);
+          const was = d.origin?.[u.Feature_ID];
+          return now && was ? { ...now, Geometry: was } : null;
+        })
+        .filter(Boolean);
+      const afterRows = updates
+        .map((u) => features.find((f) => f.Feature_ID === u.Feature_ID))
+        .filter(Boolean);
+      const moved = afterRows.length;
+      await recordAction(
+        moved === 1
+          ? `Move ${classLabel(afterRows[0], lineTypes) || "feature"}`
+          : `Move ${moved} feature(s)`,
+        beforeRows, afterRows,
+      );
+
       const dragged = (d.rubber || []).length;
       if (dragged) {
         setStatus(`${dragged} connected line end(s) moved with it`);
@@ -1952,10 +1991,11 @@ export default function GISCanvasPage() {
 
     if (isPoly) {
       try {
-        await createFeature(projectId, {
+        const made = await createFeature(projectId, {
           Layer_Key: "boundary", Feature_Type: "polygon",
           Geometry: draft, Label: "Site boundary", Attributes: {},
         });
+        if (made?.Feature_ID) await recordAction("Draw site boundary", [], [made]);
         setDraft([]); setSnapHit(null);
         await load(projectId);
       } catch (e) { setError(e.message); }
@@ -2049,6 +2089,27 @@ export default function GISCanvasPage() {
         }
       }
       if (teed.length) await moveFeatures(projectId, teed);
+
+      /* The new run, and the tee vertices it put into whatever it landed
+         on, as one step — undoing the line has to take its tees with it
+         or the drawing keeps vertices belonging to a line that has
+         gone. */
+      const drawn = made.filter((m) => m?.Feature_ID);
+      if (drawn.length) {
+        const teedBefore = teed
+          .map((t) => features.find((f) => f.Feature_ID === t.Feature_ID))
+          .filter(Boolean);
+        const teedAfter = teedBefore.map((f) => ({
+          ...f,
+          Geometry: teed.find((t) => t.Feature_ID === f.Feature_ID).Geometry,
+        }));
+        await recordAction(
+          drawn.length === 1
+            ? `Draw ${t?.Label ?? "line"}`
+            : `Draw ${t?.Label ?? "line"} (${drawn.length} runs)`,
+          teedBefore, [...drawn, ...teedAfter],
+        );
+      }
 
       setDraft([]);
       setSnapHit(null);
@@ -2251,6 +2312,21 @@ export default function GISCanvasPage() {
         }));
         await bulkUpdateFeatures(projectId, rows);
       }
+
+      /* The geometry change and the link changes it caused, as one step.
+         Undoing the shape without the links would leave the drawing
+         right and the network wrong. */
+      const affected = new Set([Number(id), ...rows.map((r) => Number(r.Feature_ID))]);
+      const beforeRows = features.filter((f) => affected.has(Number(f.Feature_ID)));
+      const afterRows = beforeRows.map((f) => {
+        const u = rows.find((r) => Number(r.Feature_ID) === Number(f.Feature_ID));
+        const g = Number(f.Feature_ID) === Number(id) ? geometry : f.Geometry;
+        return { ...f, Geometry: g, ...(u ? { Attributes: u.Attributes } : {}) };
+      });
+      await recordAction(
+        `Edit ${classLabel(before, lineTypes) || "feature"} shape`,
+        beforeRows, afterRows,
+      );
     }
     catch (e) { setError(e.message); await load(projectId); }
   }
@@ -2319,6 +2395,12 @@ export default function GISCanvasPage() {
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
     try {
       await updateFeature(projectId, id, changes);
+      if (before) {
+        await recordAction(
+          `Edit ${classLabel(before, lineTypes) || "feature"}`,
+          [before], [{ ...before, ...changes }],
+        );
+      }
 
       /* Carry a changed cable through to the node that reads it.
 

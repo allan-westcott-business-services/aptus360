@@ -143,6 +143,40 @@ export default function FeatureEditor({
      otherwise. */
   const needsPump = sourceTakesHeatPump(plotFields.Heat_Source_ID, lookups?.heatSources || []);
 
+  /* The cables that belong on this run.
+
+     A service cable and a mains cable are different items and the
+     catalogue says which is which, on Usage_Type. Offering the whole
+     list meant a service could be given a mains cable — which sizes,
+     costs and volt-drops as something it is not, and nothing on the
+     drawing would say so.
+
+     Judged from the line's own type: elec_service takes service cables,
+     everything else on the electric layer takes mains. Matched loosely,
+     because the value is free text in a lookup someone maintains and
+     "Service" and "service" are the same answer.
+
+     Two deliberate leniencies. A cable type with no usage recorded stays
+     available — an unfilled field is not a statement that the cable is
+     the wrong kind. And if filtering would empty the list entirely, the
+     full list is shown instead: a picker with nothing in it stops the
+     work, and that is worse than one offering too much. */
+  const cableUsage = f.Attributes?.Line_Type === "elec_service" ? "service" : "mains";
+
+  const cableChoices = useMemo(() => {
+    const sizes = lookups?.cableSizes || [];
+    const types = lookups?.cableTypes || [];
+    const usageOf = (c) => String(
+      types.find((t) => t.Cable_Type_ID === c.Cable_Type_ID)?.Usage_Type ?? "",
+    ).trim().toLowerCase();
+
+    const fits = sizes.filter((c) => {
+      const u = usageOf(c);
+      return !u || u === cableUsage;
+    });
+    return { list: fits.length ? fits : sizes, filtered: fits.length > 0 };
+  }, [lookups, cableUsage]);
+
   /* The unit actually chosen, so its figures can be shown rather than
      just its name. */
   const pump = (lookups?.heatPumpModels || [])
@@ -603,7 +637,7 @@ export default function FeatureEditor({
                       onChange={(e) => setAttr("VD_Cable_Size_ID")(
                         e.target.value ? Number(e.target.value) : null)}>
                       <option value="">&mdash; not set &mdash;</option>
-                      {(lookups?.cableSizes || []).map((c) => {
+                      {cableChoices.list.map((c) => {
                         const t = (lookups?.cableTypes || [])
                           .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
                         const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
@@ -616,6 +650,20 @@ export default function FeatureEditor({
                         );
                       })}
                     </select>
+                    {cableChoices.filtered ? (
+                      <p className="hint">
+                        {cableUsage === "service"
+                          ? "Service cables only \u2014 set by Usage on the cable type."
+                          : "Mains cables only \u2014 set by Usage on the cable type."}
+                      </p>
+                    ) : (
+                      <p className="hint">
+                        No cable type is marked as
+                        {cableUsage === "service" ? " Service" : " Mains"},
+                        so the whole catalogue is shown. Set Usage in
+                        Admin &rsaquo; Electric Specs to narrow it.
+                      </p>
+                    )}
                     {f.Attributes.Generated && (
                       <p className="hint">
                         Drawn by Build LV Network. Changing it here is kept;

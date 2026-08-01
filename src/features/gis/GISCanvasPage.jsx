@@ -4096,29 +4096,55 @@ export default function GISCanvasPage() {
                  the list off the canvas. */
               <div className="gis-picker" role="dialog" aria-label="Choose an Object"
                 style={{
-                  left: Math.min(picker.x + 10, (wrapRef.current?.clientWidth ?? 900) - 250),
+                  /* 300 = the picker's 290px plus a little air. Tied to
+                     the width in the stylesheet: widening one without
+                     the other puts the list off the right edge on a
+                     click near it. */
+                  left: Math.min(picker.x + 10, (wrapRef.current?.clientWidth ?? 900) - 300),
                   top: Math.min(picker.y + 10, (wrapRef.current?.clientHeight ?? 600) - 60
                     - picker.items.length * 30),
                 }}>
                 <p className="gp-head">{picker.items.length} objects here</p>
                 {picker.items.map(({ feature: f, via }) => (
-                  <button key={f.Feature_ID} className="gp-item"
-                    onMouseEnter={() => setSelected([f.Feature_ID])}
-                    onClick={() => { setSelected([f.Feature_ID]); setPicker(null); }}>
-                    <span className="gp-sw" style={{
-                      background: f.Feature_Role === "plot"
-                        ? bedColour(f.Attributes?.Bedrooms).bg
-                        : styleFor(f).colour,
-                      borderRadius: f.Feature_Type === "point" ? "50%" : "2px",
-                    }} />
-                    <span className="gp-name">
-                      {f.Label || classLabel(f, lineTypes) || "Unnamed"}
-                    </span>
-                    <span className="gp-kind">
-                      {classLabel(f, lineTypes)}
-                      {via === "vertex" && f.Feature_Type !== "point" && " \u00B7 end"}
-                    </span>
-                  </button>
+                  /* A row, not a button: selecting and editing are two
+                     things you might want from the same object, and a
+                     button cannot hold another button. Picking the row
+                     still selects, so nothing that worked before has
+                     changed. */
+                  <div key={f.Feature_ID} className="gp-row"
+                    onMouseEnter={() => setSelected([f.Feature_ID])}>
+                    <button className="gp-item"
+                      onClick={() => { setSelected([f.Feature_ID]); setPicker(null); }}>
+                      <span className="gp-sw" style={{
+                        background: f.Feature_Role === "plot"
+                          ? bedColour(f.Attributes?.Bedrooms).bg
+                          : styleFor(f).colour,
+                        borderRadius: f.Feature_Type === "point" ? "50%" : "2px",
+                      }} />
+                      <span className="gp-name">
+                        {f.Label || classLabel(f, lineTypes) || "Unnamed"}
+                      </span>
+                      <span className="gp-kind">
+                        {classLabel(f, lineTypes)}
+                        {via === "vertex" && f.Feature_Type !== "point" && " \u00B7 end"}
+                      </span>
+                    </button>
+                    {/* Straight to the editor for this object. Where
+                        several things sit on top of each other — a
+                        substation with two cable ends on it, which is
+                        exactly when this list appears — picking the one
+                        you want and then finding it again to open it was
+                        the same hunt twice. */}
+                    <button className="gp-edit"
+                      title={`Edit ${f.Label || classLabel(f, lineTypes) || "this object"}`}
+                      onClick={() => {
+                        setSelected([f.Feature_ID]);
+                        setEditing(f);
+                        setPicker(null);
+                      }}>
+                      Edit
+                    </button>
+                  </div>
                 ))}
                 <button className="gp-cancel" onClick={() => setPicker(null)}>
                   Cancel &middot; <kbd>Esc</kbd>
@@ -4695,7 +4721,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-radius: 20px; padding: 2px 9px; font: 700 10.5px inherit; display: inline-flex;
   align-items: center; gap: 5px; }
 .ge-c em { font-style: normal; font-weight: 600; color: var(--muted); }
-.gis-picker { position: absolute; z-index: 6; width: 240px; background: var(--white);
+.gis-picker { position: absolute; z-index: 6; width: 290px; background: var(--white);
   border: 1px solid var(--border); border-radius: 8px; padding: 5px;
   box-shadow: 0 10px 28px rgba(15,23,42,.18); }
 .gp-head { margin: 3px 7px 5px; font-size: 10px; font-weight: 700; text-transform: uppercase;
@@ -4704,6 +4730,19 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   text-align: left; background: none; border: none; border-radius: 5px; padding: 5px 7px;
   cursor: pointer; font: inherit; color: var(--text); align-items: center; }
 .gp-item:hover { background: var(--accent-light); }
+/* The row hover, not the button's, so the whole entry lights up
+   whichever half the pointer is over. */
+.gp-row { display: flex; align-items: center; gap: 4px; border-radius: 5px; }
+.gp-row:hover { background: var(--accent-light); }
+.gp-row:hover .gp-item { background: none; }
+.gp-row .gp-item { flex: 1; min-width: 0; }
+.gp-edit { flex: none; background: none; border: 1px solid transparent; border-radius: 5px;
+  cursor: pointer; font: 600 11px inherit; color: var(--muted); padding: 3px 9px; }
+/* Kept quiet until the row is under the pointer: three Edit buttons
+   competing with the names is a busier list than the one it replaced. */
+.gp-row:hover .gp-edit { border-color: var(--border); color: var(--accent);
+  background: var(--white); }
+.gp-edit:hover { border-color: var(--accent); }
 .gp-sw { width: 12px; height: 12px; grid-row: 1 / 3; }
 .gp-name { font-size: 12.5px; font-weight: 600; overflow: hidden; text-overflow: ellipsis;
   white-space: nowrap; }

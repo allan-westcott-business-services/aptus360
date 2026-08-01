@@ -197,6 +197,19 @@ export default function GISCanvasPage() {
        what the Electric menu's entry uses; gas:role:meter is narrower. */
     f.Layer_Key && f.Feature_Role && f.Feature_Role !== "shape"
       ? `${f.Layer_Key}:role:${f.Feature_Role}` : null,
+    /* Circuit membership, so one feeder can be looked at without the
+       others. Only features that belong to a circuit carry this —
+       trenches, plot seeds and the other utilities have none, which is
+       what lets isolating a circuit leave the ground it runs through
+       visible.
+
+       Electric only, and checked rather than assumed. A circuit is a
+       fact about the LV network; anything on another layer that happens
+       to carry a Circuit_ID — a water service tagged when it shared a
+       trench, a copied feature — is not part of that circuit and must
+       not vanish when one is isolated. */
+    f.Layer_Key === "electric" && f.Attributes?.Circuit_ID != null
+      ? `circuit:${f.Attributes.Circuit_ID}` : null,
   ].filter(Boolean), []);
 
   const visible = useMemo(
@@ -245,6 +258,29 @@ export default function GISCanvasPage() {
     setSolo(key);
     setHidden([...all].filter((k) => !keep.has(k)));
   }, [features, classKeys, solo]);
+
+  /* Show one circuit and hide the rest.
+
+     Deliberately not soloClass. That hides everything not carried by the
+     thing being isolated, which for a circuit would take the trenches,
+     the plot seeds and the other utilities with it — and a feeder shown
+     without the ground it runs through is not much use. This hides only
+     the other circuits' keys, so anything belonging to no circuit stays
+     exactly as it was.
+
+     Pressing it again on the same circuit puts everything back. */
+  const isolateCircuit = useCallback((circuitId) => {
+    const key = `circuit:${circuitId}`;
+    if (solo === key) { setSolo(null); setHidden([]); return; }
+    const others = new Set();
+    for (const f of features) {
+      if (f.Layer_Key !== "electric") continue;
+      const id = f.Attributes?.Circuit_ID;
+      if (id != null && String(id) !== String(circuitId)) others.add(`circuit:${id}`);
+    }
+    setSolo(key);
+    setHidden([...others]);
+  }, [features, solo]);
 
   /* Every line type on one layer, for that utility's menu. */
   const typesOn = useCallback(
@@ -3743,6 +3779,23 @@ export default function GISCanvasPage() {
 
                   <Menu id="electric" label="Electric" open={open} setOpen={setOpen}>
                     <MenuGroup label="Show or Hide" />
+                    {/* The whole utility at once, as a named action rather
+                        than the S beside a row. Isolating one utility is
+                        the common gesture on a busy drawing — everything
+                        electric, nothing else — and reaching it meant
+                        knowing that S on a layer row did that.
+
+                        The same soloClass the rows use, so pressing it
+                        twice restores everything and it cannot disagree
+                        with the S buttons about what is isolated. */}
+                    <MenuItem label={solo === "electric" ? "Show all layers" : "Isolate Electric"}
+                      hint={solo === "electric"
+                        ? "Bring back everything that was hidden"
+                        : "Show only electric objects, hiding every other utility"}
+                      active={solo === "electric"}
+                      disabled={!(classCount.electric > 0)}
+                      onClick={() => soloClass("electric")} />
+                    <div className="gm-sep" />
                     {/* POC and substation first: they are the two fixed
                         points a designer orients by, and everything else
                         is described relative to them. */}
@@ -3777,6 +3830,18 @@ export default function GISCanvasPage() {
                           onHide={() => toggleClass(`role:${role}`)}
                           onSolo={() => soloClass(`role:${role}`)} />
                       ))}
+                    {/* The layer as a whole, matching the row the gas and
+                        water menus end with. Hiding it takes everything
+                        electric with it, including anything above that is
+                        currently shown. */}
+                    <div className="gm-sep" />
+                    <MenuLayer label="Whole Electric layer"
+                      colour={layers.find((l) => l.Layer_Key === "electric")?.Colour}
+                      count={classCount.electric || 0}
+                      hidden={hidden.includes("electric")}
+                      solo={solo === "electric"}
+                      onHide={() => toggleClass("electric")}
+                      onSolo={() => soloClass("electric")} />
 
                     <div className="gm-sep" />
                     <MenuGroup label="Network" />
@@ -3830,6 +3895,20 @@ export default function GISCanvasPage() {
                       <Menu key={key} id={key} label={layer?.Label ?? key}
                         open={open} setOpen={setOpen}>
                         <MenuGroup label="Show or Hide" />
+                        {/* As on the Electric menu: the whole utility as
+                            a named action, not only the S on the layer
+                            row below. */}
+                        <MenuItem
+                          label={solo === key
+                            ? "Show all layers"
+                            : `Isolate ${layer?.Label ?? key}`}
+                          hint={solo === key
+                            ? "Bring back everything that was hidden"
+                            : `Show only ${layer?.Label ?? key} objects, hiding every other utility`}
+                          active={solo === key}
+                          disabled={!(classCount[key] > 0)}
+                          onClick={() => soloClass(key)} />
+                        <div className="gm-sep" />
                         {typesOn(key).map((t) => (
                           <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                             count={classCount[`lt:${t.Type_Key}`] || 0}
@@ -3990,6 +4069,9 @@ export default function GISCanvasPage() {
           onSave={saveFeature}
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
+          onIsolateCircuit={isolateCircuit}
+          circuitIsolated={editing?.Attributes?.Circuit_ID != null
+            && solo === `circuit:${editing.Attributes.Circuit_ID}`}
           onDelete={deleteFeature}
           onClose={() => setEditing(null)}
         />
@@ -4212,6 +4294,24 @@ export default function GISCanvasPage() {
                 <button className="gc-item" onClick={() => {
                   setEditing(ctx.feature); setCtx(null);
                 }}>Edit</button>
+
+                {/* Only where the object belongs to one, and only on the
+                    electric layer — that is where circuits live, and the
+                    isolate acts on nothing else. A trench serves every
+                    circuit that runs through it and has none of its own,
+                    so there is nothing to isolate from it. */}
+                {ctx.feature.Layer_Key === "electric"
+                  && ctx.feature.Attributes?.Circuit_ID != null && (
+                  <button className="gc-item" onClick={() => {
+                    isolateCircuit(ctx.feature.Attributes.Circuit_ID);
+                    setCtx(null);
+                  }}>
+                    {solo === `circuit:${ctx.feature.Attributes.Circuit_ID}`
+                      ? "Show all circuits"
+                      : `Isolate ${ctx.feature.Attributes.Circuit_Name
+                          || `circuit ${ctx.feature.Attributes.Circuit_ID}`}`}
+                  </button>
+                )}
 
                 {ctx.feature.Feature_Type === "line" ? (
                   <>

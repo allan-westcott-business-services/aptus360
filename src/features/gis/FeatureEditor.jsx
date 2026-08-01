@@ -18,6 +18,7 @@ export default function FeatureEditor({
      already exist on it. */
   allFeatures = [],
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
+  onIsolateCircuit, circuitIsolated,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -269,6 +270,37 @@ export default function FeatureEditor({
         </div>
 
         <div className="fe-body">
+          {/* Which circuit this belongs to, and a way to see it on its
+              own. Offered for anything carrying a Circuit_ID — a span
+              node, a feeder section, a meter, a joint — because the
+              question "what else is on this circuit" is the same one
+              whichever of them you happened to click.
+
+              Electric only, matching what the isolate acts on. Absent on
+              a trench: a trench serves every circuit that runs through it
+              and belongs to none, so there is nothing to isolate from
+              it. */}
+          {feature.Layer_Key === "electric"
+            && feature.Attributes?.Circuit_ID != null && (
+            <div className="fe-circuit">
+              <span>
+                <strong>
+                  {feature.Attributes.Circuit_Name
+                    || `Circuit ${feature.Attributes.Circuit_ID}`}
+                </strong>
+                {feature.Attributes.Circuit_Letter && (
+                  <span className="fe-cl">{feature.Attributes.Circuit_Letter}</span>
+                )}
+              </span>
+              <button type="button" className="fe-iso"
+                title={circuitIsolated
+                  ? "Bring back the circuits that were hidden"
+                  : "Hide every other circuit. Trenches, plots and the other utilities stay."}
+                onClick={() => onIsolateCircuit?.(feature.Attributes.Circuit_ID)}>
+                {circuitIsolated ? "Show all circuits" : "Isolate this circuit"}
+              </button>
+            </div>
+          )}
           {error && <Banner kind="error">{error}</Banner>}
 
           <div className="fld">
@@ -895,6 +927,14 @@ const CSS = `
 .fe-demand-sp { font-weight: 600; }
 .fe-demand-n { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
 .fe-demand-n strong { font-size: 24px; color: var(--text); }
+.fe-circuit { display: flex; align-items: center; justify-content: space-between; gap: 10px;
+  background: var(--bg); border-radius: var(--radius); padding: 8px 11px; margin-bottom: 12px; }
+.fe-circuit strong { font-size: 12.5px; }
+.fe-cl { background: var(--accent); color: #fff; border-radius: 5px; padding: 0 6px;
+  font-size: 10.5px; margin-left: 6px; }
+.fe-iso { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; font: 600 11px inherit; padding: 4px 10px; color: var(--accent); }
+.fe-iso:hover { border-color: var(--accent); }
 .sn-code { margin: 0; font: 800 26px ui-monospace, Menlo, monospace; color: var(--accent);
   line-height: 1.1; }
 .sn-input { width: 78px; text-transform: uppercase; font-size: 20px; font-weight: 800;

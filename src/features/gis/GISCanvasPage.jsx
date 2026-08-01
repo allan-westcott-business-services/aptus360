@@ -197,24 +197,36 @@ export default function GISCanvasPage() {
        what the Electric menu's entry uses; gas:role:meter is narrower. */
     f.Layer_Key && f.Feature_Role && f.Feature_Role !== "shape"
       ? `${f.Layer_Key}:role:${f.Feature_Role}` : null,
-    /* Circuit membership, so one feeder can be looked at without the
-       others. Only features that belong to a circuit carry this —
-       trenches, plot seeds and the other utilities have none, which is
-       what lets isolating a circuit leave the ground it runs through
-       visible.
-
-       Electric only, and checked rather than assumed. A circuit is a
-       fact about the LV network; anything on another layer that happens
-       to carry a Circuit_ID — a water service tagged when it shared a
-       trench, a copied feature — is not part of that circuit and must
-       not vanish when one is isolated. */
-    f.Layer_Key === "electric" && f.Attributes?.Circuit_ID != null
-      ? `circuit:${f.Attributes.Circuit_ID}` : null,
   ].filter(Boolean), []);
 
+  /* Which circuit is being looked at on its own, if any.
+
+     Its own state rather than keys in the hidden set. The two are
+     different decisions — what someone has turned off, and which feeder
+     they are studying — and holding both in one place meant each kept
+     undoing the other: isolating a circuit brought back every layer
+     hidden by hand, and hiding a layer afterwards silently ended the
+     isolation. Kept apart, they compose, and either can be changed
+     without disturbing the other. */
+  const [isolatedCircuit, setIsolatedCircuit] = useState(null);
+
+  /* Electric only, and checked rather than assumed. A circuit is a fact
+     about the LV network; anything on another layer that happens to
+     carry a Circuit_ID — a water service tagged when it shared a trench,
+     a copied feature — is not part of that circuit and must not vanish
+     when one is isolated. */
+  const outsideCircuit = useCallback((f, cid) => (
+    cid != null
+    && f.Layer_Key === "electric"
+    && f.Attributes?.Circuit_ID != null
+    && String(f.Attributes.Circuit_ID) !== String(cid)
+  ), []);
+
   const visible = useMemo(
-    () => features.filter((f) => !classKeys(f).some((k) => hidden.includes(k))),
-    [features, hidden, classKeys]
+    () => features.filter((f) =>
+      !classKeys(f).some((k) => hidden.includes(k))
+      && !outsideCircuit(f, isolatedCircuit)),
+    [features, hidden, classKeys, isolatedCircuit, outsideCircuit]
   );
 
   /* How many of each class exist, so a toggle can say whether it will
@@ -270,17 +282,9 @@ export default function GISCanvasPage() {
 
      Pressing it again on the same circuit puts everything back. */
   const isolateCircuit = useCallback((circuitId) => {
-    const key = `circuit:${circuitId}`;
-    if (solo === key) { setSolo(null); setHidden([]); return; }
-    const others = new Set();
-    for (const f of features) {
-      if (f.Layer_Key !== "electric") continue;
-      const id = f.Attributes?.Circuit_ID;
-      if (id != null && String(id) !== String(circuitId)) others.add(`circuit:${id}`);
-    }
-    setSolo(key);
-    setHidden([...others]);
-  }, [features, solo]);
+    setIsolatedCircuit((cur) =>
+      (String(cur) === String(circuitId) ? null : circuitId));
+  }, []);
 
   /* Every line type on one layer, for that utility's menu. */
   const typesOn = useCallback(
@@ -4071,7 +4075,7 @@ export default function GISCanvasPage() {
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
-            && solo === `circuit:${editing.Attributes.Circuit_ID}`}
+            && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}
           onClose={() => setEditing(null)}
         />
@@ -4306,7 +4310,7 @@ export default function GISCanvasPage() {
                     isolateCircuit(ctx.feature.Attributes.Circuit_ID);
                     setCtx(null);
                   }}>
-                    {solo === `circuit:${ctx.feature.Attributes.Circuit_ID}`
+                    {String(isolatedCircuit) === String(ctx.feature.Attributes.Circuit_ID)
                       ? "Show all circuits"
                       : `Isolate ${ctx.feature.Attributes.Circuit_Name
                           || `circuit ${ctx.feature.Attributes.Circuit_ID}`}`}

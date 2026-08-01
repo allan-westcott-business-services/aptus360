@@ -41,6 +41,7 @@ import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, servic
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
+import { routePocToSubstation } from "./route.js";
 import {
   diffFeatures, isEmptyDelta, deltaSize, planMany, emptyStack,
   record as recordEntry, canUndo, canRedo, popUndo, popRedo,
@@ -2868,6 +2869,64 @@ export default function GISCanvasPage() {
     finally { if (!silent) setBusy(""); }
   }
 
+  /* The incoming supply, from the point of connection to the substation.
+
+     Routed along the trenches rather than drawn straight: the cable lies
+     in a dig like everything else, and the length that goes into the
+     bill and the volt drop is the one it travels.
+
+     One run, and only one. A second POC route on the same drawing is
+     almost always a mistake rather than a design with two incomers, so
+     an existing one is replaced rather than added to — and it is said
+     out loud before anything is written. */
+  async function routeSupply() {
+    const r = routePocToSubstation(features, { lineTypes });
+    if (r.error) { setError(r.error); return; }
+
+    const existing = features.filter((f) =>
+      f.Feature_Type === "line"
+      && f.Layer_Key === "electric"
+      && f.Attributes?.Poc_Route === true);
+
+    const type = lineTypes.find((t) => t.Type_Key === "elec_hv");
+    if (!window.confirm(
+      `Route the supply from ${r.poc.Label || "the POC"} to `
+      + `${r.substation.Label || "the substation"}?\n\n`
+      + `${r.metres} m along the trenches`
+      + (type ? ` as ${type.Label}` : "")
+      + (existing.length ? `\n\nThe existing route will be replaced.` : "")
+    )) return;
+
+    setBusy("route");
+    try {
+      if (existing.length) {
+        await deleteFeatures(projectId, existing.map((f) => f.Feature_ID));
+      }
+      const made = await createFeature(projectId, {
+        Layer_Key: "electric",
+        Feature_Type: "line",
+        Geometry: r.geometry,
+        Label: "Supply from POC",
+        Attributes: {
+          Line_Type: "elec_hv",
+          /* Marks this as the incomer so a rerun can find and replace it
+             without touching an HV run drawn by hand. */
+          Poc_Route: true,
+          Generated: true,
+          Connects: connectedTo(r.geometry, features, null),
+        },
+      });
+      await recordAction("Route POC to substation",
+        existing, [...(made?.Feature_ID ? [made] : [])]);
+      await load(projectId);
+      setStatus(`Supply routed \u2014 ${r.metres} m from `
+        + `${r.poc.Label || "POC"} to ${r.substation.Label || "the substation"}`);
+      setTimeout(() => setStatus(""), 9000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   /* Renaming a circuit.
 
      The name is not held in one place — it is stamped on every meter,
@@ -4611,7 +4670,10 @@ export default function GISCanvasPage() {
                       disabled={!projectId} onClick={() => placeNode("poc")} />
                     <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
                       disabled={!projectId} onClick={() => placeNode("substation")} />
-                    <MenuItem label="Route POC to Substation" hint="Not built yet" disabled />
+                    <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
+                      hint="Shortest path along the trenches, as HV feeder"
+                      disabled={!!busy || !projectId}
+                      onClick={routeSupply} />
 
                     <MenuGroup label="Draw" />
                     {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"]].map(([key, label]) => {

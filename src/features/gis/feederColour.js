@@ -47,6 +47,20 @@ export const isFeederMain = (f) =>
   && f?.Layer_Key === "electric"
   && f?.Attributes?.Line_Type === "elec_main";
 
+/* Everything that shares a trench and needs separating on the drawing.
+
+   Wider than isFeederMain on purpose. Colour identifies a circuit and HV
+   belongs to none, so the HV incomer keeps its own style — but it runs
+   down the same mains trench as the LV feeders for much of its length,
+   and left out of the offset it is drawn exactly on top of them. Two
+   cables in one trench are two cables whether or not one of them is on a
+   circuit. */
+export const isFeederRun = (f) =>
+  f?.Feature_Type === "line"
+  && f?.Layer_Key === "electric"
+  && (f?.Attributes?.Line_Type === "elec_main"
+      || f?.Attributes?.Line_Type === "elec_hv");
+
 /* Which circuit a feeder run belongs to.
 
    Build LV Network stamps Circuit_ID on every section it draws, which is
@@ -293,7 +307,10 @@ export function alignSign(reference = [], other = []) {
 export function feederRenderPlan(features = [], opts = {}) {
   const { spacingPx = 5, chosenColours = {}, ...groupOpts } = opts;
 
-  const runs = features.filter(isFeederMain).map((f) => ({
+  /* Offsets are worked out over every electric run in a trench; colour
+     only over the ones on a circuit. A run with no circuit gets a null
+     colour and keeps whatever the style cascade gives it. */
+  const runs = features.filter(isFeederRun).map((f) => ({
     id: Number(f.Feature_ID),
     geometry: f.Geometry || [],
     circuitId: circuitIdOf(f),

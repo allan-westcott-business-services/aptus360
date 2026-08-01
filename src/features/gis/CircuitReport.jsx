@@ -52,6 +52,7 @@ export default function CircuitReport({
     : p.filter((x) => !ids.includes(x))));
 
   const allMeterIds = report.circuits.flatMap((c) => c.meters.map((m) => m.id));
+  const realCircuits = report.circuits.filter((c) => c.id !== "unlinked").length;
 
   /* Ticking the boxes a range names, rather than replacing the
      selection: a range and a few individual picks are one intent, and
@@ -149,7 +150,12 @@ export default function CircuitReport({
             <h3>Circuit report &mdash; electric meters by feeder</h3>
             <p className="cr-sub">
               {[projectRef, siteName].filter(Boolean).join(" \u2014 ")}
-              {" \u00B7 "}{report.circuits.length} circuit{report.circuits.length === 1 ? "" : "s"}
+              {/* Real circuits only. The unlinked group is carried in
+                  the same list so it renders as a section, but counting
+                  it said "3 circuits" on a drawing with two — and then
+                  the move list offering one destination looked like a
+                  fault rather than arithmetic. */}
+              {" \u00B7 "}{realCircuits} circuit{realCircuits === 1 ? "" : "s"}
               {" \u00B7 "}{report.totalMeters} meter{report.totalMeters === 1 ? "" : "s"}
               {" \u00B7 "}{kvaF(report.totalKva)} total
               {pocOutput != null && ` (POC capacity ${kvaF(pocOutput)})`}
@@ -215,6 +221,50 @@ export default function CircuitReport({
                   {/* Only a real circuit can be unassigned from or deleted.
                       The unlinked group is the absence of a circuit, not
                       one of its own. */}
+                  {/* Moving meters onto an existing circuit. Offered on
+                      every group including the unlinked one: meters left
+                      over at the end of a design usually belong on a
+                      feeder that already exists, and having only "assign
+                      to a new circuit" there meant making a circuit
+                      nobody wanted in order to move four plots.
+
+                      Taking out and putting back would do the same job
+                      and is not the same operation: the ways on the
+                      substation do not change, only which meters hang
+                      off them, and unassigning first would leave the
+                      meters on no circuit if the second write failed. */}
+                  {others.length > 0 && (
+                    <span className="cr-move">
+                      <select value={moveTo[c.id] ?? ""}
+                        aria-label={`Circuit to move the selected meters to`}
+                        onChange={(e) => setMoveTo((m) => ({ ...m, [c.id]: e.target.value }))}>
+                        <option value="">Move to&hellip;</option>
+                        {others.map((o) => (
+                          <option key={o.id} value={o.id}>
+                            {o.letter ? `${o.letter} \u00B7 ` : ""}{o.name}
+                          </option>
+                        ))}
+                      </select>
+                      <button className="cr-act cr-move-b"
+                        disabled={!pickedHere.length || !moveTo[c.id] || busy}
+                        title={!pickedHere.length
+                          ? "Tick the meters to move"
+                          : !moveTo[c.id]
+                            ? "Choose the circuit to move them to"
+                            : `Move ${pickedHere.length} meter(s) to that circuit`}
+                        onClick={() => {
+                          onMoveToCircuit?.(pickedHere, Number(moveTo[c.id]));
+                          /* Cleared because the rows are about to belong
+                             somewhere else, and a selection pointing at
+                             another circuit's rows is a trap for the
+                             next button pressed. */
+                          setPicked([]);
+                          setMoveTo((m) => ({ ...m, [c.id]: "" }));
+                        }}>
+                        Move
+                      </button>
+                    </span>
+                  )}
                   {c.id !== "unlinked" && (
                     <>
                       <button className="cr-act" disabled={!pickedHere.length || busy}
@@ -224,44 +274,6 @@ export default function CircuitReport({
                         onClick={() => onRemoveFromCircuit?.(pickedHere, c)}>
                         Remove selected from circuit
                       </button>
-                      {/* Moving to another circuit, rather than taking
-                          out and putting back. The ways on the
-                          substation do not change — only which meters
-                          hang off them — and unassigning first would
-                          leave the meters on no circuit if the second
-                          write failed. */}
-                      {others.length > 0 && (
-                        <span className="cr-move">
-                          <select value={moveTo[c.id] ?? ""}
-                            aria-label={`Circuit to move the selected meters from ${c.name} to`}
-                            onChange={(e) => setMoveTo((m) => ({ ...m, [c.id]: e.target.value }))}>
-                            <option value="">Move to&hellip;</option>
-                            {others.map((o) => (
-                              <option key={o.id} value={o.id}>
-                                {o.letter ? `${o.letter} \u00B7 ` : ""}{o.name}
-                              </option>
-                            ))}
-                          </select>
-                          <button className="cr-act cr-move-b"
-                            disabled={!pickedHere.length || !moveTo[c.id] || busy}
-                            title={!pickedHere.length
-                              ? "Tick the meters to move"
-                              : !moveTo[c.id]
-                                ? "Choose the circuit to move them to"
-                                : `Move ${pickedHere.length} meter(s) out of ${c.name}`}
-                            onClick={() => {
-                              onMoveToCircuit?.(pickedHere, Number(moveTo[c.id]));
-                              /* Cleared because the rows are about to
-                                 belong somewhere else, and a selection
-                                 pointing at another circuit's rows is a
-                                 trap for the next button pressed. */
-                              setPicked([]);
-                              setMoveTo((m) => ({ ...m, [c.id]: "" }));
-                            }}>
-                            Move
-                          </button>
-                        </span>
-                      )}
                       <button className="cr-act cr-del" disabled={busy}
                         title="Unassigns every meter and frees the circuit's way on the substation. The meters and trenches stay."
                         onClick={() => onDeleteCircuit?.(c)}>

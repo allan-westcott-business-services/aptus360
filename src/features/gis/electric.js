@@ -404,6 +404,12 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
       plot: plot?.plot_number ?? plot?.Plot_Number ?? "",
       houseType: plot?.config_code ?? plot?.Code ?? "\u2014",
       kva: kva != null && kva !== "" ? Number(kva) : fallbackKva,
+      /* Whether that figure was read off the plot or fallen back to.
+         A plot with no load recorded and a plot genuinely drawing
+         nothing are different problems and look identical as "0.0 kVA" —
+         which is how a hundred plots reported nothing for as long as
+         they did. The report shows the second differently. */
+      kvaMissing: !(kva != null && kva !== ""),
       /* Rounded here rather than at display: the figure is quoted in
          reports and a different rounding in the CSV than on screen is
          the kind of discrepancy that costs an afternoon. */
@@ -446,6 +452,11 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
       String(a.plot).localeCompare(String(b.plot), undefined, { numeric: true })),
     count: rows.length,
     totalKva: Math.round(rows.reduce((t, r) => t + r.kva, 0) * 10) / 10,
+    /* How much of that total is guesswork. A circuit summing 154 kVA
+       from seventy plots, every one of them a fallback, is not a
+       154 kVA circuit — and the header is where that has to be said,
+       because the total is the figure people quote. */
+    kvaMissing: rows.filter((r) => r.kvaMissing).length,
     maxDist: rows.reduce((t, r) => (r.distM != null && r.distM > t ? r.distM : t), 0),
   });
 

@@ -1,6 +1,7 @@
 import { useState } from "react";
 import * as XLSX from "xlsx";
 import { useDragHandle } from "../../lib/useDragHandle.js";
+import { parsePlotRange } from "./plotRange.js";
 
 /* Circuit report — electric meters by feeder.
 
@@ -23,7 +24,8 @@ const kvaF = (v) => `${(Math.round((v || 0) * 10) / 10).toFixed(1)} kVA`;
 const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 
 export default function CircuitReport({
-  report, projectRef, siteName, pocOutput, onClose, onRemoveFromCircuit, onDeleteCircuit, busy,
+  report, projectRef, siteName, pocOutput, onClose,
+  onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, busy,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -33,6 +35,11 @@ export default function CircuitReport({
      rather than per circuit, so the buttons only have to work out which
      of their own rows are in it. */
   const [picked, setPicked] = useState([]);
+  /* Picking by plot number rather than by eye. On an estate the unlinked
+     group runs to hundreds of rows and the meters wanted are "6 to 14" —
+     a phrase the designer already has, and a great many clicks. */
+  const [range, setRange] = useState("");
+  const [rangeNote, setRangeNote] = useState("");
 
   const toggle = (id) => setPicked((p) =>
     (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -42,6 +49,37 @@ export default function CircuitReport({
     : p.filter((x) => !ids.includes(x))));
 
   const allMeterIds = report.circuits.flatMap((c) => c.meters.map((m) => m.id));
+
+  /* Ticking the boxes a range names, rather than replacing the
+     selection: a range and a few individual picks are one intent, and
+     someone who types 6-14 then spots plot 20 should not lose the
+     range by clicking it.
+
+     Matched on plot number, which is what a designer means by "6 to 14"
+     — meter labels carry the plot number but also a good deal else, and
+     matching those would make 1 catch 11 and 21. */
+  function applyRange(rows) {
+    const { numbers, bad } = parsePlotRange(range);
+    if (!numbers.length) {
+      setRangeNote(bad.length ? `Couldn't read: ${bad.join(", ")}` : "Type a range, like 6-14");
+      return;
+    }
+    const want = new Set(numbers.map(String));
+    const hits = rows.filter((r) => want.has(String(r.plot)));
+    if (!hits.length) {
+      setRangeNote(`No unassigned meter on plot ${numbers.join(", ")}`);
+      return;
+    }
+    setMany(hits.map((r) => r.id), true);
+    /* Naming what was asked for but not found: a range that quietly
+       matches four of nine plots looks like it worked. */
+    const missing = numbers.filter((n) => !hits.some((h) => String(h.plot) === String(n)));
+    setRangeNote(
+      `${hits.length} meter(s) ticked`
+      + (missing.length ? ` \u00B7 not here: ${missing.join(", ")}` : "")
+      + (bad.length ? ` \u00B7 couldn't read: ${bad.join(", ")}` : "")
+    );
+  }
 
   const setFilter = (k) => (v) => setFilters((f) => ({ ...f, [k]: v }));
 
@@ -158,6 +196,9 @@ export default function CircuitReport({
                   <span className="cr-meta">
                     from {report.station} &middot; {c.count} meter{c.count === 1 ? "" : "s"}
                     {" \u00B7 "}{kvaF(c.totalKva)}
+                    {c.kvaMissing > 0 && (
+                      <span className="cr-gap"> ({c.kvaMissing} with no load recorded)</span>
+                    )}
                     {c.maxDist > 0 && ` \u00B7 furthest ${distF(c.maxDist)}`}
                   </span>
                   {anyFilter && (
@@ -182,15 +223,43 @@ export default function CircuitReport({
                       </button>
                     </>
                   )}
+                  {/* The unlinked group's one action: gather some of these
+                      into a circuit that doesn't exist yet. Its number,
+                      letter and way on the substation are worked out when
+                      it is made, exactly as Link to Circuit does — this
+                      is the same operation reached by picking from a list
+                      instead of drawing round the plots, which is the
+                      only practical way when they aren't neighbours. */}
+                  {c.id === "unlinked" && (
+                    <div className="cr-mk">
+                      <input className="cr-range" value={range}
+                        placeholder="Plots, e.g. 6-14"
+                        aria-label="Select meters by plot number"
+                        onChange={(e) => { setRange(e.target.value); setRangeNote(""); }}
+                        onKeyDown={(e) => {
+                          if (e.key === "Enter") { e.preventDefault(); applyRange(c.meters); }
+                        }} />
+                      <button className="cr-clear" disabled={!range.trim()}
+                        onClick={() => applyRange(c.meters)}>
+                        Tick range
+                      </button>
+                      <button className="cr-act cr-new" disabled={!pickedHere.length || busy}
+                        title={pickedHere.length
+                          ? `Put ${pickedHere.length} meter(s) on a new circuit`
+                          : "Tick the meters, or type a plot range"}
+                        onClick={() => onCreateCircuit?.(pickedHere)}>
+                        Assign selected to a new circuit
+                      </button>
+                    </div>
+                  )}
                 </div>
 
                 <div className="dt-wrap cr-wrap">
                   <table className="dt cr-tbl">
                     <thead>
                       <tr className="head-row">
-                        {c.id !== "unlinked" && (
-                          <th style={{ width: 34 }}>
-                            <input type="checkbox"
+                        <th style={{ width: 34 }}>
+                          <input type="checkbox"
                               aria-label={`Select every meter in ${c.name}`}
                               checked={ids.length > 0 && pickedHere.length === ids.length}
                               ref={(el) => {
@@ -198,8 +267,7 @@ export default function CircuitReport({
                                   pickedHere.length > 0 && pickedHere.length < ids.length;
                               }}
                               onChange={(e) => setMany(ids, e.target.checked)} />
-                          </th>
-                        )}
+                        </th>
                         {[["meter", "Meter"], ["plot", "Plot"], ["houseType", "House type"],
                           ["distM", "Dist. from substation"], ["kva", "kVA"]].map(([k, l]) => (
                             <th key={k} onClick={() => setSort((s) => ({
@@ -210,7 +278,7 @@ export default function CircuitReport({
                           ))}
                       </tr>
                       <tr className="filter-row">
-                        {c.id !== "unlinked" && <th />}
+                        <th />
                         {["meter", "plot", "houseType"].map((k) => (
                           <th key={k}>
                             <input value={filters[k] ?? ""} placeholder="Filter&hellip;"
@@ -222,29 +290,33 @@ export default function CircuitReport({
                     </thead>
                     <tbody>
                       {rows.length === 0 && (
-                        <tr><td colSpan={c.id === "unlinked" ? 5 : 6} className="no-rows">
+                        <tr><td colSpan={6} className="no-rows">
                           Nothing matches that filter.
                         </td></tr>
                       )}
                       {rows.map((m) => (
                         <tr key={m.id} className={picked.includes(m.id) ? "cr-on" : ""}>
-                          {c.id !== "unlinked" && (
-                            <td className="mid">
-                              <input type="checkbox" checked={picked.includes(m.id)}
-                                aria-label={`Select ${m.meter}`}
-                                onChange={() => toggle(m.id)} />
-                            </td>
-                          )}
+                          <td className="mid">
+                            <input type="checkbox" checked={picked.includes(m.id)}
+                              aria-label={`Select ${m.meter}`}
+                              onChange={() => toggle(m.id)} />
+                          </td>
                           <td>{m.meter}</td>
                           <td className="mono">{num(m.plot)}</td>
                           <td className="mono">{m.houseType}</td>
                           <td className="num">{distF(m.distM)}</td>
-                          <td className="num">{kvaF(m.kva)}</td>
+                          <td className={m.kvaMissing ? "num cr-gap" : "num"}
+                            title={m.kvaMissing ? "No load recorded on this plot" : undefined}>
+                            {m.kvaMissing ? "\u2014" : kvaF(m.kva)}
+                          </td>
                         </tr>
                       ))}
                     </tbody>
                   </table>
                 </div>
+                {c.id === "unlinked" && rangeNote && (
+                  <p className="cr-note">{rangeNote}</p>
+                )}
               </section>
             );
           })}
@@ -270,7 +342,9 @@ export default function CircuitReport({
                         <td>{m.meter}</td>
                         <td className="mono">{num(m.plot)}</td>
                         <td className="mono">{m.houseType}</td>
-                        <td className="num">{kvaF(m.kva)}</td>
+                        <td className={m.kvaMissing ? "num cr-gap" : "num"}>
+                          {m.kvaMissing ? "\u2014" : kvaF(m.kva)}
+                        </td>
                       </tr>
                     ))}
                   </tbody>
@@ -314,6 +388,12 @@ const CSS = `
   cursor: pointer; font: 600 11px inherit; padding: 3px 10px; }
 .cr-act:disabled { opacity: .45; cursor: not-allowed; }
 .cr-del { border-width: 1.5px; border-color: #dc2626; font-weight: 700; }
+.cr-mk { display: flex; align-items: center; gap: 6px; flex-wrap: wrap; }
+.cr-range { border: 1px solid var(--border); border-radius: 6px; font: 600 11px inherit;
+  padding: 3px 8px; width: 120px; }
+.cr-new { background: #ecfdf5; border-color: #6ee7b7; color: #047857; }
+.cr-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
+.cr-gap { color: #b45309; font-weight: 600; }
 .dt.cr-tbl tbody tr.cr-on { background: var(--accent-light); }
 .cr-wrap { max-height: none; }
 .dt.cr-tbl { width: 100%; }

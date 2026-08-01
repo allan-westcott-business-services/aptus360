@@ -3,6 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
+import { heatPumpLabel, sourceTakesHeatPump } from "../../lib/heatPump.js";
 import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS } from "./electric.js";
 
 /* Editing whatever you right-clicked.
@@ -59,11 +60,28 @@ export default function FeatureEditor({
   });
   const setPlotField = (k) => (v) => setPlotFields((p) => ({ ...p, [k]: v }));
 
-  const heatSource = (lookups?.heatSources || [])
-    .find((h) => String(h.Heat_Source_ID) === String(plotFields.Heat_Source_ID));
-  /* Only ask for a model when the source is a pump — a gas boiler has no
-     model to choose from this list. */
-  const needsPump = /pump|ashp|gshp|wshp/i.test(heatSource?.Heat_Source || "");
+  /* Whether the fields the load is derived from have been changed but
+     not yet saved. Compared as strings because the selects hand back
+     strings and the plot record holds numbers, so a straight !== reports
+     every plot as edited the moment the modal opens. */
+  const plotDirty = isSeed && (
+    String(plotFields.Property_Config_ID ?? "") !== String(plot?.property_config_id ?? "")
+    || String(plotFields.Heat_Source_ID ?? "") !== String(plot?.heat_source_id ?? "")
+  );
+
+  /* Only ask for a model when the source takes one.
+
+     The shared rule rather than a regex of this file's own. The local
+     one matched gshp and wshp as well, but the register is the MCS list
+     of air source units — offering it against a ground source pump lists
+     models that cannot be fitted, and the picker sitting there implies
+     otherwise. */
+  const needsPump = sourceTakesHeatPump(plotFields.Heat_Source_ID, lookups?.heatSources || []);
+
+  /* The unit actually chosen, so its figures can be shown rather than
+     just its name. */
+  const pump = (lookups?.heatPumpModels || [])
+    .find((m) => String(m.Heat_Pump_Model_ID) === String(plotFields.Heat_Pump_Model_ID));
 
   const typeName = (id) =>
     (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
@@ -511,11 +529,80 @@ export default function FeatureEditor({
                     <option value="">&mdash; None &mdash;</option>
                     {(lookups?.heatPumpModels || []).map((m) => (
                       <option key={m.Heat_Pump_Model_ID} value={m.Heat_Pump_Model_ID}>
-                        {m.Model}
+                        {/* The full label, not the model name alone. 150
+                            make-and-model pairs repeat in the register and
+                            91 of those carry different loads, so a list of
+                            bare model names asks someone to choose between
+                            identical-looking options that size a supply
+                            differently. */}
+                        {heatPumpLabel(m)}
                       </option>
                     ))}
                   </select>
                 </div>
+              )}
+
+              {/* What the chosen unit is, from the register. Read-only —
+                  these belong to the model, not to this plot, and are
+                  shown because a register number and a rated load are
+                  what someone checks a selection against. */}
+              {needsPump && pump && (
+                <div className="fe-derived fe-pump">
+                  <div><span>Make</span><strong>{pump.Make || "\u2014"}</strong></div>
+                  <div><span>Model</span><strong>{pump.Model || "\u2014"}</strong></div>
+                  {pump.Model_Reference && pump.Model_Reference !== pump.Model && (
+                    <div><span>Reference</span><strong>{pump.Model_Reference}</strong></div>
+                  )}
+                  <div><span>MCS register</span><strong>{pump.Register_Number || "\u2014"}</strong></div>
+                  <div>
+                    <span>Rated power</span>
+                    <strong>
+                      {pump.Rated_Power_kVA != null
+                        ? `${Number(pump.Rated_Power_kVA)} kVA`
+                        : "\u2014"}
+                    </strong>
+                  </div>
+                </div>
+              )}
+
+              {/* What the plot draws, which is worked out rather than
+                  entered: the house type's figure, looked up on bedrooms
+                  and heating source together, unless someone has put a
+                  figure on the plot itself.
+
+                  Read-only here on purpose. The three fields above are
+                  its inputs, and showing the answer beneath them is what
+                  makes it obvious that a plot reading nothing is missing
+                  a heating source rather than broken — which is not
+                  obvious at all when the number only appears on the
+                  circuit report. */}
+              <div className="fld">
+                <label>Load</label>
+                <div className="fe-kva">
+                  {plot?.kva_load == null
+                    ? <span className="fe-kva-unset">
+                        No load &mdash; set a heating source, or enter one on the Plots tab
+                      </span>
+                    : <>
+                        <strong>{Number(plot.kva_load).toFixed(1)} kVA</strong>
+                        <span className="fe-kva-src">
+                          {plot.kva_source === "entered"
+                            ? "entered on this plot"
+                            : "from the house type"}
+                        </span>
+                      </>}
+                </div>
+              </div>
+
+              {/* The figure above is the saved one. Changing a field it
+                  depends on does not move it until the change has been
+                  written and read back, and a number that silently
+                  disagrees with the fields above it is worse than one
+                  that says it is waiting. */}
+              {plotDirty && (
+                <p className="fe-derived fe-kva-stale">
+                  The load will update when you save.
+                </p>
               )}
 
               <p className="fe-derived">
@@ -569,6 +656,15 @@ const CSS = `
 .fe-derived { margin: 0; font-size: 11.5px; color: var(--muted); background: var(--bg);
   border-radius: var(--radius); padding: 8px 10px; line-height: 1.5; }
 .fe-derived strong { color: var(--text); }
+.fe-kva { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; }
+.fe-kva strong { font-size: 15px; }
+.fe-kva-src { font-size: 11px; color: var(--muted); }
+.fe-kva-unset { font-size: 11.5px; color: #b45309; font-weight: 600; }
+.fe-kva-stale { background: #fffbeb; color: #92400e; }
+.fe-pump { display: grid; gap: 3px; }
+.fe-pump div { display: flex; justify-content: space-between; gap: 12px; }
+.fe-pump span { color: var(--muted); }
+.fe-pump strong { text-align: right; }
 .sn-code { margin: 0; font: 800 26px ui-monospace, Menlo, monospace; color: var(--accent);
   line-height: 1.1; }
 .sn-input { width: 78px; text-transform: uppercase; font-size: 20px; font-weight: 800;

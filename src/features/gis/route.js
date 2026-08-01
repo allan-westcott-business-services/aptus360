@@ -15,11 +15,22 @@ import { CONNECT_EPS, SNAP_TOL } from "./feeder.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
+/* What counts as a trench.
+
+   The same test the feeder router uses: the line type's own layer, not a
+   flag on the type row. An earlier version of this looked for an
+   Is_Trench column that does not exist — the type was found, the flag
+   read as undefined, every trench tested false, and the router reported
+   "No trenches to route the supply along" on a drawing full of them.
+
+   The fallback on the key is for a type not in the catalogue at all;
+   a type that is there is judged by its layer, never by a missing
+   field. */
 const isTrench = (f, lineTypes = []) => {
   const key = f.Attributes?.Line_Type;
   if (!key) return false;
   const t = lineTypes.find((x) => x.Type_Key === key);
-  return t ? !!t.Is_Trench : String(key).startsWith("trench_");
+  return t ? t.Layer_Key === "trench" : String(key).includes("trench");
 };
 
 /* The trench network as a graph.

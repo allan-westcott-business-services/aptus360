@@ -38,6 +38,7 @@ import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
+import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
 
@@ -312,6 +313,19 @@ export default function GISCanvasPage() {
     [lineTypes]
   );
 
+  /* Colour and sideways nudge for each LV feeder main.
+
+     Worked out from the features alone, so it is recomputed when the
+     drawing changes rather than on every repaint — the parallel test
+     compares runs pairwise and samples along them, which is far too much
+     to redo on a pan.
+
+     Both are drawing aids and neither touches stored geometry: the nudge
+     is applied to projected pixels further down. Offsetting real
+     geometry would move cable ends past CONNECT_M and sever the very
+     junctions the Circuit Report walks. */
+  const feederPlan = useMemo(() => feederRenderPlan(features), [features]);
+
   /* One resolver for the whole frame. Styles and layers change rarely,
      the chosen standard almost never, so the closure is rebuilt only
      when one of them does — not per feature, per repaint. */
@@ -499,10 +513,19 @@ export default function GISCanvasPage() {
         }
       } else {
         const st = styleFor(f);
+        /* An LV feeder main carries its own colour so one run can be told
+           from another, and is nudged sideways where it shares a trench
+           with one. The nudge is in screen pixels, so the two stay
+           legibly apart at any zoom rather than merging as you zoom out.
+
+           Only feeder mains are in the plan; everything else draws
+           exactly as it did. */
+        const fp = feederPlan.get(Number(f.Feature_ID));
+        const line = fp?.offsetPx ? offsetPolyline(pts, fp.offsetPx) : pts;
         ctx.beginPath();
-        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        line.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         if (f.Feature_Type === "polygon") ctx.closePath();
-        ctx.strokeStyle = on ? "#1d4ed8" : st.colour;
+        ctx.strokeStyle = on ? "#1d4ed8" : (fp?.colour ?? st.colour);
         ctx.lineWidth = on ? st.widthPx + 1.5 : st.widthPx;
         ctx.setLineDash(st.dash);
         ctx.lineCap = "round";
@@ -523,7 +546,15 @@ export default function GISCanvasPage() {
           const mk = st.marker;
           const colour = on ? "#1d4ed8" : (mk.colour ?? st.colour);
           for (const { point, angle } of markerPositions(f.Geometry, mk.stepM)) {
-            const q = toPx(point);
+            const q0 = toPx(point);
+            /* Markers come from the real geometry, so on a run that has
+               been nudged aside they would sit beside the cable they
+               annotate. Shifted by the same amount, along the same left
+               normal offsetPolyline uses, so they travel with it. */
+            const q = fp?.offsetPx
+              ? { x: q0.x - Math.sin(angle) * fp.offsetPx,
+                  y: q0.y + Math.cos(angle) * fp.offsetPx }
+              : q0;
             ctx.save();
             ctx.translate(q.x, q.y);
             /* Turned along the run unless the style says otherwise. An
@@ -1783,7 +1814,21 @@ export default function GISCanvasPage() {
       bedrooms: seedAttrs?.Bedrooms ?? x.bedrooms,
       config_code: seedAttrs?.Config ?? x.config_code,
     } : x)));
-    try { await bulkUpdatePlots(projectId, [plotId], changes); }
+    try {
+      await bulkUpdatePlots(projectId, [plotId], changes);
+      /* The load is not among the fields patched above, and it changes
+         anyway: it is looked up from the house type on bedrooms and
+         heat source together, so editing either moves it. Patching the
+         two inputs and leaving the answer behind left the circuit report
+         quoting the load for a heat source that had just been replaced,
+         with nothing on screen to say it was stale.
+
+         Re-read rather than recomputed here: the rule lives in
+         gis_unplaced_plots and a copy of it in the browser would be a
+         second rule to keep in step. */
+      const pl = await listPlacementPlots(projectId).catch(() => null);
+      if (pl?.plots) setPlotList(pl.plots);
+    }
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
 
@@ -1992,27 +2037,25 @@ export default function GISCanvasPage() {
     } catch (e) { setError(e.message); }
   }
 
-  /* ── Link to Circuit ──
-     The original's gisLinkCircuitFinish. Draw round the plot seeds a
-     circuit should serve; the plots with an electric meter become its
-     members, membership is written on those meters, and the circuit
-     takes the next free LV way on the substation.
+  /* Making a circuit out of a known set of meters.
 
-     Cabling is deliberately not drawn here, exactly as in the original —
-     defining a circuit assigns its meters, and laying the feeders is a
-     separate step. */
-  async function finishCircuit(ring) {
+     The half of finishCircuit that has nothing to do with how the meters
+     were chosen: allocate the number, letter and way, write membership,
+     and put the origin node on the substation. Drawing round the plots
+     and ticking them in the report are two ways of naming the same set,
+     and they must produce identical circuits — a second implementation
+     would drift, and the way allocation is the part that would drift
+     silently. */
+  async function createCircuitFrom(meters, how) {
     const sub = features.find((f) => f.Feature_Role === "substation");
     if (!sub) {
       setError("Place a substation first \u2014 a circuit has to feed back to one.");
-      return;
+      return false;
     }
-    const seeds = metredSeedsInside(features, ring, pointInPolygon);
-    if (!seeds.length) {
-      setError("No plot seeds with an electric meter inside that outline.");
-      return;
+    if (!meters.length) {
+      setError("No meters to put on a circuit.");
+      return false;
     }
-    const meters = metersOfSeeds(features, seeds);
     const circuitId = nextCircuitId(features);
     const letter = circuitLetter(circuitId);
     const name = `Circuit ${circuitId}`;
@@ -2021,7 +2064,7 @@ export default function GISCanvasPage() {
 
     if (way.full) {
       setError(`All ${way.ways} LV ways are taken. Add a way on the substation, or free one by deleting a circuit.`);
-      return;
+      return false;
     }
 
     setBusy("circuit");
@@ -2058,18 +2101,73 @@ export default function GISCanvasPage() {
       }
 
       await load(projectId);
-      setTool("select");
-      setDraft([]);
       setError("");
       setStatus(
         `${name} (${letter}) \u00B7 node ${spanLabel(letter, 0)} at the substation: `
-        + `${seeds.length} plot(s), ${meters.length} meter(s), `
+        + `${how}, ${meters.length} meter(s), `
         + `${kva} kVA on LV way ${way.way}`
         + (way.over ? ` \u2014 ~${way.amps} A exceeds the ${way.fuse} A fuse` : "")
       );
       setTimeout(() => setStatus(""), 10000);
-    } catch (e) { setError(e.message); }
+      return true;
+    } catch (e) { setError(e.message); return false; }
     finally { setBusy(""); }
+  }
+
+  /* ── Link to Circuit ──
+     The original's gisLinkCircuitFinish. Draw round the plot seeds a
+     circuit should serve; the plots with an electric meter become its
+     members, membership is written on those meters, and the circuit
+     takes the next free LV way on the substation.
+
+     Cabling is deliberately not drawn here, exactly as in the original —
+     defining a circuit assigns its meters, and laying the feeders is a
+     separate step. */
+  async function finishCircuit(ring) {
+    const sub = features.find((f) => f.Feature_Role === "substation");
+    if (!sub) {
+      setError("Place a substation first \u2014 a circuit has to feed back to one.");
+      return;
+    }
+    const seeds = metredSeedsInside(features, ring, pointInPolygon);
+    if (!seeds.length) {
+      setError("No plot seeds with an electric meter inside that outline.");
+      return;
+    }
+    const meters = metersOfSeeds(features, seeds);
+    const made = await createCircuitFrom(meters, `${seeds.length} plot(s)`);
+    if (made) {
+      setTool("select");
+      setDraft([]);
+    }
+  }
+
+  /* The same thing, reached from the Circuit Report by ticking meters
+     that are reachable but on no circuit.
+
+     Needed because Link to Circuit can only take plots that sit together
+     — it works from an outline drawn on the canvas. Meters left over at
+     the end of a design rarely do sit together, and a lasso round
+     scattered plots takes in the ones already spoken for. */
+  async function createCircuitFromMeters(meterIds = []) {
+    const ids = meterIds.map(Number);
+    const meters = features.filter((f) =>
+      f.Feature_Role === "meter"
+      && f.Layer_Key === "electric"
+      && ids.includes(Number(f.Feature_ID))
+      /* Already on a circuit is not an error worth stopping for, but it
+         must not be moved silently — Remove from circuit is the way to
+         take a meter off one, and doing it here would reassign without
+         freeing the old circuit's way. */
+      && f.Attributes?.Circuit_ID == null);
+
+    if (!meters.length) {
+      setError("Those meters are already on a circuit.");
+      return;
+    }
+    const skipped = ids.length - meters.length;
+    await createCircuitFrom(meters,
+      `picked from the report${skipped ? `, ${skipped} already on a circuit skipped` : ""}`);
   }
 
   /* Taking meters out of a circuit. The circuit itself stays — this is
@@ -3723,6 +3821,7 @@ export default function GISCanvasPage() {
             busy={busy === "circuit"}
             onRemoveFromCircuit={removeFromCircuit}
             onDeleteCircuit={deleteCircuit}
+            onCreateCircuit={createCircuitFromMeters}
           />
         );
       })()}

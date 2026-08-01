@@ -17,7 +17,42 @@ export default async function handler(req, context) {
         .eq("Project_ID", projectId)
         .order("Plot_ID");
       if (error) throw error;
-      return json({ rows: data || [] });
+
+      /* The load a plot actually draws, which is usually not the one on
+         its own row.
+
+         Plot.KVA_Load is the override — normally empty. The working
+         figure comes from House_Type_Consumption, looked up on bedrooms
+         and heat source together. Reading the column alone shows a dash
+         for a plot whose load is perfectly well known, which is what the
+         plots page was doing.
+
+         Taken from gis_unplaced_plots rather than joined again here, so
+         there is one rule for what a plot draws and not two. A second
+         COALESCE written out in this file would agree with that function
+         today and drift from it the first time either changed — the
+         canvas and the plots page would then quietly disagree about the
+         same plot, which is worse than either being wrong. */
+      const rows = data || [];
+      const { data: resolved } = await db
+        .rpc("gis_unplaced_plots", { p_project: Number(projectId) });
+
+      const byId = new Map((resolved || []).map((r) => [Number(r.plot_id), r]));
+      return json({
+        rows: rows.map((p) => {
+          const r = byId.get(Number(p.Plot_ID));
+          return {
+            ...p,
+            /* Null when nothing supplies a figure, never zero. A plot
+               with no load recorded and a plot drawing nothing are
+               different problems and must not look the same. */
+            KVA_Resolved: r?.kva_load ?? null,
+            /* 'entered', 'house type' or 'not set', straight from the
+               database's own verdict rather than inferred here. */
+            KVA_Source: r?.kva_source ?? "not set",
+          };
+        }),
+      });
     }
 
     /* Batch insert. One request for the whole set rather than one per plot —

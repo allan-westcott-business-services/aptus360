@@ -62,8 +62,16 @@ function BedroomSummary({ plots, configFor, typeName }) {
     .map(Number)
     .sort((a, b) => a - b);
 
-  const totalKva = plots.reduce((sum, p) => sum + (Number(p.KVA_Load) || 0), 0);
-  const missingKva = plots.filter((p) => p.KVA_Load == null || p.KVA_Load === "").length;
+  /* The working load, not the override. KVA_Resolved carries whatever
+     the database settled on — the plot's own figure if someone entered
+     one, otherwise the house type's, keyed on bedrooms and heat source
+     together. A plot missing either lookup has none, and that is what
+     "missing" now counts: plots with no load from any source, rather
+     than plots with an empty override column, which is nearly all of
+     them and told nobody anything. */
+  const kvaOf = (p) => (p.KVA_Resolved ?? p.KVA_Load);
+  const totalKva = plots.reduce((sum, p) => sum + (Number(kvaOf(p)) || 0), 0);
+  const missingKva = plots.filter((p) => kvaOf(p) == null || kvaOf(p) === "").length;
 
   const Tooltip = ({ g }) => (
     <span className="bed-tooltip">
@@ -124,7 +132,7 @@ const COLS = (cfg, typeName, hpName) => [
   { key: "type",   label: "House type",   width: 110, type: "multi", raw: (p) => p.Property_Config_ID },
   { key: "dev",    label: "Developer",    width: 170, type: "multi", raw: (p) => p.Project_Developer_ID },
   { key: "heat",   label: "Heat source",  width: 150, type: "multi", raw: (p) => p.Heat_Source_ID },
-  { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Load ?? null },
+  { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Resolved ?? p.KVA_Load ?? null },
   { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
   { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
   { key: "slp",    label: "SLP",          width: 60,  type: "bool",  align: "center", raw: (p) => !!p.Self_Lay_Provider },
@@ -611,7 +619,16 @@ export default function PlotsTab({ projectId, projectRef }) {
                                       </span>
                                     : "\u2014")
                               )
-                            : col.key === "kva" ? (p.KVA_Load ?? "\u2014")
+                            : col.key === "kva" ? (
+                                (p.KVA_Resolved ?? p.KVA_Load) == null
+                                  ? <span className="kva-unset" title="No load: set a heat source, or enter a figure on the plot">&#8212;</span>
+                                  : <span title={p.KVA_Source === "entered"
+                                      ? "Entered on this plot"
+                                      : "From the house type (bedrooms + heat source)"}>
+                                      {p.KVA_Resolved ?? p.KVA_Load}
+                                      {p.KVA_Source === "entered" && <span className="kva-own">*</span>}
+                                    </span>
+                              )
                             : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")
                             : col.key === "slp" ? (p.Self_Lay_Provider ? <span className="tick">&#10003;</span> : "")
@@ -690,6 +707,8 @@ const CSS = FILTER_CSS + `
 .dt .ref { color: var(--accent); font-weight: 600; }
 .inherited { color: var(--muted); font-style: italic; }
 .tick { color: #059669; font-weight: 700; }
+.kva-unset { color: #b45309; font-weight: 600; }
+.kva-own { color: var(--muted); font-size: 10px; margin-left: 2px; }
 .code-chip { font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
 .row-del { background: none; border: none; cursor: pointer; color: var(--muted);

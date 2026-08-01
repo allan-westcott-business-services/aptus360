@@ -4,7 +4,8 @@ import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
-import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS } from "./electric.js";
+import { circuitColours, feederColourAt } from "./feederColour.js";
+import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor } from "./electric.js";
 
 /* Editing whatever you right-clicked.
 
@@ -16,7 +17,7 @@ export default function FeatureEditor({
   /* The whole drawing, so a meter can be offered the circuits that
      already exist on it. */
   allFeatures = [],
-  onSave, onSavePlot, onDelete, onClose,
+  onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -45,6 +46,63 @@ export default function FeatureEditor({
      holds — the count is what tells one circuit from another when the
      names are all "Circuit 1", "Circuit 2". */
   const circuits = useMemo(() => circuitsFrom(allFeatures || []), [allFeatures]);
+
+  /* ── The LV board ──
+     Circuit names and colours are edited here but belong in two
+     different places: the name is stamped on every meter and node of the
+     circuit, the colour on the substation. Both are held locally until
+     Save so a half-typed name is not written on sixty features. */
+  const [circuitNames, setCircuitNames] = useState({});
+  const setCircuitName = (cid, v) =>
+    setCircuitNames((m) => ({ ...m, [cid]: v }));
+
+  const [circuitColoursDraft, setCircuitColoursDraft] = useState(null);
+  /* Null until something is changed, so an untouched board writes
+     nothing and cannot overwrite a colour set from elsewhere. */
+  const chosenColours = circuitColoursDraft
+    ?? (feature.Attributes?.Circuit_Colours || {});
+  const setCircuitColour = (cid, v) =>
+    setCircuitColoursDraft({ ...chosenColours, [cid]: v });
+
+  /* The colour a circuit is drawn in: the chosen one, or its place in
+     the palette. The same resolution the canvas uses, from the same
+     module, so the swatch cannot show one colour while the drawing
+     shows another. */
+  const circuitPalette = useMemo(
+    () => circuitColours(allFeatures || [], chosenColours),
+    [allFeatures, chosenColours],
+  );
+  const colourFor = (cid) =>
+    circuitPalette.get(Number(cid)) ?? feederColourAt(circuits
+      .findIndex((c) => Number(c.id) === Number(cid)));
+
+  /* What a way is carrying. Amps against its fuse, since that is what
+     decides whether the way is viable, with the load and meter count
+     behind it. */
+  const wayFuse = Number(feature.Attributes?.Way_Fuse_A ?? SUB_DEFAULTS.Way_Fuse_A) || 0;
+  const outputV = Number(feature.Attributes?.Output_V ?? SUB_DEFAULTS.Output_V) || 400;
+  const rating = Number(feature.Attributes?.Rating_kVA ?? 0) || 0;
+
+  const wayLoad = (cid) => {
+    const c = circuits.find((x) => Number(x.id) === Number(cid));
+    if (!c) return null;
+    const kva = c.meters.reduce((t, m) => {
+      const p = plotList.find((x) => x.plot_id === m.Plot_ID);
+      const v = p?.kva_load ?? p?.KVA_Load;
+      return t + (v != null && v !== "" ? Number(v) : 0);
+    }, 0);
+    const amps = ampsFor(kva, outputV);
+    return {
+      meters: c.meters.length,
+      kva: Math.round(kva * 10) / 10,
+      amps: Math.round(amps),
+      pct: wayFuse > 0 ? Math.round((amps / wayFuse) * 100) : 0,
+      over: wayFuse > 0 && amps > wayFuse,
+    };
+  };
+
+  const boardKva = Math.round(circuits.reduce((t, c) =>
+    t + (wayLoad(c.id)?.kva ?? 0), 0) * 10) / 10;
 
   const setAttr = (k) => (v) =>
     setF((p) => ({ ...p, Attributes: { ...p.Attributes, [k]: v === "" ? null : v } }));
@@ -139,13 +197,36 @@ export default function FeatureEditor({
         });
       }
 
+      /* Circuit colours ride along on the substation's own attributes,
+         so the board saves in the same write as everything else on it.
+         Only when something was actually changed — an untouched board
+         must not overwrite a colour set from somewhere else. */
+      const subAttrs = circuitColoursDraft
+        ? { ...f.Attributes, Circuit_Colours: circuitColoursDraft }
+        : f.Attributes;
+
       await onSave(feature.Feature_ID, {
         Label: f.Label || null,
         Layer_Key: f.Layer_Key,
         Attributes: isSeed
           ? { ...f.Attributes, ...seedAttributes() }
-          : f.Attributes,
+          : subAttrs,
       });
+
+      /* A circuit's name is stamped on every meter, span node and cable
+         section that belongs to it, so renaming one is a bulk write
+         across the drawing rather than a field on this feature. Done
+         after the substation save and only for names that actually
+         changed. */
+      const renames = Object.entries(circuitNames)
+        .map(([cid, name]) => ({
+          circuitId: Number(cid),
+          name: String(name).trim(),
+          was: circuits.find((c) => Number(c.id) === Number(cid))?.name,
+        }))
+        .filter((r) => r.name && r.name !== r.was);
+      if (renames.length) await onRenameCircuits?.(renames);
+
       onClose();
     } catch (e) { setError(e.message); setBusy(false); }
   }
@@ -347,28 +428,104 @@ export default function FeatureEditor({
               <p className="hint">
                 One circuit per way. Defining a circuit takes the next free one.
               </p>
+
               {/* Every way on the board, not only the ones in use. A list
                   showing one entry against a drawing labelled 1B and 2A
                   reads as a contradiction; showing all four says plainly
-                  that two are spare. */}
-              <div className="fe-ways">
+                  that two are spare.
+
+                  A row per way rather than a chip, because a way carries
+                  more than a letter: what it feeds, how hard, and what
+                  colour that circuit is drawn in. */}
+              <div className="fe-board">
+                <div className="fe-board-h">
+                  <span>Way</span><span>Circuit</span><span>Loading</span><span>Line</span>
+                </div>
                 {Array.from(
                   { length: Number(f.Attributes.Ways ?? SUB_DEFAULTS.Ways) || 0 },
                   (_, i) => i + 1,
                 ).map((way) => {
                   const cid = (f.Attributes.Way_Circuits || {})[way];
+                  const circuit = cid != null
+                    ? circuits.find((c) => Number(c.id) === Number(cid)) : null;
+                  const load = cid != null ? wayLoad(cid) : null;
                   return (
-                    <span className={cid != null ? "fe-way" : "fe-way spare"} key={way}>
-                      Way {way}
-                      <strong>{cid != null ? circuitLetter(cid) : "\u2014"}</strong>
-                    </span>
+                    <div className={cid != null ? "fe-board-r" : "fe-board-r spare"} key={way}>
+                      <span className="fe-way-n">{way}</span>
+                      {cid == null
+                        ? <span className="fe-spare">Spare</span>
+                        : <input className="fe-cname"
+                            aria-label={`Name of the circuit on way ${way}`}
+                            value={circuitNames[cid] ?? circuit?.name ?? `Circuit ${cid}`}
+                            onChange={(e) => setCircuitName(cid, e.target.value)} />}
+                      {load
+                        ? <span className="fe-load">
+                            <span className={load.over ? "fe-amps over" : "fe-amps"}>
+                              {load.amps} A &middot; {load.pct}%
+                            </span>
+                            <span className="fe-bar">
+                              <i style={{
+                                width: `${Math.min(100, load.pct)}%`,
+                                background: load.over ? "#dc2626"
+                                  : load.pct > 80 ? "#d97706" : "#15803d",
+                              }} />
+                            </span>
+                            <span className="fe-meters">
+                              &#9889; {load.meters} meter{load.meters === 1 ? "" : "s"}
+                              {" \u00B7 "}{load.kva} kVA
+                            </span>
+                          </span>
+                        : <span />}
+                      {cid == null
+                        ? <span />
+                        : <label className="fe-swatch"
+                            title={`Colour of ${circuit?.name ?? `circuit ${cid}`} on the drawing`}>
+                            <input type="color" value={colourFor(cid)}
+                              aria-label={`Line colour for circuit ${cid}`}
+                              onChange={(e) => setCircuitColour(cid, e.target.value)} />
+                            <span style={{ background: colourFor(cid) }} />
+                          </label>}
+                    </div>
                   );
                 })}
               </div>
+
+              {/* What the board is carrying against what it can. The one
+                  figure that turns a list of ways into a decision. */}
+              <div className="fe-demand">
+                <div className="fe-demand-h">
+                  <span>Connected demand</span>
+                  {rating > 0 && (
+                    <span className="fe-demand-sp">
+                      {Math.round((boardKva / rating) * 100)}% &middot;
+                      {" "}{Math.round((rating - boardKva) * 10) / 10} kVA spare
+                    </span>
+                  )}
+                </div>
+                <p className="fe-demand-n">
+                  <strong>{boardKva}</strong> kVA{rating > 0 && ` of ${rating} kVA`}
+                </p>
+                {rating > 0 && (
+                  <span className="fe-bar big">
+                    <i style={{
+                      width: `${Math.min(100, (boardKva / rating) * 100)}%`,
+                      background: boardKva > rating ? "#dc2626" : "#334155",
+                    }} />
+                  </span>
+                )}
+                {/* Said plainly rather than left to be discovered. A
+                    figure summed without diversity is not what a network
+                    draws, and anyone reading a percentage off this needs
+                    to know which it is. */}
+                <p className="hint">
+                  Demand is summed without a diversity factor.
+                </p>
+              </div>
+
               <p className="hint">
-                Which circuit sits on each way. A dash is a spare way.
                 Cable labels read way then circuit, so <strong>2A</strong> is
-                circuit A on way 2.
+                circuit A on way 2. The colour is how that circuit&rsquo;s LV
+                feeder is drawn, from the substation to its far end.
               </p>
             </>
           )}
@@ -708,6 +865,36 @@ const CSS = `
 .fe-pump div { display: flex; justify-content: space-between; gap: 12px; }
 .fe-pump span { color: var(--muted); }
 .fe-pump strong { text-align: right; }
+.fe-board { display: grid; gap: 2px; margin: 6px 0; }
+.fe-board-h, .fe-board-r { display: grid; grid-template-columns: 34px 1fr 150px 40px;
+  gap: 8px; align-items: center; }
+.fe-board-h { font: 700 10px inherit; text-transform: uppercase; letter-spacing: .05em;
+  color: var(--muted); padding: 0 2px 4px; border-bottom: 1px solid var(--border); }
+.fe-board-r { padding: 5px 2px; border-bottom: 1px solid var(--bg); }
+.fe-board-r.spare { opacity: .55; }
+.fe-way-n { display: inline-grid; place-items: center; width: 22px; height: 22px;
+  border-radius: 50%; background: var(--bg); font: 700 11px inherit; }
+.fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
+  padding: 4px 8px; width: 100%; }
+.fe-spare { font-size: 11.5px; color: var(--muted); }
+.fe-load { display: grid; gap: 2px; }
+.fe-amps { font: 700 11.5px inherit; color: #15803d; }
+.fe-amps.over { color: #b91c1c; }
+.fe-meters { font-size: 10.5px; color: var(--muted); }
+.fe-bar { display: block; height: 5px; border-radius: 3px; background: var(--bg); overflow: hidden; }
+.fe-bar i { display: block; height: 100%; }
+.fe-bar.big { height: 8px; margin: 4px 0 6px; }
+.fe-swatch { position: relative; display: block; width: 34px; height: 24px; cursor: pointer; }
+.fe-swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%;
+  cursor: pointer; }
+.fe-swatch span { display: block; width: 100%; height: 100%; border-radius: 5px;
+  border: 1.5px solid var(--white); box-shadow: 0 0 0 1px var(--border); }
+.fe-demand { background: var(--bg); border-radius: var(--radius); padding: 11px 13px; margin: 10px 0; }
+.fe-demand-h { display: flex; justify-content: space-between; font-size: 11.5px;
+  color: var(--muted); }
+.fe-demand-sp { font-weight: 600; }
+.fe-demand-n { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
+.fe-demand-n strong { font-size: 24px; color: var(--text); }
 .sn-code { margin: 0; font: 800 26px ui-monospace, Menlo, monospace; color: var(--accent);
   line-height: 1.1; }
 .sn-input { width: 78px; text-transform: uppercase; font-size: 20px; font-weight: 800;

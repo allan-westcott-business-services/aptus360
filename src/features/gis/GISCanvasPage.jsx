@@ -324,7 +324,17 @@ export default function GISCanvasPage() {
      is applied to projected pixels further down. Offsetting real
      geometry would move cable ends past CONNECT_M and sever the very
      junctions the Circuit Report walks. */
-  const feederPlan = useMemo(() => feederRenderPlan(features), [features]);
+  const feederPlan = useMemo(() => {
+    /* The colours chosen on the substation, if any. Held there rather
+       than on each cable because the choice belongs to the circuit, and
+       a circuit is many cable sections — putting it on the sections
+       would mean keeping them all in step and would drift the moment one
+       was redrawn. */
+    const sub = features.find((f) => f.Feature_Role === "substation");
+    return feederRenderPlan(features, {
+      chosenColours: sub?.Attributes?.Circuit_Colours || {},
+    });
+  }, [features]);
 
   /* One resolver for the whole frame. Styles and layers change rarely,
      the chosen standard almost never, so the closure is rebuilt only
@@ -2170,6 +2180,40 @@ export default function GISCanvasPage() {
       `picked from the report${skipped ? `, ${skipped} already on a circuit skipped` : ""}`);
   }
 
+  /* Renaming a circuit.
+
+     The name is not held in one place — it is stamped on every meter,
+     span node and cable section of the circuit, which is what lets the
+     circuit report and the trace name it without looking anything up.
+     So a rename is a bulk write across all of them, and missing any one
+     kind would leave two names for one circuit depending on which screen
+     you were on. */
+  async function renameCircuits(renames = []) {
+    const byId = new Map(renames.map((r) => [Number(r.circuitId), r.name]));
+    const touched = features.filter((x) =>
+      x.Attributes?.Circuit_ID != null
+      && byId.has(Number(x.Attributes.Circuit_ID)));
+    if (!touched.length) return;
+
+    setBusy("circuit");
+    try {
+      const updates = touched.map((x) => ({
+        Feature_ID: x.Feature_ID,
+        Attributes: {
+          ...x.Attributes,
+          Circuit_Name: byId.get(Number(x.Attributes.Circuit_ID)),
+        },
+      }));
+      for (let i = 0; i < updates.length; i += 100) {
+        await bulkUpdateFeatures(projectId, updates.slice(i, i + 100));
+      }
+      await load(projectId);
+      setStatus(`${renames.length} circuit(s) renamed across ${touched.length} feature(s)`);
+      setTimeout(() => setStatus(""), 6000);
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   /* Taking meters out of a circuit. The circuit itself stays — this is
      the ordinary correction, a plot that turned out to belong on the
      next feeder along. The meters keep everything else; only their
@@ -3857,6 +3901,7 @@ export default function GISCanvasPage() {
           allFeatures={features}
           onSave={saveFeature}
           onSavePlot={savePlot}
+          onRenameCircuits={renameCircuits}
           onDelete={deleteFeature}
           onClose={() => setEditing(null)}
         />

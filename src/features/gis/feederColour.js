@@ -47,38 +47,38 @@ export const isFeederMain = (f) =>
   && f?.Layer_Key === "electric"
   && f?.Attributes?.Line_Type === "elec_main";
 
-/* Which colour a run has.
+/* Which circuit a feeder run belongs to.
 
-   Stored on the feature rather than worked out from its position in a
-   list. Creation order changes — we have watched a service cable go from
-   1587 to 1589 inside one session — and a colour derived from it would
-   repaint half the site whenever one run was redrawn. Once colour
-   appears on a legend or an export it is something people quote, so it
-   has to survive a redraw.
-
-   Attributes is jsonb, so this needs no migration. Runs drawn before
-   this existed have no index; assignMissing below fills them in once,
-   after which they never move. */
-export const colourIndexOf = (f) => {
-  const n = f?.Attributes?.Colour_Index;
-  return Number.isFinite(Number(n)) ? Number(n) : null;
+   Build LV Network stamps Circuit_ID on every section it draws, which is
+   what makes a circuit's colour hold along its whole length. Colouring
+   by feature instead gave each section its own, so a feeder changed
+   colour at every span node — the sections are separate features and the
+   nodes are where one ends and the next begins. */
+export const circuitIdOf = (f) => {
+  const id = f?.Attributes?.Circuit_ID;
+  return id == null ? null : Number(id);
 };
 
-/* Indices for runs that have none yet, continuing from the highest
-   already in use so nothing already coloured has to change.
+/* The colour for a circuit.
 
-   Ordered by Feature_ID only to decide who goes first on this one
-   occasion — after that the index is what counts and creation order
-   stops mattering. */
-export function assignMissing(features = []) {
-  const mains = features.filter(isFeederMain);
-  const used = mains.map(colourIndexOf).filter((n) => n != null);
-  let next = used.length ? Math.max(...used) + 1 : 0;
+   An explicit choice wins. Otherwise the circuit's position among the
+   circuits on the drawing, ordered by id, so the assignment is stable:
+   redrawing a feeder does not repaint the site, because the circuit it
+   belongs to has not moved.
 
-  return mains
-    .filter((f) => colourIndexOf(f) == null)
-    .sort((a, b) => Number(a.Feature_ID) - Number(b.Feature_ID))
-    .map((f) => ({ feature: f, colourIndex: next++ }));
+   A main with no circuit gets nothing back and keeps whatever the style
+   cascade gives it. Colour identifies a circuit here, so a length of
+   mains that is not on one has no colour to carry. */
+export function circuitColours(features = [], chosen = {}) {
+  const ids = [...new Set(features.filter(isFeederMain).map(circuitIdOf)
+    .filter((id) => id != null))].sort((a, b) => a - b);
+
+  const out = new Map();
+  ids.forEach((id, i) => {
+    const pick = chosen?.[id] ?? chosen?.[String(id)];
+    out.set(id, pick || feederColourAt(i));
+  });
+  return out;
 }
 
 /* ── Geometry helpers ── */
@@ -291,22 +291,27 @@ export function alignSign(reference = [], other = []) {
    it are drawn exactly as before, so nothing that is not an LV feeder
    main is affected by any of this. */
 export function feederRenderPlan(features = [], opts = {}) {
-  const { spacingPx = 5, ...groupOpts } = opts;
+  const { spacingPx = 5, chosenColours = {}, ...groupOpts } = opts;
 
   const runs = features.filter(isFeederMain).map((f) => ({
     id: Number(f.Feature_ID),
     geometry: f.Geometry || [],
-    colourIndex: colourIndexOf(f),
+    circuitId: circuitIdOf(f),
     feature: f,
   }));
 
+  const byCircuit = circuitColours(features, chosenColours);
+
   const plan = new Map();
-  /* Colour first, and for every run — it does not depend on grouping. A
-     run with no stored index yet falls back to its position among the
-     mains so the drawing is still readable before assignMissing has
-     run; it will settle once the index is written. */
-  runs.forEach((r, i) => {
-    plan.set(r.id, { colour: feederColourAt(r.colourIndex ?? i), offsetPx: 0 });
+  /* Colour follows the circuit, so every section of one feeder carries
+     the same colour from the substation to the far end. A section with
+     no circuit gets none and is left to the style cascade. */
+  runs.forEach((r) => {
+    plan.set(r.id, {
+      colour: r.circuitId == null ? null : byCircuit.get(r.circuitId) ?? null,
+      circuitId: r.circuitId,
+      offsetPx: 0,
+    });
   });
 
   for (const group of parallelGroups(runs, groupOpts)) {

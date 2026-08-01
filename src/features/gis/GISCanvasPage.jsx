@@ -190,6 +190,168 @@ export default function GISCanvasPage() {
     finally { setLoading(false); }
   }, [projects]);
 
+  /* ── Undo and redo ──
+
+     The unit is the feature row. An action records the rows it changed —
+     as they were, and as they became — and nothing else, so an entry
+     costs what the action touched rather than what the drawing contains.
+     Auto Service over sixty plots is one entry, because it was one thing
+     that was asked for.
+
+     Inverses are recorded, not derived: working out how to reverse each
+     action separately would be twenty-five reversals to get right and to
+     keep right, whereas a before-and-after of the rows is the same shape
+     whatever did the changing.
+
+     The history lives in the database, so it survives a reload — which is
+     when it is most wanted, since the drawing that needs undoing is often
+     the one that made you reload. */
+  const [stack, setStack] = useState(emptyStack());
+  const [undoBusy, setUndoBusy] = useState(false);
+  const [historyOpen, setHistoryOpen] = useState(false);
+
+  /* The drawing as it stands, readable from inside an async action
+     without waiting for a re-render. */
+  const featuresRef = useRef(features);
+  featuresRef.current = features;
+
+  const loadHistory = useCallback(async (pid) => {
+    if (!pid) return;
+    try {
+      const h = await listUndo(pid);
+      setStack({
+        past: (h.past || []).map((r) => ({
+          id: r.Undo_ID, label: r.Label, delta: r.Delta, at: r.Created_At,
+        })),
+        future: (h.future || []).map((r) => ({
+          id: r.Undo_ID, label: r.Label, delta: r.Delta, at: r.Created_At,
+        })),
+      });
+    } catch { /* No history is not a reason to fail the page. */ }
+  }, []);
+
+  /* Record what an action did, given the drawing either side of it.
+
+     Both sides are read from the server rather than from component
+     state: state after an await has not necessarily re-rendered, and a
+     delta computed against a stale "after" would record an action as
+     having done less than it did — which is worse than not recording it,
+     because undo would then half-reverse it. */
+  const recordAction = useCallback(async (label, before, after) => {
+    const delta = diffFeatures(before, after);
+    if (isEmptyDelta(delta)) return;
+
+    let id = null;
+    try {
+      const r = await recordUndo(projectId, label, delta);
+      id = r?.entry?.Undo_ID ?? null;
+    } catch {
+      /* A history that cannot be written must not fail the work: the
+         action itself has already succeeded. */
+      return;
+    }
+    /* Through the stack helper so the limit and the "a new action clears
+       the future" rule are applied in one place, then the server's id
+       put on the entry it just made. */
+    setStack((st) => {
+      const next = recordEntry(st, label, delta);
+      const past = next.past.slice(0, -1).concat([{ id, label, delta }]);
+      return { past, future: [] };
+    });
+  }, [projectId]);
+
+  /* Wrap an action so it lands in the history as one step.
+
+     Reads the drawing before and after. That is one extra fetch per
+     action, which is nothing beside what these actions do — they are the
+     bulk operations, not a mouse drag. */
+  const withUndo = useCallback(async (label, fn) => {
+    let before = null;
+    try { before = (await listGis(projectId)).features || []; }
+    catch { /* Carry on without history rather than blocking the work. */ }
+
+    const result = await fn();
+
+    if (before) {
+      try {
+        const after = (await listGis(projectId)).features || [];
+        await recordAction(label, before, after);
+      } catch { /* as above */ }
+    }
+    return result;
+  }, [projectId, recordAction]);
+
+  /* Applying a delta, in either direction.
+
+     Restore, remove and update are three separate calls because they are
+     three different things: a deleted row has to come back under the id
+     it had, since Connects is an array of ids and a row restored under a
+     new one is referenced by nothing. */
+  const applyPlan = useCallback(async (plan) => {
+    if (plan.restore.length) {
+      for (let i = 0; i < plan.restore.length; i += 100) {
+        await restoreFeatures(projectId, plan.restore.slice(i, i + 100));
+      }
+    }
+    if (plan.update.length) {
+      for (let i = 0; i < plan.update.length; i += 100) {
+        await restoreFeatures(projectId, plan.update.slice(i, i + 100));
+      }
+    }
+    if (plan.remove.length) {
+      for (let i = 0; i < plan.remove.length; i += 100) {
+        await deleteFeatures(projectId, plan.remove.slice(i, i + 100));
+      }
+    }
+  }, [projectId]);
+
+  /* Step back, or several steps at once.
+
+     The features are written first and the pointer moved only once that
+     has worked, so a failed write cannot leave the history claiming a
+     step that did not happen. */
+  const runUndo = useCallback(async (count = 1) => {
+    if (!canUndo(stack) || undoBusy) return;
+    const n = Math.max(1, Math.min(count, stack.past.length));
+    const entries = stack.past.slice(-n);
+
+    setUndoBusy(true);
+    try {
+      await applyPlan(planMany(entries, "undo"));
+      await markUndone(projectId, entries.map((e) => e.id).filter(Boolean), true);
+      let st = stack;
+      for (let i = 0; i < n; i++) st = popUndo(st).stack;
+      setStack(st);
+      await load(projectId);
+      setStatus(n === 1
+        ? `Undone: ${entries[entries.length - 1].label}`
+        : `${n} steps undone`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(`Couldn\u2019t undo: ${e.message}`); await load(projectId); }
+    finally { setUndoBusy(false); }
+  }, [stack, undoBusy, applyPlan, projectId, load]);
+
+  const runRedo = useCallback(async (count = 1) => {
+    if (!canRedo(stack) || undoBusy) return;
+    const n = Math.max(1, Math.min(count, stack.future.length));
+    const entries = stack.future.slice(-n).reverse();
+
+    setUndoBusy(true);
+    try {
+      await applyPlan(planMany(entries, "redo"));
+      await markUndone(projectId, entries.map((e) => e.id).filter(Boolean), false);
+      let st = stack;
+      for (let i = 0; i < n; i++) st = popRedo(st).stack;
+      setStack(st);
+      await load(projectId);
+      setStatus(n === 1 ? `Redone: ${entries[0].label}` : `${n} steps redone`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(`Couldn\u2019t redo: ${e.message}`); await load(projectId); }
+    finally { setUndoBusy(false); }
+  }, [stack, undoBusy, applyPlan, projectId, load]);
+
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
   /* The history for this project, read once when it opens. Separate from
      load so a history that fails to read cannot stop the drawing. */
@@ -2016,168 +2178,6 @@ export default function GISCanvasPage() {
     }
     return best;
   }
-
-  /* ── Undo and redo ──
-
-     The unit is the feature row. An action records the rows it changed —
-     as they were, and as they became — and nothing else, so an entry
-     costs what the action touched rather than what the drawing contains.
-     Auto Service over sixty plots is one entry, because it was one thing
-     that was asked for.
-
-     Inverses are recorded, not derived: working out how to reverse each
-     action separately would be twenty-five reversals to get right and to
-     keep right, whereas a before-and-after of the rows is the same shape
-     whatever did the changing.
-
-     The history lives in the database, so it survives a reload — which is
-     when it is most wanted, since the drawing that needs undoing is often
-     the one that made you reload. */
-  const [stack, setStack] = useState(emptyStack());
-  const [undoBusy, setUndoBusy] = useState(false);
-  const [historyOpen, setHistoryOpen] = useState(false);
-
-  /* The drawing as it stands, readable from inside an async action
-     without waiting for a re-render. */
-  const featuresRef = useRef(features);
-  featuresRef.current = features;
-
-  const loadHistory = useCallback(async (pid) => {
-    if (!pid) return;
-    try {
-      const h = await listUndo(pid);
-      setStack({
-        past: (h.past || []).map((r) => ({
-          id: r.Undo_ID, label: r.Label, delta: r.Delta, at: r.Created_At,
-        })),
-        future: (h.future || []).map((r) => ({
-          id: r.Undo_ID, label: r.Label, delta: r.Delta, at: r.Created_At,
-        })),
-      });
-    } catch { /* No history is not a reason to fail the page. */ }
-  }, []);
-
-  /* Record what an action did, given the drawing either side of it.
-
-     Both sides are read from the server rather than from component
-     state: state after an await has not necessarily re-rendered, and a
-     delta computed against a stale "after" would record an action as
-     having done less than it did — which is worse than not recording it,
-     because undo would then half-reverse it. */
-  const recordAction = useCallback(async (label, before, after) => {
-    const delta = diffFeatures(before, after);
-    if (isEmptyDelta(delta)) return;
-
-    let id = null;
-    try {
-      const r = await recordUndo(projectId, label, delta);
-      id = r?.entry?.Undo_ID ?? null;
-    } catch {
-      /* A history that cannot be written must not fail the work: the
-         action itself has already succeeded. */
-      return;
-    }
-    /* Through the stack helper so the limit and the "a new action clears
-       the future" rule are applied in one place, then the server's id
-       put on the entry it just made. */
-    setStack((st) => {
-      const next = recordEntry(st, label, delta);
-      const past = next.past.slice(0, -1).concat([{ id, label, delta }]);
-      return { past, future: [] };
-    });
-  }, [projectId]);
-
-  /* Wrap an action so it lands in the history as one step.
-
-     Reads the drawing before and after. That is one extra fetch per
-     action, which is nothing beside what these actions do — they are the
-     bulk operations, not a mouse drag. */
-  const withUndo = useCallback(async (label, fn) => {
-    let before = null;
-    try { before = (await listGis(projectId)).features || []; }
-    catch { /* Carry on without history rather than blocking the work. */ }
-
-    const result = await fn();
-
-    if (before) {
-      try {
-        const after = (await listGis(projectId)).features || [];
-        await recordAction(label, before, after);
-      } catch { /* as above */ }
-    }
-    return result;
-  }, [projectId, recordAction]);
-
-  /* Applying a delta, in either direction.
-
-     Restore, remove and update are three separate calls because they are
-     three different things: a deleted row has to come back under the id
-     it had, since Connects is an array of ids and a row restored under a
-     new one is referenced by nothing. */
-  const applyPlan = useCallback(async (plan) => {
-    if (plan.restore.length) {
-      for (let i = 0; i < plan.restore.length; i += 100) {
-        await restoreFeatures(projectId, plan.restore.slice(i, i + 100));
-      }
-    }
-    if (plan.update.length) {
-      for (let i = 0; i < plan.update.length; i += 100) {
-        await restoreFeatures(projectId, plan.update.slice(i, i + 100));
-      }
-    }
-    if (plan.remove.length) {
-      for (let i = 0; i < plan.remove.length; i += 100) {
-        await deleteFeatures(projectId, plan.remove.slice(i, i + 100));
-      }
-    }
-  }, [projectId]);
-
-  /* Step back, or several steps at once.
-
-     The features are written first and the pointer moved only once that
-     has worked, so a failed write cannot leave the history claiming a
-     step that did not happen. */
-  const runUndo = useCallback(async (count = 1) => {
-    if (!canUndo(stack) || undoBusy) return;
-    const n = Math.max(1, Math.min(count, stack.past.length));
-    const entries = stack.past.slice(-n);
-
-    setUndoBusy(true);
-    try {
-      await applyPlan(planMany(entries, "undo"));
-      await markUndone(projectId, entries.map((e) => e.id).filter(Boolean), true);
-      let st = stack;
-      for (let i = 0; i < n; i++) st = popUndo(st).stack;
-      setStack(st);
-      await load(projectId);
-      setStatus(n === 1
-        ? `Undone: ${entries[entries.length - 1].label}`
-        : `${n} steps undone`);
-      setTimeout(() => setStatus(""), 6000);
-      setError("");
-    } catch (e) { setError(`Couldn\u2019t undo: ${e.message}`); await load(projectId); }
-    finally { setUndoBusy(false); }
-  }, [stack, undoBusy, applyPlan, projectId, load]);
-
-  const runRedo = useCallback(async (count = 1) => {
-    if (!canRedo(stack) || undoBusy) return;
-    const n = Math.max(1, Math.min(count, stack.future.length));
-    const entries = stack.future.slice(-n).reverse();
-
-    setUndoBusy(true);
-    try {
-      await applyPlan(planMany(entries, "redo"));
-      await markUndone(projectId, entries.map((e) => e.id).filter(Boolean), false);
-      let st = stack;
-      for (let i = 0; i < n; i++) st = popRedo(st).stack;
-      setStack(st);
-      await load(projectId);
-      setStatus(n === 1 ? `Redone: ${entries[0].label}` : `${n} steps redone`);
-      setTimeout(() => setStatus(""), 6000);
-      setError("");
-    } catch (e) { setError(`Couldn\u2019t redo: ${e.message}`); await load(projectId); }
-    finally { setUndoBusy(false); }
-  }, [stack, undoBusy, applyPlan, projectId, load]);
 
   /* Two features that must not be linked to each other.
 

@@ -282,10 +282,22 @@ export function pointAlong(g = [], target) {
 
 /* Every joint the drawing needs, across every circuit.
 
-   Duplicates are resolved by position rather than by circuit: two
-   circuits sharing a trench meet at the same coordinates, and the ground
-   holds one joint. The stronger reason wins, and both circuits are
-   recorded on it. */
+   Keyed by circuit and position, not position alone.
+
+   An earlier version merged on position, on the reasoning that two
+   circuits sharing a trench meet at the same coordinates and the ground
+   holds one joint. That is wrong: two circuits are separate networks
+   taking separate ways off the substation, and a joint that served both
+   would connect them. Where their cables pass the same point they each
+   need their own joint.
+
+   It also miscounted. Merging two circuits' service joints into one and
+   taking the greater service count left a drawing with 72 services and
+   70 joints, each claiming to serve one — which is how the miscount was
+   found.
+
+   Within one circuit the merge is still right and still happens: a fork
+   that is also a cable change is one joint with two reasons. */
 export function planJoints(features = [], circuits = [], opts = {}) {
   const found = new Map();
 
@@ -299,10 +311,9 @@ export function planJoints(features = [], circuits = [], opts = {}) {
   ];
 
   for (const j of all) {
-    const k = key(j.point);
+    const k = `${j._circuit ?? "none"}@${key(j.point)}`;
     const prev = found.get(k);
-    if (!prev) { found.set(k, { ...j, circuits: [j._circuit] }); continue; }
-    prev.circuits = [...new Set([...prev.circuits, j._circuit])];
+    if (!prev) { found.set(k, { ...j, circuitId: j._circuit ?? null }); continue; }
     prev.reasons = [...new Set([...prev.reasons, ...j.reasons])];
     prev.ways = Math.max(prev.ways, j.ways);
     prev.services = Math.max(prev.services, j.services);
@@ -329,7 +340,15 @@ export function reconcileJoints(planned = [], existing = [], tolM = 0.25) {
   const matched = new Set();
 
   for (const p of planned) {
-    const hit = existing.find((e) => (e.Geometry || [])[0] && near(e.Geometry[0], p.point));
+    /* Matched on circuit as well as position. Two circuits passing the
+       same point need a joint each, and matching on position alone let
+       the second find the first, update it, and leave the drawing one
+       joint short. */
+    const hit = existing.find((e) =>
+      (e.Geometry || [])[0]
+      && near(e.Geometry[0], p.point)
+      && String(e.Attributes?.Circuit_ID ?? "") === String(p.circuitId ?? "")
+      && !matched.has(e.Feature_ID));
     if (!hit) { add.push(p); continue; }
     matched.add(hit.Feature_ID);
     /* Already the right kind: leave it entirely alone rather than

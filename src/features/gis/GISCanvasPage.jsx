@@ -2956,8 +2956,9 @@ export default function GISCanvasPage() {
       Joint_Reasons: j.reasons,
       Ways_In: j.ways,
       Services: j.services,
-      Circuit_ID: j.circuits?.length === 1 ? j.circuits[0] : null,
-      Circuits: j.circuits ?? [],
+      /* One circuit. A joint joins one network's cables; two circuits
+         passing the same point each get their own. */
+      Circuit_ID: j.circuitId ?? null,
       Generated: true,
     });
 
@@ -3284,15 +3285,59 @@ export default function GISCanvasPage() {
      stay: they are physical things that exist whatever the circuit plan
      says, and deleting them would turn a planning change into a redraw. */
   async function deleteCircuit(circuit) {
-    const meters = features.filter((f) =>
-      f.Feature_Role === "meter" && Number(f.Attributes?.Circuit_ID) === Number(circuit.id));
-    const nodes = features.filter((f) =>
-      f.Feature_Role === "spannode" && Number(f.Attributes?.Circuit_ID) === Number(circuit.id));
+    const mine = (f) => Number(f.Attributes?.Circuit_ID) === Number(circuit.id);
+
+    const meters = features.filter((f) => f.Feature_Role === "meter" && mine(f));
+    const nodes = features.filter((f) => f.Feature_Role === "spannode" && mine(f));
+
+    /* The feeders the circuit was drawn as.
+
+       They exist only because the circuit did — Build LV Network draws
+       them from its membership — so leaving them behind leaves cable on
+       the drawing feeding a circuit that is gone: counted in the bill,
+       traced through by the report, and belonging to nothing.
+
+       Service cables are not touched. They belong to a plot, and the
+       plot and its meter both stay. */
+    const feeders = features.filter((f) =>
+      f.Feature_Type === "line"
+      && f.Layer_Key === "electric"
+      && f.Attributes?.Line_Type === "elec_main"
+      && mine(f));
+
+    /* The joints on those feeders.
+
+       A joint belongs to one circuit — two circuits are separate
+       networks and a joint serving both would connect them — so this is
+       a plain match with no shared case to consider.
+
+       Joints left over from before that rule, carrying a Circuits list
+       naming more than one, are left alone: they should not exist, and
+       deleting one on the strength of a list that should not be there
+       would take a junction out of a circuit nobody asked to change.
+       Re-running Place Feeder Joints replaces them properly. */
+    const joints = features.filter((f) => {
+      if (f.Feature_Role !== "joint") return false;
+      const list = f.Attributes?.Circuits;
+      if (Array.isArray(list) && list.length > 1) return false;
+      return mine(f);
+    });
+
+    const shared = features.filter((f) =>
+      f.Feature_Role === "joint"
+      && Array.isArray(f.Attributes?.Circuits)
+      && f.Attributes.Circuits.length > 1
+      && f.Attributes.Circuits.some((c) => Number(c) === Number(circuit.id))).length;
 
     if (!window.confirm(
       `Delete ${circuit.name}?\n\n`
-      + `${meters.length} meter(s) will be unassigned and ${nodes.length} span node(s) removed. `
-      + `The meters and trenches stay.`
+      + `${feeders.length} feeder cable(s) and ${nodes.length} span node(s) deleted\n`
+      + `${joints.length} joint(s) deleted\n`
+      + `${meters.length} meter(s) unassigned \u2014 the meters, services and trenches stay`
+      + (shared
+        ? `\n\n${shared} joint(s) recorded against two circuits are left in place \u2014 `
+          + "run Place Feeder Joints to replace them."
+        : "")
     )) return;
 
     setBusy("circuit");
@@ -3307,7 +3352,13 @@ export default function GISCanvasPage() {
       /* One call rather than a loop: the span nodes of a circuit go
          together, and a partial failure halfway through a loop would
          leave a circuit that is neither deleted nor intact. */
-      if (nodes.length) await deleteFeatures(projectId, nodes.map((nd) => nd.Feature_ID));
+      /* Nodes, feeders and joints in one call for the same reason: they
+         go together, and a partial failure would leave a circuit neither
+         deleted nor intact. */
+      const gone = [...nodes, ...feeders, ...joints].map((f) => f.Feature_ID);
+      for (let i = 0; i < gone.length; i += 100) {
+        await deleteFeatures(projectId, gone.slice(i, i + 100));
+      }
 
       /* The way it held goes back into the pool, or the substation fills
          up with circuits that no longer exist. */
@@ -3321,7 +3372,9 @@ export default function GISCanvasPage() {
         }
       }
       await load(projectId);
-      setStatus(`${circuit.name} deleted \u2014 ${meters.length} meter(s) unassigned`);
+      setStatus(`${circuit.name} deleted \u2014 ${feeders.length} cable(s), `
+        + `${nodes.length} node(s), ${joints.length} joint(s) removed, `
+        + `${meters.length} meter(s) unassigned`);
       setTimeout(() => setStatus(""), 7000);
       setError("");
     } catch (e) { setError(e.message); }

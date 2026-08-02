@@ -123,6 +123,10 @@ export default function GISCanvasPage() {
   const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
+  /* The same idea for work started from inside a modal. Its own state
+     because the canvas bar is positioned in the canvas and covered by
+     the modal that asked for the work. */
+  const [circuitProgress, setCircuitProgress] = useState(null);
   const [trace, setTrace] = useState(null);         // { startLabel, legs } from a full trace
   /* The drawing as it was when the trace was computed. The trace is a
      snapshot — nothing recomputes it — so changing a cable or the
@@ -3340,14 +3344,38 @@ export default function GISCanvasPage() {
         : "")
     )) return;
 
+    /* Deleting a circuit is four writes over as many features as it had,
+       and on a large one that is a long silence with a greyed-out button.
+       The steps are named rather than counted alone: "unassigning 51
+       meters" says what is happening to what, where "3 of 4" says only
+       that something is.
+
+       Reported through a state the report itself renders — the canvas
+       progress bar sits under the modal at z-index 8 against its 1000,
+       so it would run where nobody could see it. */
+    const steps = [
+      meters.length && "meters",
+      (nodes.length + feeders.length + joints.length) && "features",
+      "way",
+      "reload",
+    ].filter(Boolean).length;
+    let step = 0;
+    const say = (label) => setCircuitProgress({ done: step, total: steps, label });
+
     setBusy("circuit");
+    say(`Deleting ${circuit.name}\u2026`);
     try {
       if (meters.length) {
+        say(`Unassigning ${meters.length} meter(s)`);
         await bulkUpdateFeatures(projectId, meters.map((m) => {
           const A = { ...m.Attributes };
           delete A.Circuit_ID; delete A.Circuit_Name; delete A.Circuit_Letter;
           return { Feature_ID: m.Feature_ID, Attributes: A };
         }));
+        /* Counted, not just announced. Without this the bar reached
+           three of four and stopped short of the end while the work
+           carried on, which reads as a stall. */
+        step += 1;
       }
       /* One call rather than a loop: the span nodes of a circuit go
          together, and a partial failure halfway through a loop would
@@ -3356,12 +3384,20 @@ export default function GISCanvasPage() {
          go together, and a partial failure would leave a circuit neither
          deleted nor intact. */
       const gone = [...nodes, ...feeders, ...joints].map((f) => f.Feature_ID);
-      for (let i = 0; i < gone.length; i += 100) {
-        await deleteFeatures(projectId, gone.slice(i, i + 100));
+      if (gone.length) {
+        step += 1;
+        for (let i = 0; i < gone.length; i += 100) {
+          const from = i + 1;
+          const to = Math.min(i + 100, gone.length);
+          say(`Removing cables, nodes and joints \u2014 ${to} of ${gone.length}`);
+          await deleteFeatures(projectId, gone.slice(i, i + 100));
+        }
       }
 
       /* The way it held goes back into the pool, or the substation fills
          up with circuits that no longer exist. */
+      step += 1;
+      say("Freeing the way on the substation");
       const sub = features.find((f) => f.Feature_Role === "substation");
       if (sub) {
         const rel = releaseWays(sub, circuit.id);
@@ -3371,6 +3407,8 @@ export default function GISCanvasPage() {
           });
         }
       }
+      step += 1;
+      say("Reloading the drawing");
       await load(projectId);
       setStatus(`${circuit.name} deleted \u2014 ${feeders.length} cable(s), `
         + `${nodes.length} node(s), ${joints.length} joint(s) removed, `
@@ -3378,7 +3416,7 @@ export default function GISCanvasPage() {
       setTimeout(() => setStatus(""), 7000);
       setError("");
     } catch (e) { setError(e.message); }
-    finally { setBusy(""); }
+    finally { setBusy(""); setCircuitProgress(null); }
   }
 
   /* Build the LV feeder network.
@@ -5236,6 +5274,7 @@ export default function GISCanvasPage() {
               withUndo(`Remove ${ids.length} meter(s) from ${c.name}`,
                 () => removeFromCircuit(ids, c))}
             onDeleteCircuit={(c) => withUndo(`Delete ${c.name}`, () => deleteCircuit(c))}
+            progress={circuitProgress}
             onCreateCircuit={(ids) =>
               withUndo("Assign meters to a new circuit",
                 () => createCircuitFromMeters(ids))}

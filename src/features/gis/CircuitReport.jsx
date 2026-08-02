@@ -26,6 +26,7 @@ const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 export default function CircuitReport({
   report, projectRef, siteName, pocOutput, onClose,
   onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, onMoveToCircuit, busy,
+  progress,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -144,6 +145,26 @@ export default function CircuitReport({
       <div className="cr" onClick={(e) => e.stopPropagation()} style={drag.panelStyle}
         role="dialog" aria-label="Circuit report">
         <style>{CSS}</style>
+
+        {/* What a long job is doing, inside the panel that asked for it.
+
+            Deleting a circuit is four writes over as many features as it
+            had, and on a large one that is a long silence with a greyed
+            out button. The canvas has a progress bar of its own but it
+            sits under this panel, so it would run where nobody could see
+            it. */}
+        {progress && (
+          <div className="cr-prog" role="status" aria-live="polite">
+            <p className="cr-prog-l">{progress.label}</p>
+            <div className="cr-prog-t">
+              <div className="cr-prog-b" style={{
+                width: `${progress.total
+                  ? Math.round(Math.min(1, progress.done / progress.total) * 100)
+                  : 0}%`,
+              }} />
+            </div>
+          </div>
+        )}
 
         <div className="cr-head" {...drag.handleProps}>
           <div>
@@ -456,6 +477,10 @@ const CSS = `
 .cr-move-b { background: var(--accent-light); border-color: var(--accent); color: var(--accent); }
 .cr-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
 .cr-gap { color: #b45309; font-weight: 600; }
+.cr-prog { padding: 11px 16px; border-bottom: 1px solid var(--border); background: var(--bg); }
+.cr-prog-l { margin: 0 0 7px; font-size: 12.5px; font-weight: 600; }
+.cr-prog-t { height: 6px; border-radius: 3px; background: var(--border); overflow: hidden; }
+.cr-prog-b { height: 100%; background: var(--accent); transition: width .18s ease; }
 .dt.cr-tbl tbody tr.cr-on { background: var(--accent-light); }
 .cr-wrap { max-height: none; }
 .dt.cr-tbl { width: 100%; }

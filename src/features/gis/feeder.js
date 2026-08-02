@@ -846,6 +846,11 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         /* And where it began, so the voltage arriving at this length of
            cable can be shown as well as the voltage leaving it. */
         fromIdx: trail[0],
+        /* The cable this leg is made of, carried on the leg rather than
+           looked up from spanNodes — a junction is not in that list, on
+           purpose, so a lookup would find nothing and the column would
+           read "not set" on every junction row. */
+        cableSizeId: stops.get(cur)?.Attributes?.VD_Cable_Size_ID ?? null,
         /* Meters picked up along the way — the load this length of cable
            carries directly. */
         distribution: along.length,
@@ -901,11 +906,31 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     /* Handed back so volt drop can be worked out per leg without
        rebuilding the model or re-matching span nodes to graph nodes. */
     model: M,
-    spanNodes: [...stops].map(([index, f]) => ({
-      index,
-      feature: f,
-      cableSizeId: f.Attributes?.VD_Cable_Size_ID ?? null,
-    })).concat([{
+    /* Where the volt drop sum settles a length of cable.
+
+       Real span nodes only, even when legs stop at junctions too.
+
+       This is the difference between reporting a figure at a point and
+       recomputing the design around it. legVoltDrop weights load by
+       where a segment ends — tapped load counts at half, load at the end
+       at full — and the unbalanced correction is 1 + k/√customers, which
+       grows sharply as a segment carries fewer of them. Settling at
+       every service tee therefore turns distributed load into terminal
+       load and drops the customer count per segment to a handful,
+       inflating the answer at both ends.
+
+       An earlier version added the junctions here and the advanced check
+       duly reported failures the ordinary one did not — not because it
+       looked more closely, but because it was computing a different
+       sum. The junctions are stops for the table and nothing more; the
+       arithmetic is identical to the ordinary check. */
+    spanNodes: [...stops]
+      .filter(([, f]) => f.Feature_Role === "spannode")
+      .map(([index, f]) => ({
+        index,
+        feature: f,
+        cableSizeId: f.Attributes?.VD_Cable_Size_ID ?? null,
+      })).concat([{
       index: startIdx, feature: node,
       cableSizeId: node.Attributes?.VD_Cable_Size_ID ?? null,
     }]),

@@ -4787,10 +4787,16 @@ export default function GISCanvasPage() {
       volts = Math.round(startV * (1 - (Number(at.pct) || 0) / 100) * 10) / 10;
     }
 
-    /* The cable on this leg: the one recorded against the node it ends
-       at, which is where Build LV Network writes it. */
-    const sn = (part.spanNodes || []).find((x) => x.index === leg.endIdx);
-    const cable = sn?.cableSizeId != null ? ctx.cableById(sn.cableSizeId) : null;
+    /* The cable on this leg.
+
+       Taken from the leg, which carries it — including for a junction,
+       which is deliberately absent from spanNodes so that it reports a
+       figure without changing how the figure is computed. Falls back to
+       the span node for legs recorded before that was so. */
+    const id = leg.cableSizeId
+      ?? (part.spanNodes || []).find((x) => x.index === leg.endIdx)?.cableSizeId
+      ?? null;
+    const cable = id != null ? ctx.cableById(id) : null;
     const type = cable
       ? (ctx.cableTypes || []).find((t) => t.Cable_Type_ID === cable.Cable_Type_ID)
       : null;

@@ -698,6 +698,14 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      Named from the joint standing there where there is one, so the row
      reads as the thing on the drawing rather than as a coordinate. */
   if (stopAt === "junctions") {
+    /* Which span node sits on which graph node, and what cable it
+       carries — so a junction can inherit from the run it is part of. */
+    const spanCable = new Map();
+    for (const [idx, sn] of stops) {
+      const c = sn.Attributes?.VD_Cable_Size_ID;
+      if (c != null) spanCable.set(idx, c);
+    }
+
     const svcKids = new Map();
     const mainsKids = new Map();
     for (let i = 0; i < nodes.length; i++) {
@@ -721,12 +729,41 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       const j = jointAt(nodes[u]);
       const kind = j?.Attributes?.Joint_Type
         ?? (forks && tees ? "breech" : forks ? "breech" : "service");
+
+      /* The cable this junction sits on.
+
+         A junction is a point along a run, not the end of one, so it
+         carries no cable of its own — the run's cable is recorded at the
+         span node the run feeds. Inherited from the nearest span node
+         below it, so the sum charges this stretch at the right size
+         instead of leaving it uncharged and the column reading "not
+         set".
+
+         Without it the figures at a junction were the figures at the
+         span node before it: the length between them was accumulated and
+         never applied, because the sum only settles where it finds a
+         cable. */
+      let heir = null;
+      const seek = [u];
+      const seen = new Set([u]);
+      while (seek.length && !heir) {
+        const v = seek.shift();
+        for (const k of kids.get(v) || []) {
+          if (seen.has(k)) continue;
+          seen.add(k);
+          const sn = spanCable.get(k);
+          if (sn != null) { heir = sn; break; }
+          seek.push(k);
+        }
+      }
+
       stops.set(u, {
         Feature_ID: j?.Feature_ID ?? `j${u}`,
         Feature_Role: "joint",
         Attributes: {
           Span_Label: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} joint`,
           Circuit_ID: circuitId,
+          VD_Cable_Size_ID: heir,
         },
         Geometry: [nodes[u]],
       });

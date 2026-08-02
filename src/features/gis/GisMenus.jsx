@@ -35,7 +35,7 @@ export function MenuBar({ children }) {
   );
 }
 
-export function Menu({ id, label, open, setOpen, children, badge }) {
+export function Menu({ id, label, open, setOpen, children, badge, columns = 1 }) {
   const isOpen = open === id;
   return (
     <div className="gm-wrap">
@@ -46,7 +46,7 @@ export function Menu({ id, label, open, setOpen, children, badge }) {
         {badge != null && badge !== 0 && <span className="gm-badge">{badge}</span>}
       </button>
       {isOpen && (
-        <div className="gm-menu" role="menu"
+        <div className={columns > 1 ? "gm-menu gm-2col" : "gm-menu"} role="menu"
           /* Closes on choosing an action, but not on a visibility
              toggle — those are usually flicked several at a time, and
              reopening the menu between each would be maddening. */
@@ -58,7 +58,13 @@ export function Menu({ id, label, open, setOpen, children, badge }) {
   );
 }
 
-export const MenuGroup = ({ label }) => <p className="gm-group">{label}</p>;
+/* A heading. `newColumn` starts the second column here in a two-column
+   menu — an explicit break rather than letting the content fall where it
+   happens to, so the split lands on a heading and not part way through a
+   group of related items. */
+export const MenuGroup = ({ label, newColumn = false }) => (
+  <p className={newColumn ? "gm-group gm-brk" : "gm-group"}>{label}</p>
+);
 
 /* hint goes to the tooltip, not beside the label. Shown inline it wrapped
    under long labels and turned a tidy list into a wall of grey text —
@@ -116,6 +122,18 @@ const CSS = `
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
   box-shadow: 0 10px 30px rgba(15,23,42,.18); padding: 6px; min-width: 234px;
   max-height: 70vh; overflow-y: auto; }
+/* Two columns, for a menu long enough to scroll.
+
+   Multi-column rather than two hand-built lists: the items stay in one
+   flow, so nothing has to be kept in step when one is added, and the
+   break is placed by naming a heading rather than by counting rows.
+
+   Items must not straddle the boundary — half a row at the foot of one
+   column and half at the head of the next is worse than the scroll it
+   replaces. */
+.gm-2col { columns: 2; column-gap: 14px; min-width: 520px; max-height: none; }
+.gm-2col > * { break-inside: avoid; }
+.gm-2col .gm-brk { break-before: column; margin-top: 0; }
 .gm-group { margin: 7px 8px 4px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .07em; color: var(--muted); }
 .gm-group:first-child { margin-top: 3px; }

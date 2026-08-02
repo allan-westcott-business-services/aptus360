@@ -5476,7 +5476,7 @@ export default function GISCanvasPage() {
                       onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
                   </Menu>
 
-                  <Menu id="electric" label="Electric" open={open} setOpen={setOpen}>
+                  <Menu id="electric" label="Electric" open={open} setOpen={setOpen} columns={2}>
                     <MenuGroup label="Show or Hide" />
                     {/* The whole utility at once, as a named action rather
                         than the S beside a row. Isolating one utility is
@@ -5543,7 +5543,7 @@ export default function GISCanvasPage() {
                       onSolo={() => soloClass("electric")} />
 
                     <div className="gm-sep" />
-                    <MenuGroup label="Network" />
+                    <MenuGroup label="Network" newColumn />
                     <MenuItem label="+ POC" hint="Snaps to the nearest main"
                       disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
                     <MenuItem label="+ Substation" hint="Snaps to the nearest trench"

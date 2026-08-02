@@ -29,6 +29,9 @@ const SITE_ORDER = ["On-site", "Off-site", "Unclassified", ""];
 
 export default function BomModal({ projectId, projectName, onClose }) {
   const [rows, setRows] = useState([]);
+  /* Whose bill is on screen. "" is the whole site — the same rows added
+     up without the split, so the parts always reconcile against it. */
+  const [whose, setWhose] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -41,11 +44,36 @@ export default function BomModal({ projectId, projectName, onClose }) {
     return () => { live = false; };
   }, [projectId]);
 
+  /* The developers with anything on this drawing, in the order the bill
+     returns them. Built from the bill rather than fetched separately, so
+     a developer with an area but nothing in it does not appear as an
+     empty option. */
+  const developers = useMemo(() => {
+    const out = new Map();
+    for (const r of rows) {
+      if (r.developer_id == null) continue;
+      if (!out.has(String(r.developer_id))) {
+        out.set(String(r.developer_id), r.developer_name ?? `Developer ${r.developer_id}`);
+      }
+    }
+    return [...out].map(([id, name]) => ({ id, name }));
+  }, [rows]);
+
+  /* What the bill shows now.
+
+     Shared plant — the substation, the POC, the incomer — has no
+     developer and is kept in every developer's bill. A bill that
+     silently omits the substation cannot be reconciled against the site
+     total, and the whole point of splitting is that the parts add up. */
+  const shown = useMemo(() => (whose
+    ? rows.filter((r) => String(r.developer_id ?? "") === whose || r.developer_id == null)
+    : rows), [rows, whose]);
+
   /* Grouped for reading: site, then utility. The database already
      returns them in this order, so this only has to break them up. */
   const groups = useMemo(() => {
     const out = new Map();
-    for (const r of rows) {
+    for (const r of shown) {
       const key = `${r.site}\u0000${r.utility}`;
       if (!out.has(key)) out.set(key, { site: r.site, utility: r.utility, items: [] });
       out.get(key).items.push(r);
@@ -66,28 +94,39 @@ export default function BomModal({ projectId, projectName, onClose }) {
      adding cable metres to trench metres would produce a figure nobody
      wants. */
   const siteTotals = useMemo(() => SITE_ORDER.map((site) => {
-    const items = rows.filter((r) => r.site === site);
+    const items = shown.filter((r) => r.site === site);
     return {
       site: site || "Not site-dependent",
       metres: totalsFor(items, "m"),
       count: totalsFor(items, "no."),
       items: items.length,
     };
-  }).filter((s) => s.items), [rows]);
+  }).filter((s) => s.items), [shown]);
 
-  const unclassified = rows.filter((r) => r.site === "Unclassified").length;
+  const unclassified = shown.filter((r) => r.site === "Unclassified").length;
 
   function exportXlsx() {
+    /* Built from `shown`, not `rows` — the file has to be the bill that
+       was on screen when the button was pressed. */
     const stamp = new Date().toISOString().slice(0, 10);
     const safe = String(projectName || `Project ${projectId}`).replace(/[\\/:*?[\]]/g, "-");
+    /* The export follows what is on screen. A file called "BOM" holding
+       one developer's work, indistinguishable from the site's, is how the
+       wrong figure reaches a tender. */
+    const who = whose
+      ? (developers.find((d) => d.id === whose)?.name ?? `Developer ${whose}`)
+      : "";
 
     /* One row per grouping, which is the sheet people will pivot from.
        Quantity stays numeric — writing "417.2 m" into the cell makes it
        text and every sum downstream returns zero. The unit has its own
        column for the same reason. */
-    const detail = rows.map((r) => ({
+    const detail = shown.map((r) => ({
       Site: r.site || "n/a",
       Utility: r.utility,
+      /* Named on every row, so a sheet that has been filtered or pivoted
+         still says whose work it is. */
+      Developer: r.developer_name ?? "(shared)",
       Item: r.item,
       Surface: r.surface || "",
       Unit: r.unit,
@@ -102,7 +141,7 @@ export default function BomModal({ projectId, projectName, onClose }) {
       "Lines of detail": s.items,
     }));
 
-    const bySurface = [...rows
+    const bySurface = [...shown
       .filter((r) => r.unit === "m" && r.surface)
       .reduce((m, r) => {
         const k = `${r.site}\u0000${r.surface}`;
@@ -122,7 +161,8 @@ export default function BomModal({ projectId, projectName, onClose }) {
     if (bySurface.length) {
       XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bySurface), "By Surface");
     }
-    XLSX.writeFile(wb, `BOM ${safe} ${stamp}.xlsx`);
+    XLSX.writeFile(wb,
+      `BOM ${safe}${who ? ` ${who}` : ""} ${stamp}.xlsx`.replace(/\s+/g, " ").trim());
   }
 
   const drag = useDragHandle();
@@ -139,6 +179,26 @@ export default function BomModal({ projectId, projectName, onClose }) {
             <p className="bom-sub">
               {projectName || `Project ${projectId}`} &middot; everything drawn except the boundary
             </p>
+            {/* Whose bill. Only where there is more than one developer
+                with something drawn — a single developer's bill and the
+                site's are the same list, and offering the choice would
+                only invite the question of what the difference is. */}
+            {developers.length > 1 && (
+              <div className="bom-who">
+                <label htmlFor="bom-dev">Show</label>
+                <select id="bom-dev" value={whose} onChange={(e) => setWhose(e.target.value)}>
+                  <option value="">The whole site</option>
+                  {developers.map((d) => (
+                    <option key={d.id} value={d.id}>{d.name}</option>
+                  ))}
+                </select>
+                {whose && (
+                  <span className="bom-who-n">
+                    with the shared substation, POC and incomer
+                  </span>
+                )}
+              </div>
+            )}
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
@@ -249,6 +309,11 @@ const CSS = `
   border-bottom: 1px solid var(--border); }
 .bom-head > div { flex: 1; }
 .bom-head h3 { margin: 0; font-size: 17px; font-weight: 700; }
+.bom-who { display: flex; align-items: baseline; gap: 8px; margin-top: 9px; }
+.bom-who label { font-size: 11px; color: var(--muted); }
+.bom-who select { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
+  padding: 4px 9px; }
+.bom-who-n { font-size: 11px; color: var(--muted); }
 .bom-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
 .bom-body { padding: 15px 18px; overflow-y: auto; flex: 1; }
 .bom-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 50px 20px; }

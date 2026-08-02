@@ -485,6 +485,16 @@ export default function GISCanvasPage() {
        what the Electric menu's entry uses; gas:role:meter is narrower. */
     f.Layer_Key && f.Feature_Role && f.Feature_Role !== "shape"
       ? `${f.Layer_Key}:role:${f.Feature_Role}` : null,
+    /* The two kinds of boundary, told apart.
+
+       A developer area and the site's red line are both polygons on the
+       boundary layer, so one key covered both and hiding either hid the
+       other. They are read for different reasons — the red line says
+       what is on site, an area says whose ground it is — and wanting one
+       without the other is the ordinary case once areas are drawn. */
+    f.Layer_Key === "boundary" && f.Feature_Type === "polygon"
+      ? (f.Attributes?.Project_Developer_ID != null ? "boundary:dev" : "boundary:site")
+      : null,
   ].filter(Boolean), []);
 
   /* Which circuit is being looked at on its own, if any.
@@ -5240,6 +5250,26 @@ export default function GISCanvasPage() {
                       solo={solo === "role:spannode"}
                       onHide={() => toggleClass("role:spannode")}
                       onSolo={() => soloClass("role:spannode")} />
+
+                    {/* The two boundaries separately. They share a layer
+                        and used to share a control, so hiding the red
+                        line took the developer areas with it — and with
+                        areas drawn over the whole site, that is the one
+                        combination nobody wants. */}
+                    <MenuLayer label="Site boundary"
+                      count={classCount["boundary:site"] || 0}
+                      hidden={hidden.includes("boundary:site")}
+                      solo={solo === "boundary:site"}
+                      onHide={() => toggleClass("boundary:site")}
+                      onSolo={() => soloClass("boundary:site")} />
+                    {classCount["boundary:dev"] > 0 && (
+                      <MenuLayer label="Developer areas"
+                        count={classCount["boundary:dev"] || 0}
+                        hidden={hidden.includes("boundary:dev")}
+                        solo={solo === "boundary:dev"}
+                        onHide={() => toggleClass("boundary:dev")}
+                        onSolo={() => soloClass("boundary:dev")} />
+                    )}
                     <div className="gm-sep" />
                     <MenuGroup label="Labels" />
                     {/* Moved from Tools rather than added there as well:

@@ -76,7 +76,10 @@ export default async function handler(req, context) {
       let q = db
         .from("Project")
         .select(
-          `${PROJECT_COLUMNS},Project_Scope(Utility_ID,Scope_Status_ID,Design_Status_ID),Plot(count)`,
+          /* Designer_ID as well: the list shows who is on each outline
+             design and filters by them, and without it the column can
+             only count. */
+          `${PROJECT_COLUMNS},Project_Scope(Utility_ID,Scope_Status_ID,Design_Status_ID,Designer_ID),Plot(count)`,
           { count: "exact" }
         )
         .order("Date_Received", { ascending: false })

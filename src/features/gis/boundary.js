@@ -177,7 +177,13 @@ export function boundaryPolygons(features = []) {
   return features
     .filter((f) => f.Layer_Key === "boundary"
       && f.Feature_Type === "polygon"
-      && (f.Geometry || []).length >= 3)
+      && (f.Geometry || []).length >= 3
+      /* A developer area is drawn on this layer too, and is not the red
+         line. Counting one as a site boundary would classify everything
+         inside one developer's patch as on-site by virtue of the wrong
+         polygon — and everything outside it, on a site with one area
+         drawn, as off-site. */
+      && f.Attributes?.Project_Developer_ID == null)
     .map((f) => f.Geometry);
 }
 

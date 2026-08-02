@@ -32,7 +32,11 @@ const COLUMNS = [
   { key: "qt",       label: "Quote Type",    width: 120, type: "multi", src: "quoteTypes", idKey: "Quote_Type_ID", labelKey: "Quote_Type", raw: (p) => p.Quote_Type_ID },
   { key: "plots",    label: "Plots",         width: 76,  type: "num",   align: "right", raw: (p) => p.Plot_Count ?? 0 },
   { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },
-  { key: "scopes",   label: "Outline Designs",        width: 120, type: "num",   raw: (p) => (p.scopes || []).length },
+  /* One row per outline design: which utility, where it has got to, and
+     who has it. A count said how many there were and nothing about any
+     of them, which is the one thing nobody needed to know. */
+  { key: "scopes",   label: "Outline Designs", width: 230, type: "designs",
+    raw: (p) => p.scopes || [] },
   { key: "points",   label: "Points",        width: 84,  type: "num",   align: "right", raw: (p) => p.Tender_Total_Points ?? null },
   { key: "bdd",      label: "BDD / KAM",     width: 140, type: "multi", src: "people", idKey: "Person_ID", labelKey: "Person_Name", raw: (p) => p.BDD_KAM_ID },
   { key: "est",      label: "Estimator",     width: 140, type: "multi", src: "people", idKey: "Person_ID", labelKey: "Person_Name", raw: (p) => p.Estimator_ID },
@@ -77,6 +81,13 @@ const kpiReached = (d) => d && iso(d) <= new Date().toISOString().slice(0, 10);
 const blankFilter = (type) =>
   type === "date" ? { from: "", to: "", blank: false }
   : type === "multi" ? []
+  /* Two lists on one column: an outline design has a status and a
+     designer, and either is a reasonable thing to look for. Held as one
+     filter so the column keeps one entry in the filter state, and
+     matched with AND — asking for In Progress and Jack Pollitt means
+     projects where he has one in progress, not projects with something
+     in progress and something of his. */
+  : type === "designs" ? { status: [], designer: [] }
   : type === "num" ? { min: "", max: "" }
   : "";
 
@@ -84,6 +95,7 @@ const isActive = (f, type) => {
   if (f == null) return false;
   if (type === "date") return !!(f.from || f.to || f.blank);
   if (type === "multi") return f.length > 0;
+  if (type === "designs") return f.status.length > 0 || f.designer.length > 0;
   if (type === "num") return f.min !== "" || f.max !== "";
   return f !== "";
 };
@@ -163,6 +175,12 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
       d[c.key] =
         c.type === "date" ? (p) => fmtDate(c.raw(p))
         : c.type === "multi" ? (p) => nameOf(c.src, c.idKey, c.labelKey, c.raw(p))
+        : c.type === "designs" ? (p) => (c.raw(p) || [])
+            .map((sc) => [
+              nameOf("designStatuses", "Design_Status_ID", "Status", sc.Design_Status_ID),
+              nameOf("people", "Person_ID", "Person_Name", sc.Designer_ID),
+            ].filter(Boolean).join(" "))
+            .join(" ")
         : c.type === "bool" ? (p) => (c.raw(p) ? "Y" : "")
         : (p) => c.raw(p);
     });
@@ -171,6 +189,14 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
   }, [lookups]);
 
   const optionsFor = (c) => {
+    /* The outline design column filters on two lists at once, so it is
+       handed both rather than one. */
+    if (c.type === "designs") {
+      return {
+        statuses: lookups?.designStatuses || [],
+        designers: lookups?.people || [],
+      };
+    }
     const list = lookups?.[c.src] || [];
     if (c.key !== "status") return list;
     return list.map((s) => ({ ...s, Status: `${s.Stage} · ${s.Status}` }));
@@ -226,6 +252,16 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
             if (v == null) continue;
           }
           if (!f.includes(String(v))) return false;
+        } else if (c.type === "designs") {
+          /* A project matches when one of its outline designs satisfies
+             everything asked. Testing the two lists separately would
+             pass a project where one design is in progress and a
+             different one is Jack's. */
+          const scopes = v || [];
+          const hit = scopes.some((sc) =>
+            (!f.status.length || f.status.includes(String(sc.Design_Status_ID)))
+            && (!f.designer.length || f.designer.includes(String(sc.Designer_ID))));
+          if (!hit) return false;
         } else if (c.type === "num") {
           const n = Number(v);
           if (f.min !== "" && n < Number(f.min)) return false;
@@ -252,6 +288,12 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
       if (typeof va === "number" && typeof vb === "number") return (va - vb) * dir;
       if (col?.type === "multi") {
         return String(display[col.key](a)).localeCompare(String(display[col.key](b))) * dir;
+      }
+      /* Sorted on how many outline designs a project has. Sorting on the
+         statuses would need an order across a list of them, and there
+         isn't one that means anything. */
+      if (col?.type === "designs") {
+        return ((col.raw(a) || []).length - (col.raw(b) || []).length) * dir;
       }
       return String(va ?? "").localeCompare(String(vb ?? ""), undefined, { numeric: true }) * dir;
     });
@@ -547,7 +589,11 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
                     {c.key === "ref" && p.Is_Priority && <span className="pri" title="Priority">&#9733;</span>}
                     {c.key === "menu" ? <BurgerMenu items={menuFor(p)} />
                       : c.key === "status" ? <span className="pill">{display.status(p)}</span>
-                      : c.key === "scopes" ? <ScopeDots scopes={p.scopes} />
+                      : c.key === "scopes" ? (
+                          <DesignCell scopes={p.scopes}
+                            statuses={lookups?.designStatuses || []}
+                            people={lookups?.people || []} />
+                        )
                       : c.key === "points" ? (
                           p.Tender_Total_Points != null
                             ? <span className="pts-pill" title={`Base ${p.Tender_Base_Points ?? "\u2014"}`}>
@@ -588,6 +634,55 @@ function usePopupPos(open) {
   return [ref, pos];
 }
 
+/* One of the two lists on the outline design column.
+
+   Its own open state rather than the column's: the column has two, and
+   sharing one would close the status list the moment the designer list
+   was opened. */
+function DesignPicker({ label, options = [], idKey, labelKey, value, onChange }) {
+  const [open, setOpen] = useState(false);
+  const [trigger, pos] = usePopupPos(open);
+  const on = value.length > 0;
+
+  const text = !on ? "All"
+    : value.length === 1
+      ? (options.find((o) => String(o[idKey]) === value[0])?.[labelKey] ?? "1 selected")
+      : `${value.length} selected`;
+
+  const toggle = (id) =>
+    onChange(value.includes(id) ? value.filter((x) => x !== id) : [...value, id]);
+
+  return (
+    <div className="fc">
+      <button ref={trigger} className={on ? "fc-btn on" : "fc-btn"}
+        title={`Filter outline designs by ${label.toLowerCase()}`}
+        onClick={() => setOpen(!open)}>
+        <span className="fc-trunc">{text}</span>
+        <span className="fc-caret">&#9662;</span>
+      </button>
+      {open && pos && (
+        <div className="fc-pop wide" style={pos}>
+          <div className="fc-actions">
+            <button onClick={() => onChange([])}>Clear</button>
+            <button onClick={() => setOpen(false)}>Close</button>
+          </div>
+          <div className="fc-opts">
+            {options.map((o) => {
+              const id = String(o[idKey]);
+              return (
+                <label className={value.includes(id) ? "fc-opt on" : "fc-opt"} key={id}>
+                  <input type="checkbox" checked={value.includes(id)} onChange={() => toggle(id)} />
+                  {o[labelKey]}
+                </label>
+              );
+            })}
+          </div>
+        </div>
+      )}
+    </div>
+  );
+}
+
 function FilterControl({ col, value, onChange, options, open, setOpen }) {
   const [trigger, pos] = usePopupPos(open);
 
@@ -618,6 +713,25 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
             </button>
           </div>
         )}
+      </div>
+    );
+  }
+
+  /* Two pickers stacked in one column, one for the status and one for
+     the designer. Their own control rather than two columns, because
+     they describe the same thing and asking for both together is the
+     point: a project where Jack has one in progress. */
+  if (col.type === "designs") {
+    return (
+      <div className="fc-two">
+        <DesignPicker which="status" label="Status"
+          options={options.statuses} idKey="Design_Status_ID" labelKey="Status"
+          value={value.status}
+          onChange={(v) => onChange({ ...value, status: v })} />
+        <DesignPicker which="designer" label="Designer"
+          options={options.designers} idKey="Person_ID" labelKey="Person_Name"
+          value={value.designer}
+          onChange={(v) => onChange({ ...value, designer: v })} />
       </div>
     );
   }
@@ -691,13 +805,45 @@ function FilterControl({ col, value, onChange, options, open, setOpen }) {
   );
 }
 
-function ScopeDots({ scopes = [] }) {
+/* The outline designs on a project: which utility, where each has got
+   to, and who has it.
+
+   A row each rather than a row of dots. The dots said how many designs
+   there were and which utilities, which is the least useful part —
+   whether a design is finished and who to ask about it is what anyone
+   scanning this column is looking for. */
+function DesignCell({ scopes = [], statuses = [], people = [] }) {
   if (!scopes.length) return <span className="muted-dash">&mdash;</span>;
+
+  const statusOf = (id) => statuses.find((x) => x.Design_Status_ID === id);
+  const nameOfPerson = (id) => people.find((x) => x.Person_ID === id)?.Person_Name;
+
   return (
-    <span className="dots">
-      {scopes.map((s, i) => {
-        const u = UTILITIES.find((x) => x.id === s.Utility_ID);
-        return <span key={i} className="dot" style={{ background: u?.colour ?? "#94a3b8" }} title={u?.name ?? "Scope"} />;
+    <span className="dsg">
+      {scopes.map((sc, i) => {
+        const u = UTILITIES.find((x) => x.id === sc.Utility_ID);
+        const st = statusOf(sc.Design_Status_ID);
+        const who = nameOfPerson(sc.Designer_ID);
+        return (
+          <span className="dsg-row" key={i}>
+            <span className="dsg-u" title={u?.name ?? "Outline design"}>
+              {u?.icon ?? "\u25CF"}
+            </span>
+            <span className="dsg-b">
+              {st
+                ? (
+                  <span className={st.Is_Complete ? "dsg-pill done" : "dsg-pill"}>
+                    {st.Status}
+                  </span>
+                )
+                /* A design with no status set is not a design with no
+                   progress; it is one nobody has said anything about,
+                   and saying so is more use than an empty cell. */
+                : <span className="dsg-pill none">No status</span>}
+              <span className="dsg-who">{who ?? "Unassigned"}</span>
+            </span>
+          </span>
+        );
       })}
     </span>
   );
@@ -705,6 +851,17 @@ function ScopeDots({ scopes = [] }) {
 
 const CSS = BURGER_CSS + `
 body.resizing { cursor: col-resize; user-select: none; }
+.dsg { display: grid; gap: 5px; }
+.dsg-row { display: grid; grid-template-columns: 18px 1fr; gap: 6px; align-items: start; }
+.dsg-u { font-size: 13px; line-height: 1.5; }
+.dsg-b { display: grid; gap: 1px; min-width: 0; }
+.dsg-pill { justify-self: start; background: #eef2ff; color: #3730a3; border-radius: 999px;
+  padding: 1px 9px; font: 700 11px inherit; }
+.dsg-pill.done { background: #dcfce7; color: #166534; }
+.dsg-pill.none { background: var(--bg); color: var(--muted); font-weight: 600; }
+.dsg-who { font-size: 11px; color: var(--muted); overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.fc-two { display: grid; gap: 3px; }
 .list-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 12px; }
 .list-head h2 { margin: 0; font-size: 19px; font-weight: 700; letter-spacing: -.01em; }
 .ph-count { font-size: 14px; font-weight: 600; color: var(--muted); }

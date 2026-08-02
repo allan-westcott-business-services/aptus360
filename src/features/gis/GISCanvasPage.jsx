@@ -43,6 +43,9 @@ import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import {
+  planDeveloperAssignment, developerAreas, assignmentStale,
+} from "./developer.js";
+import {
   diffFeatures, isEmptyDelta, deltaSize, planMany, emptyStack,
   record as recordEntry, canUndo, canRedo, popUndo, popRedo,
   undoLabel, redoLabel,
@@ -97,6 +100,9 @@ export default function GISCanvasPage() {
   const [meterFor, setMeterFor] = useState(null);  // { plot, seedPoint, utility, all, placed }
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
+  /* Which developer the next area belongs to. An area with nobody on it
+     says nothing, so the tool cannot start without one chosen. */
+  const [areaFor, setAreaFor] = useState(null);
   const [lookups, setLookups] = useState({});
   /* Off by default. The grid is a drawing aid for setting out, not
      something wanted over a background plan — and a plan is what most
@@ -555,7 +561,8 @@ export default function GISCanvasPage() {
   const joinable = selectedFeatures.length > 1 && !!selectionClass
     && selectedFeatures.every((f) => f.Feature_Type === "line");
 
-  const drawing = tool === "boundary" || tool === "line" || tool === "circuit";
+  const drawing = tool === "boundary" || tool === "devarea"
+    || tool === "line" || tool === "circuit";
 
   /* A cable's full name, for a status line or a tooltip. */
   const cableName = (c) => {
@@ -1986,19 +1993,42 @@ export default function GISCanvasPage() {
       await finishCircuit(draft);
       return;
     }
-    const isPoly = tool === "boundary";
+    const isPoly = tool === "boundary" || tool === "devarea";
     if (draft.length < (isPoly ? 3 : 2)) { setDraft([]); return; }
     const t = typeOf(lineType);
 
     if (isPoly) {
+      /* A developer area is the same shape on the same layer as the site
+         boundary, told apart by carrying a developer. Anything else — a
+         layer of its own, a role — would need a lookup row seeding
+         before the feature could exist. */
+      const dev = tool === "devarea"
+        ? developers.find((x) => Number(x.Project_Developer_ID) === Number(areaFor))
+        : null;
+      if (tool === "devarea" && !dev) {
+        setError("Choose which developer this area is for first.");
+        return;
+      }
       try {
         const made = await createFeature(projectId, {
           Layer_Key: "boundary", Feature_Type: "polygon",
-          Geometry: draft, Label: "Site boundary", Attributes: {},
+          Geometry: draft,
+          Label: dev ? `${dev.label} area` : "Site boundary",
+          Attributes: dev
+            ? { Project_Developer_ID: Number(dev.Project_Developer_ID) }
+            : {},
         });
-        if (made?.Feature_ID) await recordAction("Draw site boundary", [], [made]);
+        if (made?.Feature_ID) {
+          await recordAction(dev ? `Draw ${dev.label} area` : "Draw site boundary", [], [made]);
+        }
         setDraft([]); setSnapHit(null);
+        setTool("select");
         await load(projectId);
+        if (dev) {
+          setStatus(`${dev.label} area drawn \u2014 `
+            + "run Assign by Developer Area to apply it");
+          setTimeout(() => setStatus(""), 9000);
+        }
       } catch (e) { setError(e.message); }
       return;
     }
@@ -2922,6 +2952,106 @@ export default function GISCanvasPage() {
       setStatus(`Supply routed \u2014 ${r.metres} m from `
         + `${r.poc.Label || "POC"} to ${r.substation.Label || "the substation"}`);
       setTimeout(() => setStatus(""), 9000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Applying the developer areas to what is drawn.
+
+     Splitting is the reason this asks first. A trench crossing from one
+     developer's ground to another cannot be one row — the same reason
+     the site boundary splits it — but splitting changes the drawing, and
+     that is worth seeing before agreeing to. */
+  async function assignByDeveloper() {
+    const plan = planDeveloperAssignment(features);
+    if (plan.error) { setError(plan.error); return; }
+
+    const nameOf = (id) => developers
+      .find((d) => Number(d.Project_Developer_ID) === Number(id))?.label ?? `developer ${id}`;
+
+    if (!plan.label.length && !plan.split.length && !plan.clear.length) {
+      setStatus(`Nothing to change \u2014 ${plan.untouched} feature(s) already right, `
+        + `${plan.shared} shared.`);
+      setTimeout(() => setStatus(""), 8000);
+      return;
+    }
+
+    if (!window.confirm(
+      "Assign what is drawn to the developer whose area it stands in?\n\n"
+      + (plan.label.length ? `${plan.label.length} feature(s) assigned\n` : "")
+      + (plan.split.length
+        ? `${plan.split.length} crossing an area edge will be SPLIT into separate runs\n`
+        : "")
+      + (plan.clear.length ? `${plan.clear.length} no longer in any area, cleared\n` : "")
+      + `\n${plan.shared} shared item(s) left alone `
+      + "(substations, points of connection, the incomer).\n"
+      + (plan.overlaps.length
+        ? `\nWarning: ${plan.overlaps.length} pair(s) of areas overlap. `
+          + "Where they do, the first drawn wins."
+        : "")
+    )) return;
+
+    setBusy("developer");
+    try {
+      /* Labels first: a bulk write, and nothing about the drawing
+         changes shape. */
+      if (plan.label.length) {
+        const rows = plan.label.map((x) => ({
+          Feature_ID: x.feature.Feature_ID,
+          Attributes: { ...x.feature.Attributes, Project_Developer_ID: x.developerId },
+        }));
+        for (let i = 0; i < rows.length; i += 100) {
+          await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+        }
+      }
+      if (plan.clear.length) {
+        const rows = plan.clear.map((x) => {
+          const a = { ...x.feature.Attributes };
+          delete a.Project_Developer_ID;
+          return { Feature_ID: x.feature.Feature_ID, Attributes: a };
+        });
+        for (let i = 0; i < rows.length; i += 100) {
+          await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+        }
+      }
+
+      /* Splits: the first run keeps the original feature, the rest are
+         new. Keeping the row means its links, labels and anything
+         referring to it survive for the part that has not moved. */
+      for (const s of plan.split) {
+        const [head, ...tail] = s.runs;
+        await moveFeatures(projectId, [{
+          Feature_ID: s.feature.Feature_ID, Geometry: head.geometry,
+        }]);
+        await updateFeature(projectId, s.feature.Feature_ID, {
+          Attributes: {
+            ...s.feature.Attributes,
+            Project_Developer_ID: head.developerId ?? null,
+          },
+        });
+        for (const r of tail) {
+          await createFeature(projectId, {
+            Layer_Key: s.feature.Layer_Key,
+            Feature_Type: s.feature.Feature_Type,
+            Feature_Role: s.feature.Feature_Role ?? null,
+            Geometry: r.geometry,
+            Label: s.feature.Label,
+            Plot_ID: s.feature.Plot_ID ?? null,
+            Attributes: {
+              ...s.feature.Attributes,
+              Project_Developer_ID: r.developerId ?? null,
+            },
+          });
+        }
+      }
+
+      await load(projectId);
+      setStatus(`${plan.label.length} assigned`
+        + (plan.split.length ? `, ${plan.split.length} split` : "")
+        + (plan.clear.length ? `, ${plan.clear.length} cleared` : "")
+        + `, ${plan.shared} shared left alone`);
+      setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -4479,6 +4609,44 @@ export default function GISCanvasPage() {
                         setTool(tool === "boundary" ? "select" : "boundary");
                         setSelected([]); setDraft([]);
                       }} />
+                    {/* Developer areas.
+
+                        Only where there is more than one developer: with
+                        one, everything on the site is theirs already and
+                        an area would be a division of nothing. The whole
+                        block is absent rather than disabled, because a
+                        greyed-out item invites the question of how to
+                        enable it. */}
+                    {developers.length > 1 && (
+                      <>
+                        <div className="gm-sep" />
+                        <MenuGroup label="Developers" />
+                        {developers.map((d) => {
+                          const drawn = developerAreas(features)
+                            .some((a) => Number(a.id) === Number(d.Project_Developer_ID));
+                          const on = tool === "devarea"
+                            && Number(areaFor) === Number(d.Project_Developer_ID);
+                          return (
+                            <MenuItem key={d.Project_Developer_ID}
+                              label={on ? `Drawing ${d.label}\u2026` : `Draw ${d.label} Area`}
+                              hint={drawn ? "An area is already drawn \u2014 this adds another"
+                                : "Outline the ground that is theirs"}
+                              active={on}
+                              onClick={() => {
+                                setAreaFor(d.Project_Developer_ID);
+                                setTool(on ? "select" : "devarea");
+                                setSelected([]); setDraft([]);
+                              }} />
+                          );
+                        })}
+                        <MenuItem label={busy === "developer" ? "Assigning\u2026" : "Assign by Developer Area"}
+                          hint="Splits anything crossing an area edge. Substations, POCs and the incomer are left alone."
+                          disabled={!!busy || !developerAreas(features).length}
+                          onClick={assignByDeveloper} />
+                        <div className="gm-sep" />
+                      </>
+                    )}
+
                     {/* One item, not two. Adding plots and placing them
                         were separate entries opening much the same thing;
                         the modal already offers both, so the menu should
@@ -5080,6 +5248,24 @@ export default function GISCanvasPage() {
                 been deleted. Someone hunting for meters that are merely
                 hidden has no way to tell which. So: a standing note of
                 what is put away, and one click to bring it back. */}
+            {/* The areas have moved since the drawing was assigned.
+
+                A stored assignment is only as good as the last time it
+                was worked out, and dragging an area afterwards leaves
+                features claiming a developer they are no longer under.
+                Said out loud rather than silently reassigned: reassigning
+                splits features, which is not something to do to someone
+                without asking. */}
+            {developers.length > 1 && assignmentStale(features) && (
+              <button className="gis-hidden gis-stale"
+                title="Some features are assigned to a developer whose area no longer covers them"
+                disabled={!!busy}
+                onClick={assignByDeveloper}>
+                <span>Developer areas have moved</span>
+                <strong>Reassign</strong>
+              </button>
+            )}
+
             {(hidden.length > 0 || isolatedCircuit != null) && (
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
@@ -5713,6 +5899,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;
   font: 600 11.5px inherit; box-shadow: 0 4px 14px rgba(15,23,42,.12); }
 .gis-hidden:hover { border-color: #d97706; }
+/* Sits under the hidden-layers notice when both are showing. */
+.gis-stale { top: 52px; }
 .gis-hidden strong { text-decoration: underline; }
 .gis-elec { position: absolute; right: 12px; top: 12px; z-index: 5; display: flex;
   align-items: center; gap: 6px; flex-wrap: wrap; justify-content: flex-end; max-width: 45%; }

@@ -2728,12 +2728,24 @@ export default function GISCanvasPage() {
         })),
       );
 
+      /* One read, and the same array used for all three things: the
+         canvas state, the re-run, and the record of what was traced.
+
+         It used to read once, set the features, then call load() — which
+         reads again and replaces them with a second array of identical
+         content — and then trace against the first. The staleness test
+         compares arrays by identity, so the panel declared itself out of
+         date the instant it finished re-running.
+
+         load() is not needed here in any case: a cable change touches
+         features and nothing else, and everything load re-reads besides
+         them is unchanged. */
       const fresh = await listGis(projectId);
-      setFeatures(fresh.features || []);
-      await load(projectId);
+      const after = fresh.features || [];
+      setFeatures(after);
 
       setScenario(null);
-      if (startId != null) runFullTrace({ srcFeatures: fresh.features || [], startId });
+      if (startId != null) runFullTrace({ srcFeatures: after, startId });
 
       setStatus(`${suggestion.changes
         .map((c) => `${c.fromLabel}\u2192${c.spanLabel} now ${c.toLabel}`).join(", ")}`
@@ -4843,7 +4855,15 @@ export default function GISCanvasPage() {
       totalMeters: parts.reduce((t, p) => t + (p.totalMeters || 0), 0),
     });
     setScenario(null);
-    setTraceAt({ features, lookups });
+    /* The drawing these figures came from, which is `src` and not
+       necessarily `features`.
+
+       When a suggestion is applied the check is re-run over data just
+       read back, while `features` in this closure is still the drawing
+       from before the write. Recording the closure's copy left the panel
+       comparing the new figures against the old drawing and declaring
+       itself out of date the moment it finished. */
+    setTraceAt({ features: src, lookups });
     setError(failed.length ? `Not checked \u2014 ${failed.join(" \u00B7 ")}` : "");
   }
 
@@ -4911,7 +4931,9 @@ export default function GISCanvasPage() {
        beside new ones would have it recommending a change to a design
        that has moved. */
     setScenario(null);
-    setTraceAt({ features, lookups });
+    /* The drawing traced, not the one in this closure — see the note in
+       runLevelsCheck. */
+    setTraceAt({ features: src, lookups });
     setError("");
   }
 

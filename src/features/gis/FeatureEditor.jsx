@@ -5,6 +5,7 @@ import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
+import { servedPlots, JOINT_KINDS } from "./joints.js";
 import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor } from "./electric.js";
 
 /* Editing whatever you right-clicked.
@@ -163,6 +164,23 @@ export default function FeatureEditor({
      work, and that is worse than one offering too much. */
   const cableUsage = f.Attributes?.Line_Type === "elec_service" ? "service" : "mains";
 
+  /* The plots a joint serves.
+
+     A joint records how many services leave the feeder at its point but
+     not which, so this is worked out from position: the service cables
+     ending there. Read-only, because the answer follows from where
+     things are drawn — a field that let you type a different one would
+     only be a way to disagree with the drawing. */
+  const isJoint = feature.Feature_Role === "joint";
+  const served = useMemo(
+    () => (isJoint
+      ? servedPlots(feature, allFeatures || [], {
+        plotById: (id) => (plotList || []).find((p) => p.plot_id === id),
+      })
+      : []),
+    [isJoint, feature, allFeatures, plotList],
+  );
+
   const cableChoices = useMemo(() => {
     const sizes = lookups?.cableSizes || [];
     const types = lookups?.cableTypes || [];
@@ -304,6 +322,48 @@ export default function FeatureEditor({
         </div>
 
         <div className="fe-body">
+          {/* What this joint is and which plots it serves.
+
+              A joint is placed by what meets at its point, and nothing on
+              screen said what that was: a service joint and a breech
+              joint looked identical once drawn, and neither said whose
+              service it made. Both matter when someone is checking a
+              schedule against the ground. */}
+          {isJoint && (
+            <div className="fe-joint">
+              <div className="fe-joint-h">
+                <strong>
+                  {JOINT_KINDS[feature.Attributes?.Joint_Type]?.label
+                    ?? "Joint"}
+                </strong>
+                {(feature.Attributes?.Joint_Reasons || []).length > 1 && (
+                  <span className="fe-joint-why">
+                    also {(feature.Attributes.Joint_Reasons || [])
+                      .filter((r) => r !== feature.Attributes?.Joint_Type)
+                      .join(", ")}
+                  </span>
+                )}
+              </div>
+              <div className="fe-joint-p">
+                <span>Serves</span>
+                {served.length
+                  ? (
+                    <strong>
+                      {served.length === 1 ? "plot " : "plots "}
+                      {served.map((p) => p.number).join(", ")}
+                    </strong>
+                  )
+                  /* No service ending here is not a fault in itself — a
+                     breech or a straight joint serves none — but on a
+                     service joint it means the cable that should reach it
+                     does not. */
+                  : <em>{feature.Attributes?.Joint_Type === "service"
+                      ? "no service cable reaches this point"
+                      : "no plots \u2014 this joins the feeder to itself"}</em>}
+              </div>
+            </div>
+          )}
+
           {/* Which circuit this belongs to, and a way to see it on its
               own. Offered for anything carrying a Circuit_ID — a span
               node, a feeder section, a meter, a joint — because the
@@ -975,6 +1035,14 @@ const CSS = `
 .fe-demand-sp { font-weight: 600; }
 .fe-demand-n { margin: 2px 0 0; font-size: 13px; color: var(--muted); }
 .fe-demand-n strong { font-size: 24px; color: var(--text); }
+.fe-joint { background: var(--bg); border-radius: var(--radius); padding: 9px 12px;
+  margin-bottom: 10px; display: grid; gap: 4px; }
+.fe-joint-h { display: flex; align-items: baseline; gap: 8px; }
+.fe-joint-h strong { font-size: 12.5px; }
+.fe-joint-why { font-size: 11px; color: var(--muted); }
+.fe-joint-p { display: flex; gap: 8px; font-size: 12px; }
+.fe-joint-p > span { color: var(--muted); }
+.fe-joint-p em { color: #b45309; font-style: normal; font-size: 11.5px; }
 .fe-circuit { display: flex; align-items: center; justify-content: space-between; gap: 10px;
   background: var(--bg); border-radius: var(--radius); padding: 8px 11px; margin-bottom: 12px; }
 .fe-circuit strong { font-size: 12.5px; }

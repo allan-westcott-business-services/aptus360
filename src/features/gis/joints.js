@@ -346,3 +346,59 @@ export function reconcileJoints(planned = [], existing = [], tolM = 0.25) {
 
   return { add, update, stale };
 }
+
+/* Which plots a joint serves.
+
+   A joint records how many services leave the feeder at its point but
+   not which — so the only link back to a plot is position: a service
+   cable with an end at the joint is a service that joint makes.
+
+   Resolved by every route the drawing uses, because a service cable
+   names its plot in more than one way depending on what drew it: its own
+   Plot_ID, or the seed it was drawn for. Following only one of them left
+   half the cables unattributed, which is the same fault that made
+   circuit isolation miss them. */
+export function servedPlots(joint, features = [], opts = {}) {
+  const { tolM = 0.25, plotById = () => null } = opts;
+  const at = (joint?.Geometry || [])[0];
+  if (!at) return [];
+
+  /* Seed feature id to plot id, for cables that name a seed rather than
+     a plot. */
+  const seedToPlot = new Map();
+  for (const f of features) {
+    if (f.Feature_Role === "plot" && f.Plot_ID != null) {
+      seedToPlot.set(String(f.Feature_ID), f.Plot_ID);
+    }
+  }
+
+  const near = (p) => p && Math.hypot(p[0] - at[0], p[1] - at[1]) <= tolM;
+
+  const ids = new Set();
+  for (const f of features) {
+    if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") continue;
+    if (!String(f.Attributes?.Line_Type || "").endsWith("_service")) continue;
+
+    const g = f.Geometry || [];
+    if (g.length < 2) continue;
+    /* Either end: a service is drawn from the main to the meter, but a
+       redrawn one can run the other way. */
+    if (!near(g[0]) && !near(g[g.length - 1])) continue;
+
+    const pid = f.Plot_ID
+      ?? (f.Attributes?.Seed_Feature_ID != null
+        ? seedToPlot.get(String(f.Attributes.Seed_Feature_ID))
+        : null);
+    if (pid != null) ids.add(Number(pid));
+  }
+
+  return [...ids]
+    .map((id) => ({ plotId: id, number: plotById(id)?.plot_number ?? String(id) }))
+    .sort((a, b) => {
+      const na = Number(String(a.number).replace(/\D/g, ""));
+      const nb = Number(String(b.number).replace(/\D/g, ""));
+      return (Number.isFinite(na) && Number.isFinite(nb) && na !== nb)
+        ? na - nb
+        : String(a.number).localeCompare(String(b.number));
+    });
+}

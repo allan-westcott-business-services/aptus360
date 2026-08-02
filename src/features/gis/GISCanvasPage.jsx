@@ -4,7 +4,7 @@ import { listProjects, getProject } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
   restoreFeatures, listUndo, recordUndo, markUndone, clearUndo,
-  placeJoints, traceNetwork, assignMeters, bulkUpdateFeatures,
+  traceNetwork, assignMeters, bulkUpdateFeatures,
 } from "../../api/gis.js";
 import {
   SNAP_PX, CONNECT_M, snapTargets, findSnap, nearestOnLines, connectedTo, lineLength,
@@ -2250,11 +2250,11 @@ export default function GISCanvasPage() {
   async function runNetwork(op) {
     setBusy(op);
     try {
-      if (op === "joints") {
-        const r = await placeJoints(projectId);
-        setStatus(r.placed ? `${r.placed} joint${r.placed === 1 ? "" : "s"} placed where cables meet`
-                           : "No new junctions found");
-      } else if (op === "trace") {
+      /* "joints" is no longer an operation here. Place Feeder Joints
+         does that job from the routed network; the routine this called
+         put joints on the trench layer with no role, which the rest of
+         the application does not recognise as joints at all. */
+      if (op === "trace") {
         if (selected.length !== 1) {
           setError("Select the source — a substation, feeder pillar or POC — then trace.");
           return;
@@ -4986,9 +4986,13 @@ export default function GISCanvasPage() {
                       hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes"
                       disabled={!!busy || !circuitsFrom(features).length}
                       onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
-                    <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Joints"}
-                      hint="Joints where services meet mains"
-                      disabled={!!busy} onClick={() => runNetwork("joints")} />
+{/* The older Place Joints is gone. It grouped coincident line ends
+                        across every utility, so it could not tell a feeder from a
+                        water main, wrote no Feature_Role, and put what it made on
+                        the trench layer — where nothing in the application
+                        recognised it as a joint. Place Feeder Joints above does
+                        the same job from the routed network and writes the layer,
+                        role, type and code properly. */}
 
                     <div className="gm-sep" />
                     <MenuGroup label="Tools & Reporting" />

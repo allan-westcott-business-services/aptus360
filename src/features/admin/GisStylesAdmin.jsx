@@ -15,6 +15,20 @@ import { appearance, symbolPath, STROKE_ONLY, SYMBOLS } from "../../lib/gisStyle
    zoom you pick. A swatch that lies about what you'll get on the plan
    would be worse than no swatch. */
 
+/* The canvas zoom readout, from a pixels-per-metre figure.
+
+   The canvas prints Math.round(scale * 25) + "%", so this has to use the
+   same 25 — and if that ever changes, both have to change together or
+   the admin quietly starts lying. One number, one expression, for that
+   reason. */
+const PCT_PER_PX_PER_M = 25;
+const asPct = (v) => {
+  const n = Number(v);
+  return v === "" || v == null || !Number.isFinite(n) || n <= 0
+    ? ""
+    : `\u2248 ${Math.round(n * PCT_PER_PX_PER_M)}% zoom`;
+};
+
 const BLANK = {
   Style_Name: "", Layer_Key: "", Line_Type: "", Feature_Role: "",
   Utility_ID: "", Organisation_ID: "", Site: "",

@@ -1,5 +1,6 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
+import { onOpenGis } from "./lib/gisIntent.js";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -69,6 +70,12 @@ function useBlockPageZoom() {
 function Shell() {
   useBlockPageZoom();
   const [view, setView] = useState("projects");
+
+  /* Somewhere else in the app has asked for the canvas — the outline
+     design tab, wanting to show the design it is describing. The payload
+     is left for the canvas to collect; all the shell has to do is put it
+     on screen. */
+  useEffect(() => onOpenGis(() => setView("gis-canvas")), []);
   const [collapsed, setCollapsed] = useState(false);
 
   let content;

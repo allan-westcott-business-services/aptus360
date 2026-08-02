@@ -14,6 +14,7 @@ import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getBasemap } from "../../api/basemap.js";
 import { listDevelopers } from "../../api/developers.js";
+import { takeGisIntent } from "../../lib/gisIntent.js";
 import { bulkUpdatePlots } from "../../api/plots.js";
 import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
@@ -359,6 +360,22 @@ export default function GISCanvasPage() {
     finally { setUndoBusy(false); }
   }, [stack, undoBusy, applyPlan, projectId, load]);
 
+  /* Opened from somewhere else with a project — and possibly a utility —
+     already chosen.
+
+     Taken once, on mount, before anything is loaded: setting the project
+     here lets the ordinary load run for it, rather than loading whatever
+     was open and then loading again. The utility is held until the
+     layers arrive, since which layer belongs to a utility is something
+     only the loaded data knows. */
+  const [pendingIsolate, setPendingIsolate] = useState(null);
+  useEffect(() => {
+    const intent = takeGisIntent();
+    if (!intent) return;
+    if (intent.projectId != null) setProjectId(String(intent.projectId));
+    if (intent.utilityId != null) setPendingIsolate(Number(intent.utilityId));
+  }, []);
+
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
   /* The history for this project, read once when it opens. Separate from
      load so a history that fails to read cannot stop the drawing. */
@@ -537,6 +554,27 @@ export default function GISCanvasPage() {
     setIsolatedCircuit((cur) =>
       (String(cur) === String(circuitId) ? null : circuitId));
   }, []);
+
+  /* Isolate the utility that was asked for, once there are layers to
+     match it against.
+
+     Matched through the layer's own Utility_ID rather than by name: the
+     layer keys and the utility names are maintained separately, and
+     "Electric" matching "electric" is a coincidence that would not
+     survive someone adding street lighting. */
+  useEffect(() => {
+    if (pendingIsolate == null || !layers.length) return;
+    const layer = layers.find((l) => Number(l.Utility_ID) === pendingIsolate);
+    setPendingIsolate(null);
+    if (!layer) {
+      setError("That utility has no layer on this drawing to show.");
+      return;
+    }
+    soloClass(layer.Layer_Key);
+    setStatus(`Showing ${layer.Label ?? layer.Layer_Key} only \u2014 `
+      + "Show Everything brings the rest back");
+    setTimeout(() => setStatus(""), 9000);
+  }, [pendingIsolate, layers, soloClass]);
 
   /* Every line type on one layer, for that utility's menu. */
   const typesOn = useCallback(

@@ -1,4 +1,5 @@
 import { useState, useEffect, useMemo } from "react";
+import { openGis } from "../../lib/gisIntent.js";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getProject } from "../../api/projects.js";
@@ -183,6 +184,14 @@ export default function OutlineDesignsTab({ projectId }) {
               )}
             </div>
           )}
+          {/* The drawing these designs describe. Opening it meant going
+              to the canvas and finding the project again in a list of
+              five hundred, having just been looking at it. */}
+          <button className="btn ghost"
+            title="Open this project on the GIS canvas"
+            onClick={() => openGis({ projectId })}>
+            Open GIS design
+          </button>
           <button className="btn accent" disabled={!dirty.length || saving} onClick={saveAll}>
             {saving ? "Saving\u2026" : dirty.length ? `Save ${dirty.length} change${dirty.length === 1 ? "" : "s"}` : "Saved"}
           </button>
@@ -192,6 +201,7 @@ export default function OutlineDesignsTab({ projectId }) {
       {editing && (
         <DesignEditModal
           design={editing}
+          projectId={projectId}
           lookups={lookups}
           designers={designers}
           checkers={checkers}
@@ -401,7 +411,19 @@ const CSS = FILTER_CSS + `
 .od-tools { display: flex; gap: 8px; align-items: flex-start; }
 .add-wrap { position: relative; }
 .add-menu {
-  position: absolute; right: 0; top: 100%; margin-top: 4px; z-index: 20;
+  /* Opens to the right of the button, not the left.
+
+     It was anchored right: 0, which puts a 210px menu 210px to the LEFT
+     of its button — and this button sits at the left of the toolbar, so
+     the menu ran off the card and under the sidebar. Two things then hid
+     it: the sidebar is z-index 30 and this was 20, and .main has
+     overflow-x: auto, which clips anything reaching past its left edge —
+     which is exactly where the sidebar starts.
+
+     left: 0 opens it into the page, where there is room. The z-index is
+     raised past the sidebar as well, so a narrower window that pushes
+     the toolbar leftward cannot reproduce it. */
+  position: absolute; left: 0; top: 100%; margin-top: 4px; z-index: 40;
   background: var(--white); border: 1px solid var(--border); border-radius: var(--radius);
   box-shadow: 0 6px 20px rgba(0,0,0,.12); padding: 6px; min-width: 210px;
 }

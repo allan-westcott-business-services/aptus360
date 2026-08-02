@@ -1,4 +1,5 @@
 import { useState } from "react";
+import { openGis } from "../../lib/gisIntent.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { utilityById } from "../../lib/utilities.js";
@@ -8,12 +9,20 @@ import { utilityById } from "../../lib/utilities.js";
    The table has eleven columns and shows everything at once, which is
    right for scanning and wrong for editing — this is the same fields
    laid out to be filled in. */
-export default function DesignEditModal({ design, lookups, designers, checkers, onSave, onClose }) {
+export default function DesignEditModal({
+  design, lookups, designers, checkers, onSave, onClose, projectId,
+}) {
   const [f, setF] = useState({ ...design });
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState("");
 
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
+
+  /* Whether the form has been touched. Compared against the design as it
+     arrived rather than tracked per field: every field goes through set,
+     and one comparison cannot fall behind the way a flag set in eight
+     places can. */
+  const dirty = JSON.stringify(f) !== JSON.stringify(design);
   const u = utilityById(f.Utility_ID);
   const num = (v) => (v === "" || v == null ? null : Number(v));
 
@@ -190,6 +199,25 @@ export default function DesignEditModal({ design, lookups, designers, checkers, 
             {saving ? "Saving\u2026" : "Save design"}
           </button>
           <button className="btn ghost" onClick={onClose}>Cancel</button>
+
+          {/* Straight to this utility on the drawing, with the others put
+              away. Someone reading an electric design wants to see the
+              electric network, and reaching it meant opening the canvas,
+              finding the project, then hiding four other utilities by
+              hand.
+
+              Unsaved edits are left behind, so it says so rather than
+              discarding them quietly. */}
+          <button className="btn ghost dm-gis"
+            title="Open this project on the GIS canvas, showing only this utility"
+            onClick={() => {
+              if (dirty && !window.confirm(
+                "Open the GIS design? Changes on this form will not be saved."
+              )) return;
+              openGis({ projectId, utilityId: design?.Utility_ID });
+            }}>
+            Open GIS design
+          </button>
         </div>
       </div>
     </div>
@@ -229,4 +257,7 @@ label.inline { display: flex; align-items: center; gap: 8px; font-size: 12.5px; 
 .late-note { color: #b91c1c !important; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 .dm-foot { display: flex; gap: 9px; padding: 14px 20px; border-top: 1px solid var(--border); }
+/* Pushed to the far end: it leaves the form, so it does not belong
+   beside the buttons that act on it. */
+.dm-gis { margin-left: auto; }
 `;

@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import { onOpenGis } from "./lib/gisIntent.js";
+import { remember, recallOneOf } from "./lib/session.js";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
 import ErrorBoundary from "./components/ErrorBoundary.jsx";
@@ -67,9 +68,21 @@ function useBlockPageZoom() {
   }, []);
 }
 
+/* Every page the shell knows how to render. Also what a remembered view
+   is checked against: a name from an older build would otherwise leave
+   the shell rendering nothing with no way back. */
+const VIEWS = [
+  "projects", "admin", "plot-connections", "gis-canvas",
+  "generate-av-invoices", "av-invoices", "organisations", "customer-projects",
+];
+
 function Shell() {
   useBlockPageZoom();
-  const [view, setView] = useState("projects");
+  /* Where the user was. A reload took everyone to the projects list
+     whatever they had open, which on a page that is slow to get back to
+     is the whole navigation done again for the sake of pressing F5. */
+  const [view, setView] = useState(() => recallOneOf("view", VIEWS, "projects"));
+  useEffect(() => remember("view", view), [view]);
 
   /* Somewhere else in the app has asked for the canvas — the outline
      design tab, wanting to show the design it is describing. The payload

@@ -112,7 +112,17 @@ export function bulkDeleteCategories(features = [], opts = {}) {
          its kind where one exists — so All Electric objects and All
          meters both tick the electric meters, and unticking them takes
          them out of whichever was used. */
-      const general = { meter: "meter", joint: "joint", poc: "poc", spannode: "spannode" }[key];
+      /* The general entry this kind rolls up into, where there is one.
+
+         Only for kinds that more than one utility has: ticking "All
+         meters" should take the gas and water ones too. Substations and
+         governors have no general entry, because they belong to a single
+         utility and a second name for the same list helps nobody. */
+      const general = {
+        main: "main", service: "service",
+        meter: "meter", joint: "joint", poc: "poc", spannode: "spannode",
+        column: "column",
+      }[key];
       add(`${l.Layer_Key}:${key}`, `${l.Label} \u2014 ${what}`,
         (f) => on(f) && pred(f), `${l.Label} only`,
         [`layer:${l.Layer_Key}`, ...(general ? [general] : [])]);
@@ -146,9 +156,12 @@ export function bulkDeleteCategories(features = [], opts = {}) {
   add("column", "All lighting columns", (f) => f.Feature_Role === "column", "Points");
   add("seed", "All plot seeds", (f) => f.Feature_Role === "plot", "Points");
   add("poc", "All POCs", (f) => f.Feature_Role === "poc", "Points");
-  add("substation", "All substations", (f) => f.Feature_Role === "substation", "Points");
   add("spannode", "All span nodes", (f) => f.Feature_Role === "spannode", "Points");
-  add("governor", "All gas governors", (f) => f.Feature_Role === "governor", "Points");
+  /* Substations and gas governors are not here. Each belongs to one
+     utility, so "all of them" and "all of that utility's" are the same
+     list under two names — and two entries that always agree are one
+     more thing to read and one more place to tick the wrong box. They
+     appear under Electric and Gas respectively. */
 
   add("boundary", "Site boundary", (f) => f.Layer_Key === "boundary", "Everything");
   add("all", "Everything on the drawing", () => true, "Everything");

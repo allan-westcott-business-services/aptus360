@@ -30,7 +30,9 @@ const TABS = [
   { id: "comments", label: "Comments" },
 ];
 
-export default function ProjectDetail({ project, initialTab = "details", onBack, onOpenOption }) {
+export default function ProjectDetail({
+  project, initialTab = "details", onBack, onOpenOption, onTabChange,
+}) {
   /* The other versions of this enquiry: 2607.004(A), (B) and so on.
      Fetched rather than passed in, because a project can be opened from
      several places and only one of them knows about its siblings. */
@@ -63,6 +65,11 @@ export default function ProjectDetail({ project, initialTab = "details", onBack,
   }
 
   const [tab, setTab] = useState(initialTab);
+
+  /* Told upward so a reload comes back to the tab being read rather than
+     the one this was opened on. Without it the page remembers where
+     someone arrived, which after a few clicks is not where they are. */
+  useEffect(() => { onTabChange?.(tab); }, [tab, onTabChange]);
   if (!project) return null;
 
   return (

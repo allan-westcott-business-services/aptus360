@@ -15,6 +15,7 @@ import { getLookups } from "../../api/lookups.js";
 import { getBasemap } from "../../api/basemap.js";
 import { listDevelopers } from "../../api/developers.js";
 import { takeGisIntent } from "../../lib/gisIntent.js";
+import { remember, recall } from "../../lib/session.js";
 import { bulkUpdatePlots } from "../../api/plots.js";
 import { listPlacementPlots } from "../../api/gis.js";
 import PlacementPanel from "./PlacementPanel.jsx";
@@ -72,7 +73,10 @@ export default function GISCanvasPage() {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
   const [projects, setProjects] = useState([]);
-  const [projectId, setProjectId] = useState("");
+  /* Which drawing was open, across a reload. Coming back to an empty
+     canvas and picking the site out of a list of five hundred is the
+     navigation done twice. */
+  const [projectId, setProjectId] = useState(() => recall("gisProject", "") ?? "");
   const [search, setSearch] = useState("");
   const [features, setFeatures] = useState([]);
   const [layers, setLayers] = useState([]);
@@ -456,6 +460,7 @@ export default function GISCanvasPage() {
     if (intent.utilityId != null) setPendingIsolate(Number(intent.utilityId));
   }, []);
 
+  useEffect(() => { remember("gisProject", projectId || null); }, [projectId]);
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
   /* The history for this project, read once when it opens. Separate from
      load so a history that fails to read cannot stop the drawing. */

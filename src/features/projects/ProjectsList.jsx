@@ -61,10 +61,22 @@ function loadPrefs() {
     const valid = new Set(def.order);
     const order = (p.order || []).filter((k) => valid.has(k));
     def.order.forEach((k) => !order.includes(k) && order.push(k));
+    const widths = { ...def.widths, ...(p.widths || {}) };
+
+    /* The outline design column used to hold a count and was 120px wide.
+       It now holds a status and a name per design, and a stored width
+       from before that change squashes it — saved preferences win over
+       defaults, so everyone who has ever used this page would get the
+       narrow one.
+
+       Only the old default is replaced. A width somebody has dragged to
+       something else is a decision and is left alone. */
+    if (widths.scopes === 120) widths.scopes = def.widths.scopes;
+
     return {
       order,
       hidden: (p.hidden || []).filter((k) => valid.has(k)),
-      widths: { ...def.widths, ...(p.widths || {}) },
+      widths,
     };
   } catch {
     return def;
@@ -558,11 +570,17 @@ export default function ProjectsList({ onOpen, onNew, onRefresh }) {
             <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
               {visible.map((c) => (
                 <th key={c.key}>
+                  {/* Both the checkbox column and the outline design
+                      column need their lists; the others take none. This
+                      tested for "multi" alone, so the outline design
+                      filter was handed null and read straight through
+                      it. */}
                   {c.type !== "none" && <FilterControl
                     col={c}
                     value={filters[c.key]}
                     onChange={(v) => setFilter(c.key, v)}
-                    options={c.type === "multi" ? optionsFor(c) : null}
+                    options={c.type === "multi" || c.type === "designs"
+                      ? optionsFor(c) : null}
                     open={openFilter === c.key}
                     setOpen={(o) => setOpenFilter(o ? c.key : null)}
                   />}

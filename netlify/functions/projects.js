@@ -25,6 +25,11 @@ const SCOPE_COLUMNS = [
   "Target_Date", "Actual_Date", "Revision",
   "Carried_Forward", "External_Design", "IDNO_ID", "Reference",
   "Auto_Base_Points", "Manual_Base_Points", "Base_Points_Overridden",
+  /* What new runs on this utility are drawn with. Electric takes a
+     cable from the catalogue; gas and water take free text, because
+     their sizes are free text on the features too. */
+  "Default_Main_Cable_Size_ID", "Default_Service_Cable_Size_ID",
+  "Default_Main_Size", "Default_Service_Size",
 ].join(",");
 
 

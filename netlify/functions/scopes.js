@@ -12,6 +12,11 @@ const DESIGN_FIELDS = new Set([
   "Target_Date", "Actual_Date", "Revision", "Carried_Forward",
   "External_Design", "IDNO_ID", "Reference",
   "Manual_Base_Points", "Base_Points_Overridden",
+  /* What new runs on this utility are drawn with. A design decision, so
+     it belongs with the design fields — and it has to be listed here or
+     the PATCH drops it without saying anything. */
+  "Default_Main_Cable_Size_ID", "Default_Service_Cable_Size_ID",
+  "Default_Main_Size", "Default_Service_Size",
 ]);
 
 export default async function handler(req, context) {

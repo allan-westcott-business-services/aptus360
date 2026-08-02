@@ -23,6 +23,29 @@ export default function DesignEditModal({
      and one comparison cannot fall behind the way a flag set in eight
      places can. */
   const dirty = JSON.stringify(f) !== JSON.stringify(design);
+
+  /* Electric is the only utility with a cable catalogue; the rest hold
+     their sizes as text. Judged on the utility rather than on whether a
+     catalogue happens to have rows, so an empty catalogue shows an empty
+     picker rather than silently turning into a text box. */
+  const isElectric = Number(f.Utility_ID) === 1;
+
+  const cableLabel = (c) => {
+    const t = (lookups.cableTypes || []).find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+    return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
+  };
+
+  /* Split by usage, the same rule the feature editor applies: a mains
+     default must not offer a service cable. A type with no usage set
+     stays in both, since an unfilled field is not a statement. */
+  const byUsage = (want) => (lookups.cableSizes || []).filter((c) => {
+    const u = String((lookups.cableTypes || [])
+      .find((x) => x.Cable_Type_ID === c.Cable_Type_ID)?.Usage_Type ?? "")
+      .trim().toLowerCase();
+    return !u || u === want;
+  });
+  const mainsCables = byUsage("mains");
+  const serviceCables = byUsage("service");
   const u = utilityById(f.Utility_ID);
   const num = (v) => (v === "" || v == null ? null : Number(v));
 
@@ -146,6 +169,66 @@ export default function DesignEditModal({
             </div>
           </div>
 
+          {/* What new runs are drawn with.
+
+              Set once here rather than on each feature: a project lays
+              one size of main and one of service, and choosing it on
+              every run is both tedious and easy to miss — a cable left
+              unset on one run is invisible until the bill comes out
+              short.
+
+              Electric picks from the catalogue, filtered by usage so a
+              service cannot be given a mains cable. Gas and water take
+              free text, because that is how their sizes are held on the
+              features; a catalogue for them is a larger change than this
+              and not the one asked for. */}
+          <p className="dm-label">Default equipment</p>
+          <div className="dm-grid">
+            {isElectric ? (
+              <>
+                <div className="fld grow">
+                  <label htmlFor="dm-dmain">Mains cable</label>
+                  <select id="dm-dmain" value={f.Default_Main_Cable_Size_ID ?? ""}
+                    onChange={(e) => set("Default_Main_Cable_Size_ID")(num(e.target.value))}>
+                    <option value="">&mdash; none &mdash;</option>
+                    {mainsCables.map((c) => (
+                      <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>{cableLabel(c)}</option>
+                    ))}
+                  </select>
+                </div>
+                <div className="fld grow">
+                  <label htmlFor="dm-dsvc">Service cable</label>
+                  <select id="dm-dsvc" value={f.Default_Service_Cable_Size_ID ?? ""}
+                    onChange={(e) => set("Default_Service_Cable_Size_ID")(num(e.target.value))}>
+                    <option value="">&mdash; none &mdash;</option>
+                    {serviceCables.map((c) => (
+                      <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>{cableLabel(c)}</option>
+                    ))}
+                  </select>
+                </div>
+              </>
+            ) : (
+              <>
+                <div className="fld grow">
+                  <label htmlFor="dm-dmain-t">Mains pipe</label>
+                  <input id="dm-dmain-t" value={f.Default_Main_Size || ""}
+                    placeholder="e.g. 180mm PE"
+                    onChange={(e) => set("Default_Main_Size")(e.target.value)} />
+                </div>
+                <div className="fld grow">
+                  <label htmlFor="dm-dsvc-t">Service pipe</label>
+                  <input id="dm-dsvc-t" value={f.Default_Service_Size || ""}
+                    placeholder="e.g. 32mm PE"
+                    onChange={(e) => set("Default_Service_Size")(e.target.value)} />
+                </div>
+              </>
+            )}
+          </div>
+          <p className="dm-hint">
+            New runs drawn on the canvas take these. Anything already drawn
+            keeps what it has.
+          </p>
+
           <p className="dm-label">Points</p>
           <div className="dm-points">
             <div className="fld w-sm">
@@ -260,4 +343,5 @@ label.inline { display: flex; align-items: center; gap: 8px; font-size: 12.5px; 
 /* Pushed to the far end: it leaves the form, so it does not belong
    beside the buttons that act on it. */
 .dm-gis { margin-left: auto; }
+.dm-hint { margin: -4px 0 0; font-size: 11.5px; color: var(--muted); }
 `;

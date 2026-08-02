@@ -1,6 +1,6 @@
 import { useState, useEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
-import { listProjects } from "../../api/projects.js";
+import { listProjects, getProject } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
   restoreFeatures, listUndo, recordUndo, markUndone, clearUndo,
@@ -101,6 +101,11 @@ export default function GISCanvasPage() {
   const [meterFor, setMeterFor] = useState(null);  // { plot, seedPoint, utility, all, placed }
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
+  /* The equipment this project's outline designs say new runs are made
+     of, one entry per utility. Read from the project rather than held on
+     the canvas: it is a design decision, set on the Outline Designs tab,
+     and the canvas is only obeying it. */
+  const [scopeDefaults, setScopeDefaults] = useState([]);
   /* Which developer the next area belongs to. An area with nobody on it
      says nothing, so the tool cannot start without one chosen. */
   const [areaFor, setAreaFor] = useState(null);
@@ -176,6 +181,8 @@ export default function GISCanvasPage() {
       ]);
       if (pl._error) setError(`Couldn't read this project's plots: ${pl._error}`);
       setPlotList(pl.plots || []);
+      const proj = await getProject(pid).catch(() => null);
+      setScopeDefaults(proj?.scopes || []);
       const devs = await listDevelopers(pid).catch(() => ({ rows: [] }));
       setDevelopers((devs.rows || []).map((d) => {
         const b = (lk.branches || []).find((x) => x.Branch_ID === d.Branch_ID);
@@ -575,6 +582,39 @@ export default function GISCanvasPage() {
       + "Show Everything brings the rest back");
     setTimeout(() => setStatus(""), 9000);
   }, [pendingIsolate, layers, soloClass]);
+
+  /* The equipment a new run inherits, from its outline design.
+
+     Keyed on the layer's utility and on whether the run is a service,
+     because that is how the default is recorded: one main and one
+     service per utility. A run drawn on a utility with nothing set gets
+     nothing — a default that is not there is not a reason to guess.
+
+     Electric returns a cable id, the rest return free text, matching how
+     each is held on the feature itself. Nothing here invents a size for
+     a utility that has no catalogue. */
+  const defaultsFor = useCallback((lineTypeKey) => {
+    const t = lineTypes.find((x) => x.Type_Key === lineTypeKey);
+    const layerKey = t?.Layer_Key ?? null;
+    if (!layerKey) return {};
+
+    const layer = layers.find((l) => l.Layer_Key === layerKey);
+    if (!layer?.Utility_ID) return {};
+
+    const scope = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(layer.Utility_ID));
+    if (!scope) return {};
+
+    const isService = String(lineTypeKey).includes("service");
+
+    if (layerKey === "electric") {
+      const id = isService
+        ? scope.Default_Service_Cable_Size_ID
+        : scope.Default_Main_Cable_Size_ID;
+      return id != null ? { VD_Cable_Size_ID: Number(id) } : {};
+    }
+    const size = isService ? scope.Default_Service_Size : scope.Default_Main_Size;
+    return size ? { Size: size } : {};
+  }, [lineTypes, layers, scopeDefaults]);
 
   /* Every line type on one layer, for that utility's menu. */
   const typesOn = useCallback(
@@ -2094,10 +2134,16 @@ export default function GISCanvasPage() {
           Geometry: run.geometry,
           Label: t?.Label ?? "Line",
           Attributes: {
+            /* What this project says runs of this kind are made of.
+               Spread first so anything chosen on the toolbar still wins:
+               a default is where to start, not what to insist on. */
+            ...defaultsFor(lineType),
             Line_Type: lineType,
             /* Written by which kind of run this is, not by whatever was
                last typed into a field that is now hidden. */
-            Size: isTrenchType(lineType, lineTypes) ? null : (size || null),
+            Size: isTrenchType(lineType, lineTypes)
+              ? null
+              : (size || defaultsFor(lineType).Size || null),
             Surface_Type: isTrenchType(lineType, lineTypes)
               ? surfaceFor(run.site, surface, surfaceTypes) : null,
             Site: run.site,
@@ -3403,7 +3449,23 @@ export default function GISCanvasPage() {
          on everything, trace, and upsize what fails — and it means a
          freshly built network reports real figures rather than "cable
          not set" on every leg. Anything set by hand is left alone. */
-      const startCable = defaultFeederCable(
+      /* The cable the generated runs are drawn with.
+
+         The project's own default wins where one is set: it is a
+         decision someone has made about this scheme, and defaultFeederCable
+         is a sensible starting size chosen from the catalogue when nobody
+         has. Falling back to the calculation rather than to nothing keeps
+         a project with no default working exactly as before. */
+      const scopeDefault = (() => {
+        const layer = layers.find((l) => l.Layer_Key === "electric");
+        const scope = scopeDefaults
+          .find((sc) => Number(sc.Utility_ID) === Number(layer?.Utility_ID));
+        const id = scope?.Default_Main_Cable_Size_ID;
+        return id != null
+          ? (lookups?.cableSizes || []).find((c) => Number(c.Cable_Size_ID) === Number(id))
+          : null;
+      })();
+      const startCable = scopeDefault || defaultFeederCable(
         lookups?.cableSizes || [], lookups?.cableTypes || []);
 
       const totalRuns = planned.reduce((t, x) => t + x.sections.length, 0);
@@ -4146,6 +4208,8 @@ export default function GISCanvasPage() {
                  electric. Getting this wrong left every generated cable
                  with an unrecognised type: no colour of its own, and a
                  bill that said "Electric" instead of "Electric service". */
+              ...defaultsFor(lineTypes.find((t) => t.Layer_Key === c.utility.layer_key
+                && String(t.Type_Key).endsWith("_service"))?.Type_Key),
               Line_Type: lineTypes.find((t) => t.Layer_Key === c.utility.layer_key
                 && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
               Seed_Feature_ID: plan.seed.Feature_ID,
@@ -4184,6 +4248,8 @@ export default function GISCanvasPage() {
           Label: `${r.utility.utility} service ${r.seed.Label ?? ""}`.trim(),
           Plot_ID: r.seed.Plot_ID ?? null,
           Attributes: {
+            ...defaultsFor(lineTypes.find((t) => t.Layer_Key === r.utility.layer_key
+              && String(t.Type_Key).endsWith("_service"))?.Type_Key),
             Line_Type: lineTypes.find((t) => t.Layer_Key === r.utility.layer_key
               && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
             Seed_Feature_ID: r.seed.Feature_ID,

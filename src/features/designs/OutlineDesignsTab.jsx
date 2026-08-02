@@ -22,6 +22,11 @@ const EDITABLE = [
   /* Carried_Forward is not here: the revision flow sets it, and with no
      control on screen a save has no business writing it. */
   "Target_Date", "Actual_Date", "Revision", "External_Design",
+  /* The equipment new runs inherit. Saved with the rest of the design
+     rather than on its own screen: it is a design decision about this
+     utility on this project, which is what this tab is. */
+  "Default_Main_Cable_Size_ID", "Default_Service_Cable_Size_ID",
+  "Default_Main_Size", "Default_Service_Size",
 ];
 
 const OD_COLS = [

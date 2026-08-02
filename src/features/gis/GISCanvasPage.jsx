@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { listProjects, getProject } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
+  listGisStyles, saveGisStyle,
   restoreFeatures, listUndo, recordUndo, markUndone, clearUndo,
   traceNetwork, assignMeters, bulkUpdateFeatures,
 } from "../../api/gis.js";
@@ -45,6 +46,10 @@ import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
+import {
+  styleSubject, findExactStyle, subjectLabel, planStyleChange, styleRowFor,
+} from "./styleTouch.js";
+import { inDrawOrder, planReorder, canReorder } from "./zOrder.js";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
 } from "./developer.js";
@@ -936,7 +941,10 @@ export default function GISCanvasPage() {
     /* Cleared each frame, filled as labels are drawn. */
     labelHits.current = [];
 
-    const drawOrder = visible.filter((f) => f.Feature_Role !== "spannode");
+    /* Back to front, by Z where one has been set and by creation order
+       otherwise — so a drawing nobody has reordered looks exactly as it
+       did, and one that has been reordered stays that way. */
+    const drawOrder = inDrawOrder(visible.filter((f) => f.Feature_Role !== "spannode"));
 
     drawOrder.forEach((f) => {
       const colour = layerOf(f.Layer_Key).Colour;
@@ -3393,6 +3401,90 @@ export default function GISCanvasPage() {
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Adjusting how a kind of thing is drawn, from the canvas.
+
+     The admin form asks for a size in pixels and two zoom limits in
+     pixels per metre, with no sight of the drawing while they are typed.
+     Pressing Bigger and watching is the same decision made in the place
+     where the answer is visible.
+
+     What it edits is the rule for this kind of feature — every electric
+     meter, not this one — because that is what a style is. The panel
+     says so before anything is pressed. */
+  async function touchStyle(action) {
+    const f = selectedFeatures[0];
+    const subject = styleSubject(f);
+    if (!subject) return;
+
+    const existing = findExactStyle(styles, subject);
+    /* The resolved appearance, so a press starts from what is on screen
+       rather than from whatever the exact row happens to hold — the size
+       being adjusted may have come from a broader rule. */
+    const shown = styleFor(f);
+    const current = {
+      Symbol_Size_Px: existing?.Symbol_Size_Px ?? shown.symbolPx,
+      Min_Scale: existing?.Min_Scale ?? null,
+      Max_Scale: existing?.Max_Scale ?? null,
+    };
+
+    const patch = planStyleChange(action, { current, scale: view.scale, subject });
+    if (!patch) return;
+
+    setBusy("style");
+    try {
+      const row = styleRowFor(existing, subject, patch, {
+        name: subjectLabel(subject, { layers, lineTypes }),
+      });
+      const { GIS_Style_ID, ...body } = row;
+      await saveGisStyle(body, GIS_Style_ID);
+      /* Read back rather than patched in place: the endpoint decides
+         what a new row's id is, and a style list that disagrees with the
+         database would put the next press on the wrong row. */
+      const fresh = await listGisStyles();
+      setStyles(fresh.rows || []);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Moving a feature up or down the drawing.
+
+     Z lives in Attributes: it is a drawing preference rather than a fact
+     about the network, nothing joins on it, and it needs no migration.
+
+     Undoable like anything else — reordering a dense drawing is easy to
+     do by mistake and hard to put back by hand. */
+  async function reorder(action) {
+    const f = selectedFeatures[0];
+    const rows = planReorder(action, f, features);
+    if (!rows.length) return;
+
+    setBusy("z");
+    try {
+      const before = features.filter((x) =>
+        rows.some((r) => Number(r.Feature_ID) === Number(x.Feature_ID)));
+
+      for (let i = 0; i < rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+      }
+      setFeatures((fs) => fs.map((x) => {
+        const r = rows.find((y) => Number(y.Feature_ID) === Number(x.Feature_ID));
+        return r ? { ...x, Attributes: r.Attributes } : x;
+      }));
+      await recordAction(
+        `${{ front: "Bring to front", forward: "Bring forward",
+             backward: "Send backward", back: "Send to back" }[action]}`,
+        before,
+        before.map((x) => ({
+          ...x,
+          Attributes: rows.find((r) => Number(r.Feature_ID) === Number(x.Feature_ID)).Attributes,
+        })),
+      );
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); }
   }
 
@@ -5905,6 +5997,83 @@ export default function GISCanvasPage() {
               </button>
             )}
 
+            {/* Styling what you can see.
+
+                Appears when one thing is selected, and says what it will
+                change before it changes it — a style is a rule about a
+                kind of feature, so Bigger makes every electric meter
+                bigger, not the one that was clicked. Saying that in the
+                panel is the difference between a tool and a trap. */}
+            {selectedFeatures.length === 1 && !drawing && !placing && (() => {
+              const subject = styleSubject(selectedFeatures[0]);
+              if (!subject) return null;
+              const what = subjectLabel(subject, { layers, lineTypes });
+              const exact = findExactStyle(styles, subject);
+              const isPoint = selectedFeatures[0].Feature_Type === "point";
+              const banded = exact?.Min_Scale != null || exact?.Max_Scale != null;
+              return (
+                <div className="gis-style" role="group" aria-label="Style">
+                  <span className="gst-what">{what}</span>
+                  {/* Which of the overlapping things is on top.
+
+                      Beside the style controls because they answer the
+                      same question — why can I not see that — and the
+                      answer is sometimes size and sometimes order. */}
+                  <button className="gst-b" disabled={!!busy
+                      || !canReorder("back", selectedFeatures[0], features)}
+                    title="Send to back" onClick={() => reorder("back")}>&#8676;</button>
+                  <button className="gst-b" disabled={!!busy
+                      || !canReorder("backward", selectedFeatures[0], features)}
+                    title="Send backward" onClick={() => reorder("backward")}>&#8592;</button>
+                  <button className="gst-b" disabled={!!busy
+                      || !canReorder("forward", selectedFeatures[0], features)}
+                    title="Bring forward" onClick={() => reorder("forward")}>&#8594;</button>
+                  <button className="gst-b" disabled={!!busy
+                      || !canReorder("front", selectedFeatures[0], features)}
+                    title="Bring to front" onClick={() => reorder("front")}>&#8677;</button>
+                  <span className="gst-sep" />
+                  {isPoint && (
+                    <>
+                      <button className="gst-b" disabled={!!busy}
+                        title={`Draw every ${what.toLowerCase()} smaller`}
+                        onClick={() => touchStyle("smaller")}>&minus;</button>
+                      <span className="gst-px">
+                        {Math.round(styleFor(selectedFeatures[0]).symbolPx * 10) / 10} px
+                      </span>
+                      <button className="gst-b" disabled={!!busy}
+                        title={`Draw every ${what.toLowerCase()} bigger`}
+                        onClick={() => touchStyle("bigger")}>+</button>
+                      <span className="gst-sep" />
+                    </>
+                  )}
+                  <button className="gst-b wide" disabled={!!busy}
+                    title={`Hide every ${what.toLowerCase()} when zoomed out past here`}
+                    onClick={() => touchStyle("hideBelow")}>
+                    Hide below this zoom
+                  </button>
+                  <button className="gst-b wide" disabled={!!busy}
+                    title={`Hide every ${what.toLowerCase()} when zoomed in past here`}
+                    onClick={() => touchStyle("hideAbove")}>
+                    Hide above
+                  </button>
+                  <button className="gst-b wide" disabled={!!busy || !banded}
+                    title="Show at every zoom again"
+                    onClick={() => touchStyle("showAlways")}>
+                    Always show
+                  </button>
+                  {banded && (
+                    <span className="gst-band">
+                      {exact.Min_Scale != null
+                        ? `\u2265 ${Math.round(exact.Min_Scale * 25)}%` : ""}
+                      {exact.Min_Scale != null && exact.Max_Scale != null ? " " : ""}
+                      {exact.Max_Scale != null
+                        ? `\u2264 ${Math.round(exact.Max_Scale * 25)}%` : ""}
+                    </span>
+                  )}
+                </div>
+              );
+            })()}
+
             {(hidden.length > 0 || isolatedCircuit != null) && (
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
@@ -6636,6 +6805,19 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gu-item:hover { background: var(--accent-light); }
 .gu-item > span:first-child { font-size: 12.5px; font-weight: 600; }
 .gu-n { font-size: 10.5px; color: var(--muted); }
+.gis-style { position: absolute; left: 50%; transform: translateX(-50%); bottom: 64px;
+  z-index: 7; display: flex; align-items: center; gap: 6px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 9px; padding: 6px 10px;
+  box-shadow: 0 8px 26px rgba(15,23,42,.16); font: 600 11.5px inherit; }
+.gst-what { color: var(--muted); margin-right: 2px; }
+.gst-b { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; font: 700 12px inherit; min-width: 26px; padding: 3px 7px; }
+.gst-b.wide { font-weight: 600; font-size: 11px; }
+.gst-b:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.gst-b:disabled { opacity: .45; cursor: not-allowed; }
+.gst-px { min-width: 42px; text-align: center; color: var(--muted); }
+.gst-sep { width: 1px; height: 16px; background: var(--border); margin: 0 3px; }
+.gst-band { color: #b45309; }
 .gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
   align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;
   color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;

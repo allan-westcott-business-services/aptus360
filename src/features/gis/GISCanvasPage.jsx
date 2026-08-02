@@ -886,7 +886,13 @@ export default function GISCanvasPage() {
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
-        if (f.Label && view.scale > 2.5 && !isMeter && f.Feature_Role !== "spannode") {
+        /* Labels are a layer of their own: on a drawing this dense they
+           are the difference between reading it and not, and sometimes
+           the difference between seeing the geometry and not. Selection
+           still labels, so clicking something always tells you what it
+           is. */
+        if (f.Label && (on || showLabels) && view.scale > 2.5
+            && !isMeter && f.Feature_Role !== "spannode") {
           ctx.fillStyle = "#0f172a";
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";
@@ -946,7 +952,7 @@ export default function GISCanvasPage() {
 
             /* A gap in the line behind the marker, so a letter sits in
                the run rather than on top of it. */
-            if (mk.text) {
+            if (mk.text && (on || showLabels)) {
               ctx.font = `700 ${mk.sizePx}px ui-monospace, Menlo, monospace`;
               const w = ctx.measureText(mk.text).width;
               ctx.fillStyle = "#fff";
@@ -1316,7 +1322,7 @@ export default function GISCanvasPage() {
       ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
       ctx.fill();
 
-      if (code && view.scale > 1.2) {
+      if (code && (on || showLabels) && view.scale > 1.2) {
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -4829,11 +4835,28 @@ export default function GISCanvasPage() {
                         two controls for one setting is how they drift out
                         of step. This menu is what you can see, and a
                         label is something you can see. */}
-                    <MenuItem label="Way and Circuit Labels" active={showLabels}
-                      hint="Way and circuit on each cable, once zoomed in"
-                      onClick={() => setShowLabels(!showLabels)} />
+                    {/* Way and circuit labels are part of the Labels
+                        layer now — this switched the same thing under a
+                        narrower name, which is how someone turns off
+                        "way and circuit labels" and loses plot numbers
+                        with no idea why. */}
 
                     <div className="gm-sep" />
+                    {/* Labelling as a layer.
+
+                        Plot numbers, joint names, way and circuit
+                        labels, and the letters repeated along a run —
+                        all of it off together. On a dense estate the
+                        labels cover the geometry they describe, and
+                        turning them off one kind at a time is four
+                        decisions to make the one you wanted. */}
+                    <MenuItem label="Labels" active={showLabels}
+                      hint={showLabels
+                        ? "Plot numbers, joints, way and circuit labels"
+                        : "Hidden \u2014 a selected feature is still labelled"}
+                      onClick={() => setShowLabels(!showLabels)} />
+                    <div className="gm-sep" />
+
                     {/* Everything back, whatever put it away.
 
                         Circuit isolation is held apart from the hidden

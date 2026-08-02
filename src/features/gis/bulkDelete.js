@@ -27,8 +27,12 @@ export function bulkDeleteCategories(features = [], opts = {}) {
   const { lineTypes = [], layers = [] } = opts;
 
   const cats = [];
-  const add = (key, label, pred, group, parent = null) =>
-    cats.push({ key, label, pred, group, parent });
+  /* Parents, plural. A per-utility kind belongs to two broader entries at
+     once — "All Electric objects" and "All meters" — and ticking either
+     should tick it. One parent was enough while only the utility rows
+     cascaded; it is not once the Points rows do too. */
+  const add = (key, label, pred, group, parents = []) =>
+    cats.push({ key, label, pred, group, parents });
 
   /* By utility first: the commonest clear-down is one service at a
      time — take the gas out and start again. */
@@ -104,11 +108,14 @@ export function bulkDeleteCategories(features = [], opts = {}) {
     const kinds = KINDS[l.Layer_Key] || [];
 
     for (const [key, what, pred] of kinds) {
-      /* Named as a child of the whole-utility entry above it, so ticking
-         that one can tick these and unticking one of these can take it
-         back out again. */
+      /* A child of the whole-utility entry, and of the general entry for
+         its kind where one exists — so All Electric objects and All
+         meters both tick the electric meters, and unticking them takes
+         them out of whichever was used. */
+      const general = { meter: "meter", joint: "joint", poc: "poc", spannode: "spannode" }[key];
       add(`${l.Layer_Key}:${key}`, `${l.Label} \u2014 ${what}`,
-        (f) => on(f) && pred(f), `${l.Label} only`, `layer:${l.Layer_Key}`);
+        (f) => on(f) && pred(f), `${l.Label} only`,
+        [`layer:${l.Layer_Key}`, ...(general ? [general] : [])]);
     }
   }
 
@@ -178,11 +185,18 @@ export function idsForKeys(categories, keys) {
   }
 
   for (const c of categories) {
+    const parents = c.parents || [];
     /* A child, left unticked, under a parent that is ticked. */
-    if (!c.parent || want.has(c.key) || !want.has(c.parent)) continue;
+    if (!parents.length || want.has(c.key)) continue;
+    if (!parents.some((k) => want.has(k))) continue;
+
     for (const id of c.ids) {
+      /* Claimed by something other than this entry or any of its
+         parents. A parent claiming it is exactly the case being
+         overruled; a separate, deliberate tick is not. */
       const claimedElsewhere = categories.some((o) =>
-        o.key !== c.parent && o.key !== c.key && want.has(o.key) && o.ids.includes(id));
+        o.key !== c.key && !parents.includes(o.key)
+        && want.has(o.key) && o.ids.includes(id));
       if (!claimedElsewhere) ids.delete(id);
     }
   }
@@ -193,7 +207,9 @@ export function idsForKeys(categories, keys) {
    its child. Ticking a whole utility ticks its kinds, so they are there
    to be unticked one at a time. */
 export function keysToAdd(categories, key) {
-  const kids = categories.filter((c) => c.parent === key).map((c) => c.key);
+  const kids = categories
+    .filter((c) => (c.parents || []).includes(key))
+    .map((c) => c.key);
   return [key, ...kids];
 }
 
@@ -207,7 +223,9 @@ export function keysToAdd(categories, key) {
    parent stays ticked and idsForKeys subtracts the unticked child,
    which is what "all of it except that" means. */
 export function keysToRemove(categories, key) {
-  const kids = categories.filter((x) => x.parent === key).map((x) => x.key);
+  const kids = categories
+    .filter((x) => (x.parents || []).includes(key))
+    .map((x) => x.key);
   return [key, ...kids];
 }
 

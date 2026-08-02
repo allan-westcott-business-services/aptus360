@@ -80,7 +80,8 @@ export default function BulkDelete({ features, lineTypes, layers, onDelete, onCl
                        something untrue about what is about to go. */
                     ref={(el) => {
                       if (!el) return;
-                      const kids = cats.filter((x) => x.parent === c.key && x.count);
+                      const kids = cats.filter((x) =>
+                        (x.parents || []).includes(c.key) && x.count);
                       el.indeterminate = keys.includes(c.key)
                         && kids.length > 0
                         && kids.some((x) => !keys.includes(x.key));

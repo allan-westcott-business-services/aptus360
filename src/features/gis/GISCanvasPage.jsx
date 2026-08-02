@@ -6582,8 +6582,18 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gc-item.danger { color: #b91c1c; }
 .gc-item.danger:hover { background: #fef2f2; }
 .gc-sep { height: 1px; background: var(--border); margin: 4px 0; }
-.gt-wide { width: 380px; }
-.gis-trace.gt-vd { width: 560px; }
+/* Wide enough to read a leg on one line.
+
+   At 380px "A16 → A20" wrapped onto two rows and the row grew to fit,
+   which on twenty legs is a table that scrolls twice as far as it needs
+   to. The columns are short — two labels, a length and two counts — so
+   the width was the constraint rather than the content.
+
+   Capped against the viewport so it cannot run off a laptop screen, and
+   the volt drop variant stays proportionally wider for its four extra
+   columns. */
+.gt-wide { width: min(760px, 46vw); }
+.gis-trace.gt-vd { width: min(1120px, 62vw); }
 .vd-over { color: #dc2626; font-weight: 700; }
 .vd-gap { font-size: 10.5px; color: #b45309; font-style: italic; }
 .vd-note { font-size: 10px; color: var(--muted); font-weight: 500; }

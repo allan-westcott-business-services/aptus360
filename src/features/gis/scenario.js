@@ -74,25 +74,34 @@ export function changeCost(lengthM, cable) {
   return Number.isFinite(z) && z > 0 ? Math.round(lengthM / z) : Math.round(lengthM);
 }
 
-/* Length of the leg arriving at a span node — what a change to it would
-   actually cost. Measured along the same path the sum uses. */
-function legLength(model, spanNodes, sn) {
+/* The leg arriving at a span node: how long it is, and where it starts.
+
+   A cable belongs to a run between two points, and naming only the far
+   one — "A1 to 185mm²" — leaves the reader to work out which stretch of
+   cable that means. The upstream node is the other end of it.
+
+   Both come from the same walk, because they are the same leg: back up
+   the parent chain to the previous span node, which is where the run
+   this cable covers begins. */
+function legOf(model, spanNodes, sn) {
   const { nodes, parent, S } = model;
-  const at = new Set(spanNodes.map((x) => x.index));
+  const at = new Map(spanNodes.map((x) => [x.index, x]));
   const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
   let total = 0;
+  let from = null;
   let u = sn.index;
   let guard = 0;
   while (u !== S && u >= 0 && guard++ < 100000) {
     const p = parent[u];
     if (p < 0) break;
     total += dist(nodes[p], nodes[u]);
-    /* Back to the previous span node: that is where this leg begins. */
-    if (at.has(p)) break;
+    if (at.has(p)) { from = at.get(p); break; }
+    /* The substation itself, where no span node has been placed on it. */
+    if (p === S) { from = at.get(S) ?? null; break; }
     u = p;
   }
-  return total;
+  return { lengthM: total, from };
 }
 
 /* Does this arrangement of cables clear every node that was failing? */
@@ -157,9 +166,20 @@ export function suggestCableChanges({
     }
   }
 
-  const lengthOf = new Map(
-    chain.map((sn) => [sn.index, legLength(trace.model, trace.spanNodes, sn)]),
+  const legOfNode = new Map(
+    chain.map((sn) => [sn.index, legOf(trace.model, trace.spanNodes, sn)]),
   );
+  const lengthOf = new Map(
+    [...legOfNode].map(([i, l]) => [i, l.lengthM]),
+  );
+  /* The run this cable covers, named at both ends. Where the upstream
+     end is the substation and no node has been placed on it, it is named
+     as the substation rather than left blank — "to A1" without a from is
+     the ambiguity this exists to remove. */
+  const fromLabel = (index) => {
+    const l = legOfNode.get(index);
+    return l?.from?.feature?.Attributes?.Span_Label ?? "the substation";
+  };
   const rank = new Map(ladder.map((c, i) => [String(c.Cable_Size_ID), i]));
   const swap = (index, sizeId) => trace.spanNodes
     .map((sn) => (sn.index === index ? { ...sn, cableSizeId: sizeId } : sn));
@@ -182,6 +202,7 @@ export function suggestCableChanges({
       single.push({
         changes: [{
           spanLabel: sn.feature?.Attributes?.Span_Label ?? String(sn.index),
+          fromLabel: fromLabel(sn.index),
           featureId: sn.feature?.Feature_ID ?? null,
           fromCable: ctx.cableById(sn.cableSizeId),
           toCable: cable,
@@ -221,6 +242,7 @@ export function suggestCableChanges({
           pairs.push({
             changes: [sa, sb].map((sn, k) => ({
               spanLabel: sn.feature?.Attributes?.Span_Label ?? String(sn.index),
+              fromLabel: fromLabel(sn.index),
               featureId: sn.feature?.Feature_ID ?? null,
               fromCable: ctx.cableById(sn.cableSizeId),
               toCable: k === 0 ? ladder[i] : ladder[j],

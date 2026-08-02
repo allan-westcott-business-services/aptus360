@@ -2578,6 +2578,79 @@ export default function GISCanvasPage() {
       (Number(b.Attributes?.Span_Seq ?? -1) > Number(a.Attributes?.Span_Seq ?? -1) ? b : a));
   }, [features]);
 
+  /* Putting a suggested change on the drawing.
+
+     Two places, not one. The trace reads the cable from the span node;
+     the bill reads it from the drawn section. Writing only the node
+     would improve the figures and leave the schedule ordering the old
+     cable — the exact drift that had a section saying 185 and its node
+     saying 95 earlier today.
+
+     Then the trace is re-run over what was just written, from the node
+     it started at, so the result on screen is the design as it now is
+     rather than as it was. */
+  async function applyScenario(suggestion) {
+    const startId = trace?.startId;
+    const rows = [];
+
+    for (const ch of suggestion.changes || []) {
+      const node = features.find((f) => Number(f.Feature_ID) === Number(ch.featureId));
+      if (!node) continue;
+      rows.push({
+        Feature_ID: node.Feature_ID,
+        Attributes: { ...node.Attributes, VD_Cable_Size_ID: ch.toCable.Cable_Size_ID },
+      });
+      /* The runs that feed it. nodeFedBy answers the other way round, so
+         the sections are found by asking each which node it feeds — the
+         same rule, so the two cannot disagree about which run is which. */
+      for (const line of features) {
+        if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
+        if (line.Attributes?.Line_Type !== "elec_main") continue;
+        const fed = nodeFedBy(line);
+        if (!fed || Number(fed.Feature_ID) !== Number(node.Feature_ID)) continue;
+        rows.push({
+          Feature_ID: line.Feature_ID,
+          Attributes: { ...line.Attributes, VD_Cable_Size_ID: ch.toCable.Cable_Size_ID },
+        });
+      }
+    }
+
+    if (!rows.length) { setError("Those span nodes are no longer on the drawing."); return; }
+
+    setBusy("scenario");
+    try {
+      const before = features.filter((f) =>
+        rows.some((r) => Number(r.Feature_ID) === Number(f.Feature_ID)));
+
+      for (let i = 0; i < rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+      }
+      await recordAction(
+        `Upsize ${suggestion.changes
+          .map((c) => `${c.fromLabel}\u2192${c.spanLabel}`).join(", ")}`,
+        before,
+        before.map((f) => ({
+          ...f,
+          Attributes: rows.find((r) => Number(r.Feature_ID) === Number(f.Feature_ID)).Attributes,
+        })),
+      );
+
+      const fresh = await listGis(projectId);
+      setFeatures(fresh.features || []);
+      await load(projectId);
+
+      setScenario(null);
+      if (startId != null) runFullTrace({ srcFeatures: fresh.features || [], startId });
+
+      setStatus(`${suggestion.changes
+        .map((c) => `${c.fromLabel}\u2192${c.spanLabel} now ${c.toLabel}`).join(", ")}`
+        + ` \u2014 ${rows.length} feature(s) updated, trace re-run`);
+      setTimeout(() => setStatus(""), 9000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   async function saveFeature(id, changes) {
     const before = features.find((x) => x.Feature_ID === id);
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
@@ -4554,11 +4627,23 @@ export default function GISCanvasPage() {
         .replace(/\s+/g, " ").trim());
   }
 
-  function runFullTrace() {
-    const node = selectedFeatures.find((f) => f.Feature_Role === "spannode");
+  /* The trace, optionally over a drawing just read back and from a node
+     named rather than selected.
+
+     Both exist for re-running after a suggested change has been applied:
+     `features` in this closure is still the drawing from before the
+     write, and the selection may have moved. Tracing from either would
+     report the design as it was and appear to have changed nothing. */
+  function runFullTrace(opts = {}) {
+    const { srcFeatures = null, startId = null } = (opts && opts.nativeEvent) ? {} : opts;
+    const src = srcFeatures || features;
+
+    const node = startId != null
+      ? src.find((f) => Number(f.Feature_ID) === Number(startId))
+      : selectedFeatures.find((f) => f.Feature_Role === "spannode");
     if (!node) { setError("Select a span node to trace from."); return; }
 
-    const r = spanTrace(features, node.Feature_ID, {
+    const r = spanTrace(src, node.Feature_ID, {
       lineTypes,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
     });
@@ -4576,8 +4661,10 @@ export default function GISCanvasPage() {
       distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
     } : {}) };
 
+    r.startId = node.Feature_ID;
+
     if (cables.length) {
-      const station = features.find((f) => f.Feature_Role === "substation");
+      const station = src.find((f) => f.Feature_Role === "substation");
       const transformer = (lookups?.transformerSizes || []).find((t) =>
         String(t.Transformer_Size_ID)
           === String(station?.Attributes?.VD_Transformer_Size_ID));
@@ -5947,14 +6034,26 @@ export default function GISCanvasPage() {
                         <ol className="tr-scn-l">
                           {scenario.suggestions.map((sg, i) => (
                             <li key={i}>
-                              {sg.changes.map((c, j) => (
-                                <span key={j}>
-                                  {j > 0 && <span className="tr-scn-p"> and </span>}
-                                  <strong>{c.spanLabel}</strong>
-                                  {" \u2192 "}{c.toLabel}
-                                  <span className="tr-scn-m"> over {c.lengthM} m</span>
-                                </span>
-                              ))}
+                              <span className="tr-scn-t">
+                                {sg.changes.map((c, j) => (
+                                  <span key={j}>
+                                    {j > 0 && <span className="tr-scn-p"> and </span>}
+                                    {/* Both ends of the run. The cable
+                                        covers the stretch between two
+                                        nodes, and naming only the far one
+                                        left the reader working out which
+                                        stretch was meant. */}
+                                    <strong>{c.fromLabel} &rarr; {c.spanLabel}</strong>
+                                    <span className="tr-scn-m"> ({c.lengthM} m)</span>
+                                    {": "}{c.toLabel}
+                                  </span>
+                                ))}
+                              </span>
+                              <button className="tr-scn-go" disabled={!!busy}
+                                title="Set this cable on the span node and the runs feeding it, then trace again"
+                                onClick={() => applyScenario(sg)}>
+                                {busy === "scenario" ? "Working\u2026" : "Make the change"}
+                              </button>
                             </li>
                           ))}
                         </ol>
@@ -6199,7 +6298,14 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .tr-scn-h { display: flex; justify-content: space-between; align-items: baseline; }
 .tr-scn-h button { background: none; border: none; cursor: pointer; font: 600 11px inherit;
   color: var(--muted); }
-.tr-scn-l { margin: 7px 0; padding-left: 20px; display: grid; gap: 5px; font-size: 12.5px; }
+.tr-scn-l { margin: 7px 0; padding-left: 20px; display: grid; gap: 6px; font-size: 12.5px; }
+.tr-scn-l li { display: flex; align-items: baseline; justify-content: space-between; gap: 10px; }
+.tr-scn-t { min-width: 0; }
+.tr-scn-go { flex: none; background: var(--white); border: 1px solid var(--border);
+  border-radius: 6px; cursor: pointer; font: 600 11px inherit; padding: 3px 10px;
+  color: var(--accent); }
+.tr-scn-go:hover:not(:disabled) { border-color: var(--accent); }
+.tr-scn-go:disabled { opacity: .5; cursor: not-allowed; }
 .tr-scn-m { color: var(--muted); font-size: 11px; }
 .tr-scn-p { color: var(--muted); }
 .tr-scn-n { margin: 5px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }

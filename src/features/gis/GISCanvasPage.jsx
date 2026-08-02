@@ -43,6 +43,7 @@ import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js
 import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
+import { suggestCableChanges } from "./scenario.js";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
 } from "./developer.js";
@@ -135,6 +136,50 @@ export default function GISCanvasPage() {
      under someone reading them is its own hazard, and a table that says
      it is out of date is more use than one that silently changes. */
   const [traceAt, setTraceAt] = useState(null);
+  const [scenario, setScenario] = useState(null);
+
+  /* What would bring the failing nodes back inside their limits.
+
+     Worked out from the trace that is on screen, so the answer belongs
+     to the figures being read rather than to the drawing as it may have
+     become since. Nothing is written: it is a suggestion, and applying
+     it is a decision. */
+  function runScenario() {
+    const station = features.find((f) => f.Feature_Role === "substation");
+    const r = suggestCableChanges({
+      trace,
+      cables: lookups?.cableSizes || [],
+      cableTypes: lookups?.cableTypes || [],
+      transformer: (lookups?.transformerSizes || []).find((t) =>
+        String(t.Transformer_Size_ID)
+          === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+      voltageV: Number(station?.Attributes?.Output_V) || 400,
+      settings: trace?.limits || {},
+    });
+    if (r.error) { setError(r.error); return; }
+    setScenario(r);
+  }
+
+  /* Span nodes the trace found outside the limits.
+
+     A leg ends at a span node and carries the cumulative loop impedance
+     and volt drop at that point; where either is past its limit, the
+     node the leg arrives at is the one out of tolerance. Held as a set
+     of feature ids so the draw can ask about a node without walking the
+     legs for every one of them.
+
+     Dead-end legs are not in here. They end at meters rather than at a
+     node, so there is nothing to ring — the trace table still reports
+     them, and a red ring on the nearest node would point at the wrong
+     place. */
+  const traceOver = useMemo(() => {
+    const out = new Set();
+    for (const leg of trace?.legs || []) {
+      if (leg.stopId == null || !leg.vd) continue;
+      if (leg.vd.overOhms || leg.vd.overPct) out.add(Number(leg.stopId));
+    }
+    return out;
+  }, [trace]);
   const [reportOpen, setReportOpen] = useState(false);
   const [bulkDelOpen, setBulkDelOpen] = useState(false);
   const [traceLeg, setTraceLeg] = useState(null);   // which leg is highlighted
@@ -1326,6 +1371,20 @@ export default function GISCanvasPage() {
       ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
       ctx.fill();
 
+      /* Past its limit on loop impedance or volt drop.
+
+         Drawn outside the node rather than by recolouring it: the node's
+         own colour says which circuit it is on, and a design that is out
+         of tolerance still needs reading. A gap between the two keeps
+         the ring legible against a dark node. */
+      if (traceOver.has(Number(f.Feature_ID))) {
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, r + 5, 0, Math.PI * 2);
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
       /* Not part of the Labels layer. A span node without its code is an
          unmarked dot, and the codes are what the trace, the circuit
          report and the cable schedule are all read against — hiding them
@@ -1338,7 +1397,7 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "alphabetic";
       }
     }
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -4541,6 +4600,10 @@ export default function GISCanvasPage() {
     }
 
     setTrace(r);
+    /* Any suggestion belonged to the previous figures. Leaving it up
+       beside new ones would have it recommending a change to a design
+       that has moved. */
+    setScenario(null);
     setTraceAt({ features, lookups });
     setError("");
   }
@@ -5842,10 +5905,70 @@ export default function GISCanvasPage() {
                       Out of date &mdash; re-run
                     </button>
                   )}
-                  <button className="fe-x" onClick={() => setTrace(null)} aria-label="Close">
+                  {traceOver.size > 0 && (
+                    <button className="btn sm tr-fix"
+                      title="Work out what cable changes would bring the ringed nodes inside their limits"
+                      onClick={runScenario}>
+                      {traceOver.size} out of tolerance &mdash; suggest changes
+                    </button>
+                  )}
+                  <button className="fe-x" onClick={() => { setTrace(null); setScenario(null); }}
+                    aria-label="Close">
                     &times;
                   </button>
                 </div>
+
+                {scenario && (
+                  <div className="tr-scn">
+                    <div className="tr-scn-h">
+                      <strong>Suggested changes</strong>
+                      <button onClick={() => setScenario(null)}>Close</button>
+                    </div>
+                    {scenario.exhausted ? (
+                      /* Said plainly. A run too long at any size needs the
+                         substation moved, another way off it, or the
+                         circuit split — none of which is a cable change,
+                         and offering the biggest cable would only delay
+                         finding that out. */
+                      <p className="tr-scn-n">
+                        No cable in the catalogue clears these nodes, up to
+                        {" "}{scenario.largest}. This needs the substation moved,
+                        another way taken off it, or the circuit split.
+                      </p>
+                    ) : !scenario.suggestions.length ? (
+                      <p className="tr-scn-n">Everything is within its limits.</p>
+                    ) : (
+                      <>
+                        {scenario.pairs && (
+                          <p className="tr-scn-n">
+                            No single change is enough, so these are pairs.
+                          </p>
+                        )}
+                        <ol className="tr-scn-l">
+                          {scenario.suggestions.map((sg, i) => (
+                            <li key={i}>
+                              {sg.changes.map((c, j) => (
+                                <span key={j}>
+                                  {j > 0 && <span className="tr-scn-p"> and </span>}
+                                  <strong>{c.spanLabel}</strong>
+                                  {" \u2192 "}{c.toLabel}
+                                  <span className="tr-scn-m"> over {c.lengthM} m</span>
+                                </span>
+                              ))}
+                            </li>
+                          ))}
+                        </ol>
+                        {/* Named a proxy because it is one: metres times
+                            cross-section ranks two answers the way a price
+                            would, without a rate card to keep up to date. */}
+                        <p className="tr-scn-n">
+                          Ordered cheapest first, by length and cross-section.
+                          Nothing is changed until you set the cable yourself.
+                        </p>
+                      </>
+                    )}
+                  </div>
+                )}
 
                 <table className="gt-tbl">
                   <thead>
@@ -6069,6 +6192,17 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-radius: 6px; cursor: pointer; font: 700 11px inherit; padding: 4px 10px;
   margin-right: 8px; }
 .tr-stale:hover { border-color: #d97706; }
+.tr-fix { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 6px;
+  cursor: pointer; font: 700 11px inherit; padding: 4px 10px; margin-right: 8px; }
+.tr-fix:hover { border-color: #dc2626; }
+.tr-scn { border-bottom: 1px solid var(--border); background: var(--bg); padding: 11px 16px; }
+.tr-scn-h { display: flex; justify-content: space-between; align-items: baseline; }
+.tr-scn-h button { background: none; border: none; cursor: pointer; font: 600 11px inherit;
+  color: var(--muted); }
+.tr-scn-l { margin: 7px 0; padding-left: 20px; display: grid; gap: 5px; font-size: 12.5px; }
+.tr-scn-m { color: var(--muted); font-size: 11px; }
+.tr-scn-p { color: var(--muted); }
+.tr-scn-n { margin: 5px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .gis-ctx { position: absolute; z-index: 30; background: var(--white);
   border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 168px;
   box-shadow: 0 10px 28px rgba(15,23,42,.2); }

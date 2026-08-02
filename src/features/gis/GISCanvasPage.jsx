@@ -141,6 +141,14 @@ export default function GISCanvasPage() {
      it is out of date is more use than one that silently changes. */
   const [traceAt, setTraceAt] = useState(null);
   const [scenario, setScenario] = useState(null);
+  /* Whether the panel is on screen, kept apart from whether a check has
+     been run.
+
+     Closing used to discard the result, which took the red rings with it
+     — and the rings are the part someone works from: they say which
+     nodes to look at while the panel is out of the way. So closing now
+     puts the panel away and leaves the findings on the drawing. */
+  const [traceOpen, setTraceOpen] = useState(false);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -4727,6 +4735,10 @@ export default function GISCanvasPage() {
       From: l.from,
       To: l.to ?? "dead end",
       "Length (m)": l.metres,
+      /* Named as they read on screen, so a sheet and the panel can be
+         compared line by line. */
+      "Volts in": l.volts ?? null,
+      Cable: l.cable ?? null,
       Distribution: l.distribution,
       Terminal: l.terminal,
       ...(trace.hasVd && !l.vd?.missing ? {
@@ -4751,6 +4763,44 @@ export default function GISCanvasPage() {
         .replace(/\s+/g, " ").trim());
   }
 
+  /* The voltage arriving at a leg, and the cable it is made of.
+
+     The volt drop columns say how much has been lost by the far end; the
+     voltage at the near end is what someone reading a schedule actually
+     works from — it is the figure the next length of cable starts with.
+     Worked out from the same cumulative sum, at the node the leg begins
+     at rather than the one it ends at.
+
+     Written once and used by both checks, so the plain and advanced
+     tables cannot disagree about a leg they both contain. */
+  const legExtras = useCallback((leg, part, ctx) => {
+    if (!part?.model || !leg) return {};
+
+    const startV = Number(ctx.voltageV) || 400;
+    let volts = null;
+    if (leg.fromIdx != null) {
+      const at = cumulativeToNode({
+        model: part.model, targetIdx: leg.fromIdx, spanNodes: part.spanNodes,
+        cableById: ctx.cableById, transformer: ctx.transformer,
+        voltageV: startV, settings: ctx.settings,
+      });
+      volts = Math.round(startV * (1 - (Number(at.pct) || 0) / 100) * 10) / 10;
+    }
+
+    /* The cable on this leg: the one recorded against the node it ends
+       at, which is where Build LV Network writes it. */
+    const sn = (part.spanNodes || []).find((x) => x.index === leg.endIdx);
+    const cable = sn?.cableSizeId != null ? ctx.cableById(sn.cableSizeId) : null;
+    const type = cable
+      ? (ctx.cableTypes || []).find((t) => t.Cable_Type_ID === cable.Cable_Type_ID)
+      : null;
+
+    return {
+      volts,
+      cable: cable ? [type?.Cable_Type, cable.Size_Label].filter(Boolean).join(" ") : null,
+    };
+  }, []);
+
   /* The levels check: every circuit, from the substation outward.
 
      Run from each circuit's origin node — A0, B0 — rather than from
@@ -4763,7 +4813,8 @@ export default function GISCanvasPage() {
      per-circuit models are kept as `parts` so the suggestion search can
      work on each — a cable change is always within one circuit. */
   function runLevelsCheck(opts = {}) {
-    const { srcFeatures = null } = (opts && opts.nativeEvent) ? {} : opts;
+    const { srcFeatures = null, stopAt = "spannodes" } =
+      (opts && opts.nativeEvent) ? {} : opts;
     const src = srcFeatures || features;
 
     const circuits = circuitsFrom(src);
@@ -4780,6 +4831,7 @@ export default function GISCanvasPage() {
       const r = spanTrace(src, origin.Feature_ID, {
         lineTypes,
         plotById: (id) => plotList.find((p) => p.plot_id === id),
+        stopAt,
       });
       if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
       r.startId = origin.Feature_ID;
@@ -4809,16 +4861,21 @@ export default function GISCanvasPage() {
         distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
       } : {}) };
       for (const part of parts) {
+        const ctx = {
+          cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
+          cableTypes: lookups?.cableTypes || [],
+          transformer: (lookups?.transformerSizes || []).find((t) =>
+            String(t.Transformer_Size_ID)
+              === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+          voltageV: Number(station?.Attributes?.Output_V) || 400,
+          settings: limits,
+        };
         for (const leg of part.legs) {
           leg.vd = cumulativeToNode({
             model: part.model, targetIdx: leg.endIdx, spanNodes: part.spanNodes,
-            cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
-            transformer: (lookups?.transformerSizes || []).find((t) =>
-              String(t.Transformer_Size_ID)
-                === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
-            voltageV: Number(station?.Attributes?.Output_V) || 400,
-            settings: limits,
+            ...ctx,
           });
+          Object.assign(leg, legExtras(leg, part, ctx));
         }
         part.limits = limits;
       }
@@ -4835,6 +4892,7 @@ export default function GISCanvasPage() {
        the circuit it belongs to. */
     setTrace({
       levels: true,
+      advanced: stopAt === "junctions",
       hasVd,
       from: "the substation",
       circuitName: parts.length === 1 ? parts[0].circuitName : `${parts.length} circuits`,
@@ -4855,6 +4913,7 @@ export default function GISCanvasPage() {
       totalMeters: parts.reduce((t, p) => t + (p.totalMeters || 0), 0),
     });
     setScenario(null);
+    setTraceOpen(true);
     /* The drawing these figures came from, which is `src` and not
        necessarily `features`.
 
@@ -4910,17 +4969,18 @@ export default function GISCanvasPage() {
           === String(station?.Attributes?.VD_Transformer_Size_ID));
       const voltageV = Number(station?.Attributes?.Output_V) || 400;
 
+      const ctx = {
+        cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
+        cableTypes: lookups?.cableTypes || [],
+        transformer: transformer || null,
+        voltageV,
+        settings,
+      };
       for (const leg of r.legs) {
         leg.vd = cumulativeToNode({
-          model: r.model,
-          targetIdx: leg.endIdx,
-          spanNodes: r.spanNodes,
-          cableById: (id) => cables.find((c) =>
-            String(c.Cable_Size_ID) === String(id)) || null,
-          transformer: transformer || null,
-          voltageV,
-          settings,
+          model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes, ...ctx,
         });
+        Object.assign(leg, legExtras(leg, r, ctx));
       }
       r.hasVd = true;
       r.limits = settings;
@@ -4931,6 +4991,7 @@ export default function GISCanvasPage() {
        beside new ones would have it recommending a change to a design
        that has moved. */
     setScenario(null);
+    setTraceOpen(true);
     /* The drawing traced, not the one in this closure — see the note in
        runLevelsCheck. */
     setTraceAt({ features: src, lookups });
@@ -5542,6 +5603,15 @@ export default function GISCanvasPage() {
                       hint="Loop impedance and volt drop on every circuit, from the substation"
                       disabled={!circuitsFrom(features).length}
                       onClick={() => runLevelsCheck()} />
+                    {/* The same figures, reported at every place the
+                        network does something rather than only where a
+                        span node was placed — so a service joint has a
+                        row of its own. Same walk and the same sums; only
+                        where a leg ends differs. */}
+                    <MenuItem label="Advanced Levels Check"
+                      hint="Every junction, including each service joint"
+                      disabled={!circuitsFrom(features).length}
+                      onClick={() => runLevelsCheck({ stopAt: "junctions" })} />
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
                       hint="Sets each span node's cable to match the run feeding it \u2014 that is what the trace reads"
                       disabled={!!busy}
@@ -5943,6 +6013,24 @@ export default function GISCanvasPage() {
               </button>
             )}
 
+            {/* A closed check still showing on the drawing.
+
+                Red rings with no panel and nothing to explain them is
+                the same trap as a hidden layer: the drawing looks wrong
+                and gives no way to find out why. This says what they
+                are, brings the figures back, and lets them be cleared. */}
+            {trace && !traceOpen && (
+              <div className="gis-checked">
+                <span>
+                  {traceOver.size
+                    ? `${traceOver.size} node(s) outside tolerance`
+                    : "Levels checked \u2014 all within tolerance"}
+                </span>
+                <button onClick={() => setTraceOpen(true)}>Show figures</button>
+                <button onClick={() => { setTrace(null); setScenario(null); }}>Clear</button>
+              </div>
+            )}
+
             {(hidden.length > 0 || isolatedCircuit != null) && (
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
@@ -6265,13 +6353,15 @@ export default function GISCanvasPage() {
               </div>
             )}
 
-            {trace && (
+            {trace && traceOpen && (
               <div className={trace.hasVd ? "gis-trace gt-wide gt-vd" : "gis-trace gt-wide"}
                 role="dialog" aria-label={trace.levels ? "Levels check" : "Full trace"}>
                 <div className="gt-head">
                   <div>
                     <strong>
-                      {trace.levels ? "Levels check" : "Full trace"} from {trace.from}
+                      {trace.levels
+                        ? (trace.advanced ? "Advanced levels check" : "Levels check")
+                        : "Full trace"} from {trace.from}
                     </strong>
                     <p className="gt-sub">
                       {trace.circuitName} &middot; {trace.legs.length} leg(s) &middot;{" "}
@@ -6281,7 +6371,9 @@ export default function GISCanvasPage() {
                   <button className="btn accent sm" onClick={exportTrace}>Export</button>
                   {(traceAt && (traceAt.features !== features || traceAt.lookups !== lookups)) && (
                     <button className="btn sm tr-stale"
-                      onClick={() => (trace.levels ? runLevelsCheck() : runFullTrace())}
+                      onClick={() => (trace.levels
+                        ? runLevelsCheck({ stopAt: trace.advanced ? "junctions" : "spannodes" })
+                        : runFullTrace())}
                       title="The drawing has changed since these figures were worked out">
                       Out of date &mdash; re-run
                     </button>
@@ -6293,7 +6385,7 @@ export default function GISCanvasPage() {
                       {traceOver.size} out of tolerance &mdash; suggest changes
                     </button>
                   )}
-                  <button className="fe-x" onClick={() => { setTrace(null); setScenario(null); }}
+                  <button className="fe-x" onClick={() => { setTraceOpen(false); setScenario(null); }}
                     aria-label="Close">
                     &times;
                   </button>
@@ -6369,7 +6461,18 @@ export default function GISCanvasPage() {
                 <table className="gt-tbl">
                   <thead>
                     <tr>
+                      {/* The voltage this length of cable starts with.
+
+                          The %VD column says how much has been lost by
+                          the far end; this says what is arriving at the
+                          near one, which is the figure the next length
+                          is worked from. Leftmost because it is read
+                          before the leg, not after it. */}
+                      {trace.hasVd && (
+                        <th className="num" title="Voltage arriving at the start of this leg">V</th>
+                      )}
                       <th>Leg</th>
+                      <th title="The cable this leg is made of">Cable</th>
                       <th className="num">Length</th>
                       {/* The original's two figures, and the pair is the
                           point: Distribution is what this length of cable
@@ -6391,12 +6494,22 @@ export default function GISCanvasPage() {
                   <tbody>
                     {tracePlan.map(({ leg: l, i }) => (
                       <tr key={i} className={traceLeg === i ? "gt-on" : undefined}>
+                        {trace.hasVd && (
+                          <td className="num gt-v">
+                            {l.volts != null ? `${l.volts.toFixed(1)} V` : "\u2014"}
+                          </td>
+                        )}
                         <td>
                           {/* Each leg carries its own start: the table is
                               a route down the network, not a list of
                               things measured from one point. */}
                           <strong>{l.from}</strong> &rarr;{" "}
                           {l.to ?? <em className="gt-dead">dead end, no meter</em>}
+                        </td>
+                        {/* A run with no cable set is not a run with no
+                            cable; saying so is more use than a blank. */}
+                        <td className="gt-cable">
+                          {l.cable ?? <em className="gt-dead">not set</em>}
                         </td>
                         <td className="num">{l.metres.toFixed(1)} m</td>
                         <td className="num">{l.distribution}</td>
@@ -6433,7 +6546,7 @@ export default function GISCanvasPage() {
                       </tr>
                     ))}
                     <tr className="gt-tot">
-                      <td>{trace.legs.length} leg(s)</td>
+                      <td colSpan={trace.hasVd ? 3 : 2}>{trace.legs.length} leg(s)</td>
                       <td className="num">{trace.totalMetres.toFixed(1)} m</td>
                       <td className="num">
                         {trace.legs.reduce((t, l) => t + l.distribution, 0)}
@@ -6633,6 +6746,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-wide { width: min(760px, 46vw); }
 .gis-trace.gt-vd { width: min(1120px, 62vw); }
 .vd-over { color: #dc2626; font-weight: 700; }
+.gt-v { font-weight: 700; color: #0f172a; white-space: nowrap; }
+.gt-cable { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .vd-gap { font-size: 10.5px; color: #b45309; font-style: italic; }
 .vd-note { font-size: 10px; color: var(--muted); font-weight: 500; }
 .gt-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
@@ -6684,6 +6799,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gu-item:hover { background: var(--accent-light); }
 .gu-item > span:first-child { font-size: 12.5px; font-weight: 600; }
 .gu-n { font-size: 10.5px; color: var(--muted); }
+.gis-checked { position: absolute; right: 12px; top: 44px; z-index: 6; display: flex;
+  align-items: center; gap: 10px; background: var(--white); border: 1px solid #fca5a5;
+  color: #b91c1c; border-radius: 8px; padding: 6px 11px;
+  font: 600 11.5px inherit; box-shadow: 0 4px 14px rgba(15,23,42,.12); }
+.gis-checked button { background: none; border: none; cursor: pointer;
+  font: 600 11px inherit; color: var(--accent); text-decoration: underline; }
 .gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
   align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;
   color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;

@@ -609,7 +609,17 @@ export function endOfLineNodes(model) {
    rather than one long list. */
 
 export function spanTrace(features = [], nodeId, opts = {}) {
-  const { lineTypes = [], plotById = () => null } = opts;
+  /* stopAt decides where a leg ends.
+
+     "spannodes" is the ordinary trace: the design is read between the
+     points the cable schedule is written against.
+
+     "junctions" adds every place the network does something — where the
+     feeder divides, and where a service leaves it. Same walk, same legs,
+     more of them: the figures at a service joint are exactly what the
+     leg arriving there already computes, and were simply never reported
+     because no leg stopped there. */
+  const { lineTypes = [], plotById = () => null, stopAt = "spannodes" } = opts;
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
   if (!node || node.Feature_Role !== "spannode") {
@@ -675,6 +685,52 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     const idx = Number(sn.Attributes?.Span_Seq) === 0
       ? S : nearest((sn.Geometry || [])[0] || [0, 0]);
     if (idx >= 0) stops.set(idx, sn);
+  }
+
+  /* And every junction, when asked for.
+
+     A fork is a node with more than one loaded mains child; a service
+     tee is one with a service spur carrying load. Both are already known
+     to the model — the same tests the joint placement uses, so a stop
+     appears exactly where a joint was drawn and the two cannot disagree
+     about where the network divides.
+
+     Named from the joint standing there where there is one, so the row
+     reads as the thing on the drawing rather than as a coordinate. */
+  if (stopAt === "junctions") {
+    const svcKids = new Map();
+    const mainsKids = new Map();
+    for (let i = 0; i < nodes.length; i++) {
+      if (parent[i] < 0 || cum[i] <= 0) continue;
+      const m = parSvc[i] ? svcKids : mainsKids;
+      m.set(parent[i], (m.get(parent[i]) || 0) + 1);
+    }
+
+    const jointAt = (p) => features.find((f) =>
+      f.Feature_Role === "joint"
+      && (f.Geometry || []).length
+      && dist(f.Geometry[0], p) <= CONNECT_EPS);
+
+    for (let u = 0; u < nodes.length; u++) {
+      if (u === startIdx || stops.has(u)) continue;
+      if (cum[u] <= 0) continue;
+      const forks = (mainsKids.get(u) || 0) > 1;
+      const tees = (svcKids.get(u) || 0) > 0;
+      if (!forks && !tees) continue;
+
+      const j = jointAt(nodes[u]);
+      const kind = j?.Attributes?.Joint_Type
+        ?? (forks && tees ? "breech" : forks ? "breech" : "service");
+      stops.set(u, {
+        Feature_ID: j?.Feature_ID ?? `j${u}`,
+        Feature_Role: "joint",
+        Attributes: {
+          Span_Label: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} joint`,
+          Circuit_ID: circuitId,
+        },
+        Geometry: [nodes[u]],
+      });
+    }
   }
 
   /* This circuit's meters, at the node where their load joins the mains.
@@ -750,6 +806,9 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         /* The graph node this leg ends at, so volt drop can be totalled
            to exactly this point. */
         endIdx: cur,
+        /* And where it began, so the voltage arriving at this length of
+           cable can be shown as well as the voltage leaving it. */
+        fromIdx: trail[0],
         /* Meters picked up along the way — the load this length of cable
            carries directly. */
         distribution: along.length,
@@ -777,6 +836,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         stopId: null,
         metres: Math.round(len * 10) / 10,
         endIdx: cur,
+        fromIdx: trail[0],
         distribution: along.length,
         terminal: here.length,
         meters: [...along, ...here],

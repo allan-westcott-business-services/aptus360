@@ -84,7 +84,7 @@ export default function BomModal({ projectId, projectName, onClose }) {
     };
     return [...out.values()].sort((a, b) =>
       rank(a) - rank(b) || a.utility.localeCompare(b.utility));
-  }, [rows]);
+  }, [shown]);
 
   const totalsFor = (items, unit) =>
     items.filter((r) => r.unit === unit).reduce((t, r) => t + Number(r.quantity), 0);

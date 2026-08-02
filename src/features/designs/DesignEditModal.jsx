@@ -343,5 +343,7 @@ label.inline { display: flex; align-items: center; gap: 8px; font-size: 12.5px; 
 /* Pushed to the far end: it leaves the form, so it does not belong
    beside the buttons that act on it. */
 .dm-gis { margin-left: auto; }
-.dm-hint { margin: -4px 0 0; font-size: 11.5px; color: var(--muted); }
+/* Sits under the fields it explains, not against them. The negative top
+   margin this had pulled it into the selects above. */
+.dm-hint { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 `;

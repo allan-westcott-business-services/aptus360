@@ -2810,14 +2810,22 @@ export default function GISCanvasPage() {
      beside it. Both fall back to where you clicked, with the reason
      said out loud — the original lets you place one before the network
      exists and draw through it afterwards. */
-  async function placeNode(role) {
+  async function placeNode(role, forLayer = null) {
     if (!projectId) return;
-    const layerKey = role === "substation" ? "electric" : (utilities[0]?.layer_key ?? "electric");
+    /* The layer is named by the caller where it matters.
+
+       It used to fall back to utilities[0] for anything that was not a
+       substation, so a gas POC placed from the gas menu landed on
+       whichever utility happened to be first — usually electric, and on
+       a project with no electric scope, wherever else. The menu knows
+       which utility it is; asking it is better than guessing. */
+    const layerKey = forLayer
+      ?? (role === "substation" || role === "poc" ? "electric" : (utilities[0]?.layer_key ?? "electric"));
 
     if (role === "poc") {
       const existing = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === layerKey);
       if (existing) {
-        setError(`There is already an ${layerKey} POC. Move or delete it rather than adding a second.`);
+        setError(`There is already a ${layerKey} POC. Move or delete it rather than adding a second.`);
         setSelected([existing.Feature_ID]);
         return;
       }
@@ -2831,7 +2839,12 @@ export default function GISCanvasPage() {
     let point = toM(cx, cy);
     let note = "";
 
-    const targets = role === "substation"
+    /* A governor snaps to a trench like a substation does: it is fixed
+       plant standing in the ground, not a point on a main. Snapping it
+       to the nearest gas main would put it wherever the pipe happens to
+       run rather than where the kiosk goes. */
+    const toTrench = role === "substation" || role === "governor";
+    const targets = toTrench
       ? visible.filter((f) => f.Feature_Type === "line"
           && isTrenchType(f.Attributes?.Line_Type, lineTypes))
       : visible.filter((f) => f.Feature_Type === "line"
@@ -2845,15 +2858,17 @@ export default function GISCanvasPage() {
     }
     if (best) { point = best.q; note = ` on ${best.line.Label ?? "the network"}`; }
     else {
-      note = role === "substation"
+      note = toTrench
         ? " \u2014 not on a trench yet, draw one through it to join the network"
         : " \u2014 not on a main yet, draw the main through it later";
     }
 
     const count = features.filter((f) => f.Feature_Role === role).length + 1;
-    const label = role === "substation"
-      ? `Substation ${count}`
-      : `${utilities.find((u) => u.layer_key === layerKey)?.utility ?? "Electric"} POC`;
+    const utilityName = utilities.find((u) => u.layer_key === layerKey)?.utility
+      ?? (layerKey === "gas" ? "Gas" : layerKey === "water" ? "Water" : "Electric");
+    const label = role === "substation" ? `Substation ${count}`
+      : role === "governor" ? `Gas Governor ${count}`
+        : `${utilityName} POC`;
 
     try {
       await createFeature(projectId, {
@@ -5368,9 +5383,9 @@ export default function GISCanvasPage() {
                     <div className="gm-sep" />
                     <MenuGroup label="Network" />
                     <MenuItem label="+ POC" hint="Snaps to the nearest main"
-                      disabled={!projectId} onClick={() => placeNode("poc")} />
+                      disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
                     <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
-                      disabled={!projectId} onClick={() => placeNode("substation")} />
+                      disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
                     <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
                       hint="Shortest path along the trenches, as HV feeder"
                       disabled={!!busy || !projectId}
@@ -5466,6 +5481,23 @@ export default function GISCanvasPage() {
                           solo={solo === `${key}:role:meter`}
                           onHide={() => toggleClass(`${key}:role:meter`)}
                           onSolo={() => soloClass(`${key}:role:meter`)} />
+                        <div className="gm-sep" />
+                        {/* The fixed plant on this utility. Gas has a
+                            governor where electric has a substation —
+                            the point the incoming supply is reduced and
+                            metered before it feeds the site. Offered on
+                            gas alone, since nothing else has one. */}
+                        <div className="gm-sep" />
+                        <MenuGroup label="Network" />
+                        <MenuItem label="+ POC" hint="Snaps to the nearest main"
+                          disabled={!projectId}
+                          onClick={() => placeNode("poc", key)} />
+                        {key === "gas" && (
+                          <MenuItem label="+ Gas Governor" hint="Snaps to the nearest trench"
+                            disabled={!projectId}
+                            onClick={() => placeNode("governor", key)} />
+                        )}
+
                         <div className="gm-sep" />
                         <MenuLayer label={`Whole ${layer?.Label ?? key} layer`}
                           colour={layer?.Colour} count={classCount[key] || 0}

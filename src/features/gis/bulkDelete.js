@@ -53,21 +53,56 @@ export function bulkDeleteCategories(features = [], opts = {}) {
   for (const l of layers) {
     if (!["electric", "gas", "water", "lighting"].includes(l.Layer_Key)) continue;
     const on = (f) => f.Layer_Key === l.Layer_Key;
-    const kinds = [
-      ["main", "mains (cable / pipe)",
-        (f) => isLine(f) && typeOf(f).includes("_main") && !isTrench(f, lineTypes)],
-      ["service", "services (cable / pipe)",
-        (f) => isLine(f) && typeOf(f).includes("_service") && !isTrench(f, lineTypes)],
-      ["meter", "meters", (f) => f.Feature_Role === "meter"],
-      ["joint", "joints / connectors", (f) => f.Feature_Role === "joint"],
-      ["spannode", "span nodes", (f) => f.Feature_Role === "spannode"],
-      /* The fixed plant. A POC is per utility, so it belongs here rather
-         than in the general list where deleting "all POCs" would take
-         the gas one out with the electric. */
-      ["poc", "POC", (f) => f.Feature_Role === "poc"],
-      ["substation", "substations", (f) => f.Feature_Role === "substation"],
-      ["governor", "gas governors", (f) => f.Feature_Role === "governor"],
-    ];
+    /* What each utility actually has.
+
+       Not the same list everywhere. A substation is electric and a
+       governor is gas; electric carries cable where gas and water carry
+       pipe; and the point that joins two runs is a joint on electric and
+       a connector on gas and water — the same shape of thing, different
+       trades, different words on a schedule.
+
+       Offering every kind on every utility filled the panel with entries
+       that could never count anything — "Water — gas governors" is not a
+       category anyone was missing, and a column of permanent zeroes
+       makes the ones that matter harder to find. */
+    const isMain = (f) => isLine(f) && typeOf(f).includes("_main") && !isTrench(f, lineTypes);
+    const isService = (f) => isLine(f) && typeOf(f).includes("_service") && !isTrench(f, lineTypes);
+    const role = (r) => (f) => f.Feature_Role === r;
+
+    const KINDS = {
+      electric: [
+        ["main", "mains cable", isMain],
+        ["service", "service cable", isService],
+        ["meter", "meters", role("meter")],
+        ["joint", "joints", role("joint")],
+        ["spannode", "span nodes", role("spannode")],
+        ["poc", "POC", role("poc")],
+        ["substation", "substations", role("substation")],
+      ],
+      gas: [
+        ["main", "mains pipe", isMain],
+        ["service", "service pipe", isService],
+        ["meter", "meters", role("meter")],
+        ["joint", "connectors", role("joint")],
+        ["poc", "POC", role("poc")],
+        ["governor", "governors", role("governor")],
+      ],
+      water: [
+        ["main", "mains pipe", isMain],
+        ["service", "service pipe", isService],
+        ["meter", "meters", role("meter")],
+        ["joint", "connectors", role("joint")],
+        ["poc", "POC", role("poc")],
+      ],
+      lighting: [
+        ["main", "mains cable", isMain],
+        ["service", "service cable", isService],
+        ["column", "columns", role("column")],
+        ["poc", "POC", role("poc")],
+      ],
+    };
+    const kinds = KINDS[l.Layer_Key] || [];
+
     for (const [key, what, pred] of kinds) {
       /* Named as a child of the whole-utility entry above it, so ticking
          that one can tick these and unticking one of these can take it
@@ -96,7 +131,10 @@ export function bulkDeleteCategories(features = [], opts = {}) {
     (f) => isTrench(f, lineTypes), "Trenches");
 
   add("meter", "All meters", (f) => f.Feature_Role === "meter", "Points");
-  add("joint", "All joints", (f) => f.Feature_Role === "joint", "Points");
+  /* One role, two trades. Named for both here because this entry spans
+     the utilities — a gas connector and an electric joint are the same
+     kind of feature and this takes them all. */
+  add("joint", "All joints and connectors", (f) => f.Feature_Role === "joint", "Points");
   add("linkbox", "All link boxes", (f) => f.Feature_Role === "linkbox", "Points");
   add("column", "All lighting columns", (f) => f.Feature_Role === "column", "Points");
   add("seed", "All plot seeds", (f) => f.Feature_Role === "plot", "Points");

@@ -31,7 +31,8 @@ const WEIGHT = {
 const FIELDS = [
   "Colour", "Dashed", "Dash_Pattern", "Symbol",
   "Width_Px", "Width_M", "Scale_Width", "Min_Width_Px", "Max_Width_Px",
-  "Symbol_Size_Px", "Min_Scale", "Max_Scale", "Label_Min_Scale",
+  "Symbol_Size_Px", "Symbol_Size_M", "Scale_Symbol", "Min_Symbol_Px", "Max_Symbol_Px",
+  "Min_Scale", "Max_Scale", "Label_Min_Scale",
   // Markers repeated along a line: an E every 10 m, an arrow, a tick
   "Marker_Text", "Marker_Symbol", "Marker_Interval_M", "Marker_Size_Px",
   "Marker_Colour", "Marker_Rotate", "Marker_Offset_Px", "Marker_Min_Gap_Px",
@@ -126,7 +127,19 @@ export function appearance(style, scale, fallback = {}) {
     widthPx: Math.max(0.5, widthPx),
     dash: style.Dashed ? parseDash(style.Dash_Pattern) : [],
     symbol: style.Symbol ?? fallback.symbol ?? "circle",
-    symbolPx: Number(style.Symbol_Size_Px ?? fallback.symbolPx ?? 6),
+    /* Symbols to scale, the same way widths already are.
+
+       A size in metres times the scale, held between the clamps: small
+       at site level, its real size zoomed in, and never so large it
+       covers what it stands on. Without Scale_Symbol it is the fixed
+       pixel size it has always been, so a style nobody has changed draws
+       exactly as before. */
+    symbolPx: (style.Scale_Symbol && style.Symbol_Size_M != null)
+      ? Math.max(0.5, clamp(
+        Number(style.Symbol_Size_M) * scale,
+        style.Min_Symbol_Px, style.Max_Symbol_Px,
+      ))
+      : Number(style.Symbol_Size_Px ?? fallback.symbolPx ?? 6),
     showLabel: style.Label_Min_Scale == null || scale >= Number(style.Label_Min_Scale),
     marker: markerConfig(style, scale),
   };

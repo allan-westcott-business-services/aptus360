@@ -13,7 +13,13 @@ import { getGisBom } from "../../api/gis.js";
    Lines are metres and points are counts, so there is no single total to
    put at the bottom — a column of "417" that mixes metres of trench with
    a number of meters is worse than no total. Each unit is summed
-   separately and labelled. */
+   separately and labelled.
+
+   The counted things are called objects here rather than points. Points
+   is what the drawing calls a feature with one coordinate, but this app
+   also has design points on the Outline Designs tab, and a card reading
+   "227 points" beside a project whose design points are 4 invites the
+   two to be read as the same number. */
 
 /* Trench is the only thing split by site — what a trench is dug through
    and reinstated to differs either side of the boundary, and so does the
@@ -92,7 +98,7 @@ export default function BomModal({ projectId, projectName, onClose }) {
     const summary = siteTotals.map((s) => ({
       Site: s.site,
       "Length (m)": Number(s.metres.toFixed(2)),
-      "Points (no.)": s.count,
+      "Objects (no.)": s.count,
       "Lines of detail": s.items,
     }));
 
@@ -155,7 +161,23 @@ export default function BomModal({ projectId, projectName, onClose }) {
                   <div className={`bom-card bom-${s.site.toLowerCase().replace("-", "")}`} key={s.site}>
                     <span className="bc-label">{s.site}</span>
                     <span className="bc-main">{s.metres.toFixed(1)} m</span>
-                    <span className="bc-sub">{s.count} point{s.count === 1 ? "" : "s"}</span>
+                    {/* Counted objects, and only where they are counted.
+
+                        On-site and Off-site are trench, and a trench is
+                        a length — so those cards showed "0 points" for
+                        ever, which reads as "we found none" rather than
+                        "this is not counted here". Meters, joints and
+                        the rest carry no site, so they all fall under
+                        Not site-dependent.
+
+                        Called objects rather than points: this app has
+                        design points on the Outline Designs tab, and
+                        they are a different quantity entirely. */}
+                    <span className="bc-sub">
+                      {s.count > 0
+                        ? `${s.count} object${s.count === 1 ? "" : "s"}`
+                        : `${s.items} line${s.items === 1 ? "" : "s"} of detail`}
+                    </span>
                   </div>
                 ))}
               </div>

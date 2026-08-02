@@ -146,8 +146,7 @@ export default function GISCanvasPage() {
      it is a decision. */
   function runScenario() {
     const station = features.find((f) => f.Feature_Role === "substation");
-    const r = suggestCableChanges({
-      trace,
+    const common = {
       cables: lookups?.cableSizes || [],
       cableTypes: lookups?.cableTypes || [],
       transformer: (lookups?.transformerSizes || []).find((t) =>
@@ -155,9 +154,34 @@ export default function GISCanvasPage() {
           === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
       voltageV: Number(station?.Attributes?.Output_V) || 400,
       settings: trace?.limits || {},
+    };
+
+    /* A levels check covers every circuit, and a cable change is always
+       within one — so each is searched on its own model and the answers
+       put together. Searching only the first circuit's model would leave
+       every failure on the others without a suggestion and no sign that
+       it had not looked. */
+    const parts = trace?.parts?.length ? trace.parts : [trace];
+    const all = [];
+    let exhausted = false;
+    let largest = null;
+    for (const part of parts) {
+      const r = suggestCableChanges({ trace: part, ...common });
+      if (r.error) continue;
+      if (r.exhausted) { exhausted = true; largest = r.largest ?? largest; }
+      for (const sg of r.suggestions || []) {
+        all.push({ ...sg, circuitName: part.circuitName ?? null, pairs: r.pairs });
+      }
+    }
+
+    all.sort((a, b) => a.cost - b.cost);
+    setScenario({
+      ok: true,
+      suggestions: all.slice(0, 6),
+      pairs: all.some((x) => x.pairs),
+      exhausted: exhausted && !all.length,
+      largest,
     });
-    if (r.error) { setError(r.error); return; }
-    setScenario(r);
   }
 
   /* Span nodes the trace found outside the limits.
@@ -1056,7 +1080,33 @@ export default function GISCanvasPage() {
 
         if (pts.length > 1 && st.showLabel && view.scale > 1.5
             && (on || (showLabels && drawnLenPx > 34))) {
-          const anchor = pts[Math.floor(pts.length / 2)];
+          /* Half way along the run, not the middle vertex.
+
+             It was pts[Math.floor(pts.length / 2)] — which is the middle
+             of the list, and only the middle of the cable when the
+             vertices happen to be evenly spaced. They rarely are: a tee
+             puts a vertex wherever a service leaves, so a run with three
+             vertices bunched at one end had its label pointing there
+             while the cable ran on for another forty metres.
+
+             Measured instead: half the drawn length, then walked to
+             find where that falls. */
+          const anchor = (() => {
+            const half = drawnLenPx / 2;
+            let acc = 0;
+            for (let i = 1; i < pts.length; i++) {
+              const a = pts[i - 1];
+              const b = pts[i];
+              const seg = Math.hypot(b.x - a.x, b.y - a.y);
+              if (seg <= 0) continue;
+              if (acc + seg >= half) {
+                const t = (half - acc) / seg;
+                return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+              }
+              acc += seg;
+            }
+            return pts[pts.length - 1];
+          })();
           const off = f.Attributes?.Label_Offset;
           const mid = off
             ? { x: anchor.x + off[0] * view.scale, y: anchor.y + off[1] * view.scale }
@@ -4620,11 +4670,107 @@ export default function GISCanvasPage() {
       } : {}),
     }));
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), "Trace");
+    /* Named for the feature it came from. A file called "Trace" landing
+       in someone's downloads from a menu item called Run Levels Check is
+       one more thing to reconcile. */
+    const what = trace.levels ? "Levels check" : "Full trace";
+    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), trace.levels ? "Levels" : "Trace");
     const stamp = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb,
-      `Trace ${project?.Project_Ref ?? ""} ${trace.circuitName} from ${trace.from} ${stamp}.xlsx`
+      `${what} ${project?.Project_Ref ?? ""} ${trace.circuitName} from ${trace.from} ${stamp}.xlsx`
         .replace(/\s+/g, " ").trim());
+  }
+
+  /* The levels check: every circuit, from the substation outward.
+
+     Run from each circuit's origin node — A0, B0 — rather than from
+     whatever happens to be selected, because the question it answers is
+     about the design rather than about a point in it: does anything on
+     this scheme sit outside its limits.
+
+     Each circuit is traced separately, since a trace walks one network
+     from one source, and the results are put together for reading. The
+     per-circuit models are kept as `parts` so the suggestion search can
+     work on each — a cable change is always within one circuit. */
+  function runLevelsCheck(opts = {}) {
+    const { srcFeatures = null } = (opts && opts.nativeEvent) ? {} : opts;
+    const src = srcFeatures || features;
+
+    const circuits = circuitsFrom(src);
+    if (!circuits.length) {
+      setError("No circuits defined yet — use Link to Circuit first.");
+      return;
+    }
+
+    const parts = [];
+    const failed = [];
+    for (const c of circuits) {
+      const origin = originNodeFor(src, c.id);
+      if (!origin) { failed.push(`${c.name}: no origin node`); continue; }
+      const r = spanTrace(src, origin.Feature_ID, {
+        lineTypes,
+        plotById: (id) => plotList.find((p) => p.plot_id === id),
+      });
+      if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
+      r.startId = origin.Feature_ID;
+      parts.push(r);
+    }
+
+    if (!parts.length) {
+      setError(failed.length ? failed.join(" \u00B7 ") : "Nothing to check.");
+      setTrace(null);
+      return;
+    }
+
+    /* Volt drop per leg, on each circuit against its own substation. */
+    const cables = lookups?.cableSizes || [];
+    if (cables.length) {
+      const station = src.find((f) => f.Feature_Role === "substation");
+      /* The same limits the levels come from — built here rather than
+         referenced from the other function, and from the same lookup
+         row, so the two cannot disagree about what "in tolerance"
+         means. */
+      const limits = { ...VD_DEFAULTS, ...(lookups?.vdSettings?.[0] ? {
+        unbalanced: !!lookups.vdSettings[0].Unbalanced,
+        maxLoopOhms: Number(lookups.vdSettings[0].Max_Loop_Ohms),
+        maxVoltDropPct: Number(lookups.vdSettings[0].Max_Volt_Drop_Pct),
+        unbalancedConstant: Number(lookups.vdSettings[0].Unbalanced_Constant),
+        distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
+      } : {}) };
+      for (const part of parts) {
+        for (const leg of part.legs) {
+          leg.vd = cumulativeToNode({
+            model: part.model, targetIdx: leg.endIdx, spanNodes: part.spanNodes,
+            cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
+            transformer: (lookups?.transformerSizes || []).find((t) =>
+              String(t.Transformer_Size_ID)
+                === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+            voltageV: Number(station?.Attributes?.Output_V) || 400,
+            settings: limits,
+          });
+        }
+        part.limits = limits;
+      }
+    }
+
+    /* One object for the panel: the legs of every circuit in order, with
+       the parts kept alongside so a suggestion can be worked out against
+       the circuit it belongs to. */
+    setTrace({
+      levels: true,
+      from: "the substation",
+      circuitName: parts.length === 1 ? parts[0].circuitName : `${parts.length} circuits`,
+      legs: parts.flatMap((p) => p.legs.map((l) => ({ ...l, circuitName: p.circuitName }))),
+      parts,
+      model: parts[0].model,
+      spanNodes: parts[0].spanNodes,
+      limits: parts[0].limits,
+      startId: parts[0].startId,
+      totalMetres: Math.round(parts.reduce((t, p) => t + (p.totalMetres || 0), 0) * 10) / 10,
+    });
+    setScenario(null);
+    setTraceAt({ features, lookups });
+    setError(failed.length ? `Not checked \u2014 ${failed.join(" \u00B7 ")}` : "");
   }
 
   /* The trace, optionally over a drawing just read back and from a node
@@ -5268,12 +5414,18 @@ export default function GISCanvasPage() {
                       hint="Meters by feeder, with distances from the substation"
                       disabled={!features.some((f) => f.Feature_Role === "substation")}
                       onClick={() => setReportOpen(true)} />
-                    <MenuItem label="Full Trace from Here"
-                      hint={selectedFeatures.some((f) => f.Feature_Role === "spannode")
-                        ? "Everything downstream of the selected node"
-                        : "Select a span node first"}
-                      disabled={!selectedFeatures.some((f) => f.Feature_Role === "spannode")}
-                      onClick={runFullTrace} />
+                    {/* Every circuit, from its own origin node outward.
+
+                        Nothing has to be selected: the question is
+                        whether anything on the scheme is outside its
+                        limits, which is about the design rather than
+                        about a point in it. Tracing from one selected
+                        node answered a narrower question and left the
+                        rest of the drawing unchecked. */}
+                    <MenuItem label="Run Levels Check"
+                      hint="Loop impedance and volt drop on every circuit, from the substation"
+                      disabled={!circuitsFrom(features).length}
+                      onClick={() => runLevelsCheck()} />
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
                       hint="Sets each span node's cable to match the run feeding it \u2014 that is what the trace reads"
                       disabled={!!busy}
@@ -5791,7 +5943,13 @@ export default function GISCanvasPage() {
                    expression, so a comment and an expression side by side
                    inside its brackets is two, and the parser stops at the
                    second. */
-                ) : ctx.feature.Feature_Role === "spannode" ? (
+                ) : (ctx.feature.Feature_Type === "point"
+                     && ctx.feature.Layer_Key === "electric"
+                     && ctx.feature.Feature_Role === "spannode") ? (
+                  /* From here, rather than from the substation. Reached
+                     only by right-clicking the point you want to start
+                     at, which is the whole of what distinguishes it from
+                     the levels check on the menu. */
                   <button className="gc-item" disabled={!!busy} onClick={() => {
                     setSelected([ctx.feature.Feature_ID]);
                     setCtx(null);
@@ -5976,10 +6134,12 @@ export default function GISCanvasPage() {
 
             {trace && (
               <div className={trace.hasVd ? "gis-trace gt-wide gt-vd" : "gis-trace gt-wide"}
-                role="dialog" aria-label="Full trace">
+                role="dialog" aria-label={trace.levels ? "Levels check" : "Full trace"}>
                 <div className="gt-head">
                   <div>
-                    <strong>Full trace from {trace.from}</strong>
+                    <strong>
+                      {trace.levels ? "Levels check" : "Full trace"} from {trace.from}
+                    </strong>
                     <p className="gt-sub">
                       {trace.circuitName} &middot; {trace.legs.length} leg(s) &middot;{" "}
                       {trace.totalMeters} meter(s) beyond this point
@@ -5987,7 +6147,8 @@ export default function GISCanvasPage() {
                   </div>
                   <button className="btn accent sm" onClick={exportTrace}>Export</button>
                   {(traceAt && (traceAt.features !== features || traceAt.lookups !== lookups)) && (
-                    <button className="btn sm tr-stale" onClick={runFullTrace}
+                    <button className="btn sm tr-stale"
+                      onClick={() => (trace.levels ? runLevelsCheck() : runFullTrace())}
                       title="The drawing has changed since these figures were worked out">
                       Out of date &mdash; re-run
                     </button>
@@ -6035,6 +6196,9 @@ export default function GISCanvasPage() {
                           {scenario.suggestions.map((sg, i) => (
                             <li key={i}>
                               <span className="tr-scn-t">
+                                {sg.circuitName && trace?.parts?.length > 1 && (
+                                  <span className="tr-scn-c">{sg.circuitName}: </span>
+                                )}
                                 {sg.changes.map((c, j) => (
                                   <span key={j}>
                                     {j > 0 && <span className="tr-scn-p"> and </span>}
@@ -6308,6 +6472,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .tr-scn-go:disabled { opacity: .5; cursor: not-allowed; }
 .tr-scn-m { color: var(--muted); font-size: 11px; }
 .tr-scn-p { color: var(--muted); }
+.tr-scn-c { color: var(--muted); font-weight: 600; }
 .tr-scn-n { margin: 5px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .gis-ctx { position: absolute; z-index: 30; background: var(--white);
   border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 168px;

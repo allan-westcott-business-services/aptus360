@@ -37,6 +37,36 @@ export function bulkDeleteCategories(features = [], opts = {}) {
       (f) => f.Layer_Key === l.Layer_Key, "Utility");
   }
 
+  /* And by utility and kind together.
+
+     "All services" takes the gas and the water with the electric, which
+     is rarely what someone redoing one utility wants. The whole-layer
+     entries above are too coarse for it and the by-kind entries below
+     too broad; this is the pairing that gets used.
+
+     Every kind is offered on every utility rather than only where it can
+     exist. Joints and span nodes are electric, so their gas and water
+     entries count nothing — and an entry reading zero is disabled and
+     dimmed, which says "there are none of these" more plainly than an
+     absence, and cannot be mistaken for a category nobody thought of. */
+  for (const l of layers) {
+    if (!["electric", "gas", "water", "lighting"].includes(l.Layer_Key)) continue;
+    const on = (f) => f.Layer_Key === l.Layer_Key;
+    const kinds = [
+      ["main", "mains (cable / pipe)",
+        (f) => isLine(f) && typeOf(f).includes("_main") && !isTrench(f, lineTypes)],
+      ["service", "services (cable / pipe)",
+        (f) => isLine(f) && typeOf(f).includes("_service") && !isTrench(f, lineTypes)],
+      ["meter", "meters", (f) => f.Feature_Role === "meter"],
+      ["joint", "joints / connectors", (f) => f.Feature_Role === "joint"],
+      ["spannode", "span nodes", (f) => f.Feature_Role === "spannode"],
+    ];
+    for (const [key, what, pred] of kinds) {
+      add(`${l.Layer_Key}:${key}`, `${l.Label} \u2014 ${what}`,
+        (f) => on(f) && pred(f), `${l.Label} only`);
+    }
+  }
+
   add("main", "All mains (cable / pipe)",
     (f) => isLine(f) && typeOf(f).includes("_main") && !isTrench(f, lineTypes), "Lines");
   add("service", "All services (cable / pipe)",

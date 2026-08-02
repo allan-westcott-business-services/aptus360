@@ -27,6 +27,34 @@ import { getGisBom } from "../../api/gis.js";
    those rows come back with no site and group on their own. */
 const SITE_ORDER = ["On-site", "Off-site", "Unclassified", ""];
 
+/* A name Excel will accept for a worksheet.
+
+   Four rules, all of which it enforces by refusing to open the file
+   rather than by complaining as it is written — so a developer called
+   "Anwyl Homes (North West) / Cheshire" produces a workbook that will
+   not open, with nothing to say why.
+
+     no : \ / ? * [ ]        replaced, not stripped, so two developers
+                             differing only in punctuation stay different
+     31 characters           trimmed from the end
+     not empty               falls back rather than failing
+     unique in the workbook  a numeric suffix, kept inside the 31
+
+   Exported so the rules can be tested without building a workbook. */
+export function sheetName(raw, used = new Set()) {
+  let base = String(raw ?? "").replace(/[\\/:*?[\]]/g, "-").trim().slice(0, 31).trim();
+  if (!base) base = "Sheet";
+
+  if (!used.has(base.toLowerCase())) { used.add(base.toLowerCase()); return base; }
+
+  for (let n = 2; n < 1000; n++) {
+    const suffix = ` (${n})`;
+    const cand = `${base.slice(0, 31 - suffix.length).trim()}${suffix}`;
+    if (!used.has(cand.toLowerCase())) { used.add(cand.toLowerCase()); return cand; }
+  }
+  return base.slice(0, 31);
+}
+
 export default function BomModal({ projectId, projectName, onClose }) {
   const [rows, setRows] = useState([]);
   /* Whose bill is on screen. "" is the whole site — the same rows added
@@ -106,22 +134,14 @@ export default function BomModal({ projectId, projectName, onClose }) {
   const unclassified = shown.filter((r) => r.site === "Unclassified").length;
 
   function exportXlsx() {
-    /* Built from `shown`, not `rows` — the file has to be the bill that
-       was on screen when the button was pressed. */
     const stamp = new Date().toISOString().slice(0, 10);
     const safe = String(projectName || `Project ${projectId}`).replace(/[\\/:*?[\]]/g, "-");
-    /* The export follows what is on screen. A file called "BOM" holding
-       one developer's work, indistinguishable from the site's, is how the
-       wrong figure reaches a tender. */
-    const who = whose
-      ? (developers.find((d) => d.id === whose)?.name ?? `Developer ${whose}`)
-      : "";
 
     /* One row per grouping, which is the sheet people will pivot from.
        Quantity stays numeric — writing "417.2 m" into the cell makes it
        text and every sum downstream returns zero. The unit has its own
        column for the same reason. */
-    const detail = shown.map((r) => ({
+    const detailOf = (list) => list.map((r) => ({
       Site: r.site || "n/a",
       Utility: r.utility,
       /* Named on every row, so a sheet that has been filtered or pivoted
@@ -134,14 +154,18 @@ export default function BomModal({ projectId, projectName, onClose }) {
       Features: Number(r.features),
     }));
 
-    const summary = siteTotals.map((s) => ({
-      Site: s.site,
-      "Length (m)": Number(s.metres.toFixed(2)),
-      "Objects (no.)": s.count,
-      "Lines of detail": s.items,
-    }));
+    const summaryOf = (list) => SITE_ORDER.map((site) => {
+      const items = list.filter((r) => r.site === site);
+      if (!items.length) return null;
+      return {
+        Site: site || "Not site-dependent",
+        "Length (m)": Number(totalsFor(items, "m").toFixed(2)),
+        "Objects (no.)": totalsFor(items, "no."),
+        "Lines of detail": items.length,
+      };
+    }).filter(Boolean);
 
-    const bySurface = [...shown
+    const bySurfaceOf = (list) => [...list
       .filter((r) => r.unit === "m" && r.surface)
       .reduce((m, r) => {
         const k = `${r.site}\u0000${r.surface}`;
@@ -156,13 +180,36 @@ export default function BomModal({ projectId, projectName, onClose }) {
         || a.Surface.localeCompare(b.Surface));
 
     const wb = XLSX.utils.book_new();
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(summary), "Summary");
-    XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(detail), "Bill of Materials");
-    if (bySurface.length) {
-      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(bySurface), "By Surface");
+    const used = new Set();
+    const add = (name, data) => {
+      if (!data.length) return;
+      XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(data), sheetName(name, used));
+    };
+
+    /* The whole site first, whatever is selected on screen.
+
+       The file used to hold only what was showing, so a workbook made
+       while reading one developer's bill was indistinguishable from the
+       site's — which is how a wrong figure reaches a tender. It now
+       carries everything, and the reader picks a tab.
+
+       Shared plant is in every developer's tab and once in the site's,
+       so a developer's tab can be read on its own without the substation
+       missing, while the site total still counts it once. */
+    add("Summary", summaryOf(rows));
+    add("Bill of Materials", detailOf(rows));
+    add("By Surface", bySurfaceOf(rows));
+
+    /* A tab each. Named for the developer, trimmed and made unique for
+       Excel, which refuses a sheet name over 31 characters or holding
+       any of : \\ / ? * [ ] — and refuses two the same. */
+    for (const d of developers) {
+      const mine = rows.filter((r) =>
+        String(r.developer_id ?? "") === d.id || r.developer_id == null);
+      add(d.name, detailOf(mine));
     }
-    XLSX.writeFile(wb,
-      `BOM ${safe}${who ? ` ${who}` : ""} ${stamp}.xlsx`.replace(/\s+/g, " ").trim());
+
+    XLSX.writeFile(wb, `BOM ${safe} ${stamp}.xlsx`.replace(/\s+/g, " ").trim());
   }
 
   const drag = useDragHandle();

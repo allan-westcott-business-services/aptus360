@@ -1416,13 +1416,40 @@ export default function GISCanvasPage() {
       if (f.Feature_Role !== "spannode") continue;
       const g = f.Geometry || [];
       if (!g.length) continue;
-      const q = toPx(g[0]);
       const on = selected.includes(f.Feature_ID);
       const ps = styleFor(f);
+      /* Its zoom band, like every other feature.
+
+         This pass never asked, so Min_Scale and Max_Scale did nothing to
+         a span node however they were set — the check lives in the main
+         draw loop and span nodes are deliberately not in it. A style that
+         appears to be ignored is worse than one that cannot be set.
+
+         Selection still shows it: hiding the thing someone has just
+         clicked reads as a deletion. */
+      if (!on && !ps.visible) continue;
+
+      const q = toPx(g[0]);
       const code = f.Attributes?.Span_Label ?? "";
 
-      ctx.font = "700 10px ui-monospace, Menlo, monospace";
-      const r = Math.max(ps.symbolPx, ctx.measureText(code).width / 2 + 4) * (on ? 1.25 : 1);
+      /* The circle is sized by the style, and the text sized to fit it.
+
+         It used to be the other way round — the radius was the larger of
+         the style size and whatever a fixed 10px label happened to
+         measure, so on any label of two characters or more the text won
+         and Symbol_Size_Px did nothing at all. Anyone setting it saw no
+         change and reasonably concluded the field was broken.
+
+         Now the style decides, and the label is scaled to sit inside.
+         Below about seven pixels there is no room for a legible code, so
+         it is dropped rather than drawn as an unreadable smudge — the
+         node is still there and still says where it is. */
+      const r = Math.max(3, ps.symbolPx) * (on ? 1.25 : 1);
+      /* Floored, and capped at the radius rather than just over it: a
+         monospace cap is about 0.72 of its point size, so a font of r
+         gives a glyph comfortably inside a circle of diameter 2r. Round
+         rather than floor let an 11px label into a 10px radius. */
+      const fontPx = Math.floor(Math.min(r, r * 2 / Math.max(1, code.length) * 1.15));
 
       /* A white ring under the fill, so the node reads as sitting on top
          of whatever it covers rather than merging into it. */
@@ -1454,7 +1481,8 @@ export default function GISCanvasPage() {
          unmarked dot, and the codes are what the trace, the circuit
          report and the cable schedule are all read against — hiding them
          hides the drawing's index rather than tidying it. */
-      if (code && view.scale > 1.2) {
+      if (code && fontPx >= 7 && view.scale > 1.2) {
+        ctx.font = `700 ${fontPx}px ui-monospace, Menlo, monospace`;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";

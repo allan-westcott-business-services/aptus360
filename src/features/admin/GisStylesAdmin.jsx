@@ -404,26 +404,39 @@ export default function GisStylesAdmin() {
               </div>
 
               <p className="panel-label">Visible between</p>
+              {/* The canvas shows a percentage; these are pixels per
+                  metre. They are the same quantity — the readout is
+                  scale &times; 25 — but the hint used to claim they were
+                  the same number, so a value read off the canvas as 21%
+                  and typed in here as 21 meant something eighty times
+                  larger and the feature vanished for good.
+
+                  The conversion is shown live under each box rather than
+                  explained, because arithmetic in a hint is arithmetic
+                  someone has to do. */}
               <p className="hint gs-hint">
-                Zoom is canvas pixels per metre &mdash; the same number the readout on the
-                canvas comes from. 4 is the default view, 1 is well out, 20 is close in.
-                Leave blank for no limit.
+                Zoom is canvas pixels per metre. The canvas readout is a percentage of
+                the same thing &mdash; 4 here is the 100% view, 0.84 is 21%. Leave blank
+                for no limit.
               </p>
               <div className="gs-grid">
                 <div className="fld">
                   <label htmlFor="gs-min">Hide below</label>
                   <input id="gs-min" type="number" step="0.5" value={draft.Min_Scale}
                     onChange={set("Min_Scale")} placeholder="no limit" />
+                  <span className="gs-pct">{asPct(draft.Min_Scale)}</span>
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-max">Hide above</label>
                   <input id="gs-max" type="number" step="0.5" value={draft.Max_Scale}
                     onChange={set("Max_Scale")} placeholder="no limit" />
+                  <span className="gs-pct">{asPct(draft.Max_Scale)}</span>
                 </div>
                 <div className="fld">
                   <label htmlFor="gs-lbl">Drop the label below</label>
                   <input id="gs-lbl" type="number" step="0.5" value={draft.Label_Min_Scale}
                     onChange={set("Label_Min_Scale")} placeholder="always show" />
+                  <span className="gs-pct">{asPct(draft.Label_Min_Scale)}</span>
                 </div>
                 <div className="gs-span">
                   <p className="panel-label">Markers along the line</p>
@@ -571,6 +584,7 @@ const CSS = `
 .gs-check { display: flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 500;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 9px 0 0; }
 
+.gs-pct { font-size: 10.5px; color: var(--muted); margin-top: 3px; display: block; }
 .gs-hint { margin: -4px 0 8px; max-width: 76ch; }
 .gs-preview { display: flex; gap: 16px; align-items: center; flex-wrap: wrap;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 11px; }

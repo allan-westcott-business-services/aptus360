@@ -41,6 +41,51 @@ const SITE_ORDER = ["On-site", "Off-site", "Unclassified", ""];
      unique in the workbook  a numeric suffix, kept inside the 31
 
    Exported so the rules can be tested without building a workbook. */
+/* Rows that describe the same thing, added together.
+
+   gis_bom groups by developer, so a site with two of them returns two
+   "Mains Trench / Unmade" rows. In a sheet with a Developer column that
+   is a split worth having; on screen there is no such column, so it
+   reads as the same item listed twice for no reason, and the reader is
+   left adding up by eye.
+
+   Merged on what identifies the item — where it is, whose utility, what
+   it is, what it is dug through — and nothing else. Quantities and
+   feature counts add; the developer becomes many, and is dropped rather
+   than guessed at. */
+export function mergeRows(rows = []) {
+  const out = new Map();
+  for (const r of rows) {
+    const key = [r.site, r.utility, r.item, r.surface, r.unit].join("\u0000");
+    const prev = out.get(key);
+    if (!prev) {
+      out.set(key, { ...r });
+      continue;
+    }
+    prev.quantity = Number(prev.quantity) + Number(r.quantity);
+    prev.features = Number(prev.features) + Number(r.features);
+    /* No longer one developer's. Nulled rather than left showing the
+       first one merged, which would name an owner for a quantity that
+       is partly someone else's. */
+    if (String(prev.developer_id ?? "") !== String(r.developer_id ?? "")) {
+      prev.developer_id = null;
+      prev.developer_name = null;
+      /* Marked, because a merged row and an unassigned one both end up
+         with no developer and they are not the same thing: one is
+         several people's, the other is nobody's. A sheet that called a
+         merged quantity "(shared)" would be claiming it was the
+         substation's. */
+      prev.merged = true;
+    }
+  }
+  /* Rounded once, at the end. Adding two figures already rounded to two
+     places can leave a third — 0.1 + 0.2 in binary — and a quantity
+     reading 377.00000000000006 is not a quantity anyone trusts. */
+  return [...out.values()].map((r) => ({
+    ...r, quantity: Math.round(Number(r.quantity) * 100) / 100,
+  }));
+}
+
 export function sheetName(raw, used = new Set()) {
   let base = String(raw ?? "").replace(/[\\/:*?[\]]/g, "-").trim().slice(0, 31).trim();
   if (!base) base = "Sheet";
@@ -93,7 +138,7 @@ export default function BomModal({ projectId, projectName, onClose }) {
      developer and is kept in every developer's bill. A bill that
      silently omits the substation cannot be reconciled against the site
      total, and the whole point of splitting is that the parts add up. */
-  const shown = useMemo(() => (whose
+  const shown = useMemo(() => mergeRows(whose
     ? rows.filter((r) => String(r.developer_id ?? "") === whose || r.developer_id == null)
     : rows), [rows, whose]);
 
@@ -146,7 +191,7 @@ export default function BomModal({ projectId, projectName, onClose }) {
       Utility: r.utility,
       /* Named on every row, so a sheet that has been filtered or pivoted
          still says whose work it is. */
-      Developer: r.developer_name ?? "(shared)",
+      Developer: r.developer_name ?? (r.merged ? "(various)" : "(shared)"),
       Item: r.item,
       Surface: r.surface || "",
       Unit: r.unit,
@@ -196,16 +241,20 @@ export default function BomModal({ projectId, projectName, onClose }) {
        Shared plant is in every developer's tab and once in the site's,
        so a developer's tab can be read on its own without the substation
        missing, while the site total still counts it once. */
-    add("Summary", summaryOf(rows));
-    add("Bill of Materials", detailOf(rows));
-    add("By Surface", bySurfaceOf(rows));
+    /* Merged, so the sheet reads like the screen. An export whose row
+       count differs from the panel it came from invites the question of
+       which one is right. */
+    const whole = mergeRows(rows);
+    add("Summary", summaryOf(whole));
+    add("Bill of Materials", detailOf(whole));
+    add("By Surface", bySurfaceOf(whole));
 
     /* A tab each. Named for the developer, trimmed and made unique for
        Excel, which refuses a sheet name over 31 characters or holding
        any of : \\ / ? * [ ] — and refuses two the same. */
     for (const d of developers) {
-      const mine = rows.filter((r) =>
-        String(r.developer_id ?? "") === d.id || r.developer_id == null);
+      const mine = mergeRows(rows.filter((r) =>
+        String(r.developer_id ?? "") === d.id || r.developer_id == null));
       add(d.name, detailOf(mine));
     }
 

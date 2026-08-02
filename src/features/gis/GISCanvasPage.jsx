@@ -1322,7 +1322,11 @@ export default function GISCanvasPage() {
       ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
       ctx.fill();
 
-      if (code && (on || showLabels) && view.scale > 1.2) {
+      /* Not part of the Labels layer. A span node without its code is an
+         unmarked dot, and the codes are what the trace, the circuit
+         report and the cable schedule are all read against — hiding them
+         hides the drawing's index rather than tidying it. */
+      if (code && view.scale > 1.2) {
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
@@ -4852,7 +4856,7 @@ export default function GISCanvasPage() {
                         decisions to make the one you wanted. */}
                     <MenuItem label="Labels" active={showLabels}
                       hint={showLabels
-                        ? "Plot numbers, joints, way and circuit labels"
+                        ? "Plot numbers, joints, cable labels. Span node codes always show."
                         : "Hidden \u2014 a selected feature is still labelled"}
                       onClick={() => setShowLabels(!showLabels)} />
                     <div className="gm-sep" />

@@ -21,6 +21,7 @@ const BLANK = {
   Colour: "#64748b", Dashed: false, Dash_Pattern: "", Symbol: "",
   Width_Px: "", Width_M: "", Scale_Width: false,
   Min_Width_Px: "", Max_Width_Px: "", Symbol_Size_Px: "",
+  Symbol_Size_M: "", Scale_Symbol: false, Min_Symbol_Px: "", Max_Symbol_Px: "",
   Min_Scale: "", Max_Scale: "", Label_Min_Scale: "",
   Marker_Text: "", Marker_Symbol: "", Marker_Interval_M: "", Marker_Size_Px: "",
   Marker_Colour: "", Marker_Rotate: true, Marker_Offset_Px: "", Marker_Min_Gap_Px: "",
@@ -90,6 +91,10 @@ export default function GisStylesAdmin() {
       Min_Width_Px: num(draft.Min_Width_Px),
       Max_Width_Px: num(draft.Max_Width_Px),
       Symbol_Size_Px: num(draft.Symbol_Size_Px),
+      Symbol_Size_M: num(draft.Symbol_Size_M),
+      Scale_Symbol: !!draft.Scale_Symbol,
+      Min_Symbol_Px: num(draft.Min_Symbol_Px),
+      Max_Symbol_Px: num(draft.Max_Symbol_Px),
       Min_Scale: num(draft.Min_Scale),
       Max_Scale: num(draft.Max_Scale),
       Label_Min_Scale: num(draft.Label_Min_Scale),
@@ -319,11 +324,6 @@ export default function GisStylesAdmin() {
                   </select>
                 </div>
                 <div className="fld">
-                  <label htmlFor="gs-symsize">Symbol size (px)</label>
-                  <input id="gs-symsize" type="number" step="1" value={draft.Symbol_Size_Px}
-                    onChange={set("Symbol_Size_Px")} placeholder="6" />
-                </div>
-                <div className="fld">
                   <label htmlFor="gs-dash">Dash pattern</label>
                   <input id="gs-dash" value={draft.Dash_Pattern} onChange={set("Dash_Pattern")}
                     placeholder="9,6" disabled={!draft.Dashed} />
@@ -333,6 +333,47 @@ export default function GisStylesAdmin() {
                 <input type="checkbox" checked={!!draft.Dashed} onChange={set("Dashed")} />
                 Dashed
               </label>
+
+              {/* Symbol size, the same shape as Width below it.
+
+                  A point drawn at a fixed pixel size is the same dot at
+                  10% and at 800%, so zooming in grows the drawing around
+                  it until a meter is smaller than the cable it sits on.
+                  Drawing it to scale fixes that, and the clamps are what
+                  stop it vanishing at site level or covering the plot at
+                  full zoom. */}
+              <p className="panel-label">Symbol size</p>
+              <label className="gs-check">
+                <input type="checkbox" checked={!!draft.Scale_Symbol}
+                  onChange={set("Scale_Symbol")} />
+                Draw to scale &mdash; grows and shrinks with the zoom
+              </label>
+              <div className="gs-grid">
+                <div className="fld">
+                  <label htmlFor="gs-symsize">Fixed size (px)</label>
+                  <input id="gs-symsize" type="number" step="1" value={draft.Symbol_Size_Px}
+                    onChange={set("Symbol_Size_Px")} placeholder="6"
+                    disabled={!!draft.Scale_Symbol} />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-symm">Real size (m)</label>
+                  <input id="gs-symm" type="number" step="0.05" value={draft.Symbol_Size_M}
+                    onChange={set("Symbol_Size_M")} placeholder="0.6"
+                    disabled={!draft.Scale_Symbol} />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-minsym">Never smaller than (px)</label>
+                  <input id="gs-minsym" type="number" step="0.5" value={draft.Min_Symbol_Px}
+                    onChange={set("Min_Symbol_Px")} placeholder="3"
+                    disabled={!draft.Scale_Symbol} />
+                </div>
+                <div className="fld">
+                  <label htmlFor="gs-maxsym">Never larger than (px)</label>
+                  <input id="gs-maxsym" type="number" step="1" value={draft.Max_Symbol_Px}
+                    onChange={set("Max_Symbol_Px")} placeholder="18"
+                    disabled={!draft.Scale_Symbol} />
+                </div>
+              </div>
 
               <p className="panel-label">Width</p>
               <label className="gs-check">

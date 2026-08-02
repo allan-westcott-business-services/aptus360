@@ -3,7 +3,7 @@ import { supabase, json, fail } from "./_supabase.js";
 /* Styles are admin data, so they get their own endpoint rather than
    riding on the canvas one — a separate file per endpoint, as the rest
    of this folder does. */
-const S = "GIS_Style_ID,Style_Name,Layer_Key,Line_Type,Feature_Role,Site,Utility_ID,Organisation_ID,Colour,Dashed,Dash_Pattern,Symbol,Width_Px,Width_M,Scale_Width,Min_Width_Px,Max_Width_Px,Symbol_Size_Px,Min_Scale,Max_Scale,Label_Min_Scale,Marker_Text,Marker_Symbol,Marker_Interval_M,Marker_Size_Px,Marker_Colour,Marker_Rotate,Marker_Offset_Px,Marker_Min_Gap_Px,Sort_Order,Is_Active,Notes";
+const S = "GIS_Style_ID,Style_Name,Layer_Key,Line_Type,Feature_Role,Site,Utility_ID,Organisation_ID,Colour,Dashed,Dash_Pattern,Symbol,Width_Px,Width_M,Scale_Width,Min_Width_Px,Max_Width_Px,Symbol_Size_Px,Symbol_Size_M,Scale_Symbol,Min_Symbol_Px,Max_Symbol_Px,Min_Scale,Max_Scale,Label_Min_Scale,Marker_Text,Marker_Symbol,Marker_Interval_M,Marker_Size_Px,Marker_Colour,Marker_Rotate,Marker_Offset_Px,Marker_Min_Gap_Px,Sort_Order,Is_Active,Notes";
 
 const W = new Set(S.split(",").slice(1));
 /* Empty string means "any" from a select, which is NULL here, not "".

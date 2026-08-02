@@ -4782,6 +4782,7 @@ export default function GISCanvasPage() {
 
     /* Volt drop per leg, on each circuit against its own substation. */
     const cables = lookups?.cableSizes || [];
+    let hasVd = false;
     if (cables.length) {
       const station = src.find((f) => f.Feature_Role === "substation");
       /* The same limits the levels come from — built here rather than
@@ -4809,6 +4810,12 @@ export default function GISCanvasPage() {
         }
         part.limits = limits;
       }
+      /* The panel is driven by this: it decides the width, the four volt
+         drop columns, their cells and the footer. The levels check
+         computed the figures and never set it, so the same information
+         was worked out and then not shown — a narrower table missing the
+         columns that are the point of running it. */
+      hasVd = true;
     }
 
     /* One object for the panel: the legs of every circuit in order, with
@@ -4816,6 +4823,7 @@ export default function GISCanvasPage() {
        the circuit it belongs to. */
     setTrace({
       levels: true,
+      hasVd,
       from: "the substation",
       circuitName: parts.length === 1 ? parts[0].circuitName : `${parts.length} circuits`,
       legs: parts.flatMap((p) => p.legs.map((l) => ({ ...l, circuitName: p.circuitName }))),
@@ -4825,6 +4833,14 @@ export default function GISCanvasPage() {
       limits: parts[0].limits,
       startId: parts[0].startId,
       totalMetres: Math.round(parts.reduce((t, p) => t + (p.totalMetres || 0), 0) * 10) / 10,
+      /* The customer count, which the panel header reads.
+
+         spanTrace returns totalMetres and totalMeters — the length and
+         the number of customers, one letter apart — and this returned
+         only the first, so the header read "undefined meter(s)". Summed
+         across the circuits, because a levels check covers all of them
+         and the header is describing the whole check. */
+      totalMeters: parts.reduce((t, p) => t + (p.totalMeters || 0), 0),
     });
     setScenario(null);
     setTraceAt({ features, lookups });

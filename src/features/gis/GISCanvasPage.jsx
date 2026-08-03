@@ -4649,24 +4649,24 @@ export default function GISCanvasPage() {
           continue;
         }
 
-        /* Along the whole trench, then on to the meter.
+        /* From the main to the meter, the same route the planner
+           builds.
 
-           The planner builds a cable as [foot, seed, meter] — it follows
-           the dig and then makes the short hop to the meter position. An
-           earlier version of this dropped the trench's far end and ran
-           from the foot straight to the meter, which cut the corner and
-           drew a cable across ground nobody had dug.
+           Both used to run the whole dig and then hop to the meter,
+           which put a bend at the seed. The seed marks which plot this
+           is; it is not a point the cable passes through. Replacing one
+           and not the other would have a re-run draw a different shape
+           from the original.
 
-           The meter point is only added when it is actually somewhere
-           else; a meter sitting on the trench end would otherwise leave a
-           zero-length segment. */
+           Where there is no meter yet the dig's own end stands in, so a
+           service drawn before its meter still has a cable to show. */
         const meterAt = existingMeter(seed, u);
-        const last = trench.Geometry[trench.Geometry.length - 1];
-        const apart = meterAt
-          && Math.hypot(meterAt[0] - last[0], meterAt[1] - last[1]) > CONNECT_M;
+        const foot = trench.Geometry[0];
+        const end = meterAt ?? trench.Geometry[trench.Geometry.length - 1];
+        const apart = Math.hypot(end[0] - foot[0], end[1] - foot[1]) > CONNECT_M;
         refill.push({
           seed, utility: u,
-          geometry: apart ? [...trench.Geometry, meterAt] : [...trench.Geometry],
+          geometry: apart ? [foot, end] : [...trench.Geometry],
         });
       }
     }

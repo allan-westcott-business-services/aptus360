@@ -125,17 +125,25 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
       : { utility, point: slots[i], exists: false };
   });
 
-  /* The cable runs the trench and then on to its own meter — the one
-     that is actually there, not the slot it would have taken. Routing to
-     an empty slot beside a real meter would leave every service ending
-     just short of the thing it feeds.
+  /* The cable runs from the main to its own meter, and nowhere else.
+
+     It used to go by way of the seed — [foot, seed, meter] — which put a
+     bend in every service at a point that is not a physical thing. A
+     plot seed marks which plot this is; it is not a position the cable
+     passes through, and routing through it made every service longer
+     than it is and put a vertex in the middle of it that nothing
+     corresponds to.
+
+     The meter is the one that is actually there, not the slot it would
+     have taken. Routing to an empty slot beside a real meter would leave
+     every service ending just short of the thing it feeds.
 
      The end meeting the main is the junction and never grows a lead:
      that was the subtle bit in the original, and getting it wrong puts a
      spur of cable through the tee and out the other side. */
   const cables = meters.map((m) => ({
     utility: m.utility,
-    geometry: [best.foot, seedPt, m.point],
+    geometry: [best.foot, m.point],
   }));
 
   return { seed, mains: best.trench, foot: best.foot, distance: best.d, trench, meters, cables };

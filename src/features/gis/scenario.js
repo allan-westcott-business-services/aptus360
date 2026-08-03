@@ -169,6 +169,18 @@ export function suggestCableChanges({
   const legOfNode = new Map(
     chain.map((sn) => [sn.index, legOf(trace.model, trace.spanNodes, sn)]),
   );
+
+  /* The origin node stands on the substation, so the leg into it is
+     nothing at all — no cable, no length, nothing to change. Suggesting
+     "the substation to A0 becomes 300" asks for a cable that does not
+     exist, and listing it in a cascade puts a row on screen that cannot
+     be acted on.
+
+     Judged on length rather than on being the origin, because any leg of
+     no length is the same case: two nodes in one place have no cable
+     between them. */
+  const REAL_LEG_M = 0.05;
+  const hasCable = (idx) => (legOfNode.get(idx)?.lengthM ?? 0) > REAL_LEG_M;
   const lengthOf = new Map(
     [...legOfNode].map(([i, l]) => [i, l.lengthM]),
   );
@@ -238,6 +250,7 @@ export function suggestCableChanges({
      has to follow. Costing only the leg that was chosen would make the
      cheapest suggestion the one with the longest tail behind it. */
   const changesFor = (index, cable) => [...cascade(index, cable.Cable_Size_ID)]
+    .filter(([idx]) => hasCable(idx))
     /* Source outward, so the list reads the way the cable is laid. */
     .sort((a, b) => (upstreamOf(a[0]).length - upstreamOf(b[0]).length))
     .map(([idx]) => {
@@ -255,6 +268,7 @@ export function suggestCableChanges({
     });
 
   const costFor = (index, cable) => [...cascade(index, cable.Cable_Size_ID)]
+    .filter(([idx]) => hasCable(idx))
     .reduce((t, [idx]) => t + changeCost(
       lengthOf.get(idx) ?? legOf(trace.model, trace.spanNodes, byIndex.get(idx)).lengthM ?? 0,
       cable,
@@ -263,6 +277,8 @@ export function suggestCableChanges({
   /* ── One change ── */
   const single = [];
   for (const sn of chain) {
+    /* Nothing to upsize where there is no cable. */
+    if (!hasCable(sn.index)) continue;
     const nowAt = rank.get(String(sn.cableSizeId));
     /* Only larger. Offering a smaller cable on a node that already
        fails is not a suggestion. */
@@ -294,6 +310,7 @@ export function suggestCableChanges({
     for (let b = a + 1; b < chain.length; b++) {
       const sa = chain[a];
       const sb = chain[b];
+      if (!hasCable(sa.index) || !hasCable(sb.index)) continue;
       const fa = rank.get(String(sa.cableSizeId));
       const fb = rank.get(String(sb.cableSizeId));
       for (let i = (fa == null ? 0 : fa + 1); i < ladder.length; i++) {
@@ -319,6 +336,7 @@ export function suggestCableChanges({
 
             pairs.push({
               changes: [...merged]
+                .filter(([idx]) => hasCable(idx))
                 .sort((x, y) => upstreamOf(x[0]).length - upstreamOf(y[0]).length)
                 .map(([idx, size]) => {
                   const sn = byIndex.get(idx);
@@ -333,7 +351,7 @@ export function suggestCableChanges({
                     lengthM: Math.round((lengthOf.get(idx) || 0) * 10) / 10,
                   };
                 }),
-              cost: [...merged].reduce((t, [idx, size]) =>
+              cost: [...merged].filter(([idx]) => hasCable(idx)).reduce((t, [idx, size]) =>
                 t + changeCost(lengthOf.get(idx) || 0, ctx.cableById(size)), 0),
             });
           break;

@@ -830,9 +830,25 @@ export default function GISCanvasPage() {
      unstyled project is unchanged. */
   const seedStyle = useCallback((f, on) => {
     const ps = styleFor(f, { symbol: "house", symbolPx: 8 });
+    /* The bedroom count from the plot, not from the seed.
+
+       A seed carries a copy taken when it was placed, and a copy does
+       not follow the plot it copied. Change a house type on the Plots
+       tab and every seed kept the colour of the type it used to be —
+       the drawing disagreeing with the schedule, with nothing to say
+       which was right.
+
+       The stored copy is still the fallback, for a seed whose plot has
+       gone or has not loaded yet: the wrong colour is better than no
+       colour, and a seed that vanished into the background would be
+       worse than one that is out of date. */
+    const plot = f.Plot_ID != null
+      ? (plotList || []).find((p) => Number(p.plot_id) === Number(f.Plot_ID))
+      : null;
+    const beds = plot?.bedrooms ?? f.Attributes?.Bedrooms;
     return { ...ps, symbolPx: (on ? 1.25 : 1) * ps.symbolPx,
-      colour: bedColour(f.Attributes?.Bedrooms).bg };
-  }, [styleFor]);
+      colour: bedColour(beds).bg };
+  }, [styleFor, plotList]);
 
   /* Everything worth snapping to, recalculated only when the drawing
      changes rather than on every mouse move. */

@@ -51,6 +51,50 @@ export function nearestMains(seedPt, trenches = []) {
   return best;
 }
 
+/* A service leaves the main at a right angle.
+
+   It is how services are dug and how they are drawn: square off the
+   main, then run parallel to it if the meter is not directly opposite.
+   A diagonal across the verge is neither, and on a drawing it reads as a
+   mistake even where the length is right.
+
+   Given the segment of the main the service tees into, this returns the
+   route as [foot, corner, end] — out at ninety degrees, then along. The
+   corner is dropped when the meter is already square to the main, so a
+   service that needs no turn does not gain a vertex that sits on top of
+   another one.
+
+   The length changes: an L is longer than the diagonal it replaces. That
+   is the point — the diagonal was never the length that would be dug. */
+export function rightAngleRoute(foot, end, segA, segB) {
+  if (!foot || !end) return [foot, end].filter(Boolean);
+
+  const dx = (segB?.[0] ?? 0) - (segA?.[0] ?? 0);
+  const dy = (segB?.[1] ?? 0) - (segA?.[1] ?? 0);
+  const len = Math.hypot(dx, dy);
+  /* No direction to work from — a main of zero length, or none given.
+     Straight there beats a corner computed from nothing. */
+  if (!len) return [foot, end];
+
+  const ux = dx / len;
+  const uy = dy / len;          // along the main
+  const nx = -uy;
+  const ny = ux;                // square to it
+
+  const vx = end[0] - foot[0];
+  const vy = end[1] - foot[1];
+  const along = vx * ux + vy * uy;
+  const perp = vx * nx + vy * ny;
+
+  /* Already square: the meter is straight out from the foot. */
+  if (Math.abs(along) < 0.01) return [foot, end];
+  /* Straight along the main with no offset — no corner to turn. */
+  if (Math.abs(perp) < 0.01) return [foot, end];
+
+  const corner = [foot[0] + nx * perp, foot[1] + ny * perp];
+  return [foot, corner, end];
+}
+
 /* Meter positions: a tight column just beyond the seed, in line with the
    service trench rather than fanned sideways.
 
@@ -140,9 +184,16 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      The end meeting the main is the junction and never grows a lead:
      that was the subtle bit in the original, and getting it wrong puts a
      spur of cable through the tee and out the other side. */
+  /* The segment of the main the service tees into, so the right angle is
+     measured against the run it actually leaves rather than against the
+     polyline as a whole. */
+  const mg = best.trench.Geometry || [];
+  const segA = mg[best.index - 1];
+  const segB = mg[best.index];
+
   const cables = meters.map((m) => ({
     utility: m.utility,
-    geometry: [best.foot, m.point],
+    geometry: rightAngleRoute(best.foot, m.point, segA, segB),
   }));
 
   /* The dig runs to the meters, not to the seed.
@@ -165,7 +216,8 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
       Math.hypot(q[0] - best.foot[0], q[1] - best.foot[1])
       > Math.hypot(far[0] - best.foot[0], far[1] - best.foot[1]) ? q : far), ends[0])
     : seedPt;
-  const trench = [best.foot, furthest];
+  /* The same route the cables take, so cable and dig never diverge. */
+  const trench = rightAngleRoute(best.foot, furthest, segA, segB);
 
   return { seed, mains: best.trench, foot: best.foot, distance: best.d, trench, meters, cables };
 }

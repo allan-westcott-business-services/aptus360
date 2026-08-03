@@ -51,50 +51,6 @@ export function nearestMains(seedPt, trenches = []) {
   return best;
 }
 
-/* A service leaves the main at a right angle.
-
-   It is how services are dug and how they are drawn: square off the
-   main, then run parallel to it if the meter is not directly opposite.
-   A diagonal across the verge is neither, and on a drawing it reads as a
-   mistake even where the length is right.
-
-   Given the segment of the main the service tees into, this returns the
-   route as [foot, corner, end] — out at ninety degrees, then along. The
-   corner is dropped when the meter is already square to the main, so a
-   service that needs no turn does not gain a vertex that sits on top of
-   another one.
-
-   The length changes: an L is longer than the diagonal it replaces. That
-   is the point — the diagonal was never the length that would be dug. */
-export function rightAngleRoute(foot, end, segA, segB) {
-  if (!foot || !end) return [foot, end].filter(Boolean);
-
-  const dx = (segB?.[0] ?? 0) - (segA?.[0] ?? 0);
-  const dy = (segB?.[1] ?? 0) - (segA?.[1] ?? 0);
-  const len = Math.hypot(dx, dy);
-  /* No direction to work from — a main of zero length, or none given.
-     Straight there beats a corner computed from nothing. */
-  if (!len) return [foot, end];
-
-  const ux = dx / len;
-  const uy = dy / len;          // along the main
-  const nx = -uy;
-  const ny = ux;                // square to it
-
-  const vx = end[0] - foot[0];
-  const vy = end[1] - foot[1];
-  const along = vx * ux + vy * uy;
-  const perp = vx * nx + vy * ny;
-
-  /* Already square: the meter is straight out from the foot. */
-  if (Math.abs(along) < 0.01) return [foot, end];
-  /* Straight along the main with no offset — no corner to turn. */
-  if (Math.abs(perp) < 0.01) return [foot, end];
-
-  const corner = [foot[0] + nx * perp, foot[1] + ny * perp];
-  return [foot, corner, end];
-}
-
 /* Meter positions: a tight column just beyond the seed, in line with the
    service trench rather than fanned sideways.
 
@@ -184,42 +140,45 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      The end meeting the main is the junction and never grows a lead:
      that was the subtle bit in the original, and getting it wrong puts a
      spur of cable through the tee and out the other side. */
-  /* The segment of the main the service tees into, so the right angle is
-     measured against the run it actually leaves rather than against the
-     polyline as a whole. */
-  const mg = best.trench.Geometry || [];
-  const segA = mg[best.index - 1];
-  const segB = mg[best.index];
+  /* Where the service actually leaves the main.
 
-  const cables = meters.map((m) => ({
-    utility: m.utility,
-    geometry: rightAngleRoute(best.foot, m.point, segA, segB),
-  }));
+     Measured from the meter, not from the seed. The seed decided the
+     foot while the meters were being placed — it has to, since there is
+     nowhere else to measure from before they exist — but once they are
+     placed it is the meter that the service runs to, and the shortest
+     line to the main is the one square to it from there.
 
-  /* The dig runs to the meters, not to the seed.
+     Taking the seed's foot and then drawing to the meter was what put an
+     L in every service: out to the seed's foot, then a turn to reach a
+     meter the foot was never chosen for. The nearest point on a segment
+     is the perpendicular foot, so measuring from the meter gives both
+     the shortest route and the right angle at once, with no corner to
+     construct.
 
-     It used to stop at the seed, which put the last stretch of every
-     cable outside the trench carrying it — and on a plot whose meters
-     had been moved, well outside it.
-
-     To the furthest meter, because one trench serves every utility on
-     the plot. The slots are spaced along the line out from the foot, so
-     a dig reaching the last one passes through all of them; stopping at
-     the nearest would leave the others' cable in open ground.
-
-     Falls back to the seed where there are no meters at all — a service
-     drawn ahead of its meters still needs somewhere to go, and the seed
-     is the only position there is. */
+     Falls back to the seed's foot where a plot has no meters — there is
+     nothing else to measure from. */
   const ends = meters.map((m) => m.point).filter(Boolean);
   const furthest = ends.length
     ? ends.reduce((far, q) => (
       Math.hypot(q[0] - best.foot[0], q[1] - best.foot[1])
       > Math.hypot(far[0] - best.foot[0], far[1] - best.foot[1]) ? q : far), ends[0])
     : seedPt;
-  /* The same route the cables take, so cable and dig never diverge. */
-  const trench = rightAngleRoute(best.foot, furthest, segA, segB);
 
-  return { seed, mains: best.trench, foot: best.foot, distance: best.d, trench, meters, cables };
+  const fromMeter = ends.length ? nearestMains(furthest, trenches) : null;
+  const tee = fromMeter || best;
+
+  /* One foot for the whole plot. Every cable shares the dig, so a
+     cable measured to its own foot would leave the trench and come back
+     — the furthest meter decides where the service tees in and the rest
+     follow it. */
+  const cables = meters.map((m) => ({
+    utility: m.utility,
+    geometry: [tee.foot, m.point],
+  }));
+
+  const trench = [tee.foot, furthest];
+
+  return { seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables };
 }
 
 export function planAutoService(seeds = [], trenches = [], utilitiesFor = () => [], opts = {}) {

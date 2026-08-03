@@ -45,6 +45,7 @@ import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
+import { byConnectivity } from "./traceOrder.js";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
 } from "./developer.js";
@@ -149,6 +150,11 @@ export default function GISCanvasPage() {
      nodes to look at while the panel is out of the way. So closing now
      puts the panel away and leaves the findings on the drawing. */
   const [traceOpen, setTraceOpen] = useState(false);
+  /* How the table is ordered. By label reads well while the labels
+     number in sequence; by connectivity follows the cable, which is how
+     the site is walked and the only order that reads at all once most
+     rows are called "Service joint — Plot 21". */
+  const [traceOrder, setTraceOrder] = useState("label");
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -4737,6 +4743,7 @@ export default function GISCanvasPage() {
 
   const tracePlan = useMemo(() => {
     if (!trace?.legs) return [];
+    if (traceOrder === "chain") return byConnectivity(trace.legs, trace.from);
     return trace.legs
       .map((leg, i) => ({ leg, i }))
       .sort((a, b) => {
@@ -4749,7 +4756,11 @@ export default function GISCanvasPage() {
         if (tl !== ul) return tl < ul ? -1 : 1;
         return tn - un;
       });
-  }, [trace]);
+    /* traceOrder is in here because the body reads it. A memo that
+       reads a value and does not depend on it recomputes only when
+       something else changes — which on the bill of materials meant the
+       cards followed a filter and the table did not. */
+  }, [trace, traceOrder]);
 
   function exportTrace() {
     if (!trace) return;
@@ -4942,6 +4953,11 @@ export default function GISCanvasPage() {
     });
     setScenario(null);
     setTraceOpen(true);
+    /* The advanced check is mostly joints named for the plots they feed,
+       and those do not sort into any useful order by name — so it opens
+       along the cable. The ordinary check has numbered nodes and opens by
+       node, as it always has. Either can be switched once open. */
+    setTraceOrder(stopAt === "junctions" ? "chain" : "label");
     /* The drawing these figures came from, which is `src` and not
        necessarily `features`.
 
@@ -6410,6 +6426,21 @@ export default function GISCanvasPage() {
                       Out of date &mdash; re-run
                     </button>
                   )}
+                  {/* Ordered by label, or along the cable.
+
+                      Not a preference to be set once and forgotten:
+                      which reads better depends on the check. The
+                      ordinary levels check has numbered nodes and sorts
+                      well by label; the advanced one is mostly joints
+                      named for plots, where only the cable order makes
+                      sense. */}
+                  <button className="btn sm tr-ord"
+                    title={traceOrder === "chain"
+                      ? "Ordered along the cable \u2014 switch to node order"
+                      : "Ordered by node \u2014 switch to follow the cable"}
+                    onClick={() => setTraceOrder(traceOrder === "chain" ? "label" : "chain")}>
+                    {traceOrder === "chain" ? "Along the cable" : "By node"}
+                  </button>
                   {traceOver.size > 0 && (
                     <button className="btn sm tr-fix"
                       title="Work out what cable changes would bring the ringed nodes inside their limits"
@@ -6733,6 +6764,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-radius: 6px; cursor: pointer; font: 700 11px inherit; padding: 4px 10px;
   margin-right: 8px; }
 .tr-stale:hover { border-color: #d97706; }
+.tr-ord { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-right: 8px;
+  color: var(--accent); }
+.tr-ord:hover { border-color: var(--accent); }
 .tr-fix { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 6px;
   cursor: pointer; font: 700 11px inherit; padding: 4px 10px; margin-right: 8px; }
 .tr-fix:hover { border-color: #dc2626; }

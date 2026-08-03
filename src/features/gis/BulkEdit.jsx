@@ -13,18 +13,38 @@ import { classOf, membersOf, fieldsFor, planBulkEdit, CLEAR } from "./bulkEdit.j
    across the rest the moment anything else was saved. */
 
 export default function BulkEdit({
-  feature, features, lineTypes, layers, surfaceTypes, cables, cableTypes,
-  busy, onApply, onClose,
+  feature, features, selected = [], lineTypes, layers, surfaceTypes,
+  cables, cableTypes, busy, onApply, onClose,
 }) {
   const drag = useDragHandle();
   const [draft, setDraft] = useState({});
 
   const cls = useMemo(() => classOf(feature, { lineTypes, layers }),
     [feature, lineTypes, layers]);
-  const members = useMemo(() => membersOf(features, cls), [features, cls]);
+  const everyone = useMemo(() => membersOf(features, cls), [features, cls]);
+
+  /* The ones selected that are of this class.
+
+     A selection can span classes — a trench and a cable dragged over
+     together — and the fields on offer only make sense for one of them.
+     The odd ones out are left alone and said out loud, rather than
+     quietly given a surface they cannot have. */
+  const chosen = useMemo(
+    () => (selected || []).filter((f) => membersOf([f], cls).length),
+    [selected, cls]);
+  const strays = (selected || []).length - chosen.length;
+
+  /* Which of the two the edit applies to.
+
+     Starts on the selection when more than one thing is selected — that
+     is a deliberate act and the likeliest intent. One selected feature
+     is more often a way of saying "this kind", so that starts on the
+     class. */
+  const [scope, setScope] = useState((selected || []).length > 1 ? "selected" : "class");
+  const members = scope === "selected" && chosen.length ? chosen : everyone;
   const fields = useMemo(() => fieldsFor(cls, { lineTypes }), [cls, lineTypes]);
-  const plan = useMemo(() => planBulkEdit(features, cls, draft),
-    [features, cls, draft]);
+  const plan = useMemo(() => planBulkEdit(members, cls, draft),
+    [members, cls, draft]);
 
   const set = (k) => (v) => setDraft((d) => ({ ...d, [k]: v }));
 
@@ -49,13 +69,33 @@ export default function BulkEdit({
           <div>
             <h3>Edit all {cls?.label?.toLowerCase()}</h3>
             <p className="be-sub">
-              {members.length} feature{members.length === 1 ? "" : "s"} on this drawing
+              {members.length} feature{members.length === 1 ? "" : "s"}
+              {scope === "selected" ? " selected" : " on this drawing"}
             </p>
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
 
         <div className="be-body">
+          {/* Which set, said before anything is filled in. */}
+          {chosen.length > 0 && everyone.length !== chosen.length && (
+            <div className="be-scope">
+              <button className={scope === "selected" ? "on" : ""}
+                onClick={() => setScope("selected")}>
+                The {chosen.length} selected
+              </button>
+              <button className={scope === "class" ? "on" : ""}
+                onClick={() => setScope("class")}>
+                All {everyone.length} {cls?.label?.toLowerCase()}
+              </button>
+            </div>
+          )}
+          {strays > 0 && (
+            <p className="hint be-stray">
+              {strays} other selected feature{strays === 1 ? " is" : "s are"} not
+              {" "}{cls?.label?.toLowerCase()} and will be left alone.
+            </p>
+          )}
           {!fields.length ? (
             <p className="be-none">
               There is nothing on {cls?.label?.toLowerCase()} that can be set in bulk.
@@ -176,6 +216,12 @@ const CSS = `
 .be-note { margin: 4px 0 0; font-size: 10.5px; }
 .be-none { color: var(--muted); font-size: 12.5px; margin: 20px 0; }
 .be-now { float: right; font-weight: 500; font-size: 10.5px; color: var(--muted); }
+.be-scope { display: flex; gap: 0; margin: 0 0 12px; border: 1px solid var(--border);
+  border-radius: 7px; overflow: hidden; }
+.be-scope button { flex: 1; background: var(--white); border: none; cursor: pointer;
+  font: 600 11px inherit; padding: 6px 8px; color: var(--muted); }
+.be-scope button.on { background: var(--accent); color: #fff; }
+.be-stray { margin: -6px 0 12px; color: #b45309; }
 .be-foot { display: flex; align-items: center; gap: 9px; padding: 12px 18px;
   border-top: 1px solid var(--border); }
 .be-count { font-size: 11.5px; color: var(--muted); margin-right: auto; }

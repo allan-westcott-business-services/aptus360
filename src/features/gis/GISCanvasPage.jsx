@@ -5853,6 +5853,18 @@ export default function GISCanvasPage() {
                       hint="Rings the meters by proposed group. Nothing is created until you accept."
                       disabled={!!busy || !projectId}
                       onClick={suggestGroups} />
+                    {/* On the selection rather than on a right-click.
+
+                        Right-clicking a feature selects it, so reaching
+                        this from the context menu threw away whatever
+                        had been selected first — you could never bulk
+                        edit from a selection of more than one. */}
+                    <MenuItem label="Bulk Edit\u2026"
+                      hint={selectedFeatures.length
+                        ? `From the ${selectedFeatures.length} selected`
+                        : "Select something first"}
+                      disabled={!!busy || !selectedFeatures.length}
+                      onClick={() => setBulkEdit(selectedFeatures[0])} />
                     <MenuItem label="Circuit Report"
                       hint="Meters by feeder, with distances from the substation"
                       disabled={!features.some((f) => f.Feature_Role === "substation")}
@@ -6118,6 +6130,7 @@ export default function GISCanvasPage() {
         <BulkEdit
           feature={bulkEdit}
           features={features}
+          selected={selectedFeatures}
           lineTypes={lineTypes}
           layers={layers}
           surfaceTypes={surfaceTypes}
@@ -6528,18 +6541,6 @@ export default function GISCanvasPage() {
                 {/* Hiding from here saves hunting for the right entry in
                     the Layers menu when the thing you want out of the way
                     is under the cursor. */}
-                {/* Editing the whole class from one of its members.
-
-                    "This kind" is easiest to say by pointing at one, and
-                    the alternative is a list of every class on the
-                    drawing to pick from. */}
-                <button className="gc-item" disabled={!!busy} onClick={() => {
-                  setBulkEdit(ctx.feature);
-                  setCtx(null);
-                }}>
-                  Edit all like this&hellip;
-                </button>
-                <div className="gc-sep" />
                 <button className="gc-item" onClick={() => {
                   toggleClass(ctx.feature.Layer_Key);
                   setCtx(null);

@@ -49,7 +49,6 @@ import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
-import BulkEdit from "./BulkEdit.jsx";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -188,7 +187,6 @@ export default function GISCanvasPage() {
      runs there are no circuits — the drawing is a mains trench, plot
      seeds and meters, and that is all. */
   const [groupPlan, setGroupPlan] = useState(null);
-  const [bulkEdit, setBulkEdit] = useState(null);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -3594,38 +3592,6 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
-  /* Applying a bulk edit.
-
-     Undoable as one step. Changing the surface on a hundred trenches is
-     one decision, and putting it back should be one too rather than a
-     hundred. */
-  async function applyBulkEdit(plan) {
-    if (!plan?.rows?.length) return;
-    setBusy("bulkedit");
-    try {
-      const before = features.filter((f) =>
-        plan.rows.some((r) => Number(r.Feature_ID) === Number(f.Feature_ID)));
-
-      for (let i = 0; i < plan.rows.length; i += 100) {
-        await bulkUpdateFeatures(projectId, plan.rows.slice(i, i + 100));
-      }
-      setFeatures((fs) => fs.map((f) => {
-        const r = plan.rows.find((x) => Number(x.Feature_ID) === Number(f.Feature_ID));
-        return r ? { ...f, Attributes: r.Attributes } : f;
-      }));
-      await recordAction(
-        `Edit ${plan.rows.length} \u00d7 ${Object.keys(plan.patch).join(", ")}`,
-        before,
-        before.map((f) => ({ ...f, Attributes: { ...f.Attributes, ...plan.patch } })),
-      );
-      setBulkEdit(null);
-      setStatus(`${plan.rows.length} feature(s) updated`);
-      setTimeout(() => setStatus(""), 8000);
-      setError("");
-    } catch (e) { setError(e.message); await load(projectId); }
-    finally { setBusy(""); }
-  }
-
   /* Renaming a circuit.
 
      The name is not held in one place — it is stamped on every meter,
@@ -5297,10 +5263,23 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
-  async function applyBulk(updates) {
-    await bulkUpdateFeatures(projectId, updates);
+  async function applyBulk(updates, plotChange) {
+    if (updates.length) await bulkUpdateFeatures(projectId, updates);
+
+    /* The house type lives on the plot, not on the seed that marks it.
+
+       Written separately because it is a different table, and the load
+       is looked up from bedrooms and heat source together — so changing
+       the type moves the kVA on every plot touched, and anything already
+       worked out from it is stale until re-run. */
+    if (plotChange?.plotIds?.length) {
+      const { plotIds, ...changes } = plotChange;
+      await bulkUpdatePlots(projectId, plotIds, changes);
+    }
+
     await load(projectId);
-    setStatus(`${updates.length} feature${updates.length === 1 ? "" : "s"} updated`);
+    const n = plotChange?.plotIds?.length || updates.length;
+    setStatus(`${n} ${plotChange?.plotIds?.length ? "plot" : "feature"}${n === 1 ? "" : "s"} updated`);
     setTimeout(() => setStatus(""), 5000);
   }
 
@@ -5853,18 +5832,6 @@ export default function GISCanvasPage() {
                       hint="Rings the meters by proposed group. Nothing is created until you accept."
                       disabled={!!busy || !projectId}
                       onClick={suggestGroups} />
-                    {/* On the selection rather than on a right-click.
-
-                        Right-clicking a feature selects it, so reaching
-                        this from the context menu threw away whatever
-                        had been selected first — you could never bulk
-                        edit from a selection of more than one. */}
-                    <MenuItem label="Bulk Edit\u2026"
-                      hint={selectedFeatures.length
-                        ? `From the ${selectedFeatures.length} selected`
-                        : "Select something first"}
-                      disabled={!!busy || !selectedFeatures.length}
-                      onClick={() => setBulkEdit(selectedFeatures[0])} />
                     <MenuItem label="Circuit Report"
                       hint="Meters by feeder, with distances from the substation"
                       disabled={!features.some((f) => f.Feature_Role === "substation")}
@@ -6124,24 +6091,6 @@ export default function GISCanvasPage() {
             ?.Attributes?.Output_V) || 400} />
       )}
 
-      {/* Outside the canvas wrapper, like every other modal — that
-          wrapper is overflow: hidden and would clip it. */}
-      {bulkEdit && (
-        <BulkEdit
-          feature={bulkEdit}
-          features={features}
-          selected={selectedFeatures}
-          lineTypes={lineTypes}
-          layers={layers}
-          surfaceTypes={surfaceTypes}
-          cables={lookups?.cableSizes || []}
-          cableTypes={lookups?.cableTypes || []}
-          busy={busy === "bulkedit"}
-          onApply={applyBulkEdit}
-          onClose={() => setBulkEdit(null)}
-        />
-      )}
-
       {bulkDelOpen && projectId && (
         <BulkDelete
           features={features}
@@ -6164,6 +6113,8 @@ export default function GISCanvasPage() {
       {bulkOpen && selectedFeatures.length > 1 && (
         <BulkEditor
           features={selectedFeatures}
+          configs={lookups?.propertyConfigs || []}
+          propertyTypes={lookups?.propertyTypes || []}
           lineTypes={lineTypes}
           surfaceTypes={surfaceTypes}
           layers={layers}

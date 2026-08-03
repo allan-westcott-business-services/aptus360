@@ -13,17 +13,35 @@ import { lineLength, isTrenchType } from "./snapping.js";
    Only fields that mean the same thing across the selection are here.
    Way and circuit are not: they're assigned by tracing and are meant to
    differ per run. */
-export default function BulkEditor({ features, lineTypes, surfaceTypes = [], layers, onApply, onClose }) {
+export default function BulkEditor({
+  features, lineTypes, surfaceTypes = [], layers,
+  configs = [], propertyTypes = [], onApply, onClose,
+}) {
+  const typeName = (id) =>
+    propertyTypes.find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
   const [label, setLabel] = useState("");
   const [lineType, setLineType] = useState("");
   const [size, setSize] = useState("");
   const [depth, setDepth] = useState("");
   const [surface, setSurface] = useState("");
   const [clearSize, setClearSize] = useState(false);
+  const [config, setConfig] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
   const lines = features.filter((f) => f.Feature_Type === "line");
+
+  /* Plot seeds carry a house type, and it is the thing most often
+     changed across a run of them — a phase respecified from four beds to
+     three is one decision and forty plots.
+
+     It does not live on the feature. The seed marks where the plot is;
+     the house type is on the plot record, and changing it moves the
+     load, the bedroom count and the colour with it. So this is written
+     through the plot rather than through the feature, and the two are
+     kept apart below rather than pretending one write does both. */
+  const seeds = features.filter((f) => f.Feature_Role === "plot" && f.Plot_ID != null);
+  const allSeeds = seeds.length === features.length && seeds.length > 0;
   const allLines = lines.length === features.length && lines.length > 0;
   /* The selection is already one class to get here, so the first line
      settles it for all of them. */
@@ -35,6 +53,7 @@ export default function BulkEditor({ features, lineTypes, surfaceTypes = [], lay
   const layer = layers.find((l) => l.Layer_Key === first?.Layer_Key);
 
   const changes = [
+    allSeeds && config && "house type",
     label.trim() && "name",
     lineType && "type",
     !allTrenches && (size.trim() || clearSize) && "size",
@@ -70,7 +89,13 @@ export default function BulkEditor({ features, lineTypes, surfaceTypes = [], lay
         }
         return u;
       });
-      await onApply(updates);
+      /* Two writes, because they go to two places: the features carry
+         the drawing, the plots carry the house type. Handed over
+         together so the caller can do both in one undo step rather than
+         leaving a drawing half changed. */
+      await onApply(updates, allSeeds && config
+        ? { plotIds: seeds.map((f) => f.Plot_ID), Property_Config_ID: config }
+        : null);
       onClose();
     } catch (e) {
       setError(e.message);
@@ -165,7 +190,35 @@ export default function BulkEditor({ features, lineTypes, surfaceTypes = [], lay
             </>
           )}
 
-          {!allLines && (
+          {allSeeds && (
+            <div className="fld">
+              <label htmlFor="be-config">House type</label>
+              <select id="be-config" value={config}
+                onChange={(e) => setConfig(e.target.value)}>
+                <option value="">Leave each as it is</option>
+                {/* Labelled the way the single-plot editor labels them,
+                    so the same house type reads the same in both. There
+                    is no Description column on Property_Config — an
+                    earlier version of this used one and every option
+                    would have read as just its code. */}
+                {configs.map((c) => (
+                  <option key={c.Property_Config_ID} value={c.Property_Config_ID}>
+                    {c.Code} &mdash; {c.Bedrooms} Bed {typeName(c.Property_Type_ID)}
+                  </option>
+                ))}
+              </select>
+              {/* Said before it is done: the house type is not only a
+                  label. The load comes from bedrooms and heat source
+                  together, so changing the type moves the kVA on every
+                  plot and with it anything already worked out from it. */}
+              <p className="fe-tip">
+                Applied to all {seeds.length}. This changes the connected load,
+                so any levels check will need re-running.
+              </p>
+            </div>
+          )}
+
+          {!allLines && !allSeeds && (
             <p className="fe-tip">
               Mixed or non-line features &mdash; only the name can be set in bulk.
             </p>

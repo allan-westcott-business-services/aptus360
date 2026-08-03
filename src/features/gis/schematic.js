@@ -187,3 +187,5 @@ export function edgeFigures(leg) {
     ohms: leg.vd?.ohms != null ? Math.round(Number(leg.vd.ohms) * 10000) / 10000 : null,
   };
 }
+
+/* Touched 2026-08-03 10:22 UTC to force a rebuild. */

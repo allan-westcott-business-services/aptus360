@@ -147,3 +147,5 @@ const CSS = `
 .sch-np { font: 600 10px system-ui, sans-serif; text-anchor: middle; fill: #64748b; }
 .sch-el { font: 400 9.5px system-ui, sans-serif; fill: #475569; }
 `;
+
+/* Touched 2026-08-03 10:22 UTC to force a rebuild. */

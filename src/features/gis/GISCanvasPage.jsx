@@ -49,6 +49,7 @@ import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
+import BulkEdit from "./BulkEdit.jsx";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -187,6 +188,7 @@ export default function GISCanvasPage() {
      runs there are no circuits — the drawing is a mains trench, plot
      seeds and meters, and that is all. */
   const [groupPlan, setGroupPlan] = useState(null);
+  const [bulkEdit, setBulkEdit] = useState(null);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -3592,6 +3594,38 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Applying a bulk edit.
+
+     Undoable as one step. Changing the surface on a hundred trenches is
+     one decision, and putting it back should be one too rather than a
+     hundred. */
+  async function applyBulkEdit(plan) {
+    if (!plan?.rows?.length) return;
+    setBusy("bulkedit");
+    try {
+      const before = features.filter((f) =>
+        plan.rows.some((r) => Number(r.Feature_ID) === Number(f.Feature_ID)));
+
+      for (let i = 0; i < plan.rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, plan.rows.slice(i, i + 100));
+      }
+      setFeatures((fs) => fs.map((f) => {
+        const r = plan.rows.find((x) => Number(x.Feature_ID) === Number(f.Feature_ID));
+        return r ? { ...f, Attributes: r.Attributes } : f;
+      }));
+      await recordAction(
+        `Edit ${plan.rows.length} \u00d7 ${Object.keys(plan.patch).join(", ")}`,
+        before,
+        before.map((f) => ({ ...f, Attributes: { ...f.Attributes, ...plan.patch } })),
+      );
+      setBulkEdit(null);
+      setStatus(`${plan.rows.length} feature(s) updated`);
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); }
+  }
+
   /* Renaming a circuit.
 
      The name is not held in one place — it is stamped on every meter,
@@ -6078,6 +6112,23 @@ export default function GISCanvasPage() {
             ?.Attributes?.Output_V) || 400} />
       )}
 
+      {/* Outside the canvas wrapper, like every other modal — that
+          wrapper is overflow: hidden and would clip it. */}
+      {bulkEdit && (
+        <BulkEdit
+          feature={bulkEdit}
+          features={features}
+          lineTypes={lineTypes}
+          layers={layers}
+          surfaceTypes={surfaceTypes}
+          cables={lookups?.cableSizes || []}
+          cableTypes={lookups?.cableTypes || []}
+          busy={busy === "bulkedit"}
+          onApply={applyBulkEdit}
+          onClose={() => setBulkEdit(null)}
+        />
+      )}
+
       {bulkDelOpen && projectId && (
         <BulkDelete
           features={features}
@@ -6477,6 +6528,18 @@ export default function GISCanvasPage() {
                 {/* Hiding from here saves hunting for the right entry in
                     the Layers menu when the thing you want out of the way
                     is under the cursor. */}
+                {/* Editing the whole class from one of its members.
+
+                    "This kind" is easiest to say by pointing at one, and
+                    the alternative is a list of every class on the
+                    drawing to pick from. */}
+                <button className="gc-item" disabled={!!busy} onClick={() => {
+                  setBulkEdit(ctx.feature);
+                  setCtx(null);
+                }}>
+                  Edit all like this&hellip;
+                </button>
+                <div className="gc-sep" />
                 <button className="gc-item" onClick={() => {
                   toggleClass(ctx.feature.Layer_Key);
                   setCtx(null);

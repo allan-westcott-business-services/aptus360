@@ -15,7 +15,8 @@ close_i = next((i for i in range(open_i + 1, len(lines))
                 if lines[i].strip() == '</div>'
                 and len(lines[i]) - len(lines[i].lstrip()) == indent), len(lines))
 
-MODALS = ["SchematicModal", "BomModal", "BulkDelete", "CircuitReport", "FeatureEditor"]
+MODALS = ["SchematicModal", "BomModal", "BulkDelete", "BulkEdit",
+          "CircuitReport", "FeatureEditor"]
 bad = 0
 for name in MODALS:
     for i, l in enumerate(lines):

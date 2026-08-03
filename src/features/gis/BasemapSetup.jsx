@@ -66,7 +66,24 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
       try {
         const pages = await pdfPageCount(file);
         if (pages > 1) { setPendingPdf({ file, pages }); setPdfPage(1); return; }
-      } catch { /* fall through and let the render report the problem */ }
+      } catch (e) {
+        /* Logged, not swallowed.
+
+           This used to discard the error entirely and carry on, on the
+           reasoning that the next step would report whatever was wrong.
+           It does report something — but the original error, with the
+           stack saying which library threw and where, was gone, and the
+           console was empty while the banner showed a message nobody
+           could act on.
+
+           Counting the pages is also the first thing that touches the
+           PDF library, so it is where a bad file or a bad build shows
+           up first. That is precisely the error worth keeping. */
+        console.error("Reading the PDF page count failed:", e);
+        setError(`Couldn\u2019t read that PDF: ${e?.message ?? e}. `
+          + "The details are in the browser console.");
+        return;
+      }
     }
     await ingest(file, 1);
   }
@@ -96,6 +113,11 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
         : `${file.name} imported at ${Math.round(dims.width)}×${Math.round(dims.height)}px`);
       setTimeout(() => setStatus(""), 4000);
     } catch (e2) {
+      /* The message on screen, the stack in the console. A message
+         alone — "Cannot access 'r' before initialization" — says
+         nothing about which library threw it or where, which is the
+         only part that identifies the fault. */
+      console.error("Attaching the basemap failed:", e2);
       setError(e2.message);
     } finally { setBusy(false); setProgress(0); }
   }

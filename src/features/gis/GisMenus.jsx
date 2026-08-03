@@ -99,9 +99,15 @@ export function MenuLayer({ label, hidden, solo, onHide, onSolo, colour, count }
       <button className={hidden ? "gm-hs on" : "gm-hs"}
         title={hidden ? `Show ${label}` : `Hide ${label}`}
         aria-pressed={hidden} onClick={onHide}>H</button>
-      <button className={solo ? "gm-hs solo on" : "gm-hs solo"}
-        title={solo ? "Show everything again" : `Show only ${label}`}
-        aria-pressed={solo} onClick={onSolo}>S</button>
+      {/* Solo only where there is something to solo against. The
+          background plan has no soloing — hiding everything else to
+          leave a survey on its own is what the Hide buttons already do,
+          and a button that does nothing is worse than no button. */}
+      {onSolo && (
+        <button className={solo ? "gm-hs solo on" : "gm-hs solo"}
+          title={solo ? "Show everything again" : `Show only ${label}`}
+          aria-pressed={solo} onClick={onSolo}>S</button>
+      )}
     </div>
   );
 }

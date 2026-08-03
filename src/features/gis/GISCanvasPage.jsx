@@ -107,6 +107,18 @@ export default function GISCanvasPage() {
   const [basemap, setBasemap] = useState(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [bgImage, setBgImage] = useState(null);
+
+  /* The background plan is a layer like any other.
+
+     It was drawn whenever one was attached, with no way to take it off
+     — and a survey underneath a dense estate is the thing most often in
+     the way when checking whether two runs actually meet.
+
+     Remembered like the other canvas settings, so someone who works
+     with it off does not have to turn it off on every visit. */
+  const [showBasemap, setShowBasemap] = useState(
+    () => recall("gisBasemapOn", true) !== false);
+  useEffect(() => remember("gisBasemapOn", showBasemap), [showBasemap]);
   const [project, setProject] = useState(null);
   const [plotList, setPlotList] = useState([]);
   const [utilities, setUtilities] = useState([]);
@@ -977,7 +989,7 @@ export default function GISCanvasPage() {
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
-    if (basemap?.Metres_Per_Pixel) {
+    if (showBasemap && basemap?.Metres_Per_Pixel) {
       const mpp = Number(basemap.Metres_Per_Pixel);
       const ox = Number(basemap.Origin_X) || 0;
       const oy = Number(basemap.Origin_Y) || 0;
@@ -1638,7 +1650,7 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "alphabetic";
       }
     }
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -5709,6 +5721,18 @@ export default function GISCanvasPage() {
                         onHide={() => toggleClass(l.Layer_Key)}
                         onSolo={() => soloClass(l.Layer_Key)} />
                     ))}
+                    {/* Listed with the layers rather than among the
+                        view settings: it is a thing on the drawing that
+                        can be in the way, which is what the rest of this
+                        list is. Only when one is attached — an entry for
+                        a plan that does not exist is a control that does
+                        nothing. */}
+                    {basemap?.Metres_Per_Pixel && (
+                      <MenuLayer label="Background plan" colour="#94a3b8"
+                        count={1}
+                        hidden={!showBasemap}
+                        onHide={() => setShowBasemap(!showBasemap)} />
+                    )}
                     <MenuLayer label="Span Nodes" colour="#334155"
                       count={classCount["role:spannode"] || 0}
                       hidden={hidden.includes("role:spannode")}
@@ -5798,11 +5822,19 @@ export default function GISCanvasPage() {
                         circuit. Anyone who could not find one was stuck
                         with meters they could not see and no way to say
                         so. */}
+                    {/* The background plan counts as hidden too.
+
+                        It is listed with the layers, so leaving it off
+                        while saying everything is shown is the same
+                        quiet inconsistency as the circuit isolation this
+                        already had to be taught about. */}
                     <MenuItem label="Show Everything"
-                      disabled={!hidden.length && isolatedCircuit == null}
+                      disabled={!hidden.length && isolatedCircuit == null
+                        && (showBasemap || !basemap?.Metres_Per_Pixel)}
                       hint="Unhides every layer and ends any circuit isolation"
                       onClick={() => {
                         setHidden([]); setSolo(null); setIsolatedCircuit(null);
+                        setShowBasemap(true);
                       }} />
                   </Menu>
 
@@ -6472,10 +6504,17 @@ export default function GISCanvasPage() {
               </button>
             )}
 
-            {(hidden.length > 0 || isolatedCircuit != null) && (
+            {(hidden.length > 0 || isolatedCircuit != null
+              || (!showBasemap && basemap?.Metres_Per_Pixel)) && (
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
-                onClick={() => { setHidden([]); setSolo(null); setIsolatedCircuit(null); }}>
+                onClick={() => {
+                  setHidden([]); setSolo(null); setIsolatedCircuit(null);
+                  setShowBasemap(true);
+                }}>
+                {!showBasemap && basemap?.Metres_Per_Pixel && (
+                  <span>Background plan hidden</span>
+                )}
                 {isolatedCircuit != null && (
                   <span>
                     Showing {circuitsFrom(features)

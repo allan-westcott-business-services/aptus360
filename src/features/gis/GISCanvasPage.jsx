@@ -975,11 +975,17 @@ export default function GISCanvasPage() {
         const p = pts[0];
         const isMeter = f.Feature_Role === "meter";
         const isSeed = f.Feature_Role === "plot";
-        // Seeds take the bedroom colour used everywhere else for plots
-        const fill = isSeed ? bedColour(f.Attributes?.Bedrooms).bg : colour;
+        /* Seeds take the bedroom colour used everywhere else for plots.
+
+           From seedStyle, which reads the bedroom count off the plot
+           record. This line used to read f.Attributes.Bedrooms directly —
+           the copy stored on the seed when it was placed — so seedStyle's
+           colour was computed and then thrown away, and changing a house
+           type left every seed the colour of the type it used to be. */
+        const ss = isSeed ? seedStyle(f, on) : null;
+        const fill = isSeed ? ss.colour : colour;
 
         if (isSeed) {
-          const ss = seedStyle(f, on);
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
                 } else {
           /* Symbol and size come from the style, so a DNO that draws
@@ -5973,8 +5979,12 @@ export default function GISCanvasPage() {
                     <button className="gp-item"
                       onClick={() => { setSelected([f.Feature_ID]); setPicker(null); }}>
                       <span className="gp-sw" style={{
+                        /* Through seedStyle, like the canvas — the
+                           swatch beside a plot has to be the colour the
+                           plot is drawn in, and reading the seed's own
+                           stale copy made the two disagree. */
                         background: f.Feature_Role === "plot"
-                          ? bedColour(f.Attributes?.Bedrooms).bg
+                          ? seedStyle(f, false).colour
                           : styleFor(f).colour,
                         borderRadius: f.Feature_Type === "point" ? "50%" : "2px",
                       }} />

@@ -33,13 +33,24 @@ export async function uploadBasemap(projectId, file, onProgress) {
     await delay(400);
     return { url: URL.createObjectURL(file), path: `mock/${file.name}`, isPdf };
   }
-  if (!supabase) throw new Error("Sign in before uploading a plan.");
-
   const ext = (file.name.split(".").pop() || "png").toLowerCase();
   const path = `${projectId}/${Date.now()}.${ext}`;
 
   onProgress && onProgress(20);
+
+  /* Fetched, then checked.
+
+     This used to test `supabase` six lines before declaring it — a
+     temporal dead zone, which throws "Cannot access 'supabase' before
+     initialization" and, once minified, "Cannot access 'r' before
+     initialization". Nothing in a build catches it: it parses, and it is
+     only wrong when the line runs.
+
+     The guard has to come after the fetch in any case. getSupabase is
+     what produces the client, so testing before calling it could only
+     ever have read undefined. */
   const supabase = await getSupabase();
+  if (!supabase) throw new Error("Sign in before uploading a plan.");
   const { error } = await supabase.storage.from("basemaps")
     .upload(path, file, {
       cacheControl: "31536000",

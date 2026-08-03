@@ -46,6 +46,7 @@ import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
+import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
 } from "./developer.js";
@@ -161,6 +162,7 @@ export default function GISCanvasPage() {
      the far end fall outside its limits — and on the advanced check
      eighty intermediate rows stand between the reader and the answer. */
   const [traceEnds, setTraceEnds] = useState(false);
+  const [schematic, setSchematic] = useState(false);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -6101,6 +6103,15 @@ export default function GISCanvasPage() {
                 the same trap as a hidden layer: the drawing looks wrong
                 and gives no way to find out why. This says what they
                 are, brings the figures back, and lets them be cleared. */}
+            {/* Drawn from the whole check, not the filtered table: a
+                schematic with the middle of every run missing is not a
+                schematic. */}
+            {schematic && trace && (
+              <SchematicModal trace={trace} onClose={() => setSchematic(false)}
+                voltageV={Number(features.find((f) => f.Feature_Role === "substation")
+                  ?.Attributes?.Output_V) || 400} />
+            )}
+
             {trace && !traceOpen && (
               <div className="gis-checked">
                 <span>
@@ -6468,6 +6479,14 @@ export default function GISCanvasPage() {
                       well by label; the advanced one is mostly joints
                       named for plots, where only the cable order makes
                       sense. */}
+                  {/* The same figures as a network rather than a list.
+                      Beside Export because it is the other way of taking
+                      the check away with you. */}
+                  <button className="btn sm tr-ord"
+                    title="Draw this check as a schematic"
+                    onClick={() => setSchematic(true)}>
+                    Schematic
+                  </button>
                   <button className="btn sm tr-ord"
                     title={traceEnds
                       ? "Showing where the runs finish \u2014 show every leg"

@@ -73,7 +73,7 @@ export function legVoltDrop({
 
 /* Everything from the substation out to one node, summed span by span. */
 export function cumulativeToNode({
-  model, targetIdx, spanNodes = [], cableById = () => null,
+  model, targetIdx, spanNodes = [], cableById = () => null, partialCableId = null,
   transformer = null, voltageV = 400, settings = {},
 }) {
   const s = { ...VD_DEFAULTS, ...settings };
@@ -134,6 +134,42 @@ export function cumulativeToNode({
       distKva += (meterKva?.[cur]) || 0;
       distCount += (meterCount?.[cur]) || 0;
     }
+  }
+
+  /* The part of a run between the last span node and here.
+
+     A span node is where a length of cable is settled, so asking for a
+     figure part way along one used to return the figure at its start:
+     eleven service joints on one run all reported the same volt drop and
+     the same voltage, which reads as the sum having stalled.
+
+     Charged at the cable the run is made of — the one recorded at the
+     span node this length is heading towards, since that is where Build
+     LV Network writes it. Nothing is charged at a span node itself,
+     where this length is zero, so every figure that was right before is
+     unchanged.
+
+     The cable is passed in rather than looked up: the caller already
+     knows which run this point is on — the leg it is reporting carries
+     it — and a second way of working it out is a second thing to keep
+     in step. With none given, nothing is charged and the answer is
+     exactly what it was before. */
+  if (legLenM > 0.001 && partialCableId != null) {
+    const leg = legVoltDrop({
+      cable: cableById(partialCableId),
+      lengthM: legLenM,
+      distributedKva: distKva,
+      terminalKva: (cumKva?.[targetIdx]) || 0,
+      meterCount: distCount + ((cum?.[targetIdx]) || 0),
+      unbalanced: s.unbalanced,
+      distFactor: s.distributedLoadFactor,
+      unbalConst: s.unbalancedConstant,
+      voltageV: v,
+    });
+    ohms += leg.ohms;
+    pct += leg.pct;
+    if (leg.missingSpec) missingCable = true;
+    legLenM = 0;
   }
 
   return {

@@ -4814,6 +4814,10 @@ export default function GISCanvasPage() {
     if (leg.fromIdx != null) {
       const at = cumulativeToNode({
         model: part.model, targetIdx: leg.fromIdx, spanNodes: part.spanNodes,
+        /* The same cable, so the voltage arriving here advances between
+           junctions instead of repeating the figure at the last span
+           node — the drop to this point includes the run up to it. */
+        partialCableId: leg.cableSizeId ?? null,
         cableById: ctx.cableById, transformer: ctx.transformer,
         voltageV: startV, settings: ctx.settings,
       });
@@ -4912,6 +4916,11 @@ export default function GISCanvasPage() {
         for (const leg of part.legs) {
           leg.vd = cumulativeToNode({
             model: part.model, targetIdx: leg.endIdx, spanNodes: part.spanNodes,
+            /* The cable this leg is made of, so the length between the
+               last span node and this point is charged rather than left
+               out — without it every junction on a run reports the
+               figure at the run's start. */
+            partialCableId: leg.cableSizeId ?? null,
             ...ctx,
           });
           Object.assign(leg, legExtras(leg, part, ctx));
@@ -5022,7 +5031,9 @@ export default function GISCanvasPage() {
       };
       for (const leg of r.legs) {
         leg.vd = cumulativeToNode({
-          model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes, ...ctx,
+          model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
+          partialCableId: leg.cableSizeId ?? null,
+          ...ctx,
         });
         Object.assign(leg, legExtras(leg, r, ctx));
       }

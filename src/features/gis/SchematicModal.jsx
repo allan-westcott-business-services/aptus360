@@ -15,7 +15,18 @@ import { treeFromLegs, layoutTree, nodeFigures, edgeFigures } from "./schematic.
 const BOX_W = 116;
 const BOX_H = 50;
 const GAP_X = 30;
-const GAP_Y = 132;
+/* Room for the label between the boxes.
+
+   The label is four lines at 11px, so its block is about 37px deep, and
+   it hangs off the horizontal part of the elbow half way down the run.
+   With a 132px gap the run between boxes was 82px and half of that is
+   41 — so the last line landed within four pixels of the box below and
+   read as sitting on it.
+
+   170 leaves a clear margin above and below the block at every level.
+   Worth the extra height: a diagram that has to be squinted at is not
+   doing its job. */
+const GAP_Y = 170;
 const PAD = 34;
 
 export default function SchematicModal({ trace, voltageV = 400, onClose }) {
@@ -92,7 +103,10 @@ export default function SchematicModal({ trace, voltageV = 400, onClose }) {
                     <path d={d} fill="none"
                       stroke={over ? "#dc2626" : "#94a3b8"} strokeWidth={over ? 2 : 1.4} />
                     {f && (
-                      <text className="sch-el" x={x2 + 6} y={midY + 4}>
+                      /* Centred on the elbow rather than hung below it,
+                         so the four lines sit evenly in the gap instead
+                         of crowding the lower box. */
+                      <text className="sch-el" x={x2 + 6} y={midY - 12}>
                         <tspan x={x2 + 6} dy="0">Length: {f.metres} m</tspan>
                         <tspan x={x2 + 6} dy="11">Cable: {f.cable ?? "not set"}</tspan>
                         <tspan x={x2 + 6} dy="11">Volt drop: {f.pct ?? "\u2014"} %</tspan>

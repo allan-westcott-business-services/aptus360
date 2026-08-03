@@ -25,7 +25,9 @@ import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROK
   from "../../lib/gisStyle.js";
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
-import { planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline } from "./autoService.js";
+import {
+  planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline, isServed,
+} from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
@@ -4662,11 +4664,21 @@ export default function GISCanvasPage() {
        meter but no dig count as serviced — the planner skipped it and
        the repair below found no trench to work from, leaving it in a
        state neither path would touch. */
-    const serviced = new Set(features
-      .filter((f) => f.Attributes?.Seed_Feature_ID != null
-        && f.Feature_Type === "line"
-        && isTrenchType(f.Attributes?.Line_Type, lineTypes))
-      .map((f) => Number(f.Attributes.Seed_Feature_ID)));
+    /* Which plots already have a service, however it was drawn.
+
+       This used to look only for a trench stamped with the seed's id,
+       which Auto Service writes and a hand-drawn trench does not — so a
+       plot someone had already dug to got a second trench and a second
+       cable laid over the first, both feeding the same meter.
+
+       isServed also asks whether any service trench simply ends at one
+       of the plot's meters, which is what a hand-drawn one looks like. */
+    const svcTrenches = features.filter((f) =>
+      f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    const allMeters = features.filter((f) => f.Feature_Role === "meter");
+    const serviced = new Set(seeds
+      .filter((sd) => isServed(sd, allMeters, svcTrenches))
+      .map((sd) => Number(sd.Feature_ID)));
 
     const utilitiesFor = (seed) => {
       const plot = plotList.find((p) => p.plot_id === seed.Plot_ID);

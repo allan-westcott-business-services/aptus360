@@ -181,6 +181,55 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
   return { seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables };
 }
 
+/* Whether a plot is already served, however that came about.
+
+   Auto Service knows a seed is done by finding a service trench stamped
+   with its Seed_Feature_ID — which is right for the ones it drew itself,
+   and useless for one drawn by hand. A trench dug to a meter by someone
+   who then ran Auto Service got a second trench and a second cable laid
+   over the first, both feeding the same meter.
+
+   So a plot counts as served if anything reaches it: a trench stamped
+   with its seed, or a trench that simply ends at one of its meters. The
+   second test is the one that catches hand-drawn work, and it is the
+   position that matters rather than any record of intent — a trench
+   ending on a meter is serving that meter whatever it is labelled.
+
+   `near` is generous on purpose. A hand-drawn trench is snapped by eye,
+   and the cost of the two errors is not the same: treating a served plot
+   as unserved lays a duplicate cable through a garden, while treating an
+   unserved plot as served leaves a gap that the levels check reports
+   loudly on the next run. */
+export function isServed(seed, meters = [], trenches = [], near = 1.5) {
+  const sid = Number(seed?.Feature_ID);
+  if (!Number.isFinite(sid)) return false;
+
+  for (const t of trenches) {
+    if (Number(t.Attributes?.Seed_Feature_ID) === sid) return true;
+  }
+
+  /* This plot's meters, by either route they are linked. */
+  const mine = meters.filter((m) =>
+    Number(m.Attributes?.Seed_Feature_ID) === sid
+    || (seed.Plot_ID != null && Number(m.Plot_ID) === Number(seed.Plot_ID)));
+  if (!mine.length) return false;
+
+  for (const t of trenches) {
+    const g = t.Geometry || [];
+    if (g.length < 2) continue;
+    /* Either end — a trench may have been drawn from the plot outwards
+       as easily as towards it. */
+    for (const end of [g[0], g[g.length - 1]]) {
+      for (const m of mine) {
+        const p = (m.Geometry || [])[0];
+        if (!p) continue;
+        if (Math.hypot(end[0] - p[0], end[1] - p[1]) <= near) return true;
+      }
+    }
+  }
+  return false;
+}
+
 export function planAutoService(seeds = [], trenches = [], utilitiesFor = () => [], opts = {}) {
   const plans = [];
   const skipped = [];

@@ -5910,6 +5910,22 @@ export default function GISCanvasPage() {
         />
       )}
 
+      {/* Beside the other modals, outside the canvas wrapper.
+
+          That wrapper is overflow: hidden, so a fixed-position backdrop
+          rendered inside it is clipped to the canvas box and never
+          appears — which is exactly what happened when this sat with the
+          on-canvas badges. Every other modal is here for the same
+          reason.
+
+          Drawn from the whole check rather than the filtered table: a
+          schematic with the middle of every run missing is not one. */}
+      {schematic && trace && (
+        <SchematicModal trace={trace} onClose={() => setSchematic(false)}
+          voltageV={Number(features.find((f) => f.Feature_Role === "substation")
+            ?.Attributes?.Output_V) || 400} />
+      )}
+
       {bulkDelOpen && projectId && (
         <BulkDelete
           features={features}
@@ -6103,15 +6119,6 @@ export default function GISCanvasPage() {
                 the same trap as a hidden layer: the drawing looks wrong
                 and gives no way to find out why. This says what they
                 are, brings the figures back, and lets them be cleared. */}
-            {/* Drawn from the whole check, not the filtered table: a
-                schematic with the middle of every run missing is not a
-                schematic. */}
-            {schematic && trace && (
-              <SchematicModal trace={trace} onClose={() => setSchematic(false)}
-                voltageV={Number(features.find((f) => f.Feature_Role === "substation")
-                  ?.Attributes?.Output_V) || 400} />
-            )}
-
             {trace && !traceOpen && (
               <div className="gis-checked">
                 <span>

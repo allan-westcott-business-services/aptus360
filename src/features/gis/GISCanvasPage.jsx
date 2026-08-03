@@ -52,6 +52,7 @@ import { planCircuitGroups } from "./balance.js";
 import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
+import { find as findFeatures, strays } from "./find.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -210,6 +211,12 @@ export default function GISCanvasPage() {
      is remembered with the rest of their canvas settings and not written
      to the features. Individual locks are on the features, because those
      are decisions about the design. */
+  /* The find box. Open and query kept apart so closing it does not lose
+     what was typed — reopening to correct a typo and finding it gone is
+     a small thing that makes a tool feel hostile. */
+  const [findOpen, setFindOpen] = useState(false);
+  const [findQ, setFindQ] = useState("");
+
   const [lockedClasses, setLockedClasses] = useState(
     () => recall("gisLocked", []) ?? []);
   useEffect(() => remember("gisLocked", lockedClasses), [lockedClasses]);
@@ -586,6 +593,18 @@ export default function GISCanvasPage() {
     });
     return m;
   }, [groupPlan]);
+
+  const found = useMemo(() => (findOpen && findQ
+    ? findFeatures(features, findQ, {
+      lineTypes, layers, plotById: (id) => plotList.find((p) => p.plot_id === id),
+    })
+    : { shown: [], total: 0 }), [findOpen, findQ, features, lineTypes, layers, plotList]);
+
+  /* Things sitting a long way from everything else — the shape of
+     something dragged off by accident. Only worked out while the box is
+     open, since it walks every feature. */
+  const wanderers = useMemo(
+    () => (findOpen ? strays(features) : []), [findOpen, features]);
 
   /* Whether a feature refuses to move, and why.
 
@@ -5427,6 +5446,19 @@ export default function GISCanvasPage() {
       const el = e.target;
       const typing = el && (el.tagName === "INPUT" || el.tagName === "TEXTAREA"
         || el.tagName === "SELECT" || el.isContentEditable);
+      /* Find, where hands already go for it.
+
+         Allowed while typing, unlike undo: pressing it inside the find
+         box itself should refocus rather than do nothing, and there is
+         no browser behaviour worth preserving — the page's own find
+         cannot search a canvas. */
+      if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
+        e.preventDefault();
+        setFindOpen(true);
+        return;
+      }
+      if (!typing && e.key === "Escape" && findOpen) { setFindOpen(false); return; }
+
       if (!typing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
         if (e.shiftKey) runRedo(1); else runUndo(1);
@@ -5822,6 +5854,11 @@ export default function GISCanvasPage() {
                         circuit. Anyone who could not find one was stuck
                         with meters they could not see and no way to say
                         so. */}
+                    {/* Also on the menu. A shortcut is faster once it is
+                        known and invisible until then. */}
+                    <MenuItem label="Find\u2026" hint="Ctrl/Cmd + F"
+                      onClick={() => setFindOpen(true)} />
+
                     {/* The background plan counts as hidden too.
 
                         It is listed with the layers, so leaving it off
@@ -6493,6 +6530,77 @@ export default function GISCanvasPage() {
                 A feature that will not drag with nothing on screen to
                 say why is indistinguishable from a canvas that has
                 stopped working. */}
+            {/* Find. */}
+            {findOpen && (
+              <div className="gis-find">
+                <input autoFocus value={findQ} placeholder="Plot number, span code, or kind"
+                  onChange={(e) => setFindQ(e.target.value)}
+                  onKeyDown={(e) => {
+                    if (e.key === "Escape") { setFindOpen(false); return; }
+                    /* Enter takes the first result, so a plot number and
+                       a return key is the whole interaction. */
+                    if (e.key === "Enter" && found.shown[0]) {
+                      const f = found.shown[0].feature;
+                      setSelected([f.Feature_ID]);
+                      zoomTo([f.Feature_ID]);
+                      setTool("select");
+                    }
+                  }} />
+                <button className="gf-x" onClick={() => setFindOpen(false)}
+                  aria-label="Close find">&times;</button>
+
+                {findQ && (
+                  <div className="gf-list">
+                    {!found.shown.length && (
+                      <p className="gf-none">Nothing matches that.</p>
+                    )}
+                    {found.shown.map((r) => (
+                      <button key={r.feature.Feature_ID} className="gf-row"
+                        onClick={() => {
+                          setSelected([r.feature.Feature_ID]);
+                          zoomTo([r.feature.Feature_ID]);
+                          setTool("select");
+                        }}>
+                        <span className="gf-l">{r.label}</span>
+                        <span className="gf-w">{r.where}</span>
+                      </button>
+                    ))}
+                    {found.total > found.shown.length && (
+                      <p className="gf-more">
+                        and {found.total - found.shown.length} more &mdash; narrow it down
+                      </p>
+                    )}
+                  </div>
+                )}
+
+                {/* Offered without being asked for, because the person
+                    opening this often does not know what is missing —
+                    only that something is. */}
+                {!findQ && wanderers.length > 0 && (
+                  <div className="gf-list">
+                    <p className="gf-none">
+                      {wanderers.length} feature{wanderers.length === 1 ? "" : "s"} sitting
+                      well away from the rest of the drawing:
+                    </p>
+                    {wanderers.slice(0, 10).map((f) => (
+                      <button key={f.Feature_ID} className="gf-row"
+                        onClick={() => {
+                          setSelected([f.Feature_ID]);
+                          zoomTo([f.Feature_ID]);
+                          setTool("select");
+                        }}>
+                        <span className="gf-l">
+                          {f.Label ?? f.Attributes?.Span_Label
+                            ?? `${f.Feature_Role ?? f.Attributes?.Line_Type ?? "Feature"}`}
+                        </span>
+                        <span className="gf-w">{layerOf(f.Layer_Key)?.Label ?? ""}</span>
+                      </button>
+                    ))}
+                  </div>
+                )}
+              </div>
+            )}
+
             {lockedClasses.length > 0 && (
               <button className="gis-hidden gis-locked"
                 title="These classes cannot be moved"
@@ -7365,6 +7473,21 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gsg-no { background: none; border: none; cursor: pointer; font: 600 11px inherit;
   color: var(--muted); text-decoration: underline; }
 .gsg-go:disabled, .gsg-no:disabled { opacity: .5; cursor: not-allowed; }
+.gis-find { position: absolute; left: 12px; top: 12px; z-index: 9; width: 300px;
+  background: var(--white); border: 1px solid var(--border); border-radius: 9px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.18); padding: 8px; }
+.gis-find > input { width: 100%; border: 1px solid var(--border); border-radius: 6px;
+  font: 500 12px inherit; padding: 6px 26px 6px 9px; }
+.gf-x { position: absolute; right: 12px; top: 12px; background: none; border: none;
+  cursor: pointer; font-size: 15px; color: var(--muted); line-height: 1; }
+.gf-list { max-height: 300px; overflow-y: auto; margin-top: 6px; }
+.gf-row { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none;
+  border: none; cursor: pointer; text-align: left; padding: 5px 8px; border-radius: 5px;
+  font: 500 11.5px inherit; }
+.gf-row:hover { background: var(--bg); }
+.gf-l { flex: 1; }
+.gf-w { color: var(--muted); font-size: 10.5px; }
+.gf-none, .gf-more { margin: 6px 8px; font-size: 11px; color: var(--muted); }
 .gis-locked { border-color: #94a3b8; color: #475569; }
 .gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
   align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;

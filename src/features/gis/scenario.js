@@ -181,13 +181,84 @@ export function suggestCableChanges({
     return l?.from?.feature?.Attributes?.Span_Label ?? "the substation";
   };
   const rank = new Map(ladder.map((c, i) => [String(c.Cable_Size_ID), i]));
-  const swap = (index, sizeId) => trace.spanNodes
-    .map((sn) => (sn.index === index ? { ...sn, cableSizeId: sizeId } : sn));
+  /* Upsizing a leg upsizes everything feeding it.
+
+     A cable cannot be larger than the one supplying it: if A1→A2 is to
+     become 300, then A0→A1 must be at least 300 too, or the design has
+     300 fed by 185. So a change at one node carries up the chain to the
+     source, taking with it every leg currently smaller.
+
+     Legs already at or above the new size are left alone — the rule is
+     that upstream must be no smaller, not that it must match. */
+  const upstreamOf = (index) => {
+    const path = [];
+    const { parent, S } = trace.model;
+    const at = new Map(trace.spanNodes.filter((x) => x.index >= 0).map((x) => [x.index, x]));
+    let u = trace.model.parent[index];
+    let guard = 0;
+    while (u >= 0 && guard++ < 100000) {
+      if (at.has(u)) path.push(at.get(u));
+      if (u === S) break;
+      u = parent[u];
+    }
+    return path;
+  };
+
+  /* Every node a change at `index` would touch, and the size each ends
+     up at. */
+  const cascade = (index, sizeId) => {
+    const want = rank.get(String(sizeId));
+    const out = new Map([[index, sizeId]]);
+    for (const up of upstreamOf(index)) {
+      const now = rank.get(String(up.cableSizeId));
+      /* Smaller than the new size — ranked, because "larger" is a
+         position in the ladder rather than a number to compare. */
+      if (now == null || (want != null && now < want)) out.set(up.index, sizeId);
+    }
+    return out;
+  };
+
+  const swap = (index, sizeId) => {
+    const set = cascade(index, sizeId);
+    return trace.spanNodes
+      .map((sn) => (set.has(sn.index) ? { ...sn, cableSizeId: set.get(sn.index) } : sn));
+  };
 
   const label = (c) => {
     const t = cableTypes.find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   };
+
+  const byIndex = new Map(trace.spanNodes.filter((x) => x.index >= 0).map((x) => [x.index, x]));
+
+  /* Every leg a change touches, reported and costed.
+
+     A change carries upstream, so the suggestion has to name all of it:
+     "A1 to A2 becomes 300" is only half the work if A0 to A1 is 185 and
+     has to follow. Costing only the leg that was chosen would make the
+     cheapest suggestion the one with the longest tail behind it. */
+  const changesFor = (index, cable) => [...cascade(index, cable.Cable_Size_ID)]
+    /* Source outward, so the list reads the way the cable is laid. */
+    .sort((a, b) => (upstreamOf(a[0]).length - upstreamOf(b[0]).length))
+    .map(([idx]) => {
+      const sn = byIndex.get(idx);
+      return {
+        spanLabel: sn?.feature?.Attributes?.Span_Label ?? String(idx),
+        fromLabel: fromLabel(idx),
+        featureId: sn?.feature?.Feature_ID ?? null,
+        fromCable: ctx.cableById(sn?.cableSizeId),
+        toCable: cable,
+        toLabel: label(cable),
+        lengthM: Math.round((lengthOf.get(idx) ?? legOf(trace.model, trace.spanNodes, sn).lengthM
+          ?? 0) * 10) / 10,
+      };
+    });
+
+  const costFor = (index, cable) => [...cascade(index, cable.Cable_Size_ID)]
+    .reduce((t, [idx]) => t + changeCost(
+      lengthOf.get(idx) ?? legOf(trace.model, trace.spanNodes, byIndex.get(idx)).lengthM ?? 0,
+      cable,
+    ), 0);
 
   /* ── One change ── */
   const single = [];
@@ -200,16 +271,8 @@ export function suggestCableChanges({
       const cable = ladder[i];
       if (!clears(trace.model, swap(sn.index, cable.Cable_Size_ID), targets, ctx)) continue;
       single.push({
-        changes: [{
-          spanLabel: sn.feature?.Attributes?.Span_Label ?? String(sn.index),
-          fromLabel: fromLabel(sn.index),
-          featureId: sn.feature?.Feature_ID ?? null,
-          fromCable: ctx.cableById(sn.cableSizeId),
-          toCable: cable,
-          toLabel: label(cable),
-          lengthM: Math.round((lengthOf.get(sn.index) || 0) * 10) / 10,
-        }],
-        cost: changeCost(lengthOf.get(sn.index) || 0, cable),
+        changes: changesFor(sn.index, cable),
+        cost: costFor(sn.index, cable),
       });
       /* The smallest cable that clears at this node — anything larger
          clears too and costs more. */
@@ -239,19 +302,40 @@ export function suggestCableChanges({
           const both = withA.map((sn) => (sn.index === sb.index
             ? { ...sn, cableSizeId: ladder[j].Cable_Size_ID } : sn));
           if (!clears(trace.model, both, targets, ctx)) continue;
-          pairs.push({
-            changes: [sa, sb].map((sn, k) => ({
-              spanLabel: sn.feature?.Attributes?.Span_Label ?? String(sn.index),
-              fromLabel: fromLabel(sn.index),
-              featureId: sn.feature?.Feature_ID ?? null,
-              fromCable: ctx.cableById(sn.cableSizeId),
-              toCable: k === 0 ? ladder[i] : ladder[j],
-              toLabel: label(k === 0 ? ladder[i] : ladder[j]),
-              lengthM: Math.round((lengthOf.get(sn.index) || 0) * 10) / 10,
-            })),
-            cost: changeCost(lengthOf.get(sa.index) || 0, ladder[i])
-              + changeCost(lengthOf.get(sb.index) || 0, ladder[j]),
-          });
+          /* Both changes carry upstream, and the two cascades can
+             overlap — a leg fed by both is named once, at the larger of
+             the two sizes, or the pair would claim to set one cable to
+             two different things. */
+            const merged = new Map();
+            for (const [idx, size] of cascade(sa.index, ladder[i].Cable_Size_ID)) {
+              merged.set(idx, size);
+            }
+            for (const [idx, size] of cascade(sb.index, ladder[j].Cable_Size_ID)) {
+              const had = merged.get(idx);
+              const keep = had == null ? size
+                : (rank.get(String(size)) > rank.get(String(had)) ? size : had);
+              merged.set(idx, keep);
+            }
+
+            pairs.push({
+              changes: [...merged]
+                .sort((x, y) => upstreamOf(x[0]).length - upstreamOf(y[0]).length)
+                .map(([idx, size]) => {
+                  const sn = byIndex.get(idx);
+                  const cbl = ctx.cableById(size);
+                  return {
+                    spanLabel: sn?.feature?.Attributes?.Span_Label ?? String(idx),
+                    fromLabel: fromLabel(idx),
+                    featureId: sn?.feature?.Feature_ID ?? null,
+                    fromCable: ctx.cableById(sn?.cableSizeId),
+                    toCable: cbl,
+                    toLabel: cbl ? label(cbl) : "",
+                    lengthM: Math.round((lengthOf.get(idx) || 0) * 10) / 10,
+                  };
+                }),
+              cost: [...merged].reduce((t, [idx, size]) =>
+                t + changeCost(lengthOf.get(idx) || 0, ctx.cableById(size)), 0),
+            });
           break;
         }
         if (pairs.length > 40) break;

@@ -41,11 +41,14 @@ import BulkDelete from "./BulkDelete.jsx";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
-import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
+import {
+  feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
+} from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
+import { planCircuitGroups } from "./balance.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -163,6 +166,27 @@ export default function GISCanvasPage() {
      eighty intermediate rows stand between the reader and the answer. */
   const [traceEnds, setTraceEnds] = useState(false);
   const [schematic, setSchematic] = useState(false);
+  /* Rings round the meters, coloured by circuit.
+
+     After grouping — or after any circuit is made by hand — the only
+     sign of which properties belong together is the cable, and on a
+     dense estate the cables overlap. A ring on the meter says it
+     directly, and in the colour that circuit's feeder is already
+     drawn in, so the map and the cables agree. */
+  const [circuitRings, setCircuitRings] = useState(true);
+
+  /* A proposed grouping, before anything is written.
+
+     Grouping an estate is a suggestion, not a decision: the shape of the
+     site, the adoption, and where the DNO will accept a way all bear on
+     it, and none of that is in the drawing. So the proposal is shown as
+     coloured rings on the meters and nothing is created until it is
+     accepted.
+
+     Held apart from the circuits themselves, because at the point this
+     runs there are no circuits — the drawing is a mains trench, plot
+     seeds and meters, and that is all. */
+  const [groupPlan, setGroupPlan] = useState(null);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -518,6 +542,24 @@ export default function GISCanvasPage() {
       ? (f.Attributes?.Project_Developer_ID != null ? "boundary:dev" : "boundary:site")
       : null,
   ].filter(Boolean), []);
+
+  /* One colour per circuit, the same as the feeders use — so a ring and
+     the cable leaving it are never different colours. */
+  const ringColours = useMemo(() => {
+    const sub = features.find((f) => f.Feature_Role === "substation");
+    return circuitColours(features, sub?.Attributes?.Circuit_Colours);
+  }, [features]);
+
+  /* Which proposed group each meter is in, while a suggestion is on
+     screen. Keyed by feature id because a proposal has no circuit to key
+     on — that is the whole point of it being a proposal. */
+  const proposedGroup = useMemo(() => {
+    const m = new Map();
+    (groupPlan?.groups || []).forEach((g, i) => {
+      for (const mt of g.meters) m.set(Number(mt.Feature_ID), i);
+    });
+    return m;
+  }, [groupPlan]);
 
   /* Which circuit is being looked at on its own, if any.
 
@@ -1005,7 +1047,42 @@ export default function GISCanvasPage() {
           /* Symbol and size come from the style, so a DNO that draws
              meters as hexagons gets hexagons without a code change. */
           const ps = styleFor(f);
-          symbolPath(ctx, ps.symbol, p.x, p.y, (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx));
+          const r = (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx);
+
+          /* The circuit this meter is on, drawn round it.
+
+             Outside the symbol rather than recolouring it: the symbol
+             says what the thing is and a DNO may draw meters as
+             hexagons, so the circuit has to be said without taking that
+             over. */
+          if (isMeter && circuitRings) {
+            /* A proposed group takes precedence over a real circuit:
+               while a suggestion is being looked at, the rings have to
+               show what is being suggested rather than what is already
+               there.
+
+               Circuit colours come through circuitIdOf, which is how
+               feederColour keys its map — numbers, not strings. Looking
+               it up with String() returned undefined every time and drew
+               no ring at all, silently. */
+            const gi = proposedGroup.get(Number(f.Feature_ID));
+            const cid = circuitIdOf(f);
+            const colour = gi != null
+              ? feederColourAt(gi)
+              : (cid != null ? ringColours.get(cid) : null);
+            if (colour) {
+              ctx.save();
+              ctx.beginPath();
+              ctx.arc(p.x, p.y, r + 4, 0, Math.PI * 2);
+              ctx.strokeStyle = colour;
+              ctx.lineWidth = 2;
+              ctx.stroke();
+              ctx.restore();
+              ctx.beginPath();
+            }
+          }
+
+          symbolPath(ctx, ps.symbol, p.x, p.y, r);
           if (STROKE_ONLY.has(ps.symbol)) {
             ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? fill);
             ctx.lineWidth = 2.5;
@@ -1534,7 +1611,7 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "alphabetic";
       }
     }
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -3446,6 +3523,69 @@ export default function GISCanvasPage() {
         + (plan.split.length ? `, ${plan.split.length} split` : "")
         + (plan.clear.length ? `, ${plan.clear.length} cleared` : "")
         + `, ${plan.shared} shared left alone`);
+      setTimeout(() => setStatus(""), 10000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Splitting the estate into circuits automatically.
+
+     Above about seventy properties one LV circuit runs out, and dividing
+     an estate by hand means dragging plots into groups and re-running
+     the levels check until it passes.
+
+     Grouped along the trench tree rather than by position on the map:
+     two houses either side of a road are close on the map and far apart
+     along the cable, so map proximity produces circuits that interleave
+     and both run the same length of trench.
+
+     Shown before it is done. Creating circuits reassigns every meter on
+     the drawing, and an automatic answer nobody has agreed to is not one
+     to apply quietly. */
+  /* Suggesting a grouping. Nothing is written.
+
+     Run on a drawing that is a mains trench, plot seeds and meters and
+     nothing else — before any circuit exists, before any service is
+     drawn. So there is nothing to reassign and nothing to undo: the
+     answer is shown as coloured rings and waits.
+
+     Grouped along the trench tree rather than by position on the map:
+     two houses either side of a road are close on the map and far apart
+     along the cable, so map proximity produces groups that interleave
+     and both run the same length of trench. */
+  function suggestGroups() {
+    const plan = planCircuitGroups(features, {
+      lineTypes,
+      plotById: (id) => plotList.find((p) => p.plot_id === id),
+    });
+    if (plan.error) { setError(plan.error); setGroupPlan(null); return; }
+    if (!plan.groups.length) {
+      setGroupPlan(null);
+      setStatus(plan.reason ?? "Nothing to split.");
+      setTimeout(() => setStatus(""), 8000);
+      return;
+    }
+    setGroupPlan(plan);
+    setCircuitRings(true);
+    setError("");
+  }
+
+  /* Accepting it. Only now is anything created. */
+  async function acceptGroups() {
+    const plan = groupPlan;
+    if (!plan?.groups?.length) return;
+
+    setBusy("group");
+    try {
+      for (const g of plan.groups) {
+        /* Through the same call the Circuit Report uses, so a circuit
+           made from a suggestion is indistinguishable from one made by
+           hand — same numbering, same way allocation. */
+        await createCircuitFromMeters(g.meters.map((m) => m.Feature_ID));
+      }
+      setGroupPlan(null);
+      setStatus(`${plan.groups.length} circuits created \u2014 ${plan.sizes.join(", ")}`);
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -5498,6 +5638,14 @@ export default function GISCanvasPage() {
                         labels cover the geometry they describe, and
                         turning them off one kind at a time is four
                         decisions to make the one you wanted. */}
+                    {/* Only where there are circuits to tell apart. */}
+                    {circuitsFrom(features).length > 1 && (
+                      <MenuItem label="Circuit Rings" active={circuitRings}
+                        hint={circuitRings
+                          ? "Each meter ringed in its circuit's colour"
+                          : "Meters are not ringed"}
+                        onClick={() => setCircuitRings(!circuitRings)} />
+                    )}
                     <MenuItem label="Labels" active={showLabels}
                       hint={showLabels
                         ? "Plot numbers, joints, cable labels. Span node codes always show."
@@ -5667,6 +5815,10 @@ export default function GISCanvasPage() {
 
                     <div className="gm-sep" />
                     <MenuGroup label="Tools & Reporting" />
+                    <MenuItem label="Suggest Circuit Groups"
+                      hint="Rings the meters by proposed group. Nothing is created until you accept."
+                      disabled={!!busy || !projectId}
+                      onClick={suggestGroups} />
                     <MenuItem label="Circuit Report"
                       hint="Meters by feeder, with distances from the substation"
                       disabled={!features.some((f) => f.Feature_Role === "substation")}
@@ -6128,6 +6280,43 @@ export default function GISCanvasPage() {
                 </span>
                 <button onClick={() => setTraceOpen(true)}>Show figures</button>
                 <button onClick={() => { setTrace(null); setScenario(null); }}>Clear</button>
+              </div>
+            )}
+
+            {/* A suggestion on screen, waiting to be taken or not.
+
+                The rings say which meters would go together; this says
+                how many and how evenly, and gives the two answers.
+                Without it the rings are a change nobody asked for with
+                no way to undo them. */}
+            {groupPlan && (
+              <div className="gis-suggest">
+                <span className="gsg-t">
+                  Suggested: {groupPlan.groups.length} groups of {groupPlan.sizes.join(", ")}
+                </span>
+                {groupPlan.groups.map((g, i) => (
+                  <span key={i} className="gsg-dot"
+                    style={{ background: feederColourAt(i) }}
+                    title={`${g.meters.length} propert${g.meters.length === 1 ? "y" : "ies"}`} />
+                ))}
+                {/* Should never show. If it does, the split is wrong
+                    rather than the site being awkward — see the note in
+                    balance.js. */}
+                {groupPlan.uneven && (
+                  <span className="gsg-w">
+                    uneven by {groupPlan.spread} &mdash; check before accepting
+                  </span>
+                )}
+                {groupPlan.overLimit > 0 && (
+                  <span className="gsg-w">
+                    {groupPlan.overLimit} over the limit
+                  </span>
+                )}
+                <button className="gsg-go" disabled={!!busy} onClick={acceptGroups}>
+                  {busy === "group" ? "Creating\u2026" : "Accept"}
+                </button>
+                <button className="gsg-no" disabled={!!busy}
+                  onClick={() => setGroupPlan(null)}>Discard</button>
               </div>
             )}
 
@@ -6950,6 +7139,20 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   font: 600 11.5px inherit; box-shadow: 0 4px 14px rgba(15,23,42,.12); }
 .gis-checked button { background: none; border: none; cursor: pointer;
   font: 600 11px inherit; color: var(--accent); text-decoration: underline; }
+.gis-suggest { position: absolute; left: 50%; transform: translateX(-50%); top: 12px;
+  z-index: 7; display: flex; align-items: center; gap: 9px; background: var(--white);
+  border: 1px solid var(--border); border-radius: 9px; padding: 7px 12px;
+  box-shadow: 0 8px 26px rgba(15,23,42,.16); font: 600 11.5px inherit; }
+.gsg-t { color: var(--text); }
+.gsg-dot { width: 11px; height: 11px; border-radius: 50%; display: inline-block; }
+.gsg-n, .gsg-w { font-weight: 500; font-size: 11px; }
+.gsg-n { color: var(--muted); }
+.gsg-w { color: #b45309; }
+.gsg-go { background: var(--accent); border: none; color: #fff; border-radius: 6px;
+  cursor: pointer; font: 700 11px inherit; padding: 4px 12px; }
+.gsg-no { background: none; border: none; cursor: pointer; font: 600 11px inherit;
+  color: var(--muted); text-decoration: underline; }
+.gsg-go:disabled, .gsg-no:disabled { opacity: .5; cursor: not-allowed; }
 .gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
   align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;
   color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;

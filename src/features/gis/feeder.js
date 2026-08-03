@@ -697,6 +697,44 @@ export function spanTrace(features = [], nodeId, opts = {}) {
 
      Named from the joint standing there where there is one, so the row
      reads as the thing on the drawing rather than as a coordinate. */
+  /* Where a plot's service leaves the main — the point a meter is
+     attributed to. Declared here because metersAt below needs it, and
+     metersAt has to come before the junction stops that name themselves
+     after the plots they feed. */
+  const serviceFootFor = (seedId) => {
+    const svc = features.find((t) =>
+      t.Feature_Type === "line"
+      && isService(t)
+      && Number(t.Attributes?.Seed_Feature_ID) === Number(seedId)
+      && (t.Geometry || []).length);
+    return svc ? svc.Geometry[0] : null;
+  };
+
+  /* Which meters each node serves.
+
+     Built before the junction stops rather than after, because a service
+     joint is named for the plots it feeds and cannot be named without
+     this. */
+  const metersAt = new Map();
+  for (const m of features) {
+    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
+    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    const sid = m.Attributes?.Seed_Feature_ID;
+    const seed = sid != null
+      ? features.find((f) => f.Feature_Role === "plot" && Number(f.Feature_ID) === Number(sid))
+      : features.find((f) => f.Feature_Role === "plot"
+          && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
+
+    const anchor = (seed ? serviceFootFor(seed.Feature_ID) : null)
+      || (seed?.Geometry || [])[0]
+      || (m.Geometry || [])[0];
+    if (!anchor) continue;
+    const idx = nearest(anchor);
+    if (idx < 0) continue;
+    if (!metersAt.has(idx)) metersAt.set(idx, []);
+    metersAt.get(idx).push(m);
+  }
+
   if (stopAt === "junctions") {
     /* Which span node sits on which graph node, and what cable it
        carries — so a junction can inherit from the run it is part of. */
@@ -730,6 +768,64 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       const kind = j?.Attributes?.Joint_Type
         ?? (forks && tees ? "breech" : forks ? "breech" : "service");
 
+      /* The plots this joint feeds.
+
+         "Service joint" says what it is and nothing about which one, and
+         a table of eleven identical rows cannot be read against a
+         drawing. The plot numbers are what someone checking a schedule
+         is looking for.
+
+         Gathered from the spur below the tee rather than from the tee
+         itself: a meter sits at the far end of its service, so the node
+         with the joint on it holds none. Only down service spurs — the
+         mains beyond a fork leads to every plot on that branch, and
+         listing them all would name the whole estate at the first
+         junction. */
+      const fed = [];
+      for (let k = 0; k < nodes.length; k++) {
+        if (parent[k] !== u || !parSvc[k]) continue;
+        const walk = [k];
+        const been = new Set([k]);
+        while (walk.length) {
+          const v = walk.shift();
+          for (const m of metersAt.get(v) || []) fed.push(m);
+          for (let w = 0; w < nodes.length; w++) {
+            if (parent[w] !== v || been.has(w)) continue;
+            been.add(w);
+            walk.push(w);
+          }
+        }
+      }
+      /* Also any sitting on the joint itself, for a service drawn with
+         its meter at the tee. */
+      for (const m of metersAt.get(u) || []) fed.push(m);
+
+      /* The plot number, not the meter's label.
+
+         A meter is called "Electric Meter 15" on this drawing, so
+         reading the number off its label happens to work here and would
+         stop working the moment anyone renamed one. The plot record
+         carries the number as a fact; the label is only a description of
+         it.
+
+         The label is still the fallback, for a meter whose plot has not
+         loaded — a number taken from a name beats no number at all. */
+      const numberOf = (m) => {
+        const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
+        const n = plot?.plot_number ?? plot?.Plot_Number;
+        if (n != null && String(n) !== "") return String(n);
+        const fromLabel = String(m.Label || "").match(/(\d+)\s*$/);
+        return fromLabel ? fromLabel[1] : null;
+      };
+
+      const plots = [...new Set(fed.map(numberOf).filter(Boolean))]
+        .sort((x, y) => {
+          const nx = Number(String(x).replace(/\D/g, ""));
+          const ny = Number(String(y).replace(/\D/g, ""));
+          return Number.isFinite(nx) && Number.isFinite(ny) && nx !== ny
+            ? nx - ny : String(x).localeCompare(String(y));
+        });
+
       /* The cable this junction sits on.
 
          A junction is a point along a run, not the end of one, so it
@@ -761,7 +857,13 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         Feature_ID: j?.Feature_ID ?? `j${u}`,
         Feature_Role: "joint",
         Attributes: {
-          Span_Label: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} joint`,
+          /* "Plot 7" for one, "Plots 7, 8" for several — the word once
+             and pluralised, then the numbers. */
+          Span_Label: `${kind.charAt(0).toUpperCase()}${kind.slice(1)} joint`
+            + (plots.length
+              ? ` \u2014 Plot${plots.length === 1 ? "" : "s"} ${plots.join(", ")}`
+              : ""),
+          Serves_Plots: plots,
           Circuit_ID: circuitId,
           VD_Cable_Size_ID: heir,
         },
@@ -782,35 +884,6 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      meets the mains. That node is on the walked route, which is what
      makes the meter countable. The seed is the fallback for a plot with
      no service trench drawn, and the meter itself the last resort. */
-  const serviceFootFor = (seedId) => {
-    const svc = features.find((t) =>
-      t.Feature_Type === "line"
-      && isService(t)
-      && Number(t.Attributes?.Seed_Feature_ID) === Number(seedId)
-      && (t.Geometry || []).length);
-    return svc ? svc.Geometry[0] : null;
-  };
-
-  const metersAt = new Map();
-  for (const m of features) {
-    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
-    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
-    const sid = m.Attributes?.Seed_Feature_ID;
-    const seed = sid != null
-      ? features.find((f) => f.Feature_Role === "plot" && Number(f.Feature_ID) === Number(sid))
-      : features.find((f) => f.Feature_Role === "plot"
-          && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
-
-    const anchor = (seed ? serviceFootFor(seed.Feature_ID) : null)
-      || (seed?.Geometry || [])[0]
-      || (m.Geometry || [])[0];
-    if (!anchor) continue;
-    const idx = nearest(anchor);
-    if (idx < 0) continue;
-    if (!metersAt.has(idx)) metersAt.set(idx, []);
-    metersAt.get(idx).push(m);
-  }
-
   const legs = [];
 
   /* A leg runs from one span node to the next, and the walk carries on

@@ -106,7 +106,6 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
   if (!best) return { seed, skipped: "no mains trench" };
 
   const utils = utilitiesFor(seed) || [];
-  const trench = [best.foot, seedPt];
   const slots = meterPositions(best.foot, seedPt, utils.length, opts);
 
   /* A seed may already have been placed with its meters. Those are left
@@ -145,6 +144,28 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
     utility: m.utility,
     geometry: [best.foot, m.point],
   }));
+
+  /* The dig runs to the meters, not to the seed.
+
+     It used to stop at the seed, which put the last stretch of every
+     cable outside the trench carrying it — and on a plot whose meters
+     had been moved, well outside it.
+
+     To the furthest meter, because one trench serves every utility on
+     the plot. The slots are spaced along the line out from the foot, so
+     a dig reaching the last one passes through all of them; stopping at
+     the nearest would leave the others' cable in open ground.
+
+     Falls back to the seed where there are no meters at all — a service
+     drawn ahead of its meters still needs somewhere to go, and the seed
+     is the only position there is. */
+  const ends = meters.map((m) => m.point).filter(Boolean);
+  const furthest = ends.length
+    ? ends.reduce((far, q) => (
+      Math.hypot(q[0] - best.foot[0], q[1] - best.foot[1])
+      > Math.hypot(far[0] - best.foot[0], far[1] - best.foot[1]) ? q : far), ends[0])
+    : seedPt;
+  const trench = [best.foot, furthest];
 
   return { seed, mains: best.trench, foot: best.foot, distance: best.d, trench, meters, cables };
 }

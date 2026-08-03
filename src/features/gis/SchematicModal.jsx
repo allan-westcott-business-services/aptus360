@@ -1,4 +1,4 @@
-import { useMemo, useRef } from "react";
+import { useMemo, useRef, useState, useCallback } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import { treeFromLegs, layoutTree, nodeFigures, edgeFigures } from "./schematic.js";
 
@@ -32,6 +32,56 @@ const PAD = 34;
 export default function SchematicModal({ trace, voltageV = 400, onClose }) {
   const drag = useDragHandle();
   const svgRef = useRef(null);
+
+  /* Where each label has been moved to.
+
+     Automatic placement puts a label beside its own elbow, which is
+     right until two branches run close together and their labels
+     collide. Rather than guess at a cleverer rule, let them be moved:
+     the person reading it can see what overlaps and the machine cannot.
+
+     Kept per edge and only for this panel — a schematic is drawn, read
+     and downloaded in one sitting, and a layout remembered across a
+     re-run would put labels where the network no longer is. Reset puts
+     everything back. */
+  const [moved, setMoved] = useState({});
+  const dragging = useRef(null);
+
+  const keyOf = (e) => `${e.from.label}\u0000${e.to.label}`;
+
+  /* Dragging in SVG user units, not screen pixels: the diagram is
+     scaled to fit, so a label dragged 40 screen pixels must move 40
+     units at whatever scale is showing or it lags behind the pointer. */
+  const toUser = useCallback((evt) => {
+    const el = svgRef.current;
+    if (!el) return { x: evt.clientX, y: evt.clientY };
+    const box = el.getBoundingClientRect();
+    const vb = el.viewBox.baseVal;
+    const sx = vb.width / (box.width || 1);
+    const sy = vb.height / (box.height || 1);
+    return { x: (evt.clientX - box.left) * sx, y: (evt.clientY - box.top) * sy };
+  }, []);
+
+  const onLabelDown = (e) => (evt) => {
+    evt.stopPropagation();
+    evt.preventDefault();
+    const at = toUser(evt);
+    const now = moved[keyOf(e)] || { dx: 0, dy: 0 };
+    dragging.current = { key: keyOf(e), startX: at.x, startY: at.y, from: now };
+    evt.currentTarget.setPointerCapture?.(evt.pointerId);
+  };
+
+  const onLabelMove = (evt) => {
+    const d = dragging.current;
+    if (!d) return;
+    const at = toUser(evt);
+    setMoved((m) => ({
+      ...m,
+      [d.key]: { dx: d.from.dx + (at.x - d.startX), dy: d.from.dy + (at.y - d.startY) },
+    }));
+  };
+
+  const onLabelUp = () => { dragging.current = null; };
 
   const { nodes, edges, width, height } = useMemo(() => {
     const tree = treeFromLegs(trace?.legs || [], trace?.from);
@@ -71,6 +121,11 @@ export default function SchematicModal({ trace, voltageV = 400, onClose }) {
               {trace?.circuitName} &middot; {nodes.length} node(s) &middot; from {trace?.from}
             </p>
           </div>
+          {Object.keys(moved).length > 0 && (
+            <button className="btn ghost" onClick={() => setMoved({})}>
+              Reset labels
+            </button>
+          )}
           <button className="btn accent" onClick={download}>Download SVG</button>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
@@ -79,9 +134,15 @@ export default function SchematicModal({ trace, voltageV = 400, onClose }) {
           {!nodes.length ? (
             <p className="sch-none">Nothing to draw — run a levels check first.</p>
           ) : (
+            /* Move and release are handled on the svg rather than on the
+               label: a pointer that outruns a small target would
+               otherwise drop the drag half way across. */
             <svg ref={svgRef} className="sch-svg"
               viewBox={`0 0 ${vbW} ${vbH}`} width={vbW} height={vbH}
-              xmlns="http://www.w3.org/2000/svg">
+              xmlns="http://www.w3.org/2000/svg"
+              onPointerMove={onLabelMove}
+              onPointerUp={onLabelUp}
+              onPointerLeave={onLabelUp}>
               <rect x="0" y="0" width={vbW} height={vbH} fill="#fff" />
 
               {/* Lines first, so a box always sits over its own line
@@ -102,17 +163,36 @@ export default function SchematicModal({ trace, voltageV = 400, onClose }) {
                   <g key={i}>
                     <path d={d} fill="none"
                       stroke={over ? "#dc2626" : "#94a3b8"} strokeWidth={over ? 2 : 1.4} />
-                    {f && (
-                      /* Centred on the elbow rather than hung below it,
-                         so the four lines sit evenly in the gap instead
-                         of crowding the lower box. */
-                      <text className="sch-el" x={x2 + 6} y={midY - 12}>
-                        <tspan x={x2 + 6} dy="0">Length: {f.metres} m</tspan>
-                        <tspan x={x2 + 6} dy="11">Cable: {f.cable ?? "not set"}</tspan>
-                        <tspan x={x2 + 6} dy="11">Volt drop: {f.pct ?? "\u2014"} %</tspan>
-                        <tspan x={x2 + 6} dy="11">Ohms: {f.ohms ?? "\u2014"}</tspan>
-                      </text>
-                    )}
+                    {f && (() => {
+                      const mv = moved[keyOf(e)] || { dx: 0, dy: 0 };
+                      const lx = x2 + 6 + mv.dx;
+                      const ly = midY - 12 + mv.dy;
+                      const shifted = mv.dx !== 0 || mv.dy !== 0;
+                      return (
+                        <g>
+                          {/* A leader back to the run it describes.
+
+                              Only once moved: a label beside its own
+                              elbow needs no line, and a label dragged
+                              clear of the clutter is useless if nobody
+                              can tell which run it belongs to. */}
+                          {shifted && (
+                            <line x1={x2 + 4} y1={midY} x2={lx - 3} y2={ly + 12}
+                              stroke="#cbd5e1" strokeWidth="1" strokeDasharray="3 3" />
+                          )}
+                          {/* Centred on the elbow rather than hung below
+                              it, so the four lines sit evenly in the gap
+                              instead of crowding the lower box. */}
+                          <text className="sch-el" x={lx} y={ly}
+                            onPointerDown={onLabelDown(e)}>
+                            <tspan x={lx} dy="0">Length: {f.metres} m</tspan>
+                            <tspan x={lx} dy="11">Cable: {f.cable ?? "not set"}</tspan>
+                            <tspan x={lx} dy="11">Volt drop: {f.pct ?? "\u2014"} %</tspan>
+                            <tspan x={lx} dy="11">Ohms: {f.ohms ?? "\u2014"}</tspan>
+                          </text>
+                        </g>
+                      );
+                    })()}
                   </g>
                 );
               })}
@@ -159,7 +239,9 @@ const CSS = `
 .sch-nl { font: 700 13px ui-monospace, Menlo, monospace; text-anchor: middle; fill: #0f172a; }
 .sch-nv { font: 700 12px system-ui, sans-serif; text-anchor: middle; fill: #0f172a; }
 .sch-np { font: 600 10px system-ui, sans-serif; text-anchor: middle; fill: #64748b; }
-.sch-el { font: 400 9.5px system-ui, sans-serif; fill: #475569; }
+.sch-el { font: 400 9.5px system-ui, sans-serif; fill: #475569; cursor: move;
+  user-select: none; }
+.sch-el:hover { fill: #0f172a; }
 `;
 
 /* Touched 2026-08-03 10:22 UTC to force a rebuild. */

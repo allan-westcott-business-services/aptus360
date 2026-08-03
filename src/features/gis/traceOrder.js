@@ -69,3 +69,24 @@ export function byConnectivity(legs = [], from = null) {
 
   return out;
 }
+
+/* Just the ends of the runs.
+
+   A levels check is often read for one question: does anything at the
+   far end of a run fall outside its limits. Every intermediate row is
+   working, and on the advanced check there are eighty of them.
+
+   An end is a leg whose far point nothing leaves — a leaf. Worked out
+   from the legs themselves rather than from the model, so it means the
+   same on both checks and on a table that has already been filtered.
+
+   Dead ends are included: a leg with no node at its far end is a run
+   that stops at a meter with no span node on it, which is still the end
+   of a run and usually worth knowing about. */
+export function endsOnly(rows = []) {
+  const departed = new Set(
+    rows.map(({ leg }) => String(leg.from ?? "")).filter((x) => x !== ""),
+  );
+  return rows.filter(({ leg }) =>
+    leg.to == null || !departed.has(String(leg.to)));
+}

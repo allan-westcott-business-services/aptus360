@@ -45,7 +45,7 @@ import { feederRenderPlan, offsetPolyline } from "./feederColour.js";
 import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
-import { byConnectivity } from "./traceOrder.js";
+import { byConnectivity, endsOnly } from "./traceOrder.js";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
 } from "./developer.js";
@@ -155,6 +155,12 @@ export default function GISCanvasPage() {
      the site is walked and the only order that reads at all once most
      rows are called "Service joint — Plot 21". */
   const [traceOrder, setTraceOrder] = useState("label");
+  /* Show only where the runs finish.
+
+     A levels check is usually read for one question — does anything at
+     the far end fall outside its limits — and on the advanced check
+     eighty intermediate rows stand between the reader and the answer. */
+  const [traceEnds, setTraceEnds] = useState(false);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -4075,11 +4081,15 @@ export default function GISCanvasPage() {
      Selecting something on a plan the size of a housing estate is only
      half an answer — the thing selected is usually off screen. This
      frames it, with room around it so it reads in context. */
-  const zoomTo = useCallback((ids) => {
-    const pts = features
-      .filter((f) => ids.includes(f.Feature_ID))
-      .flatMap((f) => f.Geometry || []);
-    if (!pts.length) return;
+  /* Frame a set of points.
+
+     The framing itself, separated from finding the points, because a
+     trace leg is a path between two nodes rather than a feature — it can
+     cross several cables and belongs to none of them, so there is no id
+     to look up. Two copies of the fitting arithmetic would be two places
+     for the padding and the clamps to drift apart. */
+  const zoomToPoints = useCallback((pts) => {
+    if (!pts?.length) return;
 
     const xs = pts.map((q) => q[0]);
     const ys = pts.map((q) => q[1]);
@@ -4105,7 +4115,14 @@ export default function GISCanvasPage() {
       y: h / 2 - ((minY + maxY) / 2) * clamped,
       scale: clamped,
     });
-  }, [features, view.scale]);
+  }, [view.scale]);
+
+  /* Bring a set of features into view, by id. */
+  const zoomTo = useCallback((ids) => {
+    zoomToPoints(features
+      .filter((f) => ids.includes(f.Feature_ID))
+      .flatMap((f) => f.Geometry || []));
+  }, [features, zoomToPoints]);
 
   /* Breaking a line in two at a point.
 
@@ -4743,8 +4760,13 @@ export default function GISCanvasPage() {
 
   const tracePlan = useMemo(() => {
     if (!trace?.legs) return [];
-    if (traceOrder === "chain") return byConnectivity(trace.legs, trace.from);
-    return trace.legs
+    /* Filtered after ordering, so the ends keep the order they were
+       shown in rather than jumping about when the filter goes on. */
+    const ordered = traceOrder === "chain"
+      ? byConnectivity(trace.legs, trace.from)
+      : null;
+    if (ordered) return traceEnds ? endsOnly(ordered) : ordered;
+    const sorted = trace.legs
       .map((leg, i) => ({ leg, i }))
       .sort((a, b) => {
         const [al, an] = nodeOrder(a.leg.from);
@@ -4756,11 +4778,12 @@ export default function GISCanvasPage() {
         if (tl !== ul) return tl < ul ? -1 : 1;
         return tn - un;
       });
-    /* traceOrder is in here because the body reads it. A memo that
-       reads a value and does not depend on it recomputes only when
-       something else changes — which on the bill of materials meant the
-       cards followed a filter and the table did not. */
-  }, [trace, traceOrder]);
+    return traceEnds ? endsOnly(sorted) : sorted;
+    /* traceOrder and traceEnds are in here because the body reads them.
+       A memo that reads a value and does not depend on it recomputes
+       only when something else changes — which on the bill of materials
+       meant the cards followed a filter and the table did not. */
+  }, [trace, traceOrder, traceEnds]);
 
   function exportTrace() {
     if (!trace) return;
@@ -6446,6 +6469,13 @@ export default function GISCanvasPage() {
                       named for plots, where only the cable order makes
                       sense. */}
                   <button className="btn sm tr-ord"
+                    title={traceEnds
+                      ? "Showing where the runs finish \u2014 show every leg"
+                      : "Show only where the runs finish"}
+                    onClick={() => setTraceEnds(!traceEnds)}>
+                    {traceEnds ? "Ends only" : "All legs"}
+                  </button>
+                  <button className="btn sm tr-ord"
                     title={traceOrder === "chain"
                       ? "Ordered along the cable \u2014 switch to node order"
                       : "Ordered by node \u2014 switch to follow the cable"}
@@ -6613,7 +6643,18 @@ export default function GISCanvasPage() {
                               finding it on an estate-sized plan is
                               another. */}
                           <button className="gt-hi"
-                            onClick={() => setTraceLeg(traceLeg === i ? null : i)}>
+                            onClick={() => {
+                              const on = traceLeg === i;
+                              setTraceLeg(on ? null : i);
+                              /* Highlighting a leg on an estate-sized
+                                 plan only helps if it is on screen.
+                                 Framed from the leg's own path rather
+                                 than from a feature id — a leg runs
+                                 between two points and may cross several
+                                 cables, so there is no one feature to
+                                 frame. */
+                              if (!on && (l.path || []).length) zoomToPoints(l.path);
+                            }}>
                             {traceLeg === i ? "Hide" : "Show"}
                           </button>
                         </td>

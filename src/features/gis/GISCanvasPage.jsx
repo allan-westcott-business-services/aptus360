@@ -49,6 +49,9 @@ import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
+import {
+  isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
+} from "./locking.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -187,6 +190,17 @@ export default function GISCanvasPage() {
      runs there are no circuits — the drawing is a mains trench, plot
      seeds and meters, and that is all. */
   const [groupPlan, setGroupPlan] = useState(null);
+
+  /* Classes locked against moving.
+
+     A working preference rather than a fact about the drawing — which
+     layer someone has finished with is theirs, not the project's — so it
+     is remembered with the rest of their canvas settings and not written
+     to the features. Individual locks are on the features, because those
+     are decisions about the design. */
+  const [lockedClasses, setLockedClasses] = useState(
+    () => recall("gisLocked", []) ?? []);
+  useEffect(() => remember("gisLocked", lockedClasses), [lockedClasses]);
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -560,6 +574,19 @@ export default function GISCanvasPage() {
     });
     return m;
   }, [groupPlan]);
+
+  /* Whether a feature refuses to move, and why.
+
+     Through classKeys, so a lock on a line type and a lock on a layer
+     both hold without this needing to know which is which. */
+  const locked = useCallback(
+    (f) => isLocked(f, classKeys(f), lockedClasses),
+    [classKeys, lockedClasses]);
+
+  const whyLocked = useCallback(
+    (f) => lockReason(f, classKeys(f), lockedClasses,
+      (k) => layerOf(k)?.Label ?? lineTypes.find((t) => `lt:${t.Type_Key}` === k)?.Label ?? k),
+    [classKeys, lockedClasses, layerOf, lineTypes]);
 
   /* Which circuit is being looked at on its own, if any.
 
@@ -1750,6 +1777,10 @@ export default function GISCanvasPage() {
       if (f && f.Feature_Type !== "point") {
         const idx = vertexAt(f, px, py);
         if (idx >= 0) {
+          /* A locked feature keeps its shape. Said out loud rather than
+             ignored — a handle that does not drag reads as a broken
+             canvas, and the message names which lock is holding it. */
+          if (locked(f)) { setError(whyLocked(f)); return; }
           if (e.altKey) { removeVertex(f, idx); return; }
           drag.current = {
             mode: "vertex", featureId: f.Feature_ID, index: idx, startPx: [px, py],
@@ -1769,6 +1800,10 @@ export default function GISCanvasPage() {
           return;
         }
         if (e.altKey) {
+          /* Adding a vertex reshapes the feature as surely as dragging
+             one does, and this sits past the guard above — which only
+             fires when a handle is under the cursor. */
+          if (locked(f)) { setError(whyLocked(f)); return; }
           const seg = segmentAt(f, px, py);
           if (seg) { addVertex(f, seg.index, seg.point); return; }
         }
@@ -1795,6 +1830,24 @@ export default function GISCanvasPage() {
             : [...selected, hit.Feature_ID])
         : (selected.includes(hit.Feature_ID) ? selected : [hit.Feature_ID]);
       setSelected(next);
+
+      /* Selecting is always allowed; moving is not. A locked feature can
+         still be clicked, read, edited and reported on — the lock is
+         against the slip of a hand, not against working with the thing.
+
+         Any locked feature in the set stops the whole drag rather than
+         moving the rest: a selection dragged with some of it pinned
+         would tear the drawing apart. */
+      const pinned = next
+        .map((id) => features.find((x) => x.Feature_ID === id))
+        .filter((x) => x && locked(x));
+      if (pinned.length) {
+        setError(pinned.length === 1
+          ? whyLocked(pinned[0])
+          : `${pinned.length} of these are locked.`);
+        return;
+      }
+
       drag.current = { mode: "move", startPx: [px, py], ids: next, origin: {}, rubber: [] };
       next.forEach((id) => {
         const f = features.find((x) => x.Feature_ID === id);
@@ -2680,6 +2733,15 @@ export default function GISCanvasPage() {
      the neighbours of one feature — so this costs a handful of rows
      rather than a pass over the drawing. */
   async function writeGeometry(id, geometry) {
+    /* The last gate before the write.
+
+       The interaction paths are guarded individually, but they are
+       several and easy to add to — the alt-click that inserts a vertex
+       sat past the first guard for exactly that reason. Checking here
+       too means a new path cannot quietly bypass a lock, at the cost of
+       one lookup. */
+    const f0 = features.find((x) => Number(x.Feature_ID) === Number(id));
+    if (f0 && locked(f0)) { setError(whyLocked(f0)); return; }
     const before = features.find((f) => f.Feature_ID === id);
     const moved = { ...(before || {}), Feature_ID: id, Geometry: geometry };
     const next = features.map((f) => (f.Feature_ID === id ? moved : f));
@@ -3592,6 +3654,41 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Locking or unlocking what is selected.
+
+     Written to the features, so it survives a reload and follows the
+     drawing to whoever opens it next — unlike a class lock, which is one
+     person's working preference. */
+  async function setLockOn(lock) {
+    const rows = planLock(selectedFeatures, lock);
+    if (!rows.length) {
+      setStatus(lock ? "Already locked." : "None of these were locked.");
+      setTimeout(() => setStatus(""), 5000);
+      return;
+    }
+    setBusy("lock");
+    try {
+      const before = features.filter((f) =>
+        rows.some((r) => Number(r.Feature_ID) === Number(f.Feature_ID)));
+      for (let i = 0; i < rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+      }
+      setFeatures((fs) => fs.map((f) => {
+        const r = rows.find((x) => Number(x.Feature_ID) === Number(f.Feature_ID));
+        return r ? { ...f, Attributes: r.Attributes } : f;
+      }));
+      await recordAction(`${lock ? "Lock" : "Unlock"} ${rows.length} feature(s)`,
+        before,
+        before.map((f) => ({
+          ...f,
+          Attributes: rows.find((r) =>
+            Number(r.Feature_ID) === Number(f.Feature_ID)).Attributes,
+        })));
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   /* Renaming a circuit.
 
      The name is not held in one place — it is stamped on every meter,
@@ -4276,6 +4373,14 @@ export default function GISCanvasPage() {
      the half that no longer reaches something must stop claiming to, and
      the two now touch each other. */
   async function breakLineAt(f, atM) {
+    /* A manual reshape like any other. The automated routines below —
+       Auto Service teeing into a main, Build LV Network adding nodes —
+       deliberately ignore locks: those are asked for explicitly and a
+       lock is a guard against a slip of the hand, not against a routine
+       someone has just chosen from a menu. Being asked to unlock the
+       trenches before every Auto Service run is how people leave
+       everything unlocked. */
+    if (locked(f)) { setError(whyLocked(f)); return; }
     const parts = splitPolylineAt(f.Geometry, atM, CONNECT_M * 4);
     if (!parts) {
       setError("Pick a point along the line, not one of its ends.");
@@ -5651,6 +5756,22 @@ export default function GISCanvasPage() {
                         labels cover the geometry they describe, and
                         turning them off one kind at a time is four
                         decisions to make the one you wanted. */}
+                    <div className="gm-sep" />
+                    <MenuGroup label="Locked against moving" />
+                    {/* Per layer, which is the coarsest and most useful
+                        grain: a layer is usually finished all at once.
+                        Line types are locked from the right-click menu,
+                        where the thing being locked is under the cursor. */}
+                    {layers.filter((l) => classCount[l.Layer_Key]).map((l) => (
+                      <MenuItem key={l.Layer_Key} label={l.Label}
+                        active={lockedClasses.includes(l.Layer_Key)}
+                        hint={lockedClasses.includes(l.Layer_Key)
+                          ? "Cannot be moved" : "Can be moved"}
+                        onClick={() => setLockedClasses((x) =>
+                          toggleClassLock(x, l.Layer_Key))} />
+                    ))}
+                    <div className="gm-sep" />
+
                     {/* Only where there are circuits to tell apart. */}
                     {circuitsFrom(features).length > 1 && (
                       <MenuItem label="Circuit Rings" active={circuitRings}
@@ -6335,6 +6456,22 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {/* Locks in force, and a way out of them.
+
+                A feature that will not drag with nothing on screen to
+                say why is indistinguishable from a canvas that has
+                stopped working. */}
+            {lockedClasses.length > 0 && (
+              <button className="gis-hidden gis-locked"
+                title="These classes cannot be moved"
+                onClick={() => setLockedClasses([])}>
+                <span>
+                  {lockedClasses.length} class{lockedClasses.length === 1 ? "" : "es"} locked
+                </span>
+                <strong>Unlock all</strong>
+              </button>
+            )}
+
             {(hidden.length > 0 || isolatedCircuit != null) && (
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
@@ -6492,6 +6629,27 @@ export default function GISCanvasPage() {
                 {/* Hiding from here saves hunting for the right entry in
                     the Layers menu when the thing you want out of the way
                     is under the cursor. */}
+                <button className="gc-item" disabled={!!busy} onClick={() => {
+                  setSelected([ctx.feature.Feature_ID]);
+                  setLockOn(!isFeatureLocked(ctx.feature));
+                  setCtx(null);
+                }}>
+                  {isFeatureLocked(ctx.feature) ? "Unlock this" : "Lock this"}
+                </button>
+                {ctx.feature.Attributes?.Line_Type && (
+                  <button className="gc-item" onClick={() => {
+                    setLockedClasses((l) =>
+                      toggleClassLock(l, `lt:${ctx.feature.Attributes.Line_Type}`));
+                    setCtx(null);
+                  }}>
+                    {lockedClasses.includes(`lt:${ctx.feature.Attributes.Line_Type}`)
+                      ? "Unlock all " : "Lock all "}
+                    {(lineTypes.find((t) =>
+                      t.Type_Key === ctx.feature.Attributes.Line_Type)?.Label
+                      ?? "of this type").toLowerCase()}
+                  </button>
+                )}
+                <div className="gc-sep" />
                 <button className="gc-item" onClick={() => {
                   toggleClass(ctx.feature.Layer_Key);
                   setCtx(null);
@@ -7168,6 +7326,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gsg-no { background: none; border: none; cursor: pointer; font: 600 11px inherit;
   color: var(--muted); text-decoration: underline; }
 .gsg-go:disabled, .gsg-no:disabled { opacity: .5; cursor: not-allowed; }
+.gis-locked { border-color: #94a3b8; color: #475569; }
 .gis-hidden { position: absolute; left: 12px; top: 12px; z-index: 6; display: flex;
   align-items: center; gap: 8px; background: #fffbeb; border: 1px solid #fcd34d;
   color: #92400e; border-radius: 8px; padding: 6px 11px; cursor: pointer;

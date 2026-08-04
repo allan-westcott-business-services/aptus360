@@ -344,10 +344,15 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
      remains the arbiter afterwards; this only keeps the proposal within
      reach of passing it.
 
-     Four hundred metres is a working figure. Raise it and the plan gets
-     shorter and deeper; lower it and it digs more direct runs from the
-     substation, which costs trench and saves cable. */
-  const maxRunM = opts.maxRunM ?? 400;
+     Six hundred metres, which is what Aptus works to. Raise it and the
+     plan gets shorter and deeper; lower it and it digs more direct runs
+     from the substation, which costs trench and saves cable.
+
+     It is a bound on the proposal, not a guarantee about volt drop —
+     six hundred metres of undersized cable will still fail the levels
+     check, and should. This only keeps the router from proposing a
+     network that has no chance of passing it. */
+  const maxRunM = opts.maxRunM ?? 600;
 
   /* How far each node in the tree already is from the substation, along
      the tree rather than as the crow flies. A meter attached to a node

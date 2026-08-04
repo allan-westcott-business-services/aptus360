@@ -125,6 +125,101 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
     return out;
   });
 
+  /* Links the router may dig between one run and another.
+
+     A drawing of loops and parallel runs says where trench may go, not
+     where it must join. Getting from the near side of a road to the far
+     side often costs less as a short perpendicular link than as a long
+     way round the loop — and that link is a trench nobody drew, because
+     nobody knew where it would be wanted until the routing was done.
+
+     ── Where a link may start ──
+
+     From points that already matter: a service foot, a junction, the end
+     of a run. A link from an arbitrary point is no cheaper between
+     parallel runs — the perpendicular distance is the same wherever it
+     is taken — and anchoring at real points keeps the graph small and
+     the answer explicable. On runs that are not parallel it is an
+     approximation, and a close one.
+
+     ── Why it is capped ──
+
+     Without a limit every run is linked to every other and the graph
+     grows with the square of the drawing. The cap is also physical: a
+     link across sixty metres of somebody's garden is not a link. */
+  const crossings = [];
+  if (opts.crossings !== false) {
+    const maxCrossM = opts.maxCrossM ?? 30;
+
+    /* The points worth starting a link from.
+
+       The ends of the run, and the point on it nearest each meter —
+       whether or not that meter can be served from there.
+
+       Anchoring on the feet alone was wrong: a foot only exists where a
+       service is short enough to be allowed, so tightening the service
+       cap removed the anchors that would have let the router cross to
+       reach the house instead. The cap and the crossings then worked
+       against each other, and a house just out of service range had
+       neither a service nor a link.
+
+       The nearest point to a meter is where a link wants to be whatever
+       the cap says, because that is where the house is. */
+    const anchorsOf = (seg) => {
+      const out = [{ point: seg.a }, { point: seg.b }];
+      for (const m of meters) {
+        const p = (m.Geometry || [])[0];
+        if (!p) continue;
+        const f = footOnSegment(p, seg.a, seg.b);
+        out.push({ point: f.point });
+      }
+      return out;
+    };
+
+    for (const from of segments) {
+      for (const to of segments) {
+        if (from === to) continue;
+        /* One direction only — a link is the same trench whichever end
+           it is measured from, and both directions would dig it twice. */
+        if (segments.indexOf(from) > segments.indexOf(to)) continue;
+        if (from.trench === to.trench) continue;
+
+        for (const anc of anchorsOf(from)) {
+          const f = footOnSegment(anc.point, to.a, to.b);
+          if (f.d < eps || f.d > maxCrossM) continue;
+          /* Landing on the very end of the far run means the two already
+             meet there; a link would be zero-length or duplicate a
+             junction. */
+          if (f.t <= 0 || f.t >= 1) continue;
+          crossings.push({
+            from: anc.point, to: f.point, len: f.d,
+            /* Both segments, because both have to be split.
+
+               Only the target was recorded at first, so a link's far end
+               joined the run it landed on and its near end sat as an
+               isolated node — attached to nothing, and the whole
+               crossing therefore useless. Nothing was served and the
+               reason was invisible. */
+            seg: to, fromSeg: from,
+          });
+        }
+      }
+    }
+
+    /* A crossing lands part way along its target, so that segment has to
+       be split there too — the same reason feet are split. */
+    for (const c of crossings) {
+      c.seg.feet.push({
+        point: c.to, serviceM: 0, generated: true,
+        t: footOnSegment(c.to, c.seg.a, c.seg.b).t,
+      });
+      c.fromSeg.feet.push({
+        point: c.from, serviceM: 0, generated: true,
+        t: footOnSegment(c.from, c.fromSeg.a, c.fromSeg.b).t,
+      });
+    }
+  }
+
   /* Split each segment at its feet and build the edges. */
   const edges = [];
   for (const seg of segments) {
@@ -142,6 +237,16 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
       if (len <= eps) continue;
       edges.push({ u, v, len, trench: seg.trench });
     }
+  }
+
+  /* The generated links, as edges. Marked so the canvas can draw them
+     differently — a trench the router is proposing is not the same thing
+     as one somebody drew. */
+  for (const c of crossings) {
+    const u = intern(c.from);
+    const v = intern(c.to);
+    if (u === v) continue;
+    edges.push({ u, v, len: c.len, trench: null, generated: true });
   }
 
   /* Feet resolved to node indices now that every point is interned. */

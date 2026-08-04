@@ -10,6 +10,8 @@ import {
   rangeBetween, rangeNote, selectAll,
 } from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
+import { useAuth } from "../../lib/AuthContext.jsx";
+import { personFor, displayName } from "./whoAmI.js";
 import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
@@ -115,6 +117,17 @@ export default function POCApplicationsTab({ projectId }) {
      cannot drift apart — which they would the moment either changed
      after the other was entered. */
   const [nrs, setNrs] = useState([]);
+
+  /* Who is filling this in.
+
+     The representative is the person making the application, and that is
+     whoever is signed in — asking them to pick their own name from a
+     list of everyone is asking a question the application can answer. */
+  const { user } = useAuth();
+
+  /* The Person record behind the signed-in user, matched on email.
+     Null where there is none, which the form says rather than hides. */
+  const me = personFor(user, lookups?.people || []);
   const [project, setProject] = useState(null);
 
   function blank() {
@@ -180,6 +193,11 @@ export default function POCApplicationsTab({ projectId }) {
          table lookup, not a judgement, and asking someone to copy it
          across is asking them to get it wrong occasionally. */
       Contingency_Load: cont ? String(cont) : "",
+      /* Defaulted to the signed-in user, where they have a Person
+         record. Left blank rather than guessed at where they do not —
+         a representative named as somebody else is worse than one
+         nobody has named yet. */
+      Applicant_Person_ID: personFor(user, lookups?.people || [])?.Person_ID ?? "",
       Applicant_Company: APPLICANT,
       Applicant_Company_Address: APPLICANT_ADDRESS,
       /* Dated today unless somebody says otherwise — an application is
@@ -229,7 +247,12 @@ export default function POCApplicationsTab({ projectId }) {
          whatever was typed. Saving the constant corrects it on the next
          edit rather than leaving two versions in the table. */
       const applicant = {
-        Applicant_Company: APPLICANT,
+        /* Defaulted to the signed-in user, where they have a Person
+         record. Left blank rather than guessed at where they do not —
+         a representative named as somebody else is worse than one
+         nobody has named yet. */
+      Applicant_Person_ID: personFor(user, lookups?.people || [])?.Person_ID ?? "",
+      Applicant_Company: APPLICANT,
         Applicant_Company_Address: APPLICANT_ADDRESS,
       };
 
@@ -630,12 +653,29 @@ export default function POCApplicationsTab({ projectId }) {
               <input className="kva-total" value={APPLICANT_ADDRESS} disabled /></div>
 
             <div className="fld span2"><label>Applicant representative</label>
-              <select value={f.Applicant_Person_ID} onChange={(e) => set("Applicant_Person_ID")(e.target.value)}>
+              {/* Still a picker rather than a fixed value: somebody
+                  entering an application on a colleague's behalf is
+                  ordinary, and the person making it is not always the
+                  person typing it. */}
+              <select value={f.Applicant_Person_ID}
+                onChange={(e) => set("Applicant_Person_ID")(e.target.value)}>
                 <option value="">&mdash;</option>
                 {(lookups.people || []).map((p) => (
                   <option key={p.Person_ID} value={p.Person_ID}>{p.Person_Name}</option>
                 ))}
-              </select></div>
+              </select>
+              {/* Where the signed-in user has no Person record, say so
+                  rather than leaving a blank that looks like an
+                  oversight — the fix is a staff record, not a
+                  reselection. */}
+              {user && !me && (
+                <p className="hint">
+                  {`No staff record for ${displayName(user)} \u2014 choose a name.`}
+                </p>
+              )}
+              {me && String(f.Applicant_Person_ID) === String(me.Person_ID) && (
+                <p className="hint">You, from your sign-in.</p>
+              )}</div>
             <div className="fld span2"><label>Application date</label>
               {/* Changing this moves the expected response with it,
                   because twenty-eight days from the application is what

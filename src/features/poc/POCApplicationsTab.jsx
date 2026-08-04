@@ -627,28 +627,36 @@ export default function POCApplicationsTab({ projectId }) {
                       + ` ${nonResKva.toFixed(1)} kVA`}
                   </span>
                 </label>
-                <div className="nrs-list">
+                {/* Chips, as the plots are. A supply is identified by a
+                    short reference, so the same grid works and the two
+                    panels read as the same kind of question — which is
+                    what they are.
+
+                    The kVA rides on the chip rather than in a column:
+                    the figure is the reason for ticking or not, and
+                    hiding it in a tooltip means opening every one to
+                    work out where the total comes from. */}
+                <div className="ipl-grid">
                   {utilNrs.map((n) => {
                     const id = Number(n.NRS_ID);
                     const takenBy = nrsClaimed.get(id);
                     const on = nrsChosen.has(id);
+                    const locked = !!takenBy && !on;
                     return (
-                      <label key={id}
-                        className={takenBy && !on ? "nrs-row off" : "nrs-row"}
-                        title={takenBy && !on ? `Already on ${takenBy}` : ""}>
-                        <input type="checkbox" checked={on}
-                          disabled={!!takenBy && !on}
-                          onChange={() => chooseNrs(id)} />
-                        <span className="nrs-ref">
+                      <button key={id} type="button"
+                        className={on ? "ipl nrs on" : (locked ? "ipl nrs off" : "ipl nrs")}
+                        disabled={locked}
+                        title={locked
+                          ? `Already on ${takenBy}`
+                          : (n.Description || n.Supply_Ref || `Supply ${id}`)}
+                        onClick={() => chooseNrs(id)}>
+                        <span className="ipl-l">
                           {n.Supply_Ref || n.Description || `Supply ${id}`}
                         </span>
-                        <span className="nrs-kva">
+                        <span className="ipl-k">
                           {Number(n.Requested_kVA || 0).toFixed(1)} kVA
                         </span>
-                        {takenBy && !on && (
-                          <span className="nrs-taken">on {takenBy}</span>
-                        )}
-                      </label>
+                      </button>
                     );
                   })}
                 </div>
@@ -922,17 +930,6 @@ export default function POCApplicationsTab({ projectId }) {
 }
 
 const CSS = FILTER_CSS + `
-.nrs-list { border: 1px solid var(--border); border-radius: 7px;
-  background: var(--white); max-height: 200px; overflow-y: auto; }
-.nrs-row { display: flex; align-items: center; gap: 9px; padding: 6px 10px;
-  font: 500 12px inherit; cursor: pointer; border-bottom: 1px solid var(--border); }
-.nrs-row:last-child { border-bottom: none; }
-.nrs-row:hover { background: var(--bg); }
-.nrs-row.off { color: var(--muted); cursor: not-allowed; background: #fef2f2; }
-.nrs-ref { flex: 1; }
-.nrs-kva { font-weight: 700; white-space: nowrap; }
-.nrs-taken { font-size: 10.5px; color: #b91c1c; white-space: nowrap; }
-
 /* The plot chips. Sized so a plot number fits and a hundred of them
    still read as a block rather than a wall. */
 .ipl-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px;
@@ -947,6 +944,13 @@ const CSS = FILTER_CSS + `
    grid altogether looks like a plot missing from the project. */
 .ipl.off { border-color: #fecaca; background: #fef2f2; color: #b91c1c;
   cursor: not-allowed; opacity: .7; }
+
+/* A supply chip carries a name and a figure, so it is wider than a plot
+   number and stacks the two rather than sitting them side by side. */
+.ipl.nrs { display: inline-flex; flex-direction: column; align-items: flex-start;
+  gap: 1px; min-width: 92px; padding: 5px 9px; }
+.ipl-l { font-weight: 600; }
+.ipl-k { font-size: 10px; font-weight: 700; opacity: .75; }
 
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }

@@ -117,12 +117,34 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      list rather than from a running count of the new ones, so gas sits
      in the gas slot whether or not electric was already there. */
   const existing = opts.existingMeter || (() => null);
-  const meters = utils.map((utility, i) => {
+  const all = utils.map((utility, i) => {
     const found = existing(seed, utility);
     return found
       ? { utility, point: found, exists: true }
       : { utility, point: slots[i], exists: false };
   });
+
+  /* Meters that already have a trench running to them are left alone.
+
+     Judged per meter, not per plot. A plot whose gas was dug by hand and
+     whose electric was not needs the electric doing and the gas leaving
+     — skipping the whole plot leaves it half served, and doing the whole
+     plot lays a second gas trench over the first.
+
+     Only a meter that is actually there can already be served: a slot is
+     a position nothing has been placed at yet, so nothing can be running
+     to it. */
+  const meters = all.filter((m) =>
+    !(m.exists && opts.meterServed?.(m.point)));
+
+  const already = all.length - meters.length;
+  /* Only where something was actually skipped. A plot with no utilities
+     on it has nothing to serve, which is not the same as having been
+     served already — reporting it as such sent a seed with no meters
+     down the skipped list instead of getting its dig. */
+  if (already > 0 && !meters.length) {
+    return { seed, skipped: `every meter already has a service (${already})` };
+  }
 
   /* The cable runs from the main to its own meter, and nowhere else.
 
@@ -178,7 +200,12 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
 
   const trench = [tee.foot, furthest];
 
-  return { seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables };
+  return {
+    seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables,
+    /* Named so the summary can say what was left alone rather than
+       quietly doing less than the count suggests. */
+    skippedMeters: already,
+  };
 }
 
 /* Whether a plot is already served, however that came about.
@@ -200,7 +227,49 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
    as unserved lays a duplicate cable through a garden, while treating an
    unserved plot as served leaves a gap that the levels check reports
    loudly on the next run. */
+/* Whether a service trench already runs to this exact point.
+
+   Asked of a meter's position rather than of a plot, because that is the
+   thing being served. A trench ending on a meter is serving that meter
+   whoever drew it, whatever it is labelled, and whether or not anything
+   records which plot it belongs to — the plot 59 case had a meter linked
+   to no circuit at all, and a rule that went through the plot record
+   would have missed it.
+
+   Either end, since a service may have been drawn from the plot outwards
+   as easily as towards it. Only the ends: a main passing a house does
+   not connect it. */
+/* How close a trench end must be to count as running to this meter.
+
+   Under half the spacing between adjacent meters, or a trench dug to the
+   electric meter marks the gas one beside it as served too — they sit
+   0.8 m apart, and a 1.5 m tolerance claimed both from one dig.
+
+   0.35 m is tight enough to tell two neighbours apart and loose enough
+   for work snapped by eye. The two errors do not cost the same: claiming
+   a meter is served when it is not leaves it with no supply, which the
+   levels check will not catch because a meter with no cable is simply
+   absent from the trace. Erring tight means at worst a duplicate that
+   can be seen and deleted. */
+export const SERVED_NEAR_M = 0.35;
+
+export function meterHasService(point, trenches = [], near = SERVED_NEAR_M) {
+  if (!point) return false;
+  for (const t of trenches) {
+    const g = t.Geometry || [];
+    if (g.length < 2) continue;
+    for (const end of [g[0], g[g.length - 1]]) {
+      if (Math.hypot(end[0] - point[0], end[1] - point[1]) <= near) return true;
+    }
+  }
+  return false;
+}
+
 export function isServed(seed, meters = [], trenches = [], near = 1.5) {
+  /* Deliberately looser than meterHasService above. This asks whether a
+     plot has been dealt with at all, where landing on the neighbouring
+     meter still means yes; that one asks which of two meters 0.8 m apart
+     is served, where it does not. */
   const sid = Number(seed?.Feature_ID);
   if (!Number.isFinite(sid)) return false;
 

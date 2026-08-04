@@ -39,7 +39,23 @@ const SCOPE_COLUMNS = [
 /* Computed fields like Auto_Plot_Count are added to the GET response, and
    forms post the whole object back. Filter to real columns so a derived
    value can't be mistaken for something writable. */
-const WRITABLE = new Set(PROJECT_COLUMNS.split(",").filter((c) => c !== "Project_ID"));
+/* Columns the database fills in for itself.
+
+   Display_Ref is a stored generated column — Project_Ref with the option
+   letter appended — and Postgres refuses an UPDATE that names one at
+   all, even setting it to the value it already holds: "column
+   Display_Ref can only be updated to DEFAULT". Changing the site name
+   failed with an error about a field nobody had touched.
+
+   The cause is that WRITABLE was built from the read list. A column
+   being readable does not make it writable, and Display_Ref has to be
+   read — it is what the project dropdowns show. Anything generated added
+   later belongs here too, and the schema is the only place that fact
+   lives, so it is written down rather than inferred. */
+const GENERATED = new Set(["Display_Ref"]);
+
+const WRITABLE = new Set(PROJECT_COLUMNS.split(",")
+  .filter((c) => c !== "Project_ID" && !GENERATED.has(c)));
 const onlyColumns = (obj) =>
   Object.fromEntries(Object.entries(obj).filter(([k]) => WRITABLE.has(k)));
 

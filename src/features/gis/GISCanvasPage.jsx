@@ -26,7 +26,8 @@ import { resolveStyle, appearance, subjectOf, symbolPath, markerPositions, STROK
 import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceFor,
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import {
-  planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline, isServed,
+  planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline,
+  isServed, meterHasService,
 } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
@@ -4680,6 +4681,12 @@ export default function GISCanvasPage() {
       .filter((sd) => isServed(sd, allMeters, svcTrenches))
       .map((sd) => Number(sd.Feature_ID)));
 
+    /* A meter with a trench already running to it is left alone, even
+       where the rest of its plot still needs doing. Per meter rather
+       than per plot: a plot with gas dug by hand and electric not needs
+       the electric doing and the gas leaving. */
+    const meterServed = (point) => meterHasService(point, svcTrenches);
+
     const utilitiesFor = (seed) => {
       const plot = plotList.find((p) => p.plot_id === seed.Plot_ID);
       return utilities.filter((u) =>
@@ -4821,6 +4828,7 @@ export default function GISCanvasPage() {
 
     const { plans, skipped } = planAutoService(seeds, trenches, utilitiesFor, {
       alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
+      meterServed,
       existingMeter,
     });
     if (!plans.length && !refill.length && !teeGeom.size) {
@@ -5156,6 +5164,31 @@ export default function GISCanvasPage() {
       cable: cable ? [type?.Cable_Type, cable.Size_Label].filter(Boolean).join(" ") : null,
     };
   }, []);
+
+  /* Span nodes whose cable no longer matches the run feeding them.
+
+     The cable size is held twice: on the feeder section, which is the
+     cable, and on the span node, which is what the trace reads. Change
+     one and the other is stale, and the check reports the old figure
+     with nothing to say it is old — a cable put back from 300 to 95
+     still traced as 300.
+
+     Two places for one fact is the underlying fault and not something to
+     fix by hand at this point in the drawing's life. Saying so before
+     the figures are read is the next best thing. */
+  const cablesOutOfStep = useMemo(() => {
+    const out = [];
+    for (const line of features) {
+      if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
+      if (line.Attributes?.Circuit_ID == null) continue;
+      if (line.Attributes?.VD_Cable_Size_ID == null) continue;
+      const node = nodeFedBy(line);
+      if (!node) continue;
+      if (String(node.Attributes?.VD_Cable_Size_ID ?? "")
+        !== String(line.Attributes.VD_Cable_Size_ID)) out.push(node);
+    }
+    return out;
+  }, [features, nodeFedBy]);
 
   /* The levels check: every circuit, from the substation outward.
 
@@ -7010,6 +7043,17 @@ export default function GISCanvasPage() {
                   {/* The same figures as a network rather than a list.
                       Beside Export because it is the other way of taking
                       the check away with you. */}
+                  {/* The figures are computed from the span nodes, so a
+                      cable changed on the run itself is not in them.
+                      Said here, where the figures are being read, rather
+                      than left to be discovered by disbelieving them. */}
+                  {cablesOutOfStep.length > 0 && (
+                    <button className="btn sm tr-stale" disabled={!!busy}
+                      title="Some span nodes hold a different cable from the run feeding them"
+                      onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)}>
+                      {cablesOutOfStep.length} cable{cablesOutOfStep.length === 1 ? "" : "s"} out of step &mdash; fix
+                    </button>
+                  )}
                   <button className="btn sm tr-ord"
                     title="Draw this check as a schematic"
                     onClick={() => setSchematic(true)}>
@@ -7363,6 +7407,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-radius: 6px; cursor: pointer; font: 700 11px inherit; padding: 4px 10px;
   margin-right: 8px; }
 .tr-stale:hover { border-color: #d97706; }
+.tr-stale { background: #fffbeb; border: 1px solid #fcd34d; border-radius: 6px;
+  cursor: pointer; font: 700 11px inherit; padding: 4px 10px; margin-right: 8px;
+  color: #b45309; }
+.tr-stale:hover { background: #fef3c7; }
 .tr-ord { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
   cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-right: 8px;
   color: var(--accent); }

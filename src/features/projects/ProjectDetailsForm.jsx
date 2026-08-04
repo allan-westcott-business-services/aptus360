@@ -93,7 +93,12 @@ export default function ProjectDetailsForm({ projectId }) {
     setSaving(true);
     try {
       const before = f.Project_Status_ID;
-      /* Auto_Plot_Count is derived, not stored — strip it before saving. */
+      /* Auto_Plot_Count is derived, not stored — strip it before saving.
+
+         Generated columns like Display_Ref are stripped at the endpoint
+         instead, where the list of them belongs: every form posts the
+         whole object back, and a rule kept in each of them is a rule
+         that will be missed by the next one. */
       const { Auto_Plot_Count, ...payload } = f;
       await updateProject(f.Project_ID, payload);
       const fresh = await getProject(f.Project_ID);

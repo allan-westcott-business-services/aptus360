@@ -3,6 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listPoc, createPoc, updatePoc, deletePoc } from "../../api/poc.js";
 import { listPlots } from "../../api/plots.js";
+import { contingencyFor, contingencyNote } from "./contingency.js";
 import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
@@ -94,13 +95,26 @@ export default function POCApplicationsTab({ projectId }) {
   /* Site and plot figures come from the project, so the form opens filled
      in rather than asking for what's already known. */
   function openForm() {
-    const base = plots.reduce((sum, p) => sum + (Number(p.KVA_Load) || 0), 0);
+    /* The resolved load, not the override column.
+
+       KVA_Load is only filled in where somebody has typed a figure over
+       the house type's — which is almost never — so summing it gave 0.0
+       on a fully specified site. KVA_Resolved is what the database
+       settled on: the entered figure where there is one, the house
+       type's otherwise. */
+    const base = plots.reduce(
+      (sum, p) => sum + (Number(p.KVA_Resolved ?? p.KVA_Load) || 0), 0);
+    const cont = contingencyFor(plots.length, lookups?.contingencyLevels || []);
     setF({
       ...blank(),
       Site_Name: project?.Site_Name ?? "",
       Site_Address: project?.Site_Address ?? "",
       Plot_Count: plots.length || "",
       Requested_kVA: base ? base.toFixed(1) : "",
+      /* Worked out from the plot count rather than left blank. It is a
+         table lookup, not a judgement, and asking someone to copy it
+         across is asking them to get it wrong occasionally. */
+      Contingency_Load: cont ? String(cont) : "",
       Applicant_Company: "Aptus Utilities",
       POC_Type_ID: lookups?.pocTypes?.[0]?.POC_Type_ID ?? "",
     });
@@ -212,7 +226,30 @@ export default function POCApplicationsTab({ projectId }) {
     } catch (e) { setError(e.message); }
   }
 
-  const baseKva = plots.reduce((sum, p) => sum + (Number(p.KVA_Load) || 0), 0);
+  const baseKva = plots.reduce(
+    (sum, p) => sum + (Number(p.KVA_Resolved ?? p.KVA_Load) || 0), 0);
+
+  /* What the bands say for this many plots, and which band that is.
+     Recomputed rather than read off the form, so the note stays true if
+     the figure is edited by hand. */
+  const contKva = contingencyFor(plots.length, lookups?.contingencyLevels || []);
+
+  /* Whether this application carries a load at all.
+
+     By the utility's name rather than its id: the ids are a fixed list
+     in one module and a column in the database, and matching on the name
+     survives either being renumbered. Street lighting is electric in the
+     ground but is not applied for by kVA on this form, so only the
+     residential electric utility counts.
+
+     Nothing chosen yet shows the fields, since electric is the ordinary
+     case and a form that grows a section when you pick from a dropdown
+     is more startling than one that loses it. */
+  const isElectric = (() => {
+    if (!f.Utility_ID) return true;
+    const u = UTILITIES.find((x) => Number(x.id) === Number(f.Utility_ID));
+    return u?.name === "Electric";
+  })();
   const totalKva =
     Number(f.Requested_kVA || 0) + Number(f.Non_Residential_kVA || 0) + Number(f.Contingency_Load || 0);
   const providerCount = f.idno_ids.length + (f.dno_id ? 1 : 0);
@@ -322,25 +359,50 @@ export default function POCApplicationsTab({ projectId }) {
                   <option key={u.id} value={u.id}>{u.name}</option>
                 ))}
               </select></div>
-            <div className="fld"><label>Requested kVA load</label>
-              <input type="number" step="0.1" value={f.Requested_kVA}
-                onChange={(e) => set("Requested_kVA")(e.target.value)} />
-              <p className="hint">
-                {plots.length
-                  ? `base ${baseKva.toFixed(1)} + contingency ${Number(f.Contingency_Load || 0).toFixed(1)} from ${plots.length} plot(s)`
-                  : "no plots on this project yet"}
-              </p></div>
-            <div className="fld"><label>Non-residential</label>
-              <input type="number" step="0.1" value={f.Non_Residential_kVA}
-                onChange={(e) => set("Non_Residential_kVA")(e.target.value)} />
-              <p className="hint">
-                {Number(f.Non_Residential_kVA || 0) > 0 ? "included in total" : "no non-residential supplies linked"}
-              </p></div>
-            <div className="fld"><label>Total</label>
-              <input className="kva-total" value={totalKva.toFixed(1)} disabled /></div>
-            <div className="fld"><label>Contingency load</label>
-              <input type="number" step="0.1" value={f.Contingency_Load}
-                onChange={(e) => set("Contingency_Load")(e.target.value)} /></div>
+            {/* Load only means something on an electric application.
+
+                A gas or water POC has no kVA, and four empty boxes on it
+                are four things somebody has to decide are deliberately
+                blank. Hidden rather than disabled: a disabled field
+                still says the question was asked. */}
+            {isElectric && (
+              <>
+                <div className="fld"><label>Requested kVA load</label>
+                  <input type="number" step="0.1" value={f.Requested_kVA}
+                    onChange={(e) => set("Requested_kVA")(e.target.value)} />
+                  <p className="hint">
+                    {plots.length
+                      ? `${baseKva.toFixed(1)} kVA across ${plots.length} plot(s)`
+                      : "no plots on this project yet"}
+                  </p></div>
+                <div className="fld"><label>Non-residential</label>
+                  <input type="number" step="0.1" value={f.Non_Residential_kVA}
+                    onChange={(e) => set("Non_Residential_kVA")(e.target.value)} />
+                  <p className="hint">
+                    {Number(f.Non_Residential_kVA || 0) > 0
+                      ? "included in total" : "no non-residential supplies linked"}
+                  </p></div>
+                <div className="fld"><label>Contingency load</label>
+                  <input type="number" step="0.1" value={f.Contingency_Load}
+                    onChange={(e) => set("Contingency_Load")(e.target.value)} />
+                  {/* Where the figure came from, and whether it has been
+                      changed since. A number that arrived on its own and
+                      then quietly disagrees with the table is worse than
+                      one that was never filled in. */}
+                  <p className="hint">
+                    {contingencyNote(plots.length, lookups?.contingencyLevels || [])}
+                    {Number(f.Contingency_Load || 0) !== contKva
+                      && ` \u2014 the band says ${contKva}`}
+                  </p></div>
+                <div className="fld"><label>Total</label>
+                  <input className="kva-total" value={totalKva.toFixed(1)} disabled />
+                  <p className="hint">
+                    {`${Number(f.Requested_kVA || 0).toFixed(1)} residential`
+                      + ` + ${Number(f.Non_Residential_kVA || 0).toFixed(1)} non-residential`
+                      + ` + ${Number(f.Contingency_Load || 0).toFixed(1)} contingency`}
+                  </p></div>
+              </>
+            )}
 
             <div className="fld span6">
               <label>

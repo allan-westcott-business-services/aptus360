@@ -53,7 +53,7 @@ import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
 import { inDrawOrder } from "./drawOrder.js";
-import { planRoute } from "./routing.js";
+import { planRoute, traceAll } from "./routing.js";
 import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
@@ -1200,7 +1200,11 @@ export default function GISCanvasPage() {
          sections read against it. */
       ctx.strokeStyle = "rgba(148,163,184,.45)";
       ctx.lineWidth = 2;
-      const liveSet = new Set(routePlan.liveEdges);
+      /* Which sections are in use, whichever question was asked — the
+         cheapest network lists its edges, the trace counts them. */
+      const liveSet = routePlan.traced
+        ? new Set([...routePlan.uses.keys()])
+        : new Set(routePlan.liveEdges);
       g.edges.forEach((e, i) => {
         if (liveSet.has(i)) return;
         const a2 = toPx(g.nodes[e.u]);
@@ -1211,8 +1215,59 @@ export default function GISCanvasPage() {
         ctx.stroke();
       });
 
+      /* Shaded by how many meters trace through, where that is what is
+         being shown.
+
+         Width carries the count rather than colour alone: a line twice
+         as thick reads as carrying twice as much at a glance and across
+         a printed drawing, where a colour ramp does not. Colour deepens
+         with it for the same reason the levels check uses colour —
+         two cues are readable where one may not be. */
+      if (routePlan.traced) {
+        const peak = Math.max(1, routePlan.peak);
+        for (const e of routePlan.used) {
+          const a2 = toPx(routePlan.graph.nodes[e.u]);
+          const b2 = toPx(routePlan.graph.nodes[e.v]);
+          const share = e.uses / peak;
+          ctx.beginPath();
+          ctx.setLineDash(e.generated ? [7, 5] : []);
+          /* Pale green for a spur, deep blue for the trunk. */
+          ctx.strokeStyle = e.generated
+            ? "#d97706"
+            : `rgb(${Math.round(74 - share * 45)},${Math.round(222 - share * 130)},${Math.round(128 + share * 60)})`;
+          ctx.lineWidth = 2.5 + share * 9;
+          ctx.moveTo(a2.x, a2.y);
+          ctx.lineTo(b2.x, b2.y);
+          ctx.stroke();
+        }
+        ctx.setLineDash([]);
+
+        /* The count on the heaviest sections, so the shading can be read
+           as a number where it matters. Only the busiest, or a dense
+           drawing becomes a wall of digits. */
+        ctx.save();
+        ctx.font = "700 10px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        for (const e of routePlan.used) {
+          if (e.uses < peak * 0.25) continue;
+          const a2 = toPx(routePlan.graph.nodes[e.u]);
+          const b2 = toPx(routePlan.graph.nodes[e.v]);
+          if (Math.hypot(b2.x - a2.x, b2.y - a2.y) < 34) continue;
+          const mx = (a2.x + b2.x) / 2;
+          const my = (a2.y + b2.y) / 2;
+          const t = String(e.uses);
+          const w = ctx.measureText(t).width + 7;
+          ctx.fillStyle = "rgba(255,255,255,.85)";
+          ctx.fillRect(mx - w / 2, my - 7, w, 14);
+          ctx.fillStyle = "#1e3a5f";
+          ctx.fillText(t, mx, my);
+        }
+        ctx.restore();
+      }
+
       /* The sections that must be dug. */
-      for (const e of routePlan.live) {
+      for (const e of routePlan.live || []) {
         const a2 = toPx(g.nodes[e.u]);
         const b2 = toPx(g.nodes[e.v]);
         ctx.beginPath();
@@ -4037,6 +4092,28 @@ export default function GISCanvasPage() {
      Accepting deletes the candidates that are not needed, which is a
      large and irreversible-looking change — so it is undoable as one
      step and says how many before it does anything. */
+  /* Tracing every meter home, and shading the trench by how many use it.
+
+     A different question from "what is the cheapest network": each meter
+     takes its own shortest route, so nobody is further from the
+     substation than the site allows, and the shading says which sections
+     are carrying the site. */
+  function traceRoute() {
+    const trenches = features.filter((f) =>
+      f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    const meters = features.filter((f) =>
+      f.Feature_Role === "meter" && f.Layer_Key === "electric");
+    const sub = features.find((f) => f.Feature_Role === "substation");
+
+    const plan = traceAll(trenches, meters, sub);
+    if (plan.error) { setError(plan.error); setRoutePlan(null); return; }
+    setRoutePlan({ ...plan, traced: true });
+    setError(plan.unreachable.length
+      ? `${plan.unreachable.length} meter(s) left out \u2014 no trench within `
+        + `10 m to service them, or no route under ${plan.maxRunM} m from the substation.`
+      : "");
+  }
+
   function suggestRoute() {
     const trenches = features.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
@@ -4085,9 +4162,20 @@ export default function GISCanvasPage() {
                routed carries nothing and a second run starts clean. */
             delete attrs.Route_Live;
             delete attrs.Route_Live_M;
+            delete attrs.Route_Meters;
           } else {
             attrs.Route_Live = true;
             attrs.Route_Live_M = liveM;
+            /* How many properties the busiest part of this trench
+               carries, where a trace produced the plan.
+
+               Worth keeping: it is what decides the cable size, and it
+               is a figure nobody can recover from the drawing afterwards
+               without running the trace again. */
+            const peak = plan.liveByTrench
+              .find((x) => Number(x.Feature_ID) === Number(f.Feature_ID))?.peakUses;
+            if (peak != null) attrs.Route_Meters = peak;
+            else delete attrs.Route_Meters;
           }
           return { Feature_ID: f.Feature_ID, Attributes: attrs };
         })
@@ -6338,6 +6426,16 @@ export default function GISCanvasPage() {
 
                   <Menu id="trench" label="Trench" open={open} setOpen={setOpen}>
                     <MenuGroup label="Route" />
+                    {/* Two questions, deliberately kept apart.
+
+                        Tracing shows what the network has to carry and
+                        gives every meter its shortest run; the cheapest
+                        network gives the smallest dig and may make
+                        somebody's run longer to get it. */}
+                    <MenuItem label="Trace All Meters"
+                      hint="Shortest route home for every meter, shaded by how many use each section"
+                      disabled={!!busy || !projectId}
+                      onClick={traceRoute} />
                     <MenuItem label="Suggest Trench Route"
                       hint="Which drawn trenches must be live to reach every meter"
                       disabled={!!busy || !projectId}
@@ -6366,6 +6464,16 @@ export default function GISCanvasPage() {
                     <MenuGroup label="Routing" />
                     {/* Draw candidates wherever a trench could go, then
                         let this pick the ones that have to be live. */}
+                    {/* Two questions, deliberately kept apart.
+
+                        Tracing shows what the network has to carry and
+                        gives every meter its shortest run; the cheapest
+                        network gives the smallest dig and may make
+                        somebody's run longer to get it. */}
+                    <MenuItem label="Trace All Meters"
+                      hint="Shortest route home for every meter, shaded by how many use each section"
+                      disabled={!!busy || !projectId}
+                      onClick={traceRoute} />
                     <MenuItem label="Suggest Trench Route"
                       hint="Which candidates must be dug to reach every meter"
                       disabled={!!busy || !projectId}
@@ -7027,8 +7135,16 @@ export default function GISCanvasPage() {
             {routePlan?.ok && (
               <div className="gis-suggest">
                 <span className="gsg-t">
-                  {`${routePlan.mainsM} m of ${routePlan.drawnM} drawn`}
+                  {routePlan.traced
+                    ? `${routePlan.served.length} meters traced \u00b7 `
+                      + `${routePlan.mainsM} m of ${routePlan.drawnM} drawn`
+                    : `${routePlan.mainsM} m of ${routePlan.drawnM} drawn`}
                 </span>
+                {routePlan.traced && (
+                  <span className="gsg-n">
+                    {`busiest section carries ${routePlan.peak}`}
+                  </span>
+                )}
                 <span className="gsg-n">
                   {`+ ${routePlan.serviceM} m service \u00b7 `}
                   {`\u00a3${(routePlan.mainsCost + routePlan.serviceCost).toLocaleString()}`}

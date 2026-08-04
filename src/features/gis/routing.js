@@ -515,6 +515,141 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
   };
 }
 
+/* Tracing every meter back to the substation by its own shortest route.
+
+   A different question from the one planRoute answers, and a better one
+   for an LV network.
+
+   ── Why this rather than the cheapest network ──
+
+   Minimising total trench gives the smallest dig, but it does so by
+   making meters share long routes — and a shared route is a longer route
+   for whoever is at the end of it. The volt drop is then decided by the
+   trench plan, which is backwards: the cable has to survive the route,
+   so the route should be as short as it can be for every meter.
+
+   Here each meter takes the shortest path it can, independently. The
+   union of those paths is the trench that must be dug, and no meter is
+   further from the substation than the site allows.
+
+   ── What the counts are for ──
+
+   A section used by forty meters is carrying forty properties, and one
+   used by two is a spur. That is the trunk of the network, and it is
+   also, near enough, the load: what a section carries is what decides
+   the cable size, so the same figure that says "this is the main run"
+   says "this is the run that needs the big cable".
+
+   A section used by nobody is trench nobody needs. */
+export function traceAll(trenches = [], meters = [], substation, opts = {}) {
+  const rates = { ...DEFAULT_RATES, ...(opts.rates || {}) };
+  const graph = buildGraph(trenches, meters, opts);
+  const { nodes, edges, options } = graph;
+
+  const subPt = (substation?.Geometry || [])[0];
+  if (!subPt) return { error: "No substation on the drawing." };
+  if (!edges.length) return { error: "No trenches to trace along." };
+
+  let root = 0;
+  let rootD = Infinity;
+  nodes.forEach((n, i) => {
+    const d = dist(n, subPt);
+    if (d < rootD) { rootD = d; root = i; }
+  });
+
+  /* One spread from the substation serves every meter: the shortest path
+     tree. Distance rather than cost, because what matters here is how
+     far the cable runs, not what the ground costs to open. */
+  const { cost, via, from } = spreadFrom(graph, [root], 1);
+
+  const uses = new Map();          // edge index -> how many meters use it
+  const served = [];
+  const unreachable = [];
+  const maxRunM = opts.maxRunM ?? 600;
+
+  for (const o of options) {
+    /* The foot giving the shortest total run — mains from the
+       substation plus the service to the meter. */
+    let best = null;
+    for (const f of o.feet) {
+      const d = cost[f.node];
+      if (d === Infinity) continue;
+      const run = d + f.serviceM;
+      if (!best || run < best.run) best = { f, run, node: f.node };
+    }
+    if (!best || best.run > maxRunM) { unreachable.push(o.meter); continue; }
+
+    /* Walk back, counting each section as used once by this meter. */
+    let at = best.node;
+    let guard = 0;
+    while (at !== root && at !== -1 && guard++ < nodes.length) {
+      const e = via[at];
+      if (e < 0) break;
+      uses.set(e, (uses.get(e) || 0) + 1);
+      at = from[at];
+    }
+
+    served.push({
+      meter: o.meter,
+      foot: nodes[best.node],
+      footNode: best.node,
+      serviceM: Math.round(best.f.serviceM * 100) / 100,
+      runM: Math.round(best.run * 10) / 10,
+    });
+  }
+
+  const used = [...uses].map(([i, n]) => ({ ...edges[i], index: i, uses: n }));
+  const mainsM = used.reduce((t, e) => t + e.len, 0);
+  const serviceM = served.reduce((t, s) => t + s.serviceM, 0);
+  const drawnM = edges.reduce((t, e) => t + e.len, 0);
+
+  /* Per drawn trench, so the drawing can be marked: how much of it is
+     used, and the heaviest count anywhere on it. */
+  const perTrench = new Map();
+  for (const e of used) {
+    if (!e.trench) continue;
+    const id = e.trench.Feature_ID;
+    const prev = perTrench.get(id) || { liveM: 0, peak: 0 };
+    perTrench.set(id, {
+      liveM: prev.liveM + e.len,
+      peak: Math.max(prev.peak, e.uses),
+    });
+  }
+
+  return {
+    ok: true,
+    graph,
+    root,
+    used,
+    uses,
+    served,
+    unreachable,
+    /* The busiest section on the drawing, which the shading scales
+       against. */
+    peak: used.reduce((m, e) => Math.max(m, e.uses), 0),
+    liveByTrench: [...perTrench].map(([id, v]) => ({
+      Feature_ID: id,
+      liveM: Math.round(v.liveM * 10) / 10,
+      peakUses: v.peak,
+    })),
+    newLinks: used.filter((e) => e.generated).map((e) => ({
+      from: nodes[e.u], to: nodes[e.v], len: Math.round(e.len * 100) / 100,
+    })),
+    ends: endPointsOf(graph, new Set([...uses.keys()]), root),
+    longestRunM: served.length
+      ? Math.round(Math.max(...served.map((x) => x.runM)) * 10) / 10
+      : 0,
+    maxRunM,
+    mainsM: Math.round(mainsM * 10) / 10,
+    serviceM: Math.round(serviceM * 10) / 10,
+    drawnM: Math.round(drawnM * 10) / 10,
+    mainsCost: Math.round(mainsM * rates.mains),
+    serviceCost: Math.round(serviceM * rates.service),
+    drawnCost: Math.round(drawnM * rates.mains),
+    rates,
+  };
+}
+
 /* Where the live network stops.
 
    A node on a live edge with only one live edge touching it, and not the

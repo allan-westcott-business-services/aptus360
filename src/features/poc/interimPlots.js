@@ -174,6 +174,63 @@ export function pruneChoices(selectedIds = [], plots = [], opts = {}) {
   return { ids: kept, dropped: selectedIds.length - kept.length };
 }
 
+/* Picking a run of plots by its two ends.
+
+   A phase is a block of consecutive plot numbers, and ticking sixty of
+   them one at a time is sixty chances to miss one. Clicking the first
+   and the last says the same thing in two.
+
+   ── The two clicks ──
+   The first sets the anchor and selects it, so there is something on
+   screen while waiting for the second. The second fills in everything
+   between, in the order the plots are shown, and turns the mode off —
+   a range is a single act, and leaving the mode on invites a stray
+   click to start another one nobody asked for.
+
+   ── What the range does not override ──
+   A plot claimed by another application is skipped even inside the
+   range: it is not this application's to take, and a range is a
+   convenience rather than a licence.
+
+   The cap is honoured too, but only at the end. Stopping part way
+   through would leave a range half filled with no sign of where it
+   stopped, so the whole run is taken and then trimmed to the cap, and
+   the caller is told how many did not fit. */
+export function rangeBetween(plots = [], anchorId, endId, opts = {}) {
+  const { claimed = new Map(), selected = [], target = 0, key = "Plot_ID" } = opts;
+
+  const at = (id) => plots.findIndex((p) => Number(p[key]) === Number(id));
+  const a = at(anchorId);
+  const b = at(endId);
+  if (a < 0 || b < 0) return { ids: [...selected], added: 0, refused: 0 };
+
+  const lo = Math.min(a, b);
+  const hi = Math.max(a, b);
+
+  const out = new Set([...selected].map(Number));
+  let refused = 0;
+  let added = 0;
+
+  for (let i = lo; i <= hi; i++) {
+    const id = Number(plots[i][key]);
+    if (out.has(id)) continue;
+    if (claimed.has(id)) { refused += 1; continue; }
+    if (target > 0 && out.size >= target) { refused += 1; continue; }
+    out.add(id);
+    added += 1;
+  }
+
+  return { ids: [...out], added, refused };
+}
+
+/* What the panel should say while a range is being picked. */
+export function rangeNote(anchorId, plots = [], key = "Plot_ID") {
+  if (anchorId == null) return "Click the first plot in the range.";
+  const p = plots.find((x) => Number(x[key]) === Number(anchorId));
+  const label = p?.Plot_Number ?? p?.Supply_Ref ?? anchorId;
+  return `First is ${label} \u2014 now click the last.`;
+}
+
 /* Whether the selection matches what was applied for.
 
    Said rather than enforced: a half-finished selection is an ordinary

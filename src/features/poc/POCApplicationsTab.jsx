@@ -7,6 +7,7 @@ import { contingencyFor, contingencyNote } from "./contingency.js";
 import {
   parseIds, serialiseIds, claimedElsewhere, nrsClaimedElsewhere,
   plotChoices, toggleChoice, pruneChoices, selectionState, NONE,
+  rangeBetween, rangeNote,
 } from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
 import { getProject } from "../../api/projects.js";
@@ -355,7 +356,39 @@ export default function POCApplicationsTab({ projectId }) {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [isInterim, f.Utility_ID, plots, rows, editingId]);
 
+  /* Picking a run of plots by its ends.
+
+     Off until asked for, and off again the moment a range completes: a
+     range is a single act, and leaving the mode on invites a stray click
+     to start another one nobody asked for. */
+  const [rangeOn, setRangeOn] = useState(false);
+  const [rangeAnchor, setRangeAnchor] = useState(null);
+
   const chooseInterimPlot = (id) => {
+    if (rangeOn) {
+      if (rangeAnchor == null) {
+        /* The first click selects its plot as well as anchoring, so
+           there is something on screen while waiting for the second. */
+        setRangeAnchor(id);
+        set("Interim_Plot_IDs")(serialiseIds(
+          toggleChoice(interimSelected, id, {
+            claimed: interimClaimed, target: interimTarget,
+          }),
+        ));
+        return;
+      }
+      const r = rangeBetween(plots, rangeAnchor, id, {
+        claimed: interimClaimed, selected: interimSelected, target: interimTarget,
+      });
+      set("Interim_Plot_IDs")(serialiseIds(r.ids));
+      setRangeOn(false);
+      setRangeAnchor(null);
+      setError(r.refused
+        ? `${r.added} added, ${r.refused} skipped \u2014 claimed elsewhere or past the ${interimTarget} applied for.`
+        : "");
+      return;
+    }
+
     const next = toggleChoice(interimSelected, id, {
       claimed: interimClaimed, target: interimTarget,
     });
@@ -680,7 +713,24 @@ export default function POCApplicationsTab({ projectId }) {
                     {" \u2014 "}
                     {selectionState(interimSelected, interimTarget).note}
                   </span>
+                  {/* Ticking sixty plots one at a time is sixty chances
+                      to miss one. Two clicks says the same thing. */}
+                  {plots.length > 1 && f.Utility_ID && (
+                    <button type="button"
+                      className={rangeOn ? "rng on" : "rng"}
+                      onClick={() => {
+                        setRangeOn(!rangeOn);
+                        setRangeAnchor(null);
+                      }}>
+                      {rangeOn ? "Cancel range" : "Select range"}
+                    </button>
+                  )}
                 </label>
+                {rangeOn && (
+                  <p className="hint rng-note">
+                    {rangeNote(rangeAnchor, plots)}
+                  </p>
+                )}
 
                 {!plots.length ? (
                   <p className="hint">No plots on this project yet.</p>
@@ -690,12 +740,30 @@ export default function POCApplicationsTab({ projectId }) {
                   <>
                     <div className="ipl-grid">
                       {plotChoices(plots, interimSelected, {
-                        claimed: interimClaimed, target: interimTarget,
+                        claimed: interimClaimed,
+                        /* The cap does not lock chips while a range is
+                           being picked: the far end of a range is often
+                           past the count, and the range trims itself
+                           afterwards. A plot claimed elsewhere is still
+                           off-limits — that one is not ours to take. */
+                        target: rangeOn ? 0 : interimTarget,
                       }).map((c) => (
                         <button key={c.id} type="button"
-                          className={c.chosen ? "ipl on" : (c.locked ? "ipl off" : "ipl")}
+                          className={[
+                            "ipl",
+                            c.chosen ? "on" : "",
+                            c.locked ? "off" : "",
+                            /* The anchor is marked distinctly from a
+                               chosen plot: it is chosen, but it is also
+                               the thing the next click measures from,
+                               and that is worth seeing. */
+                            rangeAnchor != null && Number(rangeAnchor) === c.id
+                              ? "anchor" : "",
+                          ].filter(Boolean).join(" ")}
                           disabled={c.locked}
-                          title={c.why || `Plot ${c.plot.Plot_Number ?? c.id}`}
+                          title={rangeAnchor != null && Number(rangeAnchor) === c.id
+                            ? "First of the range — click the last"
+                            : (c.why || `Plot ${c.plot.Plot_Number ?? c.id}`)}
                           onClick={() => chooseInterimPlot(c.id)}>
                           {c.plot.Plot_Number ?? c.id}
                         </button>
@@ -930,6 +998,13 @@ export default function POCApplicationsTab({ projectId }) {
 }
 
 const CSS = FILTER_CSS + `
+.rng { float: right; background: var(--white); border: 1px solid var(--border);
+  border-radius: 5px; cursor: pointer; font: 600 10.5px inherit; padding: 2px 9px;
+  color: var(--accent); }
+.rng.on { background: #d97706; border-color: #d97706; color: #fff; }
+.rng-note { color: #92400e; font-weight: 600; margin: 4px 0 6px; }
+.ipl.anchor { border-color: #d97706; background: #fffbeb; color: #92400e; }
+
 /* The plot chips. Sized so a plot number fits and a hundred of them
    still read as a block rather than a wall. */
 .ipl-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px;

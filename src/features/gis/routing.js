@@ -266,17 +266,22 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
   return { nodes, edges, adj, options, intern };
 }
 
-/* Cheapest paths from a set of nodes, by cost rather than by length. */
+/* Cheapest paths from a set of nodes, by cost rather than by length.
+
+   Length is carried alongside cost because the two answer different
+   questions: cost decides which route is worth digging, length decides
+   whether the cable can survive it. */
 function spreadFrom(graph, sources, rate) {
   const { nodes, edges, adj } = graph;
   const cost = new Array(nodes.length).fill(Infinity);
   const via = new Array(nodes.length).fill(-1);
   const from = new Array(nodes.length).fill(-1);
+  const along = new Array(nodes.length).fill(Infinity);
 
   /* A plain queue rather than a heap: a site plan is hundreds of nodes,
      and the difference is not measurable against the clarity. */
   const seen = new Set();
-  for (const s of sources) cost[s] = 0;
+  for (const s of sources) { cost[s] = 0; along[s] = 0; }
 
   for (;;) {
     let best = -1;
@@ -289,10 +294,13 @@ function spreadFrom(graph, sources, rate) {
 
     for (const { to, edge } of adj.get(best) || []) {
       const c = cost[best] + edges[edge].len * rate;
-      if (c < cost[to]) { cost[to] = c; via[to] = edge; from[to] = best; }
+      if (c < cost[to]) {
+        cost[to] = c; via[to] = edge; from[to] = best;
+        along[to] = along[best] + edges[edge].len;
+      }
     }
   }
-  return { cost, via, from };
+  return { cost, via, from, along };
 }
 
 /* The sections that have to be live, and what they cost.
@@ -320,6 +328,32 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
     if (d < rootD) { rootD = d; root = i; }
   });
 
+  /* The furthest any meter may sit from the substation along the cable.
+
+     This is the constraint a plain Steiner tree does not have, and
+     without it the answer is quietly unbuildable. Minimising total
+     trench is not the same as minimising the run to each house: a
+     network can be shortest overall and still put the last plot six
+     hundred metres from the substation, which no LV feeder will hold up
+     under. The volt drop check would then fail on a route the router had
+     just proposed as optimal.
+
+     Enforced as a length rather than as volt drop because the cable size
+     is not known while the trench is being planned — and length is what
+     someone can reason about standing on the site. The levels check
+     remains the arbiter afterwards; this only keeps the proposal within
+     reach of passing it.
+
+     Four hundred metres is a working figure. Raise it and the plan gets
+     shorter and deeper; lower it and it digs more direct runs from the
+     substation, which costs trench and saves cable. */
+  const maxRunM = opts.maxRunM ?? 400;
+
+  /* How far each node in the tree already is from the substation, along
+     the tree rather than as the crow flies. A meter attached to a node
+     inherits its depth plus the path taken to get there. */
+  const depth = new Map([[root, 0]]);
+
   const inTree = new Set([root]);
   const liveEdges = new Set();
   const served = [];
@@ -335,32 +369,72 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
     /* The cheapest way to bring any one meter in: the mains needed to
        reach a foot, plus the service from that foot. */
     let pick = null;
+    let overLong = 0;
     for (const o of pending) {
       for (const f of o.feet) {
         const c = cost[f.node];
         if (c === Infinity) continue;
+
+        /* How far this meter would end up from the substation: the tree
+           depth of wherever the new path leaves it, plus the path
+           itself, plus the service.
+
+           `from` walks back to a node already in the tree, and that
+           node's depth is known — so the run is that depth plus the
+           length added on the way out. */
+        let at = f.node;
+        let added = 0;
+        let guard2 = 0;
+        while (at !== -1 && !inTree.has(at) && guard2++ < nodes.length) {
+          const e = via[at];
+          if (e < 0) break;
+          added += edges[e].len;
+          at = from[at];
+        }
+        const run = (depth.get(at) ?? 0) + added + f.serviceM;
+        if (run > maxRunM) { overLong += 1; continue; }
+
         const total = c + f.serviceM * rates.service;
-        if (!pick || total < pick.total) pick = { o, f, total, mains: c };
+        if (!pick || total < pick.total) {
+          pick = { o, f, total, mains: c, run, attach: at, added };
+        }
       }
     }
     if (!pick) break;
 
-    /* Walk the chosen path back, marking its edges live. */
-    let at = pick.f.node;
-    while (at !== -1 && !inTree.has(at)) {
-      const e = via[at];
-      if (e < 0) break;
-      liveEdges.add(e);
-      inTree.add(at);
-      at = from[at];
+    /* Walk the chosen path back, marking its edges live and recording
+       how far each new node sits from the substation. */
+    {
+      const chain = [];
+      let at = pick.f.node;
+      while (at !== -1 && !inTree.has(at)) {
+        const e = via[at];
+        if (e < 0) break;
+        chain.push({ node: at, edge: e });
+        at = from[at];
+      }
+      /* Outwards from the tree, so each node's depth is set after its
+         parent's — walking the other way would read a depth that is not
+         there yet. */
+      let d = depth.get(at) ?? 0;
+      for (let i = chain.length - 1; i >= 0; i--) {
+        liveEdges.add(chain[i].edge);
+        inTree.add(chain[i].node);
+        d += edges[chain[i].edge].len;
+        depth.set(chain[i].node, d);
+      }
+      inTree.add(pick.f.node);
+      if (!depth.has(pick.f.node)) depth.set(pick.f.node, d);
     }
-    inTree.add(pick.f.node);
 
     served.push({
       meter: pick.o.meter,
       foot: nodes[pick.f.node],
       footNode: pick.f.node,
       serviceM: Math.round(pick.f.serviceM * 100) / 100,
+      /* The distance the cable actually runs — what the levels check
+         will be working with. */
+      runM: Math.round(pick.run * 10) / 10,
     });
     pending.splice(pending.indexOf(pick.o), 1);
   }
@@ -418,6 +492,14 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
     /* End points: live nodes with nothing live beyond them. Where a
        trench stops. */
     ends: endPointsOf(graph, liveEdges, root),
+    /* The longest run any meter ends up with, which is what decides
+       whether the levels check will pass. Reported whether or not it
+       binds, because a plan sitting just inside the limit is worth
+       knowing about before the cable sizes are chosen. */
+    longestRunM: served.length
+      ? Math.round(Math.max(...served.map((x) => x.runM)) * 10) / 10
+      : 0,
+    maxRunM,
     mainsM: Math.round(mainsM * 10) / 10,
     serviceM: Math.round(serviceM * 10) / 10,
     drawnM: Math.round(drawnM * 10) / 10,

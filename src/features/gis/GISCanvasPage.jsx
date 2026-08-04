@@ -3860,8 +3860,13 @@ export default function GISCanvasPage() {
     const plan = planRoute(trenches, meters, sub);
     if (plan.error) { setError(plan.error); setRoutePlan(null); return; }
     setRoutePlan(plan);
+    /* Two quite different reasons a meter can be left out, and the fix
+       differs: no candidate near enough to service, or no route short
+       enough to feed it. Saying which saves someone drawing more trench
+       where the problem is the distance. */
     setError(plan.unreachable.length
-      ? `${plan.unreachable.length} meter(s) cannot be reached within the service limit.`
+      ? `${plan.unreachable.length} meter(s) left out \u2014 no trench within `
+        + `10 m to service them, or no route under ${plan.maxRunM} m from the substation.`
       : "");
   }
 
@@ -6833,6 +6838,15 @@ export default function GISCanvasPage() {
                     {`${routePlan.newLinks.length} new link(s)`}
                   </span>
                 )}
+                {/* The longest run, which is what decides whether the
+                    levels check will pass. Shown always, and in amber
+                    once it is within a tenth of the limit — a plan that
+                    only just fits is worth knowing about before the
+                    cable sizes are chosen. */}
+                <span className={routePlan.longestRunM > routePlan.maxRunM * 0.9
+                  ? "gsg-w" : "gsg-n"}>
+                  {`longest run ${routePlan.longestRunM} m`}
+                </span>
                 {routePlan.unreachable.length > 0 && (
                   <span className="gsg-w">
                     {`${routePlan.unreachable.length} unreachable`}

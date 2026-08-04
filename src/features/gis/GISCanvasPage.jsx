@@ -1433,15 +1433,68 @@ export default function GISCanvasPage() {
 
         // Vertices, so a selected line can be reshaped
         if (on) {
+          const last = pts.length - 1;
+          /* A closed ring has its two ends in the same place, so marking
+             them separately would draw one on top of the other and say
+             nothing. Saying it is closed is the more useful answer. */
+          const shut = pts.length > 2
+            && Math.hypot(pts[0].x - pts[last].x, pts[0].y - pts[last].y) < 2;
+
           pts.forEach((p, i) => {
+            const isStart = i === 0 && !shut;
+            const isEnd = i === last && !shut;
+            const isEditing = editVertex?.featureId === f.Feature_ID
+              && editVertex.index === i;
+
             ctx.beginPath();
-            ctx.arc(p.x, p.y, editVertex?.featureId === f.Feature_ID && editVertex.index === i ? 6 : 4.5, 0, Math.PI * 2);
-            ctx.fillStyle = "#fff";
+            /* The ends are drawn larger and coloured, because finding
+               them is the whole problem on a long run through a dense
+               drawing — a ring of identical white dots says where the
+               vertices are and nothing about which end is which. */
+            ctx.arc(p.x, p.y,
+              isEditing ? 6 : ((isStart || isEnd) ? 6.5 : 4.5), 0, Math.PI * 2);
+            ctx.fillStyle = isStart ? "#16a34a" : (isEnd ? "#dc2626" : "#fff");
             ctx.fill();
-            ctx.strokeStyle = "#1d4ed8";
+            ctx.strokeStyle = (isStart || isEnd) ? "#fff" : "#1d4ed8";
             ctx.lineWidth = 2;
             ctx.stroke();
           });
+
+          /* Named, not only coloured — green and red are the one pair a
+             good few people cannot tell apart, and this is a drawing
+             somebody may be reading over a shoulder on site. */
+          if (pts.length >= 2 && !shut) {
+            ctx.save();
+            ctx.font = "700 10px ui-sans-serif, system-ui, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            for (const [p, text, fill] of [
+              [pts[0], "START", "#16a34a"],
+              [pts[last], "END", "#dc2626"],
+            ]) {
+              const w = ctx.measureText(text).width + 8;
+              ctx.fillStyle = "rgba(255,255,255,.9)";
+              ctx.fillRect(p.x - w / 2, p.y - 22, w, 13);
+              ctx.fillStyle = fill;
+              ctx.fillText(text, p.x, p.y - 15.5);
+            }
+            ctx.restore();
+          }
+
+          /* A closed loop says so once, at the join. */
+          if (shut) {
+            ctx.save();
+            ctx.font = "700 10px ui-sans-serif, system-ui, sans-serif";
+            ctx.textAlign = "center";
+            ctx.textBaseline = "middle";
+            const text = "CLOSED LOOP";
+            const w = ctx.measureText(text).width + 8;
+            ctx.fillStyle = "rgba(255,255,255,.9)";
+            ctx.fillRect(pts[0].x - w / 2, pts[0].y - 22, w, 13);
+            ctx.fillStyle = "#16a34a";
+            ctx.fillText(text, pts[0].x, pts[0].y - 15.5);
+            ctx.restore();
+          }
         }
         /* Way, circuit and length, once there's room.
 
@@ -7262,6 +7315,35 @@ export default function GISCanvasPage() {
                 }}>
                   {isFeatureLocked(ctx.feature) ? "Unlock this" : "Lock this"}
                 </button>
+                {/* Jumping to either end.
+
+                    Colouring the ends only helps when they are on
+                    screen. A trench drawn across a whole site has both
+                    ends off it at any zoom where the middle is
+                    readable, and hunting for the one that will not snap
+                    means panning blind. */}
+                {ctx.feature.Feature_Type === "line"
+                  && (ctx.feature.Geometry || []).length >= 2 && (
+                  <>
+                    <button className="gc-item" onClick={() => {
+                      const g = ctx.feature.Geometry;
+                      setSelected([ctx.feature.Feature_ID]);
+                      zoomToPoints([g[0]]);
+                      setCtx(null);
+                    }}>
+                      Go to start
+                    </button>
+                    <button className="gc-item" onClick={() => {
+                      const g = ctx.feature.Geometry;
+                      setSelected([ctx.feature.Feature_ID]);
+                      zoomToPoints([g[g.length - 1]]);
+                      setCtx(null);
+                    }}>
+                      Go to end
+                    </button>
+                    <div className="gc-sep" />
+                  </>
+                )}
                 {ctx.feature.Attributes?.Line_Type && (
                   <button className="gc-item" onClick={() => {
                     setLockedClasses((l) =>

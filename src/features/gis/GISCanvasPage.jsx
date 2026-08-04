@@ -753,11 +753,46 @@ export default function GISCanvasPage() {
     return own != null && own !== String(cid);
   }, [circuitOf]);
 
+  /* Showing only the trench the route actually needs.
+
+     A site drawn with a candidate in front of every plot on both sides
+     of every road is unreadable once it is routed — the answer is in
+     there, under twice as much trench that is not part of it.
+
+     Applies to trench only. Hiding the cables and meters as well would
+     leave the live trench floating with nothing to place it against,
+     which is the opposite of what someone turning this on wants. */
+  const [liveTrenchOnly, setLiveTrenchOnly] = useState(false);
+
+  /* What counts as live: the marks left by an accepted route, or the
+     proposal currently on screen.
+
+     Both, because the toggle is wanted at both moments — while looking
+     at a suggestion, and afterwards when reading the drawing back. A
+     proposal takes precedence, since that is the thing being looked
+     at. */
+  const liveTrenchIds = useMemo(() => {
+    if (routePlan?.ok) {
+      return new Set(routePlan.liveByTrench.map((x) => Number(x.Feature_ID)));
+    }
+    const marked = features.filter((f) => f.Attributes?.Route_Live === true);
+    return marked.length ? new Set(marked.map((f) => Number(f.Feature_ID))) : null;
+  }, [routePlan, features]);
+
   const visible = useMemo(
-    () => features.filter((f) =>
-      !classKeys(f).some((k) => hidden.includes(k))
-      && !outsideCircuit(f, isolatedCircuit)),
-    [features, hidden, classKeys, isolatedCircuit, outsideCircuit]
+    () => features.filter((f) => {
+      if (classKeys(f).some((k) => hidden.includes(k))) return false;
+      if (outsideCircuit(f, isolatedCircuit)) return false;
+
+      if (liveTrenchOnly && liveTrenchIds
+        && f.Feature_Type === "line"
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes)) {
+        return liveTrenchIds.has(Number(f.Feature_ID));
+      }
+      return true;
+    }),
+    [features, hidden, classKeys, isolatedCircuit, outsideCircuit,
+      liveTrenchOnly, liveTrenchIds, lineTypes]
   );
 
   /* How many of each class exist, so a toggle can say whether it will
@@ -6140,11 +6175,12 @@ export default function GISCanvasPage() {
                         already had to be taught about. */}
                     <MenuItem label="Show Everything"
                       disabled={!hidden.length && isolatedCircuit == null
+                        && !liveTrenchOnly
                         && (showBasemap || !basemap?.Metres_Per_Pixel)}
                       hint="Unhides every layer and ends any circuit isolation"
                       onClick={() => {
                         setHidden([]); setSolo(null); setIsolatedCircuit(null);
-                        setShowBasemap(true);
+                        setShowBasemap(true); setLiveTrenchOnly(false);
                       }} />
                   </Menu>
 
@@ -6154,6 +6190,19 @@ export default function GISCanvasPage() {
                       hint="Which drawn trenches must be live to reach every meter"
                       disabled={!!busy || !projectId}
                       onClick={suggestRoute} />
+                    {/* Only where there is a route to filter to. Before
+                        one has been suggested or accepted the toggle
+                        would hide every trench on the drawing, which
+                        looks like a fault rather than a filter. */}
+                    <MenuItem label="Only Live Trench"
+                      active={liveTrenchOnly}
+                      disabled={!liveTrenchIds}
+                      hint={liveTrenchIds
+                        ? (liveTrenchOnly
+                          ? `Showing ${liveTrenchIds.size} of the trenches drawn`
+                          : "Hide the trench the route does not need")
+                        : "Suggest or accept a route first"}
+                      onClick={() => setLiveTrenchOnly(!liveTrenchOnly)} />
                     <div className="gm-sep" />
                     <MenuGroup label="Draw" />
                     {typesOn("trench").map((t) => (
@@ -6942,14 +6991,15 @@ export default function GISCanvasPage() {
               </button>
             )}
 
-            {(hidden.length > 0 || isolatedCircuit != null
+            {(hidden.length > 0 || isolatedCircuit != null || liveTrenchOnly
               || (!showBasemap && basemap?.Metres_Per_Pixel)) && (
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
                 onClick={() => {
                   setHidden([]); setSolo(null); setIsolatedCircuit(null);
-                  setShowBasemap(true);
+                  setShowBasemap(true); setLiveTrenchOnly(false);
                 }}>
+                {liveTrenchOnly && <span>Showing live trench only</span>}
                 {!showBasemap && basemap?.Metres_Per_Pixel && (
                   <span>Background plan hidden</span>
                 )}

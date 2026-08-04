@@ -5,8 +5,8 @@ import { listPoc, createPoc, updatePoc, deletePoc } from "../../api/poc.js";
 import { listPlots } from "../../api/plots.js";
 import { contingencyFor, contingencyNote } from "./contingency.js";
 import {
-  parseIds, serialiseIds, claimedElsewhere, plotChoices, toggleChoice,
-  pruneChoices, selectionState,
+  parseIds, serialiseIds, claimedElsewhere, nrsClaimedElsewhere,
+  plotChoices, toggleChoice, pruneChoices, selectionState, NONE,
 } from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
 import { getProject } from "../../api/projects.js";
@@ -385,9 +385,46 @@ export default function POCApplicationsTab({ projectId }) {
     { interim: isInterim },
   );
 
-  /* Non-residential, summed from the project's supplies rather than
-     typed, so this figure and the one on that tab cannot drift. */
-  const nonResKva = nrs.reduce((sum, n) => sum + (Number(n.Requested_kVA) || 0), 0);
+  /* The supplies on this utility. A feeder pillar is applied for on the
+     electric application, not the gas one. */
+  const utilNrs = f.Utility_ID
+    ? nrs.filter((n) => Number(n.Utility_ID) === Number(f.Utility_ID))
+    : [];
+
+  /* Supplies already on another application for this utility. */
+  const nrsClaimed = nrsClaimedElsewhere(rows, {
+    utilityId: f.Utility_ID, exceptId: editingId,
+  });
+
+  /* Which of them this application covers.
+
+     Every supply on the utility by default, since that was the previous
+     behaviour and is the ordinary case — a POC application usually asks
+     for all of them. Ticking is for the exceptions.
+
+     Stored in Interim_NRS_IDs, which is where the original application
+     holds it. The name says interim and the field is no longer only for
+     interim applications; keeping one column that both read is worth
+     more than a better name on a second one that has to be kept in step
+     with it. */
+  const nrsTouched = f.Interim_NRS_IDs != null && f.Interim_NRS_IDs !== "";
+  const nrsSelected = nrsTouched
+    ? parseIds(f.Interim_NRS_IDs)
+    : utilNrs.filter((n) => !nrsClaimed.has(Number(n.NRS_ID)))
+      .map((n) => Number(n.NRS_ID));
+  const nrsChosen = new Set(nrsSelected);
+
+  const chooseNrs = (id) => {
+    const next = toggleChoice(nrsSelected, id, { claimed: nrsClaimed });
+    /* Written even when it empties, so "none of them" is a decision that
+       sticks rather than falling back to the default of all. */
+    set("Interim_NRS_IDs")(serialiseIds(next) || NONE);
+  };
+
+  /* Only the ticked ones count. */
+  const nonResKva = utilNrs
+    .filter((n) => nrsChosen.has(Number(n.NRS_ID)))
+    .reduce((sum, n) => sum + (Number(n.Requested_kVA) || 0), 0);
 
   /* What is being asked of the operator: the residential load plus its
      contingency, plus the non-residential supplies. */
@@ -550,9 +587,9 @@ export default function POCApplicationsTab({ projectId }) {
                 <div className="fld"><label>Non-residential</label>
                   <input className="kva-total" value={nonResKva.toFixed(1)} disabled />
                   <p className="hint">
-                    {nrs.length
-                      ? `from ${nrs.length} suppl${nrs.length === 1 ? "y" : "ies"}`
-                      : "no non-residential supplies linked"}
+                    {!utilNrs.length
+                      ? "no non-residential supplies on this utility"
+                      : `${nrsSelected.length} of ${utilNrs.length} included`}
                   </p></div>
 
                 <div className="fld"><label>Contingency load</label>
@@ -570,6 +607,52 @@ export default function POCApplicationsTab({ projectId }) {
                       + ` + ${nonResKva.toFixed(1)} non-residential`}
                   </p></div>
               </>
+            )}
+
+            {/* Which supplies this application asks for.
+
+                Every one on the utility by default — that is the
+                ordinary case and was the previous behaviour — with
+                ticking for the exceptions: a pillar being applied for
+                separately, or one already quoted elsewhere.
+
+                Each shows its own kVA, because the total above is
+                otherwise a number with no working shown. */}
+            {isElectric && utilNrs.length > 0 && (
+              <div className="fld span6">
+                <label>
+                  Non-residential supplies
+                  <span className="lbl-note">
+                    {` \u2014 ${nrsSelected.length} of ${utilNrs.length} included,`
+                      + ` ${nonResKva.toFixed(1)} kVA`}
+                  </span>
+                </label>
+                <div className="nrs-list">
+                  {utilNrs.map((n) => {
+                    const id = Number(n.NRS_ID);
+                    const takenBy = nrsClaimed.get(id);
+                    const on = nrsChosen.has(id);
+                    return (
+                      <label key={id}
+                        className={takenBy && !on ? "nrs-row off" : "nrs-row"}
+                        title={takenBy && !on ? `Already on ${takenBy}` : ""}>
+                        <input type="checkbox" checked={on}
+                          disabled={!!takenBy && !on}
+                          onChange={() => chooseNrs(id)} />
+                        <span className="nrs-ref">
+                          {n.Supply_Ref || n.Description || `Supply ${id}`}
+                        </span>
+                        <span className="nrs-kva">
+                          {Number(n.Requested_kVA || 0).toFixed(1)} kVA
+                        </span>
+                        {takenBy && !on && (
+                          <span className="nrs-taken">on {takenBy}</span>
+                        )}
+                      </label>
+                    );
+                  })}
+                </div>
+              </div>
             )}
 
             {/* Which plots this interim application covers.
@@ -839,6 +922,17 @@ export default function POCApplicationsTab({ projectId }) {
 }
 
 const CSS = FILTER_CSS + `
+.nrs-list { border: 1px solid var(--border); border-radius: 7px;
+  background: var(--white); max-height: 200px; overflow-y: auto; }
+.nrs-row { display: flex; align-items: center; gap: 9px; padding: 6px 10px;
+  font: 500 12px inherit; cursor: pointer; border-bottom: 1px solid var(--border); }
+.nrs-row:last-child { border-bottom: none; }
+.nrs-row:hover { background: var(--bg); }
+.nrs-row.off { color: var(--muted); cursor: not-allowed; background: #fef2f2; }
+.nrs-ref { flex: 1; }
+.nrs-kva { font-weight: 700; white-space: nowrap; }
+.nrs-taken { font-size: 10.5px; color: #b91c1c; white-space: nowrap; }
+
 /* The plot chips. Sized so a plot number fits and a hundred of them
    still read as a block rather than a wall. */
 .ipl-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px;

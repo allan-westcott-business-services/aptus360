@@ -20,6 +20,18 @@
    in a disabled attribute is a cap that disappears the moment anything
    else selects a plot. */
 
+/* An explicitly empty selection.
+
+   An empty string cannot mean "none chosen", because it is also what an
+   untouched field holds — and the two need different answers: untouched
+   means take the default, none chosen means take nothing. A marker
+   distinguishes them, and reads as what it is where an id of 0 would
+   not.
+
+   Parses to no ids, so every reader treats it as empty without knowing
+   about it. */
+export const NONE = "none";
+
 const idsFrom = (v) => String(v ?? "")
   .split(",")
   .map((x) => Number(x.trim()))
@@ -36,6 +48,32 @@ export function serialiseIds(ids = []) {
   return [...new Set([...ids].map(Number).filter((n) => Number.isFinite(n) && n > 0))]
     .sort((a, b) => a - b)
     .join(",");
+}
+
+/* Non-residential supplies already on another application.
+
+   The same rule as plots, against a different column. A feeder pillar
+   quoted on two applications is quoted twice, and the second operator is
+   asked for a supply the first is already providing.
+
+   Not limited to interim applications: any application can name a subset
+   of the supplies, so any of them can claim one. */
+export function nrsClaimedElsewhere(applications = [], { utilityId, exceptId } = {}) {
+  const out = new Map();
+  if (utilityId == null || utilityId === "") return out;
+
+  for (const a of applications) {
+    if (Number(a?.Utility_ID) !== Number(utilityId)) continue;
+    if (exceptId != null && Number(a?.POC_Application_ID) === Number(exceptId)) continue;
+
+    const label = a?.Quote_Reference
+      || a?.Applicant_Company
+      || `Application #${a?.POC_Application_ID}`;
+    for (const id of idsFrom(a?.Interim_NRS_IDs)) {
+      if (!out.has(id)) out.set(id, label);
+    }
+  }
+  return out;
 }
 
 /* Plots spoken for by another interim application on the same utility.
@@ -73,12 +111,12 @@ export function claimedElsewhere(applications = [], { utilityId, exceptId, typeN
    Returned as a plan rather than rendered, so the rules can be checked
    without a browser and the panel has no judgement of its own. */
 export function plotChoices(plots = [], selectedIds = [], opts = {}) {
-  const { claimed = new Map(), target = 0 } = opts;
+  const { claimed = new Map(), target = 0, key = "Plot_ID" } = opts;
   const chosen = new Set([...selectedIds].map(Number));
   const atCap = target > 0 && chosen.size >= target;
 
   return plots.map((p) => {
-    const id = Number(p.Plot_ID);
+    const id = Number(p[key]);
     const isChosen = chosen.has(id);
     const takenBy = !isChosen ? claimed.get(id) : null;
     /* A chosen plot is never locked: it must always be possible to let
@@ -128,8 +166,8 @@ export function toggleChoice(selectedIds = [], id, opts = {}) {
    that silently shrinks when the form is submitted is worse than one
    that visibly shrinks when the utility is changed. */
 export function pruneChoices(selectedIds = [], plots = [], opts = {}) {
-  const { claimed = new Map() } = opts;
-  const valid = new Set(plots.map((p) => Number(p.Plot_ID)));
+  const { claimed = new Map(), key = "Plot_ID" } = opts;
+  const valid = new Set(plots.map((p) => Number(p[key])));
   const kept = [...selectedIds]
     .map(Number)
     .filter((id) => valid.has(id) && !claimed.has(id));

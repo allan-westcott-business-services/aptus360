@@ -1048,6 +1048,37 @@ export default function GISCanvasPage() {
      changes rather than on every mouse move. */
   const targets = useMemo(() => snapTargets(visibleRef.current || []), [features, hidden]);
 
+  /* The line being drawn, as something to snap to.
+
+     A trench that comes back on itself — a ring road, a loop round a
+     green — closes by snapping its last point onto its first. That was
+     impossible: snapTargets works from the saved features, and a line
+     still being drawn is not among them, so its own start had nothing
+     to snap to and the loop was always a fraction open. A gap of a few
+     centimetres looks closed at any working zoom and leaves the network
+     in two pieces.
+
+     The first point is offered from the third click onwards. Before
+     that, closing would make a loop of one segment, and the start point
+     sitting under the cursor as a snap target while the second point is
+     being placed only gets in the way. */
+  const draftTargets = useMemo(() => {
+    if (draft.length < 3) return [];
+    return [{
+      point: draft[0],
+      featureId: null,
+      vertex: 0,
+      kind: "end",
+      label: "Close the loop",
+      lineType: lineType ?? null,
+    }];
+  }, [draft, lineType]);
+
+  const allTargets = useMemo(
+    () => (draftTargets.length ? [...targets, ...draftTargets] : targets),
+    [targets, draftTargets],
+  );
+
 
   /* ── coordinate conversion ── */
   const toPx = useCallback((m) => ({ x: m[0] * view.scale + view.x, y: m[1] * view.scale + view.y }), [view]);
@@ -1947,6 +1978,23 @@ export default function GISCanvasPage() {
     if (drawing) {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
+
+      /* Clicking the start point closes the loop and ends the line.
+
+         Without this the click merely added a vertex on top of the
+         first one and drawing carried on — so closing a ring meant
+         clicking the start and then pressing Escape, and anyone who
+         double-clicked instead got a stray vertex at the join. */
+      if (draft.length >= 3
+        && Math.hypot(point[0] - draft[0][0], point[1] - draft[0][1]) <= CONNECT_M) {
+        const closed = [...draft, [draft[0][0], draft[0][1]]];
+        setDraft(closed);
+        /* Finished from the closed geometry rather than from state,
+           which has not updated yet. */
+        finishDrawing(closed);
+        return;
+      }
+
       setDraft((d) => [...d, point]);
       return;
     }
@@ -2140,7 +2188,8 @@ export default function GISCanvasPage() {
       return { point: [mx, my], hit: null };
     }
 
-    const t = findSnap(targets, [mx, my], view.scale, SNAP_PX);
+    /* Including the line being drawn, so it can be closed onto itself. */
+    const t = findSnap(allTargets, [mx, my], view.scale, SNAP_PX);
     if (t) return { point: [...t.point], hit: t };
     const edge = nearestOnLines(visible, [mx, my], view.scale, SNAP_PX);
     if (edge) return { point: [...edge.point], hit: edge };
@@ -2594,14 +2643,20 @@ export default function GISCanvasPage() {
     catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
   }
 
-  async function finishDrawing() {
+  async function finishDrawing(geometry) {
+    /* The geometry passed in where the caller has it — closing a loop
+       finishes in the same tick as the click that closed it, and state
+       has not caught up. Falls back to the draft for every other
+       route in. */
+    const g = Array.isArray(geometry) && geometry.length ? geometry : draft;
+
     if (tool === "circuit") {
-      if (draft.length < 3) { setDraft([]); setTool("select"); return; }
-      await finishCircuit(draft);
+      if (g.length < 3) { setDraft([]); setTool("select"); return; }
+      await finishCircuit(g);
       return;
     }
     const isPoly = tool === "boundary" || tool === "devarea";
-    if (draft.length < (isPoly ? 3 : 2)) { setDraft([]); return; }
+    if (g.length < (isPoly ? 3 : 2)) { setDraft([]); return; }
     const t = typeOf(lineType);
 
     if (isPoly) {
@@ -2619,7 +2674,10 @@ export default function GISCanvasPage() {
       try {
         const made = await createFeature(projectId, {
           Layer_Key: "boundary", Feature_Type: "polygon",
-          Geometry: draft,
+          /* The geometry as finished, which for a closed loop includes
+             the point that closes it. Reading draft here would drop it
+             and leave the ring a segment short. */
+          Geometry: g,
           Label: dev ? `${dev.label} area` : "Site boundary",
           Attributes: dev
             ? { Project_Developer_ID: Number(dev.Project_Developer_ID) }

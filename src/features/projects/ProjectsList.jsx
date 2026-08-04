@@ -25,12 +25,15 @@ const COLUMNS = [
      falsy, so testing the value hid every new project's revision. */
   { key: "rev",      label: "Rev",           width: 56,  type: "text",  align: "center", raw: (p) => String(p.Revision ?? 0) },
   { key: "sitename", label: "Site Name",     width: 200, type: "text",  raw: (p) => p.Site_Name },
+  /* Beside the site name, where it is read: how big a scheme is, is part
+     of knowing which one it is. It was further right, past Quote Type,
+     which on a narrow window meant scrolling to find out. */
+  { key: "plots",    label: "Plots",         width: 76,  type: "num",   align: "right", raw: (p) => p.Plot_Count ?? 0 },
   { key: "date",     label: "Date Received", width: 130, type: "date",  raw: (p) => p.Date_Received },
   { key: "kpi",      label: "KPI Date",      width: 130, type: "date",  raw: (p) => p.KPI_Date },
   { key: "cust",     label: "Customer",      width: 180, type: "multi", src: "customers", idKey: "Customer_ID", labelKey: "Customer_Name", raw: (p) => p.Customer_ID },
   { key: "region",   label: "Region",        width: 120, type: "multi", src: "regions", idKey: "Region_ID", labelKey: "Region", raw: (p) => p.Region_ID },
   { key: "qt",       label: "Quote Type",    width: 120, type: "multi", src: "quoteTypes", idKey: "Quote_Type_ID", labelKey: "Quote_Type", raw: (p) => p.Quote_Type_ID },
-  { key: "plots",    label: "Plots",         width: 76,  type: "num",   align: "right", raw: (p) => p.Plot_Count ?? 0 },
   { key: "status",   label: "Status",        width: 150, type: "multi", src: "projectStatuses", idKey: "Project_Status_ID", labelKey: "Status", raw: (p) => p.Project_Status_ID },
   /* One row per outline design: which utility, where it has got to, and
      who has it. A count said how many there were and nothing about any
@@ -72,6 +75,24 @@ function loadPrefs() {
        Only the old default is replaced. A width somebody has dragged to
        something else is a decision and is left alone. */
     if (widths.scopes === 120) widths.scopes = def.widths.scopes;
+
+    /* Plots has moved to sit beside the site name.
+
+       Saved orders win over defaults, so anyone who has used this page
+       would keep it out past Quote Type where it was — and on a narrow
+       window that means scrolling to find out how big a scheme is.
+
+       Only moved where it is still where it used to be. Somebody who has
+       dragged it somewhere has made a decision, and shifting it back
+       under them is worse than leaving it where they put it. */
+    const wasAfter = order[order.indexOf("qt") + 1] === "plots";
+    if (wasAfter) {
+      const without = order.filter((k) => k !== "plots");
+      const at = without.indexOf("sitename");
+      if (at >= 0) without.splice(at + 1, 0, "plots");
+      order.length = 0;
+      order.push(...without);
+    }
 
     return {
       order,

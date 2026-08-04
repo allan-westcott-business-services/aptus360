@@ -4,6 +4,14 @@ const COLS = [
   "POC_Application_ID","Project_ID","Utility_ID","IDNO_ID","POC_Status_ID","POC_Type",
   "Application_Date","Expected_Rx_Date","Applicant_Person_ID","Business_Address",
   "Plot_Count","Requested_kVA","Contingency_Load","Quote_Reference","Quote_Date",
+  /* Which plots and supplies an interim application covers, as a
+     comma-separated list of ids. Stored as text because that is how the
+     original application holds it, and two representations of the same
+     list is how they come to disagree.
+
+     Without these here the endpoint dropped them silently: the selection
+     saved, the page reloaded, and it was gone with nothing to say so. */
+  "Interim_Plot_IDs","Interim_NRS_IDs",
   "Valid_Until_Date","Connection_Type","Distance_m","Estimated_Cost","Notes",
   "POC_Type_ID","DNO_ID","Applicant_Company","Applicant_Company_Address","Non_Residential_kVA",
   "Submitted_Date","Received_Date",

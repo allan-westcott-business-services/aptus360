@@ -30,13 +30,19 @@ export function bandFor(count, levels = []) {
 
 /* The allowance itself.
 
+   Zero for an interim application, whatever the plot count. An interim
+   supply is temporary and covers a subset of the site — there is no
+   future growth to hold a margin for, so a contingency on one would be
+   asking the operator for capacity nobody intends to use.
+
    Zero where no band matches, which is the safe direction: a site larger
    than every band gets no contingency rather than the largest one, so
    the gap shows up as a figure somebody questions instead of a number
    that looks deliberate. */
-export function contingencyFor(count, levels = []) {
+export function contingencyFor(count, levels = [], { interim = false } = {}) {
+  if (interim) return 0;
   const band = bandFor(count, levels);
-  const v = Number(band?.Additional_kVA);
+  const v = Number(band?.Additional_Load);
   return Number.isFinite(v) ? v : 0;
 }
 

@@ -4,6 +4,7 @@ import { getLookups } from "../../api/lookups.js";
 import { listPoc, createPoc, updatePoc, deletePoc } from "../../api/poc.js";
 import { listPlots } from "../../api/plots.js";
 import { contingencyFor, contingencyNote } from "./contingency.js";
+import { listNrs } from "../../api/nrs.js";
 import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
@@ -61,6 +62,13 @@ export default function POCApplicationsTab({ projectId }) {
   const [openFilter, setOpenFilter] = useState(null);
   const [expanded, setExpanded] = useState(null);
   const [plots, setPlots] = useState([]);
+  /* The project's non-residential supplies.
+
+     Their load is summed rather than typed, so the figure on a POC
+     application and the figure on the Non-Residential Supplies tab
+     cannot drift apart — which they would the moment either changed
+     after the other was entered. */
+  const [nrs, setNrs] = useState([]);
   const [project, setProject] = useState(null);
 
   function blank() {
@@ -70,6 +78,11 @@ export default function POCApplicationsTab({ projectId }) {
       Non_Residential_kVA: "",
       Application_Date: "", Expected_Rx_Date: "", Applicant_Person_ID: "",
       Business_Address: "", Plot_Count: "", Requested_kVA: "", Contingency_Load: "",
+      /* Which plots and supplies an interim application covers. Blank on
+         every other type, and blank here rather than absent so the field
+         exists before anything is chosen — a form whose shape changes
+         when a value first appears is a form that loses edits. */
+      Interim_Plot_IDs: "", Interim_NRS_IDs: "",
       Quote_Reference: "", Quote_Date: "", Valid_Until_Date: "",
       Connection_Type: "", Distance_m: "", Estimated_Cost: "", Notes: "",
     };
@@ -77,12 +90,18 @@ export default function POCApplicationsTab({ projectId }) {
 
   async function load() {
     try {
-      const [lk, res, plotRes, proj] = await Promise.all([
+      const [lk, res, plotRes, proj, nrsRes] = await Promise.all([
         getLookups(), listPoc(projectId), listPlots(projectId), getProject(projectId),
+        /* Failing softly: a project with no supplies endpoint reachable
+           should still open its POC applications, with the
+           non-residential figure reading zero rather than the tab
+           refusing to load. */
+        listNrs(projectId).catch(() => ({ rows: [] })),
       ]);
       setLookups(lk);
       setRows(res.rows || []);
       setPlots(plotRes.rows || []);
+      setNrs(nrsRes.rows || []);
       setProject(proj);
       setError("");
     } catch (e) { setError(e.message); }
@@ -142,9 +161,33 @@ export default function POCApplicationsTab({ projectId }) {
          copying them here would only let them drift. Shown read-only above
          for context, then dropped before saving. */
       const { Site_Name, Site_Address, idno_ids, dno_id, ...rest } = f;
+
+      /* The load figures are worked out, not typed, so they are written
+         from the calculation rather than from the form state — which no
+         longer holds them.
+
+         Stored as well as computed because an application is a record of
+         what was asked for on the day. Recomputing it later from plots
+         that have since changed would quietly rewrite history, and a
+         quotation is checked against the figure that was submitted. */
+      const derived = isElectric ? {
+        Requested_kVA: Number(requestedKva.toFixed(1)),
+        Non_Residential_kVA: Number(nonResKva.toFixed(1)),
+        Contingency_Load: Number(contKva.toFixed(1)),
+        Plot_Count: isInterim ? Number(f.Plot_Count || 0) : plots.length,
+      } : {
+        /* Nothing to record on a gas or water application. Nulled rather
+           than left as they were, so a utility changed after the figures
+           were worked out does not carry an electric load with it. */
+        Requested_kVA: null,
+        Non_Residential_kVA: null,
+        Contingency_Load: null,
+        Plot_Count: plots.length,
+      };
       if (editingId) {
         await updatePoc(projectId, editingId, {
           ...rest,
+          ...derived,
           Utility_ID: Number(f.Utility_ID),
           POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
           POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -160,7 +203,7 @@ export default function POCApplicationsTab({ projectId }) {
         return;
       }
       const res = await createPoc(projectId, {
-        ...rest, idno_ids, dno_id,
+        ...rest, ...derived, idno_ids, dno_id,
         Utility_ID: Number(f.Utility_ID),
         POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
         POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -226,21 +269,12 @@ export default function POCApplicationsTab({ projectId }) {
     } catch (e) { setError(e.message); }
   }
 
-  const baseKva = plots.reduce(
-    (sum, p) => sum + (Number(p.KVA_Resolved ?? p.KVA_Load) || 0), 0);
-
-  /* What the bands say for this many plots, and which band that is.
-     Recomputed rather than read off the form, so the note stays true if
-     the figure is edited by hand. */
-  const contKva = contingencyFor(plots.length, lookups?.contingencyLevels || []);
-
   /* Whether this application carries a load at all.
 
      By the utility's name rather than its id: the ids are a fixed list
      in one module and a column in the database, and matching on the name
      survives either being renumbered. Street lighting is electric in the
-     ground but is not applied for by kVA on this form, so only the
-     residential electric utility counts.
+     ground but is not applied for by kVA on this form.
 
      Nothing chosen yet shows the fields, since electric is the ordinary
      case and a form that grows a section when you pick from a dropdown
@@ -250,8 +284,60 @@ export default function POCApplicationsTab({ projectId }) {
     const u = UTILITIES.find((x) => Number(x.id) === Number(f.Utility_ID));
     return u?.name === "Electric";
   })();
-  const totalKva =
-    Number(f.Requested_kVA || 0) + Number(f.Non_Residential_kVA || 0) + Number(f.Contingency_Load || 0);
+
+  /* An interim application covers a subset of the site.
+
+     A temporary supply is applied for against the plots it actually
+     serves, not the whole scheme — so its plot count is typed rather
+     than counted, and its load comes from the plots chosen for it. */
+  /* Through the existing typeName helper rather than a second lookup —
+     the list rows and this form must agree about what a type is called. */
+  const isInterim = typeName(Number(f.POC_Type_ID)) === "Interim";
+
+  /* The plots this application is for.
+
+     Everything on the project for an ordinary application; the chosen
+     subset for an interim one. Held as a comma-separated list because
+     that is how the original stores it and the two have to read the same
+     column. */
+  const interimIds = new Set(
+    String(f.Interim_Plot_IDs || "").split(",").filter(Boolean).map(Number));
+  const appPlots = isInterim
+    ? plots.filter((p) => interimIds.has(Number(p.Plot_ID)))
+    : plots;
+
+  /* The resolved load, not the override column.
+
+     KVA_Load is only filled in where somebody has typed a figure over
+     the house type's — which is almost never — so summing it gave 0.0 on
+     a fully specified site. KVA_Resolved is what the database settled
+     on: the entered figure where there is one, the house type's
+     otherwise. */
+  const kvaOf = (p) => Number(p.KVA_Resolved ?? p.KVA_Load) || 0;
+  const baseKva = appPlots.reduce((sum, p) => sum + kvaOf(p), 0);
+  const missingKva = appPlots.filter((p) =>
+    (p.KVA_Resolved ?? p.KVA_Load) == null).length;
+
+  /* Contingency from the bands, and none at all for an interim
+     application — there is no future growth to hold a margin for on a
+     temporary supply. Read-only either way: it is a table lookup, and a
+     figure that can be typed over a table is a figure that will
+     eventually disagree with it. */
+  const contKva = contingencyFor(
+    isInterim ? appPlots.length : plots.length,
+    lookups?.contingencyLevels || [],
+    { interim: isInterim },
+  );
+
+  /* Non-residential, summed from the project's supplies rather than
+     typed, so this figure and the one on that tab cannot drift. */
+  const nonResKva = nrs.reduce((sum, n) => sum + (Number(n.Requested_kVA) || 0), 0);
+
+  /* What is being asked of the operator: the residential load plus its
+     contingency, plus the non-residential supplies. */
+  const requestedKva = baseKva + contKva;
+  const totalKva = requestedKva + nonResKva;
+
   const providerCount = f.idno_ids.length + (f.dno_id ? 1 : 0);
   const isSubmitted =
     !!f.POC_Status_ID &&
@@ -325,8 +411,29 @@ export default function POCApplicationsTab({ projectId }) {
             <div className="fld span3"><label>Site address</label>
               <input value={f.Site_Address} disabled />
               <p className="hint">From the project</p></div>
+            {/* Counted for an ordinary application, typed for an
+                interim one.
+
+                An interim supply covers a subset of the site — a first
+                phase, a compound, a show home — so its plot count is a
+                decision rather than a fact about the project. Every
+                other type is applied for against the whole scheme, and
+                letting that be typed invites it to drift away from the
+                plots actually on the drawing. */}
             <div className="fld"><label># Plots</label>
-              <input type="number" value={f.Plot_Count} onChange={(e) => set("Plot_Count")(e.target.value)} /></div>
+              {isInterim ? (
+                <input type="number" min="0" value={f.Plot_Count}
+                  onChange={(e) => set("Plot_Count")(e.target.value)} />
+              ) : (
+                <input className="kva-total" value={plots.length || 0} disabled />
+              )}
+              <p className="hint">
+                {isInterim
+                  ? `${appPlots.length} of ${plots.length} chosen`
+                    + (Number(f.Plot_Count || 0) && appPlots.length !== Number(f.Plot_Count)
+                      ? " \u2014 does not match the count above" : "")
+                  : "from the project"}
+              </p></div>
 
             <div className="fld span2"><label>Applicant company</label>
               <input value={f.Applicant_Company} onChange={(e) => set("Applicant_Company")(e.target.value)} /></div>
@@ -363,43 +470,48 @@ export default function POCApplicationsTab({ projectId }) {
 
                 A gas or water POC has no kVA, and four empty boxes on it
                 are four things somebody has to decide are deliberately
-                blank. Hidden rather than disabled: a disabled field
-                still says the question was asked. */}
+                blank. Hidden rather than disabled: a disabled field still
+                says the question was asked. */}
             {isElectric && (
               <>
                 <div className="fld"><label>Requested kVA load</label>
-                  <input type="number" step="0.1" value={f.Requested_kVA}
-                    onChange={(e) => set("Requested_kVA")(e.target.value)} />
+                  {/* Worked out, not typed. Every part of it comes from
+                      somewhere — the plots, the bands, the supplies —
+                      and a box that can be typed over is a box that will
+                      eventually disagree with all three. */}
+                  <input className="kva-total" value={requestedKva.toFixed(1)} disabled />
                   <p className="hint">
-                    {plots.length
-                      ? `${baseKva.toFixed(1)} kVA across ${plots.length} plot(s)`
-                      : "no plots on this project yet"}
+                    {!appPlots.length
+                      ? (isInterim
+                        ? "no plots chosen for this interim application yet"
+                        : "no plots on this project yet")
+                      : `${missingKva ? `${missingKva} plot(s) missing data \u00b7 ` : ""}`
+                        + `base ${baseKva.toFixed(1)}`
+                        + `${contKva ? ` + contingency ${contKva.toFixed(1)}` : ""}`
+                        + ` from ${appPlots.length} plot(s)`}
                   </p></div>
+
                 <div className="fld"><label>Non-residential</label>
-                  <input type="number" step="0.1" value={f.Non_Residential_kVA}
-                    onChange={(e) => set("Non_Residential_kVA")(e.target.value)} />
+                  <input className="kva-total" value={nonResKva.toFixed(1)} disabled />
                   <p className="hint">
-                    {Number(f.Non_Residential_kVA || 0) > 0
-                      ? "included in total" : "no non-residential supplies linked"}
+                    {nrs.length
+                      ? `from ${nrs.length} suppl${nrs.length === 1 ? "y" : "ies"}`
+                      : "no non-residential supplies linked"}
                   </p></div>
+
                 <div className="fld"><label>Contingency load</label>
-                  <input type="number" step="0.1" value={f.Contingency_Load}
-                    onChange={(e) => set("Contingency_Load")(e.target.value)} />
-                  {/* Where the figure came from, and whether it has been
-                      changed since. A number that arrived on its own and
-                      then quietly disagrees with the table is worse than
-                      one that was never filled in. */}
+                  <input className="kva-total" value={contKva.toFixed(1)} disabled />
                   <p className="hint">
-                    {contingencyNote(plots.length, lookups?.contingencyLevels || [])}
-                    {Number(f.Contingency_Load || 0) !== contKva
-                      && ` \u2014 the band says ${contKva}`}
+                    {isInterim
+                      ? "interim applications carry no contingency"
+                      : contingencyNote(plots.length, lookups?.contingencyLevels || [])}
                   </p></div>
+
                 <div className="fld"><label>Total</label>
                   <input className="kva-total" value={totalKva.toFixed(1)} disabled />
                   <p className="hint">
-                    {`${Number(f.Requested_kVA || 0).toFixed(1)} residential`
-                      + ` + ${Number(f.Non_Residential_kVA || 0).toFixed(1)} non-residential`
-                      + ` + ${Number(f.Contingency_Load || 0).toFixed(1)} contingency`}
+                    {`${requestedKva.toFixed(1)} requested`
+                      + ` + ${nonResKva.toFixed(1)} non-residential`}
                   </p></div>
               </>
             )}

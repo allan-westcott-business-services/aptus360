@@ -2250,6 +2250,7 @@ export default function GISCanvasPage() {
          landing on the one adjacent point it is the whole intent, so it
          is allowed as a specific exception and marked for the release
          handler to act on. */
+      let closeTo = null;
       if (isEnd) {
         const f = features.find((x) => x.Feature_ID === featureId);
         const g = f?.Geometry || [];
@@ -2260,11 +2261,39 @@ export default function GISCanvasPage() {
           drag.current.collapse =
             Math.hypot(q.x - cursor.x, q.y - cursor.y) <= HIT_PX ? neighbour : null;
         }
+
+        /* The other end of the same line: closing it into a loop.
+
+           Self-snapping is excluded generally, or a vertex would stick to
+           its own neighbour and never reach anything else. Two exceptions
+           earn their place: the adjacent vertex, which means "shorten to
+           there", and the far end, which means "close the ring".
+
+           Without this a loop could only be closed while drawing it, and
+           a ring drawn in two sittings — or one whose join was nudged
+           open later — could never be shut. A gap of a few centimetres
+           looks closed and leaves the network in two pieces. */
+        const other = index === 0 ? g.length - 1 : 0;
+        if (g.length >= 3 && g[other]) {
+          const q = toPx(g[other]);
+          const cursor = toPx(point);
+          if (Math.hypot(q.x - cursor.x, q.y - cursor.y) <= HIT_PX) {
+            closeTo = [g[other][0], g[other][1]];
+          }
+        }
       }
-      setSnapHit(hit);
+
+      /* Landed exactly on the far end, so the two are the same place and
+         the ring is genuinely shut rather than nearly. */
+      const at = closeTo ?? point;
+      drag.current.closing = !!closeTo;
+
+      setSnapHit(closeTo
+        ? { point: at, kind: "end", label: "Close the loop" }
+        : hit);
       setFeatures((fs) => fs.map((f) =>
         f.Feature_ID === featureId
-          ? { ...f, Geometry: f.Geometry.map((g, i) => (i === index ? point : g)) }
+          ? { ...f, Geometry: f.Geometry.map((g, i) => (i === index ? at : g)) }
           : f));
       return;
     }
@@ -2350,6 +2379,18 @@ export default function GISCanvasPage() {
 
       try {
         await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]);
+
+        /* Said out loud when a ring is shut.
+
+           A closed loop and one that is a few centimetres open look
+           identical at any working zoom, and the difference is the
+           whole point — an open ring routes the long way round and can
+           put a plot hundreds of metres from the substation. Confirming
+           it saves someone zooming to the join to check. */
+        if (d.closing) {
+          setStatus("Loop closed");
+          setTimeout(() => setStatus(""), 4000);
+        }
 
         /* Reshaping is the easiest thing to do by accident on this
            canvas — a cable is dragged out of place with one slip of the

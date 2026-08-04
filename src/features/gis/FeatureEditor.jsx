@@ -75,8 +75,16 @@ export default function FeatureEditor({
     [allFeatures, chosenColours],
   );
   const colourFor = (cid) =>
-    circuitPalette.get(Number(cid)) ?? feederColourAt(circuits
-      .findIndex((c) => Number(c.id) === Number(cid)));
+    /* A colour chosen on this board comes first.
+
+       circuitColours works from the feeder mains, so before Build LV
+       Network has run it returns nothing and this fell through to the
+       palette — quietly ignoring a colour someone had just picked. The
+       swatch showed the palette colour, the picker showed the chosen
+       one, and saving kept the choice that was never displayed. */
+    chosenColours?.[cid] ?? chosenColours?.[String(cid)]
+    ?? circuitPalette.get(Number(cid))
+    ?? feederColourAt(circuits.findIndex((c) => Number(c.id) === Number(cid)));
 
   /* What a way is carrying. Amps against its fuse, since that is what
      decides whether the way is viable, with the load and meter count
@@ -580,10 +588,32 @@ export default function FeatureEditor({
                       <span className="fe-way-n">{way}</span>
                       {cid == null
                         ? <span className="fe-spare">Spare</span>
-                        : <input className="fe-cname"
-                            aria-label={`Name of the circuit on way ${way}`}
-                            value={circuitNames[cid] ?? circuit?.name ?? `Circuit ${cid}`}
-                            onChange={(e) => setCircuitName(cid, e.target.value)} />}
+                        : (
+                          <span className="fe-cwrap">
+                            <input className="fe-cname"
+                              aria-label={`Name of the circuit on way ${way}`}
+                              value={circuitNames[cid] ?? circuit?.name ?? `Circuit ${cid}`}
+                              onChange={(e) => setCircuitName(cid, e.target.value)} />
+                            {/* A way allocated to a circuit that has no
+                                meters on it.
+
+                                Emptying a circuit — removing its last
+                                meter, or deleting the plots — leaves the
+                                way allocation behind, so the board shows
+                                a circuit the report has never heard of
+                                and a way that is not free but is not
+                                carrying anything either.
+
+                                Said rather than hidden: the way is
+                                genuinely taken, and someone counting
+                                spare ways needs to know why. */}
+                            {!circuit && (
+                              <span className="fe-empty" title="No meters are on this circuit">
+                                nothing linked
+                              </span>
+                            )}
+                          </span>
+                        )}
                       {load
                         ? <span className="fe-load">
                             <span className={load.over ? "fe-amps over" : "fe-amps"}>
@@ -1016,6 +1046,8 @@ const CSS = `
   border-radius: 50%; background: var(--bg); font: 700 11px inherit; }
 .fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 8px; width: 100%; }
+.fe-cwrap { flex: 1; display: flex; align-items: center; gap: 7px; }
+.fe-empty { font-size: 10px; font-weight: 600; color: #b45309; white-space: nowrap; }
 .fe-spare { font-size: 11.5px; color: var(--muted); }
 .fe-load { display: grid; gap: 2px; }
 .fe-amps { font: 700 11.5px inherit; color: #15803d; }

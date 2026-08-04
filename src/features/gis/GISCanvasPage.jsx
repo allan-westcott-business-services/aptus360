@@ -594,19 +594,18 @@ export default function GISCanvasPage() {
        colour them — so a circuit with no cable on it gets no colour, and
        a ring asking for one got nothing and drew nothing. That is
        exactly the state the circuit report is read in: circuits linked,
-       Build LV Network not yet run, and the question being asked is
-       which meters went where.
+       Build LV Network not yet run.
 
-       Numbered on from the feeders so the two never collide, and in id
-       order so the same circuit keeps the same colour between runs. */
-    const extra = [...new Set(features
-      .filter((f) => f.Feature_Role === "meter" && f.Layer_Key === "electric")
-      .map(circuitIdOf)
-      .filter((id) => id != null && !out.has(id)))]
-      .sort((a2, b2) => a2 - b2);
-
-    extra.forEach((id, i) => {
-      out.set(id, chosen?.[id] ?? chosen?.[String(id)] ?? feederColourAt(out.size + i));
+       Coloured by position in circuitsFrom, which is the same rule the
+       substation board uses for its way swatches. An earlier version
+       numbered only the circuits without feeders, starting from zero —
+       so with an empty Circuit 1 on the board, Circuit 2 was drawn green
+       here and blue there, and the two disagreed about the same
+       circuit. */
+    const list = circuitsFrom(features);
+    list.forEach((c, i) => {
+      if (out.has(c.id)) return;
+      out.set(c.id, chosen?.[c.id] ?? chosen?.[String(c.id)] ?? feederColourAt(i));
     });
     return out;
   }, [features]);

@@ -73,6 +73,26 @@ function BedroomSummary({ plots, configFor, typeName }) {
   const totalKva = plots.reduce((sum, p) => sum + (Number(kvaOf(p)) || 0), 0);
   const missingKva = plots.filter((p) => kvaOf(p) == null || kvaOf(p) === "").length;
 
+  /* The average across the plots that have a figure, and what the whole
+     site comes to at that rate.
+
+     The total on its own is the sum of what is known, which on a scheme
+     part way through specifying reads low and gives no hint that it is
+     low — a site of two hundred plots with forty specified shows a fifth
+     of its real demand and looks like an answer.
+
+     Projecting the average over every plot is not a design figure and
+     must not be mistaken for one. It is what the site is likely to come
+     to, for sizing a POC application before every house type is settled,
+     and it is labelled as an estimate for that reason.
+
+     Only where something is actually missing. With every plot specified
+     the projection and the total are the same number, and showing both
+     invites the question of why they differ. */
+  const knownCount = plots.length - missingKva;
+  const avgKva = knownCount > 0 ? totalKva / knownCount : 0;
+  const projectedKva = avgKva * plots.length;
+
   const Tooltip = ({ g }) => (
     <span className="bed-tooltip">
       <span className="bed-tooltip-title">Configuration Breakdown</span>
@@ -112,9 +132,26 @@ function BedroomSummary({ plots, configFor, typeName }) {
           <span className="bed-count">{totalKva.toFixed(2)} kVA</span>
         </span>
       )}
+      {missingKva > 0 && knownCount > 0 && (
+        <span
+          className="bed-pill load est"
+          title={`${avgKva.toFixed(2)} kVA average across the ${knownCount} plot${
+            knownCount === 1 ? "" : "s"
+          } that have a figure, applied to all ${plots.length}`}
+        >
+          <span>Estimated Total</span>
+          <span className="bed-count">{projectedKva.toFixed(2)} kVA</span>
+        </span>
+      )}
+      {knownCount > 0 && (
+        <span className="bed-avg" title="Total load divided by the plots that have one">
+          {avgKva.toFixed(2)} kVA average per plot
+        </span>
+      )}
       {missingKva > 0 && (
         <span className="bed-missing">
-          {missingKva} plot{missingKva === 1 ? "" : "s"} excluded &mdash; no kVA
+          {missingKva} plot{missingKva === 1 ? "" : "s"} without a kVA figure
+          {" \u2014 the estimate assumes they match the rest"}
         </span>
       )}
     </div>
@@ -720,6 +757,11 @@ const CSS = FILTER_CSS + `
   white-space: nowrap; cursor: default; }
 .bed-pill.load { background: var(--accent); color: #fff; }
 .bed-count { background: rgba(255,255,255,.3); border-radius: 999px; padding: 1px 7px; font-size: 11.5px; }
+/* The estimate is deliberately quieter than the total: it is the one
+   figure on this row that is not a fact, and it should not be the one
+   the eye lands on first. */
+.bed-pill.est { border-style: dashed; opacity: .92; }
+.bed-avg { font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .bed-missing { font-size: 11.5px; color: var(--muted); font-weight: 600; }
 .bed-tooltip { position: absolute; bottom: calc(100% + 7px); left: 50%; transform: translateX(-50%);
   display: none; flex-direction: column; gap: 3px; z-index: 30; background: #1a1d23; color: #f1f5f9;

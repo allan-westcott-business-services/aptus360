@@ -53,6 +53,7 @@ import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
 import { inDrawOrder } from "./drawOrder.js";
+import { planRoute } from "./routing.js";
 import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
@@ -209,6 +210,22 @@ export default function GISCanvasPage() {
      runs there are no circuits — the drawing is a mains trench, plot
      seeds and meters, and that is all. */
   const [groupPlan, setGroupPlan] = useState(null);
+
+  /* A proposed trench route, before anything is written.
+
+     Which of the drawn candidates have to be live to reach every meter,
+     and where the router would dig a link of its own. Shown rather than
+     applied: it is a suggestion about several thousand pounds of
+     groundwork, and the drawing stays as it is until somebody agrees. */
+  const [routePlan, setRoutePlan] = useState(null);
+
+  /* A proposed trench route, before anything is written.
+
+     Draw candidates everywhere a trench could go and this works out
+     which of them have to be live to reach every meter. Shown as a
+     proposal because it is a suggestion about a dig: the cheapest route
+     is not always the right one, and a longer run can give better volt
+     drop. */
 
   /* Classes locked against moving.
 
@@ -1102,6 +1119,73 @@ export default function GISCanvasPage() {
     /* Cleared each frame, filled as labels are drawn. */
     labelHits.current = [];
 
+    /* A proposed route, over everything else.
+
+       Drawn as an overlay rather than by restyling the trenches: the
+       proposal is not part of the drawing yet, and a candidate that
+       merely looks different from its neighbours is easy to mistake for
+       one that has been changed. */
+    const paintRoute = () => {
+      if (!routePlan?.ok) return;
+      const g = routePlan.graph;
+
+      ctx.save();
+      /* Everything drawn but not needed, dimmed first so the live
+         sections read against it. */
+      ctx.strokeStyle = "rgba(148,163,184,.45)";
+      ctx.lineWidth = 2;
+      const liveSet = new Set(routePlan.liveEdges);
+      g.edges.forEach((e, i) => {
+        if (liveSet.has(i)) return;
+        const a2 = toPx(g.nodes[e.u]);
+        const b2 = toPx(g.nodes[e.v]);
+        ctx.beginPath();
+        ctx.moveTo(a2.x, a2.y);
+        ctx.lineTo(b2.x, b2.y);
+        ctx.stroke();
+      });
+
+      /* The sections that must be dug. */
+      for (const e of routePlan.live) {
+        const a2 = toPx(g.nodes[e.u]);
+        const b2 = toPx(g.nodes[e.v]);
+        ctx.beginPath();
+        /* A link the router invented is dashed — it is a proposal about
+           where to dig, not a section of something already drawn. */
+        ctx.setLineDash(e.generated ? [7, 5] : []);
+        ctx.strokeStyle = e.generated ? "#d97706" : "#16a34a";
+        ctx.lineWidth = e.generated ? 4 : 5;
+        ctx.moveTo(a2.x, a2.y);
+        ctx.lineTo(b2.x, b2.y);
+        ctx.stroke();
+      }
+      ctx.setLineDash([]);
+
+      /* Where each run stops. */
+      for (const end of routePlan.ends) {
+        const p2 = toPx(end.point);
+        ctx.beginPath();
+        ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#16a34a";
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+      }
+
+      /* Meters that cannot be reached, ringed so the gap is visible
+         rather than only counted. */
+      for (const m of routePlan.unreachable) {
+        const p2 = toPx((m.Geometry || [])[0] || [0, 0]);
+        ctx.beginPath();
+        ctx.arc(p2.x, p2.y, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
     /* Cables above their trenches, whatever order they were drawn in.
 
        Creation order meant a trench dug after its cable covered it, and
@@ -1704,7 +1788,11 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "alphabetic";
       }
     }
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup]);
+
+    /* Last, so the proposal sits over the drawing rather than under the
+       span node labels. */
+    paintRoute();
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -3750,6 +3838,113 @@ export default function GISCanvasPage() {
           Attributes: rows.find((r) =>
             Number(r.Feature_ID) === Number(f.Feature_ID)).Attributes,
         })));
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Working out which candidate trenches have to be dug.
+
+     Nothing is written: the plan is held on screen, the live sections
+     are drawn bold and the rest dimmed, and it is accepted or discarded.
+     Accepting deletes the candidates that are not needed, which is a
+     large and irreversible-looking change — so it is undoable as one
+     step and says how many before it does anything. */
+  function suggestRoute() {
+    const trenches = features.filter((f) =>
+      f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    const meters = features.filter((f) =>
+      f.Feature_Role === "meter" && f.Layer_Key === "electric");
+    const sub = features.find((f) => f.Feature_Role === "substation");
+
+    const plan = planRoute(trenches, meters, sub);
+    if (plan.error) { setError(plan.error); setRoutePlan(null); return; }
+    setRoutePlan(plan);
+    setError(plan.unreachable.length
+      ? `${plan.unreachable.length} meter(s) cannot be reached within the service limit.`
+      : "");
+  }
+
+  /* Accepting it.
+
+     Nothing is deleted. Every candidate keeps its geometry; the ones
+     that are needed are marked, with the length actually required — a
+     trench live for fifty of its two hundred metres is marked and
+     recorded as fifty, so a schedule quotes the dig rather than the
+     drawing.
+
+     The links the router invented are created, because a marked network
+     with gaps in it is not a network. */
+  async function acceptRoute() {
+    const plan = routePlan;
+    if (!plan?.ok) return;
+
+    setBusy("route");
+    try {
+      const byId = new Map(plan.liveByTrench.map((x) => [Number(x.Feature_ID), x.liveM]));
+      const rows = features
+        .filter((f) => f.Feature_Type === "line"
+          && isTrenchType(f.Attributes?.Line_Type, lineTypes))
+        .map((f) => {
+          const liveM = byId.get(Number(f.Feature_ID)) ?? null;
+          const attrs = { ...f.Attributes };
+          if (liveM == null) {
+            /* Cleared rather than set false, so a drawing nobody has
+               routed carries nothing and a second run starts clean. */
+            delete attrs.Route_Live;
+            delete attrs.Route_Live_M;
+          } else {
+            attrs.Route_Live = true;
+            attrs.Route_Live_M = liveM;
+          }
+          return { Feature_ID: f.Feature_ID, Attributes: attrs };
+        })
+        /* Only what actually changes. */
+        .filter((r, i, arr) => {
+          const f = features.find((x) => Number(x.Feature_ID) === Number(r.Feature_ID));
+          return JSON.stringify(f.Attributes) !== JSON.stringify(r.Attributes);
+        });
+
+      const before = features.filter((f) =>
+        rows.some((r) => Number(r.Feature_ID) === Number(f.Feature_ID)));
+
+      for (let i = 0; i < rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+      }
+
+      /* The invented links, drawn as ordinary mains trench so everything
+         downstream — the bill, the levels check, Auto Service — treats
+         them as what they are. */
+      for (const link of plan.newLinks) {
+        await createFeature(projectId, {
+          Layer_Key: "trench",
+          Feature_Type: "line",
+          Geometry: [link.from, link.to],
+          Attributes: {
+            Line_Type: "trench_main",
+            Route_Live: true,
+            Route_Live_M: link.len,
+            /* Marked as the router's, so it can be told from a trench
+               somebody surveyed. */
+            Route_Generated: true,
+          },
+        });
+      }
+
+      if (rows.length) {
+        await recordAction(`Route: mark ${rows.length} trench(es)`, before,
+          before.map((f) => ({
+            ...f,
+            Attributes: rows.find((r) =>
+              Number(r.Feature_ID) === Number(f.Feature_ID)).Attributes,
+          })));
+      }
+
+      setRoutePlan(null);
+      await load(projectId);
+      setStatus(`${plan.mainsM} m marked live`
+        + (plan.newLinks.length ? `, ${plan.newLinks.length} link(s) added` : ""));
+      setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -5949,12 +6144,26 @@ export default function GISCanvasPage() {
                   </Menu>
 
                   <Menu id="trench" label="Trench" open={open} setOpen={setOpen}>
+                    <MenuGroup label="Route" />
+                    <MenuItem label="Suggest Trench Route"
+                      hint="Which drawn trenches must be live to reach every meter"
+                      disabled={!!busy || !projectId}
+                      onClick={suggestRoute} />
+                    <div className="gm-sep" />
                     <MenuGroup label="Draw" />
                     {typesOn("trench").map((t) => (
                       <MenuItem key={t.Type_Key} label={t.Label} indent
                         active={isDrawing(t.Type_Key)}
                         onClick={() => drawAs(t.Type_Key)} />
                     ))}
+                    <div className="gm-sep" />
+                    <MenuGroup label="Routing" />
+                    {/* Draw candidates wherever a trench could go, then
+                        let this pick the ones that have to be live. */}
+                    <MenuItem label="Suggest Trench Route"
+                      hint="Which candidates must be dug to reach every meter"
+                      disabled={!!busy || !projectId}
+                      onClick={suggestRoute} />
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
                     {typesOn("trench").map((t) => (
@@ -6608,6 +6817,35 @@ export default function GISCanvasPage() {
                 A feature that will not drag with nothing on screen to
                 say why is indistinguishable from a canvas that has
                 stopped working. */}
+            {/* A proposed route, waiting to be taken or not. */}
+            {routePlan?.ok && (
+              <div className="gis-suggest">
+                <span className="gsg-t">
+                  {`${routePlan.mainsM} m of ${routePlan.drawnM} drawn`}
+                </span>
+                <span className="gsg-n">
+                  {`+ ${routePlan.serviceM} m service \u00b7 `}
+                  {`\u00a3${(routePlan.mainsCost + routePlan.serviceCost).toLocaleString()}`}
+                  {` against \u00a3${routePlan.drawnCost.toLocaleString()}`}
+                </span>
+                {routePlan.newLinks.length > 0 && (
+                  <span className="gsg-n" style={{ color: "#b45309" }}>
+                    {`${routePlan.newLinks.length} new link(s)`}
+                  </span>
+                )}
+                {routePlan.unreachable.length > 0 && (
+                  <span className="gsg-w">
+                    {`${routePlan.unreachable.length} unreachable`}
+                  </span>
+                )}
+                <button className="gsg-go" disabled={!!busy} onClick={acceptRoute}>
+                  {busy === "route" ? "Marking\u2026" : "Accept"}
+                </button>
+                <button className="gsg-no" disabled={!!busy}
+                  onClick={() => setRoutePlan(null)}>Discard</button>
+              </div>
+            )}
+
             {/* Find. */}
             {findOpen && (
               <div className="gis-find">

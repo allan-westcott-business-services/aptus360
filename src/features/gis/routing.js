@@ -77,9 +77,10 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
      on a service that length is unacceptable and most operators cap it
      by rule.
 
-     Twenty-five metres is a working figure rather than a standard —
-     worth setting per operator once someone says what theirs is. */
-  const { eps = 0.25, maxServiceM = 25 } = opts;
+     Ten metres, which is what Aptus works to. It is the strongest lever
+     on the shape of the answer: raise it and the plan digs less main and
+     runs longer services, lower it and the reverse. */
+  const { eps = 0.25, maxServiceM = 10 } = opts;
 
   const nodes = [];
   const intern = (p) => {
@@ -374,9 +375,41 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
      figure with nothing to compare it against says little. */
   const drawnM = edges.reduce((t, e) => t + e.len, 0);
 
+  /* How much of each drawn candidate is actually needed.
+
+     A trench can be live for part of its length and dead beyond the last
+     plot it serves, and marking the whole feature would overstate the
+     dig — on a two-hundred-metre run serving houses over the first fifty,
+     by four times.
+
+     Recorded as a length as well as a flag, so a schedule can quote what
+     is needed rather than what was drawn. Splitting the feature would be
+     the tidier answer and is deliberately not done: keeping the drawing
+     as it was is worth more than a neat trench list. */
+  const perTrench = new Map();
+  for (const e of live) {
+    if (!e.trench) continue;
+    const id = e.trench.Feature_ID;
+    perTrench.set(id, (perTrench.get(id) || 0) + e.len);
+  }
+
+  /* Links the router invented, in the order they would be drawn. These
+     do not exist yet and have to be created if the plan is accepted —
+     without them the marked network has gaps. */
+  const newLinks = live
+    .filter((e) => e.generated)
+    .map((e) => ({
+      from: nodes[e.u], to: nodes[e.v], len: Math.round(e.len * 100) / 100,
+    }));
+
   return {
     ok: true,
     graph,
+    /* Trench_ID -> metres needed. */
+    liveByTrench: [...perTrench].map(([id, m]) => ({
+      Feature_ID: id, liveM: Math.round(m * 10) / 10,
+    })),
+    newLinks,
     root,
     liveEdges: [...liveEdges],
     live,

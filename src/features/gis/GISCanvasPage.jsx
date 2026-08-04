@@ -52,6 +52,7 @@ import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
+import { inDrawOrder } from "./drawOrder.js";
 import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
@@ -1101,7 +1102,14 @@ export default function GISCanvasPage() {
     /* Cleared each frame, filled as labels are drawn. */
     labelHits.current = [];
 
-    const drawOrder = visible.filter((f) => f.Feature_Role !== "spannode");
+    /* Cables above their trenches, whatever order they were drawn in.
+
+       Creation order meant a trench dug after its cable covered it, and
+       a run redrawn late disappeared into the ground it lies in. */
+    const drawOrder = inDrawOrder(
+      visible.filter((f) => f.Feature_Role !== "spannode"),
+      (typeKey) => isTrenchType(typeKey, lineTypes),
+    );
 
     drawOrder.forEach((f) => {
       const colour = layerOf(f.Layer_Key).Colour;
@@ -3747,49 +3755,6 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
-  /* Releasing a way held by a circuit with nothing on it.
-
-     Only ever offered where the circuit has no meters, so there is
-     nothing to reassign and nothing to warn about — the whole job is
-     taking the allocation off the substation. A circuit that is still
-     carrying meters is deleted from the circuit report, which asks what
-     should become of them.
-
-     Undoable, because the substation's board is not a thing anyone wants
-     to reconstruct from memory. */
-  async function freeWay(circuitId, way) {
-    const sub = features.find((f) => f.Feature_Role === "substation");
-    if (!sub) { setError("No substation on this drawing."); return; }
-
-    /* Checked here as well as in the button, because a way with meters
-       on it must never be released by this path however it was
-       reached. */
-    const stillUsed = features.some((f) =>
-      f.Feature_Role === "meter" && f.Layer_Key === "electric"
-      && Number(f.Attributes?.Circuit_ID) === Number(circuitId));
-    if (stillUsed) {
-      setError("That circuit still has meters on it — delete it from the circuit report.");
-      return;
-    }
-
-    const rel = releaseWays(sub, circuitId);
-    if (!rel.changed) return;
-
-    setBusy("freeway");
-    try {
-      await withUndo(`Free way ${way}`, async () => {
-        await updateFeature(projectId, sub.Feature_ID, {
-          Attributes: { ...sub.Attributes, Way_Circuits: rel.map },
-        });
-      });
-      await load(projectId);
-      setStatus(`Way ${way} is free`);
-      setTimeout(() => setStatus(""), 6000);
-      setError("");
-    } catch (e) { setError(e.message); }
-    finally { setBusy(""); }
-  }
-
   /* Renaming a circuit.
 
      The name is not held in one place — it is stamped on every meter,
@@ -6370,7 +6335,6 @@ export default function GISCanvasPage() {
           onSave={saveFeature}
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
-          onFreeWay={freeWay}
           onIsolateCircuit={isolateCircuit}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}

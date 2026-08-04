@@ -113,6 +113,16 @@ export default async function handler() {
       return {
         Person_ID: p.Person_ID,
         Person_Name: p.Person_Name,
+        /* Email survives the reshaping.
+
+           This rebuilds each person to flatten the role join, and every
+           field not named here is dropped — so adding Email to the
+           select above achieved nothing, and the signed-in user could
+           never be matched to a staff record.
+
+           The select and this list have to be kept in step, which is the
+           cost of reshaping rather than passing through. */
+        Email: p.Email,
         Role_IDs: ids,
         Role_Codes: ids.map((id) => roleById.get(id)).filter(Boolean),
       };

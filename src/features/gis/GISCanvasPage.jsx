@@ -6246,6 +6246,11 @@ export default function GISCanvasPage() {
         return (
           <CircuitReport
             report={r}
+            /* The rings are one setting with two ways in — this and the
+               Layers menu — so turning them on here shows the same thing
+               and the menu agrees afterwards. */
+            rings={circuitRings}
+            onToggleRings={() => setCircuitRings(!circuitRings)}
             projectRef={project?.Project_Ref}
             siteName={project?.Site_Name}
             /* The capacity the whole drawing is working within, so the

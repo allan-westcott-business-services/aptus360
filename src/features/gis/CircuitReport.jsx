@@ -26,7 +26,7 @@ const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 export default function CircuitReport({
   report, projectRef, siteName, pocOutput, onClose,
   onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, onMoveToCircuit, busy,
-  progress,
+  progress, rings, onToggleRings,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -169,6 +169,22 @@ export default function CircuitReport({
         <div className="cr-head" {...drag.handleProps}>
           <div>
             <h3>Circuit report &mdash; electric meters by feeder</h3>
+            {/* The same rings the Layers menu turns on, reachable from
+                here.
+
+                This is where someone works out which meters belong to
+                which feeder, and the answer is easier to see on the
+                drawing than in a table — but the drawing is behind the
+                report, and hunting through a menu to show it means
+                losing the place in the list. */}
+            {onToggleRings && (
+              <button className="cr-rings" onClick={onToggleRings}
+                title={rings
+                  ? "Stop ringing each meter in its circuit's colour"
+                  : "Ring each meter in its circuit's colour"}>
+                {rings ? "Hide circuit rings" : "Show circuit rings"}
+              </button>
+            )}
             <p className="cr-sub">
               {[projectRef, siteName].filter(Boolean).join(" \u2014 ")}
               {/* Real circuits only. The unlinked group is carried in
@@ -444,6 +460,10 @@ export default function CircuitReport({
 const CSS = `
 .cr { background: var(--white); border-radius: 12px; width: min(880px, 95vw); max-height: 88vh;
   display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(15,23,42,.28); }
+.cr-rings { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-top: 7px;
+  color: var(--accent); }
+.cr-rings:hover { border-color: var(--accent); }
 .cr-head { display: flex; align-items: flex-start; gap: 10px; padding: 15px 18px 12px;
   border-bottom: 1px solid var(--border); }
 .cr-head > div { flex: 1; }

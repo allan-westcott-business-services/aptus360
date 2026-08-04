@@ -778,11 +778,18 @@ export default function POCApplicationsTab({ projectId }) {
                     </span>
                   )}
                 </label>
-                {rangeOn && (
-                  <p className="hint rng-note">
-                    {rangeNote(rangeAnchor, plots)}
-                  </p>
-                )}
+                {/* Always rendered, so the grid below does not move.
+
+                    It used to appear only in range mode, which pushed
+                    every chip down the moment Select range was pressed —
+                    and the first click of a range then landed on a plot
+                    that had just slid under the cursor. A line that is
+                    always there costs one row and never moves anything. */}
+                <p className={rangeOn ? "hint rng-note on" : "hint rng-note"}>
+                  {rangeOn
+                    ? rangeNote(rangeAnchor, plots)
+                    : "Click plots to choose them, or use Select range for a run."}
+                </p>
 
                 {!plots.length ? (
                   <p className="hint">No plots on this project yet.</p>
@@ -1055,7 +1062,16 @@ const CSS = FILTER_CSS + `
   border-radius: 5px; cursor: pointer; font: 600 10.5px inherit; padding: 2px 9px;
   color: var(--accent); }
 .rng.on { background: #d97706; border-color: #d97706; color: #fff; }
-.rng-note { color: #92400e; font-weight: 600; margin: 4px 0 6px; }
+/* One fixed row whether a range is being picked or not.
+
+   Every property that could change the height is set on the base rule
+   and left alone by the modifier — only colour and weight change. An
+   earlier version switched display to inline-block when active, which
+   is the sort of thing that moves a grid by a pixel or two and is then
+   hard to account for. */
+.rng-note { display: block; margin: 4px 0 6px; height: 16px; line-height: 16px;
+  padding: 0; overflow: hidden; }
+.rng-note.on { color: #92400e; font-weight: 600; }
 .ipl.anchor { border-color: #d97706; background: #fffbeb; color: #92400e; }
 
 /* The plot chips. Sized so a plot number fits and a hundred of them

@@ -7,7 +7,7 @@ import { contingencyFor, contingencyNote } from "./contingency.js";
 import {
   parseIds, serialiseIds, claimedElsewhere, nrsClaimedElsewhere,
   plotChoices, toggleChoice, pruneChoices, selectionState, NONE,
-  rangeBetween, rangeNote,
+  rangeBetween, rangeNote, selectAll,
 } from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
 import { getProject } from "../../api/projects.js";
@@ -659,6 +659,27 @@ export default function POCApplicationsTab({ projectId }) {
                     {` \u2014 ${nrsSelected.length} of ${utilNrs.length} included,`
                       + ` ${nonResKva.toFixed(1)} kVA`}
                   </span>
+                  {/* No range here: supplies are a handful with names
+                      rather than a numbered run, so there is nothing for
+                      a range to mean. */}
+                  {utilNrs.length > 1 && (
+                    <span className="rng-bar">
+                      <button type="button" className="rng"
+                        disabled={!nrsSelected.length}
+                        onClick={() => set("Interim_NRS_IDs")(NONE)}>
+                        Deselect all
+                      </button>
+                      <button type="button" className="rng"
+                        onClick={() => {
+                          const r = selectAll(utilNrs, {
+                            claimed: nrsClaimed, key: "NRS_ID",
+                          });
+                          set("Interim_NRS_IDs")(serialiseIds(r.ids) || NONE);
+                        }}>
+                        Select all
+                      </button>
+                    </span>
+                  )}
                 </label>
                 {/* Chips, as the plots are. A supply is identified by a
                     short reference, so the same grid works and the two
@@ -716,14 +737,45 @@ export default function POCApplicationsTab({ projectId }) {
                   {/* Ticking sixty plots one at a time is sixty chances
                       to miss one. Two clicks says the same thing. */}
                   {plots.length > 1 && f.Utility_ID && (
-                    <button type="button"
-                      className={rangeOn ? "rng on" : "rng"}
-                      onClick={() => {
-                        setRangeOn(!rangeOn);
-                        setRangeAnchor(null);
-                      }}>
-                      {rangeOn ? "Cancel range" : "Select range"}
-                    </button>
+                    <span className="rng-bar">
+                      {/* Deselect first, because it is the one pressed by
+                          mistake least often — putting the destructive
+                          one at the far end of the row is how it gets
+                          pressed instead of Select all. */}
+                      <button type="button" className="rng"
+                        disabled={!interimSelected.length}
+                        onClick={() => {
+                          set("Interim_Plot_IDs")(NONE);
+                          setRangeOn(false);
+                          setRangeAnchor(null);
+                        }}>
+                        Deselect all
+                      </button>
+                      <button type="button" className="rng"
+                        onClick={() => {
+                          const r = selectAll(plots, {
+                            claimed: interimClaimed, target: interimTarget,
+                          });
+                          set("Interim_Plot_IDs")(serialiseIds(r.ids) || NONE);
+                          setRangeOn(false);
+                          setRangeAnchor(null);
+                          setError(r.left || r.blocked
+                            ? `${r.ids.length} selected`
+                              + (r.left ? ` \u2014 ${r.left} more than the ${interimTarget} applied for` : "")
+                              + (r.blocked ? ` \u2014 ${r.blocked} claimed elsewhere` : "")
+                            : "");
+                        }}>
+                        Select all
+                      </button>
+                      <button type="button"
+                        className={rangeOn ? "rng on" : "rng"}
+                        onClick={() => {
+                          setRangeOn(!rangeOn);
+                          setRangeAnchor(null);
+                        }}>
+                        {rangeOn ? "Cancel range" : "Select range"}
+                      </button>
+                    </span>
                   )}
                 </label>
                 {rangeOn && (
@@ -998,7 +1050,8 @@ export default function POCApplicationsTab({ projectId }) {
 }
 
 const CSS = FILTER_CSS + `
-.rng { float: right; background: var(--white); border: 1px solid var(--border);
+.rng-bar { float: right; display: inline-flex; gap: 5px; }
+.rng { background: var(--white); border: 1px solid var(--border);
   border-radius: 5px; cursor: pointer; font: 600 10.5px inherit; padding: 2px 9px;
   color: var(--accent); }
 .rng.on { background: #d97706; border-color: #d97706; color: #fff; }

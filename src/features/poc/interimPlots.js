@@ -223,6 +223,34 @@ export function rangeBetween(plots = [], anchorId, endId, opts = {}) {
   return { ids: [...out], added, refused };
 }
 
+/* Everything that can be taken, up to the cap.
+
+   Replaces the selection rather than adding to it: "select all" means
+   these and no others, and merging with what was already there would
+   make the result depend on what had been clicked first — which is not
+   what the button says.
+
+   Claimed plots are left out, and the cap is honoured in the order the
+   plots are shown, so the first N are taken. Where more are selectable
+   than the count applied for, the caller is told rather than the
+   shortfall being silent. */
+export function selectAll(plots = [], opts = {}) {
+  const { claimed = new Map(), target = 0, key = "Plot_ID" } = opts;
+
+  const free = plots
+    .map((p) => Number(p[key]))
+    .filter((id) => !claimed.has(id));
+
+  const ids = target > 0 ? free.slice(0, target) : free;
+  return {
+    ids,
+    /* What could have been taken but was not, so the panel can say why
+       the selection is smaller than the grid. */
+    left: free.length - ids.length,
+    blocked: plots.length - free.length,
+  };
+}
+
 /* What the panel should say while a range is being picked. */
 export function rangeNote(anchorId, plots = [], key = "Plot_ID") {
   if (anchorId == null) return "Click the first plot in the range.";

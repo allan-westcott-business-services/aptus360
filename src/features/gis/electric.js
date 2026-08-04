@@ -140,6 +140,62 @@ export function assignWay(substation, circuitId, kva) {
 
 /* Free the ways a deleted circuit held, so its number and its way both
    come back into use. */
+/* Moving a circuit from one way to another.
+
+   Swapping rather than overwriting where the target is taken: a board
+   has a fixed number of ways, so putting one circuit on an occupied way
+   has to do something with the one already there, and dropping it would
+   leave a circuit fed by nothing. A swap is the only answer that loses
+   nothing and needs no further decision.
+
+   Keys are normalised to strings on the way out, because a map read back
+   from jsonb has string keys and one built here would otherwise have
+   numbers — and a way keyed both ways at once appears twice on the
+   board. */
+export function moveCircuitToWay(wayCircuits = {}, circuitId, toWay) {
+  const map = {};
+  for (const [k, v] of Object.entries(wayCircuits || {})) map[String(k)] = v;
+
+  const to = String(toWay);
+  const from = Object.keys(map).find((k) => Number(map[k]) === Number(circuitId));
+  if (from == null) return { map, changed: false };
+  if (from === to) return { map, changed: false };
+
+  const displaced = map[to];
+  map[to] = Number(circuitId);
+  if (displaced != null) map[from] = Number(displaced);
+  else delete map[from];
+
+  return { map, changed: true };
+}
+
+/* Closing the gaps: circuits onto the lowest ways, spares at the end.
+
+   A board with a spare way in the middle is not wrong, but it reads as
+   though something is missing, and it makes the next allocation a
+   decision rather than a habit. Compacting puts the circuits on ways
+   one, two, three and leaves the spares together at the bottom.
+
+   Order is preserved — the circuit on the lowest way stays lowest — so
+   the board someone knows is the board they get back, with the holes
+   taken out rather than rearranged. */
+export function compactWays(wayCircuits = {}) {
+  const taken = Object.entries(wayCircuits || {})
+    .filter(([, cid]) => cid != null)
+    .sort((a2, b2) => Number(a2[0]) - Number(b2[0]))
+    .map(([, cid]) => Number(cid));
+
+  const map = {};
+  taken.forEach((cid, i) => { map[String(i + 1)] = cid; });
+
+  const before = Object.entries(wayCircuits || {})
+    .filter(([, cid]) => cid != null)
+    .map(([w, cid]) => `${w}:${cid}`).sort().join();
+  const after = Object.entries(map).map(([w, cid]) => `${w}:${cid}`).sort().join();
+
+  return { map, changed: before !== after };
+}
+
 export function releaseWays(substation, circuitId) {
   const map = { ...(substation?.Attributes?.Way_Circuits || {}) };
   let changed = false;

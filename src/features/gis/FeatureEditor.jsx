@@ -6,7 +6,10 @@ import { lineLength, isTrenchType } from "./snapping.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
-import { pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor } from "./electric.js";
+import {
+  pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
+  moveCircuitToWay, compactWays,
+} from "./electric.js";
 
 /* Editing whatever you right-clicked.
 
@@ -19,7 +22,7 @@ export default function FeatureEditor({
      already exist on it. */
   allFeatures = [],
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
-  onIsolateCircuit, circuitIsolated, onFreeWay,
+  onIsolateCircuit, circuitIsolated,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -48,6 +51,22 @@ export default function FeatureEditor({
      holds — the count is what tells one circuit from another when the
      names are all "Circuit 1", "Circuit 2". */
   const circuits = useMemo(() => circuitsFrom(allFeatures || []), [allFeatures]);
+
+  /* Circuits sitting on ways beyond the count now typed.
+
+     Worked out from the draft, so the warning appears as the number is
+     being changed rather than after saving. */
+  const cutOffCircuits = useMemo(() => {
+    const n = Number(f.Attributes?.Ways ?? SUB_DEFAULTS.Ways) || 0;
+    const map = f.Attributes?.Way_Circuits || {};
+    return Object.entries(map)
+      .filter(([way, cid]) => Number(way) > n && cid != null)
+      .map(([way, cid]) => ({
+        way: Number(way),
+        name: circuits.find((c) => Number(c.id) === Number(cid))?.name ?? `Circuit ${cid}`,
+      }))
+      .sort((x, y) => x.way - y.way);
+  }, [f.Attributes?.Ways, f.Attributes?.Way_Circuits, circuits]);
 
   /* ── The LV board ──
      Circuit names and colours are edited here but belong in two
@@ -550,6 +569,25 @@ export default function FeatureEditor({
                     placeholder={String(SUB_DEFAULTS.Ways)}
                     value={f.Attributes.Ways ?? ""}
                     onChange={(e) => setAttr("Ways")(e.target.value)} />
+                  {/* Reducing the count deletes ways off the end, and a
+                      way carrying a circuit taken off the board leaves
+                      that circuit fed by nothing — with no sign of it
+                      anywhere, because the row it was on has gone.
+
+                      Said rather than prevented: a board really can be
+                      changed for a smaller one, and the answer is then
+                      to move the circuit first, which is a decision
+                      rather than an error. */}
+                  {cutOffCircuits.length > 0 && (
+                    <p className="fe-warn">
+                      {cutOffCircuits.length === 1
+                        ? `Way ${cutOffCircuits[0].way} carries ${cutOffCircuits[0].name}`
+                        : `${cutOffCircuits.length} ways past this carry circuits`}
+                      {" \u2014 move "}
+                      {cutOffCircuits.length === 1 ? "it" : "them"}
+                      {" to a lower way first, or it will be fed by nothing."}
+                    </p>
+                  )}
                 </div>
                 <div className="fld">
                   <label htmlFor="fe-fuse">Way fuse (A)</label>
@@ -559,8 +597,27 @@ export default function FeatureEditor({
                     onChange={(e) => setAttr("Way_Fuse_A")(e.target.value)} />
                 </div>
               </div>
-              <p className="hint">
-                One circuit per way. Defining a circuit takes the next free one.
+              <p className="hint fe-board-hint">
+                <span>
+                  One circuit per way. Defining a circuit takes the next free one.
+                </span>
+                {/* Closing the gaps in one press.
+
+                    A spare way in the middle is not wrong, but it reads
+                    as though something is missing and it makes the next
+                    allocation a decision rather than a habit. Offered
+                    only when there is a gap to close, so a tidy board
+                    carries no button telling it to tidy itself. */}
+                {compactWays(f.Attributes.Way_Circuits || {}).changed && (
+                  <button type="button" className="fe-free"
+                    title="Move the circuits up so the spare ways sit at the end"
+                    onClick={() => {
+                      const r = compactWays(f.Attributes.Way_Circuits || {});
+                      if (r.changed) setAttr("Way_Circuits")(r.map);
+                    }}>
+                    Close the gaps
+                  </button>
+                )}
               </p>
 
               {/* Every way on the board, not only the ones in use. A list
@@ -585,7 +642,34 @@ export default function FeatureEditor({
                   const load = cid != null ? wayLoad(cid) : null;
                   return (
                     <div className={cid != null ? "fe-board-r" : "fe-board-r spare"} key={way}>
-                      <span className="fe-way-n">{way}</span>
+                      {/* The way number, and a way to change it.
+
+                          A circuit is tied to a way by where it sits on
+                          this board, and until now the only way to move
+                          one was to delete it and make it again. Ways
+                          are physical positions on a fuse board, and
+                          which circuit is on which is a real decision —
+                          usually made after the fact, when the spare
+                          turns out to be in the wrong place. */}
+                      {cid == null ? (
+                        <span className="fe-way-n">{way}</span>
+                      ) : (
+                        <select className="fe-way-n fe-way-sel" value={way}
+                          aria-label={`Way for circuit ${cid}`}
+                          title="Move this circuit to another way"
+                          onChange={(e) => {
+                            const r = moveCircuitToWay(
+                              f.Attributes.Way_Circuits || {}, cid, e.target.value);
+                            if (r.changed) setAttr("Way_Circuits")(r.map);
+                          }}>
+                          {Array.from(
+                            { length: Number(f.Attributes.Ways ?? SUB_DEFAULTS.Ways) || 0 },
+                            (_, k) => k + 1,
+                          ).map((w) => (
+                            <option key={w} value={w}>{w}</option>
+                          ))}
+                        </select>
+                      )}
                       {cid == null
                         ? <span className="fe-spare">Spare</span>
                         : (
@@ -625,13 +709,37 @@ export default function FeatureEditor({
                                     lost. A way carrying meters is
                                     deleted from the report, which asks
                                     what should happen to them. */}
-                                {onFreeWay && (
-                                  <button type="button" className="fe-free"
-                                    title={`Release way ${way} — nothing is linked to it`}
-                                    onClick={() => onFreeWay(cid, way)}>
-                                    Free the way
-                                  </button>
-                                )}
+                                {/* Changed on the draft, then saved with
+                                    everything else on this board.
+
+                                    Writing straight to the database
+                                    looked like doing nothing: the editor
+                                    holds its own copy of Attributes, so
+                                    the row on screen did not move — and
+                                    pressing Save afterwards would have
+                                    written the old map back over it,
+                                    restoring the way.
+
+                                    Editing the draft is also how every
+                                    other field here behaves, so it saves
+                                    and cancels with the rest. */}
+                                <button type="button" className="fe-free"
+                                  title={`Clear way ${way} — nothing is linked to it`}
+                                  onClick={() => {
+                                    const map = { ...(f.Attributes.Way_Circuits || {}) };
+                                    delete map[way];
+                                    /* By key and by value: the way is
+                                       keyed by number in some drawings
+                                       and by string in others, and a
+                                       circuit could in principle hold
+                                       two ways. */
+                                    for (const k of Object.keys(map)) {
+                                      if (Number(map[k]) === Number(cid)) delete map[k];
+                                    }
+                                    setAttr("Way_Circuits")(map);
+                                  }}>
+                                  Clear this way
+                                </button>
                               </>
                             )}
                           </span>
@@ -1069,6 +1177,11 @@ const CSS = `
 .fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 8px; width: 100%; }
 .fe-cwrap { flex: 1; display: flex; align-items: center; gap: 7px; }
+.fe-board-hint { display: flex; align-items: center; gap: 10px; }
+.fe-board-hint > span { flex: 1; }
+.fe-way-sel { border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
+  font: 600 11px inherit; padding: 1px 3px; background: var(--white); }
+.fe-warn { margin: 5px 0 0; font-size: 10.5px; font-weight: 600; color: #b45309; }
 .fe-free { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10px inherit; padding: 2px 7px; color: var(--accent); }
 .fe-free:hover { border-color: var(--accent); background: var(--bg); }

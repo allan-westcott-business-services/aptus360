@@ -280,7 +280,19 @@ export default function POCApplicationsTab({ projectId }) {
      case and a form that grows a section when you pick from a dropdown
      is more startling than one that loses it. */
   const isElectric = (() => {
-    if (!f.Utility_ID) return true;
+    /* Nothing chosen shows nothing.
+
+       An earlier version showed the load fields until a utility was
+       picked, on the reasoning that electric is the ordinary case. That
+       was the wrong way round: a blank form asking for a kVA figure
+       before it knows what is being applied for is asking a question
+       that may turn out not to apply, and four boxes that vanish when
+       Gas is chosen look like a fault rather than a rule.
+
+       Appearing when Electric is chosen reads as the form responding.
+       Disappearing when Gas is chosen reads as the form losing
+       something. */
+    if (!f.Utility_ID) return false;
     const u = UTILITIES.find((x) => Number(x.id) === Number(f.Utility_ID));
     return u?.name === "Electric";
   })();

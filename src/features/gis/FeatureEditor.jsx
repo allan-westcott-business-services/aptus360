@@ -19,7 +19,7 @@ export default function FeatureEditor({
      already exist on it. */
   allFeatures = [],
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
-  onIsolateCircuit, circuitIsolated,
+  onIsolateCircuit, circuitIsolated, onFreeWay,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -608,9 +608,31 @@ export default function FeatureEditor({
                                 genuinely taken, and someone counting
                                 spare ways needs to know why. */}
                             {!circuit && (
-                              <span className="fe-empty" title="No meters are on this circuit">
-                                nothing linked
-                              </span>
+                              <>
+                                <span className="fe-empty"
+                                  title="No meters are on this circuit">
+                                  nothing linked
+                                </span>
+                                {/* Freeing it here, because there is
+                                    nowhere else to do it: the circuit
+                                    report lists circuits by their
+                                    meters, and one with none never
+                                    appears in it. The way was stuck
+                                    allocated with no way to release it.
+
+                                    Safe precisely because it is empty —
+                                    nothing is linked, so nothing is
+                                    lost. A way carrying meters is
+                                    deleted from the report, which asks
+                                    what should happen to them. */}
+                                {onFreeWay && (
+                                  <button type="button" className="fe-free"
+                                    title={`Release way ${way} — nothing is linked to it`}
+                                    onClick={() => onFreeWay(cid, way)}>
+                                    Free the way
+                                  </button>
+                                )}
+                              </>
                             )}
                           </span>
                         )}
@@ -1047,6 +1069,9 @@ const CSS = `
 .fe-cname { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 8px; width: 100%; }
 .fe-cwrap { flex: 1; display: flex; align-items: center; gap: 7px; }
+.fe-free { background: none; border: 1px solid var(--border); border-radius: 5px;
+  cursor: pointer; font: 600 10px inherit; padding: 2px 7px; color: var(--accent); }
+.fe-free:hover { border-color: var(--accent); background: var(--bg); }
 .fe-empty { font-size: 10px; font-weight: 600; color: #b45309; white-space: nowrap; }
 .fe-spare { font-size: 11.5px; color: var(--muted); }
 .fe-load { display: grid; gap: 2px; }

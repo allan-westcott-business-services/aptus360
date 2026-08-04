@@ -41,6 +41,9 @@ export default function ProjectsPage() {
   if (mode === "edit") return (
     <ProjectDetail project={selected} initialTab={initialTab} onBack={backToList}
       onTabChange={setInitialTab}
+      /* Kept in step so the remembered position holds the current name
+         rather than the one the project was opened with. */
+      onProjectChange={(saved) => setSelected((p) => ({ ...p, ...saved }))}
       /* Switching option keeps you on the same screen rather than going
          back to the list and finding the sibling by eye. */
       onOpenOption={(o) => setSelected({ ...selected, ...o })} />

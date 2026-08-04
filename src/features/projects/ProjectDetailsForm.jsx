@@ -61,7 +61,7 @@ const SITE_CSS = `
 @media (max-width: 900px) { .site-row { flex-wrap: wrap; } }
 `;
 
-export default function ProjectDetailsForm({ projectId }) {
+export default function ProjectDetailsForm({ projectId, onSaved }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(null);
   const [saving, setSaving] = useState(false);
@@ -104,6 +104,13 @@ export default function ProjectDetailsForm({ projectId }) {
       const fresh = await getProject(f.Project_ID);
       const { scopes: _ignored = [], ...rest } = fresh;
       setF(rest);
+      /* Told upward, so the heading above the tabs shows the name that
+         was just typed rather than the one it was opened with.
+
+         The saved record rather than the draft: the database fills in
+         Display_Ref and may normalise other fields, and the heading
+         should show what was stored, not what was sent. */
+      onSaved?.(rest);
       const promoted = String(rest.Project_Status_ID) !== String(before);
       setFlash(promoted ? "Saved \u2014 project moved to the Contract stage" : "Changes saved");
       setTimeout(() => setFlash(""), 2600);

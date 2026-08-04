@@ -192,7 +192,9 @@ export default function GISCanvasPage() {
      dense estate the cables overlap. A ring on the meter says it
      directly, and in the colour that circuit's feeder is already
      drawn in, so the map and the cables agree. */
-  const [circuitRings, setCircuitRings] = useState(true);
+  /* Off until asked for. The report has the button, and rings appearing
+     unbidden on a drawing nobody has asked about circuits is noise. */
+  const [circuitRings, setCircuitRings] = useState(false);
 
   /* A proposed grouping, before anything is written.
 
@@ -583,7 +585,30 @@ export default function GISCanvasPage() {
      the cable leaving it are never different colours. */
   const ringColours = useMemo(() => {
     const sub = features.find((f) => f.Feature_Role === "substation");
-    return circuitColours(features, sub?.Attributes?.Circuit_Colours);
+    const chosen = sub?.Attributes?.Circuit_Colours;
+    const out = circuitColours(features, chosen);
+
+    /* Circuits that exist but have no feeder drawn yet.
+
+       circuitColours works from the feeder mains, because its job is to
+       colour them — so a circuit with no cable on it gets no colour, and
+       a ring asking for one got nothing and drew nothing. That is
+       exactly the state the circuit report is read in: circuits linked,
+       Build LV Network not yet run, and the question being asked is
+       which meters went where.
+
+       Numbered on from the feeders so the two never collide, and in id
+       order so the same circuit keeps the same colour between runs. */
+    const extra = [...new Set(features
+      .filter((f) => f.Feature_Role === "meter" && f.Layer_Key === "electric")
+      .map(circuitIdOf)
+      .filter((id) => id != null && !out.has(id)))]
+      .sort((a2, b2) => a2 - b2);
+
+    extra.forEach((id, i) => {
+      out.set(id, chosen?.[id] ?? chosen?.[String(id)] ?? feederColourAt(out.size + i));
+    });
+    return out;
   }, [features]);
 
   /* Which proposed group each meter is in, while a suggestion is on
@@ -5873,14 +5898,10 @@ export default function GISCanvasPage() {
                     ))}
                     <div className="gm-sep" />
 
-                    {/* Only where there are circuits to tell apart. */}
-                    {circuitsFrom(features).length > 1 && (
-                      <MenuItem label="Circuit Rings" active={circuitRings}
-                        hint={circuitRings
-                          ? "Each meter ringed in its circuit's colour"
-                          : "Meters are not ringed"}
-                        onClick={() => setCircuitRings(!circuitRings)} />
-                    )}
+                    {/* Circuit rings are controlled from the circuit
+                        report, which is where the question they answer
+                        is being asked. Two controls for one setting is
+                        one more place to look when it does not work. */}
                     <MenuItem label="Labels" active={showLabels}
                       hint={showLabels
                         ? "Plot numbers, joints, cable labels. Span node codes always show."

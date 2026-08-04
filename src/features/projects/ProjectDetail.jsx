@@ -31,8 +31,21 @@ const TABS = [
 ];
 
 export default function ProjectDetail({
-  project, initialTab = "details", onBack, onOpenOption, onTabChange,
+  project: incoming, initialTab = "details", onBack, onOpenOption, onTabChange,
+  onProjectChange,
 }) {
+  /* The project as it now stands, not as it was handed over.
+
+     The header shows the site name and the reference, and the details
+     form saves them — but the form held its own copy and told nobody, so
+     renaming a site left the heading showing the old name until the page
+     was left and reopened. Someone who has just typed a name and watched
+     it not appear reasonably concludes the save failed.
+
+     Seeded from the prop and replaced when the form reports a save. The
+     prop is watched too, so opening a different project still works. */
+  const [project, setProject] = useState(incoming);
+  useEffect(() => { setProject(incoming); }, [incoming]);
   /* The other versions of this enquiry: 2607.004(A), (B) and so on.
      Fetched rather than passed in, because a project can be opened from
      several places and only one of them knows about its siblings. */
@@ -132,7 +145,17 @@ export default function ProjectDetail({
       </div>
 
       <div className="detail-body">
-        {tab === "details" && <ProjectDetailsForm projectId={project.Project_ID} />}
+        {tab === "details" && (
+          <ProjectDetailsForm projectId={project.Project_ID}
+            onSaved={(saved) => {
+              setProject((p) => ({ ...p, ...saved }));
+              /* Passed further up as well, so the page that opened this
+                 holds the new name too. Without it the remembered
+                 position — which stores the project it opened — puts the
+                 old name back after a reload. */
+              onProjectChange?.(saved);
+            }} />
+        )}
         {tab === "designs" && <OutlineDesignsTab projectId={project.Project_ID} />}
         {tab === "history" && <ActivityTab projectId={project.Project_ID} view="history" />}
         {tab === "comments" && <ActivityTab projectId={project.Project_ID} view="comments" />}

@@ -4,6 +4,10 @@ import { getLookups } from "../../api/lookups.js";
 import { listPoc, createPoc, updatePoc, deletePoc } from "../../api/poc.js";
 import { listPlots } from "../../api/plots.js";
 import { contingencyFor, contingencyNote } from "./contingency.js";
+import {
+  parseIds, serialiseIds, claimedElsewhere, plotChoices, toggleChoice,
+  pruneChoices, selectionState,
+} from "./interimPlots.js";
 import { listNrs } from "../../api/nrs.js";
 import { getProject } from "../../api/projects.js";
 import { utilityById, UTILITIES, RESIDENTIAL_UTILITIES } from "../../lib/utilities.js";
@@ -312,11 +316,51 @@ export default function POCApplicationsTab({ projectId }) {
      subset for an interim one. Held as a comma-separated list because
      that is how the original stores it and the two have to read the same
      column. */
-  const interimIds = new Set(
-    String(f.Interim_Plot_IDs || "").split(",").filter(Boolean).map(Number));
+  const interimSelected = parseIds(f.Interim_Plot_IDs);
+  const interimIds = new Set(interimSelected);
   const appPlots = isInterim
     ? plots.filter((p) => interimIds.has(Number(p.Plot_ID)))
     : plots;
+
+  /* Plots already spoken for by another interim application on this
+     utility. Two applications claiming one plot asks the operator twice
+     for the same supply. */
+  const interimClaimed = isInterim
+    ? claimedElsewhere(rows, {
+      utilityId: f.Utility_ID,
+      exceptId: editingId,
+      typeName: (a2) => typeName(Number(a2.POC_Type_ID)),
+    })
+    : new Map();
+
+  /* The cap: what was applied for on the form. */
+  const interimTarget = Number(f.Plot_Count || 0) || 0;
+
+  /* Dropping plots that are no longer allowed.
+
+     The utility can change after plots are chosen, and another
+     application can claim one in the meantime. Left alone they stay in
+     the selection and are saved, so the application quietly covers plots
+     it is not entitled to.
+
+     Done as the inputs change rather than at save time: a selection that
+     shrinks when you press Save is a surprise, where one that shrinks
+     when you change the utility is a consequence. */
+  useEffect(() => {
+    if (!isInterim || !f.Utility_ID) return;
+    const pr = pruneChoices(interimSelected, plots, { claimed: interimClaimed });
+    if (!pr.dropped) return;
+    set("Interim_Plot_IDs")(serialiseIds(pr.ids));
+    setError(`${pr.dropped} plot(s) removed \u2014 no longer available on this utility.`);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [isInterim, f.Utility_ID, plots, rows, editingId]);
+
+  const chooseInterimPlot = (id) => {
+    const next = toggleChoice(interimSelected, id, {
+      claimed: interimClaimed, target: interimTarget,
+    });
+    set("Interim_Plot_IDs")(serialiseIds(next));
+  };
 
   /* The resolved load, not the override column.
 
@@ -526,6 +570,56 @@ export default function POCApplicationsTab({ projectId }) {
                       + ` + ${nonResKva.toFixed(1)} non-residential`}
                   </p></div>
               </>
+            )}
+
+            {/* Which plots this interim application covers.
+
+                Only for interim: every other type is applied for against
+                the whole scheme and has nothing to choose.
+
+                Chips rather than a list, because the question is "which
+                of these" and a plot number is short — a hundred and
+                thirty-nine rows of checkbox would be a scroll where a
+                grid is a glance. */}
+            {isInterim && (
+              <div className="fld span6">
+                <label>
+                  Plots on this application
+                  <span className="lbl-note">
+                    {" \u2014 "}
+                    {selectionState(interimSelected, interimTarget).note}
+                  </span>
+                </label>
+
+                {!plots.length ? (
+                  <p className="hint">No plots on this project yet.</p>
+                ) : !f.Utility_ID ? (
+                  <p className="hint">Choose a utility first &mdash; plots are claimed per utility.</p>
+                ) : (
+                  <>
+                    <div className="ipl-grid">
+                      {plotChoices(plots, interimSelected, {
+                        claimed: interimClaimed, target: interimTarget,
+                      }).map((c) => (
+                        <button key={c.id} type="button"
+                          className={c.chosen ? "ipl on" : (c.locked ? "ipl off" : "ipl")}
+                          disabled={c.locked}
+                          title={c.why || `Plot ${c.plot.Plot_Number ?? c.id}`}
+                          onClick={() => chooseInterimPlot(c.id)}>
+                          {c.plot.Plot_Number ?? c.id}
+                        </button>
+                      ))}
+                    </div>
+                    <p className="hint">
+                      {interimTarget
+                        ? `Up to ${interimTarget}, from the # Plots box above.`
+                        : "Set # Plots above to cap the selection."}
+                      {interimClaimed.size > 0
+                        && ` ${interimClaimed.size} plot(s) are on another interim application.`}
+                    </p>
+                  </>
+                )}
+              </div>
             )}
 
             <div className="fld span6">
@@ -745,6 +839,21 @@ export default function POCApplicationsTab({ projectId }) {
 }
 
 const CSS = FILTER_CSS + `
+/* The plot chips. Sized so a plot number fits and a hundred of them
+   still read as a block rather than a wall. */
+.ipl-grid { display: flex; flex-wrap: wrap; gap: 4px; max-height: 220px;
+  overflow-y: auto; padding: 6px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--white); }
+.ipl { min-width: 38px; padding: 4px 7px; border: 1.5px solid var(--border);
+  border-radius: 5px; background: var(--white); cursor: pointer;
+  font: 600 11.5px inherit; color: var(--text); }
+.ipl:hover:not(:disabled) { border-color: var(--accent); }
+.ipl.on { border-color: var(--accent); background: #eff6ff; color: var(--accent); }
+/* Locked chips are dimmed rather than hidden: a plot missing from the
+   grid altogether looks like a plot missing from the project. */
+.ipl.off { border-color: #fecaca; background: #fef2f2; color: #b91c1c;
+  cursor: not-allowed; opacity: .7; }
+
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .tab-head .count, .poc-group-title .count { font-size: 11px; font-weight: 700; background: var(--accent-light);

@@ -25,6 +25,47 @@ import EntityNotes from "../../components/EntityNotes.jsx";
 
 
 
+/* The applicant is always us.
+
+   These were free text, seeded with the company name on a new
+   application only — so an old one carried whatever had been typed, and
+   a corrected address on one did not reach the others. There is one
+   applicant, and a field that can be edited is a field that will
+   eventually differ between applications for no reason.
+
+   Held here rather than in a lookup table because it is not data anyone
+   maintains: it changes when the company moves, which is a code change
+   either way. */
+const APPLICANT = "Aptus Utilities";
+const APPLICANT_ADDRESS =
+  "Units 19-20 Barrs Fold Rd, Westhoughton, Bolton BL5 3XP";
+
+/* The standard window for a response. Written onto the application as a
+   date rather than held as a duration, because that is what the operator
+   is held to and what somebody chases against. */
+const RESPONSE_DAYS = 28;
+
+/* Today, in local time.
+
+   toISOString gives UTC, which after five in the afternoon in summer is
+   tomorrow — an application dated a day ahead of the day it was made. */
+export function today(now = new Date()) {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${now.getFullYear()}-${p(now.getMonth() + 1)}-${p(now.getDate())}`;
+}
+
+export function addDays(iso, days) {
+  if (!iso) return "";
+  const [y, m, d] = String(iso).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  /* Noon, so a daylight-saving shift cannot move the result to the
+     previous or next day. */
+  const dt = new Date(y, m - 1, d, 12);
+  dt.setDate(dt.getDate() + days);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+}
+
 const POC_FIELD_LABELS = {
   POC_Status_ID: "Status", POC_Type_ID: "Type", IDNO_ID: "IDNO", DNO_ID: "DNO",
   Utility_ID: "Utility", Application_Date: "Application date",
@@ -139,7 +180,14 @@ export default function POCApplicationsTab({ projectId }) {
          table lookup, not a judgement, and asking someone to copy it
          across is asking them to get it wrong occasionally. */
       Contingency_Load: cont ? String(cont) : "",
-      Applicant_Company: "Aptus Utilities",
+      Applicant_Company: APPLICANT,
+      Applicant_Company_Address: APPLICANT_ADDRESS,
+      /* Dated today unless somebody says otherwise — an application is
+         nearly always entered on the day it is made, and a blank date
+         that has to be filled in every time is a blank date that
+         sometimes is not. */
+      Application_Date: today(),
+      Expected_Rx_Date: addDays(today(), RESPONSE_DAYS),
       POC_Type_ID: lookups?.pocTypes?.[0]?.POC_Type_ID ?? "",
     });
     setShowForm(true);
@@ -175,6 +223,16 @@ export default function POCApplicationsTab({ projectId }) {
          what was asked for on the day. Recomputing it later from plots
          that have since changed would quietly rewrite history, and a
          quotation is checked against the figure that was submitted. */
+      /* The applicant, written every time rather than carried from the
+         form. The fields are read-only now, so the form no longer holds
+         them — and an application saved before that was true still has
+         whatever was typed. Saving the constant corrects it on the next
+         edit rather than leaving two versions in the table. */
+      const applicant = {
+        Applicant_Company: APPLICANT,
+        Applicant_Company_Address: APPLICANT_ADDRESS,
+      };
+
       const derived = isElectric ? {
         Requested_kVA: Number(requestedKva.toFixed(1)),
         Non_Residential_kVA: Number(nonResKva.toFixed(1)),
@@ -192,6 +250,7 @@ export default function POCApplicationsTab({ projectId }) {
       if (editingId) {
         await updatePoc(projectId, editingId, {
           ...rest,
+          ...applicant,
           ...derived,
           Utility_ID: Number(f.Utility_ID),
           POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
@@ -208,7 +267,7 @@ export default function POCApplicationsTab({ projectId }) {
         return;
       }
       const res = await createPoc(projectId, {
-        ...rest, ...derived, idno_ids, dno_id,
+        ...rest, ...applicant, ...derived, idno_ids, dno_id,
         Utility_ID: Number(f.Utility_ID),
         POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
         POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -561,11 +620,14 @@ export default function POCApplicationsTab({ projectId }) {
                   : "from the project"}
               </p></div>
 
+            {/* Shown from the constants rather than from the form, so
+                an application saved before these were fixed still
+                displays the current details rather than whatever was
+                typed at the time. */}
             <div className="fld span2"><label>Applicant company</label>
-              <input value={f.Applicant_Company} onChange={(e) => set("Applicant_Company")(e.target.value)} /></div>
+              <input className="kva-total" value={APPLICANT} disabled /></div>
             <div className="fld span4"><label>Applicant company address</label>
-              <input value={f.Applicant_Company_Address}
-                onChange={(e) => set("Applicant_Company_Address")(e.target.value)} /></div>
+              <input className="kva-total" value={APPLICANT_ADDRESS} disabled /></div>
 
             <div className="fld span2"><label>Applicant representative</label>
               <select value={f.Applicant_Person_ID} onChange={(e) => set("Applicant_Person_ID")(e.target.value)}>
@@ -575,9 +637,28 @@ export default function POCApplicationsTab({ projectId }) {
                 ))}
               </select></div>
             <div className="fld span2"><label>Application date</label>
-              <input type="date" value={f.Application_Date} onChange={(e) => set("Application_Date")(e.target.value)} /></div>
+              {/* Changing this moves the expected response with it,
+                  because twenty-eight days from the application is what
+                  the window means. Editable afterwards: an operator who
+                  has agreed a different date should be able to say so. */}
+              <input type="date" value={f.Application_Date}
+                onChange={(e) => {
+                  const d = e.target.value;
+                  setF((p) => ({
+                    ...p,
+                    Application_Date: d,
+                    Expected_Rx_Date: d ? addDays(d, RESPONSE_DAYS) : "",
+                  }));
+                }} /></div>
             <div className="fld span2"><label>Expected response date</label>
-              <input type="date" value={f.Expected_Rx_Date} onChange={(e) => set("Expected_Rx_Date")(e.target.value)} /></div>
+              <input type="date" value={f.Expected_Rx_Date}
+                onChange={(e) => set("Expected_Rx_Date")(e.target.value)} />
+              <p className="hint">
+                {f.Application_Date
+                  && f.Expected_Rx_Date === addDays(f.Application_Date, RESPONSE_DAYS)
+                  ? `${RESPONSE_DAYS} days after the application`
+                  : "set by hand"}
+              </p></div>
 
             <div className="fld"><label>POC type</label>
               <select value={f.POC_Type_ID} onChange={(e) => set("POC_Type_ID")(e.target.value)}>

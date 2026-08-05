@@ -100,6 +100,16 @@ export const ADMIN_TABLES = [
      maintained together — somebody joining the company is added here
      next. */
   { key: "Team", label: "Teams", special: "teams" },
+  /* What a team is qualified to do, and what a work phase requires.
+
+     Next to Teams, because the two are only ever maintained together —
+     a craft with no team holding it means a phase nothing can be
+     assigned to, and that is easier to notice with the lists adjacent. */
+  { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
+      { col: "Craft_Name", label: "Craft", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "Role", label: "Role", pk: "Role_ID", fields: [
       { col: "Role", label: "Role Name", type: "text", required: true },
       { col: "Role_Code", label: "Code", type: "text", required: true },

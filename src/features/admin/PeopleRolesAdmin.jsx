@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
+import { NAV_SECTIONS } from "../../lib/navigation.js";
 
 /* People and roles, master-detail rather than a matrix.
 
@@ -67,6 +68,14 @@ export default function PeopleRolesAdmin() {
   const [personRegions, setPersonRegions] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [away, setAway] = useState({ Start_DateTime: "", End_DateTime: "", Reason: "" });
+
+  /* What each person may see in the sidebar.
+
+     Absent means hidden, so somebody new sees nothing until it is
+     granted. The other way round — everything visible until revoked —
+     means forgetting to revoke leaves a leaver with the run of the
+     place, and forgetting is the common case. */
+  const [menuVisible, setMenuVisible] = useState([]);
   const [ptab, setPtab] = useState("roles");
 
   /* What each tab holds, for the badge.
@@ -87,12 +96,15 @@ export default function PeopleRolesAdmin() {
       return holidays.filter((x) => Number(x.Person_ID) === pid
         && String(x.End_DateTime) >= now).length;
     }
+    if (id === "menu") {
+      return menuVisible.filter((x) => Number(x.Person_ID) === pid).length;
+    }
     return 0;
   };
 
   async function load() {
     try {
-      const [p, r, m, rg, pr, ph] = await Promise.all([
+      const [p, r, m, rg, pr, ph, mv] = await Promise.all([
         adminList("Person"), adminList("Role"), adminList("Person_Role"),
         /* Regions and absences, fetched softly: a database without the
            0113 tables should still show people and roles rather than an
@@ -100,6 +112,7 @@ export default function PeopleRolesAdmin() {
         adminList("Region").catch(() => ({ rows: [] })),
         adminList("Person_Region").catch(() => ({ rows: [] })),
         adminList("Person_Holiday").catch(() => ({ rows: [] })),
+        adminList("Person_Menu_Visible").catch(() => ({ rows: [] })),
       ]);
       setPeople(p.rows || []);
       setRoles(r.rows || []);
@@ -107,6 +120,7 @@ export default function PeopleRolesAdmin() {
       setRegions(rg.rows || []);
       setPersonRegions(pr.rows || []);
       setHolidays(ph.rows || []);
+      setMenuVisible(mv.rows || []);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -147,6 +161,63 @@ export default function PeopleRolesAdmin() {
         });
         setPersonRegions((xs) => [...xs, created]);
       }
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
+  }
+
+  /* Granting or revoking one item. */
+  async function toggleMenu(personId, key) {
+    const busyKey = `mv:${key}`;
+    const existing = menuVisible.find((x) =>
+      Number(x.Person_ID) === Number(personId) && x.Menu_Key === key);
+    setBusy(busyKey);
+    try {
+      if (existing) {
+        await adminDelete("Person_Menu_Visible", existing.Person_Menu_Visible_ID);
+        setMenuVisible((xs) => xs.filter((x) =>
+          x.Person_Menu_Visible_ID !== existing.Person_Menu_Visible_ID));
+      } else {
+        const created = await adminCreate("Person_Menu_Visible", {
+          Person_ID: personId, Menu_Key: key,
+        });
+        setMenuVisible((xs) => [...xs, created]);
+      }
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
+  }
+
+  /* A whole section at once.
+
+     Sections have up to ten items and granting them one at a time is ten
+     round trips and ten chances to miss one. Written one row at a time
+     because that is what the endpoint takes; the failure of one is
+     reported rather than the rest being abandoned. */
+  async function toggleSection(personId, section, grant) {
+    setBusy(`sec:${section.id}`);
+    try {
+      const keys = section.items.filter((i) => i.built).map((i) => i.view);
+      const mine = menuVisible.filter((x) => Number(x.Person_ID) === Number(personId));
+      const added = [];
+      const removedIds = [];
+
+      for (const key of keys) {
+        const existing = mine.find((x) => x.Menu_Key === key);
+        if (grant && !existing) {
+          added.push(await adminCreate("Person_Menu_Visible", {
+            Person_ID: personId, Menu_Key: key,
+          }));
+        } else if (!grant && existing) {
+          await adminDelete("Person_Menu_Visible", existing.Person_Menu_Visible_ID);
+          removedIds.push(existing.Person_Menu_Visible_ID);
+        }
+      }
+
+      setMenuVisible((xs) => [
+        ...xs.filter((x) => !removedIds.includes(x.Person_Menu_Visible_ID)),
+        ...added,
+      ]);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(null); }
@@ -499,15 +570,73 @@ export default function PeopleRolesAdmin() {
                       rest are columns on Supplier. Both are decisions
                       rather than transcriptions. */}
                   {ptab === "menu" && (
-                    <div className="pr-todo">
+                    <>
                       <p className="panel-label">Menu access</p>
-                      <p>
-                        Not built. In the original this is its own admin
-                        screen, with access following the person&rsquo;s role
-                        through Role Menu Defaults and overrides per
-                        person &mdash; not a setting on the person record.
+                      <p className="hint pr-menu-note">
+                        Ticked items appear in this person&rsquo;s sidebar.
+                        Nothing is visible until it is granted.
                       </p>
-                    </div>
+
+                      {/* The sections come from navigation.js, the same
+                          definition the sidebar renders from, so the two
+                          cannot disagree about what pages exist.
+
+                          Only built pages are offered: granting access
+                          to a placeholder gives somebody a menu item
+                          that goes nowhere. */}
+                      {NAV_SECTIONS.map((sec) => {
+                        const items = sec.items.filter((i) => i.built);
+                        if (!items.length) return null;
+                        const on = items.filter((i) => menuVisible.some((x) =>
+                          Number(x.Person_ID) === Number(current.Person_ID)
+                          && x.Menu_Key === i.view)).length;
+                        return (
+                          <div className="pr-menu-sec" key={sec.id}>
+                            <div className="pr-menu-head">
+                              <span className="pr-menu-dot"
+                                style={{ background: sec.colour }} />
+                              <strong>{sec.label}</strong>
+                              <span className="pr-menu-count">
+                                {on} of {items.length}
+                              </span>
+                              <button className="pr-menu-all"
+                                disabled={busy === `sec:${sec.id}`}
+                                onClick={() => toggleSection(
+                                  current.Person_ID, sec, on < items.length)}>
+                                {on < items.length ? "Grant all" : "Revoke all"}
+                              </button>
+                            </div>
+                            {items.map((i) => {
+                              const granted = menuVisible.some((x) =>
+                                Number(x.Person_ID) === Number(current.Person_ID)
+                                && x.Menu_Key === i.view);
+                              return (
+                                <button key={i.view}
+                                  className={granted ? "pr-row on" : "pr-row"}
+                                  disabled={busy === `mv:${i.view}`}
+                                  aria-pressed={granted}
+                                  onClick={() => toggleMenu(current.Person_ID, i.view)}>
+                                  <span className={granted ? "box on" : "box"}>
+                                    {granted ? "\u2713" : ""}
+                                  </span>
+                                  <span className="pr-row-label">{i.label}</span>
+                                </button>
+                              );
+                            })}
+                          </div>
+                        );
+                      })}
+
+                      {/* Said plainly: an empty sidebar looks like a
+                          broken sign-in rather than a permissions
+                          decision. */}
+                      {!menuVisible.some((x) =>
+                        Number(x.Person_ID) === Number(current.Person_ID)) && (
+                        <Banner kind="warn">
+                          Nothing granted &mdash; this person will see an empty sidebar.
+                        </Banner>
+                      )}
+                    </>
                   )}
 
                   {ptab === "certs" && (
@@ -630,6 +759,17 @@ const CSS = `
 .pr-tab-n { display: inline-block; margin-left: 6px; font-size: 10px;
   font-weight: 700; background: var(--bg); border-radius: 9px; padding: 1px 6px; }
 .pr-tab.on .pr-tab-n { background: #eff6ff; color: var(--accent); }
+.pr-menu-note { margin: 0 0 14px; }
+.pr-menu-sec { margin-bottom: 16px; }
+.pr-menu-head { display: flex; align-items: center; gap: 8px; margin-bottom: 5px;
+  padding-bottom: 5px; border-bottom: 1px solid var(--border); }
+.pr-menu-head strong { font-size: 12px; }
+.pr-menu-dot { width: 8px; height: 8px; border-radius: 50%; flex: 0 0 auto; }
+.pr-menu-count { font-size: 10.5px; color: var(--muted); }
+.pr-menu-all { margin-left: auto; background: none; border: 1px solid var(--border);
+  border-radius: 5px; cursor: pointer; font: 600 10px inherit; padding: 2px 8px;
+  color: var(--accent); }
+.pr-menu-all:disabled { opacity: .5; cursor: not-allowed; }
 .pr-todo p:last-child { font-size: 12.5px; color: var(--muted); line-height: 1.65;
   margin: 6px 0 0; }
 .pr-sep { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }

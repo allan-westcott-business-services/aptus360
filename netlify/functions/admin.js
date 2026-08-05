@@ -18,6 +18,7 @@ const TABLES = {
   /* Which regions somebody covers, and when they are away. Ordered so
      the newest absence is not buried under three years of old ones. */
   Person_Region:   { pk: "Person_Region_ID",   order: "Person_Region_ID" },
+  Person_Menu_Visible: { pk: "Person_Menu_Visible_ID", order: "Person_Menu_Visible_ID" },
   Person_Holiday:  { pk: "Person_Holiday_ID",  order: "Start_DateTime" },
   /* Teams: the gang, who is on it, and what it is qualified and
      permitted to do. */

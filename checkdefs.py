@@ -54,6 +54,27 @@ def declared(src):
         names |= set(re.findall(r'[A-Za-z_$][\w$]*', m.group(1)))
     for m in re.finditer(r'function\s*[\w$]*\s*\(([^)]*)\)', src):
         names |= set(re.findall(r'[A-Za-z_$][\w$]*', m.group(1)))
+
+    # function X({ a, b = [], c = (p) => p.q }) — a destructured parameter
+    # list, matched by counting braces rather than by looking for the
+    # next ")".
+    #
+    # The pattern above stops at the first closing paren, so a default
+    # value that is itself a function — `labelOf = (p) => p.Label` — hid
+    # every parameter after it and they were reported as undefined. A
+    # check that cries wolf stops being run, which is worse than the
+    # fault it was looking for.
+    for m in re.finditer(r'function\s*[\w$]*\s*\(\s*\{', src):
+        i = src.index('{', m.start())
+        depth = 0
+        for j in range(i, len(src)):
+            if src[j] == '{':
+                depth += 1
+            elif src[j] == '}':
+                depth -= 1
+                if depth == 0:
+                    names |= set(re.findall(r'[A-Za-z_$][\w$]*', src[i + 1:j]))
+                    break
     return names
 
 bad = 0

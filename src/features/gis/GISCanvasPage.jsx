@@ -1259,6 +1259,22 @@ export default function GISCanvasPage() {
        that is most of the run and the part most likely to be wrong. */
     const paintStep = () => {
       if (stepAt == null || !routePlan?.ok) return;
+
+      /* Everything else knocked back first.
+
+         The route was drawn at five pixels over trace bands up to
+         eleven wide, so it read as a stripe inside the network rather
+         than as a route through it. Dimming what is not part of this
+         meter's path is what makes the path visible — a wider purple
+         line on top of a wider coloured one is still two lines. */
+      ctx.save();
+      ctx.fillStyle = "rgba(255,255,255,.62)";
+      /* The same w and h the frame is cleared with, rather than the
+         canvas element's own width — those differ wherever the context
+         is scaled, and a dimming wash that covers only part of the frame
+         is worse than none. */
+      ctx.fillRect(0, 0, w, h);
+      ctx.restore();
       const all = [...(routePlan.served || []), ...(routePlan.unreachable || [])];
       const item = all[stepAt];
       if (!item) return;
@@ -1267,29 +1283,44 @@ export default function GISCanvasPage() {
       ctx.save();
 
       /* The service trench, where one was found. */
+      /* Drawn twice: a white casing, then the line. On a plan with dark
+         linework underneath, a coloured line alone disappears into
+         whatever it crosses. */
+      const stroke = (pts, width) => {
+        for (const [colour, w] of [["#fff", width + 4], ["#7c3aed", width]]) {
+          ctx.beginPath();
+          ctx.strokeStyle = colour;
+          ctx.lineWidth = w;
+          ctx.lineJoin = "round";
+          ctx.lineCap = "round";
+          pts.forEach((pt, i) => {
+            const q = toPx(pt);
+            if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+          });
+          ctx.stroke();
+        }
+      };
+
       const sg = item.serviceGeometry;
-      if (sg?.length >= 2) {
-        ctx.beginPath();
-        ctx.strokeStyle = "#7c3aed";
-        ctx.lineWidth = 5;
-        sg.forEach((pt, i) => {
-          const q = toPx(pt);
-          if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
-        });
-        ctx.stroke();
-      }
+      if (sg?.length >= 2) stroke(sg, 5);
 
       /* Then the mains route back to the board. */
       for (const ei of item.path || []) {
         const e = routePlan.graph.edges[ei];
         if (!e) continue;
-        const a2 = toPx(routePlan.graph.nodes[e.u]);
-        const b2 = toPx(routePlan.graph.nodes[e.v]);
+        stroke([routePlan.graph.nodes[e.u], routePlan.graph.nodes[e.v]], 7);
+      }
+
+      /* The substation end, so it is clear the route got there. */
+      const rootPt = routePlan.graph.nodes[routePlan.root];
+      if (rootPt) {
+        const q = toPx(rootPt);
         ctx.beginPath();
-        ctx.strokeStyle = "#7c3aed";
-        ctx.lineWidth = 5;
-        ctx.moveTo(a2.x, a2.y);
-        ctx.lineTo(b2.x, b2.y);
+        ctx.arc(q.x, q.y, 9, 0, Math.PI * 2);
+        ctx.fillStyle = "#7c3aed";
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 3;
         ctx.stroke();
       }
 

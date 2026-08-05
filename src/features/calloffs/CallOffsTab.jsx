@@ -83,6 +83,22 @@ export default function CallOffsTab({ projectId }) {
     .find((w) => Number(w.Work_Type_ID) === Number(f.Work_Type_ID))?.Selection_Mode ?? null,
   [workTypes, f.Work_Type_ID]);
 
+  /* The chosen plots as rows, in the order they appear on the project
+     rather than the order they were clicked — a call-off reads better
+     as a list somebody can check off than as a record of the picking. */
+  const plotRows = useMemo(() => {
+    const chosen = new Set(parseIds(plotIds));
+    return plots
+      .filter((p) => chosen.has(Number(p.plot_id)))
+      .map((p) => ({
+        Plot: String(p.plot_number ?? p.plot_id),
+        Energisation_Date: plotDates[p.plot_id] ?? "",
+      }));
+  }, [plotIds, plots, plotDates]);
+
+  /* Whichever the mode collects. */
+  const rowsForMode = mode === "PlotList" ? plotRows : items;
+
   const problems = useMemo(
     () => (open ? validate({ ...f, Project_ID: projectId }, rowsForMode, mode) : []),
     [open, f, rowsForMode, mode, projectId],
@@ -114,21 +130,6 @@ export default function CallOffsTab({ projectId }) {
      and carrying one over would leave half a row behind. */
   useEffect(() => { setItems([]); setPlotIds(""); setPlotDates({}); }, [mode]);
 
-  /* The chosen plots as rows, in the order they appear on the project
-     rather than the order they were clicked — a call-off reads better
-     as a list somebody can check off than as a record of the picking. */
-  const plotRows = useMemo(() => {
-    const chosen = new Set(parseIds(plotIds));
-    return plots
-      .filter((p) => chosen.has(Number(p.plot_id)))
-      .map((p) => ({
-        Plot: String(p.plot_number ?? p.plot_id),
-        Energisation_Date: plotDates[p.plot_id] ?? "",
-      }));
-  }, [plotIds, plots, plotDates]);
-
-  /* Whichever the mode collects. */
-  const rowsForMode = mode === "PlotList" ? plotRows : items;
 
   async function save(acceptedCharge) {
     if (problems.length) return;

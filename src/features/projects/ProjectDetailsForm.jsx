@@ -309,9 +309,19 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
               ))}
             </Select>
           </Field>
-          <Field label="Stage" span={2} hint={isTender ? "Moves to Contract once Secured" : "Promoted from Tender"}>
-            <input value={stage} disabled />
-          </Field>
+          {/* The project's own Stage field was here, read-only.
+
+              It collided with the Tender/Contract switch above the tabs:
+              two things called "stage", one the record's own value and
+              one a choice about what to look at, sitting a few
+              centimetres apart and disagreeing. A project at Tender
+              being viewed as a Contract showed "Contract" at the top and
+              "Tender" here, which reads as a fault rather than as two
+              different facts.
+
+              The value is unchanged and still drives which statuses are
+              offered and whether a revision may be raised — it is only
+              no longer printed beside something that contradicts it. */}
           <Field label="Secured date" span={2}>
             <input type="date" value={f.Secured_Date || ""}
               onChange={(e) => set("Secured_Date")(e.target.value)} />

@@ -23,7 +23,13 @@ for i, l in enumerate(lines):
     while j > 0 and not re.match(r'\s{2}(async )?function \w+|\s{2}const \w+ = (async )?\(', lines[j]):
         j -= 1
     body = "\n".join(lines[j:i])
-    if "locked(" in body or "isLocked" in body:
+    # isFeatureLocked is the per-feature form and counts as a check.
+    # It was missing here, so a write genuinely guarded by it was
+    # reported as unguarded — and the obvious way to quieten that is to
+    # add the function to the exemption list below, which would have
+    # removed a real check instead of recognising it.
+    if ("locked(" in body or "isLocked" in body
+            or "isFeatureLocked" in body):
         continue
     # writeGeometry gates every write it performs, so anything routed
     # through it is covered without checking again

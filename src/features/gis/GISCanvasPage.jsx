@@ -317,6 +317,8 @@ export default function GISCanvasPage() {
      is the usual route, but a Magic Mouse has no middle button, and
      right-drag is now the context menu's alone. */
   const [spaceHeld, setSpaceHeld] = useState(false);
+  /* Whether a line is already being written. See finishDrawing. */
+  const finishing = useRef(false);
   /* Where each label landed this frame, so one can be picked up. */
   const labelHits = useRef([]);
   const [svcCheck, setSvcCheck] = useState(null);
@@ -2830,6 +2832,28 @@ export default function GISCanvasPage() {
   }
 
   async function finishDrawing(geometry) {
+    /* One finish per line, however many times this is called.
+
+       Closing a loop by clicking the start point drew the trench twice:
+       the click finishes the line, and the write is asynchronous, so
+       anything that calls this again before the first write returns —
+       a second pointer event, an Enter key, a click that registers
+       twice — starts a second identical feature. Neither call knows
+       about the other, and both succeed.
+
+       A ref rather than state: state does not update until the next
+       render, which is far too late to stop a call in the same tick. */
+    if (finishing.current) return;
+    finishing.current = true;
+
+    try {
+      await doFinishDrawing(geometry);
+    } finally {
+      finishing.current = false;
+    }
+  }
+
+  async function doFinishDrawing(geometry) {
     /* The geometry passed in where the caller has it — closing a loop
        finishes in the same tick as the click that closed it, and state
        has not caught up. Falls back to the draft for every other
@@ -2976,7 +3000,28 @@ export default function GISCanvasPage() {
           }
         }
       }
-      if (teed.length) await moveFeatures(projectId, teed);
+      /* A tee changes the trench it lands on, so a locked one is left
+         alone.
+
+         This was exempt by function name rather than checked — the
+         exemption existed because finishDrawing mostly creates rather
+         than moves, and the tee was the one write in it that does move
+         something. Locking a trench against moving and then having a new
+         run silently put a vertex into it is the fault the lock exists
+         to prevent.
+
+         The new run is still drawn; it simply does not modify what it
+         meets. */
+      const movable = teed.filter((t) => {
+        const f = features.find((x) =>
+          Number(x.Feature_ID) === Number(t.Feature_ID));
+        return !f || !isFeatureLocked(f, lockedClasses);
+      });
+      if (movable.length < teed.length) {
+        setStatus(`${teed.length - movable.length} locked trench(es) not teed into`);
+        setTimeout(() => setStatus(""), 6000);
+      }
+      if (movable.length) await moveFeatures(projectId, movable);
 
       /* The new run, and the tee vertices it put into whatever it landed
          on, as one step — undoing the line has to take its tees with it

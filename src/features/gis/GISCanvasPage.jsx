@@ -2043,6 +2043,19 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
 
+    /* Working on the drawing puts the levels check away.
+
+       The panel covers a good part of the canvas and the reason for
+       opening it is usually to go and look at something underneath —
+       so reaching past it should not mean finding the close button
+       first.
+
+       Collapsed rather than cleared: the rings stay on the drawing and
+       the badge brings it straight back, so nothing is lost by a stray
+       click. That distinction already exists for the close button and
+       this uses it. */
+    if (traceOpen) setTraceOpen(false);
+
     /* Right-click is for the context menu and nothing else — it used to
        pan on empty space as well, which meant a right-click that missed
        a feature by a few pixels moved the drawing instead of offering a
@@ -6397,8 +6410,18 @@ export default function GISCanvasPage() {
                              aligned, so the two states are read by
                              shape rather than by which rows have an
                              icon at all. */
-                          label={`${isLocked ? "\uD83D\uDD12" : "\uD83D\uDD13"}  ${l.Label}`}
+                          /* A padlock only where it is locked.
+
+                             The open and closed padlock glyphs are very
+                             nearly the same shape at menu size, so
+                             showing both left the two states harder to
+                             tell apart than showing one. An unlocked row
+                             gets a space of the same width instead, so
+                             the names still line up and the icon is a
+                             presence rather than a shape to squint at. */
+                          label={`${isLocked ? "\uD83D\uDD12" : "\u2003"}  ${l.Label}`}
                           active={isLocked}
+                          keepOpen
                           hint={isLocked
                             ? "Locked \u2014 cannot be moved"
                             : "Unlocked \u2014 can be moved"}

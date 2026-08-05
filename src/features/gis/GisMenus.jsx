@@ -70,11 +70,21 @@ export const MenuGroup = ({ label, newColumn = false }) => (
    under long labels and turned a tidy list into a wall of grey text —
    and most of it is detail you want when hesitating over an item, not
    while scanning past it. */
-export function MenuItem({ label, hint, onClick, disabled, active, danger, indent }) {
+export function MenuItem({
+  label, hint, onClick, disabled, active, danger, indent,
+  /* Toggles that keep the menu open.
+
+     Most items do one thing and closing afterwards is right. A row of
+     switches is not that: locking four layers meant opening the menu
+     four times, because the first click dismissed it. The layer rows
+     already behave this way; this lets an ordinary item do the same. */
+  keepOpen,
+}) {
   return (
     <button className={["gm-item", active ? "on" : "", danger ? "danger" : "",
       indent ? "in" : ""].filter(Boolean).join(" ")}
-      role="menuitem" disabled={disabled} onClick={onClick} title={hint}>
+      role="menuitem" disabled={disabled} onClick={onClick} title={hint}
+      {...(keepOpen ? { "data-keep-open": true } : {})}>
       <span>{label}</span>
     </button>
   );

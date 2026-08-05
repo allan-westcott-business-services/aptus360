@@ -283,13 +283,32 @@ function CallOffDetail({ row, onBack, onMove }) {
 
 const CSS = `
 .co-page { padding: 18px 22px 40px; }
-.co-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
-.co-bar h2 { margin: 0; font-size: 18px; }
+/* Wrapping is the last resort rather than the first.
+
+   A flex item shrinks by default, and the title was the one part not
+   told otherwise — so on a narrow window it gave up its width first and
+   broke "Call-offs (1 of 1)" across two lines, which reads as a fault
+   rather than a layout. It now keeps its width and the row wraps as a
+   whole if there is genuinely not enough room. */
+.co-bar { display: flex; align-items: center; gap: 10px; margin-bottom: 14px;
+  flex-wrap: wrap; }
+/* The title keeps its own line rather than wrapping mid-phrase — "Call-offs
+   (1 of" then "1)" on the next line reads as a fault. */
+.co-bar h2 { margin: 0; font-size: 18px; white-space: nowrap; flex: 0 0 auto; }
 .co-of { font: 600 12px inherit; color: var(--muted); margin-left: 8px; }
-.co-search { flex: 1; max-width: 340px; font: 500 12.5px inherit; padding: 7px 10px;
+/* The search takes the room going spare, but not below a width a site
+   name fits in. Without the basis it collapsed to nothing beside the
+   dropdown, which had no width of its own and grew to fill the bar. */
+.co-search { flex: 1 1 260px; min-width: 200px; max-width: 380px;
+  font: 500 12.5px inherit; padding: 7px 10px;
   border: 1px solid var(--border); border-radius: 7px; }
-.co-status-sel { font: 500 12.5px inherit; padding: 7px 9px;
-  border: 1px solid var(--border); border-radius: 7px; }
+/* Sized to fit its longest option — "Withdrawn (Customer)" — and no
+   wider. A dropdown of nine short statuses has no reason to take a third
+   of the bar, but one narrow enough to clip its own options is worse
+   than one that is too wide. */
+.co-status-sel { flex: 0 0 auto; width: 182px; font: 500 12.5px inherit;
+  padding: 7px 9px; border: 1px solid var(--border); border-radius: 7px;
+  background: var(--white); }
 .co-err { color: #b91c1c; font: 600 12.5px inherit; margin: 0 0 12px; }
 .co-none { margin: 24px 0; }
 .co-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px;

@@ -14,6 +14,23 @@ import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
    A fixed list so the same absence is called the same thing every time —
    free text gave "hol", "Holiday" and "A/L" for one reason, which makes
    counting sickness across a year impossible. */
+/* The tabs on a person.
+
+   Counts on the tab rather than only inside it: whether somebody has any
+   regions is worth seeing without opening the tab, and a person with no
+   roles is worth spotting from here.
+
+   Menu access and certification are listed because they were asked for
+   and because their absence should be visible rather than silent — each
+   says what it would take. */
+const PERSON_TABS = [
+  { id: "roles", label: "Roles" },
+  { id: "regions", label: "Regions" },
+  { id: "away", label: "Absence" },
+  { id: "menu", label: "Menu Access" },
+  { id: "certs", label: "Certification" },
+];
+
 export const AWAY_REASONS = [
   "Holiday",
   "Sickness",
@@ -24,6 +41,13 @@ export const AWAY_REASONS = [
 ];
 
 export default function PeopleRolesAdmin() {
+  /* Which tab of the person panel is open.
+
+     Not remembered between people: opening somebody's record to check
+     their roles and landing on last person's absences is a small
+     surprise every time. Roles is where the panel starts because it is
+     the thing most often being looked at. */
+
   const [people, setPeople] = useState([]);
   const [roles, setRoles] = useState([]);
   const [map, setMap] = useState([]);
@@ -43,6 +67,28 @@ export default function PeopleRolesAdmin() {
   const [personRegions, setPersonRegions] = useState([]);
   const [holidays, setHolidays] = useState([]);
   const [away, setAway] = useState({ Start_DateTime: "", End_DateTime: "", Reason: "" });
+  const [ptab, setPtab] = useState("roles");
+
+  /* What each tab holds, for the badge.
+
+     Zero shows nothing rather than a nought — a badge reading 0 is the
+     same information as no badge and more to read. */
+  const tabCount = (id, person) => {
+    if (!person) return 0;
+    const pid = Number(person.Person_ID);
+    if (id === "roles") return rolesOf(pid).length;
+    if (id === "regions") {
+      return personRegions.filter((x) => Number(x.Person_ID) === pid).length;
+    }
+    if (id === "away") {
+      /* Only what is still to come or in progress. A badge counting five
+         years of past holidays says nothing about this person now. */
+      const now = new Date().toISOString();
+      return holidays.filter((x) => Number(x.Person_ID) === pid
+        && String(x.End_DateTime) >= now).length;
+    }
+    return 0;
+  };
 
   async function load() {
     try {
@@ -69,6 +115,9 @@ export default function PeopleRolesAdmin() {
     }
   }
   useEffect(() => { load(); }, []);
+
+  /* Back to Roles when a different person is opened. */
+  useEffect(() => { setPtab("roles"); }, [selected]);
 
   const held = useMemo(() => {
     const s = new Set();
@@ -272,10 +321,38 @@ export default function PeopleRolesAdmin() {
                 )}
               </div>
 
+              {/* Tabs, so one person's configuration does not become one
+                  long scroll.
+
+                  Only in person view: a role has one thing to show — who
+                  holds it — and a strip of one tab is furniture.
+
+                  The panels are all about the same person, so the tabs
+                  carry no state of their own beyond which is open; each
+                  reads the same `current`. */}
+              {by === "person" && (
+                <div className="pr-tabs" role="tablist">
+                  {PERSON_TABS.map((t) => (
+                    <button key={t.id} role="tab"
+                      aria-selected={ptab === t.id}
+                      className={ptab === t.id ? "pr-tab on" : "pr-tab"}
+                      onClick={() => setPtab(t.id)}>
+                      {t.label}
+                      {tabCount(t.id, current) > 0 && (
+                        <span className="pr-tab-n">{tabCount(t.id, current)}</span>
+                      )}
+                    </button>
+                  ))}
+                </div>
+              )}
+
+              {(by === "role" || ptab === "roles") && (
               <p className="panel-label">
                 {by === "person" ? "Roles held" : "People in this role"}
               </p>
+              )}
 
+              {(by === "role" || ptab === "roles") && (
               <div className="pr-rows">
                 {(by === "person" ? roles : people).map((x) => {
                   const rid = by === "person" ? x.Role_ID : current.Role_ID;
@@ -301,8 +378,10 @@ export default function PeopleRolesAdmin() {
                   );
                 })}
               </div>
+              )}
 
-              {by === "person" && rolesOf(current.Person_ID).length === 0 && (
+              {by === "person" && ptab === "roles"
+                && rolesOf(current.Person_ID).length === 0 && (
                 <Banner kind="warn">
                   No roles assigned &mdash; this person won&rsquo;t appear in any picker.
                 </Banner>
@@ -315,7 +394,9 @@ export default function PeopleRolesAdmin() {
                   person, and a role is a list of people. */}
               {by === "person" && (
                 <>
-                  <p className="panel-label pr-sep">Regions covered</p>
+                  {ptab === "regions" && (
+                  <>
+                  <p className="panel-label">Regions covered</p>
                   {!regions.length ? (
                     <p className="pr-none">
                       No regions set up. Add them under Region first.
@@ -343,7 +424,12 @@ export default function PeopleRolesAdmin() {
                     </div>
                   )}
 
-                  <p className="panel-label pr-sep">Away from work</p>
+                  </>
+                  )}
+
+                  {ptab === "away" && (
+                  <>
+                  <p className="panel-label">Away from work</p>
                   <AwayList
                     rows={holidays.filter((h) =>
                       Number(h.Person_ID) === Number(current.Person_ID))}
@@ -386,6 +472,42 @@ export default function PeopleRolesAdmin() {
                       {busy === "away" ? "Adding\u2026" : "Add"}
                     </button>
                   </div>
+                  </>
+                  )}
+
+                  {/* Said rather than shown as an empty panel.
+
+                      Menu access in the original is its own admin screen
+                      driven by Role_Menu_Defaults — access follows the
+                      role, with per-person overrides — so it is not a
+                      port of anything to put it here. Certification does
+                      not exist per person at all: Gas_Safe_No and the
+                      rest are columns on Supplier. Both are decisions
+                      rather than transcriptions. */}
+                  {ptab === "menu" && (
+                    <div className="pr-todo">
+                      <p className="panel-label">Menu access</p>
+                      <p>
+                        Not built. In the original this is its own admin
+                        screen, with access following the person&rsquo;s role
+                        through Role Menu Defaults and overrides per
+                        person &mdash; not a setting on the person record.
+                      </p>
+                    </div>
+                  )}
+
+                  {ptab === "certs" && (
+                    <div className="pr-todo">
+                      <p className="panel-label">Certification</p>
+                      <p>
+                        Not built. The original holds Gas Safe, CSCS and
+                        NRSWA numbers on <strong>Supplier</strong>, not on
+                        a person, and has no certification table &mdash; so
+                        this is new work rather than a port. A card with an
+                        expiry date wants its own table.
+                      </p>
+                    </div>
+                  )}
                 </>
               )}
             </>
@@ -481,6 +603,21 @@ const CSS = `
 .pr-add-actions { display: flex; gap: 6px; }
 .pr-add-actions .btn { flex: 1; padding: 5px; }
 
+/* The tab strip. Scrolls rather than wraps: five tabs on a narrow
+   detail panel would otherwise make a second row and move everything
+   below them down. */
+.pr-tabs { display: flex; gap: 2px; overflow-x: auto; margin: 0 0 14px;
+  border-bottom: 1px solid var(--border); }
+.pr-tab { background: none; border: none; border-bottom: 2px solid transparent;
+  cursor: pointer; font: 600 12px inherit; padding: 7px 11px; color: var(--muted);
+  white-space: nowrap; }
+.pr-tab:hover { color: var(--text); }
+.pr-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
+.pr-tab-n { display: inline-block; margin-left: 6px; font-size: 10px;
+  font-weight: 700; background: var(--bg); border-radius: 9px; padding: 1px 6px; }
+.pr-tab.on .pr-tab-n { background: #eff6ff; color: var(--accent); }
+.pr-todo p:last-child { font-size: 12.5px; color: var(--muted); line-height: 1.65;
+  margin: 6px 0 0; }
 .pr-sep { margin-top: 22px; padding-top: 16px; border-top: 1px solid var(--border); }
 .pr-none { font-size: 12px; color: var(--muted); margin: 6px 0; }
 .pr-away { display: flex; align-items: center; gap: 10px; padding: 7px 10px;

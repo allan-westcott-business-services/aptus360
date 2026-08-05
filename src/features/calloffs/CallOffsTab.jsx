@@ -83,17 +83,30 @@ export default function CallOffsTab({ projectId }) {
     .find((w) => Number(w.Work_Type_ID) === Number(f.Work_Type_ID))?.Selection_Mode ?? null,
   [workTypes, f.Work_Type_ID]);
 
+  /* How a plot is identified, in one place.
+
+     The picker had its own rule for this and so did the code reading the
+     selection back — and when the two disagreed about which field was
+     the id, every chip lit up and nothing was selected. One definition,
+     passed to the picker and used here, so they cannot differ.
+
+     Both spellings because the plots endpoint and the GIS features use
+     different cases for the same field. */
+  const plotIdOf = (p) => Number(p.Plot_ID ?? p.plot_id);
+  const plotLabelOf = (p) => String(p.Plot_Number ?? p.plot_number ?? plotIdOf(p));
+
   /* The chosen plots as rows, in the order they appear on the project
      rather than the order they were clicked — a call-off reads better
      as a list somebody can check off than as a record of the picking. */
   const plotRows = useMemo(() => {
     const chosen = new Set(parseIds(plotIds));
     return plots
-      .filter((p) => chosen.has(Number(p.plot_id)))
+      .filter((p) => chosen.has(plotIdOf(p)))
       .map((p) => ({
-        Plot: String(p.plot_number ?? p.plot_id),
-        Energisation_Date: plotDates[p.plot_id] ?? "",
+        Plot: plotLabelOf(p),
+        Energisation_Date: plotDates[plotIdOf(p)] ?? "",
       }));
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [plotIds, plots, plotDates]);
 
   /* Whichever the mode collects. */
@@ -247,6 +260,7 @@ export default function CallOffsTab({ projectId }) {
           {mode === "PlotList" ? (
             <>
               <PlotPicker plots={plots} value={plotIds} onChange={setPlotIds}
+                idOf={plotIdOf} labelOf={plotLabelOf}
                 label="Plots on this call-off"
                 note={`Fewer than ${SERVICE_MIN_PLOTS} carries a charge.`} />
 
@@ -260,13 +274,13 @@ export default function CallOffsTab({ projectId }) {
                   <summary>Energisation dates &mdash; optional</summary>
                   <div className="co-date-grid">
                     {plots
-                      .filter((p) => parseIds(plotIds).includes(Number(p.plot_id)))
+                      .filter((p) => parseIds(plotIds).includes(plotIdOf(p)))
                       .map((p) => (
-                        <label key={p.plot_id} className="co-date">
-                          <span>{p.plot_number}</span>
-                          <input type="date" value={plotDates[p.plot_id] ?? ""}
+                        <label key={plotIdOf(p)} className="co-date">
+                          <span>{plotLabelOf(p)}</span>
+                          <input type="date" value={plotDates[plotIdOf(p)] ?? ""}
                             onChange={(e) => setPlotDates((d) => ({
-                              ...d, [p.plot_id]: e.target.value,
+                              ...d, [plotIdOf(p)]: e.target.value,
                             }))} />
                         </label>
                       ))}

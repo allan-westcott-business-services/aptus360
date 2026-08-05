@@ -15,6 +15,10 @@ const TABLES = {
   Role:            { pk: "Role_ID",            order: "Sort_Order" },
   Person:          { pk: "Person_ID",          order: "Person_Name" },
   Person_Role:     { pk: "Person_Role_ID",     order: "Person_Role_ID" },
+  /* Which regions somebody covers, and when they are away. Ordered so
+     the newest absence is not buried under three years of old ones. */
+  Person_Region:   { pk: "Person_Region_ID",   order: "Person_Region_ID" },
+  Person_Holiday:  { pk: "Person_Holiday_ID",  order: "Start_DateTime" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

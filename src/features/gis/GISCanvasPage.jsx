@@ -6345,6 +6345,18 @@ export default function GISCanvasPage() {
                     )}
                     <div className="gm-sep" />
                     <MenuGroup label="Labels" />
+                    {/* Under its own heading, and shaped like every other
+                        layer row.
+
+                        It had drifted below the locked section, leaving
+                        the Labels heading with nothing under it and the
+                        control itself unexplained where it landed. And
+                        it was a plain item where its neighbours are
+                        layers with an H button — the same question asked
+                        two different ways in one menu. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(!showLabels)} />
                     {/* Moved from Tools rather than added there as well:
                         two controls for one setting is how they drift out
                         of step. This menu is what you can see, and a
@@ -6370,26 +6382,36 @@ export default function GISCanvasPage() {
                         grain: a layer is usually finished all at once.
                         Line types are locked from the right-click menu,
                         where the thing being locked is under the cursor. */}
-                    {layers.filter((l) => classCount[l.Layer_Key]).map((l) => (
-                      <MenuItem key={l.Layer_Key} label={l.Label}
-                        active={lockedClasses.includes(l.Layer_Key)}
-                        hint={lockedClasses.includes(l.Layer_Key)
-                          ? "Cannot be moved" : "Can be moved"}
-                        onClick={() => setLockedClasses((x) =>
-                          toggleClassLock(x, l.Layer_Key))} />
-                    ))}
+                    {layers.filter((l) => classCount[l.Layer_Key]).map((l) => {
+                      const isLocked = lockedClasses.includes(l.Layer_Key);
+                      return (
+                        <MenuItem key={l.Layer_Key}
+                          /* A padlock, not only a highlight.
+
+                             Highlighting alone says "this row is
+                             different" and leaves which way round to be
+                             guessed — on a list where some are locked
+                             and some are not, the highlighted ones read
+                             as selected as easily as locked. An open
+                             padlock on the rest keeps the column
+                             aligned, so the two states are read by
+                             shape rather than by which rows have an
+                             icon at all. */
+                          label={`${isLocked ? "\uD83D\uDD12" : "\uD83D\uDD13"}  ${l.Label}`}
+                          active={isLocked}
+                          hint={isLocked
+                            ? "Locked \u2014 cannot be moved"
+                            : "Unlocked \u2014 can be moved"}
+                          onClick={() => setLockedClasses((x) =>
+                            toggleClassLock(x, l.Layer_Key))} />
+                      );
+                    })}
                     <div className="gm-sep" />
 
                     {/* Circuit rings are controlled from the circuit
                         report, which is where the question they answer
                         is being asked. Two controls for one setting is
                         one more place to look when it does not work. */}
-                    <MenuItem label="Labels" active={showLabels}
-                      hint={showLabels
-                        ? "Plot numbers, joints, cable labels. Span node codes always show."
-                        : "Hidden \u2014 a selected feature is still labelled"}
-                      onClick={() => setShowLabels(!showLabels)} />
-                    <div className="gm-sep" />
 
                     {/* Everything back, whatever put it away.
 
@@ -6404,7 +6426,7 @@ export default function GISCanvasPage() {
                         so. */}
                     {/* Also on the menu. A shortcut is faster once it is
                         known and invisible until then. */}
-                    <MenuItem label="Find\u2026" hint="Ctrl/Cmd + F"
+                    <MenuItem label="Find…" hint="Ctrl/Cmd + F"
                       onClick={() => setFindOpen(true)} />
 
                     {/* The background plan counts as hidden too.
@@ -6644,7 +6666,7 @@ export default function GISCanvasPage() {
                       disabled={!circuitsFrom(features).length}
                       onClick={() => runLevelsCheck({ stopAt: "junctions" })} />
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
-                      hint="Sets each span node's cable to match the run feeding it \u2014 that is what the trace reads"
+                      hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
                       disabled={!!busy}
                       onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
                   </Menu>

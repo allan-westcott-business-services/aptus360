@@ -1249,17 +1249,41 @@ export default function GISCanvasPage() {
         ctx.font = "700 10px ui-sans-serif, system-ui, sans-serif";
         ctx.textAlign = "center";
         ctx.textBaseline = "middle";
+        /* One number per stretch, not per segment.
+
+           A drawn trench is split at every service foot, so labelling
+           each piece would put a number every metre or two along a run
+           that carries the same count throughout. Grouping by trench and
+           count gives one label per length where the figure is
+           constant — which is the thing being asked: how many traces run
+           along this trench.
+
+           The longest piece in each group carries the label, so it lands
+           on the part with room for it. */
+        const groups = new Map();
         for (const e of routePlan.used) {
-          if (e.uses < peak * 0.25) continue;
+          const key = `${e.trench?.Feature_ID ?? "link"}:${e.uses}`;
           const a2 = toPx(routePlan.graph.nodes[e.u]);
           const b2 = toPx(routePlan.graph.nodes[e.v]);
-          if (Math.hypot(b2.x - a2.x, b2.y - a2.y) < 34) continue;
+          const px = Math.hypot(b2.x - a2.x, b2.y - a2.y);
+          const prev = groups.get(key);
+          if (!prev || px > prev.px) groups.set(key, { e, a2, b2, px });
+        }
+
+        for (const { e, a2, b2, px } of groups.values()) {
+          /* Still skipped where there is genuinely no room — a label
+             wider than the line it sits on reads as belonging to
+             whatever is underneath. */
+          if (px < 26) continue;
           const mx = (a2.x + b2.x) / 2;
           const my = (a2.y + b2.y) / 2;
           const t = String(e.uses);
-          const w = ctx.measureText(t).width + 7;
-          ctx.fillStyle = "rgba(255,255,255,.85)";
-          ctx.fillRect(mx - w / 2, my - 7, w, 14);
+          const w = ctx.measureText(t).width + 8;
+          ctx.fillStyle = "rgba(255,255,255,.9)";
+          ctx.fillRect(mx - w / 2, my - 8, w, 15);
+          ctx.strokeStyle = "rgba(30,58,95,.25)";
+          ctx.lineWidth = 1;
+          ctx.strokeRect(mx - w / 2, my - 8, w, 15);
           ctx.fillStyle = "#1e3a5f";
           ctx.fillText(t, mx, my);
         }

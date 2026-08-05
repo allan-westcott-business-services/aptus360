@@ -150,7 +150,14 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
      link across sixty metres of somebody's garden is not a link. */
   const crossings = [];
   if (opts.crossings !== false) {
-    const maxCrossM = opts.maxCrossM ?? 30;
+    /* The longest link the router may dig between one run and another.
+
+       Six metres, which is a road crossing or a step between a run and
+       the one behind it — the jump a gang would actually make. Thirty,
+       the first figure here, let the router link runs on opposite sides
+       of a green and produced answers that were cheap on paper and not
+       what anybody would build. */
+    const maxCrossM = opts.maxCrossM ?? 6;
 
     /* The points worth starting a link from.
 

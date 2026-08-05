@@ -105,6 +105,20 @@ export const ADMIN_TABLES = [
      Next to Teams, because the two are only ever maintained together —
      a craft with no team holding it means a phase nothing can be
      assigned to, and that is easier to notice with the lists adjacent. */
+  /* The phases a job is done in. Craft_ID says which teams may work
+     each — a phase with none is open to anybody, which is what an
+     unconfigured phase looks like. */
+  { key: "Task_Type", label: "Work Phases", pk: "Task_Type_ID", fields: [
+      { col: "Task_Type_Name", label: "Phase", type: "text", required: true },
+      /* type "lookup" with table/value/text, which is the shape the
+         generic editor reads. Written as a "select" with a "source"
+         first, which parses fine and renders an empty dropdown — the
+         editor simply never looks at those keys. */
+      { col: "Craft_ID", label: "Requires Craft", type: "lookup",
+        table: "Craft", value: "Craft_ID", text: "Craft_Name" },
+      { col: "Display_Order", label: "Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
       { col: "Craft_Name", label: "Craft", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

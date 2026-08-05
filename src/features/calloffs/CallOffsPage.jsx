@@ -1,6 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { listAllCallOffs, setCallOffStatus } from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
+import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
+import {
+  eligibleTeams, earliestStart, parsePlots, serialisePlots, validate as checkAssignment,
+} from "./assignments.js";
 
 /* Call-offs across the business.
 
@@ -263,25 +267,299 @@ function CallOffDetail({ row, onBack, onMove }) {
         </div>
       </div>
 
-      {/* Said plainly rather than shown as an empty panel.
+      <Assignments row={row} />
 
-          Team assignments need Task_Type, Team, Craft, Team_Craft and the
-          work-type-to-phase mapping, none of which exist in this
-          application yet. An empty "Team Assignments" card would read as
-          something broken rather than something not yet built. */}
-      <div className="co-card co-todo">
-        <h3>Team assignments</h3>
-        <p>
-          Not built yet. Scheduling teams onto phases needs the task
-          types, teams and crafts tables, which this application does not
-          have — see the note with this release.
-        </p>
+      <div className="co-card">
+        <h3>Status</h3>
+        <p className="hint">Move this call-off through its workflow.</p>
+        <div className="co-steps">
+          {STATUSES.map((s) => (
+            <button key={s}
+              className={s === row.Status ? "co-step on" : "co-step"}
+              onClick={() => onMove(row.Submission_ID, s)}>
+              {s === row.Status && <span className="co-dot" />}
+              {s}
+            </button>
+          ))}
+        </div>
       </div>
     </div>
   );
 }
 
+/* Teams on the phases of a call-off.
+
+   A work type is done in phases, each needing a craft, and only teams
+   holding that craft in that region may work it. One phase can carry
+   several assignments — Team A on the first five plots, Team B on the
+   rest — so the work runs in parallel where the site allows.
+
+   Loads its own data rather than taking it from the page: the page lists
+   call-offs and has no reason to carry teams and crafts for the one that
+   happens to be open. */
+function Assignments({ row }) {
+  const [phases, setPhases] = useState([]);
+  const [teams, setTeams] = useState([]);
+  const [teamCrafts, setTeamCrafts] = useState([]);
+  const [teamRegions, setTeamRegions] = useState([]);
+  const [crafts, setCrafts] = useState([]);
+  const [all, setAll] = useState([]);
+  const [error, setError] = useState("");
+  const [busy, setBusy] = useState(null);
+  const [openPhase, setOpenPhase] = useState(null);
+  const [draft, setDraft] = useState({});
+
+  async function load() {
+    try {
+      const [tt, map, tm, tc, tr, cr, asg] = await Promise.all([
+        adminList("Task_Type"), adminList("Work_Type_Task_Type"),
+        adminList("Team"), adminList("Team_Craft"), adminList("Team_Region"),
+        adminList("Craft"), adminList("Call_Off_Assignment"),
+      ]);
+      /* The phases this work type involves, in its own order — the same
+         phase can sit at a different point in different work types. */
+      const mine = (map.rows || [])
+        .filter((m) => Number(m.Work_Type_ID) === Number(row.Work_Type_ID))
+        .sort((a, b) => (a.Display_Order ?? 0) - (b.Display_Order ?? 0))
+        .map((m) => (tt.rows || []).find((t) =>
+          Number(t.Task_Type_ID) === Number(m.Task_Type_ID)))
+        .filter(Boolean);
+
+      setPhases(mine);
+      setTeams(tm.rows || []);
+      setTeamCrafts(tc.rows || []);
+      setTeamRegions(tr.rows || []);
+      setCrafts(cr.rows || []);
+      /* Every assignment, not only this call-off's: a team cannot be on
+         two sites at once, and the clash that matters is the one nobody
+         looking at this call-off would see. */
+      setAll(asg.rows || []);
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+  useEffect(() => { load(); /* eslint-disable-next-line */ }, [row.Submission_ID]);
+
+  const mine = all.filter((a) =>
+    Number(a.Submission_ID) === Number(row.Submission_ID));
+
+  /* The plots this call-off covers, which is what an assignment splits
+     between teams. */
+  const plotUniverse = (row.items || [])
+    .map((it) => it.Plot ?? it.Plots ?? String(it.Street_Light_ID ?? ""))
+    .filter(Boolean);
+
+  const craftName = (id) =>
+    crafts.find((c) => Number(c.Craft_ID) === Number(id))?.Craft_Name ?? null;
+  const teamName = (id) =>
+    teams.find((t) => Number(t.Team_ID) === Number(id))?.Team_Name ?? `Team ${id}`;
+
+  function openFor(phase) {
+    const floor = earliestStart(phases, mine, phase.Task_Type_ID, plotUniverse);
+    setDraft({
+      Task_Type_ID: phase.Task_Type_ID,
+      Team_ID: "",
+      /* Defaulted to the earliest it may start — the preferred date, or
+         later if an earlier phase pushes it. */
+      Start_Date: floor?.date || row.Preferred_Date || "",
+      End_Date: "",
+      Plot_Range: serialisePlots(plotUniverse),
+    });
+    setOpenPhase(phase.Task_Type_ID);
+    setError("");
+  }
+
+  const problems = openPhase != null
+    ? checkAssignment(draft, {
+      phases, assignments: all, today: new Date().toISOString().slice(0, 10),
+    })
+    : [];
+
+  async function save() {
+    if (problems.length) return;
+    setBusy("save");
+    try {
+      const created = await adminCreate("Call_Off_Assignment", {
+        Submission_ID: row.Submission_ID,
+        Task_Type_ID: draft.Task_Type_ID,
+        Team_ID: Number(draft.Team_ID),
+        Start_Date: draft.Start_Date,
+        End_Date: draft.End_Date,
+        Plot_Range: draft.Plot_Range || null,
+      });
+      setAll((xs) => [...xs, created]);
+      setOpenPhase(null);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
+  }
+
+  async function remove(id) {
+    setBusy(`d:${id}`);
+    try {
+      await adminDelete("Call_Off_Assignment", id);
+      setAll((xs) => xs.filter((a) => a.Assignment_ID !== id));
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
+  }
+
+  if (!row.Work_Type_ID) {
+    return (
+      <div className="co-card co-todo">
+        <h3>Team assignments</h3>
+        <p>No work type on this call-off, so there are no phases to assign to.</p>
+      </div>
+    );
+  }
+
+  if (!phases.length) {
+    return (
+      <div className="co-card co-todo">
+        <h3>Team assignments</h3>
+        <p>
+          This work type has no phases mapped. Set them under
+          {" "}<strong>Admin &rarr; Work Phases</strong>.
+        </p>
+      </div>
+    );
+  }
+
+  return (
+    <div className="co-card">
+      <h3>
+        Team assignments
+        <span className="co-dim">
+          {` \u00b7 ${mine.length} across ${phases.length} phase${phases.length === 1 ? "" : "s"}`}
+        </span>
+      </h3>
+      <p className="hint">
+        Several teams can work one phase in parallel &mdash; Team A on the
+        first plots, Team B on the rest. Teams are those holding the
+        craft the phase needs.
+      </p>
+
+      {error && <p className="co-err">{error}</p>}
+
+      {phases.map((ph, i) => {
+        const rows = mine.filter((a) =>
+          Number(a.Task_Type_ID) === Number(ph.Task_Type_ID));
+        const can = eligibleTeams(teams, {
+          teamCrafts, teamRegions, craftId: ph.Craft_ID, regionId: null,
+        });
+        const floor = earliestStart(phases, mine, ph.Task_Type_ID, plotUniverse);
+
+        return (
+          <div className="asg-phase" key={ph.Task_Type_ID}>
+            <div className="asg-head">
+              <span className="asg-n">{i + 1}</span>
+              <strong>{ph.Task_Type_Name}</strong>
+              <span className="asg-craft">
+                {ph.Craft_ID
+                  ? `needs ${craftName(ph.Craft_ID) ?? "a craft"} \u00b7 ${can.length} team${can.length === 1 ? "" : "s"}`
+                  : `any team \u00b7 ${can.length}`}
+              </span>
+              <button className="btn accent sm"
+                disabled={!can.length}
+                onClick={() => openFor(ph)}>
+                + Assign
+              </button>
+            </div>
+
+            {/* Why a phase cannot start yet, before somebody tries. */}
+            {floor && (
+              <p className="asg-floor">
+                {`Cannot start before ${floor.date} \u2014 ${floor.phase} begins then.`}
+              </p>
+            )}
+
+            {!can.length && (
+              <p className="asg-none warn">
+                {ph.Craft_ID
+                  ? `No active team holds ${craftName(ph.Craft_ID) ?? "this craft"}.`
+                  : "No active teams."}
+              </p>
+            )}
+
+            {!rows.length && can.length > 0 && (
+              <p className="asg-none">Nobody assigned yet.</p>
+            )}
+
+            {rows.map((a) => (
+              <div className="asg-row" key={a.Assignment_ID}>
+                <span className="asg-team">{teamName(a.Team_ID)}</span>
+                <span className="asg-when">{a.Start_Date} to {a.End_Date}</span>
+                <span className="asg-plots">{a.Plot_Range || "all plots"}</span>
+                <button className="co-x" aria-label="Remove"
+                  disabled={busy === `d:${a.Assignment_ID}`}
+                  onClick={() => remove(a.Assignment_ID)}>&times;</button>
+              </div>
+            ))}
+
+            {openPhase === ph.Task_Type_ID && (
+              <div className="asg-form">
+                <select value={draft.Team_ID}
+                  onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
+                  <option value="">Choose a team…</option>
+                  {can.map((t) => (
+                    <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
+                  ))}
+                </select>
+                <input type="date" value={draft.Start_Date} aria-label="Start"
+                  onChange={(e) => setDraft((d) => ({ ...d, Start_Date: e.target.value }))} />
+                <span className="asg-to">to</span>
+                <input type="date" value={draft.End_Date} aria-label="End"
+                  onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
+                <input className="asg-pl" value={draft.Plot_Range}
+                  aria-label="Plots" placeholder="Plots"
+                  onChange={(e) => setDraft((d) => ({ ...d, Plot_Range: e.target.value }))} />
+                <button className="btn accent sm" disabled={!!busy || problems.length > 0}
+                  onClick={save}>{busy === "save" ? "Saving\u2026" : "Save"}</button>
+                <button className="btn ghost sm" onClick={() => setOpenPhase(null)}>
+                  Cancel
+                </button>
+
+                {/* Everything wrong at once, so three problems are not
+                    found across three attempts to save. */}
+                {problems.length > 0 && (
+                  <ul className="asg-problems">
+                    {problems.map((t, k) => <li key={k}>{t}</li>)}
+                  </ul>
+                )}
+              </div>
+            )}
+          </div>
+        );
+      })}
+    </div>
+  );
+}
+
 const CSS = `
+.asg-phase { border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px;
+  margin-bottom: 9px; }
+.asg-head { display: flex; align-items: center; gap: 9px; }
+.asg-head strong { font-size: 13px; }
+.asg-n { width: 20px; height: 20px; border-radius: 50%; background: var(--bg);
+  display: inline-flex; align-items: center; justify-content: center;
+  font: 700 10.5px inherit; color: var(--muted); flex: 0 0 auto; }
+.asg-craft { font-size: 11px; color: var(--muted); margin-right: auto; }
+.asg-floor { margin: 7px 0 0; font: 600 11px inherit; color: #92400e; }
+.asg-none { margin: 8px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
+.asg-none.warn { color: #b45309; font-style: normal; font-weight: 600; }
+.asg-row { display: flex; align-items: center; gap: 12px; margin-top: 8px;
+  padding: 6px 9px; background: var(--bg); border-radius: 6px; font-size: 12.5px; }
+.asg-team { font-weight: 700; }
+.asg-when { color: var(--muted); }
+.asg-plots { margin-left: auto; font-weight: 600; }
+.asg-form { display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
+  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
+.asg-form select, .asg-form input { font: 500 12px inherit; padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 6px; }
+.asg-pl { flex: 1 1 120px; min-width: 100px; }
+.asg-to { font-size: 11.5px; color: var(--muted); }
+.asg-problems { flex: 1 0 100%; margin: 4px 0 0; padding-left: 18px;
+  font: 600 11.5px inherit; color: #b45309; }
+
 .co-page { padding: 18px 22px 40px; }
 /* Wrapping is the last resort rather than the first.
 

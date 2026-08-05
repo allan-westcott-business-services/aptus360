@@ -27,6 +27,10 @@ const TABLES = {
   Team_Member:     { pk: "Team_Member_ID",     order: "Team_Member_ID" },
   Team_Craft:      { pk: "Team_Craft_ID",      order: "Team_Craft_ID" },
   Team_Region:     { pk: "Team_Region_ID",     order: "Team_Region_ID" },
+  /* Phases, which work type involves which, and who is doing them. */
+  Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
+  Work_Type_Task_Type: { pk: "Work_Type_Task_Type_ID", order: "Display_Order" },
+  Call_Off_Assignment: { pk: "Assignment_ID",          order: "Start_Date" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

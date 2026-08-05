@@ -203,7 +203,43 @@ export default function CalibrationView({
     return () => el.removeEventListener("wheel", onWheelNative);
   }, [src]);
 
-  const isPanButton = (e) => e.button === 1 || e.button === 2;
+  /* Space held turns a left-drag into a pan, as on the main canvas.
+
+     Middle and right drag already worked, and both are awkward here: a
+     Magic Mouse has no middle button, and a right-drag over a dialog is
+     the sort of thing a browser sometimes claims for itself. Calibrating
+     means zooming in far enough to place a point on the exact pixel, and
+     at that zoom the plan has to be moved constantly — so it should move
+     the way it moves everywhere else in the app rather than by a
+     gesture peculiar to this dialog. */
+  const [spaceHeld, setSpaceHeld] = useState(false);
+
+  useEffect(() => {
+    /* On the window rather than the element: the dialog has fields, and
+       focus is often in one of them when the plan needs moving. */
+    const down = (e) => {
+      if (e.key !== " ") return;
+      /* Not while typing — space belongs to the field that has focus. */
+      if (e.target?.closest?.("input, textarea, select, [contenteditable]")) return;
+      e.preventDefault();
+      setSpaceHeld(true);
+    };
+    const up = (e) => { if (e.key === " ") setSpaceHeld(false); };
+    /* Losing the window mid-drag would leave it stuck on. */
+    const blur = () => setSpaceHeld(false);
+
+    window.addEventListener("keydown", down);
+    window.addEventListener("keyup", up);
+    window.addEventListener("blur", blur);
+    return () => {
+      window.removeEventListener("keydown", down);
+      window.removeEventListener("keyup", up);
+      window.removeEventListener("blur", blur);
+    };
+  }, []);
+
+  const isPanButton = (e) =>
+    e.button === 1 || e.button === 2 || (e.button === 0 && spaceHeld);
 
   function onDown(e) {
     e.currentTarget.setPointerCapture?.(e.pointerId);
@@ -254,7 +290,13 @@ export default function CalibrationView({
       <style>{CSS}</style>
 
       <div
-        className={panning ? "cv-stage panning" : "cv-stage"}
+        className={[
+          "cv-stage",
+          panning ? "panning" : "",
+          /* An open hand while space is held, so it is clear the next
+             drag will move the plan rather than place a point. */
+          spaceHeld && !panning ? "grabbable" : "",
+        ].filter(Boolean).join(" ")}
         ref={wrapRef}
         onPointerDown={onDown}
         onPointerMove={onMove}
@@ -288,7 +330,9 @@ export default function CalibrationView({
         <button onClick={fit}>Fit</button>
         <span className="cv-zoom">{Math.round(view.scale * 100)}%</span>
         {isPdf && <span className="cv-vector">vector</span>}
-        <span className="cv-hint">Scroll to zoom &middot; right or middle drag to pan &middot; left click to place</span>
+        <span className="cv-hint">
+          Scroll to zoom &middot; space or middle drag to pan &middot; left click to place
+        </span>
       </div>
     </div>
   );
@@ -300,6 +344,7 @@ const CSS = `
   border-radius: var(--radius); overflow: hidden; background: #f1f5f9;
   cursor: crosshair; touch-action: none; user-select: none; overscroll-behavior: contain; }
 .cv-stage.panning { cursor: grabbing; }
+.cv-stage.grabbable { cursor: grab; }
 .cv-plan { display: block; width: 100%; height: 100%; }
 .cv-wait { position: absolute; inset: 0; display: flex; align-items: center; justify-content: center;
   font-size: 12.5px; color: var(--muted); pointer-events: none; }

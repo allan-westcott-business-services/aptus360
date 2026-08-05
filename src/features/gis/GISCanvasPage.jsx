@@ -1262,17 +1262,63 @@ export default function GISCanvasPage() {
 
            The longest piece in each group carries the label, so it lands
            on the part with room for it. */
-        const groups = new Map();
+        /* Grouped by contiguous run, not by trench and count.
+
+           Keying on the trench meant one label per count per trench —
+           so a trench carrying 1 in two separate places got a single
+           number, on whichever stretch was longer, and the other looked
+           like it carried nothing at all.
+
+           Two stretches of the same trench with the same count are two
+           different lengths of dig if there is anything between them.
+           What makes them one label is being joined end to end, so that
+           is what this groups on. */
+        const byNode = new Map();
         for (const e of routePlan.used) {
-          const key = `${e.trench?.Feature_ID ?? "link"}:${e.uses}`;
-          const a2 = toPx(routePlan.graph.nodes[e.u]);
-          const b2 = toPx(routePlan.graph.nodes[e.v]);
-          const px = Math.hypot(b2.x - a2.x, b2.y - a2.y);
-          const prev = groups.get(key);
-          if (!prev || px > prev.px) groups.set(key, { e, a2, b2, px });
+          for (const n of [e.u, e.v]) {
+            if (!byNode.has(n)) byNode.set(n, []);
+            byNode.get(n).push(e);
+          }
         }
 
-        for (const { e, a2, b2, px } of groups.values()) {
+        const seenEdge = new Set();
+        const groups = [];
+        for (const start of routePlan.used) {
+          if (seenEdge.has(start.index)) continue;
+
+          /* Flood outwards from this edge through neighbours carrying
+             the same count on the same trench. */
+          const chain = [];
+          const queue = [start];
+          seenEdge.add(start.index);
+          while (queue.length) {
+            const e = queue.pop();
+            chain.push(e);
+            for (const n of [e.u, e.v]) {
+              for (const nb of byNode.get(n) || []) {
+                if (seenEdge.has(nb.index)) continue;
+                if (nb.uses !== e.uses) continue;
+                if ((nb.trench?.Feature_ID ?? null)
+                  !== (e.trench?.Feature_ID ?? null)) continue;
+                seenEdge.add(nb.index);
+                queue.push(nb);
+              }
+            }
+          }
+
+          /* The longest piece of the run carries the label, so it lands
+             where there is room for it. */
+          let best = null;
+          for (const e of chain) {
+            const a2 = toPx(routePlan.graph.nodes[e.u]);
+            const b2 = toPx(routePlan.graph.nodes[e.v]);
+            const px = Math.hypot(b2.x - a2.x, b2.y - a2.y);
+            if (!best || px > best.px) best = { e, a2, b2, px };
+          }
+          if (best) groups.push(best);
+        }
+
+        for (const { e, a2, b2, px } of groups) {
           /* Still skipped where there is genuinely no room — a label
              wider than the line it sits on reads as belonging to
              whatever is underneath. */

@@ -658,23 +658,59 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
      all — and that is a fault in the trenches, not a limit. */
   const serviceLimit = opts.maxServiceM ?? 10;
 
-  /* Mains and services, told apart.
+  /* A trench is a service because a meter sits on the end of it.
 
-     The network is routed along mains only — a service runs from one
-     meter to one main and is not a way through to anywhere. Services are
-     used to say where each meter tees in and how long its service
-     actually is. */
-  const isService = opts.isService
-    ?? ((t) => /service/i.test(String(t?.Attributes?.Line_Type ?? "")));
-  const mains = trenches.filter((t) => !isService(t));
-  const services = trenches.filter((t) => isService(t));
+     Not because of what it is called. Matching "service" in the line
+     type was a guess, and a wrong guess took real mains out of the
+     network — the trace then stopped part way round a loop with no
+     explanation, because the trench it needed had been classified out of
+     existence.
 
-  /* Each meter's own service, where one has been drawn. */
+     Every trench with a meter on one end is that meter's service.
+     Everything else carries the network. Nothing has to be named
+     correctly for this to work. */
+  const attachM = opts.attachM ?? 2.0;
   const drawn = new Map();
+  const serviceIds = new Set();
+
   for (const m of meters) {
-    const svc = serviceFor(m, services, mains, opts);
-    if (svc) drawn.set(m.Feature_ID, svc);
+    const p = (m.Geometry || [])[0];
+    if (!p) continue;
+
+    let best = null;
+    for (const t of trenches) {
+      const g = t.Geometry || [];
+      if (g.length < 2) continue;
+      const dStart = dist(p, g[0]);
+      const dEnd = dist(p, g[g.length - 1]);
+      const atMeter = Math.min(dStart, dEnd);
+      if (atMeter > attachM) continue;
+      if (!best || atMeter < best.atMeter) {
+        best = { trench: t, atMeter, meterAtStart: dStart <= dEnd };
+      }
+    }
+    if (!best) continue;
+
+    const g = best.trench.Geometry;
+    /* Its length along the trench, so a service round a corner is as
+       long as it is rather than as long as it looks. */
+    let len = 0;
+    for (let i = 0; i + 1 < g.length; i++) len += dist(g[i], g[i + 1]);
+    const far = best.meterAtStart ? g[g.length - 1] : g[0];
+
+    drawn.set(m.Feature_ID, {
+      service: best.trench,
+      serviceM: len,
+      /* Where it meets the network: the far end, as drawn. The trace
+         picks it up from there. */
+      point: [far[0], far[1]],
+    });
+    serviceIds.add(best.trench.Feature_ID);
   }
+
+  /* Everything that is not somebody's service. */
+  const mains = trenches.filter((t) => !serviceIds.has(t.Feature_ID));
+  const isService = (t) => serviceIds.has(t?.Feature_ID);
 
   /* The graph is built from the mains, with each meter placed at the
      point its service meets one. A meter with a drawn service is moved

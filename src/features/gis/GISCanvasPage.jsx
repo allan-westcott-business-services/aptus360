@@ -1356,35 +1356,64 @@ export default function GISCanvasPage() {
             }
           }
 
-          /* The longest piece of the run carries the label, so it lands
-             where there is room for it. */
-          let best = null;
+          /* Points along the run to put a number on.
+
+             One label in the middle of a two-hundred-metre run means
+             reading the count depends on which part of the site is on
+             screen. Numbers are placed along it instead, so the figure
+             is legible wherever somebody is looking.
+
+             Measured in metres rather than pixels so the spacing is a
+             property of the drawing rather than of the zoom — the same
+             run carries the same numbers whether it fills the screen or
+             not. Screen crowding is dealt with separately, below. */
+          const everyM = 6;
           for (const e of chain) {
-            const a2 = toPx(routePlan.graph.nodes[e.u]);
-            const b2 = toPx(routePlan.graph.nodes[e.v]);
-            const px = Math.hypot(b2.x - a2.x, b2.y - a2.y);
-            if (!best || px > best.px) best = { e, a2, b2, px };
+            const A = routePlan.graph.nodes[e.u];
+            const B = routePlan.graph.nodes[e.v];
+            /* At least one per piece, however short: a section that
+               carries a different count from its neighbours has to say
+               so even if it is a metre long. */
+            const n = Math.max(1, Math.floor(e.len / everyM));
+            for (let k = 0; k < n; k++) {
+              const t = (k + 0.5) / n;
+              groups.push({
+                uses: e.uses,
+                at: [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t],
+              });
+            }
           }
-          if (best) groups.push(best);
         }
 
-        for (const { e, a2, b2, px } of groups) {
-          /* Still skipped where there is genuinely no room — a label
-             wider than the line it sits on reads as belonging to
-             whatever is underneath. */
-          if (px < 26) continue;
-          const mx = (a2.x + b2.x) / 2;
-          const my = (a2.y + b2.y) / 2;
-          const t = String(e.uses);
+        /* Drawn last, with anything that would land on top of something
+           already drawn left out.
+
+           The spacing is in metres, so at a zoom where the whole site
+           fits, six metres is a few pixels and every number would sit on
+           its neighbour. Dropping the ones that collide keeps the run
+           readable at every zoom without changing where the numbers are
+           on the ground. */
+        const placed = [];
+        for (const g of groups) {
+          const p2 = toPx(g.at);
+          const t = String(g.uses);
           const w = ctx.measureText(t).width + 8;
+
+          const clash = placed.some((q) =>
+            Math.abs(q.x - p2.x) < (q.w + w) / 2 + 3
+            && Math.abs(q.y - p2.y) < 17);
+          if (clash) continue;
+          placed.push({ x: p2.x, y: p2.y, w });
+
           ctx.fillStyle = "rgba(255,255,255,.9)";
-          ctx.fillRect(mx - w / 2, my - 8, w, 15);
+          ctx.fillRect(p2.x - w / 2, p2.y - 8, w, 15);
           ctx.strokeStyle = "rgba(30,58,95,.25)";
           ctx.lineWidth = 1;
-          ctx.strokeRect(mx - w / 2, my - 8, w, 15);
+          ctx.strokeRect(p2.x - w / 2, p2.y - 8, w, 15);
           ctx.fillStyle = "#1e3a5f";
-          ctx.fillText(t, mx, my);
+          ctx.fillText(t, p2.x, p2.y);
         }
+
         ctx.restore();
       }
 

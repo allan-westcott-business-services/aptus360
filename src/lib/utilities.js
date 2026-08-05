@@ -1,7 +1,17 @@
 /* The six design scopes. Mirrors the Utility lookup table exactly —
    confirmed against the database, not inferred from application code. */
 export const UTILITIES = [
-  { id: 1, name: "Electric", icon: "\u26A1", colour: "#f59e0b", group: "Residential" },
+  /* The variation selector is doing real work here.
+
+     U+26A1 on its own has a text presentation in several fonts, so it
+     renders as a flat outline rather than the yellow bolt — and next to
+     the flame and the droplet, which are emoji-only codepoints and
+     always coloured, it looks like a different kind of thing
+     altogether. U+FE0F asks for the emoji form explicitly.
+
+     Gas and water need no selector: their codepoints have no text
+     form to fall back to. */
+  { id: 1, name: "Electric", icon: "\u26A1\uFE0F", colour: "#f59e0b", group: "Residential" },
   { id: 2, name: "Gas", icon: "\uD83D\uDD25", colour: "#10b981", group: "Residential" },
   { id: 3, name: "Water", icon: "\uD83D\uDCA7", colour: "#3b82f6", group: "Residential" },
   { id: 4, name: "Section 38 On Site", icon: "\uD83C\uDFE0", colour: "#7c3aed", group: "Street Lighting" },

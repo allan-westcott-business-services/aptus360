@@ -531,8 +531,20 @@ function Assignments({ row }) {
       {phases.map((ph, i) => {
         const rows = mine.filter((a) =>
           Number(a.Task_Type_ID) === Number(ph.Task_Type_ID));
+        /* Teams holding the craft this phase needs, in the region the
+           project is in.
+
+           The region comes from the project rather than the call-off: a
+           gang covers the North West, and which call-off it is working
+           does not change that.
+
+           Where the project has no region the filter is not applied.
+           Leaving every team ineligible because a project record is
+           incomplete would look like a fault in the teams. */
         const can = eligibleTeams(teams, {
-          teamCrafts, teamRegions, craftId: ph.Craft_ID, regionId: null,
+          teamCrafts, teamRegions,
+          craftId: ph.Craft_ID,
+          regionId: row.Region_ID ?? null,
         });
         const floor = earliestStart(phases, mine, ph.Task_Type_ID, plotUniverse);
 
@@ -543,8 +555,10 @@ function Assignments({ row }) {
               <strong>{ph.Task_Type_Name}</strong>
               <span className="asg-craft">
                 {ph.Craft_ID
-                  ? `needs ${craftName(ph.Craft_ID) ?? "a craft"} \u00b7 ${can.length} team${can.length === 1 ? "" : "s"}`
-                  : `any team \u00b7 ${can.length}`}
+                  ? `needs ${craftName(ph.Craft_ID) ?? "a craft"}`
+                  : "any craft"}
+                {row.Region_ID ? " in this region" : ""}
+                {` \u00b7 ${can.length} team${can.length === 1 ? "" : "s"}`}
               </span>
               <button className="btn accent sm"
                 disabled={!can.length}
@@ -560,11 +574,18 @@ function Assignments({ row }) {
               </p>
             )}
 
+            {/* Which of the two conditions failed, because they have
+                different fixes: give a team the craft, or give it the
+                region. "No teams available" would be neither. */}
             {!can.length && (
               <p className="asg-none warn">
-                {ph.Craft_ID
-                  ? `No active team holds ${craftName(ph.Craft_ID) ?? "this craft"}.`
-                  : "No active teams."}
+                {ph.Craft_ID && row.Region_ID
+                  ? `No active team holds ${craftName(ph.Craft_ID) ?? "this craft"} in this region.`
+                  : ph.Craft_ID
+                    ? `No active team holds ${craftName(ph.Craft_ID) ?? "this craft"}.`
+                    : row.Region_ID
+                      ? "No active team covers this region."
+                      : "No active teams."}
               </p>
             )}
 

@@ -75,7 +75,10 @@ export default async function handler(req) {
     let projects = new Map();
     if (projectIds.length) {
       const { data } = await db.from("Project")
-        .select("Project_ID,Project_Ref,Site_Name,Site_Address")
+        /* Region_ID as well: a team may only be assigned to a call-off
+           in a region it covers, and that is a property of the project
+           rather than of the call-off. */
+        .select("Project_ID,Project_Ref,Site_Name,Site_Address,Region_ID")
         .in("Project_ID", projectIds);
       projects = new Map((data || []).map((p) => [Number(p.Project_ID), p]));
     }
@@ -87,6 +90,7 @@ export default async function handler(req) {
         ...s,
         Selection_Mode: mode,
         Project_Ref: proj?.Project_Ref ?? null,
+        Region_ID: proj?.Region_ID ?? null,
         Site_Name: s.Site_Name || proj?.Site_Name || null,
         Site_Address: s.Site_Address || proj?.Site_Address || null,
         items: mode

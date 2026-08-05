@@ -667,13 +667,30 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
        wants a trench nearer, the second wants a different route or a
        bigger cable. Both are reported per meter so the drawing can mark
        them and the totals still add up. */
+    /* Typed as well as worded, so a caller can group them without
+       picking the numbers back out of a sentence.
+
+       The first version returned only the sentence, and the panel
+       grouped by blanking the figure out of it — which printed "Service
+       is N m" on screen, a message with the one useful number removed. */
     const warnings = [];
     if (best.f.serviceM > serviceLimit) {
-      warnings.push(`Service is ${Math.round(best.f.serviceM)} m, over the `
-        + `${serviceLimit} m limit.`);
+      warnings.push({
+        kind: "service",
+        m: Math.round(best.f.serviceM),
+        limit: serviceLimit,
+        text: `${Math.round(best.f.serviceM)} m from the nearest trench, `
+          + `over the ${serviceLimit} m service limit.`,
+      });
     }
     if (best.run > maxRunM) {
-      warnings.push(`Run is ${Math.round(best.run)} m, over the ${maxRunM} m limit.`);
+      warnings.push({
+        kind: "run",
+        m: Math.round(best.run),
+        limit: maxRunM,
+        text: `${Math.round(best.run)} m from the substation along the trench, `
+          + `over the ${maxRunM} m limit.`,
+      });
     }
 
     served.push({

@@ -4415,10 +4415,28 @@ export default function GISCanvasPage() {
     })].join("  \u00b7  "));
   }
 
-  /* A meter's plot number, for a message. Falls back to the feature id,
-     which is at least something to search for. */
+  /* A meter named by its plot.
+
+     Plot_ID is a column on the feature, not something in Attributes —
+     which is where this looked first, so every meter fell through to its
+     Label and the message read "Electric Meter 1, Electric Meter 2",
+     which names nothing anybody can find on a drawing.
+
+     The plot number comes from the plot list, so it is the number
+     written on the plan rather than an internal id. */
   function plotLabel(m) {
-    return m?.Attributes?.Plot_Number ?? m?.Label ?? `#${m?.Feature_ID}`;
+    const pid = m?.Plot_ID ?? m?.Attributes?.Plot_ID;
+    if (pid != null) {
+      /* The plot list uses lowercase field names and the features use
+         uppercase for the same thing, so both spellings are tried. This
+         is the third time today that difference has cost a bug. */
+      const p = plotList?.find((x) =>
+        Number(x.plot_id ?? x.Plot_ID) === Number(pid));
+      const num = p?.plot_number ?? p?.Plot_Number;
+      if (num) return `Plot ${num}`;
+      return `Plot ${pid}`;
+    }
+    return m?.Label ?? `#${m?.Feature_ID}`;
   }
 
   function suggestRoute() {

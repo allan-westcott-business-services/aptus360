@@ -31,6 +31,12 @@ const TABLES = {
   Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
   Work_Type_Task_Type: { pk: "Work_Type_Task_Type_ID", order: "Display_Order" },
   Call_Off_Assignment: { pk: "Assignment_ID",          order: "Start_Date" },
+  /* The days under an assignment. Missing from this list, every write
+     to it returned 404 — and because saving an edit deletes the old days
+     before writing the new ones, an edit lost its day breakdown and
+     reopening showed what was still in the table. The assignment itself
+     saved; the days did not. */
+  Call_Off_Work_Day:   { pk: "Work_Day_ID",            order: "Work_Date" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

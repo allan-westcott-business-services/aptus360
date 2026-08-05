@@ -5,6 +5,8 @@ import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import { validate, toItems, servicePenalty, SERVICE_MIN_PLOTS } from "./rules.js";
+import PlotPicker from "../shared/PlotPicker.jsx";
+import { parseIds } from "../poc/interimPlots.js";
 
 /* Call-offs: asking for a piece of work to be done on a site.
 
@@ -39,6 +41,20 @@ export default function CallOffsTab({ projectId }) {
   const [f, setF] = useState({});
   const [items, setItems] = useState([]);
 
+  /* Plots are chosen from a grid rather than a dropdown per row.
+
+     A service call-off is usually a run of plots — a phase, a terrace —
+     and picking twenty from twenty dropdowns is twenty chances to pick
+     the same one twice. The same panel the interim POC application uses,
+     so the two behave alike and the rules are shared rather than
+     written again.
+
+     Held as a comma-separated list, which is the shape the picker works
+     in; the rows are derived from it so a plot cannot be selected in the
+     grid and missing from what is saved. */
+  const [plotIds, setPlotIds] = useState("");
+  const [plotDates, setPlotDates] = useState({});
+
   async function load() {
     try {
       const [res, lk, plotRes, proj] = await Promise.all([
@@ -68,8 +84,8 @@ export default function CallOffsTab({ projectId }) {
   [workTypes, f.Work_Type_ID]);
 
   const problems = useMemo(
-    () => (open ? validate({ ...f, Project_ID: projectId }, items, mode) : []),
-    [open, f, items, mode, projectId],
+    () => (open ? validate({ ...f, Project_ID: projectId }, rowsForMode, mode) : []),
+    [open, f, rowsForMode, mode, projectId],
   );
 
   function openForm() {
@@ -96,7 +112,23 @@ export default function CallOffsTab({ projectId }) {
   /* Rows start blank for the mode in hand. Changing the work type clears
      them, because a plot row is not a trench row with different labels
      and carrying one over would leave half a row behind. */
-  useEffect(() => { setItems([]); }, [mode]);
+  useEffect(() => { setItems([]); setPlotIds(""); setPlotDates({}); }, [mode]);
+
+  /* The chosen plots as rows, in the order they appear on the project
+     rather than the order they were clicked — a call-off reads better
+     as a list somebody can check off than as a record of the picking. */
+  const plotRows = useMemo(() => {
+    const chosen = new Set(parseIds(plotIds));
+    return plots
+      .filter((p) => chosen.has(Number(p.plot_id)))
+      .map((p) => ({
+        Plot: String(p.plot_number ?? p.plot_id),
+        Energisation_Date: plotDates[p.plot_id] ?? "",
+      }));
+  }, [plotIds, plots, plotDates]);
+
+  /* Whichever the mode collects. */
+  const rowsForMode = mode === "PlotList" ? plotRows : items;
 
   async function save(acceptedCharge) {
     if (problems.length) return;
@@ -105,7 +137,7 @@ export default function CallOffsTab({ projectId }) {
        as one for four. The charge is shown and accepted rather than
        applied quietly. */
     if (mode === "PlotList" && !acceptedCharge) {
-      const p = servicePenalty(items.length);
+      const p = servicePenalty(plotRows.length);
       if (p.applies) { setPenalty(p); return; }
     }
 
@@ -119,7 +151,7 @@ export default function CallOffsTab({ projectId }) {
         Site_Address: project?.Site_Address ?? null,
         Contact_Phone: f.Contact_Phone || "N/A",
         Created_By: user?.email ?? null,
-        items: toItems(items, mode),
+        items: toItems(rowsForMode, mode),
       });
       setOpen(false);
       setPenalty(null);
@@ -211,10 +243,42 @@ export default function CallOffsTab({ projectId }) {
             ))}
           </div>
 
-          <ItemRows mode={mode} items={items} plots={plots}
-            setRow={setRow}
-            onAdd={() => setItems((rs) => [...rs, { ...BLANK_ROW[mode] }])}
-            onRemove={(i) => setItems((rs) => rs.filter((_, j) => j !== i))} />
+          {mode === "PlotList" ? (
+            <>
+              <PlotPicker plots={plots} value={plotIds} onChange={setPlotIds}
+                label="Plots on this call-off"
+                note={`Fewer than ${SERVICE_MIN_PLOTS} carries a charge.`} />
+
+              {/* A date per plot, for the ones that need one.
+
+                  Most call-offs energise together and leave these blank;
+                  a phase handed over in stages does not. Shown only for
+                  the plots chosen, so the list is as long as the job. */}
+              {plotRows.length > 0 && (
+                <details className="co-dates">
+                  <summary>Energisation dates &mdash; optional</summary>
+                  <div className="co-date-grid">
+                    {plots
+                      .filter((p) => parseIds(plotIds).includes(Number(p.plot_id)))
+                      .map((p) => (
+                        <label key={p.plot_id} className="co-date">
+                          <span>{p.plot_number}</span>
+                          <input type="date" value={plotDates[p.plot_id] ?? ""}
+                            onChange={(e) => setPlotDates((d) => ({
+                              ...d, [p.plot_id]: e.target.value,
+                            }))} />
+                        </label>
+                      ))}
+                  </div>
+                </details>
+              )}
+            </>
+          ) : (
+            <ItemRows mode={mode} items={items} plots={plots}
+              setRow={setRow}
+              onAdd={() => setItems((rs) => [...rs, { ...BLANK_ROW[mode] }])}
+              onRemove={(i) => setItems((rs) => rs.filter((_, j) => j !== i))} />
+          )}
 
           <div className="fld">
             <label htmlFor="co-notes">Notes</label>
@@ -235,7 +299,7 @@ export default function CallOffsTab({ projectId }) {
           {penalty && (
             <div className="co-penalty">
               <strong>
-                {`${items.length} plot${items.length === 1 ? "" : "s"} \u2014 `}
+                {`${plotRows.length} plot${plotRows.length === 1 ? "" : "s"} \u2014 `}
                 {`${penalty.short} under the minimum of ${SERVICE_MIN_PLOTS}.`}
               </strong>
               <p>
@@ -416,6 +480,14 @@ const CSS = `
   padding: 12px 14px; margin-bottom: 12px; }
 .co-penalty strong { display: block; color: #92400e; font-size: 13px; }
 .co-penalty p { margin: 5px 0 10px; font-size: 12px; color: #92400e; }
+.co-dates { margin: 0 0 12px; }
+.co-dates summary { cursor: pointer; font: 600 12px inherit; color: var(--accent); }
+.co-date-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
+  gap: 7px; margin-top: 9px; }
+.co-date { display: flex; align-items: center; gap: 7px; font: 600 11.5px inherit; }
+.co-date > span { width: 40px; color: var(--muted); }
+.co-date input { flex: 1; font: 500 11.5px inherit; padding: 4px 6px;
+  border: 1px solid var(--border); border-radius: 5px; }
 .co-actions { display: flex; justify-content: flex-end; gap: 9px; }
 .co-row { border: 1px solid var(--border); border-radius: 9px; padding: 11px 14px;
   margin-bottom: 9px; background: var(--white); }

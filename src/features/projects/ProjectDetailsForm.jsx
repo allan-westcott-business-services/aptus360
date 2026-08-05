@@ -19,7 +19,10 @@ const SITE_CSS = `
 .site-row .fld.grow { flex: 0.9; min-width: 120px; }
 .site-row .fld.grow-wide { flex: 1.2; min-width: 150px; }
 /* Sized to their content: "North West" and a six-figure grid reference */
-.site-row .fld.w-region { width: 152px; flex: none; }
+.site-row /* Wide enough for the longest UK postcode with its space — eight
+   characters — without taking room from the address beside it. */
+.fld.w-postcode { flex: 0 0 120px; }
+.fld.w-region { width: 152px; flex: none; }
 .site-row .fld.w-coord { width: 104px; flex: none; }
 .site-row.second { margin-bottom: 12px; }
 .site-row .fld.w-count { width: 150px; flex: none; }
@@ -233,6 +236,16 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
             <label>Site address</label>
             <input value={f.Site_Address || ""} onChange={(e) => set("Site_Address")(e.target.value)} />
           </div>
+          {/* Beside the address it belongs to.
+
+              It sat between Eastings and Northings, which split the
+              coordinate pair as well as putting the postcode a long way
+              from the address — two faults from one placement. */}
+          <div className="fld w-postcode">
+            <label>Postcode</label>
+            <input className="mono" value={f.Postcode || ""}
+              onChange={(e) => set("Postcode")(e.target.value.toUpperCase())} />
+          </div>
           <div className="fld w-region">
             <label>Region</label>
             <Select
@@ -259,11 +272,6 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
           <div className="fld w-coord">
             <label>Eastings</label>
             <input className="mono" value={f.Eastings ?? ""} onChange={(e) => set("Eastings")(e.target.value)} />
-          </div>
-          <div className="fld w-region">
-            <label>Postcode</label>
-            <input className="mono" value={f.Postcode || ""}
-              onChange={(e) => set("Postcode")(e.target.value.toUpperCase())} />
           </div>
           <div className="fld w-coord">
             <label>Northings</label>

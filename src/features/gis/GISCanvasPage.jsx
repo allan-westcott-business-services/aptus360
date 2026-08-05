@@ -1356,33 +1356,36 @@ export default function GISCanvasPage() {
             }
           }
 
-          /* Points along the run to put a number on.
+          /* One number per run, at its middle.
 
-             One label in the middle of a two-hundred-metre run means
-             reading the count depends on which part of the site is on
-             screen. Numbers are placed along it instead, so the figure
-             is legible wherever somebody is looking.
+             Repeating it every six metres was meant to keep the figure
+             legible wherever somebody was looking. It did the opposite:
+             a run carrying four became "4 4 4 4 4" down the road, and
+             beside a neighbouring run's numbers it read as a sequence
+             changing along one trench rather than one figure repeated
+             along several.
 
-             Measured in metres rather than pixels so the spacing is a
-             property of the drawing rather than of the zoom — the same
-             run carries the same numbers whether it fills the screen or
-             not. Screen crowding is dealt with separately, below. */
-          const everyM = 6;
+             A section carries one number. That is what makes it
+             readable, and it is what was asked for. */
+          let total = 0;
+          for (const e of chain) total += e.len;
+
+          /* Half way along the run by length, not the middle of its
+             longest piece — on a run that bends, those are different
+             places and the first is the one that looks central. */
+          let walked = 0;
+          let at = null;
           for (const e of chain) {
-            const A = routePlan.graph.nodes[e.u];
-            const B = routePlan.graph.nodes[e.v];
-            /* At least one per piece, however short: a section that
-               carries a different count from its neighbours has to say
-               so even if it is a metre long. */
-            const n = Math.max(1, Math.floor(e.len / everyM));
-            for (let k = 0; k < n; k++) {
-              const t = (k + 0.5) / n;
-              groups.push({
-                uses: e.uses,
-                at: [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t],
-              });
+            if (walked + e.len >= total / 2) {
+              const A = routePlan.graph.nodes[e.u];
+              const B = routePlan.graph.nodes[e.v];
+              const t = e.len ? (total / 2 - walked) / e.len : 0.5;
+              at = [A[0] + (B[0] - A[0]) * t, A[1] + (B[1] - A[1]) * t];
+              break;
             }
+            walked += e.len;
           }
+          if (at) groups.push({ uses: chain[0].uses, at });
         }
 
         /* Drawn last, with anything that would land on top of something
@@ -4359,21 +4362,36 @@ export default function GISCanvasPage() {
        says how many of each and which plots. */
     /* Flagged first, since with every meter now traced these are the
        common finding and unreachable is the rare one. */
+    /* Grouped by kind, and reported as a range.
+
+       Blanking the number out of the sentence to group them printed
+       "Service is N m" — a message with the one figure that mattered
+       removed. The warnings carry their kind and their distance now, so
+       the group can say what the distances actually are. */
     const notes = [];
     if (plan.flagged?.length) {
-      const byWhy = new Map();
+      const byKind = new Map();
       for (const f of plan.flagged) {
         for (const w of f.warnings) {
-          if (!byWhy.has(w.replace(/\d+ m/, "N m"))) {
-            byWhy.set(w.replace(/\d+ m/, "N m"), []);
-          }
-          byWhy.get(w.replace(/\d+ m/, "N m")).push(plotLabel(f.meter));
+          if (!byKind.has(w.kind)) byKind.set(w.kind, { w, rows: [] });
+          byKind.get(w.kind).rows.push({ plot: plotLabel(f.meter), m: w.m });
         }
       }
-      for (const [why, plots] of byWhy) {
-        const shown = plots.slice(0, 6).join(", ");
-        const more = plots.length > 6 ? ` and ${plots.length - 6} more` : "";
-        notes.push(`${plots.length} over a limit \u2014 ${why} (${shown}${more})`);
+      for (const [kind, { w, rows }] of byKind) {
+        const ms = rows.map((r) => r.m);
+        const lo = Math.min(...ms);
+        const hi = Math.max(...ms);
+        const range = lo === hi ? `${lo} m` : `${lo}\u2013${hi} m`;
+        /* The furthest first: those are the ones worth looking at, and a
+           list in drawing order buries them. */
+        const worst = [...rows].sort((a2, b2) => b2.m - a2.m);
+        const shown = worst.slice(0, 5).map((r) => `${r.plot} ${r.m} m`).join(", ");
+        const more = worst.length > 5 ? ` and ${worst.length - 5} more` : "";
+        notes.push(kind === "service"
+          ? `${rows.length} meters are ${range} from the nearest trench, `
+            + `over the ${w.limit} m service limit \u2014 ${shown}${more}`
+          : `${rows.length} meters are ${range} from the substation along the `
+            + `trench, over the ${w.limit} m limit \u2014 ${shown}${more}`);
       }
     }
 

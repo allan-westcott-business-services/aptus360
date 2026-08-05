@@ -3,7 +3,8 @@ import { listAllCallOffs, setCallOffStatus } from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
 import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
 import {
-  eligibleTeams, earliestStart, parsePlots, serialisePlots, validate as checkAssignment,
+  eligibleTeams, earliestStart, parsePlots, serialisePlots,
+  validate as checkAssignment, daysBetween, dayTotal,
 } from "./assignments.js";
 
 /* Call-offs across the business.
@@ -362,14 +363,20 @@ function Assignments({ row }) {
          later if an earlier phase pushes it. */
       Start_Date: floor?.date || row.Preferred_Date || "",
       End_Date: "",
-      Plot_Range: serialisePlots(plotUniverse),
+      Off_Site: false,
+      /* Every plot on the call-off to begin with, since one team taking
+         the lot is the common case and unticking a few is less work than
+         ticking twenty. */
+      plots: [...plotUniverse],
+      /* Marked full unless somebody says otherwise. */
+      parts: {},
     });
     setOpenPhase(phase.Task_Type_ID);
     setError("");
   }
 
   const problems = openPhase != null
-    ? checkAssignment(draft, {
+    ? checkAssignment({ ...draft, Plot_Range: serialisePlots(draft.plots || []) }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
     })
     : [];
@@ -384,8 +391,28 @@ function Assignments({ row }) {
         Team_ID: Number(draft.Team_ID),
         Start_Date: draft.Start_Date,
         End_Date: draft.End_Date,
-        Plot_Range: draft.Plot_Range || null,
+        Off_Site: !!draft.Off_Site,
+        Plot_Range: serialisePlots(draft.plots) || null,
       });
+
+      /* A row per day, written after the assignment it hangs off.
+
+         Reported separately if they fail: an assignment with no day rows
+         is recoverable by editing, and losing the whole booking because
+         one day was malformed is not. */
+      const days = daysBetween(draft.Start_Date, draft.End_Date);
+      try {
+        for (const d of days) {
+          await adminCreate("Call_Off_Work_Day", {
+            Assignment_ID: created.Assignment_ID,
+            Work_Date: d,
+            Part: draft.parts?.[d] || "Full",
+          });
+        }
+      } catch (dayErr) {
+        setError(`Saved, but the day breakdown failed: ${dayErr.message}`);
+      }
+
       setAll((xs) => [...xs, created]);
       setOpenPhase(null);
       setError("");
@@ -497,26 +524,129 @@ function Assignments({ row }) {
 
             {openPhase === ph.Task_Type_ID && (
               <div className="asg-form">
-                <select value={draft.Team_ID}
-                  onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
-                  <option value="">Choose a team…</option>
-                  {can.map((t) => (
-                    <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
-                  ))}
-                </select>
-                <input type="date" value={draft.Start_Date} aria-label="Start"
-                  onChange={(e) => setDraft((d) => ({ ...d, Start_Date: e.target.value }))} />
-                <span className="asg-to">to</span>
-                <input type="date" value={draft.End_Date} aria-label="End"
-                  onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
-                <input className="asg-pl" value={draft.Plot_Range}
-                  aria-label="Plots" placeholder="Plots"
-                  onChange={(e) => setDraft((d) => ({ ...d, Plot_Range: e.target.value }))} />
-                <button className="btn accent sm" disabled={!!busy || problems.length > 0}
-                  onClick={save}>{busy === "save" ? "Saving\u2026" : "Save"}</button>
-                <button className="btn ghost sm" onClick={() => setOpenPhase(null)}>
-                  Cancel
-                </button>
+                {/* One row, each control the width of what goes in it.
+
+                    They were full-width blocks stacked down the panel: a
+                    date field a thousand pixels wide to hold ten
+                    characters, and a form four times taller than it
+                    needed to be. */}
+                <div className="asg-line">
+                  <select className="asg-team-sel" value={draft.Team_ID}
+                    aria-label="Team"
+                    onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
+                    <option value="">Team…</option>
+                    {can.map((t) => (
+                      <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
+                    ))}
+                  </select>
+                  <input className="asg-date" type="date" value={draft.Start_Date}
+                    aria-label="Start date"
+                    onChange={(e) => setDraft((d) => ({ ...d, Start_Date: e.target.value }))} />
+                  <span className="asg-to">to</span>
+                  <input className="asg-date" type="date" value={draft.End_Date}
+                    aria-label="End date"
+                    onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
+
+                  {/* A different rate, different notice, often a
+                      different permit — a property of the visit rather
+                      than of the job. */}
+                  <label className="asg-off">
+                    <input type="checkbox" checked={!!draft.Off_Site}
+                      onChange={(e) => setDraft((d) => ({ ...d, Off_Site: e.target.checked }))} />
+                    <span>Off site</span>
+                  </label>
+                </div>
+
+                {/* How much of each day, because a gang is not always
+                    there all day — half a day here and half at the next
+                    site is ordinary, and booking whole days overstates
+                    what the team can take on. */}
+                {daysBetween(draft.Start_Date, draft.End_Date).length > 0 && (
+                  <div className="asg-days">
+                    <div className="asg-days-head">
+                      <strong>Days</strong>
+                      <span className="asg-days-tot">
+                        {(() => {
+                          const ds = daysBetween(draft.Start_Date, draft.End_Date);
+                          const parts = Object.fromEntries(
+                            ds.map((d) => [d, draft.parts?.[d] || "Full"]));
+                          const t = dayTotal(parts);
+                          return `${t} day${t === 1 ? "" : "s"}`;
+                        })()}
+                      </span>
+                    </div>
+                    {daysBetween(draft.Start_Date, draft.End_Date).map((d) => {
+                      const part = draft.parts?.[d] || "Full";
+                      return (
+                        <div className="asg-day" key={d}>
+                          <span className="asg-day-d">{fmt(d)}</span>
+                          {/* One of the three, never two: a day is a
+                              whole day or one half of it, and "AM and
+                              PM" is a full day written twice. */}
+                          {["Full", "AM", "PM"].map((opt) => (
+                            <button key={opt} type="button"
+                              className={part === opt ? "asg-part on" : "asg-part"}
+                              aria-pressed={part === opt}
+                              onClick={() => setDraft((dd) => ({
+                                ...dd, parts: { ...(dd.parts || {}), [d]: opt },
+                              }))}>
+                              {opt === "Full" ? "Full day" : opt}
+                            </button>
+                          ))}
+                        </div>
+                      );
+                    })}
+                  </div>
+                )}
+
+                {/* Plots as pills, as they are chosen everywhere else on
+                    a call-off — clicking one off is quicker than editing
+                    a range by hand, and a pill cannot produce "1-4, 4". */}
+                {plotUniverse.length > 0 && (
+                  <div className="asg-plots-pick">
+                    <div className="asg-days-head">
+                      <strong>Plots</strong>
+                      <span className="asg-days-tot">
+                        {`${(draft.plots || []).length} of ${plotUniverse.length}`}
+                      </span>
+                      <button type="button" className="asg-all"
+                        onClick={() => setDraft((d) => ({
+                          ...d,
+                          plots: (d.plots || []).length === plotUniverse.length
+                            ? [] : [...plotUniverse],
+                        }))}>
+                        {(draft.plots || []).length === plotUniverse.length
+                          ? "Clear" : "All"}
+                      </button>
+                    </div>
+                    <div className="asg-pills">
+                      {plotUniverse.map((pl) => {
+                        const on = (draft.plots || []).includes(pl);
+                        return (
+                          <button key={pl} type="button"
+                            className={on ? "asg-pill on" : "asg-pill"}
+                            aria-pressed={on}
+                            onClick={() => setDraft((d) => ({
+                              ...d,
+                              plots: on
+                                ? (d.plots || []).filter((x) => x !== pl)
+                                : [...(d.plots || []), pl],
+                            }))}>
+                            {pl}
+                          </button>
+                        );
+                      })}
+                    </div>
+                  </div>
+                )}
+
+                <div className="asg-line asg-actions">
+                  <button className="btn accent sm" disabled={!!busy || problems.length > 0}
+                    onClick={save}>{busy === "save" ? "Saving…" : "Save assignment"}</button>
+                  <button className="btn ghost sm" onClick={() => setOpenPhase(null)}>
+                    Cancel
+                  </button>
+                </div>
 
                 {/* Everything wrong at once, so three problems are not
                     found across three attempts to save. */}
@@ -551,12 +681,45 @@ const CSS = `
 .asg-team { font-weight: 700; }
 .asg-when { color: var(--muted); }
 .asg-plots { margin-left: auto; font-weight: 600; }
-.asg-form { display: flex; flex-wrap: wrap; align-items: center; gap: 7px;
-  margin-top: 10px; padding-top: 10px; border-top: 1px solid var(--border); }
-.asg-form select, .asg-form input { font: 500 12px inherit; padding: 5px 8px;
-  border: 1px solid var(--border); border-radius: 6px; }
-.asg-pl { flex: 1 1 120px; min-width: 100px; }
+/* Each control the width of what goes in it.
+
+   A date field holds ten characters and a team name perhaps thirty —
+   neither wants the full width of the panel, and stacked full-width
+   blocks made a form four times taller than its content. */
+.asg-form { margin-top: 10px; padding-top: 10px;
+  border-top: 1px solid var(--border); }
+.asg-line { display: flex; flex-wrap: wrap; align-items: center; gap: 7px; }
+.asg-actions { margin-top: 12px; }
+.asg-form select, .asg-form input[type="date"], .asg-form input[type="text"] {
+  font: 500 12px inherit; padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 6px; background: var(--white); }
+.asg-team-sel { min-width: 150px; max-width: 220px; }
+/* Wide enough for dd/mm/yyyy and the picker button, and no wider. */
+.asg-date { width: 140px; }
 .asg-to { font-size: 11.5px; color: var(--muted); }
+.asg-off { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px;
+  font: 600 11.5px inherit; cursor: pointer; }
+.asg-off input { width: auto; }
+
+.asg-days, .asg-plots-pick { margin-top: 12px; padding-top: 10px;
+  border-top: 1px dashed var(--border); }
+.asg-days-head { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
+.asg-days-head strong { font-size: 12px; }
+.asg-days-tot { font-size: 11px; color: var(--muted); margin-right: auto; }
+.asg-all { background: none; border: 1px solid var(--border); border-radius: 5px;
+  cursor: pointer; font: 600 10px inherit; padding: 2px 9px; color: var(--accent); }
+.asg-day { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
+.asg-day-d { width: 110px; font: 600 11.5px inherit; }
+.asg-part { background: var(--white); border: 1px solid var(--border);
+  border-radius: 5px; cursor: pointer; font: 600 10.5px inherit; padding: 3px 10px;
+  color: var(--muted); }
+.asg-part:hover { border-color: var(--accent); }
+.asg-part.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.asg-pills { display: flex; flex-wrap: wrap; gap: 4px; max-height: 130px;
+  overflow-y: auto; }
+.asg-pill { min-width: 34px; background: var(--white); border: 1.5px solid var(--border);
+  border-radius: 5px; cursor: pointer; font: 600 11px inherit; padding: 3px 7px; }
+.asg-pill.on { border-color: var(--accent); background: #eff6ff; color: var(--accent); }
 .asg-problems { flex: 1 0 100%; margin: 4px 0 0; padding-left: 18px;
   font: 600 11.5px inherit; color: #b45309; }
 

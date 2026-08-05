@@ -171,3 +171,42 @@ export function validate(draft, opts = {}) {
 
   return out;
 }
+
+
+/* The days an assignment covers, as rows to be marked up.
+
+   Built from the two dates rather than stored as a count: a five-day
+   assignment with a half-day Friday is not "four and a half days", it is
+   five days one of which is a half, and only the second says which.
+
+   Weekends are included. A gang working a Saturday is ordinary on a
+   programme under pressure, and leaving them out would mean the form
+   silently disagreeing with what was agreed. */
+export function daysBetween(start, end) {
+  if (!start || !end || end < start) return [];
+  const out = [];
+  const [y, m, d] = start.split("-").map(Number);
+  /* Noon, so a daylight-saving change cannot move a date by a day. */
+  const at = new Date(y, m - 1, d, 12);
+  const stop = (() => {
+    const [ey, em, ed] = end.split("-").map(Number);
+    return new Date(ey, em - 1, ed, 12);
+  })();
+
+  /* A guard rather than a while(true): a mistyped year gives a range of
+     thirty thousand days and a page that never renders. */
+  let guard = 0;
+  while (at <= stop && guard++ < 400) {
+    const p = (n) => String(n).padStart(2, "0");
+    out.push(`${at.getFullYear()}-${p(at.getMonth() + 1)}-${p(at.getDate())}`);
+    at.setDate(at.getDate() + 1);
+  }
+  return out;
+}
+
+/* How many days a set of markings comes to. Half days count as halves,
+   which is the figure a programme is measured in. */
+export function dayTotal(parts = {}) {
+  return Object.values(parts)
+    .reduce((t, v) => t + (v === "Full" ? 1 : 0.5), 0);
+}

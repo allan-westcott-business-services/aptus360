@@ -227,6 +227,15 @@ export default function GISCanvasPage() {
      zoom and are two networks as far as the trace is concerned. */
   const [gapList, setGapList] = useState(null);
 
+  /* Stepping through the traces one meter at a time.
+
+     The counts say how busy a section is and nothing about how any one
+     meter got there. When some meters do not trace, or a route looks
+     wrong, seeing that meter's own path is the only thing that answers
+     it — an index into the trace, rather than a second calculation that
+     could disagree with the first. */
+  const [stepAt, setStepAt] = useState(null);
+
   /* A proposed trench route, before anything is written.
 
      Draw candidates everywhere a trench could go and this works out
@@ -1243,6 +1252,58 @@ export default function GISCanvasPage() {
       ctx.restore();
     };
 
+    /* One meter's route, over everything else.
+
+       Drawn from the meter itself rather than from where it tees in, so
+       the service is part of what is shown — on a plot set well back
+       that is most of the run and the part most likely to be wrong. */
+    const paintStep = () => {
+      if (stepAt == null || !routePlan?.ok) return;
+      const all = [...(routePlan.served || []), ...(routePlan.unreachable || [])];
+      const item = all[stepAt];
+      if (!item) return;
+
+      const m = item.meter ?? item;
+      ctx.save();
+
+      /* The service trench, where one was found. */
+      const sg = item.serviceGeometry;
+      if (sg?.length >= 2) {
+        ctx.beginPath();
+        ctx.strokeStyle = "#7c3aed";
+        ctx.lineWidth = 5;
+        sg.forEach((pt, i) => {
+          const q = toPx(pt);
+          if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+        });
+        ctx.stroke();
+      }
+
+      /* Then the mains route back to the board. */
+      for (const ei of item.path || []) {
+        const e = routePlan.graph.edges[ei];
+        if (!e) continue;
+        const a2 = toPx(routePlan.graph.nodes[e.u]);
+        const b2 = toPx(routePlan.graph.nodes[e.v]);
+        ctx.beginPath();
+        ctx.strokeStyle = "#7c3aed";
+        ctx.lineWidth = 5;
+        ctx.moveTo(a2.x, a2.y);
+        ctx.lineTo(b2.x, b2.y);
+        ctx.stroke();
+      }
+
+      /* The meter, ringed, so it is findable even where the route is
+         short or hidden under other lines. */
+      const p2 = toPx((m.Geometry || [])[0] || [0, 0]);
+      ctx.beginPath();
+      ctx.arc(p2.x, p2.y, 11, 0, Math.PI * 2);
+      ctx.strokeStyle = "#7c3aed";
+      ctx.lineWidth = 3;
+      ctx.stroke();
+      ctx.restore();
+    };
+
     const paintRoute = () => {
       if (!routePlan?.ok) return;
       const g = routePlan.graph;
@@ -2137,8 +2198,9 @@ export default function GISCanvasPage() {
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
+    paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -6797,6 +6859,10 @@ export default function GISCanvasPage() {
                       hint="Trench ends close to another trench but not joined"
                       disabled={!!busy || !projectId}
                       onClick={findGaps} />
+                    <MenuItem label="Step Through Traces"
+                      hint="One meter at a time, with its own route to the substation"
+                      disabled={!routePlan?.ok}
+                      onClick={() => setStepAt(0)} />
                     <MenuItem label="Trace All Meters"
                       hint="Shortest route home for every meter, shaded by how many use each section"
                       disabled={!!busy || !projectId}
@@ -7533,6 +7599,61 @@ export default function GISCanvasPage() {
                   onClick={() => setRoutePlan(null)}>Discard</button>
               </div>
             )}
+
+            {/* Stepping through the traces, one meter at a time. */}
+            {stepAt != null && routePlan?.ok && (() => {
+              const all = [
+                ...(routePlan.served || []).map((x) => ({ ...x, kind: "traced" })),
+                ...(routePlan.unreachable || []).map((x) => ({ ...x, kind: "none" })),
+              ];
+              const item = all[stepAt];
+              if (!item) return null;
+              const m = item.meter ?? item;
+              const go = (n) => {
+                const next = Math.max(0, Math.min(all.length - 1, n));
+                setStepAt(next);
+                const nm = all[next].meter ?? all[next];
+                zoomToPoints([(nm.Geometry || [])[0] || [0, 0]]);
+              };
+              return (
+                <div className="gis-step">
+                  <button className="gsp-b" disabled={stepAt === 0}
+                    onClick={() => go(stepAt - 1)}>&larr;</button>
+                  <span className="gsp-n">{stepAt + 1} of {all.length}</span>
+                  <strong className="gsp-plot">{plotLabel(m)}</strong>
+
+                  {item.kind === "none" ? (
+                    <span className="gsp-bad">{item.why}</span>
+                  ) : (
+                    <>
+                      <span className="gsp-f">
+                        {`service ${item.serviceM} m`}
+                        {item.serviceDrawn ? "" : " (no service trench)"}
+                      </span>
+                      <span className="gsp-f">{`run ${item.runM} m`}</span>
+                      <span className="gsp-f">
+                        {`${item.path?.length ?? 0} section(s)`}
+                      </span>
+                      {item.warnings?.length > 0 && (
+                        <span className="gsp-warn">{item.warnings[0].text}</span>
+                      )}
+                    </>
+                  )}
+
+                  <button className="gsp-b" disabled={stepAt >= all.length - 1}
+                    onClick={() => go(stepAt + 1)}>&rarr;</button>
+                  {/* Straight to the ones that did not trace, which is
+                      what somebody stepping through is looking for. */}
+                  {routePlan.unreachable?.length > 0 && (
+                    <button className="gsp-jump"
+                      onClick={() => go((routePlan.served || []).length)}>
+                      {`First of ${routePlan.unreachable.length} untraced`}
+                    </button>
+                  )}
+                  <button className="gsp-x" onClick={() => setStepAt(null)}>Done</button>
+                </div>
+              );
+            })()}
 
             {/* Find. */}
             {findOpen && (
@@ -8463,6 +8584,26 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   font: 600 10.5px inherit; padding: 2px 7px; color: var(--muted); }
 .gt-hi:hover { border-color: var(--accent); color: var(--accent); }
 .dt .gt-on, .gt-tbl tr.gt-on { background: var(--accent-light); }
+/* The step-through bar. Sits with the other floating panels rather than
+   in a dialog: the point of it is watching the drawing while moving from
+   meter to meter. */
+.gis-step { position: absolute; left: 50%; transform: translateX(-50%);
+  bottom: 18px; z-index: 40; display: flex; align-items: center; gap: 10px;
+  background: var(--white); border: 1px solid var(--border); border-radius: 10px;
+  padding: 7px 12px; box-shadow: 0 4px 18px rgba(0,0,0,.13); font-size: 12px;
+  max-width: 92%; flex-wrap: wrap; }
+.gsp-b { background: var(--bg); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; font: 700 13px inherit; padding: 2px 10px; }
+.gsp-b:disabled { opacity: .4; cursor: not-allowed; }
+.gsp-n { color: var(--muted); font-weight: 600; white-space: nowrap; }
+.gsp-plot { color: #7c3aed; white-space: nowrap; }
+.gsp-f { color: var(--muted); white-space: nowrap; }
+.gsp-warn { color: #b45309; font-weight: 600; }
+.gsp-bad { color: #b91c1c; font-weight: 600; }
+.gsp-jump { background: #fef2f2; border: 1px solid #fecaca; border-radius: 6px;
+  cursor: pointer; font: 600 11px inherit; padding: 3px 10px; color: #b91c1c; }
+.gsp-x { background: none; border: none; cursor: pointer; font: 600 11.5px inherit;
+  color: var(--accent); }
 .gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
   padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;

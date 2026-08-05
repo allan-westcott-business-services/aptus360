@@ -786,13 +786,22 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
       continue;
     }
 
-    /* Walk back, counting each section as used once by this meter. */
+    /* Walk back, counting each section as used once by this meter, and
+       keeping the path.
+
+       The counts alone say how busy a section is and nothing about how
+       any one meter got there. When a trace looks wrong, the route it
+       took is the only thing that answers it — so it is kept rather
+       than recomputed later from figures that have already been added
+       together. */
+    const path = [];
     let at = best.node;
     let guard = 0;
     while (at !== root && at !== -1 && guard++ < nodes.length) {
       const e = via[at];
       if (e < 0) break;
       uses.set(e, (uses.get(e) || 0) + 1);
+      path.push(e);
       at = from[at];
     }
 
@@ -850,6 +859,11 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
       serviceM: Math.round(serviceM * 100) / 100,
       /* Whether that came from a drawn service or a guess. */
       serviceDrawn: fromDrawn,
+      /* The sections this meter runs through, substation end last. */
+      path,
+      /* Its service trench, where one was found, so the whole route can
+         be drawn from the meter rather than from the tee. */
+      serviceGeometry: svc?.service?.Geometry ?? null,
       runM: Math.round((best.run - best.f.serviceM + serviceM) * 10) / 10,
       warnings,
     });

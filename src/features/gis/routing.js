@@ -545,6 +545,74 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
   };
 }
 
+/* Where a meter's service actually runs, given a drawn service trench.
+
+   A service does not go from the meter to the nearest bit of trench in a
+   straight line. It runs along the service trench that was drawn for it,
+   from the meter to wherever that trench meets a main — and that is the
+   length that matters, and the point on the main that matters.
+
+   Measuring the perpendicular instead gave two wrong answers at once: a
+   service length that was not the one being dug, and a tee at a point
+   nobody had chosen. On a site where the meters sit well back from the
+   road it reported nearly every plot as over the service limit, by a
+   distance that was really the width of a garden.
+
+   Falls back to the perpendicular where no service trench has been
+   drawn, so a part-drawn site still traces. */
+export function serviceFor(meter, services = [], mains = [], opts = {}) {
+  const { attachM = 2.0 } = opts;
+  const p = (meter.Geometry || [])[0];
+  if (!p) return null;
+
+  let best = null;
+
+  for (const t of services) {
+    const g = t.Geometry || [];
+    if (g.length < 2) continue;
+
+    /* Which end of this service is the meter's end. A service is drawn
+       from the meter to the main or the other way about, and both are
+       ordinary. */
+    const dStart = dist(p, g[0]);
+    const dEnd = dist(p, g[g.length - 1]);
+    const atMeter = Math.min(dStart, dEnd);
+    if (atMeter > attachM) continue;
+
+    /* The far end is where it meets the main. */
+    const far = dStart <= dEnd ? g[g.length - 1] : g[0];
+
+    /* Its length, along the trench rather than end to end — a service
+       that dog-legs round a corner is longer than it looks. */
+    let len = 0;
+    for (let i = 0; i + 1 < g.length; i++) len += dist(g[i], g[i + 1]);
+
+    /* Where that far end lands on a main. */
+    let onMain = null;
+    for (const m of mains) {
+      const mg = m.Geometry || [];
+      for (let i = 0; i + 1 < mg.length; i++) {
+        const f = footOnSegment(far, mg[i], mg[i + 1]);
+        if (!onMain || f.d < onMain.d) onMain = { ...f, trench: m };
+      }
+    }
+    if (!onMain || onMain.d > attachM) continue;
+
+    /* Nearest to the meter wins, where a plot has more than one drawn. */
+    if (!best || atMeter < best.atMeter) {
+      best = {
+        service: t,
+        atMeter,
+        serviceM: len,
+        point: onMain.point,
+        mainTrench: onMain.trench,
+      };
+    }
+  }
+
+  return best;
+}
+
 /* Tracing every meter back to the substation by its own shortest route.
 
    A different question from the one planRoute answers, and a better one
@@ -589,11 +657,42 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
      still cannot be traced is one with no route to the substation at
      all — and that is a fault in the trenches, not a limit. */
   const serviceLimit = opts.maxServiceM ?? 10;
-  const graph = buildGraph(trenches, meters, {
+
+  /* Mains and services, told apart.
+
+     The network is routed along mains only — a service runs from one
+     meter to one main and is not a way through to anywhere. Services are
+     used to say where each meter tees in and how long its service
+     actually is. */
+  const isService = opts.isService
+    ?? ((t) => /service/i.test(String(t?.Attributes?.Line_Type ?? "")));
+  const mains = trenches.filter((t) => !isService(t));
+  const services = trenches.filter((t) => isService(t));
+
+  /* Each meter's own service, where one has been drawn. */
+  const drawn = new Map();
+  for (const m of meters) {
+    const svc = serviceFor(m, services, mains, opts);
+    if (svc) drawn.set(m.Feature_ID, svc);
+  }
+
+  /* The graph is built from the mains, with each meter placed at the
+     point its service meets one. A meter with a drawn service is moved
+     to that point, so buildGraph's perpendicular finds it there and the
+     foot is where the tee actually is.
+
+     Meters with no service drawn keep their own position and fall back
+     to the perpendicular, so a part-drawn site still traces. */
+  const placed = meters.map((m) => {
+    const svc = drawn.get(m.Feature_ID);
+    return svc ? { ...m, Geometry: [svc.point] } : m;
+  });
+
+  const graph = buildGraph(mains, placed, {
     ...opts,
-    /* Far enough that every meter finds a foot somewhere. Not unlimited:
-       a meter on the far side of the site should attach to trench near
-       it, not to whatever happens to be nearest the board. */
+    isService,
+    /* Meters with a drawn service now sit on the main, so their foot is
+       at zero. The allowance is for the ones without. */
     maxServiceM: opts.traceServiceM ?? Math.max(serviceLimit * 10, 100),
   });
   const { nodes, edges, options } = graph;
@@ -667,6 +766,18 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
        wants a trench nearer, the second wants a different route or a
        bigger cable. Both are reported per meter so the drawing can mark
        them and the totals still add up. */
+    /* The service length: the drawn one where there is one, and the
+       perpendicular only where there is not.
+
+       This is the figure that was wrong. A meter thirty metres back from
+       the road with a service trench drawn to it has a thirty-metre
+       service, not a thirty-metre problem — and where the service runs
+       round a corner it is longer still. Measuring the straight line to
+       the nearest trench reported the width of a garden as a fault. */
+    const svc = drawn.get(o.meter.Feature_ID);
+    const serviceM = svc ? svc.serviceM : best.f.serviceM;
+    const fromDrawn = !!svc;
+
     /* Typed as well as worded, so a caller can group them without
        picking the numbers back out of a sentence.
 
@@ -674,13 +785,16 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
        grouped by blanking the figure out of it — which printed "Service
        is N m" on screen, a message with the one useful number removed. */
     const warnings = [];
-    if (best.f.serviceM > serviceLimit) {
+    if (serviceM > serviceLimit) {
       warnings.push({
         kind: "service",
-        m: Math.round(best.f.serviceM),
+        m: Math.round(serviceM),
         limit: serviceLimit,
-        text: `${Math.round(best.f.serviceM)} m from the nearest trench, `
-          + `over the ${serviceLimit} m service limit.`,
+        text: fromDrawn
+          ? `${Math.round(serviceM)} m along its service trench, over the `
+            + `${serviceLimit} m limit.`
+          : `${Math.round(serviceM)} m from the nearest main and no service `
+            + `trench drawn, over the ${serviceLimit} m limit.`,
       });
     }
     if (best.run > maxRunM) {
@@ -697,8 +811,10 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
       meter: o.meter,
       foot: nodes[best.node],
       footNode: best.node,
-      serviceM: Math.round(best.f.serviceM * 100) / 100,
-      runM: Math.round(best.run * 10) / 10,
+      serviceM: Math.round(serviceM * 100) / 100,
+      /* Whether that came from a drawn service or a guess. */
+      serviceDrawn: fromDrawn,
+      runM: Math.round((best.run - best.f.serviceM + serviceM) * 10) / 10,
       warnings,
     });
   }

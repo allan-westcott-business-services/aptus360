@@ -19,6 +19,13 @@ const TABLES = {
      the newest absence is not buried under three years of old ones. */
   Person_Region:   { pk: "Person_Region_ID",   order: "Person_Region_ID" },
   Person_Holiday:  { pk: "Person_Holiday_ID",  order: "Start_DateTime" },
+  /* Teams: the gang, who is on it, and what it is qualified and
+     permitted to do. */
+  Craft:           { pk: "Craft_ID",           order: "Sort_Order" },
+  Team:            { pk: "Team_ID",            order: "Team_Name" },
+  Team_Member:     { pk: "Team_Member_ID",     order: "Team_Member_ID" },
+  Team_Craft:      { pk: "Team_Craft_ID",      order: "Team_Craft_ID" },
+  Team_Region:     { pk: "Team_Region_ID",     order: "Team_Region_ID" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

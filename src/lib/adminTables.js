@@ -96,6 +96,10 @@ export const ADMIN_TABLES = [
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
   { key: "Person", label: "People & Roles", special: "people" },
+  /* Teams sit with people: a team is who turns up, and the two are
+     maintained together — somebody joining the company is added here
+     next. */
+  { key: "Team", label: "Teams", special: "teams" },
   { key: "Role", label: "Role", pk: "Role_ID", fields: [
       { col: "Role", label: "Role Name", type: "text", required: true },
       { col: "Role_Code", label: "Code", type: "text", required: true },

@@ -57,7 +57,7 @@ export default function PeopleRolesAdmin() {
   const [by, setBy] = useState("person");
   const [selected, setSelected] = useState(null);
   const [search, setSearch] = useState("");
-  const [draft, setDraft] = useState({ Person_Name: "", Email: "" });
+  const [draft, setDraft] = useState({ Person_Name: "", Email: "", Telephone: "" });
   const [adding, setAdding] = useState(false);
 
   /* Where somebody works, and when they are not working. Both belong on
@@ -214,7 +214,7 @@ export default function PeopleRolesAdmin() {
     if (!draft.Person_Name.trim()) return setError("Name is required.");
     try {
       const created = await adminCreate("Person", { ...draft, Is_Active: true });
-      setDraft({ Person_Name: "", Email: "" });
+      setDraft({ Person_Name: "", Email: "", Telephone: "" });
       setAdding(false);
       await load();
       setSelected(created?.Person_ID ?? null);
@@ -294,6 +294,15 @@ export default function PeopleRolesAdmin() {
                   onChange={(e) => setDraft((d) => ({ ...d, Email: e.target.value }))}
                   onKeyDown={(e) => e.key === "Enter" && addPerson()}
                 />
+                {/* Optional, but worth asking for: a team's number is its
+                    leader's, so a person with none can lead a gang
+                    nobody can ring. */}
+                <input
+                  placeholder="Telephone (optional)"
+                  value={draft.Telephone}
+                  onChange={(e) => setDraft((d) => ({ ...d, Telephone: e.target.value }))}
+                  onKeyDown={(e) => e.key === "Enter" && addPerson()}
+                />
                 <div className="pr-add-actions">
                   <button className="btn ghost" onClick={() => setAdding(false)}>Cancel</button>
                   <button className="btn accent" onClick={addPerson}>Add</button>
@@ -315,7 +324,12 @@ export default function PeopleRolesAdmin() {
             <>
               <div className="pr-detail-head">
                 <h3>{current[labelKey]}</h3>
-                {by === "person" && current.Email && <p className="pr-mail">{current.Email}</p>}
+                {by === "person" && (
+                  <p className="pr-mail">
+                    {current.Email || "no email"}
+                    {current.Telephone ? ` \u00b7 ${current.Telephone}` : ""}
+                  </p>
+                )}
                 {by === "role" && current.Role_Code && (
                   <p className="pr-mail mono">{current.Role_Code}</p>
                 )}

@@ -89,6 +89,24 @@ export default function TeamsAdmin() {
     return `Contact ${m.Contact_ID}`;
   };
 
+  /* A team's contact details are its leader's.
+
+     Not stored on the team: a leader changing would leave the team with
+     the previous one's number, and nothing would say so. Derived, so it
+     is right by construction and wrong only in the way the underlying
+     record is wrong.
+
+     Where nobody leads, or the leader is a supplier's contact whose
+     details are not loaded here, the team has no contact details and the
+     panel says so rather than showing a blank. */
+  const leaderOf = (teamId) => {
+    const m = membersOf(teamId).find((x) => x.Is_Team_Leader);
+    if (!m) return null;
+    if (m.Person_ID == null) return { contactOnly: true, member: m };
+    const p = people.find((x) => Number(x.Person_ID) === Number(m.Person_ID));
+    return p ? { person: p, member: m } : { missing: true, member: m };
+  };
+
   const count = (id, teamId) => {
     if (!teamId) return 0;
     if (id === "members") return membersOf(teamId).length;
@@ -273,6 +291,7 @@ export default function TeamsAdmin() {
                     : "In-house team"}
                   {current.Rate ? ` \u00b7 \u00a3${current.Rate} per ${current.Rate_Unit || "day"}` : ""}
                 </p>
+                <TeamContact lead={leaderOf(current.Team_ID)} />
               </div>
 
               <div className="tm-tabs" role="tablist">
@@ -412,6 +431,53 @@ export default function TeamsAdmin() {
   );
 }
 
+/* How to reach a team: its leader's email and telephone.
+
+   Shown beside the team rather than tucked inside the Members tab,
+   because ringing the gang is the commonest reason for opening a team at
+   all and should not need a click.
+
+   Every state says what it is. "No team leader set" and "leader has no
+   telephone" are different problems with different fixes, and a blank
+   would be neither. */
+function TeamContact({ lead }) {
+  if (!lead) {
+    return (
+      <p className="tm-contact none">
+        No team leader set &mdash; no contact details.
+      </p>
+    );
+  }
+  if (lead.contactOnly) {
+    return (
+      <p className="tm-contact none">
+        Led by a supplier contact &mdash; details are on the supplier record.
+      </p>
+    );
+  }
+  if (lead.missing) {
+    return (
+      <p className="tm-contact none">
+        The team leader is not in the people list.
+      </p>
+    );
+  }
+
+  const { person } = lead;
+  const bits = [];
+  if (person.Email) bits.push(person.Email);
+  if (person.Telephone) bits.push(person.Telephone);
+
+  return (
+    <p className="tm-contact">
+      <span className="tm-contact-who">{person.Person_Name}</span>
+      {bits.length
+        ? bits.map((b, i) => <span key={i} className="tm-contact-bit">{b}</span>)
+        : <span className="tm-contact-bit none">no email or telephone on record</span>}
+    </p>
+  );
+}
+
 /* A tick list against one lookup table. Crafts and regions ask the same
    question of different rows, so they are one component. */
 function LinkList({ rows, idField, labelField, isOn, onToggle, busy, table, empty }) {
@@ -459,6 +525,11 @@ const CSS = `
   margin-bottom: 0; }
 .tm-detail-head h3 { margin: 0; font-size: 16px; }
 .tm-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
+.tm-contact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+  margin: 6px 0 0; font-size: 12px; }
+.tm-contact-who { font-weight: 700; }
+.tm-contact-bit { color: var(--text); }
+.tm-contact-bit.none, .tm-contact.none { color: var(--muted); font-style: italic; }
 .tm-tabs { display: flex; gap: 2px; overflow-x: auto; margin: 0 0 14px;
   border-bottom: 1px solid var(--border); }
 .tm-tab { background: none; border: none; border-bottom: 2px solid transparent;

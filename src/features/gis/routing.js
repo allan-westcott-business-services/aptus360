@@ -573,7 +573,29 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
    A section used by nobody is trench nobody needs. */
 export function traceAll(trenches = [], meters = [], substation, opts = {}) {
   const rates = { ...DEFAULT_RATES, ...(opts.rates || {}) };
-  const graph = buildGraph(trenches, meters, opts);
+
+  /* Every meter is traced, and the limits become findings rather than
+     exclusions.
+
+     Dropping a meter for being 12 m from the nearest trench, or 640 m
+     from the board, answered a question nobody asked: the drawing shows
+     forty-seven meters and the trace has to account for forty-seven. A
+     meter left out of the counts makes every number downstream wrong,
+     and the reason it was left out is exactly the thing somebody needs
+     to see on the drawing rather than infer from a total.
+
+     So the graph is built with the caps lifted, every meter is routed,
+     and the ones outside the limits are marked. The only meter that
+     still cannot be traced is one with no route to the substation at
+     all — and that is a fault in the trenches, not a limit. */
+  const serviceLimit = opts.maxServiceM ?? 10;
+  const graph = buildGraph(trenches, meters, {
+    ...opts,
+    /* Far enough that every meter finds a foot somewhere. Not unlimited:
+       a meter on the far side of the site should attach to trench near
+       it, not to whatever happens to be nearest the board. */
+    maxServiceM: opts.traceServiceM ?? Math.max(serviceLimit * 10, 100),
+  });
   const { nodes, edges, options } = graph;
 
   const subPt = (substation?.Geometry || [])[0];
@@ -596,9 +618,6 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
   const served = [];
   const unreachable = [];
   const maxRunM = opts.maxRunM ?? 600;
-  /* Quoted back in the reasons below, so the message carries the figure
-     actually in force rather than one written into a sentence. */
-  const maxServiceLimit = opts.maxServiceM ?? 10;
 
   for (const o of options) {
     /* The foot giving the shortest total run — mains from the
@@ -610,7 +629,7 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
       const run = d + f.serviceM;
       if (!best || run < best.run) best = { f, run, node: f.node };
     }
-    if (!best || best.run > maxRunM) {
+    if (!best) {
       /* Why, not just that.
 
          Three quite different faults end up here and they have three
@@ -618,19 +637,16 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
          accept a longer run. A count of unreachable meters tells
          somebody none of that, and the commonest of the three is
          invisible on the drawing. */
-      let why;
-      if (!o.feet.length) {
-        why = `No trench within ${maxServiceLimit} m to service it.`;
-      } else if (!best) {
-        /* Feet exist, so there is trench beside it — but no route from
-           the substation reaches any of them. Something between here and
-           the board is not joined. */
-        why = "Not connected to the substation \u2014 check the trench joins "
-          + "between here and the board.";
-      } else {
-        why = `Nearest route is ${Math.round(best.run)} m, over the `
-          + `${maxRunM} m limit.`;
-      }
+      /* The only thing that still cannot be traced: no route at all.
+
+         Either nothing is drawn anywhere near it, or the trench beside
+         it does not reach the board. Both are faults in the drawing
+         rather than limits, and both want fixing before the counts mean
+         anything. */
+      const why = o.feet.length
+        ? "Not connected to the substation \u2014 check the trench joins "
+          + "between here and the board."
+        : "No trench anywhere near it.";
       unreachable.push({ meter: o.meter, why });
       continue;
     }
@@ -645,12 +661,28 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
       at = from[at];
     }
 
+    /* Traced, and told apart from the ones that traced comfortably.
+
+       A long service and a long run are different problems: the first
+       wants a trench nearer, the second wants a different route or a
+       bigger cable. Both are reported per meter so the drawing can mark
+       them and the totals still add up. */
+    const warnings = [];
+    if (best.f.serviceM > serviceLimit) {
+      warnings.push(`Service is ${Math.round(best.f.serviceM)} m, over the `
+        + `${serviceLimit} m limit.`);
+    }
+    if (best.run > maxRunM) {
+      warnings.push(`Run is ${Math.round(best.run)} m, over the ${maxRunM} m limit.`);
+    }
+
     served.push({
       meter: o.meter,
       foot: nodes[best.node],
       footNode: best.node,
       serviceM: Math.round(best.f.serviceM * 100) / 100,
       runM: Math.round(best.run * 10) / 10,
+      warnings,
     });
   }
 
@@ -683,6 +715,11 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
     /* The busiest section on the drawing, which the shading scales
        against. */
     peak: used.reduce((m, e) => Math.max(m, e.uses), 0),
+    /* Traced but outside a limit. Separate from unreachable, because
+       these are on the drawing and in the counts — they simply want
+       looking at. */
+    flagged: served.filter((x) => x.warnings.length),
+    serviceLimit,
     liveByTrench: [...perTrench].map(([id, v]) => ({
       Feature_ID: id,
       liveM: Math.round(v.liveM * 10) / 10,

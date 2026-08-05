@@ -1450,6 +1450,19 @@ export default function GISCanvasPage() {
       /* Either shape: the trace names a reason per meter, the cheapest
          network returns the meters alone. Read as one so the drawing
          does not care which question was asked. */
+      /* Traced but outside a limit: ringed amber, so it is told apart
+         from one that could not be traced at all. Different colour for
+         a different problem — a long service wants a trench nearer, a
+         meter with no route wants a junction joining. */
+      for (const f of routePlan.flagged || []) {
+        const p2 = toPx((f.meter.Geometry || [])[0] || [0, 0]);
+        ctx.beginPath();
+        ctx.arc(p2.x, p2.y, 8, 0, Math.PI * 2);
+        ctx.strokeStyle = "#d97706";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
       for (const u of routePlan.unreachable) {
         const m = u?.meter ?? u;
         const p2 = toPx((m.Geometry || [])[0] || [0, 0]);
@@ -4344,7 +4357,30 @@ export default function GISCanvasPage() {
        end up in that number and each has its own fix — draw a trench
        nearer, join a junction, or accept a longer run — so the message
        says how many of each and which plots. */
-    if (!plan.unreachable.length) { setError(""); return; }
+    /* Flagged first, since with every meter now traced these are the
+       common finding and unreachable is the rare one. */
+    const notes = [];
+    if (plan.flagged?.length) {
+      const byWhy = new Map();
+      for (const f of plan.flagged) {
+        for (const w of f.warnings) {
+          if (!byWhy.has(w.replace(/\d+ m/, "N m"))) {
+            byWhy.set(w.replace(/\d+ m/, "N m"), []);
+          }
+          byWhy.get(w.replace(/\d+ m/, "N m")).push(plotLabel(f.meter));
+        }
+      }
+      for (const [why, plots] of byWhy) {
+        const shown = plots.slice(0, 6).join(", ");
+        const more = plots.length > 6 ? ` and ${plots.length - 6} more` : "";
+        notes.push(`${plots.length} over a limit \u2014 ${why} (${shown}${more})`);
+      }
+    }
+
+    if (!plan.unreachable.length) {
+      setError(notes.join("  \u00b7  "));
+      return;
+    }
 
     const byReason = new Map();
     for (const u of plan.unreachable) {
@@ -4352,13 +4388,13 @@ export default function GISCanvasPage() {
       if (!byReason.has(why)) byReason.set(why, []);
       byReason.get(why).push(plotLabel(u?.meter ?? u));
     }
-    setError([...byReason].map(([why, plots]) => {
+    setError([...notes, ...[...byReason].map(([why, plots]) => {
       /* A few named, then a count. Forty plot numbers in an error is a
          paragraph nobody reads. */
       const shown = plots.slice(0, 6).join(", ");
       const more = plots.length > 6 ? ` and ${plots.length - 6} more` : "";
       return `${plots.length}: ${why} (${shown}${more})`;
-    }).join("  \u00b7  "));
+    })].join("  \u00b7  "));
   }
 
   /* A meter's plot number, for a message. Falls back to the feature id,
@@ -7444,6 +7480,11 @@ export default function GISCanvasPage() {
                   ? "gsg-w" : "gsg-n"}>
                   {`longest run ${routePlan.longestRunM} m`}
                 </span>
+                {routePlan.flagged?.length > 0 && (
+                  <span className="gsg-n" style={{ color: "#b45309" }}>
+                    {`${routePlan.flagged.length} over a limit`}
+                  </span>
+                )}
                 {routePlan.unreachable.length > 0 && (
                   <span className="gsg-w">
                     {`${routePlan.unreachable.length} unreachable`}

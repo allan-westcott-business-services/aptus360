@@ -148,6 +148,20 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
      Without a limit every run is linked to every other and the graph
      grows with the square of the drawing. The cap is also physical: a
      link across sixty metres of somebody's garden is not a link. */
+  /* Which trenches are services rather than mains.
+
+     Passed in rather than decided here: the line types are configured,
+     not fixed, and a module matching on the word "service" would be
+     wrong the day somebody renames one. The default is that guess, for
+     a caller with nothing better to offer.
+
+     Declared out here rather than inside the crossings block, where it
+     was first written — the loops that use it are in that block but the
+     declaration was not, and buildGraph threw on the first drawing with
+     a trench on it. */
+  const isService = opts.isService
+    ?? ((t) => /service/i.test(String(t?.Attributes?.Line_Type ?? "")));
+
   const crossings = [];
   if (opts.crossings !== false) {
     /* The longest link the router may dig between one run and another.
@@ -185,8 +199,16 @@ export function buildGraph(trenches = [], meters = [], opts = {}) {
     };
 
     for (const from of segments) {
+      /* Never from a service trench. */
+      if (isService(from.trench)) continue;
       for (const to of segments) {
         if (from === to) continue;
+        /* Nor onto one.
+
+           A service runs from one meter to one main. Joining two of them
+           would dig a trench through somebody's front garden, and using
+           one as a way through to somewhere else is not what it is. */
+        if (isService(to.trench)) continue;
         /* One direction only — a link is the same trench whichever end
            it is measured from, and both directions would dig it twice. */
         if (segments.indexOf(from) > segments.indexOf(to)) continue;
@@ -671,4 +693,230 @@ export function endPointsOf(graph, liveEdges, root) {
   return [...count]
     .filter(([node, n]) => n === 1 && node !== root)
     .map(([node]) => ({ node, point: graph.nodes[node] }));
+}
+
+/* Balancing the legs out of the substation.
+
+   A plain trace gives every meter its shortest route, which is right for
+   volt drop and says nothing about load. On a site with loops that
+   usually leaves one leg carrying most of the plots because it happens
+   to be a few metres nearer, and the substation way feeding it is then
+   the one that sizes the whole board.
+
+   ── Where the freedom is ──
+
+   Only where a meter can reach the substation more than one way. On a
+   tree there is one route and nothing to balance; on a ring there are
+   two, and choosing the longer one for some plots is what evens the
+   legs out. So the first thing this reports is whether there was any
+   choice at all — a balanced answer on a drawing with no loops is the
+   same answer, and saying so is more use than a table of identical
+   numbers.
+
+   ── The two aims pull against each other ──
+
+   Equal counts wants plots moved to the emptier leg. Equal furthest-run
+   wants them left where they are, because the alternative route is
+   longer by definition. Both are served by the same move only when the
+   emptier leg is also the shorter one.
+
+   Weighted rather than ranked, so the trade is visible and adjustable
+   instead of one aim silently always winning. */
+
+export function balanceLegs(trenches = [], meters = [], substation, opts = {}) {
+  const {
+    /* How much an uneven count costs against an uneven run. Raise it and
+       the legs carry the same number of plots at the cost of longer
+       runs; lower it and the runs stay short and one leg fills up. */
+    countWeight = 1,
+    runWeight = 1,
+    /* Runs longer than this are not offered whatever it would do for the
+       balance — a level leg nobody can energise is not a solution. */
+    maxRunM = opts.maxRunM ?? 600,
+    passes = 12,
+  } = opts;
+
+  const graph = buildGraph(trenches, meters, opts);
+  const { nodes, edges, adj, options } = graph;
+
+  const subPt = (substation?.Geometry || [])[0];
+  if (!subPt) return { error: "No substation on the drawing." };
+  if (!edges.length) return { error: "No trenches to route along." };
+
+  let root = 0;
+  let rootD = Infinity;
+  nodes.forEach((n, i) => {
+    const d = dist(n, subPt);
+    if (d < rootD) { rootD = d; root = i; }
+  });
+
+  /* The legs: the edges leaving the substation. Each is a way out of the
+     board, and what is being balanced is what hangs off each. */
+  const legEdges = (adj.get(root) || []).map((x) => x.edge);
+  if (legEdges.length < 2) {
+    return {
+      ok: true, single: true, root, graph,
+      note: "Only one route leaves the substation, so there is nothing to balance.",
+      legs: [],
+    };
+  }
+
+  /* Shortest distance to every node using each leg first.
+
+     Spread from the leg's far end with the leg's own length as the
+     starting cost, and never back through the root — otherwise every
+     leg reaches everything by going round through the others and the
+     figures say nothing. */
+  const perLeg = legEdges.map((ei) => {
+    const e = edges[ei];
+    const start = e.u === root ? e.v : e.u;
+    const cost = new Array(nodes.length).fill(Infinity);
+    cost[start] = e.len;
+    const seen = new Set([root]);
+
+    for (;;) {
+      let best = -1;
+      for (let i = 0; i < nodes.length; i++) {
+        if (seen.has(i) || cost[i] === Infinity) continue;
+        if (best < 0 || cost[i] < cost[best]) best = i;
+      }
+      if (best < 0) break;
+      seen.add(best);
+      for (const { to, edge } of adj.get(best) || []) {
+        if (to === root) continue;
+        const c = cost[best] + edges[edge].len;
+        if (c < cost[to]) cost[to] = c;
+      }
+    }
+    return { edge: ei, start, cost };
+  });
+
+  /* What each meter would cost on each leg. */
+  const choices = [];
+  const unreachable = [];
+  for (const o of options) {
+    const runs = perLeg.map((leg, i) => {
+      let best = Infinity;
+      for (const f of o.feet) {
+        const c = leg.cost[f.node];
+        if (c === Infinity) continue;
+        const run = c + f.serviceM;
+        if (run < best) best = run;
+      }
+      return { leg: i, run: best };
+    }).filter((x) => x.run !== Infinity && x.run <= maxRunM);
+
+    if (!runs.length) { unreachable.push(o.meter); continue; }
+    runs.sort((a, b) => a.run - b.run);
+    choices.push({ meter: o.meter, runs });
+  }
+
+  /* Start where the plain trace would: everybody on their shortest leg.
+     Balancing then moves the ones that cost least to move. */
+  const assign = choices.map((c) => c.runs[0].leg);
+
+  const measure = (a) => {
+    const counts = new Array(perLeg.length).fill(0);
+    const furthest = new Array(perLeg.length).fill(0);
+    a.forEach((legIdx, i) => {
+      counts[legIdx] += 1;
+      const r = choices[i].runs.find((x) => x.leg === legIdx)?.run ?? 0;
+      if (r > furthest[legIdx]) furthest[legIdx] = r;
+    });
+    return { counts, furthest };
+  };
+
+  /* The thing being minimised: how far apart the legs are on each aim.
+
+     Spread rather than variance — the difference between the busiest and
+     the emptiest is the number somebody looks at, and it is the one that
+     decides whether the answer is acceptable. */
+  const scoreOf = (a) => {
+    const { counts, furthest } = measure(a);
+    const used = counts.map((c, i) => ({ c, f: furthest[i] }))
+      .filter((x) => x.c > 0);
+    if (used.length < 2) return Infinity;
+    const cSpread = Math.max(...used.map((x) => x.c)) - Math.min(...used.map((x) => x.c));
+    const fSpread = Math.max(...used.map((x) => x.f)) - Math.min(...used.map((x) => x.f));
+    /* Counts are plots and runs are metres, so they are scaled before
+       being added — otherwise a hundred metres always outweighs a plot
+       and the count aim does nothing. */
+    return cSpread * countWeight * 10 + fSpread * runWeight;
+  };
+
+  /* Local search: move whichever single meter improves things most, and
+     stop when nothing does.
+
+     Not exhaustive — the exact answer is a partitioning problem and this
+     is a drawing somebody is waiting on. It settles in a few passes and
+     the figures are reported, so an answer that is not good enough is
+     visible rather than assumed. */
+  let score = scoreOf(assign);
+  const before = measure(assign);
+
+  for (let pass = 0; pass < passes; pass++) {
+    let moved = false;
+    for (let i = 0; i < assign.length; i++) {
+      const current = assign[i];
+      for (const alt of choices[i].runs) {
+        if (alt.leg === current) continue;
+        assign[i] = alt.leg;
+        const s = scoreOf(assign);
+        if (s < score) { score = s; moved = true; break; }
+        assign[i] = current;
+      }
+    }
+    if (!moved) break;
+  }
+
+  const after = measure(assign);
+
+  return {
+    ok: true,
+    graph,
+    root,
+    maxRunM,
+    unreachable,
+    /* Whether any meter had more than one route. Without loops there is
+       no choice and the answer is the plain trace. */
+    hadChoice: choices.some((c) => c.runs.length > 1),
+    legs: perLeg.map((leg, i) => ({
+      edge: leg.edge,
+      from: nodes[root],
+      to: nodes[leg.start],
+      meters: after.counts[i],
+      furthestM: Math.round(after.furthest[i] * 10) / 10,
+    })),
+    served: choices.map((c, i) => ({
+      meter: c.meter,
+      leg: assign[i],
+      runM: Math.round((c.runs.find((x) => x.leg === assign[i])?.run ?? 0) * 10) / 10,
+    })),
+    /* Whether the two aims could both be served, or one had to give.
+
+       On a ring they usually conflict: the plots that would even the
+       counts are on the far side, so moving them lengthens the leg they
+       move to. Saying which happened is worth more than a number that
+       looks optimal — an answer of 9/1 is not the balancer failing, it
+       is the balancer refusing to add three hundred metres of run to
+       level a count. */
+    conflict: (() => {
+      const cBefore = Math.max(...before.counts) - Math.min(...before.counts);
+      const cAfter = Math.max(...after.counts) - Math.min(...after.counts);
+      const fBefore = Math.max(...before.furthest) - Math.min(...before.furthest);
+      const fAfter = Math.max(...after.furthest) - Math.min(...after.furthest);
+      if (cAfter < cBefore && fAfter <= fBefore) return "both improved";
+      if (cAfter < cBefore) return "counts levelled, runs lengthened";
+      if (fAfter < fBefore) return "runs levelled, counts unchanged";
+      return "no move improved either without costing more elsewhere";
+    })(),
+    before: {
+      counts: before.counts,
+      furthest: before.furthest.map((f) => Math.round(f * 10) / 10),
+    },
+    after: {
+      counts: after.counts,
+      furthest: after.furthest.map((f) => Math.round(f * 10) / 10),
+    },
+  };
 }

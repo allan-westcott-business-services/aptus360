@@ -57,7 +57,7 @@ import { planRoute, traceAll } from "./routing.js";
 import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
-import { find as findFeatures, strays } from "./find.js";
+import { find as findFeatures, strays, gaps } from "./find.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -218,6 +218,14 @@ export default function GISCanvasPage() {
      applied: it is a suggestion about several thousand pounds of
      groundwork, and the drawing stays as it is until somebody agrees. */
   const [routePlan, setRoutePlan] = useState(null);
+
+  /* Junctions that are not junctions.
+
+     A route that goes the long way round, or a section carrying nothing
+     when it plainly should, is nearly always two trenches drawn to the
+     same corner a few centimetres apart. They look joined at any working
+     zoom and are two networks as far as the trace is concerned. */
+  const [gapList, setGapList] = useState(null);
 
   /* A proposed trench route, before anything is written.
 
@@ -1193,6 +1201,48 @@ export default function GISCanvasPage() {
        proposal is not part of the drawing yet, and a candidate that
        merely looks different from its neighbours is easy to mistake for
        one that has been changed. */
+    /* Gaps, drawn over everything.
+
+       A ring at each loose end and a line to what it nearly meets, so
+       the fault is visible at the zoom somebody is already at rather
+       than only when they happen to be on top of it. */
+    const paintGaps = () => {
+      if (!gapList?.length) return;
+      ctx.save();
+      for (const g of gapList) {
+        const a2 = toPx(g.at);
+        const b2 = toPx(g.to);
+
+        ctx.beginPath();
+        ctx.setLineDash([4, 3]);
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2;
+        ctx.moveTo(a2.x, a2.y);
+        ctx.lineTo(b2.x, b2.y);
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.beginPath();
+        ctx.arc(a2.x, a2.y, 9, 0, Math.PI * 2);
+        ctx.strokeStyle = "#dc2626";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+
+        /* The size, because half a metre and half a centimetre are
+           different mistakes. */
+        const t = `${g.gapM} m`;
+        ctx.font = "700 10px ui-sans-serif, system-ui, sans-serif";
+        ctx.textAlign = "center";
+        ctx.textBaseline = "middle";
+        const w = ctx.measureText(t).width + 8;
+        ctx.fillStyle = "rgba(255,255,255,.9)";
+        ctx.fillRect(a2.x - w / 2, a2.y - 24, w, 14);
+        ctx.fillStyle = "#dc2626";
+        ctx.fillText(t, a2.x, a2.y - 17);
+      }
+      ctx.restore();
+    };
+
     const paintRoute = () => {
       if (!routePlan?.ok) return;
       const g = routePlan.graph;
@@ -1368,7 +1418,11 @@ export default function GISCanvasPage() {
 
       /* Meters that cannot be reached, ringed so the gap is visible
          rather than only counted. */
-      for (const m of routePlan.unreachable) {
+      /* Either shape: the trace names a reason per meter, the cheapest
+         network returns the meters alone. Read as one so the drawing
+         does not care which question was asked. */
+      for (const u of routePlan.unreachable) {
+        const m = u?.meter ?? u;
         const p2 = toPx((m.Geometry || [])[0] || [0, 0]);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 9, 0, Math.PI * 2);
@@ -2038,7 +2092,8 @@ export default function GISCanvasPage() {
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan]);
+    paintGaps();
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -4226,6 +4281,24 @@ export default function GISCanvasPage() {
      takes its own shortest route, so nobody is further from the
      substation than the site allows, and the shading says which sections
      are carrying the site. */
+  function findGaps() {
+    const list = gaps(features, {
+      isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
+    });
+    setGapList(list);
+    setError(list.length
+      ? `${list.length} trench end(s) close to another trench but not joined.`
+      : "");
+    if (!list.length) {
+      setStatus("Every trench end is either joined or clear of the others");
+      setTimeout(() => setStatus(""), 8000);
+    } else {
+      /* Straight to the worst one: a list of coordinates is no use on a
+         site this size. */
+      zoomToPoints([list[0].at]);
+    }
+  }
+
   function traceRoute() {
     const trenches = features.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
@@ -4236,10 +4309,33 @@ export default function GISCanvasPage() {
     const plan = traceAll(trenches, meters, sub);
     if (plan.error) { setError(plan.error); setRoutePlan(null); return; }
     setRoutePlan({ ...plan, traced: true });
-    setError(plan.unreachable.length
-      ? `${plan.unreachable.length} meter(s) left out \u2014 no trench within `
-        + `10 m to service them, or no route under ${plan.maxRunM} m from the substation.`
-      : "");
+    /* Grouped by reason, with the plot numbers.
+
+       "12 meters left out" says nothing about what to do. Three faults
+       end up in that number and each has its own fix — draw a trench
+       nearer, join a junction, or accept a longer run — so the message
+       says how many of each and which plots. */
+    if (!plan.unreachable.length) { setError(""); return; }
+
+    const byReason = new Map();
+    for (const u of plan.unreachable) {
+      const why = u?.why ?? "Not reachable.";
+      if (!byReason.has(why)) byReason.set(why, []);
+      byReason.get(why).push(plotLabel(u?.meter ?? u));
+    }
+    setError([...byReason].map(([why, plots]) => {
+      /* A few named, then a count. Forty plot numbers in an error is a
+         paragraph nobody reads. */
+      const shown = plots.slice(0, 6).join(", ");
+      const more = plots.length > 6 ? ` and ${plots.length - 6} more` : "";
+      return `${plots.length}: ${why} (${shown}${more})`;
+    }).join("  \u00b7  "));
+  }
+
+  /* A meter's plot number, for a message. Falls back to the feature id,
+     which is at least something to search for. */
+  function plotLabel(m) {
+    return m?.Attributes?.Plot_Number ?? m?.Label ?? `#${m?.Feature_ID}`;
   }
 
   function suggestRoute() {
@@ -6592,6 +6688,14 @@ export default function GISCanvasPage() {
                         gives every meter its shortest run; the cheapest
                         network gives the smallest dig and may make
                         somebody's run longer to get it. */}
+                    {/* Asked before the trace is doubted rather than
+                        after: a gap explains most surprising answers,
+                        and it is invisible at any zoom where the site
+                        fits on screen. */}
+                    <MenuItem label="Check Trench Joins"
+                      hint="Trench ends close to another trench but not joined"
+                      disabled={!!busy || !projectId}
+                      onClick={findGaps} />
                     <MenuItem label="Trace All Meters"
                       hint="Shortest route home for every meter, shaded by how many use each section"
                       disabled={!!busy || !projectId}
@@ -6624,20 +6728,7 @@ export default function GISCanvasPage() {
                     <MenuGroup label="Routing" />
                     {/* Draw candidates wherever a trench could go, then
                         let this pick the ones that have to be live. */}
-                    {/* Two questions, deliberately kept apart.
-
-                        Tracing shows what the network has to carry and
-                        gives every meter its shortest run; the cheapest
-                        network gives the smallest dig and may make
-                        somebody's run longer to get it. */}
-                    <MenuItem label="Trace All Meters"
-                      hint="Shortest route home for every meter, shaded by how many use each section"
-                      disabled={!!busy || !projectId}
-                      onClick={traceRoute} />
-                    <MenuItem label="Suggest Trench Route"
-                      hint="Which candidates must be dug to reach every meter"
-                      disabled={!!busy || !projectId}
-                      onClick={suggestRoute} />
+                    
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
                     {typesOn("trench").map((t) => (
@@ -7426,8 +7517,12 @@ export default function GISCanvasPage() {
                 onClick={() => {
                   setHidden([]); setSolo(null); setIsolatedCircuit(null);
                   setShowBasemap(true); setLiveTrenchOnly(false);
+                  setGapList(null);
                 }}>
                 {liveTrenchOnly && <span>Showing live trench only</span>}
+                {gapList?.length > 0 && (
+                  <span>{`${gapList.length} unjoined trench end(s)`}</span>
+                )}
                 {!showBasemap && basemap?.Metres_Per_Pixel && (
                   <span>Background plan hidden</span>
                 )}

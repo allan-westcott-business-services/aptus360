@@ -382,6 +382,7 @@ export function planRoute(trenches = [], meters = [], substation, opts = {}) {
      check, and should. This only keeps the router from proposing a
      network that has no chance of passing it. */
   const maxRunM = opts.maxRunM ?? 600;
+  /* Quoted back in the reasons below, so the message says the figure
 
   /* How far each node in the tree already is from the substation, along
      the tree rather than as the crow flies. A meter attached to a node
@@ -595,6 +596,9 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
   const served = [];
   const unreachable = [];
   const maxRunM = opts.maxRunM ?? 600;
+  /* Quoted back in the reasons below, so the message carries the figure
+     actually in force rather than one written into a sentence. */
+  const maxServiceLimit = opts.maxServiceM ?? 10;
 
   for (const o of options) {
     /* The foot giving the shortest total run — mains from the
@@ -606,7 +610,30 @@ export function traceAll(trenches = [], meters = [], substation, opts = {}) {
       const run = d + f.serviceM;
       if (!best || run < best.run) best = { f, run, node: f.node };
     }
-    if (!best || best.run > maxRunM) { unreachable.push(o.meter); continue; }
+    if (!best || best.run > maxRunM) {
+      /* Why, not just that.
+
+         Three quite different faults end up here and they have three
+         different fixes — draw a trench nearer, join a junction, or
+         accept a longer run. A count of unreachable meters tells
+         somebody none of that, and the commonest of the three is
+         invisible on the drawing. */
+      let why;
+      if (!o.feet.length) {
+        why = `No trench within ${maxServiceLimit} m to service it.`;
+      } else if (!best) {
+        /* Feet exist, so there is trench beside it — but no route from
+           the substation reaches any of them. Something between here and
+           the board is not joined. */
+        why = "Not connected to the substation \u2014 check the trench joins "
+          + "between here and the board.";
+      } else {
+        why = `Nearest route is ${Math.round(best.run)} m, over the `
+          + `${maxRunM} m limit.`;
+      }
+      unreachable.push({ meter: o.meter, why });
+      continue;
+    }
 
     /* Walk back, counting each section as used once by this meter. */
     let at = best.node;

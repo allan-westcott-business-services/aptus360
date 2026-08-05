@@ -158,3 +158,74 @@ export function strays(features = [], { factor = 3 } = {}) {
     return Math.hypot(p[0] - cx, p[1] - cy) > limit;
   });
 }
+
+/* Trench ends that nearly touch something and do not.
+
+   A route that goes the long way round, or a section carrying nothing
+   when it plainly should, is almost always a junction that is not a
+   junction. Two trenches drawn to the same corner a few centimetres
+   apart look joined at any working zoom and are two separate networks
+   as far as the trace is concerned.
+
+   This finds them: an end point close enough to another trench to have
+   been meant to meet it, but not close enough for the router to treat
+   them as one node.
+
+   The lower bound matters as much as the upper. Below it the two are
+   already joined and there is nothing to report; above it they are far
+   enough apart to be a deliberate gap rather than a miss. */
+export function gaps(features = [], opts = {}) {
+  const { joinedM = 0.25, nearM = 2.0, isTrench = () => true } = opts;
+
+  const trenches = features.filter((f) =>
+    f.Feature_Type === "line" && (f.Geometry || []).length >= 2 && isTrench(f));
+
+  const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
+
+  /* The nearest point on a segment, clamped to its ends. */
+  const nearestOn = (p, a, b) => {
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const len2 = vx * vx + vy * vy;
+    if (!len2) return { point: a, d: dist(p, a) };
+    let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const point = [a[0] + vx * t, a[1] + vy * t];
+    return { point, d: dist(p, point) };
+  };
+
+  const out = [];
+  for (const f of trenches) {
+    const g = f.Geometry;
+    for (const end of [g[0], g[g.length - 1]]) {
+      let best = null;
+
+      for (const other of trenches) {
+        if (other.Feature_ID === f.Feature_ID) continue;
+        const og = other.Geometry;
+        for (let i = 0; i + 1 < og.length; i++) {
+          const hit = nearestOn(end, og[i], og[i + 1]);
+          if (hit.d > nearM) continue;
+          if (!best || hit.d < best.d) {
+            best = { d: hit.d, point: hit.point, other };
+          }
+        }
+      }
+
+      /* Already joined, or nothing near. Neither is a gap. */
+      if (!best || best.d <= joinedM) continue;
+
+      out.push({
+        feature: f,
+        at: [end[0], end[1]],
+        to: best.point,
+        other: best.other,
+        gapM: Math.round(best.d * 100) / 100,
+      });
+    }
+  }
+
+  /* Widest first: the one most likely to be deliberate is last, and the
+     hairline ones at the top are the ones costing routes. */
+  return out.sort((a, b) => a.gapM - b.gapM);
+}

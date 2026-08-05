@@ -36,3 +36,29 @@ export async function deleteCallOff(projectId, id) {
   }
   return http.del(`/projects/${projectId}/calloffs?id=${id}`);
 }
+
+/* Every call-off, across every project — the operations list. */
+export async function listAllCallOffs({ status } = {}) {
+  if (USE_MOCKS) { await delay(160); return { rows: [...store] }; }
+  const q = status && status !== "all" ? `?status=${encodeURIComponent(status)}` : "";
+  return http.get(`/calloffs${q}`);
+}
+
+export async function getCallOff(id) {
+  if (USE_MOCKS) {
+    await delay(120);
+    return { rows: store.filter((r) => Number(r.Submission_ID) === Number(id)) };
+  }
+  return http.get(`/calloffs?id=${id}`);
+}
+
+/* Status is moved from the operations page rather than the project tab:
+   it is an operational decision, not a detail of the request. */
+export async function setCallOffStatus(id, Status) {
+  if (USE_MOCKS) {
+    await delay(180);
+    store = store.map((r) => (Number(r.Submission_ID) === Number(id) ? { ...r, Status } : r));
+    return { Status };
+  }
+  return http.patch(`/calloffs/${id}/status`, { Status });
+}

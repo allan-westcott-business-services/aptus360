@@ -58,7 +58,7 @@ export const NAV_SECTIONS = [
     colour: "#34d399",
     items: [
       { view: "operations-dashboard", label: "Operations Dashboard", soon: true },
-      { view: "call-offs", label: "Call-offs" },
+      { view: "call-offs", label: "Call-offs", built: true },
       { view: "planning", label: "Planning" },
       { view: "field-team-work", label: "Field Team Work" },
       { view: "plot-connections", label: "Plot Connections", built: true },

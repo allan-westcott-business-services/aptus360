@@ -19,6 +19,7 @@ const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
    until someone edited a branch in the wrong one. */
 const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmin.jsx"));
 const CustomerProjectsPage = lazy(() => import("./features/customers/CustomerProjectsPage.jsx"));
+const CallOffsPage = lazy(() => import("./features/calloffs/CallOffsPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -74,6 +75,7 @@ function useBlockPageZoom() {
 const VIEWS = [
   "projects", "admin", "plot-connections", "gis-canvas",
   "generate-av-invoices", "av-invoices", "organisations", "customer-projects",
+  "call-offs",
 ];
 
 function Shell() {
@@ -100,6 +102,9 @@ function Shell() {
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
   else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
+  /* No card wrapper: the page has its own header bar and switches between
+     a list and a detail view, both of which own their padding. */
+  else if (view === "call-offs") content = <CallOffsPage />;
   else content = <NotBuilt view={view} />;
 
   return (

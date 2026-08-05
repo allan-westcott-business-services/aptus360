@@ -1,7 +1,9 @@
 import { useState, useEffect, useCallback } from "react";
 import { listOptions, addOptions, removeOption } from "../../api/projectOptions.js";
+import { remember, recall } from "../../lib/session.js";
 import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
 import StakeholderTab from "../stakeholders/StakeholderTab.jsx";
+import CallOffsTab from "../calloffs/CallOffsTab.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
 import ContractDesignsTab from "../designs/ContractDesignsTab.jsx";
 import AssetValueTab from "../av/AssetValueTab.jsx";
@@ -14,21 +16,48 @@ import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 /* An existing project, opened from the table. Tabs mirror the tender
    detail panel in the original app — Details and Plots for now, with
    Scopes, Designs and History slotting in as they're migrated. */
+/* The tabs, and which stage each belongs to.
+
+   A project is worked on twice: once to win it, once to build it. The
+   two need different things in front of them — an outline design and a
+   POC application belong to the tender, call-offs and detailed designs
+   to the contract — and showing all of it at once means eleven tabs of
+   which several are always wrong for what somebody is doing.
+
+   Most tabs are in both, and they are the same page in both: details,
+   plots and the rest do not change because the project has been won.
+   Only the stage-specific ones move.
+
+   `stages` rather than a single flag, so a tab that belongs to both says
+   so once instead of being listed twice and drifting apart. */
 const TABS = [
-  { id: "details", label: "Details" },
-  { id: "stakeholder", label: "Stakeholders" },
-  { id: "plots", label: "Plots" },
-  { id: "nrs", label: "Non-Res Supplies" },
-  { id: "poc", label: "POC Applications" },
-  { id: "designs", label: "Outline Designs" },
-  { id: "av", label: "Asset Value" },
-  { id: "contract-designs", label: "Detailed Designs" },
+  { id: "details", label: "Details", stages: ["tender", "contract"] },
+  { id: "stakeholder", label: "Stakeholders", stages: ["tender", "contract"] },
+  { id: "plots", label: "Plots", stages: ["tender", "contract"] },
+  { id: "nrs", label: "Non-Res Supplies", stages: ["tender", "contract"] },
+  { id: "poc", label: "POC Applications", stages: ["tender"] },
+  { id: "designs", label: "Outline Designs", stages: ["tender"] },
+  { id: "av", label: "Asset Value", stages: ["tender", "contract"] },
+  { id: "contract-designs", label: "Detailed Designs", stages: ["contract"] },
+  { id: "calloffs", label: "Call-offs", stages: ["contract"] },
   /* Invoices sits next to the designs it bills for, rather than at the
      far end after History and Comments. */
-  { id: "invoices", label: "Invoices" },
-  { id: "history", label: "History" },
-  { id: "comments", label: "Comments" },
+  { id: "invoices", label: "Invoices", stages: ["tender", "contract"] },
+  { id: "history", label: "History", stages: ["tender", "contract"] },
+  { id: "comments", label: "Comments", stages: ["tender", "contract"] },
 ];
+
+export const STAGES = [
+  { id: "tender", label: "Tender" },
+  { id: "contract", label: "Contract" },
+];
+
+export const tabsForStage = (stage) =>
+  TABS.filter((t) => t.stages.includes(stage));
+
+/* Where a project is being worked on. Held per project id, so two
+   projects open in turn do not fight over one setting. */
+const stageKey = (id) => `projectStage:${id}`;
 
 export default function ProjectDetail({
   project: incoming, initialTab = "details", onBack, onOpenOption, onTabChange,
@@ -45,6 +74,29 @@ export default function ProjectDetail({
      Seeded from the prop and replaced when the form reports a save. The
      prop is watched too, so opening a different project still works. */
   const [project, setProject] = useState(incoming);
+
+  /* Contract projects open on the contract stage.
+
+     A project that has been won is nearly always being looked at for
+     what happens next, not for what was quoted — so the stage follows
+     the status unless somebody has said otherwise for this project. */
+  const [stage, setStage] = useState(() => {
+    const saved = recall(stageKey(incoming?.Project_ID), null);
+    if (saved === "tender" || saved === "contract") return saved;
+    return incoming?.Is_Contract || incoming?.Contract_Signed_Date
+      ? "contract" : "tender";
+  });
+  useEffect(() => {
+    remember(stageKey(project?.Project_ID), stage);
+  }, [stage, project?.Project_ID]);
+
+  /* Switching stage can leave the open tab behind — POC Applications
+     does not exist on a contract. Falls back to Details, which is in
+     both and is where somebody would look first anyway. */
+  useEffect(() => {
+    if (!tabsForStage(stage).some((t) => t.id === tab)) setTab("details");
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [stage]);
   useEffect(() => { setProject(incoming); }, [incoming]);
   /* The other versions of this enquiry: 2607.004(A), (B) and so on.
      Fetched rather than passed in, because a project can be opened from
@@ -130,8 +182,27 @@ export default function ProjectDetail({
         </div>
       </div>
 
+      {/* Which stage the project is being looked at in.
+
+          Remembered per project, so someone working through a contract
+          does not land on the tender tabs every time they come back to
+          it. A view rather than a status: switching does not change the
+          project, only what is in front of you. */}
+      <div className="stage-bar">
+        <div className="stage-switch" role="tablist" aria-label="Stage">
+          {STAGES.map((sg) => (
+            <button key={sg.id} role="tab"
+              aria-selected={stage === sg.id}
+              className={stage === sg.id ? "stage-btn on" : "stage-btn"}
+              onClick={() => setStage(sg.id)}>
+              {sg.label}
+            </button>
+          ))}
+        </div>
+      </div>
+
       <div className="detail-tabs" role="tablist">
-        {TABS.map((t) => (
+        {tabsForStage(stage).map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -163,6 +234,7 @@ export default function ProjectDetail({
         {tab === "poc" && <POCApplicationsTab projectId={project.Project_ID} />}
         {tab === "av" && <AssetValueTab projectId={project.Project_ID} />}
         {tab === "contract-designs" && <ContractDesignsTab projectRef={project.Project_Ref} />}
+        {tab === "calloffs" && <CallOffsTab projectId={project.Project_ID} />}
         {tab === "invoices" && (
           <InvoicesTab projectId={project.Project_ID} projectRef={project.Project_Ref} />
         )}
@@ -176,6 +248,17 @@ export default function ProjectDetail({
 }
 
 const CSS = `
+/* The stage switch: two states, so a segmented pair rather than a
+   dropdown — with two options a dropdown hides one of them behind a
+   click for no reason. */
+.stage-bar { display: flex; align-items: center; gap: 12px; padding: 0 0 10px; }
+.stage-switch { display: inline-flex; border: 1px solid var(--border);
+  border-radius: 8px; overflow: hidden; background: var(--white); }
+.stage-btn { background: none; border: none; cursor: pointer; padding: 6px 18px;
+  font: 700 12px inherit; color: var(--muted); }
+.stage-btn:hover:not(.on) { background: var(--bg); }
+.stage-btn.on { background: var(--accent); color: #fff; }
+
 .opt-strip { display: flex; gap: 4px; align-items: center; }
 .opt { width: 30px; height: 30px; border: 1px solid var(--border); background: var(--white);
   border-radius: 7px; cursor: pointer; font: 700 12px inherit; color: var(--muted); }

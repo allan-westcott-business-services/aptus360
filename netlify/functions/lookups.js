@@ -40,6 +40,13 @@ export default async function handler() {
          caller works out which column holds the figure. */
       contingencyLevels: db.from("Contingency_Level")
         .select("*").order("From_Plot_Count"),
+      /* Work types drive the call-off form. Every one, active or not —
+         the form filters to those with a Selection_Mode, and a
+         historical call-off still has to be able to name its type. */
+      workTypes: db.from("Work_Type")
+        .select("Work_Type_ID,Work_Type_Name,Selection_Mode,Display_Order,Is_Active")
+        .eq("Is_Active", true)
+        .order("Display_Order"),
       propertyConfigs: db.from("Property_Config").select("Property_Config_ID,Bedrooms,Property_Type_ID,Code").eq("Is_Active", true).order("Bedrooms"),
       /* Active only, and in design order rather than alphabetical —
          a deactivated source should stop being offered, not merely be

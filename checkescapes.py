@@ -22,6 +22,14 @@ for path in sorted(glob.glob("src/**/*.jsx", recursive=True)):
             print("      escape in a quoted attribute — use the character, or braces")
             bad += 1
 
+        # >text between tags<, which is literal for the same reason. Found
+        # after the attribute check so a line with both is reported once
+        # per fault rather than once per line.
+        for m in re.finditer(r'>([^<>{}]*\\u[0-9a-fA-F]{4}[^<>{}]*)<', line):
+            print(f"  {path}:{i}  >…{m.group(1).strip()[:40]}…<")
+            print("      escape in JSX text — use the character, or braces")
+            bad += 1
+
 print("No uninterpreted escapes in JSX attributes." if not bad
       else f"\n{bad} to fix")
 sys.exit(1 if bad else 0)

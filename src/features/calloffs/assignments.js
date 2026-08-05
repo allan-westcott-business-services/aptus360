@@ -138,6 +138,32 @@ export function clashesFor(teamId, start, end, assignments = [], exceptId = null
   });
 }
 
+/* Plots already taken by another team on the same phase.
+
+   A call-off of six plots can be split three and three, which is the
+   point of allowing several assignments per phase — but two teams
+   cannot both have plot four. Whoever turns up second finds the work
+   done, or worse, both dig.
+
+   Per phase, not per call-off: the same plot is excavated, jointed and
+   reinstated, by different gangs at different times. Only a clash
+   within one phase is a clash.
+
+   Returns plot to the team holding it, so the panel can say which
+   rather than only that the plot is unavailable. */
+export function takenPlots(assignments = [], taskTypeId, exceptId = null,
+  teamName = () => null) {
+  const out = new Map();
+  for (const a of assignments) {
+    if (Number(a.Task_Type_ID) !== Number(taskTypeId)) continue;
+    if (exceptId != null && Number(a.Assignment_ID) === Number(exceptId)) continue;
+    for (const p of parsePlots(a.Plot_Range)) {
+      if (!out.has(p)) out.set(p, teamName(a.Team_ID) ?? `team ${a.Team_ID}`);
+    }
+  }
+  return out;
+}
+
 /* Everything wrong with a proposed assignment, as a list. */
 export function validate(draft, opts = {}) {
   const { phases = [], assignments = [], today = null, exceptId = null } = opts;
@@ -161,6 +187,20 @@ export function validate(draft, opts = {}) {
     out.push(`${floor.phase ?? "The previous phase"} starts on ${floor.date} `
       + "\u2014 this phase cannot begin before it.");
   }
+
+  /* Plots another team already has on this phase.
+
+     Checked here as well as disabled in the panel: a disabled pill is a
+     hint, and a selection made before another assignment was saved would
+     otherwise go through. */
+  const taken = takenPlots(assignments, draft.Task_Type_ID, exceptId);
+  const doubled = plots.filter((p) => taken.has(p));
+  if (doubled.length) {
+    out.push(`Plot${doubled.length === 1 ? "" : "s"} ${doubled.join(", ")} `
+      + `already assigned on this phase.`);
+  }
+
+  if (!plots.length) out.push("Choose at least one plot.");
 
   const clashes = clashesFor(draft.Team_ID, draft.Start_Date, draft.End_Date,
     assignments, exceptId);

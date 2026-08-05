@@ -1,10 +1,10 @@
 import { useState, useEffect, useMemo } from "react";
 import { listAllCallOffs, setCallOffStatus } from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
-import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
+import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots,
-  validate as checkAssignment, daysBetween, dayTotal,
+  validate as checkAssignment, daysBetween, dayTotal, takenPlots,
 } from "./assignments.js";
 
 /* Call-offs across the business.
@@ -308,7 +308,9 @@ function Assignments({ row }) {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
   const [openPhase, setOpenPhase] = useState(null);
+  const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({});
+  const [workDays, setWorkDays] = useState([]);
 
   async function load() {
     try {
@@ -317,6 +319,8 @@ function Assignments({ row }) {
         adminList("Team"), adminList("Team_Craft"), adminList("Team_Region"),
         adminList("Craft"), adminList("Call_Off_Assignment"),
       ]);
+      const wd = await adminList("Call_Off_Work_Day").catch(() => ({ rows: [] }));
+      setWorkDays(wd.rows || []);
       /* The phases this work type involves, in its own order — the same
          phase can sit at a different point in different work types. */
       const mine = (map.rows || [])
@@ -354,6 +358,28 @@ function Assignments({ row }) {
   const teamName = (id) =>
     teams.find((t) => Number(t.Team_ID) === Number(id))?.Team_Name ?? `Team ${id}`;
 
+  /* Opening an existing assignment to change it.
+
+     The same form as adding one, filled in — a separate edit dialog
+     would be the same fields written twice and would drift. */
+  function editFor(a) {
+    const mineDays = workDays.filter((d) =>
+      Number(d.Assignment_ID) === Number(a.Assignment_ID));
+    setDraft({
+      Assignment_ID: a.Assignment_ID,
+      Task_Type_ID: a.Task_Type_ID,
+      Team_ID: String(a.Team_ID),
+      Start_Date: a.Start_Date,
+      End_Date: a.End_Date,
+      plots: parsePlots(a.Plot_Range),
+      parts: Object.fromEntries(mineDays.map((d) => [d.Work_Date, d.Part])),
+      offDays: Object.fromEntries(mineDays.map((d) => [d.Work_Date, !!d.Off_Site])),
+    });
+    setEditing(a.Assignment_ID);
+    setOpenPhase(a.Task_Type_ID);
+    setError("");
+  }
+
   function openFor(phase) {
     const floor = earliestStart(phases, mine, phase.Task_Type_ID, plotUniverse);
     setDraft({
@@ -363,14 +389,18 @@ function Assignments({ row }) {
          later if an earlier phase pushes it. */
       Start_Date: floor?.date || row.Preferred_Date || "",
       End_Date: "",
-      Off_Site: false,
-      /* Every plot on the call-off to begin with, since one team taking
-         the lot is the common case and unticking a few is less work than
-         ticking twenty. */
-      plots: [...plotUniverse],
-      /* Marked full unless somebody says otherwise. */
+      /* The plots not already taken by another team on this phase.
+
+         A call-off split three and three should open the second
+         assignment with the remaining three already chosen, rather than
+         with all six and two of them refused. */
+      plots: plotUniverse.filter((pl) =>
+        !takenPlots(mine, phase.Task_Type_ID).has(pl)),
+      /* Marked full and on site unless somebody says otherwise. */
       parts: {},
+      offDays: {},
     });
+    setEditing(null);
     setOpenPhase(phase.Task_Type_ID);
     setError("");
   }
@@ -378,6 +408,7 @@ function Assignments({ row }) {
   const problems = openPhase != null
     ? checkAssignment({ ...draft, Plot_Range: serialisePlots(draft.plots || []) }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
+      exceptId: editing,
     })
     : [];
 
@@ -385,46 +416,76 @@ function Assignments({ row }) {
     if (problems.length) return;
     setBusy("save");
     try {
-      const created = await adminCreate("Call_Off_Assignment", {
+      const payload = {
         Submission_ID: row.Submission_ID,
         Task_Type_ID: draft.Task_Type_ID,
         Team_ID: Number(draft.Team_ID),
         Start_Date: draft.Start_Date,
         End_Date: draft.End_Date,
-        Off_Site: !!draft.Off_Site,
         Plot_Range: serialisePlots(draft.plots) || null,
-      });
+      };
 
-      /* A row per day, written after the assignment it hangs off.
+      let saved;
+      if (editing != null) {
+        saved = await adminUpdate("Call_Off_Assignment", editing, payload);
+        saved = { ...saved, Assignment_ID: editing };
+        setAll((xs) => xs.map((a) =>
+          Number(a.Assignment_ID) === Number(editing) ? { ...a, ...payload } : a));
+      } else {
+        saved = await adminCreate("Call_Off_Assignment", payload);
+        setAll((xs) => [...xs, saved]);
+      }
 
-         Reported separately if they fail: an assignment with no day rows
-         is recoverable by editing, and losing the whole booking because
-         one day was malformed is not. */
+      /* The days, rewritten rather than patched.
+
+         The range can change — a booking shortened by two days leaves
+         two rows that no longer belong to it — and working out which to
+         add, change and remove is three operations where one will do.
+         The table is a handful of rows per assignment. */
+      const id = saved.Assignment_ID;
+      const old = workDays.filter((d) => Number(d.Assignment_ID) === Number(id));
       const days = daysBetween(draft.Start_Date, draft.End_Date);
       try {
+        for (const d of old) await adminDelete("Call_Off_Work_Day", d.Work_Day_ID);
+        const made = [];
         for (const d of days) {
-          await adminCreate("Call_Off_Work_Day", {
-            Assignment_ID: created.Assignment_ID,
+          made.push(await adminCreate("Call_Off_Work_Day", {
+            Assignment_ID: id,
             Work_Date: d,
             Part: draft.parts?.[d] || "Full",
-          });
+            Off_Site: !!draft.offDays?.[d],
+          }));
         }
+        setWorkDays((xs) => [
+          ...xs.filter((x) => Number(x.Assignment_ID) !== Number(id)),
+          ...made,
+        ]);
       } catch (dayErr) {
         setError(`Saved, but the day breakdown failed: ${dayErr.message}`);
       }
 
-      setAll((xs) => [...xs, created]);
       setOpenPhase(null);
+      setEditing(null);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(null); }
   }
 
   async function remove(id) {
+    if (!window.confirm("Delete this assignment and its days?")) return;
     setBusy(`d:${id}`);
     try {
+      /* The days first: the cascade should take them, but it is added
+         guardedly in the migration and may not be there. Deleting them
+         explicitly means no orphans either way. */
+      for (const d of workDays.filter((x) =>
+        Number(x.Assignment_ID) === Number(id))) {
+        await adminDelete("Call_Off_Work_Day", d.Work_Day_ID).catch(() => {});
+      }
       await adminDelete("Call_Off_Assignment", id);
+      setWorkDays((xs) => xs.filter((x) => Number(x.Assignment_ID) !== Number(id)));
       setAll((xs) => xs.filter((a) => a.Assignment_ID !== id));
+      if (editing === id) { setEditing(null); setOpenPhase(null); }
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(null); }
@@ -516,7 +577,19 @@ function Assignments({ row }) {
                 <span className="asg-team">{teamName(a.Team_ID)}</span>
                 <span className="asg-when">{a.Start_Date} to {a.End_Date}</span>
                 <span className="asg-plots">{a.Plot_Range || "all plots"}</span>
-                <button className="co-x" aria-label="Remove"
+                {/* How much of the booking is off site, from the days
+                    rather than the booking — a week with one off-site
+                    Tuesday reads as one day, not as a whole week. */}
+                {(() => {
+                  const off = workDays.filter((d) =>
+                    Number(d.Assignment_ID) === Number(a.Assignment_ID) && d.Off_Site);
+                  return off.length
+                    ? <span className="asg-off-tag">{off.length} off site</span>
+                    : null;
+                })()}
+                <button className="asg-edit"
+                  onClick={() => editFor(a)}>Edit</button>
+                <button className="co-x" aria-label="Delete"
                   disabled={busy === `d:${a.Assignment_ID}`}
                   onClick={() => remove(a.Assignment_ID)}>&times;</button>
               </div>
@@ -547,14 +620,6 @@ function Assignments({ row }) {
                     aria-label="End date"
                     onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
 
-                  {/* A different rate, different notice, often a
-                      different permit — a property of the visit rather
-                      than of the job. */}
-                  <label className="asg-off">
-                    <input type="checkbox" checked={!!draft.Off_Site}
-                      onChange={(e) => setDraft((d) => ({ ...d, Off_Site: e.target.checked }))} />
-                    <span>Off site</span>
-                  </label>
                 </div>
 
                 {/* How much of each day, because a gang is not always
@@ -593,6 +658,19 @@ function Assignments({ row }) {
                               {opt === "Full" ? "Full day" : opt}
                             </button>
                           ))}
+                          {/* Per day, because a gang is off site on the
+                              Tuesday and back on the Wednesday — the
+                              notice, the rate and often the permit
+                              follow the day rather than the booking. */}
+                          <label className="asg-off">
+                            <input type="checkbox"
+                              checked={!!draft.offDays?.[d]}
+                              onChange={(e) => setDraft((dd) => ({
+                                ...dd,
+                                offDays: { ...(dd.offDays || {}), [d]: e.target.checked },
+                              }))} />
+                            <span>Off site</span>
+                          </label>
                         </div>
                       );
                     })}
@@ -610,32 +688,53 @@ function Assignments({ row }) {
                         {`${(draft.plots || []).length} of ${plotUniverse.length}`}
                       </span>
                       <button type="button" className="asg-all"
-                        onClick={() => setDraft((d) => ({
-                          ...d,
-                          plots: (d.plots || []).length === plotUniverse.length
-                            ? [] : [...plotUniverse],
-                        }))}>
-                        {(draft.plots || []).length === plotUniverse.length
-                          ? "Clear" : "All"}
+                        onClick={() => setDraft((d) => {
+                          /* "All" means all that are still going, not
+                             all that exist — offering plots another team
+                             holds would only be refused on save. */
+                          const free = plotUniverse.filter((pl) =>
+                            !takenPlots(mine, ph.Task_Type_ID, editing).has(pl));
+                          return {
+                            ...d,
+                            plots: (d.plots || []).length >= free.length ? [] : free,
+                          };
+                        })}>
+                        {(draft.plots || []).length
+                          >= plotUniverse.filter((pl) =>
+                            !takenPlots(mine, ph.Task_Type_ID, editing).has(pl)).length
+                          ? "Clear" : "All free"}
                       </button>
                     </div>
                     <div className="asg-pills">
-                      {plotUniverse.map((pl) => {
-                        const on = (draft.plots || []).includes(pl);
-                        return (
-                          <button key={pl} type="button"
-                            className={on ? "asg-pill on" : "asg-pill"}
-                            aria-pressed={on}
-                            onClick={() => setDraft((d) => ({
-                              ...d,
-                              plots: on
-                                ? (d.plots || []).filter((x) => x !== pl)
-                                : [...(d.plots || []), pl],
-                            }))}>
-                            {pl}
-                          </button>
-                        );
-                      })}
+                      {(() => {
+                        /* Plots another team already has on this phase.
+                           Disabled rather than hidden: a plot missing
+                           from the grid looks like a plot missing from
+                           the call-off. */
+                        const taken = takenPlots(mine, ph.Task_Type_ID, editing,
+                          (id) => teamName(id));
+                        return plotUniverse.map((pl) => {
+                          const on = (draft.plots || []).includes(pl);
+                          const by = !on ? taken.get(pl) : null;
+                          return (
+                            <button key={pl} type="button"
+                              className={[
+                                "asg-pill", on ? "on" : "", by ? "off" : "",
+                              ].filter(Boolean).join(" ")}
+                              disabled={!!by}
+                              aria-pressed={on}
+                              title={by ? `Already assigned to ${by}` : `Plot ${pl}`}
+                              onClick={() => setDraft((d) => ({
+                                ...d,
+                                plots: on
+                                  ? (d.plots || []).filter((x) => x !== pl)
+                                  : [...(d.plots || []), pl],
+                              }))}>
+                              {pl}
+                            </button>
+                          );
+                        });
+                      })()}
                     </div>
                   </div>
                 )}
@@ -643,7 +742,8 @@ function Assignments({ row }) {
                 <div className="asg-line asg-actions">
                   <button className="btn accent sm" disabled={!!busy || problems.length > 0}
                     onClick={save}>{busy === "save" ? "Saving…" : "Save assignment"}</button>
-                  <button className="btn ghost sm" onClick={() => setOpenPhase(null)}>
+                  <button className="btn ghost sm"
+                    onClick={() => { setOpenPhase(null); setEditing(null); }}>
                     Cancel
                   </button>
                 </div>
@@ -720,6 +820,14 @@ const CSS = `
 .asg-pill { min-width: 34px; background: var(--white); border: 1.5px solid var(--border);
   border-radius: 5px; cursor: pointer; font: 600 11px inherit; padding: 3px 7px; }
 .asg-pill.on { border-color: var(--accent); background: #eff6ff; color: var(--accent); }
+/* Taken by another team: dimmed rather than hidden, so the call-off's
+   plots all remain visible and the reason is in the tooltip. */
+.asg-pill.off { border-color: #fecaca; background: #fef2f2; color: #b91c1c;
+  cursor: not-allowed; opacity: .65; }
+.asg-edit { background: none; border: 1px solid var(--border); border-radius: 5px;
+  cursor: pointer; font: 600 10.5px inherit; padding: 2px 9px; color: var(--accent); }
+.asg-off-tag { font: 700 10px inherit; padding: 2px 7px; border-radius: 4px;
+  background: #fef3c7; color: #92400e; }
 .asg-problems { flex: 1 0 100%; margin: 4px 0 0; padding-left: 18px;
   font: 600 11.5px inherit; color: #b45309; }
 

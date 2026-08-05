@@ -570,8 +570,19 @@ export default function PlotConnectionsPage() {
                         : col.key === "site" ? r._siteName
                         : col.key === "plot" ? r._plotNumber
 
+                        /* The icon rather than a coloured dot, as the
+                           outline design column has.
+
+                           A dot needs the legend held in your head — and
+                           green for gas against blue for water is the
+                           pair most often got the wrong way round. The
+                           icon says which utility it is on its own, and
+                           the two pages then agree. */
                         : col.key === "utility" ? (<>
-                          <span className="dot" style={{ background: u?.colour }} /> {u?.name}
+                          <span className="u-ico" title={u?.name ?? "Utility"}>
+                            {u?.icon ?? "\u25CF"}
+                          </span>
+                          {" "}{u?.name}
                         </>)
 
                         : col.key === "prog" ? (
@@ -674,7 +685,13 @@ const CSS = FILTER_CSS + `
   text-transform: none; letter-spacing: 0; color: var(--text); background: var(--white);
   border: 1px solid var(--border); border-radius: 6px; padding: 7px 12px; margin: 0; cursor: pointer; }
 .up.on { border-color: var(--accent); background: var(--accent-light); color: var(--accent); font-weight: 600; }
-.dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; }
+/* Sized as the outline design column sizes it, so a utility looks the
+   same wherever it appears.
+
+   The .dot rule that was here is gone with the last dot that used it —
+   a style nothing references is a thing the next person has to check
+   before changing anything near it. */
+.u-ico { font-size: 13px; line-height: 1; }
 /* .ph-actions is in styles.css — one spec for every page toolbar. */
 .pc-toolbar { display: flex; flex-wrap: wrap; align-items: center; gap: 8px; margin-bottom: 12px;
   padding: 10px 12px; border: 1px solid var(--border); border-radius: var(--radius); background: var(--bg); }

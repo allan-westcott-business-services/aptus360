@@ -9,6 +9,19 @@
    and because the interesting ones are about time: a phase cannot start
    before the one before it, and a team cannot be in two places at once. */
 
+/* A date as people write it: 17-Aug-2026.
+
+   Here as well as in the panel because these rules build sentences that
+   reach the screen, and an ISO date inside one of them would sit beside
+   a formatted one and look like a fault. */
+export function fmtDate(d) {
+  if (!d) return "";
+  const [y, m, dd] = String(d).split("-");
+  const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
+    "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m) - 1];
+  return M && dd ? `${dd}-${M}-${y}` : String(d);
+}
+
 /* Plots as written — "1-5", "12, 14" — expanded and collapsed.
 
    Text is how the work is described on site and how the original stores
@@ -175,16 +188,29 @@ export function validate(draft, opts = {}) {
   if (draft.Start_Date && draft.End_Date && draft.End_Date < draft.Start_Date) {
     out.push("The end is before the start.");
   }
-  /* Not in the past. An assignment somebody cannot turn up for is a
-     typo, and it is nearly always a year mistyped. */
-  if (today && draft.Start_Date && draft.Start_Date < today) {
+  /* Not in the past — but only for a date being set now.
+
+     A new assignment somebody cannot turn up for is a typo, nearly
+     always a mistyped year. An existing one whose start has since passed
+     is not a typo, it is last week's work: refusing it made every
+     assignment uneditable the moment it began, and the message pointed
+     at a date nobody had touched.
+
+     `wasStart` is the date the assignment already had. Unchanged, it is
+     accepted whatever the calendar says; changed, it is checked like any
+     other new date. */
+  const startChanged = opts.wasStart == null || draft.Start_Date !== opts.wasStart;
+  if (today && draft.Start_Date && startChanged && draft.Start_Date < today) {
     out.push("The start is in the past.");
   }
 
   const plots = parsePlots(draft.Plot_Range);
   const floor = earliestStart(phases, assignments, draft.Task_Type_ID, plots);
   if (floor && draft.Start_Date && draft.Start_Date < floor.date) {
-    out.push(`${floor.phase ?? "The previous phase"} starts on ${floor.date} `
+    /* The date as written, since this string reaches the screen. The
+       panel formats what it prints; a rule that returns a raw ISO date
+       inside a sentence would show one format beside another. */
+    out.push(`${floor.phase ?? "The previous phase"} starts on ${fmtDate(floor.date)} `
       + "\u2014 this phase cannot begin before it.");
   }
 
@@ -205,8 +231,8 @@ export function validate(draft, opts = {}) {
   const clashes = clashesFor(draft.Team_ID, draft.Start_Date, draft.End_Date,
     assignments, exceptId);
   if (clashes.length) {
-    out.push(`That team is already booked ${clashes[0].Start_Date} to `
-      + `${clashes[0].End_Date}.`);
+    out.push(`That team is already booked ${fmtDate(clashes[0].Start_Date)} to `
+      + `${fmtDate(clashes[0].End_Date)}.`);
   }
 
   return out;

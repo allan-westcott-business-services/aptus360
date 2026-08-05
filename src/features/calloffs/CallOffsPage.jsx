@@ -26,12 +26,21 @@ export const STATUSES = [
    opens with three years of completed call-offs is a list nobody reads. */
 const CLOSED = new Set(["Complete", "Withdrawn (Customer)", "Withdrawn (Aptus)"]);
 
+/* Dates as people write them: 17-Aug-2026.
+
+   The month as three letters rather than a number, because 03-04-2026 is
+   two different days depending on who is reading it. The year in full
+   rather than "26": a programme runs across a year end and "17-Aug-26"
+   next to "03-Jan-27" is a pair somebody has to think about.
+
+   Anything unparseable is passed through rather than mangled — a value
+   the reader can see is wrong is better than one silently rewritten. */
 const fmt = (d) => {
   if (!d) return "\u2014";
   const [y, m, dd] = String(d).split("-");
   const M = ["Jan", "Feb", "Mar", "Apr", "May", "Jun",
     "Jul", "Aug", "Sep", "Oct", "Nov", "Dec"][Number(m) - 1];
-  return M ? `${dd}-${M}-${String(y).slice(2)}` : d;
+  return M && dd ? `${dd}-${M}-${y}` : d;
 };
 
 export default function CallOffsPage() {
@@ -311,6 +320,7 @@ function Assignments({ row }) {
   const [editing, setEditing] = useState(null);
   const [draft, setDraft] = useState({});
   const [workDays, setWorkDays] = useState([]);
+  const [saidSaved, setSaidSaved] = useState("");
 
   async function load() {
     try {
@@ -409,11 +419,22 @@ function Assignments({ row }) {
     ? checkAssignment({ ...draft, Plot_Range: serialisePlots(draft.plots || []) }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
       exceptId: editing,
+      /* The start this assignment already had, so an unchanged past date
+         is not treated as a typo. */
+      wasStart: editing != null
+        ? all.find((x) => Number(x.Assignment_ID) === Number(editing))?.Start_Date
+        : null,
     })
     : [];
 
   async function save() {
-    if (problems.length) return;
+    if (problems.length) {
+      /* Said out loud. Returning quietly is what made a disabled button
+         and an ignored click indistinguishable. */
+      setError(problems[0]);
+      return;
+    }
+    setSaidSaved("");
     setBusy("save");
     try {
       const payload = {
@@ -464,6 +485,8 @@ function Assignments({ row }) {
         setError(`Saved, but the day breakdown failed: ${dayErr.message}`);
       }
 
+      setSaidSaved(editing != null ? "Assignment updated." : "Assignment added.");
+      setTimeout(() => setSaidSaved(""), 5000);
       setOpenPhase(null);
       setEditing(null);
       setError("");
@@ -570,7 +593,7 @@ function Assignments({ row }) {
             {/* Why a phase cannot start yet, before somebody tries. */}
             {floor && (
               <p className="asg-floor">
-                {`Cannot start before ${floor.date} \u2014 ${floor.phase} begins then.`}
+                {`Cannot start before ${fmt(floor.date)} \u2014 ${floor.phase} begins then.`}
               </p>
             )}
 
@@ -596,7 +619,9 @@ function Assignments({ row }) {
             {rows.map((a) => (
               <div className="asg-row" key={a.Assignment_ID}>
                 <span className="asg-team">{teamName(a.Team_ID)}</span>
-                <span className="asg-when">{a.Start_Date} to {a.End_Date}</span>
+                <span className="asg-when">
+                  {fmt(a.Start_Date)} to {fmt(a.End_Date)}
+                </span>
                 <span className="asg-plots">{a.Plot_Range || "all plots"}</span>
                 {/* How much of the booking is off site, from the days
                     rather than the booking — a week with one off-site
@@ -761,8 +786,19 @@ function Assignments({ row }) {
                 )}
 
                 <div className="asg-line asg-actions">
-                  <button className="btn accent sm" disabled={!!busy || problems.length > 0}
-                    onClick={save}>{busy === "save" ? "Saving…" : "Save assignment"}</button>
+                  {/* Enabled even where there are problems, so pressing
+                      it says why rather than doing nothing.
+
+                      A disabled button with the reasons listed below it
+                      reads, at a glance, as a button that is broken —
+                      which is exactly how this was reported. save()
+                      still refuses; the refusal is now visible at the
+                      moment of pressing. */}
+                  <button className="btn accent sm" disabled={!!busy}
+                    onClick={save}>
+                    {busy === "save" ? "Saving…"
+                      : (editing != null ? "Save changes" : "Save assignment")}
+                  </button>
                   <button className="btn ghost sm"
                     onClick={() => { setOpenPhase(null); setEditing(null); }}>
                     Cancel
@@ -776,6 +812,7 @@ function Assignments({ row }) {
                     {problems.map((t, k) => <li key={k}>{t}</li>)}
                   </ul>
                 )}
+                {saidSaved && <p className="asg-saved">{saidSaved}</p>}
               </div>
             )}
           </div>

@@ -4406,6 +4406,20 @@ export default function GISCanvasPage() {
     }
   }
 
+  /* Stepping through, tracing first if nothing has been traced.
+
+     Returns nothing useful and sets state instead, because the trace may
+     fail — no substation, no trenches — and the message for that belongs
+     on screen rather than in a return value nobody reads. */
+  function stepThrough() {
+    if (!routePlan?.ok || !routePlan.traced) {
+      traceRoute();
+      /* traceRoute sets the plan for the next render; the stepper reads
+         it from state, so it only has to be told where to start. */
+    }
+    setStepAt(0);
+  }
+
   function traceRoute() {
     const trenches = features.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
@@ -6859,10 +6873,17 @@ export default function GISCanvasPage() {
                       hint="Trench ends close to another trench but not joined"
                       disabled={!!busy || !projectId}
                       onClick={findGaps} />
+                    {/* Runs the trace itself if there is not one.
+
+                        It was disabled until Trace All Meters had been
+                        used, which made a diagnostic depend on
+                        remembering to do something first — and accepting
+                        a route clears the plan, so it disabled itself
+                        again straight after being useful. */}
                     <MenuItem label="Step Through Traces"
                       hint="One meter at a time, with its own route to the substation"
-                      disabled={!routePlan?.ok}
-                      onClick={() => setStepAt(0)} />
+                      disabled={!!busy || !projectId}
+                      onClick={() => { stepThrough(); }} />
                     <MenuItem label="Trace All Meters"
                       hint="Shortest route home for every meter, shaded by how many use each section"
                       disabled={!!busy || !projectId}
@@ -7601,6 +7622,18 @@ export default function GISCanvasPage() {
             )}
 
             {/* Stepping through the traces, one meter at a time. */}
+            {/* Said rather than shown empty: a bar that renders with
+                nothing in it looks like a fault, and the commonest
+                reason is a drawing with no substation on it. */}
+            {stepAt != null && !routePlan?.ok && (
+              <div className="gis-step">
+                <span className="gsp-bad">
+                  Nothing to step through &mdash; the trace did not run.
+                </span>
+                <button className="gsp-x" onClick={() => setStepAt(null)}>Done</button>
+              </div>
+            )}
+
             {stepAt != null && routePlan?.ok && (() => {
               const all = [
                 ...(routePlan.served || []).map((x) => ({ ...x, kind: "traced" })),

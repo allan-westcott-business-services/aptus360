@@ -9,6 +9,20 @@ import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
    regardless. Two directions because the app needs both: editing is
    person-first ("what does Sam do?"), while every dropdown in the app is
    role-first ("who are the estimators?") — see fillSelRole in the original. */
+/* Why somebody is away.
+
+   A fixed list so the same absence is called the same thing every time —
+   free text gave "hol", "Holiday" and "A/L" for one reason, which makes
+   counting sickness across a year impossible. */
+export const AWAY_REASONS = [
+  "Holiday",
+  "Sickness",
+  "Training",
+  "Parental Leave",
+  "Maternity",
+  "Compassionate",
+];
+
 export default function PeopleRolesAdmin() {
   const [people, setPeople] = useState([]);
   const [roles, setRoles] = useState([]);
@@ -348,10 +362,25 @@ export default function PeopleRolesAdmin() {
                       onChange={(e) => setAway((a2) => ({
                         ...a2, End_DateTime: e.target.value,
                       }))} />
-                    <input placeholder="Reason (optional)" value={away.Reason}
+                    {/* A list rather than free text.
+
+                        Typed reasons come back as "hol", "Holiday",
+                        "annual leave" and "A/L", which is four things
+                        to nobody's benefit — and it makes counting
+                        sickness across a year impossible.
+
+                        Held in the file rather than a table because it
+                        is a short fixed list nobody administers. If it
+                        needs adding to often, it wants a lookup. */}
+                    <select value={away.Reason} aria-label="Reason"
                       onChange={(e) => setAway((a2) => ({
                         ...a2, Reason: e.target.value,
-                      }))} />
+                      }))}>
+                      <option value="">Reason…</option>
+                      {AWAY_REASONS.map((r) => (
+                        <option key={r} value={r}>{r}</option>
+                      ))}
+                    </select>
                     <button className="btn accent sm" disabled={busy === "away"}
                       onClick={() => addAway(current.Person_ID)}>
                       {busy === "away" ? "Adding\u2026" : "Add"}

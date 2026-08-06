@@ -63,7 +63,7 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
 } from "./buildStatus.js";
-import { contentsOf } from "./trenchContents.js";
+import { contentsOf, stretchAt } from "./trenchContents.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
@@ -1458,7 +1458,11 @@ export default function GISCanvasPage() {
     /* The trench being inspected, so the panel and the drawing are
        plainly about the same length. */
     const paintInspect = () => {
-      const g = inspect?.trench?.Geometry;
+      /* The stretch, not the whole feature — the highlight has to agree
+         with what the panel is listing. */
+      const g = inspect?.stretch?.geometry?.length >= 2
+        ? inspect.stretch.geometry
+        : inspect?.trench?.Geometry;
       if (!g || g.length < 2) return;
       ctx.save();
       for (const [colour, width] of [["#fff", 12], ["#7c3aed", 8]]) {
@@ -5100,7 +5104,20 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
-  function inspectTrench(f) {
+  function inspectTrench(f, at) {
+    /* The stretch between the span nodes either side of the click, not
+       the whole feature.
+
+       A trench runs past several junctions, and a cable that turns off
+       at A1 is not in the length between A1 and A2. Inspecting the whole
+       feature reported everything anywhere along it, which on a run
+       through three junctions is three answers at once. */
+    const nodes = features.filter((x) => x.Feature_Role === "spannode");
+    const stretch = at ? stretchAt(f, at, nodes) : null;
+    const subject = stretch?.geometry?.length >= 2
+      ? { ...f, Geometry: stretch.geometry }
+      : f;
+
     /* Which types are services, from the configured list.
 
        A mains trench carries mains and a service trench carries
@@ -5113,7 +5130,7 @@ export default function GISCanvasPage() {
       .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
       .map((t) => t.Type_Key)]);
 
-    const res = contentsOf(f, features, {
+    const res = contentsOf(subject, features, {
       serviceLineTypes,
       serviceTrenchTypes,
       isTrench: (x) => x.Feature_Type === "line"
@@ -5153,7 +5170,7 @@ export default function GISCanvasPage() {
       },
     });
     if (res.error) { setError(res.error); return; }
-    setInspect(res);
+    setInspect({ ...res, stretch });
     setError("");
   }
 
@@ -8459,7 +8476,12 @@ export default function GISCanvasPage() {
             {inspect && (
               <div className="gis-co">
                 <div className="gco-head">
-                  <strong>In this trench</strong>
+                  <strong>
+                    {inspect.stretch && !inspect.stretch.wholeRun
+                      ? `${inspect.stretch.fromNode?.Attributes?.Span_Label ?? "start"}`
+                        + ` to ${inspect.stretch.toNode?.Attributes?.Span_Label ?? "end"}`
+                      : "In this trench"}
+                  </strong>
                   <span className="gco-hint">
                     {`${inspect.trenchM} m`}
                     {statusLabel(statusOf(inspect.trench))
@@ -9078,7 +9100,9 @@ export default function GISCanvasPage() {
                   && isTrenchType(ctx.feature.Attributes?.Line_Type, lineTypes) && (
                   <>
                     <button className="gc-item" onClick={() => {
-                      inspectTrench(ctx.feature);
+                      /* Where they clicked, so the stretch is the one
+                         under the cursor rather than the whole run. */
+                      inspectTrench(ctx.feature, ctx.atM);
                       setCtx(null);
                     }}>
                       What is in this trench

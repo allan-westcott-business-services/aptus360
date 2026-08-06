@@ -71,6 +71,116 @@ export function lengthWithin(line = [], trench = [], opts = {}) {
   return inside;
 }
 
+/* The stretch of trench between the span nodes either side of a point.
+
+   A trench feature runs from wherever it was drawn to wherever it
+   stopped, and that is usually past several junctions. Asking what is in
+   it returned everything in the whole feature — including the cable
+   beyond the junction, which turns off at A1 and is not in the length
+   somebody is pointing at.
+
+   What they mean by "this trench" is the stretch between the nodes
+   either side of where they clicked: substation to A1, or A1 to A2. That
+   is the piece that gets dug as one thing and the piece a cable either
+   runs down or does not.
+
+   The ends of the trench act as nodes where there is nothing nearer, so
+   a run with no span nodes on it is still one stretch rather than
+   nothing. */
+export function stretchAt(trench, point, nodes = [], opts = {}) {
+  const { eps = 0.5 } = opts;
+  const g = trench?.Geometry || [];
+  if (g.length < 2 || !point) return null;
+
+  const total = lengthOf(g);
+
+  /* Where each node sits along this trench, and where the click does. */
+  const along = (p) => {
+    let run = 0;
+    let best = { m: null, d: Infinity };
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = g[i];
+      const b = g[i + 1];
+      const segLen = dist(a, b);
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (len2) {
+        let u = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const q = [a[0] + vx * u, a[1] + vy * u];
+        const d = dist(p, q);
+        if (d < best.d) best = { m: run + segLen * u, d };
+      }
+      run += segLen;
+    }
+    return best;
+  };
+
+  const cuts = [{ m: 0, node: null }, { m: total, node: null }];
+  for (const n of nodes) {
+    const p = (n.Geometry || [])[0];
+    if (!p) continue;
+    const hit = along(p);
+    /* Only nodes actually on this trench. One on the road behind lands
+       within a metre or two of nothing here. */
+    if (hit.m == null || hit.d > eps * 4) continue;
+    if (hit.m <= eps || hit.m >= total - eps) continue;
+    cuts.push({ m: hit.m, node: n });
+  }
+  cuts.sort((a, b) => a.m - b.m);
+
+  const at = along(point);
+  if (at.m == null) return null;
+
+  /* The pair the click falls between. */
+  let lo = cuts[0];
+  let hi = cuts[cuts.length - 1];
+  for (let i = 0; i + 1 < cuts.length; i++) {
+    if (at.m >= cuts[i].m - eps && at.m <= cuts[i + 1].m + eps) {
+      lo = cuts[i];
+      hi = cuts[i + 1];
+      break;
+    }
+  }
+
+  /* The geometry of just that stretch. */
+  const out = [];
+  let run = 0;
+  let started = false;
+  for (let i = 0; i + 1 < g.length; i++) {
+    const a = g[i];
+    const b = g[i + 1];
+    const segLen = dist(a, b);
+    const endAt = run + segLen;
+
+    if (!started && endAt > lo.m) {
+      const u = segLen ? (lo.m - run) / segLen : 0;
+      out.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]);
+      started = true;
+    }
+    if (started) {
+      if (endAt >= hi.m) {
+        const u = segLen ? (hi.m - run) / segLen : 1;
+        out.push([a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u]);
+        break;
+      }
+      out.push(b);
+    }
+    run = endAt;
+  }
+
+  return {
+    geometry: out,
+    fromNode: lo.node,
+    toNode: hi.node,
+    lengthM: Math.round((hi.m - lo.m) * 10) / 10,
+    /* Whether the trench had any nodes on it at all, so the panel can
+       say "the whole run" rather than naming ends that do not exist. */
+    wholeRun: cuts.length === 2,
+  };
+}
+
 /* Everything routed inside this trench.
 
    Ordered by how much of the trench each takes up, so the main run comes

@@ -39,6 +39,57 @@ export function labelOf(node) {
   return spanLabel(circuitLetter(c), s);
 }
 
+/* The part of a polyline between two points on it.
+
+   Both points are projected onto the line, the vertices between them are
+   kept, and the two ends are the projections themselves — so the piece
+   starts and stops exactly at the nodes rather than at the nearest
+   vertex. */
+export function clipBetween(g = [], from, to) {
+  if (g.length < 2 || !from || !to) return [];
+
+  const at = (p) => {
+    let run = 0;
+    let best = { m: 0, d: Infinity, point: g[0] };
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = g[i];
+      const b = g[i + 1];
+      const segLen = dist(a, b);
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (len2) {
+        let u = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const q = [a[0] + vx * u, a[1] + vy * u];
+        const d = dist(p, q);
+        if (d < best.d) best = { m: run + segLen * u, d, point: q };
+      }
+      run += segLen;
+    }
+    return best;
+  };
+
+  const A = at(from);
+  const B = at(to);
+  const lo = Math.min(A.m, B.m);
+  const hi = Math.max(A.m, B.m);
+  const first = A.m <= B.m ? A.point : B.point;
+  const last = A.m <= B.m ? B.point : A.point;
+
+  const out = [first];
+  let run = 0;
+  for (let i = 0; i + 1 < g.length; i++) {
+    const segLen = dist(g[i], g[i + 1]);
+    const endAt = run + segLen;
+    /* A vertex strictly inside the clipped stretch. */
+    if (endAt > lo && endAt < hi) out.push(g[i + 1]);
+    run = endAt;
+  }
+  out.push(last);
+  return out;
+}
+
 /* The trench network, as span nodes joined by lengths of trench.
 
    Not the electric Connects graph, which is what this used at first —
@@ -179,18 +230,23 @@ export function spansBetween(features = [], opts = {}) {
     meters: [],
   }));
 
-  /* The meters served off each span.
+  /* The plots on each span.
 
-     A meter hangs off a service that tees into the span's trench, so it
-     is never on the route between two nodes — walking the route and
-     collecting meters found none, every time.
+     A plot is on a span because its service tees into that span. Not
+     because it is near it — the first version took any meter within
+     forty metres of the trench, which on a site with two roads running
+     alongside each other put the plots from one road onto the span of
+     the other. Proximity is not the relationship; the service is.
 
-     Found by position instead: a meter whose service leaves the span's
-     trench between its two nodes belongs to that span. Positions rather
-     than links, because a mains call-off is raised from the trench and
-     the cable links may not exist yet. */
+     So: find each meter's service, find where that service meets a
+     main, and see whether that point falls on this span between its two
+     nodes. A meter with no service drawn belongs to no span, which is
+     honest — nothing has yet been drawn to say where it connects. */
+  const services = features.filter((f) => isTrench(f)
+    && serviceTypes && serviceTypes.has(f.Attributes?.Line_Type));
+
+  /* How far along a trench a point is, and how far off it. */
   const along = (p, g) => {
-    /* How far along a trench a point is, and how far off it. */
     let run = 0;
     let best = { m: null, d: Infinity };
     for (let i = 0; i + 1 < g.length; i++) {
@@ -212,7 +268,31 @@ export function spansBetween(features = [], opts = {}) {
     return best;
   };
 
-  const reach = opts.serviceReachM ?? 40;
+  const attachM = opts.attachM ?? 2.0;
+
+  /* Each meter, and the point on a main where its service tees in. */
+  const tees = [];
+  for (const m of features) {
+    if (m.Feature_Role !== "meter") continue;
+    const p = (m.Geometry || [])[0];
+    if (!p) continue;
+
+    let svc = null;
+    for (const t of services) {
+      const g = t.Geometry || [];
+      if (g.length < 2) continue;
+      const dStart = dist(p, g[0]);
+      const dEnd = dist(p, g[g.length - 1]);
+      const near = Math.min(dStart, dEnd);
+      if (near > attachM) continue;
+      if (!svc || near < svc.near) {
+        svc = { near, far: dStart <= dEnd ? g[g.length - 1] : g[0] };
+      }
+    }
+    if (!svc) continue;
+    tees.push({ meter: m, at: svc.far });
+  }
+
   for (const sp of spans) {
     if (!sp.trench) continue;
     const g = sp.trench.Geometry || [];
@@ -222,14 +302,14 @@ export function spansBetween(features = [], opts = {}) {
     const lo = Math.min(a.m, b.m);
     const hi = Math.max(a.m, b.m);
 
-    for (const f of features) {
-      if (f.Feature_Role !== "meter") continue;
-      const p = (f.Geometry || [])[0];
-      if (!p) continue;
-      const hit = along(p, g);
-      if (hit.m == null || hit.d > reach) continue;
+    for (const t of tees) {
+      const hit = along(t.at, g);
+      /* The tee has to be on this trench, not merely near it — a
+         service teeing into the road behind lands within a metre or two
+         of nothing on this one. */
+      if (hit.m == null || hit.d > attachM) continue;
       if (hit.m < lo - 0.5 || hit.m > hi + 0.5) continue;
-      sp.meters.push(f);
+      sp.meters.push(t.meter);
     }
   }
 
@@ -256,6 +336,15 @@ export function spansBetween(features = [], opts = {}) {
         fromId: sp.fromNode?.Feature_ID,
         toId: sp.toNode?.Feature_ID,
         lengthM: Math.round(sp.lengthM * 10) / 10,
+        /* The trench between the two nodes, as it is drawn.
+
+           A straight line from one node to the other is not the span —
+           it crosses whatever is between them and gives no idea which
+           trench is being called off. This is the part of the trench
+           itself, clipped at each node. */
+        geometry: clipBetween(sp.trench?.Geometry || [],
+          (sp.fromNode?.Geometry || [])[0],
+          (sp.toNode?.Geometry || [])[0]),
         plots,
         plotCount: plots.length,
       };

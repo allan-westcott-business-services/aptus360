@@ -62,6 +62,7 @@ import { planSpanNodes, plantLabel } from "./spanNodes.js";
 import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
   from "./mainsCallOff.js";
 import { createCallOff } from "../../api/calloffs.js";
+import { useAuth } from "../../lib/AuthContext.jsx";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -249,6 +250,14 @@ export default function GISCanvasPage() {
 
      `pick` holds the first node of a pair while the second is chosen;
      `ranges` holds the pairs already made. */
+  /* Who is raising the call-off.
+
+     Used for the contact name and Created_By, and referenced before it
+     was ever brought in — the page had never needed the signed-in user
+     until a call-off could be raised from it, and "user is not defined"
+     arrived at the moment somebody pressed the button. */
+  const { user } = useAuth();
+
   const [callOffOpen, setCallOffOpen] = useState(false);
   const [pick, setPick] = useState(null);
   const [ranges, setRanges] = useState([]);
@@ -1311,22 +1320,30 @@ export default function GISCanvasPage() {
       if (!callOffOpen) return;
       ctx.save();
 
-      /* Every span of every range, so a run picked by its two ends shows
-         its whole length. */
+      /* The trench of each span, highlighted along its length.
+
+         A straight line from one node to the other crossed whatever was
+         between them and gave no idea which trench was being called
+         off. This follows the trench as drawn, clipped at each node. */
       for (const r of callOff?.ranges || []) {
         for (const sp of r.spans) {
-          const a2 = features.find((f) => f.Feature_ID === sp.fromId);
-          const b2 = features.find((f) => f.Feature_ID === sp.toId);
-          if (!a2 || !b2) continue;
-          const p1 = toPx(a2.Geometry[0]);
-          const p2 = toPx(b2.Geometry[0]);
-          ctx.beginPath();
-          ctx.strokeStyle = "#0f766e";
-          ctx.lineWidth = 6;
-          ctx.lineCap = "round";
-          ctx.moveTo(p1.x, p1.y);
-          ctx.lineTo(p2.x, p2.y);
-          ctx.stroke();
+          const g = sp.geometry;
+          if (!g || g.length < 2) continue;
+
+          /* A dark casing under the yellow, so it reads on a pale
+             background plan as well as on a dark one. */
+          for (const [colour, width] of [["#78350f", 11], ["#facc15", 7]]) {
+            ctx.beginPath();
+            ctx.strokeStyle = colour;
+            ctx.lineWidth = width;
+            ctx.lineJoin = "round";
+            ctx.lineCap = "round";
+            g.forEach((pt, i) => {
+              const q = toPx(pt);
+              if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+            });
+            ctx.stroke();
+          }
         }
       }
 

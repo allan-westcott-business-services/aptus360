@@ -64,6 +64,7 @@ import {
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
+import { gasMainRuns } from "./gasNetwork.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
@@ -5504,7 +5505,8 @@ export default function GISCanvasPage() {
     /* Whether the router has ever run. Generated is the discriminator
        the rebuild itself uses, so the two agree about what counts as a
        built network. */
-    const built = features.some((f) => f.Attributes?.Generated);
+    const built = features.some((f) => f.Attributes?.Generated
+      && f.Layer_Key === "electric");
 
     if (!window.confirm(
       `Move ${rows.length} meter(s) to ${target.name}?`
@@ -5720,8 +5722,14 @@ export default function GISCanvasPage() {
 
     /* Generated is the discriminator, not the type: a rebuild must
        replace what the router drew and leave alone what anyone drew by
-       hand, and both are electric mains. */
-    const old = src.filter((f) => f.Attributes?.Generated);
+       hand, and both are electric mains.
+
+       On the electric layer, though. Generated alone was every layer,
+       which was harmless while this was the only thing generating
+       anything — and the moment Build Gas Network drew a gas main,
+       rebuilding the LV feeders would have deleted it. */
+    const old = src.filter((f) => f.Attributes?.Generated
+      && f.Layer_Key === "electric");
 
     if (!silent && !window.confirm(
       `Build the LV feeder network for ${circuits.length} circuit(s)?`
@@ -5841,7 +5849,8 @@ export default function GISCanvasPage() {
         return;
       }
 
-      const old = src.filter((f) => f.Attributes?.Generated);
+      const old = src.filter((f) => f.Attributes?.Generated
+        && f.Layer_Key === "electric");
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       let step = 0;
@@ -6028,6 +6037,131 @@ export default function GISCanvasPage() {
           : ", no LV cable in the catalogue to default to")
         + (links.length ? `, ${links.length} link(s) recorded` : "")
         + (stranded.length ? ` \u2014 ${stranded.length} meter(s) not on the trench network` : ""));
+      setTimeout(() => setStatus(""), 14000);
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
+  }
+
+  /* ── Build Gas Network ──
+
+     Pipe along every length of mains trench the gas POC can reach.
+
+     Much shorter than the LV build above, and for a reason worth
+     stating: there is nothing to design. The feeder build has to work
+     out load, cable counts and where a run divides because of them;
+     this only has to cover the trench that has already been dug. So the
+     work is in gasNetwork.js, which decides the geometry, and this
+     writes it — the same split as everywhere else, and what lets the
+     routing be tested without a project.
+
+     Services are left alone. The main runs past each service trench and
+     the spur is the service pipe's job, which is what "up to each
+     service trench" means on a drawing: the tee is a place the main
+     goes past, not a place it stops. */
+  async function buildGasNetwork() {
+    if (!projectId) return;
+    const src = features;
+
+    /* The mains type from the configured list rather than the string
+       "gas_main". Renaming a line type in admin is a thing somebody may
+       do, and a build that then draws pipe with a type nothing renders
+       fails invisibly — the features exist, the drawing looks empty. */
+    const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
+      && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+    if (!mainType) {
+      return setError("No gas mains line type is configured \u2014 add one in "
+        + "Admin \u203a GIS Styles before building.");
+    }
+
+    const plan = gasMainRuns(src, { lineTypes });
+    if (plan.error) return setError(plan.error);
+    if (!plan.runs.length) {
+      return setError("Nothing to lay \u2014 the POC is on the network but no "
+        + "mains trench leads away from it.");
+    }
+
+    /* Generated and gas: a rebuild replaces what this drew and leaves
+       a pipe somebody drew by hand exactly where it is. */
+    const old = src.filter((f) => f.Feature_Type === "line"
+      && f.Layer_Key === "gas"
+      && !!f.Attributes?.Generated);
+
+    if (!window.confirm(
+      `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m?`
+      + (old.length ? `\n\nThis redraws ${old.length} existing gas main(s).` : "")
+      + (plan.unreachable.length
+        ? `\n\n${plan.unreachable.length} mains trench(es) aren\u2019t joined to the `
+          + "POC and will get no pipe." : "")
+    )) return;
+
+    setBusy("gasnet");
+    try {
+      setProgress({ done: 0, total: plan.runs.length, label: "Laying gas main" });
+      if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
+
+      for (const [i, r] of plan.runs.entries()) {
+        await createFeature(projectId, {
+          Layer_Key: "gas",
+          Feature_Type: "line",
+          Geometry: r.pts,
+          Label: `G${i + 1}`,
+          Attributes: {
+            Line_Type: mainType.Type_Key,
+            /* How many services come off this length. The number
+               somebody would otherwise count off the drawing by hand
+               when checking a quantity.
+
+               No size is set. Gas carries its size as free text with no
+               catalogue behind it, so there is nothing to default to
+               and a guess written into every run is worse than a blank
+               somebody fills in. */
+            Services: r.services,
+            Generated: true,
+          },
+        });
+        setProgress({ done: i + 1, total: plan.runs.length, label: `Run ${i + 1} of ${plan.runs.length}` });
+      }
+
+      /* Link what has just been drawn.
+
+         Same pass as the LV build, and for the same reason: Connects
+         cannot be written at creation time because the features being
+         linked to have no ids until they exist. Recomputed across every
+         line, not only the new ones, since a pipe that now meets a
+         service trench changes that trench's links too — and only
+         written where it changed, so a large drawing is not rewritten
+         in full each time. */
+      setProgress({ done: plan.runs.length, total: plan.runs.length, label: "Linking" });
+      const fresh = await listGis(projectId);
+      const all = fresh.features || [];
+      const links = all
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+        .map((f) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
+        }))
+        .filter((u) => {
+          const was = all.find((f) => f.Feature_ID === u.Feature_ID)?.Attributes?.Connects || [];
+          return [...was].sort().join(",") !== [...u.Attributes.Connects].sort().join(",");
+        });
+      for (let i = 0; i < links.length; i += 100) {
+        await bulkUpdateFeatures(projectId, links.slice(i, i + 100));
+      }
+
+      await load(projectId);
+      setError("");
+      setStatus(`Gas network: ${plan.runs.length} run(s), ${plan.totalM} m of main`
+        + (plan.services ? `, past ${plan.services} service trench(es)` : "")
+        + (links.length ? `, ${links.length} link(s) recorded` : "")
+        /* What got no pipe, and why. A build that quietly covers most
+           of a site reads as a build that worked. */
+        + (plan.unreachable.length
+          ? ` \u2014 ${plan.unreachable.length} mains trench(es) not joined to the POC: `
+            + plan.unreachable.slice(0, 3).map((u) => u.label).join(", ")
+            + (plan.unreachable.length > 3 ? "\u2026" : "")
+          : "")
+        + (plan.servicesOffNetwork
+          ? ` \u2014 ${plan.servicesOffNetwork} service trench(es) not on the mains` : ""));
       setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
@@ -7988,6 +8122,23 @@ export default function GISCanvasPage() {
                           <MenuItem label="+ Gas Governor" hint="Snaps to the nearest trench"
                             disabled={!projectId}
                             onClick={() => placeNode("governor", key)} />
+                        )}
+                        {/* Building the main is a gas action for now.
+
+                            Water works the same way — one pipe along
+                            the mains trench — and the routing module
+                            takes the layer as an option for that
+                            reason. It is offered on gas alone until
+                            somebody asks for water, because an item
+                            that has never been run against a real water
+                            drawing should not look as settled as one
+                            that has. */}
+                        {key === "gas" && (
+                          <MenuItem
+                            label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
+                            hint="Lays gas main along every length of mains trench the POC can reach, past each service trench"
+                            disabled={!projectId || !!busy}
+                            onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
                         )}
 
                         <div className="gm-sep" />

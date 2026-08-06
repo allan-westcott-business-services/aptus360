@@ -1105,3 +1105,11 @@ export function orderNodesFromRoot(model, indexes = []) {
   }
   return out;
 }
+
+/* Shared with the gas builder, under names that say which is which.
+
+   Exported rather than copied: what counts as a trench, and what counts
+   as a service, has to be one answer. Two modules that decided it
+   separately would agree until somebody added a line type, and then
+   disagree about a drawing without either of them saying so. */
+export { isTrench as isTrenchLine, isService as isServiceLine };

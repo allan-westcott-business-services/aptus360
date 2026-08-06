@@ -138,7 +138,13 @@ export function bulkDeleteCategories(features = [], opts = {}) {
   /* Only what the router drew. A cable someone drew by hand is a
      decision, and rebuilding is not the same as discarding. */
   add("generated", "All generated LV feeders",
-    (f) => isLine(f) && !!f.Attributes?.Generated, "Lines");
+    (f) => isLine(f) && !!f.Attributes?.Generated && f.Layer_Key === "electric", "Lines");
+  /* Its own entry rather than widening the one above. Both are drawn by
+     a builder and both are safe to sweep, but "LV feeders" naming a
+     list that quietly included the gas main is how somebody clears a
+     utility they did not mean to. */
+  add("gengas", "All generated gas mains",
+    (f) => isLine(f) && !!f.Attributes?.Generated && f.Layer_Key === "gas", "Lines");
 
   add("tmain", "All mains trenches",
     (f) => isTrench(f, lineTypes) && !typeOf(f).includes("service"), "Trenches");

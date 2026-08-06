@@ -52,7 +52,7 @@ export default async function handler(req) {
       const [spans, plots, cols] = await Promise.all([
         db.from("Mains_Call_Off_Span")
           .select("Span_ID,Submission_ID,Plots,D_or_P,Energisation_Date,"
-            + "Estimated_Length_m,Sort_Order,From_Node_ID,To_Node_ID")
+            + "Estimated_Length_m,Sort_Order,From_Node_ID,To_Node_ID,Off_Site")
           .in("Submission_ID", ids).order("Sort_Order"),
         db.from("Service_Call_Off_Plot")
           .select("Service_Plot_ID,Submission_ID,Plot,Energisation_Date,Sort_Order")

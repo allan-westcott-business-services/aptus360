@@ -32,7 +32,7 @@ export const CHILD = {
     table: "Mains_Call_Off_Span",
     key: "Span_ID",
     cols: ["Plots", "D_or_P", "Energisation_Date", "Estimated_Length_m",
-      "Sort_Order", "From_Node_ID", "To_Node_ID"],
+      "Sort_Order", "From_Node_ID", "To_Node_ID", "Off_Site"],
   },
   PlotList: {
     table: "Service_Call_Off_Plot",

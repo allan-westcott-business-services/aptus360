@@ -61,6 +61,7 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel } from "./spanNodes.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
+  isOffSite,
 } from "./buildStatus.js";
 import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
   from "./mainsCallOff.js";
@@ -5036,6 +5037,37 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Marking the selected trench off site, or clearing it. */
+  async function toggleOffSite(on) {
+    const mine = features.filter((f) => selected.includes(f.Feature_ID)
+      && f.Feature_Type === "line"
+      && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+
+    if (!mine.length) { setError("Select some trench first."); return; }
+
+    const locked = mine.filter((f) => isFeatureLocked(f, lockedClasses));
+    if (locked.length) {
+      setError(`${locked.length} of those are locked against changes.`);
+      return;
+    }
+
+    setBusy("offsite");
+    try {
+      await bulkUpdateFeatures(projectId, mine.map((f) => {
+        const attrs = { ...f.Attributes };
+        /* Cleared rather than set false, so a drawing nobody has marked
+           carries nothing and the flag means what it says. */
+        if (on) attrs.Off_Site = true; else delete attrs.Off_Site;
+        return { Feature_ID: f.Feature_ID, Attributes: attrs };
+      }));
+      await load(projectId);
+      setStatus(`${mine.length} section(s) ${on ? "marked off site" : "cleared"}`);
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   function findGaps() {
     const list = gaps(features, {
       isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
@@ -7522,6 +7554,19 @@ export default function GISCanvasPage() {
                         after: a gap explains most surprising answers,
                         and it is invisible at any zoom where the site
                         fits on screen. */}
+                    {/* Off site: a flag rather than a status, because a
+                        length can be off site and as-built at the same
+                        time. Marked on whatever is selected, so a run
+                        already split into sections can have one of them
+                        marked. */}
+                    <MenuItem label="Mark selected as Off Site"
+                      hint="A different rate, different notice, often a different permit"
+                      disabled={!!busy || !selected.length}
+                      onClick={() => toggleOffSite(true)} />
+                    <MenuItem label="Clear Off Site"
+                      disabled={!!busy || !selected.length}
+                      onClick={() => toggleOffSite(false)} />
+                    <div className="gm-sep" />
                     <MenuGroup label="Build status" />
                     {BUILD_STATUSES.map((bs) => (
                       <MenuItem key={bs.key} label={bs.label} indent

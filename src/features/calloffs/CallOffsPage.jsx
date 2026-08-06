@@ -826,6 +826,36 @@ function Assignments({ row }) {
                 <span className="asg-when">
                   {fmt(a.Start_Date)} to {fmt(a.End_Date)}
                 </span>
+                {/* How much of each day, from the day rows.
+
+                    The dates alone say a gang is there on the sixth and
+                    nothing about whether that is a morning, an
+                    afternoon or the whole day — which is the difference
+                    between one team doing two spans and two teams doing
+                    one each.
+
+                    Where every day is the same it is said once; where
+                    they differ each is named, because "AM" against a
+                    week that is only a morning on the Friday would be
+                    wrong. */}
+                {(() => {
+                  const mineDays = workDays
+                    .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
+                    .sort((x, y) => String(x.Work_Date).localeCompare(y.Work_Date));
+                  if (!mineDays.length) return null;
+
+                  const parts = [...new Set(mineDays.map((d) => d.Part || "Full"))];
+                  const label = (p) => (p === "Full" ? "Full day" : p);
+
+                  return (
+                    <span className="asg-part-tag">
+                      {parts.length === 1
+                        ? label(parts[0])
+                        : mineDays.map((d) =>
+                          `${String(d.Work_Date).slice(8)} ${label(d.Part)}`).join(", ")}
+                    </span>
+                  );
+                })()}
                 <span className="asg-plots">
                   {row.Selection_Mode === "Span"
                     ? (row.items || []).find((it) =>
@@ -833,14 +863,23 @@ function Assignments({ row }) {
                       ?? "all spans"
                     : (a.Plot_Range || "all plots")}
                 </span>
-                {/* How much of the booking is off site, from the days
-                    rather than the booking — a week with one off-site
-                    Tuesday reads as one day, not as a whole week. */}
+                {/* Off site, from the span this assignment covers.
+
+                    A property of the trench, not of the day: a length
+                    dug through an adopted road is off site whoever turns
+                    up and whenever they do. Ticked automatically, since
+                    the drawing already knows and asking somebody to
+                    remember is how it gets missed. */}
                 {(() => {
-                  const off = workDays.filter((d) =>
-                    Number(d.Assignment_ID) === Number(a.Assignment_ID) && d.Off_Site);
-                  return off.length
-                    ? <span className="asg-off-tag">{off.length} off site</span>
+                  const span = (row.items || []).find((it) =>
+                    Number(it.Span_ID) === Number(a.Span_ID));
+                  /* With no span named the assignment covers the whole
+                     call-off, so any off-site run in it counts. */
+                  const off = span
+                    ? span.Off_Site
+                    : (row.items || []).some((it) => it.Off_Site);
+                  return off
+                    ? <span className="asg-off-tag">&#10003; Off site</span>
                     : null;
                 })()}
                 <button className="asg-edit"
@@ -1092,6 +1131,8 @@ const CSS = `
   padding: 6px 9px; background: var(--bg); border-radius: 6px; font-size: 12.5px; }
 .asg-team { font-weight: 700; }
 .asg-when { color: var(--muted); }
+.asg-part-tag { font: 700 10.5px inherit; padding: 2px 8px; border-radius: 4px;
+  background: #e0e7ff; color: #3730a3; white-space: nowrap; }
 .asg-plots { margin-left: auto; font-weight: 600; }
 /* Each control the width of what goes in it.
 

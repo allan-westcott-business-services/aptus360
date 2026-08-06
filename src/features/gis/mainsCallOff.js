@@ -451,6 +451,12 @@ export function spansBetween(features = [], opts = {}) {
              which shows as a blob at every corner. */
           return i === 0 ? g : g.slice(1);
         }),
+        /* Whether any part of this span is off site.
+
+           Worked out here, where the trench features are to hand, rather
+           than by the scheduling side going back to the drawing — which
+           it has no reason to load. */
+        offSite: sp.parts.some((part) => part.trench?.Attributes?.Off_Site === true),
         plots,
         plotCount: plots.length,
       };
@@ -553,7 +559,12 @@ export function toCallOffRows(ranges = []) {
     const to = spans[spans.length - 1].to;
     const total = spans.reduce((t, sp) => t + sp.lengthM, 0);
 
+    /* Any part of the run being off site travels with the row, so the
+       assignment can be ticked without going back to the drawing. */
+    const offSite = spans.some((sp) => sp.offSite);
+
     return {
+      Off_Site: offSite || null,
       Plots: plots.length
         ? `Span Node ${from} to ${to} (plots ${plots.join(", ")})`
         : `Span Node ${from} to ${to}`,

@@ -182,3 +182,26 @@ export function planMark(trench, fromPoint, toPoint, status) {
     markedM: Math.round(lengthOf(marked) * 10) / 10,
   };
 }
+
+
+/* Off-site trench.
+
+   A length dug away from the site itself — through an adopted road, a
+   third party's land, a verge outside the boundary. It carries a
+   different rate, different notice and often a different permit, and
+   whoever is scheduling the work needs to know before they book a gang
+   rather than after.
+
+   A flag on the trench rather than a fifth build status: a length can be
+   off site and as-built at the same time, and the two answer different
+   questions. Making it a status would have forced a choice between
+   them. */
+export const isOffSite = (f) => f?.Attributes?.Off_Site === true;
+
+/* Whether any part of a run of trench is off site.
+
+   Given the features a span crosses, so an assignment can be marked
+   without anybody working it out from the drawing. */
+export function anyOffSite(trenches = []) {
+  return trenches.some((t) => isOffSite(t));
+}

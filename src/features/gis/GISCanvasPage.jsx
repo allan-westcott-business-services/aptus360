@@ -7387,6 +7387,29 @@ export default function GISCanvasPage() {
                       somebody opens this menu to do. */}
                   <Menu id="layers" label="Layers" open={open} setOpen={setOpen}
                     columns={2}>
+                    {/* Above the layers, not below them.
+
+                        It undoes whatever hiding is in force, so it is
+                        the first thing wanted by somebody who has lost
+                        track of what is off — and it was at the foot of
+                        a list they would have to scroll to reach.
+
+                        Under a heading of its own, so both columns start
+                        with one and the two line up — a column beginning
+                        with a button against one beginning with a
+                        heading sits a few pixels out and reads as a
+                        wobble. */}
+                    <MenuGroup label="Everything" />
+                    <MenuItem label="Show Everything"
+                      disabled={!hidden.length && isolatedCircuit == null
+                        && !liveTrenchOnly
+                        && (showBasemap || !basemap?.Metres_Per_Pixel)}
+                      hint="Unhides every layer and ends any circuit isolation"
+                      onClick={() => {
+                        setHidden([]); setSolo(null); setIsolatedCircuit(null);
+                        setShowBasemap(true); setLiveTrenchOnly(false);
+                      }} />
+                    <div className="gm-sep" />
                     <MenuGroup label="Hide or Solo" />
                     <p className="gm-note">
                       Hide a layer or isolate it with the Solo button.
@@ -7438,19 +7461,6 @@ export default function GISCanvasPage() {
                         onSolo={() => soloClass("boundary:dev")} />
                     )}
                     <div className="gm-sep" />
-                    <MenuGroup label="Labels" />
-                    {/* Under its own heading, and shaped like every other
-                        layer row.
-
-                        It had drifted below the locked section, leaving
-                        the Labels heading with nothing under it and the
-                        control itself unexplained where it landed. And
-                        it was a plain item where its neighbours are
-                        layers with an H button — the same question asked
-                        two different ways in one menu. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(!showLabels)} />
                     {/* Moved from Tools rather than added there as well:
                         two controls for one setting is how they drift out
                         of step. This menu is what you can see, and a
@@ -7471,7 +7481,22 @@ export default function GISCanvasPage() {
                         turning them off one kind at a time is four
                         decisions to make the one you wanted. */}
                     <div className="gm-sep" />
-                    <MenuGroup label="Locked against moving" newColumn />
+                    <MenuGroup label="Labels" newColumn />
+                    {/* Under its own heading, and shaped like every other
+                        layer row.
+
+                        It had drifted below the locked section, leaving
+                        the Labels heading with nothing under it and the
+                        control itself unexplained where it landed. And
+                        it was a plain item where its neighbours are
+                        layers with an H button — the same question asked
+                        two different ways in one menu. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(!showLabels)} />
+
+                    <div className="gm-sep" />
+                    <MenuGroup label="Locked against moving" />
                     {/* Per layer, which is the coarsest and most useful
                         grain: a layer is usually finished all at once.
                         Line types are locked from the right-click menu,
@@ -7539,15 +7564,6 @@ export default function GISCanvasPage() {
                         while saying everything is shown is the same
                         quiet inconsistency as the circuit isolation this
                         already had to be taught about. */}
-                    <MenuItem label="Show Everything"
-                      disabled={!hidden.length && isolatedCircuit == null
-                        && !liveTrenchOnly
-                        && (showBasemap || !basemap?.Metres_Per_Pixel)}
-                      hint="Unhides every layer and ends any circuit isolation"
-                      onClick={() => {
-                        setHidden([]); setSolo(null); setIsolatedCircuit(null);
-                        setShowBasemap(true); setLiveTrenchOnly(false);
-                      }} />
                   </Menu>
 
                   {/* Two columns, grouped by what somebody is doing.

@@ -149,10 +149,17 @@ const CSS = `
    replaces. */
 .gm-2col { columns: 2; column-gap: 14px; min-width: 520px; max-height: none; }
 .gm-2col > * { break-inside: avoid; }
-.gm-2col .gm-brk { break-before: column; margin-top: 0; }
+.gm-2col .gm-brk { break-before: column; }
 .gm-group { margin: 7px 8px 4px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .07em; color: var(--muted); }
 .gm-group:first-child { margin-top: 3px; }
+/* The heading that starts the second column sits at the same height as
+   the one that starts the first.
+
+   It had margin-top: 0 against the first column's 3px, so the two
+   headings were three pixels out — which reads as a wobble rather than
+   as two columns. */
+.gm-2col .gm-brk { margin-top: 3px; }
 /* A line of explanation under a group heading, for a control whose
    behaviour isn't obvious from its label. */
 .gm-note { margin: 0 8px 6px; font-size: 10.5px; color: var(--muted); line-height: 1.35; }

@@ -115,12 +115,44 @@ export function clipBetween(g = [], from, to) {
 export function trenchGraph(trenches = [], nodes = [], opts = {}) {
   const { eps = 0.5 } = opts;
 
-  const at = nodes
-    .map((n) => ({ node: n, p: (n.Geometry || [])[0] }))
-    .filter((x) => x.p);
+  /* Every point that matters: span nodes, and the ends of every trench.
 
-  const adj = new Map(at.map((x) => [x.node.Feature_ID, []]));
+     Trench ends are in the graph even where no span node sits on them.
+     Without them a run crossing from one trench to another — two
+     sections meeting because the surface changes, which is an ordinary
+     thing to draw — had no connection at the join, and A10 to A12 came
+     back as no route at all.
 
+     They are interned together, so two trenches drawn to the same corner
+     become one point rather than two a millimetre apart. */
+  const points = [];
+  const intern = (p, node = null) => {
+    for (const q of points) {
+      if (dist(q.at, p) <= eps) {
+        if (node && !q.node) q.node = node;
+        return q;
+      }
+    }
+    const q = { at: [p[0], p[1]], node };
+    points.push(q);
+    return q;
+  };
+
+  for (const n of nodes) {
+    const p = (n.Geometry || [])[0];
+    if (p) intern(p, n);
+  }
+  for (const t of trenches) {
+    const g = t.Geometry || [];
+    if (g.length < 2) continue;
+    intern(g[0]);
+    intern(g[g.length - 1]);
+  }
+
+  const idOf = new Map(points.map((p, i) => [p, i]));
+  const adj = new Map(points.map((_, i) => [i, []]));
+
+  /* Each trench split at every point that sits on it. */
   for (const t of trenches) {
     const g = t.Geometry || [];
     if (g.length < 2) continue;
@@ -135,12 +167,12 @@ export function trenchGraph(trenches = [], nodes = [], opts = {}) {
       const vy = b[1] - a[1];
       const len2 = vx * vx + vy * vy;
       if (len2) {
-        for (const x of at) {
-          let u = ((x.p[0] - a[0]) * vx + (x.p[1] - a[1]) * vy) / len2;
+        for (const p of points) {
+          let u = ((p.at[0] - a[0]) * vx + (p.at[1] - a[1]) * vy) / len2;
           u = Math.max(0, Math.min(1, u));
           const q = [a[0] + vx * u, a[1] + vy * u];
-          if (dist(x.p, q) > eps) continue;
-          on.push({ id: x.node.Feature_ID, m: run + segLen * u });
+          if (dist(p.at, q) > eps) continue;
+          on.push({ p, m: run + segLen * u });
         }
       }
       run += segLen;
@@ -150,61 +182,97 @@ export function trenchGraph(trenches = [], nodes = [], opts = {}) {
     for (let i = 0; i + 1 < on.length; i++) {
       const A = on[i];
       const B = on[i + 1];
-      if (A.id === B.id) continue;
+      if (A.p === B.p) continue;
       const len = B.m - A.m;
       if (len <= eps) continue;
-      adj.get(A.id)?.push({ to: B.id, len, trench: t });
-      adj.get(B.id)?.push({ to: A.id, len, trench: t });
+      adj.get(idOf.get(A.p)).push({ to: idOf.get(B.p), len, trench: t });
+      adj.get(idOf.get(B.p)).push({ to: idOf.get(A.p), len, trench: t });
     }
   }
 
-  return adj;
+  return { points, idOf, adj, indexOfNode: (id) =>
+    points.findIndex((p) => p.node?.Feature_ID === id) };
 }
 
 /* The shortest run of trench between two span nodes.
 
    Returned as the steps taken, each with its length and the trench it
    is on — which is what a span is. */
-export function routeBetween(adj, fromId, toId) {
-  if (fromId === toId) return [];
+export function routeBetween(graph, fromId, toId) {
+  const { points, adj, indexOfNode } = graph;
+  const start = indexOfNode(fromId);
+  const end = indexOfNode(toId);
+  if (start < 0 || end < 0) return null;
+  if (start === end) return [];
 
   const from = new Map();
-  const cost = new Map([[fromId, 0]]);
-  const pending = new Set([fromId]);
+  const cost = new Map([[start, 0]]);
+  const pending = new Set([start]);
 
-  /* A plain scan rather than a heap: a drawing has tens of span nodes,
-     and the difference is not measurable against the clarity. */
+  /* A plain scan rather than a heap: a drawing has tens of points, and
+     the difference is not measurable against the clarity. */
   while (pending.size) {
     let at = null;
     for (const id of pending) {
       if (at == null || (cost.get(id) ?? Infinity) < (cost.get(at) ?? Infinity)) at = id;
     }
     pending.delete(at);
-    if (at === toId) break;
+    if (at === end) break;
 
     for (const step of adj.get(at) || []) {
       const c = (cost.get(at) ?? Infinity) + step.len;
       if (c < (cost.get(step.to) ?? Infinity)) {
         cost.set(step.to, c);
-        from.set(step.to, { id: at, len: step.len, trench: step.trench });
+        from.set(step.to, { at, len: step.len, trench: step.trench });
         pending.add(step.to);
       }
     }
   }
 
-  if (!cost.has(toId)) return null;
+  if (!cost.has(end)) return null;
 
+  /* Walk back, then forward again — the steps are wanted in the order
+     somebody would walk them. */
   const steps = [];
-  let at = toId;
+  let at = end;
   let guard = 0;
-  while (at !== fromId && guard++ < 500) {
+  while (at !== start && guard++ < 2000) {
     const back = from.get(at);
     if (!back) return null;
-    steps.push({ fromId: back.id, toId: at, len: back.len, trench: back.trench });
-    at = back.id;
+    steps.push({ from: back.at, to: at, len: back.len, trench: back.trench });
+    at = back.at;
   }
-  return steps.reverse();
+  steps.reverse();
+
+  /* Grouped into spans: a span runs from one span node to the next, and
+     whatever the route passes through between them — the corner where
+     two trenches meet, a bend, a point that is only there to join two
+     sections — is part of that span rather than the end of one.
+
+     This is what a route crossing two trench features needs. Splitting
+     at every point instead would have made "A10 to A12" two spans with
+     nothing at the join to name. */
+  const spans = [];
+  let current = null;
+  for (const st of steps) {
+    if (!current) {
+      current = { fromIdx: st.from, parts: [], len: 0 };
+    }
+    current.parts.push(st);
+    current.len += st.len;
+
+    const p = points[st.to];
+    if (p?.node) {
+      spans.push({ ...current, toIdx: st.to });
+      current = null;
+    }
+  }
+  /* A trailing piece means the route ended somewhere that is not a span
+     node, which cannot happen when both ends are nodes. */
+  return spans;
 }
+
+
 export function spansBetween(features = [], opts = {}) {
   const {
     fromId, toId, plotOf = () => null,
@@ -229,15 +297,16 @@ export function spansBetween(features = [], opts = {}) {
   }
   if (!steps.length) return { ok: true, spans: [] };
 
-  const byId = new Map(features.map((f) => [f.Feature_ID, f]));
+  /* Each span, with the pieces of trench it runs over.
 
-  /* Each step between two adjacent span nodes is one span: a separate
-     length to lay and a separate set of plots. */
-  const spans = steps.map((st) => ({
-    fromNode: byId.get(st.fromId),
-    toNode: byId.get(st.toId),
-    lengthM: st.len,
-    trench: st.trench,
+     A span can cross more than one trench feature — two sections meeting
+     because the surface changes is an ordinary thing to draw — so it
+     carries a list of parts rather than one trench. */
+  const spans = steps.map((sp) => ({
+    fromNode: adj.points[sp.fromIdx]?.node,
+    toNode: adj.points[sp.toIdx]?.node,
+    lengthM: sp.len,
+    parts: sp.parts,
     meters: [],
   }));
 
@@ -320,23 +389,27 @@ export function spansBetween(features = [], opts = {}) {
     tees.push({ meter: m, at: svc.far });
   }
 
+  /* Each piece of the span, taken in turn — a plot tees into one of
+     them, and which piece it is does not matter. */
   for (const sp of spans) {
-    if (!sp.trench) continue;
-    const g = sp.trench.Geometry || [];
-    const a = along((sp.fromNode?.Geometry || [])[0] || [0, 0], g);
-    const b = along((sp.toNode?.Geometry || [])[0] || [0, 0], g);
-    if (a.m == null || b.m == null) continue;
-    const lo = Math.min(a.m, b.m);
-    const hi = Math.max(a.m, b.m);
+    for (const part of sp.parts) {
+      if (!part.trench) continue;
+      const g = part.trench.Geometry || [];
+      const a = along(adj.points[part.from].at, g);
+      const b = along(adj.points[part.to].at, g);
+      if (a.m == null || b.m == null) continue;
+      const lo = Math.min(a.m, b.m);
+      const hi = Math.max(a.m, b.m);
 
-    for (const t of tees) {
-      const hit = along(t.at, g);
-      /* The tee has to be on this trench, not merely near it — a
-         service teeing into the road behind lands within a metre or two
-         of nothing on this one. */
-      if (hit.m == null || hit.d > attachM) continue;
-      if (hit.m < lo - 0.5 || hit.m > hi + 0.5) continue;
-      sp.meters.push(t.meter);
+      for (const t of tees) {
+        const hit = along(t.at, g);
+        /* On this trench, not merely near it — a service teeing into
+           the road behind lands within a metre or two of nothing on
+           this one. */
+        if (hit.m == null || hit.d > attachM) continue;
+        if (hit.m < lo - 0.5 || hit.m > hi + 0.5) continue;
+        if (!sp.meters.includes(t.meter)) sp.meters.push(t.meter);
+      }
     }
   }
 
@@ -369,9 +442,15 @@ export function spansBetween(features = [], opts = {}) {
            it crosses whatever is between them and gives no idea which
            trench is being called off. This is the part of the trench
            itself, clipped at each node. */
-        geometry: clipBetween(sp.trench?.Geometry || [],
-          (sp.fromNode?.Geometry || [])[0],
-          (sp.toNode?.Geometry || [])[0]),
+        /* The trench under this span, piece by piece — one clip per
+           trench it crosses, joined end to end. */
+        geometry: sp.parts.flatMap((part, i) => {
+          const g = clipBetween(part.trench?.Geometry || [],
+            adj.points[part.from].at, adj.points[part.to].at);
+          /* The join between two pieces would otherwise be drawn twice,
+             which shows as a blob at every corner. */
+          return i === 0 ? g : g.slice(1);
+        }),
         plots,
         plotCount: plots.length,
       };

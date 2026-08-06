@@ -69,6 +69,7 @@ import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
 import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
+import { listAgreements } from "../../api/av.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import { personFor, displayName } from "../poc/whoAmI.js";
 import SchematicModal from "./SchematicModal.jsx";
@@ -6073,6 +6074,58 @@ export default function GISCanvasPage() {
         + "Admin \u203a GIS Styles before building.");
     }
 
+    /* ── Whether this project should have a gas main at all ──
+
+       Two facts, neither of them on the drawing, and both of them
+       reasons the canvas is the wrong place to find out: a scheme with
+       no gas design and no gas asset value agreement is one where
+       somebody has drawn gas by mistake, or on the wrong project, and a
+       main laid there is quantities against work nobody is doing.
+
+       Checked here rather than in gasNetwork.js because they are facts
+       about the project. Keeping the routing module to geometry alone
+       is what lets it be tested against a drawing with no database
+       behind it.
+
+       Refused rather than warned. A confirm box that says "there is no
+       gas design, carry on?" is answered yes by everybody, which makes
+       it a slower way of not having a check. */
+    const gasLayer = layers.find((l) => l.Layer_Key === "gas");
+    const utilityId = gasLayer?.Utility_ID;
+    if (utilityId == null) {
+      return setError("The gas layer has no utility set, so there is no design or "
+        + "agreement to check it against \u2014 set it in Admin \u203a GIS Styles.");
+    }
+
+    /* The outline design for gas. scopeDefaults is the project's scope
+       rows, one per utility, which is what the Outline Designs tab
+       edits — a row for gas is what "this project does gas" means
+       everywhere else in the app, so it means it here too. */
+    const design = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(utilityId));
+    if (!design) {
+      return setError("This project has no gas design \u2014 add gas on the Outline "
+        + "Designs tab before laying a main.");
+    }
+
+    /* And the agreement. Read at build time rather than held in state:
+       it is checked once, when somebody asks for a main, and a value
+       loaded with the drawing would be however old the tab is. */
+    let agreement = null;
+    try {
+      const { rows = [] } = await listAgreements(projectId);
+      agreement = rows.find((a) => Number(a.Utility_ID) === Number(utilityId));
+    } catch (e) {
+      /* Not treated as an absent agreement: "there isn't one" and "we
+         couldn't ask" are different, and only one of them is the user's
+         to fix. */
+      return setError(`Couldn\u2019t check the gas asset value agreement: ${e.message}`);
+    }
+    if (!agreement) {
+      return setError("No gas asset value agreement on this project \u2014 the main is "
+        + "adopted work, so it is drawn once there is an agreement to adopt it "
+        + "under. Add one on the Asset Value tab.");
+    }
+
     const plan = gasMainRuns(src, { lineTypes });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {
@@ -6087,11 +6140,20 @@ export default function GISCanvasPage() {
       && !!f.Attributes?.Generated);
 
     if (!window.confirm(
-      `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m?`
+      `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m `
+      + `to ${plan.services} service trench(es), ${plan.meters} gas meter(s)?`
       + (old.length ? `\n\nThis redraws ${old.length} existing gas main(s).` : "")
+      /* Said before it happens, not after. The two are different kinds
+         of gap — one is trench nobody joined up, the other is trench
+         with no gas beyond it — and only the first is a fault. */
+      + (plan.unservedM
+        ? `\n\n${plan.unservedM} m of mains trench has no gas service beyond it `
+          + "and will get no pipe." : "")
       + (plan.unreachable.length
         ? `\n\n${plan.unreachable.length} mains trench(es) aren\u2019t joined to the `
           + "POC and will get no pipe." : "")
+      + (plan.strandedMeters.length
+        ? `\n\n${plan.strandedMeters.length} gas meter(s) sit on no service trench.` : "")
     )) return;
 
     setBusy("gasnet");
@@ -6107,15 +6169,22 @@ export default function GISCanvasPage() {
           Label: `G${i + 1}`,
           Attributes: {
             Line_Type: mainType.Type_Key,
-            /* How many services come off this length. The number
-               somebody would otherwise count off the drawing by hand
-               when checking a quantity.
+            /* The size from the outline design, where it sets one.
 
-               No size is set. Gas carries its size as free text with no
-               catalogue behind it, so there is nothing to default to
-               and a guess written into every run is worse than a blank
-               somebody fills in. */
+               Gas holds its size as free text with no catalogue behind
+               it, so there is nothing to calculate — but the design
+               records a default main size, and that is a decision
+               somebody made about this scheme. defaultsFor is the same
+               helper a hand-drawn run uses, so a generated pipe and a
+               drawn one start on the same size rather than on two
+               answers to one question. Nothing is invented where the
+               design sets nothing. */
+            ...defaultsFor(mainType.Type_Key),
+            /* How many services come off this length, and how many
+               meters they carry — the numbers somebody would otherwise
+               count off the drawing by hand when checking a quantity. */
             Services: r.services,
+            Meters: r.meters,
             Generated: true,
           },
         });
@@ -6151,17 +6220,22 @@ export default function GISCanvasPage() {
       await load(projectId);
       setError("");
       setStatus(`Gas network: ${plan.runs.length} run(s), ${plan.totalM} m of main`
-        + (plan.services ? `, past ${plan.services} service trench(es)` : "")
+        + `, ${plan.services} service trench(es), ${plan.meters} gas meter(s)`
         + (links.length ? `, ${links.length} link(s) recorded` : "")
         /* What got no pipe, and why. A build that quietly covers most
            of a site reads as a build that worked. */
+        + (plan.unservedM
+          ? ` \u2014 ${plan.unservedM} m of mains trench with no gas beyond it` : "")
         + (plan.unreachable.length
           ? ` \u2014 ${plan.unreachable.length} mains trench(es) not joined to the POC: `
             + plan.unreachable.slice(0, 3).map((u) => u.label).join(", ")
             + (plan.unreachable.length > 3 ? "\u2026" : "")
           : "")
-        + (plan.servicesOffNetwork
-          ? ` \u2014 ${plan.servicesOffNetwork} service trench(es) not on the mains` : ""));
+        + (plan.unattachedServices.length
+          ? ` \u2014 ${plan.unattachedServices.length} service trench(es) reach a meter `
+            + "but not the main" : "")
+        + (plan.strandedMeters.length
+          ? ` \u2014 ${plan.strandedMeters.length} gas meter(s) on no service trench` : ""));
       setTimeout(() => setStatus(""), 14000);
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
@@ -8136,7 +8210,7 @@ export default function GISCanvasPage() {
                         {key === "gas" && (
                           <MenuItem
                             label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
-                            hint="Lays gas main along every length of mains trench the POC can reach, past each service trench"
+                            hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
                             disabled={!projectId || !!busy}
                             onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
                         )}

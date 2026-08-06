@@ -10,8 +10,20 @@
    count, and a run breaks mid-trench where that count changes. None of
    that applies here. A gas main is one pipe, and where it goes is
    already decided by where the trench was dug — so this is a covering
-   problem rather than a sizing one: put pipe along every length of
-   mains trench the POC can reach, and stop.
+   problem rather than a sizing one.
+
+   ── But not every trench ──
+
+   Not all of it, though: main goes where gas is going. A length of
+   trench is worth piping only if something beyond it takes gas, and
+   what says so is a service trench running from the main to a gas
+   meter. So the demand is counted at each tee and accumulated back
+   towards the POC, exactly as the feeder accumulates load, and a branch
+   with nothing beyond it gets no pipe.
+
+   That is what stops the main being drawn down the electric-only spur,
+   and what makes it stop after the last gas service rather than
+   carrying on to the end of the trench somebody drew.
 
    ── Up to each service trench ──
 
@@ -23,7 +35,7 @@
    the run passes through.
 
    `breakAtServices` ends a run at every tee instead, so each length
-   between service connections is its own pipe. Off by default: on a
+   between service connections is its own pipe. Off by default: on an
    estate of two hundred plots that is two hundred short pipes where the
    ground holds one continuous main, and a schedule of them says less
    than a schedule of the runs between junctions does. It is an option
@@ -32,12 +44,20 @@
 
    ── The same node rule as the feeder ──
 
-   Vertices closer than CONNECT_EPS are one node, and a POC within
+   Vertices closer than CONNECT_EPS are one node, and a meter within
    SNAP_TOL of the network is on it. Both are imported rather than
    restated, because a module that agreed with the feeder builder on
    Tuesday and drifted from it on Friday is worse than one that never
    agreed: the two would disagree about whether the same drawing is
-   connected, and only one of them would say so. */
+   connected, and only one of them would say so.
+
+   ── What is not here ──
+
+   Whether the project should have a gas main at all — a gas design, a
+   gas asset value agreement — is a fact about the project rather than
+   about the drawing, and is checked by the caller. This module is given
+   features and returns geometry, which is what lets it be tested
+   against a drawing that no database has ever seen. */
 
 import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "./feeder.js";
 
@@ -48,6 +68,25 @@ const lengthOf = (pts = []) => {
   for (let i = 0; i + 1 < pts.length; i++) t += dist(pts[i], pts[i + 1]);
   return t;
 };
+
+/* Point to polyline, so a meter is measured against the whole spur and
+   not only against the end somebody happened to draw last. */
+function distToLine(p, g = []) {
+  let best = Infinity;
+  for (let i = 0; i + 1 < g.length; i++) {
+    const a = g[i];
+    const b = g[i + 1];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const len2 = vx * vx + vy * vy;
+    if (!len2) { best = Math.min(best, dist(p, a)); continue; }
+    let u = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+    u = Math.max(0, Math.min(1, u));
+    const d = dist(p, [a[0] + vx * u, a[1] + vy * u]);
+    if (d < best) best = d;
+  }
+  return best;
+}
 
 /* The runs of gas main a drawing calls for.
 
@@ -60,8 +99,8 @@ export function gasMainRuns(features = [], opts = {}) {
     eps = CONNECT_EPS,
     tol = SNAP_TOL,
     breakAtServices = false,
-    /* Which POC to build from. The gas one, because a site has an
-       electric POC too and they are nowhere near each other. */
+    /* Which utility this is. The gas POC and gas meters, because a site
+       has electric ones too and they are nowhere near each other. */
     layerKey = "gas",
   } = opts;
 
@@ -132,10 +171,12 @@ export function gasMainRuns(features = [], opts = {}) {
      POC, which is the way the pipe runs. */
   const parent = new Array(nodes.length).fill(-1);
   const seen = new Array(nodes.length).fill(false);
+  const order = [];
   seen[root] = true;
   const queue = [root];
   while (queue.length) {
     const u = queue.shift();
+    order.push(u);
     for (const v of adj.get(u) || []) {
       if (seen[v]) continue;
       seen[v] = true;
@@ -144,20 +185,72 @@ export function gasMainRuns(features = [], opts = {}) {
     }
   }
 
-  const children = new Map();
-  for (let i = 0; i < nodes.length; i++) {
-    if (parent[i] < 0) continue;
-    if (!children.has(parent[i])) children.set(parent[i], []);
-    children.get(parent[i]).push(i);
-  }
-  const kids = (u) => children.get(u) || [];
+  /* ── Which services carry gas to a meter ──
 
-  /* ── Where the service trenches meet it ──
-     Either end of the spur: which end joins the main depends on which
-     way it was drawn. */
+     Meter first, not service first. A service trench is a hole in the
+     ground with no utility of its own — the same spur carries the
+     electric and the gas — so asking "is this a gas service trench" has
+     no answer. Asking which spur a gas meter sits on does.
+
+     Anchored at the plot seed where there is one, as the feeder does:
+     the meter glyph is drawn beside its seed rather than on the spur,
+     and measuring from the glyph puts every meter a couple of metres
+     further out than it is. */
+  const seedOf = (m) => {
+    const sid = m.Attributes?.Seed_Feature_ID;
+    if (sid != null) {
+      return features.find((s) => s.Feature_Role === "plot"
+        && Number(s.Feature_ID) === Number(sid));
+    }
+    if (m.Plot_ID == null) return null;
+    return features.find((s) => s.Feature_Role === "plot"
+      && Number(s.Plot_ID) === Number(m.Plot_ID));
+  };
+
+  const meters = features.filter((m) => m.Feature_Role === "meter"
+    && m.Layer_Key === layerKey
+    && (m.Geometry || []).length);
+
+  /* How many gas meters each service trench carries. */
+  const servedBy = new Map();
+  const strandedMeters = [];
+  for (const m of meters) {
+    const seed = seedOf(m);
+    const anchor = (seed?.Geometry || []).length ? seed.Geometry[0] : m.Geometry[0];
+
+    let best = null;
+    for (const sv of services) {
+      /* Measured from both the seed and the glyph, and the better of
+         the two taken: a meter whose seed is missing is still a meter,
+         and one drawn a little inside the plot boundary should not be
+         thrown away for it. */
+      const d = Math.min(distToLine(anchor, sv.Geometry), distToLine(m.Geometry[0], sv.Geometry));
+      if (!best || d < best.d) best = { d, sv };
+    }
+    if (best && best.d <= tol) {
+      servedBy.set(best.sv.Feature_ID, (servedBy.get(best.sv.Feature_ID) || 0) + 1);
+    } else {
+      /* Named rather than counted: a gas meter on no service trench is
+         a plot that will not get gas, and somebody has to go and look
+         at it. */
+      strandedMeters.push({
+        id: m.Feature_ID,
+        label: m.Label || `Meter ${m.Feature_ID}`,
+        plotId: m.Plot_ID ?? null,
+        at: m.Geometry[0],
+      });
+    }
+  }
+
+  /* ── Where those services meet the main ── */
+  const demand = new Array(nodes.length).fill(0);
   const tees = new Set();
-  let servicesOffNetwork = 0;
+  const unattachedServices = [];
+
   for (const sv of services) {
+    const carried = servedBy.get(sv.Feature_ID) || 0;
+    if (!carried) continue;                 // carries no gas meter
+
     const g = sv.Geometry;
     let hit = -1;
     let bd = Infinity;
@@ -167,9 +260,52 @@ export function gasMainRuns(features = [], opts = {}) {
         if (d < bd) { bd = d; hit = i; }
       }
     }
-    if (hit >= 0 && bd <= eps && seen[hit]) tees.add(hit);
-    else servicesOffNetwork += 1;
+
+    if (hit >= 0 && bd <= eps && seen[hit]) {
+      demand[hit] += carried;
+      tees.add(hit);
+    } else {
+      /* Reaches a meter but not the main. The gas has nowhere to come
+         from, and the pipe should not be drawn to a tee that isn't
+         there. */
+      unattachedServices.push({
+        id: sv.Feature_ID,
+        label: sv.Label || `Service trench ${sv.Feature_ID}`,
+        meters: carried,
+        gap: Math.round(bd * 100) / 100,
+        at: g[0],
+      });
+    }
   }
+
+  if (!tees.size) {
+    return {
+      error: "No gas service trench reaches a gas meter from the mains trench, so"
+        + " there is nothing for the main to feed.",
+      strandedMeters,
+      unattachedServices,
+    };
+  }
+
+  /* ── What each branch feeds ──
+     Backwards down the visit order, so a node is summed only once
+     everything beyond it has been. */
+  const served = demand.slice();
+  for (let i = order.length - 1; i >= 0; i--) {
+    const u = order[i];
+    if (parent[u] >= 0) served[parent[u]] += served[u];
+  }
+
+  const children = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    if (parent[i] < 0) continue;
+    if (!children.has(parent[i])) children.set(parent[i], []);
+    children.get(parent[i]).push(i);
+  }
+  /* Only the branches with gas beyond them. This is the whole of the
+     "where gas services connect" rule: everything else follows from it,
+     including the main stopping after the last tee. */
+  const kids = (u) => (children.get(u) || []).filter((c) => served[c] > 0);
 
   /* ── The runs ──
      A run ends where the main divides, where it stops, and — if asked —
@@ -180,19 +316,24 @@ export function gasMainRuns(features = [], opts = {}) {
     || (breakAtServices && tees.has(u));
 
   const runs = [];
+  const covered = new Set();
+  const edgeKey = (a, b) => (a < b ? `${a}:${b}` : `${b}:${a}`);
   const walk = [root];
   while (walk.length) {
     const u = walk.shift();
     for (const first of kids(u)) {
       let cur = first;
       const pts = [nodes[u].slice(), nodes[first].slice()];
-      const passes = tees.has(first) ? 1 : 0;
-      let teed = passes;
+      covered.add(edgeKey(u, first));
+      let teed = tees.has(first) ? 1 : 0;
+      let fed = demand[first];
 
       while (!isBreak(cur)) {
         const next = kids(cur)[0];
         pts.push(nodes[next].slice());
+        covered.add(edgeKey(cur, next));
         if (tees.has(next)) teed += 1;
+        fed += demand[next];
         cur = next;
       }
 
@@ -201,11 +342,15 @@ export function gasMainRuns(features = [], opts = {}) {
         metres: Math.round(lengthOf(pts) * 10) / 10,
         fromNode: u,
         endNode: cur,
-        /* How many services come off this length. Not used to size
-           anything — there is nothing to size — but it is the number
-           somebody counts by hand off the drawing when checking a
-           quantity, so it may as well be counted here. */
+        /* How many services come off this length, and how many meters
+           they carry. Not used to size anything — there is nothing to
+           size — but it is what somebody counts off the drawing by hand
+           when checking a quantity. */
         services: teed,
+        meters: fed,
+        /* Everything beyond the far end of this run, which is what says
+           whether it is the spine or a leg off it. */
+        metersBeyond: served[cur],
       });
       /* Carry on from the far end, so the runs come out in the order
          they leave the POC and G1 is the first length of main. */
@@ -213,21 +358,46 @@ export function gasMainRuns(features = [], opts = {}) {
     }
   }
 
-  /* ── What the POC cannot reach ──
-     A mains trench in a piece of network joined to nothing gets no pipe,
-     and nothing else would say so. Reported by name, since the fix is to
-     go and close the gap. */
+  /* ── The trench that gets no pipe, and why ──
+
+     Two different answers, and telling them apart is the point: a
+     trench the POC cannot reach is a gap to close, and a trench with no
+     gas beyond it is working as intended. Reported by name either way,
+     because a build that quietly covers three quarters of a site reads
+     as a build that worked. */
   const unreachable = [];
+  const unserved = [];
   for (const f of mains) {
     const ids = trenchNodes.get(f.Feature_ID) || [];
-    if (ids.some((i) => seen[i])) continue;
-    unreachable.push({
-      id: f.Feature_ID,
-      label: f.Label || `Trench ${f.Feature_ID}`,
-      metres: Math.round((Number(f.Attributes?.Length_m ?? 0)
-        || lengthOf(f.Geometry)) * 10) / 10,
-      at: f.Geometry?.[0] ?? null,
-    });
+    const geom = f.Geometry;
+
+    if (!ids.some((i) => seen[i])) {
+      unreachable.push({
+        id: f.Feature_ID,
+        label: f.Label || `Trench ${f.Feature_ID}`,
+        metres: Math.round((Number(f.Attributes?.Length_m ?? 0) || lengthOf(geom)) * 10) / 10,
+        at: geom[0] ?? null,
+      });
+      continue;
+    }
+
+    /* Reachable, so measure the part of it no run covers. Per edge
+       rather than per feature: one drawn trench often runs past the
+       last service and on to the end of the site, and only the tail of
+       it is left out. */
+    let bare = 0;
+    for (let i = 0; i + 1 < ids.length; i++) {
+      if (covered.has(edgeKey(ids[i], ids[i + 1]))) continue;
+      bare += dist(geom[i], geom[i + 1]);
+    }
+    if (bare > eps) {
+      unserved.push({
+        id: f.Feature_ID,
+        label: f.Label || `Trench ${f.Feature_ID}`,
+        metres: Math.round(bare * 10) / 10,
+        at: geom[0] ?? null,
+      });
+    }
   }
 
   return {
@@ -235,13 +405,17 @@ export function gasMainRuns(features = [], opts = {}) {
     totalM: Math.round(runs.reduce((t, r) => t + r.metres, 0) * 10) / 10,
     poc,
     pocGap: Math.round(rootGap * 10) / 10,
-    /* Service trenches the main now runs past, and the ones it does not
-       reach — the second is a count rather than a list because
-       Trench → Check Service Trenches already names them, and two
-       screens naming the same faults differently is how they come to
-       disagree. */
+    /* Tees the main now runs past, and the meters they carry. */
     services: tees.size,
-    servicesOffNetwork,
+    meters: served[root],
+    /* Gas meters on no service trench at all. */
+    strandedMeters,
+    /* Service trenches that reach a meter but not the main. */
+    unattachedServices,
+    /* Mains trench with no pipe: not joined to the POC, or nothing
+       taking gas beyond it. */
     unreachable,
+    unserved,
+    unservedM: Math.round(unserved.reduce((t, u) => t + u.metres, 0) * 10) / 10,
   };
 }

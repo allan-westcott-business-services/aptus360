@@ -7,6 +7,7 @@ import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admi
 import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots,
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
+  bookedParts, partIsFree,
 } from "./assignments.js";
 
 /* Call-offs across the business.
@@ -598,6 +599,9 @@ function Assignments({ row }) {
     }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
       exceptId: editing,
+      /* So a clash is checked half-day by half-day: a gang doing one
+         span in the morning can do another in the afternoon. */
+      workDays,
       /* The start this assignment already had, so an unchanged past date
          is not treated as a typo. */
       wasStart: editing != null
@@ -747,6 +751,22 @@ function Assignments({ row }) {
            Where the project has no region the filter is not applied.
            Leaving every team ineligible because a project record is
            incomplete would look like a fault in the teams. */
+        /* Teams with nothing free across the whole booking are dropped
+           from the list.
+
+           A team booked solid every day of the range cannot take it,
+           and offering it means finding that out on save. Where the
+           dates are not set yet nothing is dropped — there is no range
+           to be busy across. */
+        const busyAcross = (t) => {
+          if (!draft.Start_Date || !draft.End_Date) return false;
+          const taken = bookedParts(t.Team_ID, all, workDays, editing);
+          const days = daysBetween(draft.Start_Date, draft.End_Date);
+          if (!days.length) return false;
+          return days.every((d) => !partIsFree(taken.get(d), "AM")
+            && !partIsFree(taken.get(d), "PM"));
+        };
+
         const can = eligibleTeams(teams, {
           teamCrafts, teamRegions,
           craftId: ph.Craft_ID,
@@ -862,8 +882,11 @@ function Assignments({ row }) {
                     aria-label="Team"
                     onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
                     <option value="">Team…</option>
-                    {can.map((t) => (
-                      <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
+                      {can.map((t) => (
+                      <option key={t.Team_ID} value={t.Team_ID}
+                        disabled={busyAcross(t)}>
+                        {t.Team_Name}{busyAcross(t) ? " \u2014 booked" : ""}
+                      </option>
                     ))}
                   </select>
                   <input className="asg-date" type="date" value={draft.Start_Date}
@@ -902,16 +925,33 @@ function Assignments({ row }) {
                           {/* One of the three, never two: a day is a
                               whole day or one half of it, and "AM and
                               PM" is a full day written twice. */}
-                          {["Full", "AM", "PM"].map((opt) => (
-                            <button key={opt} type="button"
-                              className={part === opt ? "asg-part on" : "asg-part"}
-                              aria-pressed={part === opt}
-                              onClick={() => setDraft((dd) => ({
-                                ...dd, parts: { ...(dd.parts || {}), [d]: opt },
-                              }))}>
-                              {opt === "Full" ? "Full day" : opt}
-                            </button>
-                          ))}
+                          {/* Parts the team already has that day are
+                              refused here rather than at save time.
+
+                              A gang on site all Tuesday cannot take
+                              Tuesday at all; one doing a morning can
+                              still do the afternoon, and Full is then
+                              not on offer because half the day is
+                              already gone. */}
+                          {["Full", "AM", "PM"].map((opt) => {
+                            const taken = draft.Team_ID
+                              ? bookedParts(draft.Team_ID, all, workDays, editing).get(d)
+                              : null;
+                            const free = partIsFree(taken, opt);
+                            return (
+                              <button key={opt} type="button"
+                                className={part === opt ? "asg-part on" : "asg-part"}
+                                aria-pressed={part === opt}
+                                disabled={!free && part !== opt}
+                                title={free ? "" : `Team already booked ${
+                                  [...(taken || [])].join(" and ")} that day`}
+                                onClick={() => setDraft((dd) => ({
+                                  ...dd, parts: { ...(dd.parts || {}), [d]: opt },
+                                }))}>
+                                {opt === "Full" ? "Full day" : opt}
+                              </button>
+                            );
+                          })}
                           {/* Per day, because a gang is off site on the
                               Tuesday and back on the Wednesday — the
                               notice, the rate and often the permit

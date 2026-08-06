@@ -145,6 +145,47 @@ export function earliestStart(phases = [], assignments = [], taskTypeId,
   return floor ? { date: floor, phase: why } : null;
 }
 
+/* What a team already has booked, day by day.
+
+   Built from the work-day rows rather than the assignment's two dates: a
+   gang on site all Tuesday and free on Wednesday is not "booked Tuesday
+   to Wednesday", and a check on the range would say it was.
+
+   Returns date -> the parts already taken on it. */
+export function bookedParts(teamId, assignments = [], workDays = [], exceptId = null) {
+  const mine = new Set(assignments
+    .filter((a) => Number(a.Team_ID) === Number(teamId))
+    .filter((a) => exceptId == null || Number(a.Assignment_ID) !== Number(exceptId))
+    .map((a) => Number(a.Assignment_ID)));
+
+  const out = new Map();
+  for (const d of workDays) {
+    if (!mine.has(Number(d.Assignment_ID))) continue;
+    if (!out.has(d.Work_Date)) out.set(d.Work_Date, new Set());
+    out.get(d.Work_Date).add(d.Part || "Full");
+  }
+  return out;
+}
+
+/* Whether a part of a day is still free.
+
+   Full takes the whole day, so nothing else fits beside it and it does
+   not fit beside anything. AM and PM are halves and sit alongside each
+   other — the same gang can do one span in the morning and another in
+   the afternoon, which is ordinary and was refused by a check that only
+   looked at dates. */
+export function partIsFree(taken, part) {
+  if (!taken || !taken.size) return true;
+  if (taken.has("Full")) return false;
+  if (part === "Full") return false;
+  return !taken.has(part);
+}
+
+/* Which parts a team could still take on a day. */
+export function freeParts(taken) {
+  return ["Full", "AM", "PM"].filter((p) => partIsFree(taken, p));
+}
+
 /* A team already booked over these dates.
 
    Across every call-off, not just this one: a gang cannot be on two
@@ -239,11 +280,38 @@ export function validate(draft, opts = {}) {
 
   if (!plots.length) out.push("Choose at least one plot.");
 
-  const clashes = clashesFor(draft.Team_ID, draft.Start_Date, draft.End_Date,
-    assignments, exceptId);
-  if (clashes.length) {
-    out.push(`That team is already booked ${fmtDate(clashes[0].Start_Date)} to `
-      + `${fmtDate(clashes[0].End_Date)}.`);
+  /* Booked, day part by day part.
+
+     A team on site all Tuesday cannot take Tuesday at all; one doing a
+     morning can still do the afternoon. Checking the date range instead
+     refused the second half of a day the gang was free for, which is a
+     day's work lost to a rule that was never meant to say that. */
+  const workDays = opts.workDays ?? null;
+  if (workDays) {
+    const taken = bookedParts(draft.Team_ID, assignments, workDays, exceptId);
+    const days = daysBetween(draft.Start_Date, draft.End_Date);
+    const bad = [];
+    for (const d of days) {
+      const part = draft.parts?.[d] || "Full";
+      if (!partIsFree(taken.get(d), part)) {
+        const has = [...(taken.get(d) || [])].join(" and ");
+        bad.push(`${fmtDate(d)} (${part}, already ${has})`);
+      }
+    }
+    if (bad.length) {
+      out.push(`That team is already booked: ${bad.slice(0, 3).join(", ")}`
+        + (bad.length > 3 ? ` and ${bad.length - 3} more` : "") + ".");
+    }
+  } else {
+    /* No day breakdown to check against, so the whole range is compared
+       — which is what this did before and is still right for a caller
+       that has not loaded the days. */
+    const clashes = clashesFor(draft.Team_ID, draft.Start_Date, draft.End_Date,
+      assignments, exceptId);
+    if (clashes.length) {
+      out.push(`That team is already booked ${fmtDate(clashes[0].Start_Date)} to `
+        + `${fmtDate(clashes[0].End_Date)}.`);
+    }
   }
 
   return out;

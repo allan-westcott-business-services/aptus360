@@ -7379,7 +7379,14 @@ export default function GISCanvasPage() {
                       onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
                   </Menu>
 
-                  <Menu id="layers" label="Layers" open={open} setOpen={setOpen}>
+                  {/* Two columns: what is shown on the left, what is
+                      locked and the tools on the right.
+
+                      One list meant the lock rows sat below the fold on
+                      a laptop, and locking a layer is exactly the thing
+                      somebody opens this menu to do. */}
+                  <Menu id="layers" label="Layers" open={open} setOpen={setOpen}
+                    columns={2}>
                     <MenuGroup label="Hide or Solo" />
                     <p className="gm-note">
                       Hide a layer or isolate it with the Solo button.
@@ -7464,7 +7471,7 @@ export default function GISCanvasPage() {
                         turning them off one kind at a time is four
                         decisions to make the one you wanted. */}
                     <div className="gm-sep" />
-                    <MenuGroup label="Locked against moving" />
+                    <MenuGroup label="Locked against moving" newColumn />
                     {/* Per layer, which is the coarsest and most useful
                         grain: a layer is usually finished all at once.
                         Line types are locked from the right-click menu,
@@ -7543,30 +7550,25 @@ export default function GISCanvasPage() {
                       }} />
                   </Menu>
 
-                  <Menu id="trench" label="Trench" open={open} setOpen={setOpen}>
-                    <MenuGroup label="Route" />
-                    {/* Two questions, deliberately kept apart.
+                  {/* Two columns, grouped by what somebody is doing.
 
-                        Tracing shows what the network has to carry and
-                        gives every meter its shortest run; the cheapest
-                        network gives the smallest dig and may make
-                        somebody's run longer to get it. */}
-                    {/* Asked before the trace is doubted rather than
-                        after: a gap explains most surprising answers,
-                        and it is invisible at any zoom where the site
-                        fits on screen. */}
-                    {/* Off site: a flag rather than a status, because a
-                        length can be off site and as-built at the same
-                        time. Marked on whatever is selected, so a run
-                        already split into sections can have one of them
-                        marked. */}
-                    <MenuItem label="Mark selected as Off Site"
-                      hint="A different rate, different notice, often a different permit"
-                      disabled={!!busy || !selected.length}
-                      onClick={() => toggleOffSite(true)} />
-                    <MenuItem label="Clear Off Site"
-                      disabled={!!busy || !selected.length}
-                      onClick={() => toggleOffSite(false)} />
+                      One list of sixteen actions with "Route" and "Show
+                      or Hide" each appearing twice, and the off-site
+                      items filed under "Route" — the order was an
+                      accident of the order they were added in, and it
+                      had grown past the height of the screen.
+
+                      Drawing and marking on the left, routing and
+                      checking on the right. */}
+                  <Menu id="trench" label="Trench" open={open} setOpen={setOpen}
+                    columns={2}>
+                    <MenuGroup label="Draw" />
+                    {typesOn("trench").map((t) => (
+                      <MenuItem key={t.Type_Key} label={t.Label} indent
+                        active={isDrawing(t.Type_Key)}
+                        onClick={() => drawAs(t.Type_Key)} />
+                    ))}
+
                     <div className="gm-sep" />
                     <MenuGroup label="Build status" />
                     {BUILD_STATUSES.map((bs) => (
@@ -7580,80 +7582,19 @@ export default function GISCanvasPage() {
                           setMarkFrom(null);
                         }} />
                     ))}
-                    <div className="gm-sep" />
-                    <MenuGroup label="Route" />
-                    <MenuItem label="New Mains Call-off"
-                      hint="Pick two span nodes for each run to be laid"
-                      active={callOffOpen}
-                      disabled={!!busy || !projectId}
-                      onClick={() => {
-                        setCallOffOpen(!callOffOpen);
-                        setPick(null);
-                        setAskAnother(false);
-                        if (callOffOpen) setRanges([]);
-                      }} />
-                    <MenuItem label="Place Span Nodes"
-                      hint="At every junction and end of the trench network, A1 upwards"
-                      disabled={!!busy || !projectId}
-                      onClick={placeSpanNodes} />
-                    <MenuItem label="Check Trench Joins"
-                      hint="Trench ends close to another trench but not joined"
-                      disabled={!!busy || !projectId}
-                      onClick={findGaps} />
-                    {/* Runs the trace itself if there is not one.
 
-                        It was disabled until Trace All Meters had been
-                        used, which made a diagnostic depend on
-                        remembering to do something first — and accepting
-                        a route clears the plan, so it disabled itself
-                        again straight after being useful. */}
-                    <MenuItem label="Step Through Traces"
-                      hint="One meter at a time, with its own route to the substation"
-                      disabled={!!busy || !projectId}
-                      onClick={() => { stepThrough(); }} />
-                    <MenuItem label="Trace All Meters"
-                      hint="Shortest route home for every meter, shaded by how many use each section"
-                      disabled={!!busy || !projectId}
-                      onClick={traceRoute} />
-                    <MenuItem label="Suggest Trench Route"
-                      hint="Which drawn trenches must be live to reach every meter"
-                      disabled={!!busy || !projectId}
-                      onClick={suggestRoute} />
-                    {/* Only where there is a route to filter to. Before
-                        one has been suggested or accepted the toggle
-                        would hide every trench on the drawing, which
-                        looks like a fault rather than a filter. */}
-                    <MenuItem label="Only Live Trench"
-                      active={liveTrenchOnly}
-                      disabled={!liveTrenchIds}
-                      hint={liveTrenchIds
-                        ? (liveTrenchOnly
-                          ? `Showing ${liveTrenchIds.size} of the trenches drawn`
-                          : "Hide the trench the route does not need")
-                        : "Suggest or accept a route first"}
-                      onClick={() => setLiveTrenchOnly(!liveTrenchOnly)} />
                     <div className="gm-sep" />
-                    <MenuGroup label="Draw" />
-                    {typesOn("trench").map((t) => (
-                      <MenuItem key={t.Type_Key} label={t.Label} indent
-                        active={isDrawing(t.Type_Key)}
-                        onClick={() => drawAs(t.Type_Key)} />
-                    ))}
-                    <div className="gm-sep" />
-                    <MenuGroup label="Routing" />
-                    {/* Draw candidates wherever a trench could go, then
-                        let this pick the ones that have to be live. */}
-                    
+                    <MenuGroup label="Off site" />
+                    <MenuItem label="Mark selected as Off Site" indent
+                      hint="A different rate, different notice, often a different permit"
+                      disabled={!!busy || !selected.length}
+                      onClick={() => toggleOffSite(true)} />
+                    <MenuItem label="Clear Off Site" indent
+                      disabled={!!busy || !selected.length}
+                      onClick={() => toggleOffSite(false)} />
+
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
-                    {/* Its own row, so the nodes can be hidden without
-                        hiding the trenches they sit on.
-
-                        They live on the trench layer now — they describe
-                        the dig — but on a dense drawing they are the
-                        first thing somebody wants out of the way, and
-                        hiding the trench to lose them would take the
-                        thing being looked at with them. */}
                     <MenuLayer label="Span nodes" colour="#1e3a5f"
                       count={classCount["role:spannode"] || 0}
                       hidden={hidden.includes("role:spannode")}
@@ -7668,17 +7609,65 @@ export default function GISCanvasPage() {
                         onHide={() => toggleClass(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
+
+                    {/* The second column. */}
+                    <MenuGroup label="Span nodes and call-offs" newColumn />
+                    <MenuItem label="Place Span Nodes"
+                      hint="At every junction and end of the trench network, A1 upwards"
+                      disabled={!!busy || !projectId}
+                      onClick={placeSpanNodes} />
+                    <MenuItem label="New Mains Call-off"
+                      hint="Pick two span nodes for each run to be laid"
+                      active={callOffOpen}
+                      disabled={!!busy || !projectId}
+                      onClick={() => {
+                        setCallOffOpen(!callOffOpen);
+                        setPick(null);
+                        setAskAnother(false);
+                        if (callOffOpen) setRanges([]);
+                      }} />
+
                     <div className="gm-sep" />
+                    <MenuGroup label="Routing" />
+                    <MenuItem label="Trace All Meters"
+                      hint="Shortest route home for every meter, shaded by how many use each section"
+                      disabled={!!busy || !projectId}
+                      onClick={traceRoute} />
+                    <MenuItem label="Step Through Traces"
+                      hint="One meter at a time, with its own route to the substation"
+                      disabled={!!busy || !projectId}
+                      onClick={() => { stepThrough(); }} />
+                    <MenuItem label="Suggest Trench Route"
+                      hint="Which drawn trenches must be live to reach every meter"
+                      disabled={!!busy || !projectId}
+                      onClick={suggestRoute} />
+                    <MenuItem label="Only Live Trench"
+                      active={liveTrenchOnly}
+                      disabled={!liveTrenchIds}
+                      hint={liveTrenchIds
+                        ? (liveTrenchOnly
+                          ? `Showing ${liveTrenchIds.size} of the trenches drawn`
+                          : "Hide the trench the route does not need")
+                        : "Suggest or accept a route first"}
+                      onClick={() => setLiveTrenchOnly(!liveTrenchOnly)} />
+
+                    <div className="gm-sep" />
+                    <MenuGroup label="Services" />
                     <MenuItem label={busy === "autoservice" ? "Auto Service\u2026" : "Auto Service"}
-                      hint="Trench, meters and services for each plot seed"
-                      disabled={busy === "autoservice"}
+                      hint="Draw the service trench and cable for every meter without one"
+                      disabled={!!busy || !projectId}
                       onClick={() => withUndo("Auto Service", runAutoService)} />
                     <MenuItem label="Check Services Reach the Mains"
-                      hint="Every service trench must meet a mains trench"
                       disabled={!projectId}
                       onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
+
+                    <div className="gm-sep" />
+                    <MenuGroup label="Checks" />
+                    <MenuItem label="Check Trench Joins"
+                      hint="Trench ends close to another trench but not joined"
+                      disabled={!!busy || !projectId}
+                      onClick={findGaps} />
                     <MenuItem label="Check Trench Connectivity"
-                      hint="Find sections that aren't joined to the rest"
                       disabled={!projectId}
                       onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
                   </Menu>

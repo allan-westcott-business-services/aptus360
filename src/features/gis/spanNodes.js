@@ -88,27 +88,33 @@ export function junctionsOf(trenches = [], opts = {}) {
 
    Services are ignored entirely when placing nodes: where one joins a
    main is not a junction of mains, and a span does not stop there. */
-export function servicesAmong(trenches = [], meters = [], opts = {}) {
-  const { attachM = 2.0 } = opts;
-  const ids = new Set();
+export function servicesAmong(trenches = [], opts = {}) {
+  const { serviceTypes } = opts;
 
-  for (const m of meters) {
-    const p = (m.Geometry || [])[0];
-    if (!p) continue;
-    for (const t of trenches) {
-      const g = t.Geometry || [];
-      if (g.length < 2) continue;
-      if (Math.min(dist(p, g[0]), dist(p, g[g.length - 1])) <= attachM) {
-        ids.add(t.Feature_ID);
-        break;
-      }
-    }
+  /* The trench type, and nothing else.
+
+     A trench is a service because it was drawn as one. Meters have
+     nothing to do with it: a service exists before its meter is placed
+     and would still be a service if the plot were never built, and
+     making the classification wait for a meter meant nodes appeared
+     wherever a service teed in until somebody had worked far enough
+     through the job.
+
+     No fallback. A guess that is right most of the time puts nodes in
+     the wrong places the rest of the time and gives no sign which is
+     which — where nothing is classified, the count says none were
+     ignored and that is the thing to act on. */
+  if (!serviceTypes || !serviceTypes.size) return new Set();
+
+  const ids = new Set();
+  for (const t of trenches) {
+    if (serviceTypes.has(t?.Attributes?.Line_Type)) ids.add(t.Feature_ID);
   }
   return ids;
 }
 
 export function planSpanNodes(trenches = [], plant, opts = {}) {
-  const { eps = 0.25, meters = [] } = opts;
+  const { eps = 0.25 } = opts;
 
   /* Mains only.
 
@@ -122,8 +128,7 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
      Services are dropped before anything is counted, so a point where
      three trenches meet but one of them is a service is a junction of
      two mains, which is a bend. */
-  const serviceIds = opts.serviceIds
-    ?? servicesAmong(trenches, meters, opts);
+  const serviceIds = opts.serviceIds ?? servicesAmong(trenches, opts);
   const mains = trenches.filter((t) => !serviceIds.has(t.Feature_ID));
 
   const plantAt = (plant?.Geometry || [])[0];
@@ -215,5 +220,13 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
     /* Bends, counted but not marked, so it is clear they were seen and
        deliberately left alone. */
     bends: points.filter((p) => p.ends === 2).length,
+    /* What was treated as a service and therefore ignored.
+
+       Reported because getting this wrong is invisible otherwise: a
+       service not recognised puts a node where a service tees in, and
+       the only symptom is a node somewhere it should not be. A number
+       here says whether the classification found anything at all. */
+    servicesIgnored: serviceIds.size,
+    mainsUsed: mains.length,
   };
 }

@@ -4440,9 +4440,26 @@ export default function GISCanvasPage() {
     /* The meters, so a trench with one on its end is recognised as a
        service and skipped. Nothing is placed where a service joins a
        main, nor at the service's own end. */
-    const plan = planSpanNodes(trenches, plant, {
-      meters: features.filter((f) => f.Feature_Role === "meter"),
-    });
+    /* Which trench types are services.
+
+       The key, not the label. There are two trench types and they are
+       seeded by migration 0050 as trench_main and trench_service — the
+       key is fixed, the label is text somebody may edit. Matching the
+       label meant a renamed type stopped being recognised, and the only
+       symptom would be span nodes appearing where services tee in.
+
+       Any additional service type is picked up too, so a site with more
+       than one does not need this changing. */
+    const serviceTypes = new Set(lineTypes
+      .filter((t) => t.Layer_Key === "trench"
+        && (t.Type_Key === "trench_service" || /service/i.test(t.Type_Key)))
+      .map((t) => t.Type_Key));
+
+    /* Belt and braces: the key straight off the feature, for anything
+       drawn before the type list was loaded. */
+    serviceTypes.add("trench_service");
+
+    const plan = planSpanNodes(trenches, plant, { serviceTypes });
     if (plan.error) { setError(plan.error); return; }
 
     setBusy("spannodes");
@@ -4498,9 +4515,13 @@ export default function GISCanvasPage() {
       const spare = existing.filter((f) => !claimed.has(f.Feature_ID)).length;
 
       await load(projectId);
+      /* What was ignored as a service, so a classification that found
+         nothing is visible rather than showing up as nodes in the wrong
+         places. */
       setStatus(`${made} placed, ${moved} renumbered`
         + (spare ? `, ${spare} left alone` : "")
-        + (plan.plant ? ` \u00b7 plant is ${plan.plant.label}` : ""));
+        + ` \u00b7 ${plan.servicesIgnored} service trench(es) ignored`
+        + (plan.plant ? `, plant is ${plan.plant.label}` : ""));
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }

@@ -8500,6 +8500,20 @@ export default function GISCanvasPage() {
                   </p>
                 )}
 
+                {/* Near this stretch but not in it — a cable turning
+                    at a junction at one end, typically.
+
+                    Said rather than dropped: somebody who can see a
+                    cable at the corner and does not find it listed will
+                    wonder whether the panel is wrong. */}
+                {inspect.passing?.length > 0 && (
+                  <p className="ins-passing">
+                    {`${inspect.passing.length} more at the junction, `}
+                    {"not laid in this length: "}
+                    {inspect.passing.map((x) => x.label).join(", ")}
+                  </p>
+                )}
+
                 {inspect.byUtility.map((u) => (
                   <div className="gco-range" key={u.utility}>
                     <div className="gco-range-head">
@@ -9795,6 +9809,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
 .ins-util { text-transform: capitalize; }
+.ins-passing { margin: 8px 0 0; font-size: 11px; color: var(--muted);
+  font-style: italic; line-height: 1.4; }
 /* Wide enough for a cable size — "185mm\u00b2 WF Al" is longer than the
    circuit label it replaced, and a truncated cable size is a cable size
    nobody can act on. */

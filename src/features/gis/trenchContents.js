@@ -207,6 +207,10 @@ export function contentsOf(trench, features = [], opts = {}) {
        partly in it, and saying so is more use than a rule that only
        counts a perfect match. */
     minShare = 0.25,
+    /* And a decent share of the trench. Without it a two-metre clip of
+       a hundred-metre cable passed the line test — two metres is a
+       quarter of nothing much — and appeared as content. */
+    minTrenchShare = 0.2,
     isTrench = (f) => f.Layer_Key === "trench",
     labelOf = (f) => f.Label ?? null,
   } = opts;
@@ -216,6 +220,8 @@ export function contentsOf(trench, features = [], opts = {}) {
 
   const trenchM = lengthOf(g);
   const out = [];
+  /* Lines near this stretch that are not in it. */
+  const passing = [];
 
   for (const f of features) {
     if (f.Feature_ID === trench.Feature_ID) continue;
@@ -243,7 +249,32 @@ export function contentsOf(trench, features = [], opts = {}) {
     const within = lengthWithin(lg, g, { withinM, ...opts });
     const total = lengthOf(lg);
     if (!total) continue;
-    if (within / total < minShare) continue;
+    /* Passing the corner is not being in it.
+
+       A cable that turns at a junction runs within a metre of the end of
+       the neighbouring stretch for a couple of metres as it swings
+       round. That was counted as content, so a stretch showed the same
+       cable size twice — once for the run laid in it and once for the
+       run leaving it.
+
+       Two bars, both of which have to be cleared: a decent share of the
+       line, and a decent share of the trench. A cable genuinely laid in
+       a stretch runs along it; one clipping the corner does neither. */
+    const shareOfLine = within / total;
+    const shareOfTrench = trenchM ? within / trenchM : 0;
+
+    if (shareOfLine < minShare || shareOfTrench < minTrenchShare) {
+      /* Kept, so nothing disappears without saying so. A cable at the
+         junction is worth knowing about; it is just not in this
+         length. */
+      passing.push({
+        feature: f,
+        utility: f.Layer_Key ?? null,
+        label: labelOf(f),
+        withinM: Math.round(within * 10) / 10,
+      });
+      continue;
+    }
 
     out.push({
       feature: f,
@@ -261,11 +292,16 @@ export function contentsOf(trench, features = [], opts = {}) {
 
   out.sort((a, b) => b.withinM - a.withinM);
 
+  passing.sort((a, b) => b.withinM - a.withinM);
+
   return {
     ok: true,
     trench,
     trenchM: Math.round(trenchM * 10) / 10,
     contents: out,
+    /* Near the stretch but not laid in it — typically a cable turning at
+       a junction at one end. */
+    passing,
     /* Grouped by utility, which is how somebody asks the question — what
        electric is in here, what gas. */
     byUtility: [...out.reduce((m, x) => {

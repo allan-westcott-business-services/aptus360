@@ -1,6 +1,7 @@
 import { useState, useMemo } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
+import { BUILD_STATUSES } from "./buildStatus.js";
 import { utilityById } from "../../lib/utilities.js";
 import { lineLength, isTrenchType } from "./snapping.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
@@ -424,21 +425,59 @@ export default function FeatureEditor({
           )}
           {error && <Banner kind="error">{error}</Banner>}
 
-          <div className="fld">
-            <label htmlFor="fe-label">Label</label>
-            <input id="fe-label" value={f.Label}
-              onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
-          </div>
+          {/* A trench lays these out in two rows of three, with its own
+              fields, rather than a column of eight boxes — the modal was
+              taller than the screen on a laptop and everything below the
+              fold had to be scrolled for.
 
-          <div className="fld">
-            <label htmlFor="fe-layer">Layer</label>
-            <select id="fe-layer" value={f.Layer_Key}
-              onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
-              {layers.map((l) => (
-                <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
-              ))}
-            </select>
-          </div>
+              Everything else keeps the stacked form, where there are
+              fewer fields and the extra width buys nothing. */}
+          {isTrench ? (
+            <div className="fe-row">
+              <div className="fld">
+                <label htmlFor="fe-layer">Layer</label>
+                <select id="fe-layer" value={f.Layer_Key}
+                  onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
+                  {layers.map((l) => (
+                    <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
+                  ))}
+                </select>
+              </div>
+              <div className="fld">
+                <label htmlFor="fe-label">Label</label>
+                <input id="fe-label" value={f.Label}
+                  onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
+              </div>
+              <div className="fld">
+                <label htmlFor="fe-type">Line type</label>
+                <select id="fe-type" value={f.Attributes.Line_Type ?? ""}
+                  onChange={(e) => setAttr("Line_Type")(e.target.value)}>
+                  <option value="">&mdash; None &mdash;</option>
+                  {lineTypes.map((t) => (
+                    <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
+                  ))}
+                </select>
+              </div>
+            </div>
+          ) : (
+            <>
+              <div className="fld">
+                <label htmlFor="fe-label">Label</label>
+                <input id="fe-label" value={f.Label}
+                  onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
+              </div>
+
+              <div className="fld">
+                <label htmlFor="fe-layer">Layer</label>
+                <select id="fe-layer" value={f.Layer_Key}
+                  onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
+                  {layers.map((l) => (
+                    <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
+                  ))}
+                </select>
+              </div>
+            </>
+          )}
 
           {/* A span node, as the original shows it. Two quite different
               cases: one that belongs to a circuit is numbered from the
@@ -818,18 +857,23 @@ export default function FeatureEditor({
 
           {isLine && (
             <>
-              <div className="fld">
-                <label htmlFor="fe-type">Line type</label>
-                <select id="fe-type" value={f.Attributes.Line_Type ?? ""}
-                  onChange={(e) => setAttr("Line_Type")(e.target.value)}>
-                  <option value="">&mdash; None &mdash;</option>
-                  {lineTypes.map((t) => (
-                    <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Line type is in the row above for a trench, alongside
+                  the layer and the label. */}
+              {!isTrench && (
+                <div className="fld">
+                  <label htmlFor="fe-type">Line type</label>
+                  <select id="fe-type" value={f.Attributes.Line_Type ?? ""}
+                    onChange={(e) => setAttr("Line_Type")(e.target.value)}>
+                    <option value="">&mdash; None &mdash;</option>
+                    {lineTypes.map((t) => (
+                      <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
               <div className="fe-row">
                 {isTrench ? (
+                  <>
                   <div className="fld">
                     <label htmlFor="fe-surface">Surface</label>
                     <select id="fe-surface" value={f.Attributes.Surface_Type ?? ""}
@@ -841,6 +885,45 @@ export default function FeatureEditor({
                     </select>
                     <p className="hint">What it is dug through. Drives reinstatement.</p>
                   </div>
+
+                  {/* What stage this length is at. The same list the
+                      canvas marks with, so the two cannot drift. */}
+                  <div className="fld">
+                    <label htmlFor="fe-build">Build status</label>
+                    <select id="fe-build" value={f.Attributes.Build_Status ?? ""}
+                      /* Null rather than undefined for "not set".
+                         undefined survives in state and then vanishes
+                         when the row is serialised, so what is stored
+                         depends on a JSON quirk rather than on what was
+                         chosen. */
+                      onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
+                      <option value="">&mdash; Not set &mdash;</option>
+                      {BUILD_STATUSES.map((bs) => (
+                        <option key={bs.key} value={bs.key}>{bs.label}</option>
+                      ))}
+                    </select>
+                    <p className="hint">Marking part of a run splits it on the canvas.</p>
+                  </div>
+
+                  {/* On or off site.
+
+                      A dropdown rather than a checkbox: "Off site"
+                      unticked reads as "not yet decided" as readily as
+                      "on site", and the two are a different rate and a
+                      different permit. Naming both leaves nothing to
+                      infer. */}
+                  <div className="fld">
+                    <label htmlFor="fe-offsite">On-site or Off-site</label>
+                    <select id="fe-offsite"
+                      value={f.Attributes.Off_Site === true ? "off" : "on"}
+                      onChange={(e) => setAttr("Off_Site")(
+                        e.target.value === "off" ? true : null)}>
+                      <option value="on">On site</option>
+                      <option value="off">Off site</option>
+                    </select>
+                    <p className="hint">Off site carries a different rate and notice.</p>
+                  </div>
+                  </>
                 ) : isElectric ? (
                   /* Electric lines pick from the catalogue rather than
                      typing a size. The free-text field was fine when

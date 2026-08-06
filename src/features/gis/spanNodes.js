@@ -65,10 +65,52 @@ export function junctionsOf(trenches = [], opts = {}) {
   for (const t of trenches) {
     const g = t.Geometry || [];
     if (g.length < 2) continue;
-    /* Only the ends. A vertex in the middle of a trench is a bend, and a
-       bend is not a junction — it is one run turning a corner. */
+    /* The ends. A vertex in the middle of a trench is a bend, and a bend
+       is not a junction — it is one run turning a corner. */
     intern(g[0]).ends += 1;
     intern(g[g.length - 1]).ends += 1;
+  }
+
+  /* And ends that land part way along another trench.
+
+     A run drawn from one side of a road to the other, meeting a trench
+     that carries straight on past it, is a junction — three arms leave
+     that point. Counting only ends missed it entirely: the through
+     trench has its ends somewhere else, so the point where the other
+     one arrives had a single end against it and read as the end of a
+     run rather than a tee.
+
+     What arrives contributes one arm; what passes through contributes
+     two, because the run continues on both sides. */
+  for (const t of trenches) {
+    const g = t.Geometry || [];
+    if (g.length < 2) continue;
+
+    for (const p of points) {
+      /* Its own ends are already counted. */
+      if (dist(p.at, g[0]) <= eps) continue;
+      if (dist(p.at, g[g.length - 1]) <= eps) continue;
+
+      for (let i = 0; i + 1 < g.length; i++) {
+        const a2 = g[i];
+        const b2 = g[i + 1];
+        const vx = b2[0] - a2[0];
+        const vy = b2[1] - a2[1];
+        const len2 = vx * vx + vy * vy;
+        if (!len2) continue;
+        let u = ((p.at[0] - a2[0]) * vx + (p.at[1] - a2[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const on = [a2[0] + vx * u, a2[1] + vy * u];
+        if (dist(p.at, on) > eps) continue;
+
+        /* Landing on a vertex between two segments would otherwise be
+           counted twice, once for each. */
+        if (dist(p.at, b2) <= eps && i + 2 < g.length) continue;
+
+        p.through += 2;
+        break;
+      }
+    }
   }
 
   return points;
@@ -144,7 +186,11 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
      would be a second name for the same place, with A1 and E0 both
      meaning the transformer. */
   const wanted = points.filter((p) => {
-    if (p.ends !== 1 && p.ends < 3) return false;
+    /* Arms leaving this point: what ends here, plus twice anything
+       passing through it. Three or more is a junction; exactly one is
+       the end of a run; two is a bend. */
+    const arms = p.ends + p.through;
+    if (arms !== 1 && arms < 3) return false;
     if (plantAt && dist(p.at, plantAt) <= (opts.plantM ?? 2.0)) return false;
     return true;
   });
@@ -157,16 +203,58 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
      Walked as a graph over the interned points. */
   const idOf = new Map(points.map((p, i) => [p, i]));
   const adj = new Map(points.map((_, i) => [i, []]));
+  /* Each trench split at every point that sits on it, not just at its
+     own two ends.
+
+     Linking only the ends left a trench that another one tees into
+     joined to nothing at the tee — so the junction was unreachable, had
+     no distance along the network, and sorted to the back as though it
+     were on an island. The numbering then ran A1 to the far end and gave
+     the junction a later letter than things beyond it.
+
+     Splitting at every point on the trench gives the graph the same
+     shape the dig has. */
   for (const t of mains) {
     const g = t.Geometry || [];
     if (g.length < 2) continue;
-    let len = 0;
-    for (let i = 0; i + 1 < g.length; i++) len += dist(g[i], g[i + 1]);
-    const a = points.find((p) => dist(p.at, g[0]) <= eps);
-    const b = points.find((p) => dist(p.at, g[g.length - 1]) <= eps);
-    if (!a || !b || a === b) continue;
-    adj.get(idOf.get(a)).push({ to: idOf.get(b), len });
-    adj.get(idOf.get(b)).push({ to: idOf.get(a), len });
+
+    /* Every interned point that lies on this trench, in order along it,
+       with how far along it each one is. */
+    const on = [];
+    let run = 0;
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a2 = g[i];
+      const b2 = g[i + 1];
+      const segLen = dist(a2, b2);
+      const vx = b2[0] - a2[0];
+      const vy = b2[1] - a2[1];
+      const len2 = vx * vx + vy * vy;
+
+      for (const p of points) {
+        if (!len2) continue;
+        let u = ((p.at[0] - a2[0]) * vx + (p.at[1] - a2[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const at = [a2[0] + vx * u, a2[1] + vy * u];
+        if (dist(p.at, at) > eps) continue;
+        on.push({ p, m: run + segLen * u });
+      }
+      run += segLen;
+    }
+
+    on.sort((x, y) => x.m - y.m);
+    /* Consecutive points on the trench are neighbours, at the distance
+       between them along it. Duplicates — the same point found on two
+       adjoining segments — collapse to a zero-length step and are
+       dropped. */
+    for (let i = 0; i + 1 < on.length; i++) {
+      const A = on[i];
+      const B = on[i + 1];
+      if (A.p === B.p) continue;
+      const len = B.m - A.m;
+      if (len <= eps) continue;
+      adj.get(idOf.get(A.p)).push({ to: idOf.get(B.p), len });
+      adj.get(idOf.get(B.p)).push({ to: idOf.get(A.p), len });
+    }
   }
 
   /* From the plant, or from whichever point is furthest from everything
@@ -214,12 +302,12 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
       /* How far along the trenches it is, which is what the numbering
          follows and worth keeping for anybody checking it. */
       alongM: o.m === Infinity ? null : Math.round(o.m * 10) / 10,
-      kind: o.point.ends === 1 ? "end" : "junction",
+      kind: (o.point.ends + o.point.through) === 1 ? "end" : "junction",
       reachable: o.m !== Infinity,
     })),
     /* Bends, counted but not marked, so it is clear they were seen and
        deliberately left alone. */
-    bends: points.filter((p) => p.ends === 2).length,
+    bends: points.filter((p) => (p.ends + p.through) === 2).length,
     /* What was treated as a service and therefore ignored.
 
        Reported because getting this wrong is invisible otherwise: a

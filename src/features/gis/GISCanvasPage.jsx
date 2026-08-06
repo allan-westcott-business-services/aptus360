@@ -63,6 +63,7 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
 } from "./buildStatus.js";
+import { contentsOf } from "./trenchContents.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
@@ -316,6 +317,14 @@ export default function GISCanvasPage() {
      is at the same stage. */
   const [marking, setMarking] = useState(null);   // { status } while picking
   const [markFrom, setMarkFrom] = useState(null); // { feature, point }
+
+  /* What is routed inside a trench.
+
+     A trench is dug once and carries whatever is laid in it — the LV
+     feeder first, gas and water to follow. Asking what is in a given
+     length meant reading the drawing by eye and hoping, and on a run
+     with three utilities in it that is not reading, it is guessing. */
+  const [inspect, setInspect] = useState(null);
 
   useEffect(() => {
     if (!projectId) { setCalledOff([]); return; }
@@ -1446,6 +1455,27 @@ export default function GISCanvasPage() {
       ctx.restore();
     };
 
+    /* The trench being inspected, so the panel and the drawing are
+       plainly about the same length. */
+    const paintInspect = () => {
+      const g = inspect?.trench?.Geometry;
+      if (!g || g.length < 2) return;
+      ctx.save();
+      for (const [colour, width] of [["#fff", 12], ["#7c3aed", 8]]) {
+        ctx.beginPath();
+        ctx.strokeStyle = colour;
+        ctx.lineWidth = width;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        g.forEach((pt, i) => {
+          const q = toPx(pt);
+          if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+        });
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
     const paintCalledOff = () => {
       /* Only while a new call-off is being picked.
 
@@ -2500,12 +2530,13 @@ export default function GISCanvasPage() {
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
+    paintInspect();
     paintMark();
     paintCalledOff();
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -5067,6 +5098,19 @@ export default function GISCanvasPage() {
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
+  }
+
+  function inspectTrench(f) {
+    const res = contentsOf(f, features, {
+      isTrench: (x) => x.Feature_Type === "line"
+        && isTrenchType(x.Attributes?.Line_Type, lineTypes),
+      labelOf: (x) => x.Label
+        ?? lineTypes.find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label
+        ?? null,
+    });
+    if (res.error) { setError(res.error); return; }
+    setInspect(res);
+    setError("");
   }
 
   function findGaps() {
@@ -8367,6 +8411,55 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {/* What is routed inside a trench. */}
+            {inspect && (
+              <div className="gis-co">
+                <div className="gco-head">
+                  <strong>In this trench</strong>
+                  <span className="gco-hint">
+                    {`${inspect.trenchM} m`}
+                    {statusLabel(statusOf(inspect.trench))
+                      ? ` \u00b7 ${statusLabel(statusOf(inspect.trench))}` : ""}
+                    {isOffSite(inspect.trench) ? " \u00b7 off site" : ""}
+                  </span>
+                  <button className="gco-x" onClick={() => setInspect(null)}>
+                    Close
+                  </button>
+                </div>
+
+                {!inspect.contents.length && (
+                  <p className="gco-none">
+                    Nothing routed in it yet. The LV feeder comes first,
+                    from Build LV Network.
+                  </p>
+                )}
+
+                {inspect.byUtility.map((u) => (
+                  <div className="gco-range" key={u.utility}>
+                    <div className="gco-range-head">
+                      <strong className="ins-util">{u.utility}</strong>
+                      <span className="gco-f">{`${u.totalM} m`}</span>
+                    </div>
+                    {u.items.map((it) => (
+                      <div className="gco-span" key={it.feature.Feature_ID}>
+                        <span className="ins-label">{it.label ?? "\u2014"}</span>
+                        <span className="gco-m">{it.withinM} m</span>
+                        {/* How much of the trench it takes up. A cable
+                            running the whole length and one that stops
+                            part way are different things to know, and
+                            the length alone does not say which. */}
+                        <span className="gco-p">
+                          {it.shareOfTrench >= 98
+                            ? "the whole length"
+                            : `${it.shareOfTrench}% of it`}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+              </div>
+            )}
+
             {/* Marking a length of trench. */}
             {marking && (
               <div className="gis-step">
@@ -8934,6 +9027,21 @@ export default function GISCanvasPage() {
                     ends off it at any zoom where the middle is
                     readable, and hunting for the one that will not snap
                     means panning blind. */}
+                {/* What is in this trench. On the right-click menu
+                    rather than a toolbar action, because the question is
+                    always about one particular length. */}
+                {ctx.feature.Feature_Type === "line"
+                  && isTrenchType(ctx.feature.Attributes?.Line_Type, lineTypes) && (
+                  <>
+                    <button className="gc-item" onClick={() => {
+                      inspectTrench(ctx.feature);
+                      setCtx(null);
+                    }}>
+                      What is in this trench
+                    </button>
+                    <div className="gc-sep" />
+                  </>
+                )}
                 {ctx.feature.Feature_Type === "line"
                   && (ctx.feature.Geometry || []).length >= 2 && (
                   <>
@@ -9618,6 +9726,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   margin-bottom: 6px; }
 .gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
+.ins-util { text-transform: capitalize; }
+.ins-label { font-weight: 700; width: 74px; }
 .gco-plots { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 .gco-span { display: flex; gap: 8px; font-size: 11px; padding: 1px 0;
   margin-top: 3px; }

@@ -1,5 +1,6 @@
-import { buildGraph, rootAt, spanLabel, circuitLetter } from "./electric.js";
-import { lineLength } from "./snapping.js";
+import { spanLabel, circuitLetter } from "./electric.js";
+
+const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /* The spans between two span nodes, for a mains call-off.
 
@@ -38,110 +39,203 @@ export function labelOf(node) {
   return spanLabel(circuitLetter(c), s);
 }
 
-/* The chain of nodes from the substation down to this one.
+/* The trench network, as span nodes joined by lengths of trench.
 
-   Walked through the parent links the network tracing maintains, so a
-   call-off cannot disagree with what the trace shows. */
-function ancestryOf(graph, rooted, nodeId) {
-  const out = [];
-  let at = nodeId;
+   Not the electric Connects graph, which is what this used at first —
+   that is maintained by cable tracing and is empty until an LV network
+   has been built, so on a drawing with trenches and no cable every pair
+   of nodes came back "not on the same circuit". A mains call-off is
+   about trench and has to work before any cable exists.
+
+   Each trench is split at every span node that sits on it, and
+   consecutive nodes along it become neighbours at the distance between
+   them. That is the shape the dig has. */
+export function trenchGraph(trenches = [], nodes = [], opts = {}) {
+  const { eps = 0.5 } = opts;
+
+  const at = nodes
+    .map((n) => ({ node: n, p: (n.Geometry || [])[0] }))
+    .filter((x) => x.p);
+
+  const adj = new Map(at.map((x) => [x.node.Feature_ID, []]));
+
+  for (const t of trenches) {
+    const g = t.Geometry || [];
+    if (g.length < 2) continue;
+
+    const on = [];
+    let run = 0;
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = g[i];
+      const b = g[i + 1];
+      const segLen = dist(a, b);
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (len2) {
+        for (const x of at) {
+          let u = ((x.p[0] - a[0]) * vx + (x.p[1] - a[1]) * vy) / len2;
+          u = Math.max(0, Math.min(1, u));
+          const q = [a[0] + vx * u, a[1] + vy * u];
+          if (dist(x.p, q) > eps) continue;
+          on.push({ id: x.node.Feature_ID, m: run + segLen * u });
+        }
+      }
+      run += segLen;
+    }
+
+    on.sort((x, y) => x.m - y.m);
+    for (let i = 0; i + 1 < on.length; i++) {
+      const A = on[i];
+      const B = on[i + 1];
+      if (A.id === B.id) continue;
+      const len = B.m - A.m;
+      if (len <= eps) continue;
+      adj.get(A.id)?.push({ to: B.id, len, trench: t });
+      adj.get(B.id)?.push({ to: A.id, len, trench: t });
+    }
+  }
+
+  return adj;
+}
+
+/* The shortest run of trench between two span nodes.
+
+   Returned as the steps taken, each with its length and the trench it
+   is on — which is what a span is. */
+export function routeBetween(adj, fromId, toId) {
+  if (fromId === toId) return [];
+
+  const from = new Map();
+  const cost = new Map([[fromId, 0]]);
+  const pending = new Set([fromId]);
+
+  /* A plain scan rather than a heap: a drawing has tens of span nodes,
+     and the difference is not measurable against the clarity. */
+  while (pending.size) {
+    let at = null;
+    for (const id of pending) {
+      if (at == null || (cost.get(id) ?? Infinity) < (cost.get(at) ?? Infinity)) at = id;
+    }
+    pending.delete(at);
+    if (at === toId) break;
+
+    for (const step of adj.get(at) || []) {
+      const c = (cost.get(at) ?? Infinity) + step.len;
+      if (c < (cost.get(step.to) ?? Infinity)) {
+        cost.set(step.to, c);
+        from.set(step.to, { id: at, len: step.len, trench: step.trench });
+        pending.add(step.to);
+      }
+    }
+  }
+
+  if (!cost.has(toId)) return null;
+
+  const steps = [];
+  let at = toId;
   let guard = 0;
-  while (at != null && guard++ < 500) {
-    out.push(at);
-    at = rooted.parent.get(at);
+  while (at !== fromId && guard++ < 500) {
+    const back = from.get(at);
+    if (!back) return null;
+    steps.push({ fromId: back.id, toId: at, len: back.len, trench: back.trench });
+    at = back.id;
   }
-  return out.reverse();
+  return steps.reverse();
 }
-
-/* The route between two nodes, as a list of feature ids.
-
-   Both walk back to the substation; the last id they have in common is
-   where the route turns round. On a circuit that is a tree, this is the
-   only route there is. */
-export function routeBetween(features, fromId, toId, substationId) {
-  const graph = buildGraph(features);
-  const rooted = rootAt(graph, substationId);
-
-  const a = ancestryOf(graph, rooted, fromId);
-  const b = ancestryOf(graph, rooted, toId);
-  if (!a.length || !b.length) return null;
-
-  let common = -1;
-  for (let i = 0; i < Math.min(a.length, b.length); i++) {
-    if (a[i] === b[i]) common = i; else break;
-  }
-  if (common < 0) return null;
-
-  /* Down one side to the meeting point, then up the other. The meeting
-     point itself appears once. */
-  const down = a.slice(common).reverse();
-  const up = b.slice(common + 1);
-  return [...down, ...up];
-}
-
-/* The spans a call-off covers, between two named nodes.
-
-   Each span runs from one span node to the next along the route, and
-   carries the cable between them and the plots served off it. */
 export function spansBetween(features = [], opts = {}) {
-  const { fromId, toId, substationId, plotOf = () => null } = opts;
+  const {
+    fromId, toId, plotOf = () => null,
+    isTrench = (f) => f.Feature_Type === "line" && f.Layer_Key === "trench",
+    serviceTypes = null,
+  } = opts;
 
-  const route = routeBetween(features, fromId, toId, substationId);
-  if (!route) {
-    return { error: "Those two nodes are not on the same circuit." };
+  const nodes = features.filter((f) => f.Feature_Role === "spannode");
+  /* Mains only. A service is not part of a run between two nodes, and a
+     span that measured through one would count somebody's driveway. */
+  const trenches = features.filter((f) => isTrench(f)
+    && !(serviceTypes && serviceTypes.has(f.Attributes?.Line_Type)));
+
+  const adj = trenchGraph(trenches, nodes, opts);
+  const steps = routeBetween(adj, fromId, toId);
+
+  if (!steps) {
+    return {
+      error: "No trench route between those two nodes \u2014 "
+        + "check the trench joins between them.",
+    };
   }
+  if (!steps.length) return { ok: true, spans: [] };
 
   const byId = new Map(features.map((f) => [f.Feature_ID, f]));
-  const isNode = (id) => byId.get(id)?.Feature_Role === "spannode";
 
-  /* Split the route at every span node it passes through. A call-off
-     from A1 to A5 is four spans, not one long one — each is a separate
+  /* Each step between two adjacent span nodes is one span: a separate
      length to lay and a separate set of plots. */
-  const spans = [];
-  let current = null;
-
-  for (const id of route) {
-    const f = byId.get(id);
-    if (!f) continue;
-
-    if (isNode(id)) {
-      if (current) {
-        current.toNode = f;
-        spans.push(current);
-      }
-      current = { fromNode: f, toNode: null, parts: [], meters: [] };
-      continue;
-    }
-    if (!current) continue;
-
-    /* Cable and trench between the nodes. */
-    if (f.Feature_Type === "line") current.parts.push(f);
-  }
-  /* A trailing part with no closing node is not a span — the route ended
-     on something that is not a span node, which means the two ids given
-     were not both nodes. */
+  const spans = steps.map((st) => ({
+    fromNode: byId.get(st.fromId),
+    toNode: byId.get(st.toId),
+    lengthM: st.len,
+    trench: st.trench,
+    meters: [],
+  }));
 
   /* The meters served off each span.
 
-     A meter hangs off the cable rather than sitting on the route between
-     two nodes, so walking the route never passes through one — the first
-     version collected meters from the route and found none, every time.
+     A meter hangs off a service that tees into the span's trench, so it
+     is never on the route between two nodes — walking the route and
+     collecting meters found none, every time.
 
-     They are found from the other end instead: whatever a span's cable
-     connects to that is a meter is served by that span. */
+     Found by position instead: a meter whose service leaves the span's
+     trench between its two nodes belongs to that span. Positions rather
+     than links, because a mains call-off is raised from the trench and
+     the cable links may not exist yet. */
+  const along = (p, g) => {
+    /* How far along a trench a point is, and how far off it. */
+    let run = 0;
+    let best = { m: null, d: Infinity };
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = g[i];
+      const b = g[i + 1];
+      const segLen = dist(a, b);
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (len2) {
+        let u = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const q = [a[0] + vx * u, a[1] + vy * u];
+        const d = dist(p, q);
+        if (d < best.d) best = { m: run + segLen * u, d };
+      }
+      run += segLen;
+    }
+    return best;
+  };
+
+  const reach = opts.serviceReachM ?? 40;
   for (const sp of spans) {
-    const ids = new Set(sp.parts.map((f) => f.Feature_ID));
+    if (!sp.trench) continue;
+    const g = sp.trench.Geometry || [];
+    const a = along((sp.fromNode?.Geometry || [])[0] || [0, 0], g);
+    const b = along((sp.toNode?.Geometry || [])[0] || [0, 0], g);
+    if (a.m == null || b.m == null) continue;
+    const lo = Math.min(a.m, b.m);
+    const hi = Math.max(a.m, b.m);
+
     for (const f of features) {
       if (f.Feature_Role !== "meter") continue;
-      const connects = f.Attributes?.Connects || [];
-      if (connects.some((id) => ids.has(id))) sp.meters.push(f);
+      const p = (f.Geometry || [])[0];
+      if (!p) continue;
+      const hit = along(p, g);
+      if (hit.m == null || hit.d > reach) continue;
+      if (hit.m < lo - 0.5 || hit.m > hi + 0.5) continue;
+      sp.meters.push(f);
     }
   }
 
   return {
     ok: true,
     spans: spans.map((sp) => {
-      const lengthM = sp.parts.reduce((t, f) => t + lineLength(f.Geometry || []), 0);
       const plots = [...new Set(sp.meters
         .map((m) => plotOf(m))
         .filter((p) => p != null))];
@@ -159,9 +253,9 @@ export function spansBetween(features = [], opts = {}) {
       return {
         from: labelOf(sp.fromNode),
         to: labelOf(sp.toNode),
-        fromId: sp.fromNode.Feature_ID,
-        toId: sp.toNode.Feature_ID,
-        lengthM: Math.round(lengthM * 10) / 10,
+        fromId: sp.fromNode?.Feature_ID,
+        toId: sp.toNode?.Feature_ID,
+        lengthM: Math.round(sp.lengthM * 10) / 10,
         plots,
         plotCount: plots.length,
       };
@@ -169,8 +263,7 @@ export function spansBetween(features = [], opts = {}) {
   };
 }
 
-/* The whole call-off as one line of text, for the description a call-off
-   is raised with. */
+
 export function describe(spans = []) {
   if (!spans.length) return "";
   const total = spans.reduce((t, s) => t + s.lengthM, 0);

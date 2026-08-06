@@ -260,9 +260,15 @@ export default function GISCanvasPage() {
      figure captured at pick time would quietly disagree with the site. */
   const callOff = useMemo(() => {
     if (!callOffOpen || !ranges.length) return null;
-    const sub = features.find((f) => plantLabel(f));
+    /* No substation needed: the run is measured along the trench, not
+       traced through a circuit. A mains call-off is raised from the dig
+       and must work before any cable exists. */
     return rangesToSpans(features, ranges, {
-      substationId: sub?.Feature_ID,
+      isTrench: (f) => f.Feature_Type === "line"
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes),
+      serviceTypes: new Set(["trench_service", ...lineTypes
+        .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+        .map((t) => t.Type_Key)]),
       plotOf: (m) => {
         const pid = m?.Plot_ID ?? m?.Attributes?.Plot_ID;
         if (pid == null) return null;

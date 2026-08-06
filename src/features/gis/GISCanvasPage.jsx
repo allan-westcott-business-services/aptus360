@@ -63,8 +63,9 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
 } from "./buildStatus.js";
-import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
-  from "./mainsCallOff.js";
+import {
+  rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
+} from "./mainsCallOff.js";
 import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import { personFor, displayName } from "../poc/whoAmI.js";
@@ -8498,14 +8499,38 @@ export default function GISCanvasPage() {
                   <p className="gco-none">No ranges yet.</p>
                 )}
 
-                {callOff?.ranges?.map((r, i) => (
+                {callOff?.ranges?.map((r, i) => {
+                  const totalM = Math.round(
+                    r.spans.reduce((t, x) => t + x.lengthM, 0) * 10) / 10;
+                  const plots = [...new Set(r.spans.flatMap((x) => x.plots))];
+                  plots.sort((x, y) => {
+                    const nx = Number(x);
+                    const ny = Number(y);
+                    if (Number.isFinite(nx) && Number.isFinite(ny)) return nx - ny;
+                    return String(x).localeCompare(String(y));
+                  });
+                  /* From the spans, not from the labels captured when
+                     clicking.
+
+                     The captured pair is in click order and is only
+                     right if somebody clicked the run the way it is
+                     numbered. The spans carry the labels the run
+                     actually has. */
+                  const [from, to] = orderPair(
+                    r.spans[0]?.from ?? r.from,
+                    r.spans[r.spans.length - 1]?.to ?? r.to);
+
+                  return (
                   <div className="gco-range" key={i}>
                     <div className="gco-range-head">
-                      <strong>{r.from} to {r.to}</strong>
-                      <span className="gco-f">
-                        {`${r.spans.length} span(s) \u00b7 `}
-                        {`${Math.round(r.spans.reduce((t, x) => t + x.lengthM, 0) * 10) / 10} m`}
-                      </span>
+                      {/* The run and its length on one line.
+
+                          A range of one span used to print itself twice
+                          — once as the range and once as its only span —
+                          with the same two nodes and the same length on
+                          both. */}
+                      <strong>{from} to {to}</strong>
+                      <span className="gco-f">{`${totalM} m`}</span>
                       {/* The word, not a cross. A × reads as "close
                           this panel" at least as readily as "remove
                           this run", and the two are a long way apart in
@@ -8515,19 +8540,31 @@ export default function GISCanvasPage() {
                         Remove
                       </button>
                     </div>
-                    {r.spans.map((sp, k) => (
-                      <div className="gco-span" key={k}>
-                        <span className="gco-sp">{sp.from}&ndash;{sp.to}</span>
-                        <span className="gco-m">{sp.lengthM} m</span>
-                        <span className="gco-p">
-                          {sp.plots.length
-                            ? `plots ${sp.plots.join(", ")}`
-                            : "no plots"}
-                        </span>
-                      </div>
-                    ))}
+                    {/* The plots on the run, on their own line. */}
+                    <div className="gco-plots">
+                      {plots.length ? `Plots ${plots.join(", ")}` : "No plots"}
+                    </div>
+
+                    {/* The spans within it, only where there is more
+                        than one — with a single span the run and the
+                        span are the same thing said twice. */}
+                    {r.spans.length > 1 && r.spans.map((sp, k) => {
+                      const [a2, b2] = orderPair(sp.from, sp.to);
+                      return (
+                        <div className="gco-span" key={k}>
+                          <span className="gco-sp">{a2}&ndash;{b2}</span>
+                          <span className="gco-m">{sp.lengthM} m</span>
+                          <span className="gco-p">
+                            {sp.plots.length
+                              ? sp.plots.join(", ")
+                              : "no plots"}
+                          </span>
+                        </div>
+                      );
+                    })}
                   </div>
-                ))}
+                  );
+                })}
 
                 {/* A range that could not be resolved says so rather than
                     disappearing from the list. */}
@@ -9576,7 +9613,9 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   margin-bottom: 6px; }
 .gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
-.gco-span { display: flex; gap: 8px; font-size: 11px; padding: 1px 0; }
+.gco-plots { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
+.gco-span { display: flex; gap: 8px; font-size: 11px; padding: 1px 0;
+  margin-top: 3px; }
 .gco-sp { font-weight: 700; width: 62px; }
 .gco-m { width: 52px; color: var(--muted); }
 .gco-p { flex: 1; color: var(--muted); }

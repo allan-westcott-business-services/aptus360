@@ -30,6 +30,27 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
    it would have got an empty list and spent a while working out why. */
 
 /* A node's label, as it reads on the drawing. */
+/* Two node labels, smallest first.
+
+   A run picked from A20 back to A19 is the same run as A19 to A20, and
+   naming it by the order somebody happened to click reads as though the
+   two were different. The number decides, not the clicking.
+
+   Labels that are not A-then-a-number fall back to comparing as text,
+   which at least puts them in a stable order. */
+export function orderPair(a, b) {
+  const num = (l) => {
+    const m = String(l ?? "").match(/^([A-Za-z]*)(\d+)$/);
+    return m ? { prefix: m[1], n: Number(m[2]) } : null;
+  };
+  const na = num(a);
+  const nb = num(b);
+  if (na && nb && na.prefix === nb.prefix) {
+    return na.n <= nb.n ? [a, b] : [b, a];
+  }
+  return String(a ?? "").localeCompare(String(b ?? "")) <= 0 ? [a, b] : [b, a];
+}
+
 export function labelOf(node) {
   /* The label as stored, first.
 
@@ -555,8 +576,8 @@ export function toCallOffRows(ranges = []) {
       return String(x).localeCompare(String(y));
     });
 
-    const from = spans[0].from;
-    const to = spans[spans.length - 1].to;
+    /* Smallest first, whichever end was clicked. */
+    const [from, to] = orderPair(spans[0].from, spans[spans.length - 1].to);
     const total = spans.reduce((t, sp) => t + sp.lengthM, 0);
 
     /* Any part of the run being off site travels with the row, so the

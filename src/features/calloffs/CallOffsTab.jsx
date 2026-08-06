@@ -365,7 +365,7 @@ export default function CallOffsTab({ projectId }) {
                 r.Selection_Mode === "ColumnList" ? "column" : r.Selection_Mode === "Span" ? "section" : "plot"
               }${(r.items?.length ?? 0) === 1 ? "" : "s"}`}
             </span>
-            <button className="btn ghost sm" onClick={() => remove(r.Submission_ID)}>
+            <button className="btn delete sm" onClick={() => remove(r.Submission_ID)}>
               Delete
             </button>
           </div>

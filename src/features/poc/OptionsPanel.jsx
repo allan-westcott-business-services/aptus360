@@ -201,15 +201,20 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
                   </span>
                   <span className="oc-actions">
                     {!o.Selected && <button className="btn ghost sm" onClick={() => select(o)}>Accept</button>}
-                    <button className="row-edit"
+                    <button className={editOpt ? "btn ghost sm" : "btn edit sm"}
                       onClick={() => setEditOpt(editOpt ? null : { ...o })}>
                       {editOpt ? "Cancel" : "Edit"}
                     </button>
-                    <button className={notesFor === "option" ? "row-edit on" : "row-edit"}
+                    {/* Accent while the notes are open, ghost while they
+                        are not: the shared styles have no toggled state,
+                        and a pressed button that looks exactly like an
+                        unpressed one is what .row-edit.on existed to
+                        avoid. */}
+                    <button className={notesFor === "option" ? "btn accent sm" : "btn ghost sm"}
                       onClick={() => setNotesFor(notesFor === "option" ? null : "option")}>
                       Notes
                     </button>
-                    <button className="row-del" onClick={() => delOption(o)} title="Delete option">&#10005;</button>
+                    <button className="btn delete sm" onClick={() => delOption(o)}>Delete</button>
                   </span>
                 </div>
 
@@ -278,19 +283,19 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
                       <div className="qd-cost"><span className="qd-lbl">Cost</span>{money(active.Estimated_Cost)}</div>
                     </div>
                     <div className="qd-actions">
-                      <button className="row-edit"
+                      <button className={assigning === active.Quotation_ID ? "btn accent sm" : "btn ghost sm"}
                         onClick={() => setAssigning(assigning === active.Quotation_ID ? null : active.Quotation_ID)}>
                         Assign plots
                       </button>
-                      <button className="row-edit"
+                      <button className={editQuot ? "btn ghost sm" : "btn edit sm"}
                         onClick={() => setEditQuot(editQuot ? null : { ...active })}>
                         {editQuot ? "Cancel" : "Edit"}
                       </button>
-                      <button className={notesFor === "quotation" ? "row-edit on" : "row-edit"}
+                      <button className={notesFor === "quotation" ? "btn accent sm" : "btn ghost sm"}
                         onClick={() => setNotesFor(notesFor === "quotation" ? null : "quotation")}>
                         Notes
                       </button>
-                      <button className="row-del" onClick={() => delQuot(active)} title="Delete quotation">&#10005;</button>
+                      <button className="btn delete sm" onClick={() => delQuot(active)}>Delete</button>
                     </div>
                   </div>
                 )}
@@ -453,7 +458,6 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; 
 .ef-grid .span2 { grid-column: span 2; }
 .ef-grid label.inline { display: flex; align-items: center; gap: 7px; font-size: 12px;
   font-weight: 500; text-transform: none; letter-spacing: 0; color: var(--text); margin: 0 0 6px; }
-.row-edit.on { background: var(--accent); color: #fff; }
 .quot-detail { display: flex; align-items: center; gap: 14px; margin-top: 10px;
   border: 1px solid var(--border); border-radius: var(--radius); padding: 10px 12px; background: var(--bg); }
 .qd-grid { flex: 1; display: flex; flex-wrap: wrap; gap: 18px; font-size: 12.5px; }
@@ -481,13 +485,7 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; 
 .quot-table .num { text-align: right; }
 .quot-table .strong { font-weight: 700; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
-.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
-  font: 600 11px inherit; padding: 2px 6px; border-radius: 4px; }
-.row-edit:hover { background: var(--accent-light); }
 .nowrap { white-space: nowrap; }
 .add-quot { background: none; border: none; color: var(--accent); font: 600 11.5px inherit;
   cursor: pointer; padding: 7px 0 0; }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;
-  padding: 2px 5px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 `;

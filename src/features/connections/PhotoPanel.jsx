@@ -87,8 +87,8 @@ export default function PhotoPanel({ connection, onClose, onChanged }) {
                 </a>
                 <figcaption>
                   <span>{p.Uploaded_By || "\u2014"}</span>
-                  <button className="row-del" onClick={() => remove(p)} title="Delete">
-                    &#10005;
+                  <button className="btn delete sm" onClick={() => remove(p)}>
+                    Delete
                   </button>
                 </figcaption>
               </figure>

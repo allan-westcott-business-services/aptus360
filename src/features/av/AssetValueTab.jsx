@@ -263,9 +263,9 @@ export default function AssetValueTab({ projectId }) {
                   {best && ` · highest ${money(best.Asset_Value)}`}
                   {a.Submitted_Date && ` · sent ${fmt(a.Submitted_Date)}`}
                 </span>
-                <button className="row-del"
+                <button className="btn delete sm"
                   onClick={() => remove("application", a.AV_Application_ID, `the ${u?.name} application`)}
-                  title="Delete application">&#10005;</button>
+                  title="Delete this application">Delete</button>
               </div>
 
               <table className="av-table">
@@ -309,11 +309,11 @@ export default function AssetValueTab({ projectId }) {
                       </td>
                       <td className="nowrap">
                         {!q.Accepted && q.Asset_Value != null && q.Asset_Value !== "" && (
-                          <button className="row-edit" onClick={() => accept(q)}>Accept</button>
+                          <button className="btn ghost sm" onClick={() => accept(q)}>Accept</button>
                         )}
-                        <button className="row-del"
+                        <button className="btn delete sm"
                           onClick={() => remove("quotation", q.AV_Quotation_ID, `the ${idnoName(q.IDNO_ID)} quotation`)}
-                          title="Remove slot">&#10005;</button>
+                          title="Remove this slot">Remove</button>
                       </td>
                     </tr>
                   ))}
@@ -327,7 +327,7 @@ export default function AssetValueTab({ projectId }) {
                       <option value="">Choose an IDNO&hellip;</option>
                       {free.map((i) => <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>)}
                     </select>
-                    <button className="row-edit" onClick={() => setAddSlotFor(null)}>Cancel</button>
+                    <button className="btn ghost sm" onClick={() => setAddSlotFor(null)}>Cancel</button>
                   </div>
                 ) : (
                   <button className="add-slot" onClick={() => setAddSlotFor(a.AV_Application_ID)}>
@@ -499,11 +499,11 @@ export default function AssetValueTab({ projectId }) {
                         : <span className="ag-none-inline">None</span>}
                     </td>
                     <td className="nowrap">
-                      <button className="row-edit"
+                      <button className="btn edit sm"
                         onClick={() => { setAgEditing(a.AV_Agreement_ID); setAgDraft({ ...blankAgreement(), ...a }); setShowAgForm(true); }}>
                         Edit
                       </button>
-                      <button className="row-del" onClick={() => removeAgreement(a)} title="Delete">&#10005;</button>
+                      <button className="btn delete sm" onClick={() => removeAgreement(a)}>Delete</button>
                     </td>
                   </tr>
                 );
@@ -556,15 +556,10 @@ const CSS = `
 .tag.accepted { margin-left: 7px; font-size: 9px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; background: var(--ok-bg); color: var(--ok-text);
   border: 1px solid var(--ok-border); border-radius: 4px; padding: 1px 5px; }
-.add-slot, .row-edit { background: none; border: none; color: var(--accent); font: 600 11.5px inherit;
-  cursor: pointer; padding: 3px 6px; border-radius: 4px; }
-.add-slot { padding: 8px 0 0; }
-.row-edit:hover { background: var(--accent-light); }
+.add-slot { background: none; border: none; color: var(--accent); font: 600 11.5px inherit;
+  cursor: pointer; padding: 8px 0 0; border-radius: 4px; }
 .slot-add { display: flex; gap: 7px; align-items: center; margin-top: 8px; }
 .slot-add select { width: auto; min-width: 190px; font-size: 12px; }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;
-  padding: 2px 5px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 .nowrap { white-space: nowrap; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 .ac-foot { margin: 10px 0 0; font-size: 11.5px; color: var(--ok-text); font-weight: 600; }

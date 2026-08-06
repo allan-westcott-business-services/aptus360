@@ -1135,13 +1135,13 @@ export default function POCApplicationsTab({ projectId }) {
                             : col.key === "cost"     ? money(r.Estimated_Cost)
 
                             : col.key === "act" ? (<>
-                              <button className="row-edit"
+                              <button className="btn ghost sm"
                                 onClick={() => setExpanded(expanded === r.POC_Application_ID ? null : r.POC_Application_ID)}
                                 title="Options and quotations">
                                 {expanded === r.POC_Application_ID ? "\u25BE" : "\u25B8"} Options
                               </button>
-                              <button className="row-edit" onClick={() => editRow(r)} title="Edit">Edit</button>
-                              <button className="row-del" onClick={() => remove(r)} title="Delete">&#10005;</button>
+                              <button className="btn edit sm" onClick={() => editRow(r)}>Edit</button>
+                              <button className="btn delete sm" onClick={() => remove(r)}>Delete</button>
                             </>)
 
                             : null}
@@ -1279,12 +1279,6 @@ const CSS = FILTER_CSS + `
 .dt .num { text-align: right; }
 .dt .mid { text-align: center; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;
-  padding: 2px 5px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
-.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
-  font: 600 11.5px inherit; padding: 2px 6px; border-radius: 4px; }
-.row-edit:hover { background: var(--accent-light); }
 .nowrap { white-space: nowrap; }
 .app-notes { padding: 0 16px 14px; }
 .opt-row td { padding: 0 !important; background: var(--bg); }

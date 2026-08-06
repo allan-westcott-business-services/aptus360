@@ -386,11 +386,11 @@ export default function OutlineDesignsTab({ projectId }) {
                           ))
 
                         : (<>
-                          <button className="row-edit" onClick={() => setEditing(s)} title="Open this design">
+                          <button className="btn edit sm" onClick={() => setEditing(s)} title="Open this design">
                             Edit
                           </button>
-                          <button className="row-del" onClick={() => removeScope(s)} title="Remove design">
-                            &#10005;
+                          <button className="btn delete sm" onClick={() => removeScope(s)}>
+                            Remove
                           </button>
                         </>)}
                       </td>
@@ -467,11 +467,6 @@ const CSS = FILTER_CSS + `
 }
 .badge.done { background: var(--ok-bg); color: var(--ok-text); border: 1px solid var(--ok-border); }
 .badge.late { background: var(--err-bg); color: var(--err-text); border: 1px solid var(--err-border); }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px; padding: 3px 5px; border-radius: 4px; }
-.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
-  font: 600 11.5px inherit; padding: 3px 7px; border-radius: 4px; }
-.row-edit:hover { background: var(--accent-light); }
 .nowrap { white-space: nowrap; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 .unsaved { font-size: 11.5px; color: #92400e; font-weight: 600; margin-top: 10px; }
 `;

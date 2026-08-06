@@ -195,11 +195,11 @@ export default function StakeholderTab({ projectId }) {
                   {c.Email && <a href={`mailto:${c.Email}`} className="c-link">&#9993; {c.Email}</a>}
                 </div>
                 <div className="c-act">
-                  <button className="row-edit"
+                  <button className="btn edit sm"
                     onClick={() => { setEditingId(c.Project_Contact_ID); setDraft({ ...blankContact(), ...c }); }}>
                     Edit
                   </button>
-                  <button className="row-del" onClick={() => removeContact(c)} title="Delete">&#10005;</button>
+                  <button className="btn delete sm" onClick={() => removeContact(c)}>Delete</button>
                 </div>
               </div>
             ))}
@@ -241,11 +241,5 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12px; fo
 .c-act { display: flex; gap: 4px; }
 .tag { margin-left: 7px; font-size: 9px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; background: var(--accent); color: #fff; border-radius: 4px; padding: 1px 6px; }
-.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
-  font: 600 11.5px inherit; padding: 2px 6px; border-radius: 4px; }
-.row-edit:hover { background: var(--white); }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 11px; padding: 2px 5px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 @media (max-width: 900px) { .cf-grid { grid-template-columns: 1fr 1fr; } }
 `;

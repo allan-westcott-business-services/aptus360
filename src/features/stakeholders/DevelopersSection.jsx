@@ -188,9 +188,9 @@ export default function DevelopersSection({ projectId, onChanged }) {
               </span>
               <span className="dev-act">
                 {!d.Is_Main && (
-                  <button className="row-edit" onClick={() => setMain(d)}>Make main</button>
+                  <button className="btn ghost sm" onClick={() => setMain(d)}>Make main</button>
                 )}
-                <button className="row-del" onClick={() => remove(d)} title="Remove">&#10005;</button>
+                <button className="btn delete sm" onClick={() => remove(d)}>Remove</button>
               </span>
             </div>
           ))}
@@ -226,11 +226,4 @@ const CSS = `
 .dev-act { display: flex; gap: 5px; }
 .tag { margin-left: 8px; font-size: 9px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .05em; background: var(--accent); color: #fff; border-radius: 4px; padding: 1px 6px; }
-.btn.sm { padding: 4px 12px; font-size: 11.5px; }
-.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
-  font: 600 11.5px inherit; padding: 3px 7px; border-radius: 4px; }
-.row-edit:hover { background: var(--white); }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 11px; padding: 3px 6px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 `;

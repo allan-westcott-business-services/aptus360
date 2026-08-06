@@ -271,8 +271,8 @@ export default function NonResidentialTab({ projectId }) {
                     <td>{idnoName(r.IDNO_ID)}</td>
                     <td className="mid">{r.Self_Lay_Provider ? <span className="tick">&#10003;</span> : ""}</td>
                     <td className="mid nowrap">
-                      <button className="row-edit" onClick={() => edit(r)}>Edit</button>
-                      <button className="row-del" onClick={() => remove(r)} title="Delete">&#10005;</button>
+                      <button className="btn edit sm" onClick={() => edit(r)}>Edit</button>
+                      <button className="btn delete sm" onClick={() => remove(r)}>Delete</button>
                     </td>
                   </tr>
                 );
@@ -311,12 +311,6 @@ label.inline { display: flex; align-items: center; gap: 7px; font-size: 12.5px; 
 .mono { font-family: ui-monospace, Menlo, monospace; }
 .dot { width: 8px; height: 8px; border-radius: 50%; display: inline-block; margin-right: 6px; }
 .tick { color: #059669; font-weight: 700; }
-.row-edit { background: none; border: none; cursor: pointer; color: var(--accent);
-  font: 600 11.5px inherit; padding: 2px 6px; border-radius: 4px; }
-.row-edit:hover { background: var(--accent-light); }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted); font-size: 11px;
-  padding: 2px 5px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 .empty { text-align: center; padding: 48px 20px; border: 1px dashed var(--border);
   border-radius: var(--radius); background: var(--bg); }
 .empty-title { margin: 0 0 4px; font-size: 14px; font-weight: 700; color: var(--text); }

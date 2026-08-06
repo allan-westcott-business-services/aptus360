@@ -264,8 +264,13 @@ export default function AddPlotsForm({
                 return (
                   <span className={dupe ? "chip dupe" : "chip"} key={label}>
                     {label}
+                    {/* A dismissal, not a delete: these plots have not been
+                        created yet, so this takes one back off the list
+                        rather than removing anything. Named for the -x
+                        convention the closers elsewhere use. */}
                     {!dupe && (
-                      <button onClick={() => removePlot(label)} aria-label={`Remove plot ${label}`}>
+                      <button className="chip-x" onClick={() => removePlot(label)}
+                        aria-label={`Take plot ${label} off the list`}>
                         &#10005;
                       </button>
                     )}
@@ -306,7 +311,7 @@ const CSS = `
   background: var(--accent-light); border: 1px solid #bfdbfe; color: var(--accent);
 }
 .chip.dupe { background: #fef2f2; border-color: #fca5a5; color: #ef4444; }
-.chip button {
+.chip button, .chip .chip-x {
   background: none; border: none; cursor: pointer; color: inherit;
   font-size: 10px; padding: 0; line-height: 1;
 }

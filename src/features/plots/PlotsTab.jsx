@@ -668,8 +668,9 @@ export default function PlotsTab({ projectId, projectRef }) {
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")
                             : col.key === "slp" ? (p.Self_Lay_Provider ? <span className="tick">&#10003;</span> : "")
                             : (
-                              <button className="row-del" onClick={() => remove(p)} aria-label={`Remove plot ${p.Plot_Number}`}>
-                                &#10005;
+                              <button className="btn delete sm" onClick={() => remove(p)}
+                                aria-label={`Delete plot ${p.Plot_Number}`}>
+                                Delete
                               </button>
                             )}
                         </td>
@@ -746,9 +747,6 @@ const CSS = FILTER_CSS + `
 .kva-own { color: var(--muted); font-size: 10px; margin-left: 2px; }
 .code-chip { font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }
-.row-del { background: none; border: none; cursor: pointer; color: var(--muted);
-  font-size: 11px; padding: 2px 5px; border-radius: 4px; }
-.row-del:hover { background: #fef2f2; color: #ef4444; }
 
 .bed-summary { display: flex; flex-wrap: wrap; gap: 8px; justify-content: center;
   align-items: center; margin: 0 0 16px; }

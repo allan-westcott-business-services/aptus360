@@ -4437,7 +4437,12 @@ export default function GISCanvasPage() {
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
     const plant = features.find((f) => plantLabel(f));
 
-    const plan = planSpanNodes(trenches, plant);
+    /* The meters, so a trench with one on its end is recognised as a
+       service and skipped. Nothing is placed where a service joins a
+       main, nor at the service's own end. */
+    const plan = planSpanNodes(trenches, plant, {
+      meters: features.filter((f) => f.Feature_Role === "meter"),
+    });
     if (plan.error) { setError(plan.error); return; }
 
     setBusy("spannodes");

@@ -80,18 +80,69 @@ export function junctionsOf(trenches = [], opts = {}) {
    the numbers grow the way the network does. A node numbered by drawing
    order would put A7 next to A2 on the ground, which is no use to
    anybody reading it on site. */
-export function planSpanNodes(trenches = [], plant, opts = {}) {
-  const { eps = 0.25 } = opts;
+/* Which trenches are services.
 
-  const points = junctionsOf(trenches, opts);
-  if (!points.length) return { error: "No trenches to place span nodes on." };
+   A trench with a meter on one end. Not a name — that was tried and a
+   mains leg typed "trench_service_road" was classified out of the
+   network, which is the same mistake in a different place.
+
+   Services are ignored entirely when placing nodes: where one joins a
+   main is not a junction of mains, and a span does not stop there. */
+export function servicesAmong(trenches = [], meters = [], opts = {}) {
+  const { attachM = 2.0 } = opts;
+  const ids = new Set();
+
+  for (const m of meters) {
+    const p = (m.Geometry || [])[0];
+    if (!p) continue;
+    for (const t of trenches) {
+      const g = t.Geometry || [];
+      if (g.length < 2) continue;
+      if (Math.min(dist(p, g[0]), dist(p, g[g.length - 1])) <= attachM) {
+        ids.add(t.Feature_ID);
+        break;
+      }
+    }
+  }
+  return ids;
+}
+
+export function planSpanNodes(trenches = [], plant, opts = {}) {
+  const { eps = 0.25, meters = [] } = opts;
+
+  /* Mains only.
+
+     Four rules, and all of them are about mains:
+
+       a junction of mains          gets a node
+       where a service joins        does not — a span runs through it
+       the end of a main            gets one, if no other main is there
+       where the main meets plant   does not — that is E0, G0 or W0
+
+     Services are dropped before anything is counted, so a point where
+     three trenches meet but one of them is a service is a junction of
+     two mains, which is a bend. */
+  const serviceIds = opts.serviceIds
+    ?? servicesAmong(trenches, meters, opts);
+  const mains = trenches.filter((t) => !serviceIds.has(t.Feature_ID));
 
   const plantAt = (plant?.Geometry || [])[0];
+  const points = junctionsOf(mains, opts);
+  if (!points.length) return { error: "No trenches to place span nodes on." };
 
   /* What each point is. A point where one trench end arrives is the end
      of a run; three or more is a junction; exactly two is two trenches
      meeting end to end, which is a bend and gets nothing. */
-  const wanted = points.filter((p) => p.ends === 1 || p.ends >= 3);
+  /* And not where the main meets the plant.
+
+     The substation is the origin — E0 — and a span node on top of it
+     would be a second name for the same place, with A1 and E0 both
+     meaning the transformer. */
+  const wanted = points.filter((p) => {
+    if (p.ends !== 1 && p.ends < 3) return false;
+    if (plantAt && dist(p.at, plantAt) <= (opts.plantM ?? 2.0)) return false;
+    return true;
+  });
 
   /* Ordered by how far along the network they are, not as the crow
      flies — a node round a corner is further than one straight ahead
@@ -101,7 +152,7 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
      Walked as a graph over the interned points. */
   const idOf = new Map(points.map((p, i) => [p, i]));
   const adj = new Map(points.map((_, i) => [i, []]));
-  for (const t of trenches) {
+  for (const t of mains) {
     const g = t.Geometry || [];
     if (g.length < 2) continue;
     let len = 0;

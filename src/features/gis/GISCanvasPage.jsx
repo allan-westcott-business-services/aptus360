@@ -61,8 +61,9 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel } from "./spanNodes.js";
 import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
   from "./mainsCallOff.js";
-import { createCallOff, updateCallOff } from "../../api/calloffs.js";
+import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
+import { personFor, displayName } from "../poc/whoAmI.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -258,6 +259,23 @@ export default function GISCanvasPage() {
      arrived at the moment somebody pressed the button. */
   const { user } = useAuth();
 
+  /* Who is raising it, by name.
+
+     An email address in "Raised by" is the login, not the person — and
+     on a call-off that goes to a gang it should read "Allan Murrell",
+     not "a.murrell@aptus". The POC application already matches the
+     signed-in user to a Person record on the email; this uses the same
+     helper rather than a second rule that could disagree with it.
+
+     Falls back to whatever name Supabase carries, then to the local part
+     of the address — "a.murrell" tells somebody who it is where a blank
+     tells them nothing. */
+  const raisedByName = useMemo(() => {
+    const p = personFor(user, lookups?.people || []);
+    return p?.Person_Name || displayName(user) || null;
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [user, lookups?.people]);
+
   const [callOffOpen, setCallOffOpen] = useState(false);
   const [pick, setPick] = useState(null);
   const [ranges, setRanges] = useState([]);
@@ -270,6 +288,59 @@ export default function GISCanvasPage() {
      call-offs page to do it means the call-off sits half-finished until
      they remember. */
   const [raised, setRaised] = useState(null);
+
+  /* Runs already committed to a call-off.
+
+     Drawn pink, so somebody picking a new one can see at a glance what
+     has been asked for and what has not. Without it the only way to
+     know is to open the call-offs page and read the labels back, which
+     is the drawing's job.
+
+     Loaded once with the drawing rather than recomputed: a call-off is
+     raised rarely and read constantly. */
+  const [calledOff, setCalledOff] = useState([]);
+
+  useEffect(() => {
+    if (!projectId) { setCalledOff([]); return; }
+    let live = true;
+    listCallOffs(projectId)
+      .then((res) => {
+        if (!live) return;
+        const spans = [];
+        for (const co of res.rows || []) {
+          if (co.Selection_Mode !== "Span") continue;
+          for (const it of co.items || []) {
+            if (it.From_Node_ID == null || it.To_Node_ID == null) continue;
+            spans.push({
+              fromId: it.From_Node_ID,
+              toId: it.To_Node_ID,
+              submission: co.Submission_ID,
+              status: co.Status,
+            });
+          }
+        }
+        setCalledOff(spans);
+      })
+      /* A drawing that cannot reach the call-offs still draws. Colouring
+         is a convenience; refusing to render the site because of it
+         would not be. */
+      .catch(() => { if (live) setCalledOff([]); });
+    return () => { live = false; };
+  }, [projectId]);
+
+  /* Their geometry, worked out the same way a new range is. */
+  const calledOffSpans = useMemo(() => {
+    if (!calledOff.length) return [];
+    const res = rangesToSpans(features, calledOff, {
+      isTrench: (f) => f.Feature_Type === "line"
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes),
+      serviceTypes: new Set(["trench_service", ...lineTypes
+        .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+        .map((t) => t.Type_Key)]),
+    });
+    return res.spans || [];
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [calledOff, features, lineTypes]);
 
   /* What the picked ranges come to.
 
@@ -1319,6 +1390,35 @@ export default function GISCanvasPage() {
        Drawn from the meter itself rather than from where it tees in, so
        the service is part of what is shown — on a plot set well back
        that is most of the run and the part most likely to be wrong. */
+    /* Runs already committed to a call-off, in pink.
+
+       Drawn whether or not the call-off panel is open: knowing what has
+       been asked for is worth having while looking at the drawing for
+       any reason, not only while raising another one.
+
+       Under the picking highlight, so a run being picked now reads as
+       yellow over pink rather than being hidden by it — that pair is
+       exactly the case somebody needs to notice. */
+    const paintCalledOff = () => {
+      if (!calledOffSpans.length) return;
+      ctx.save();
+      for (const sp of calledOffSpans) {
+        const g = sp.geometry;
+        if (!g || g.length < 2) continue;
+        ctx.beginPath();
+        ctx.strokeStyle = "#ec4899";
+        ctx.lineWidth = 8;
+        ctx.lineJoin = "round";
+        ctx.lineCap = "round";
+        g.forEach((pt, i) => {
+          const q = toPx(pt);
+          if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
+        });
+        ctx.stroke();
+      }
+      ctx.restore();
+    };
+
     /* What has been picked for a call-off.
 
        The node waiting for its pair, and the runs already chosen. Drawn
@@ -2343,10 +2443,11 @@ export default function GISCanvasPage() {
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
+    paintCalledOff();
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -4687,12 +4788,14 @@ export default function GISCanvasPage() {
         Project_ID: projectId,
         Work_Type_ID: workType.Work_Type_ID,
         Selection_Mode: "Span",
-        Contact_Name: user?.email?.split("@")[0] || "Site",
+        Contact_Name: raisedByName || "Site",
         Contact_Phone: "N/A",
         /* Today, as the earliest anybody could turn up. Changed on the
            call-off itself, which is where the dates belong. */
         Preferred_Date: new Date().toISOString().slice(0, 10),
-        Created_By: user?.email ?? null,
+        /* The name, which is what "Raised by" shows. The email is the
+           login and belongs in the audit trail, not on a call-off. */
+        Created_By: raisedByName || user?.email || null,
         /* The ranges, not the spans — a row per run as it was asked
            for, named "Span Node A1 to A5". */
         items: toCallOffRows(callOff.ranges),
@@ -4708,7 +4811,7 @@ export default function GISCanvasPage() {
         totalM: callOff.totalM,
         Preferred_Date: new Date().toISOString().slice(0, 10),
         Alternative_Date: "",
-        Contact_Name: user?.email?.split("@")[0] || "",
+        Contact_Name: raisedByName || "",
         Contact_Phone: "",
         Notes: "",
         Obstruction_Free: "",
@@ -4741,6 +4844,18 @@ export default function GISCanvasPage() {
       setRaised(null);
       setCallOffOpen(false);
       setError("");
+      /* So the run just called off turns pink without a reload. */
+      listCallOffs(projectId).then((res) => {
+        const spans = [];
+        for (const co of res.rows || []) {
+          if (co.Selection_Mode !== "Span") continue;
+          for (const it of co.items || []) {
+            if (it.From_Node_ID == null || it.To_Node_ID == null) continue;
+            spans.push({ fromId: it.From_Node_ID, toId: it.To_Node_ID });
+          }
+        }
+        setCalledOff(spans);
+      }).catch(() => {});
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
   }

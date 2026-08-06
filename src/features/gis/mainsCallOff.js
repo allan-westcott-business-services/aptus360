@@ -478,6 +478,13 @@ export function toCallOffRows(ranges = []) {
       Plots: plots.length
         ? `Span Node ${from} to ${to} (plots ${plots.join(", ")})`
         : `Span Node ${from} to ${to}`,
+      /* The nodes as well as their labels.
+
+         The text is what somebody reads; these are what the drawing
+         matches on to show a run as already called off. Without them a
+         label cannot be turned back into a piece of trench. */
+      From_Node_ID: spans[0].fromId ?? null,
+      To_Node_ID: spans[spans.length - 1].toId ?? null,
       D_or_P: null,
       Energisation_Date: null,
       Estimated_Length_m: Math.round(total * 10) / 10,

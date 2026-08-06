@@ -242,8 +242,24 @@ export function spansBetween(features = [], opts = {}) {
      main, and see whether that point falls on this span between its two
      nodes. A meter with no service drawn belongs to no span, which is
      honest — nothing has yet been drawn to say where it connects. */
-  const services = features.filter((f) => isTrench(f)
-    && serviceTypes && serviceTypes.has(f.Attributes?.Line_Type));
+  /* Whatever a meter sits on the end of: a service trench, a service
+     cable, either.
+
+     This looked only at service trenches, and on a drawing where the
+     services are cables it found one plot out of eleven. What matters is
+     the line running from the meter to the main — its far end is where
+     the plot connects, and whether that line is trench or cable is a
+     question about which layer somebody drew it on, not about where the
+     plot joins.
+
+     The mains being routed along are excluded, so a main whose end
+     happens to fall near a meter is not mistaken for that meter's
+     service. */
+  const mainIds = new Set(trenches.map((t) => t.Feature_ID));
+  const services = features.filter((f) =>
+    f.Feature_Type === "line"
+    && (f.Geometry || []).length >= 2
+    && !mainIds.has(f.Feature_ID));
 
   /* How far along a trench a point is, and how far off it. */
   const along = (p, g) => {

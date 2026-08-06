@@ -59,6 +59,9 @@ import {
 } from "./locking.js";
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel } from "./spanNodes.js";
+import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
+  from "./mainsCallOff.js";
+import { createCallOff } from "../../api/calloffs.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -236,6 +239,40 @@ export default function GISCanvasPage() {
      it — an index into the trace, rather than a second calculation that
      could disagree with the first. */
   const [stepAt, setStepAt] = useState(null);
+
+  /* Raising a mains call-off from the drawing.
+
+     A call-off names runs of trench — A1 to A5, A7 to A12 — and the
+     drawing is where somebody can see which runs those are. Picking the
+     nodes on the plan is the difference between a call-off that matches
+     the site and one typed from a list of labels.
+
+     `pick` holds the first node of a pair while the second is chosen;
+     `ranges` holds the pairs already made. */
+  const [callOffOpen, setCallOffOpen] = useState(false);
+  const [pick, setPick] = useState(null);
+  const [ranges, setRanges] = useState([]);
+
+  /* What the picked ranges come to.
+
+     Recomputed from the drawing rather than stored: a trench edited
+     between picking and submitting should change the length, and a
+     figure captured at pick time would quietly disagree with the site. */
+  const callOff = useMemo(() => {
+    if (!callOffOpen || !ranges.length) return null;
+    const sub = features.find((f) => plantLabel(f));
+    return rangesToSpans(features, ranges, {
+      substationId: sub?.Feature_ID,
+      plotOf: (m) => {
+        const pid = m?.Plot_ID ?? m?.Attributes?.Plot_ID;
+        if (pid == null) return null;
+        const p = plotList?.find((x) => Number(x.plot_id ?? x.Plot_ID) === Number(pid));
+        return p?.plot_number ?? p?.Plot_Number ?? null;
+      },
+    });
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [callOffOpen, ranges, features, plotList]);
+
 
   /* A proposed trench route, before anything is written.
 
@@ -1258,6 +1295,50 @@ export default function GISCanvasPage() {
        Drawn from the meter itself rather than from where it tees in, so
        the service is part of what is shown — on a plot set well back
        that is most of the run and the part most likely to be wrong. */
+    /* What has been picked for a call-off.
+
+       The node waiting for its pair, and the runs already chosen. Drawn
+       on the plan rather than only listed in the panel, because a range
+       named "A9 to A14" means nothing until you can see which run it
+       is. */
+    const paintCallOff = () => {
+      if (!callOffOpen) return;
+      ctx.save();
+
+      /* Every span of every range, so a run picked by its two ends shows
+         its whole length. */
+      for (const r of callOff?.ranges || []) {
+        for (const sp of r.spans) {
+          const a2 = features.find((f) => f.Feature_ID === sp.fromId);
+          const b2 = features.find((f) => f.Feature_ID === sp.toId);
+          if (!a2 || !b2) continue;
+          const p1 = toPx(a2.Geometry[0]);
+          const p2 = toPx(b2.Geometry[0]);
+          ctx.beginPath();
+          ctx.strokeStyle = "#0f766e";
+          ctx.lineWidth = 6;
+          ctx.lineCap = "round";
+          ctx.moveTo(p1.x, p1.y);
+          ctx.lineTo(p2.x, p2.y);
+          ctx.stroke();
+        }
+      }
+
+      /* The node waiting for its pair, so a half-made range is obvious
+         rather than looking like nothing happened. */
+      if (pick) {
+        const q = toPx(pick.Geometry[0]);
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 13, 0, Math.PI * 2);
+        ctx.strokeStyle = "#d97706";
+        ctx.lineWidth = 3;
+        ctx.setLineDash([5, 4]);
+        ctx.stroke();
+        ctx.setLineDash([]);
+      }
+      ctx.restore();
+    };
+
     const paintStep = () => {
       if (stepAt == null || !routePlan?.ok) return;
 
@@ -2230,9 +2311,10 @@ export default function GISCanvasPage() {
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
+    paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -2360,6 +2442,35 @@ export default function GISCanvasPage() {
         };
         return;
       }
+    }
+
+    /* Picking span nodes for a mains call-off.
+
+       Taken before drawing and before selection, because while the mode
+       is on a click means one thing only — and a click that both picked
+       a node and moved the selection would be two actions from one
+       press. */
+    if (callOffOpen && e.button === 0) {
+      const at = toM(px, py);
+      const hit = features.find((f) =>
+        f.Feature_Role === "spannode"
+        && Math.hypot((f.Geometry?.[0]?.[0] ?? 0) - at[0],
+                      (f.Geometry?.[0]?.[1] ?? 0) - at[1])
+           <= HIT_PX / view.scale);
+
+      if (!hit) return;
+
+      if (!pick) { setPick(hit); return; }
+      if (hit.Feature_ID === pick.Feature_ID) { setPick(null); return; }
+
+      setRanges((rs) => [...rs, {
+        fromId: pick.Feature_ID,
+        toId: hit.Feature_ID,
+        from: spanNodeLabel(pick) ?? pick.Attributes?.Span_Label,
+        to: spanNodeLabel(hit) ?? hit.Attributes?.Span_Label,
+      }]);
+      setPick(null);
+      return;
     }
 
     if (drawing) {
@@ -4523,6 +4634,43 @@ export default function GISCanvasPage() {
         + ` \u00b7 ${plan.servicesIgnored} service trench(es) ignored`
         + (plan.plant ? `, plant is ${plan.plant.label}` : ""));
       setTimeout(() => setStatus(""), 10000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  async function submitCallOff() {
+    if (!callOff?.spans?.length) return;
+
+    const workType = (lookups?.workTypes || [])
+      .find((w) => w.Selection_Mode === "Span");
+    if (!workType) {
+      setError("No work type with a Span selection mode \u2014 check Admin.");
+      return;
+    }
+
+    setBusy("calloff");
+    try {
+      const created = await createCallOff(projectId, {
+        Project_ID: projectId,
+        Work_Type_ID: workType.Work_Type_ID,
+        Selection_Mode: "Span",
+        Contact_Name: user?.email?.split("@")[0] || "Site",
+        Contact_Phone: "N/A",
+        /* Today, as the earliest anybody could turn up. Changed on the
+           call-off itself, which is where the dates belong. */
+        Preferred_Date: new Date().toISOString().slice(0, 10),
+        Created_By: user?.email ?? null,
+        items: toCallOffRows(callOff.spans),
+      });
+
+      setCallOffOpen(false);
+      setRanges([]);
+      setPick(null);
+      setStatus(`Mains call-off #${created?.Submission_ID ?? ""} raised \u2014 `
+        + `${callOff.spans.length} span(s), ${callOff.totalM} m`
+        + (created?.warning ? ` \u2014 ${created.warning}` : ""));
+      setTimeout(() => setStatus(""), 12000);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -7014,6 +7162,15 @@ export default function GISCanvasPage() {
                         after: a gap explains most surprising answers,
                         and it is invisible at any zoom where the site
                         fits on screen. */}
+                    <MenuItem label="New Mains Call-off"
+                      hint="Pick two span nodes for each run to be laid"
+                      active={callOffOpen}
+                      disabled={!!busy || !projectId}
+                      onClick={() => {
+                        setCallOffOpen(!callOffOpen);
+                        setPick(null);
+                        if (callOffOpen) setRanges([]);
+                      }} />
                     <MenuItem label="Place Span Nodes"
                       hint="At every junction and end of the trench network, A1 upwards"
                       disabled={!!busy || !projectId}
@@ -7781,6 +7938,83 @@ export default function GISCanvasPage() {
                 </button>
                 <button className="gsg-no" disabled={!!busy}
                   onClick={() => setRoutePlan(null)}>Discard</button>
+              </div>
+            )}
+
+            {/* Raising a mains call-off from the drawing. */}
+            {callOffOpen && (
+              <div className="gis-co">
+                <div className="gco-head">
+                  <strong>Mains call-off</strong>
+                  <span className="gco-hint">
+                    {pick
+                      ? `From ${spanNodeLabel(pick) ?? "\u2014"} \u2014 click the node it runs to`
+                      : "Click a span node, then the one it runs to"}
+                  </span>
+                  <button className="gco-x"
+                    onClick={() => { setCallOffOpen(false); setPick(null); setRanges([]); }}>
+                    Cancel
+                  </button>
+                </div>
+
+                {!ranges.length && (
+                  <p className="gco-none">No ranges yet.</p>
+                )}
+
+                {callOff?.ranges?.map((r, i) => (
+                  <div className="gco-range" key={i}>
+                    <div className="gco-range-head">
+                      <strong>{r.from} to {r.to}</strong>
+                      <span className="gco-f">
+                        {`${r.spans.length} span(s) \u00b7 `}
+                        {`${Math.round(r.spans.reduce((t, x) => t + x.lengthM, 0) * 10) / 10} m`}
+                      </span>
+                      <button className="gco-x"
+                        onClick={() => setRanges((rs) => rs.filter((_, j) => j !== i))}>
+                        &times;
+                      </button>
+                    </div>
+                    {r.spans.map((sp, k) => (
+                      <div className="gco-span" key={k}>
+                        <span className="gco-sp">{sp.from}&ndash;{sp.to}</span>
+                        <span className="gco-m">{sp.lengthM} m</span>
+                        <span className="gco-p">
+                          {sp.plots.length
+                            ? `plots ${sp.plots.join(", ")}`
+                            : "no plots"}
+                        </span>
+                      </div>
+                    ))}
+                  </div>
+                ))}
+
+                {/* A range that could not be resolved says so rather than
+                    disappearing from the list. */}
+                {callOff?.errors?.map((e2, i) => (
+                  <p className="gco-err" key={i}>
+                    {`${e2.range.from} to ${e2.range.to}: ${e2.error}`}
+                  </p>
+                ))}
+
+                {callOff?.overlaps?.length > 0 && (
+                  <p className="gco-warn">
+                    {`${callOff.overlaps.join(", ")} named twice \u2014 `}
+                    counted twice, as asked.
+                  </p>
+                )}
+
+                {callOff?.spans?.length > 0 && (
+                  <div className="gco-foot">
+                    <span className="gco-tot">
+                      {`${callOff.spans.length} span(s) \u00b7 ${callOff.totalM} m \u00b7 `}
+                      {`${callOff.plotCount} plot(s)`}
+                    </span>
+                    <button className="btn accent sm" disabled={!!busy}
+                      onClick={submitCallOff}>
+                      {busy === "calloff" ? "Raising\u2026" : "Raise call-off"}
+                    </button>
+                  </div>
+                )}
               </div>
             )}
 
@@ -8783,6 +9017,32 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* The step-through bar. Sits with the other floating panels rather than
    in a dialog: the point of it is watching the drawing while moving from
    meter to meter. */
+/* The call-off panel, floating like the others: the point is picking
+   nodes on the drawing, so it must not cover it. */
+.gis-co { position: absolute; right: 16px; top: 70px; z-index: 40; width: 320px;
+  max-height: 70vh; overflow-y: auto; background: var(--white);
+  border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
+  box-shadow: 0 4px 18px rgba(0,0,0,.13); font-size: 12px; }
+.gco-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
+.gco-head strong { font-size: 13px; }
+.gco-hint { flex: 1; font-size: 10.5px; color: var(--muted); }
+.gco-x { background: none; border: none; cursor: pointer; color: var(--muted);
+  font: 600 11px inherit; padding: 0 3px; }
+.gco-x:hover { color: #b91c1c; }
+.gco-none { color: var(--muted); font-style: italic; margin: 6px 0; }
+.gco-range { border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px;
+  margin-bottom: 6px; }
+.gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
+.gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
+.gco-span { display: flex; gap: 8px; font-size: 11px; padding: 1px 0; }
+.gco-sp { font-weight: 700; width: 62px; }
+.gco-m { width: 52px; color: var(--muted); }
+.gco-p { flex: 1; color: var(--muted); }
+.gco-err { color: #b91c1c; font-weight: 600; font-size: 11px; margin: 4px 0; }
+.gco-warn { color: #b45309; font-weight: 600; font-size: 11px; margin: 4px 0; }
+.gco-foot { display: flex; align-items: center; gap: 9px; margin-top: 9px;
+  padding-top: 9px; border-top: 1px solid var(--border); }
+.gco-tot { flex: 1; font-weight: 700; }
 .gis-step { position: absolute; left: 50%; transform: translateX(-50%);
   bottom: 18px; z-index: 40; display: flex; align-items: center; gap: 10px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;

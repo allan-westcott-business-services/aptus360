@@ -22,17 +22,28 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
    substation. The route is found by walking each node's ancestry back to
    the substation and meeting in the middle. */
 
-/* Every span node on a circuit, in sequence order. */
-export function spanNodesOf(features = [], circuitId) {
-  return features
-    .filter((f) => f.Feature_Role === "spannode"
-      && Number(f.Attributes?.Circuit_ID) === Number(circuitId))
-    .sort((a, b) => Number(a.Attributes?.Span_Seq ?? 0)
-      - Number(b.Attributes?.Span_Seq ?? 0));
-}
+/* spanNodesOf was here: every span node on a circuit, filtered by
+   Circuit_ID.
+
+   Removed rather than left. Nothing called it, and span nodes placed
+   from the trench network carry no Circuit_ID — so anybody reaching for
+   it would have got an empty list and spent a while working out why. */
 
 /* A node's label, as it reads on the drawing. */
 export function labelOf(node) {
+  /* The label as stored, first.
+
+     Span nodes are placed from the trench network now and carry a
+     Span_Label and nothing else — no circuit, because no circuit exists
+     when the trenches are drawn. Computing the label from Circuit_ID
+     and Span_Seq therefore returned null for every one of them, and a
+     call-off came out reading "Span Node null to null".
+
+     The computed form stays for nodes made by an older build, which
+     carry the circuit and may not carry a label. */
+  const stored = node?.Attributes?.Span_Label;
+  if (stored) return String(stored);
+
   const c = Number(node?.Attributes?.Circuit_ID);
   const s = Number(node?.Attributes?.Span_Seq);
   if (!Number.isFinite(c) || !Number.isFinite(s)) return null;

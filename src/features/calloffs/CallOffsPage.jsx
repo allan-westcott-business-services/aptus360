@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { listAllCallOffs, setCallOffStatus } from "../../api/calloffs.js";
+import {
+  listAllCallOffs, setCallOffStatus, updateCallOff, deleteCallOff,
+} from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import {
@@ -85,6 +87,39 @@ export default function CallOffsPage() {
     ? rows.find((r) => Number(r.Submission_ID) === Number(openId))
     : null;
 
+  /* Changing a call-off's details.
+
+     The header only — dates, contact, the site questions, notes. The
+     spans are not editable here on purpose: a run is picked by clicking
+     two nodes on the drawing, and a table of text boxes is no way to say
+     which piece of trench somebody means. Changing those means raising
+     it again from the canvas. */
+  async function saveEdit(id, projectId, patch) {
+    try {
+      /* The project id passed in rather than read from a `row` that does
+         not exist here — the page holds `rows`, and the singular was a
+         reference to nothing that would only have failed on save. */
+      await updateCallOff(projectId, id, patch);
+      setRows((rs) => rs.map((r) =>
+        Number(r.Submission_ID) === Number(id) ? { ...r, ...patch } : r));
+      setError("");
+      return true;
+    } catch (e) { setError(e.message); return false; }
+  }
+
+  async function remove(id, projectId) {
+    if (!window.confirm(
+      "Delete this call-off, its spans and any team assignments on it?")) {
+      return;
+    }
+    try {
+      await deleteCallOff(projectId, id);
+      setRows((rs) => rs.filter((r) => Number(r.Submission_ID) !== Number(id)));
+      setOpenId(null);
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
   async function move(id, next) {
     try {
       await setCallOffStatus(id, next);
@@ -95,7 +130,11 @@ export default function CallOffsPage() {
   }
 
   if (open) {
-    return <CallOffDetail row={open} onBack={() => setOpenId(null)} onMove={move} />;
+    return (
+      <CallOffDetail row={open} onBack={() => setOpenId(null)} onMove={move}
+        onSave={(id, patch) => saveEdit(id, open.Project_ID, patch)}
+        onDelete={(id) => remove(id, open.Project_ID)} />
+    );
   }
 
   return (
@@ -142,6 +181,13 @@ export default function CallOffsPage() {
               <th>Submitted</th><th>Reference</th><th>Site</th>
               <th>Customer</th><th>Work Type</th><th>Contact</th>
               <th>Preferred</th><th>Status</th>
+              {/* Edit and delete on the row itself.
+
+                  They were on the detail page, which meant opening a
+                  call-off to delete it — three clicks to remove
+                  something raised by mistake, and no way to see at a
+                  glance that removing it was even possible. */}
+              <th className="co-act-h">&nbsp;</th>
             </tr>
           </thead>
           <tbody>
@@ -165,6 +211,19 @@ export default function CallOffsPage() {
                     {r.Status}
                   </span>
                 </td>
+                {/* stopPropagation on both: the row opens the call-off,
+                    and without it Delete would open the one it had just
+                    removed. */}
+                <td className="co-act">
+                  <button className="co-rb"
+                    onClick={(e) => { e.stopPropagation(); setOpenId(r.Submission_ID); }}>
+                    Edit
+                  </button>
+                  <button className="co-rb del"
+                    onClick={(e) => { e.stopPropagation(); remove(r.Submission_ID, r.Project_ID); }}>
+                    Delete
+                  </button>
+                </td>
               </tr>
             ))}
           </tbody>
@@ -175,7 +234,28 @@ export default function CallOffsPage() {
 }
 
 /* One call-off: what was asked for, and where it has got to. */
-function CallOffDetail({ row, onBack, onMove }) {
+function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState({});
+  const [saving, setSaving] = useState(false);
+
+  /* Started from the call-off as it is, so cancelling leaves nothing
+     behind and saving sends only what somebody actually changed. */
+  const startEdit = () => {
+    setDraft({
+      Preferred_Date: row.Preferred_Date ?? "",
+      Alternative_Date: row.Alternative_Date ?? "",
+      Contact_Name: row.Contact_Name ?? "",
+      Contact_Phone: row.Contact_Phone ?? "",
+      Contact_Company: row.Contact_Company ?? "",
+      Obstruction_Free: row.Obstruction_Free ?? "",
+      Ground_Unmade: row.Ground_Unmade ?? "",
+      Line_Level_Required: row.Line_Level_Required ?? "",
+      Notes: row.Notes ?? "",
+    });
+    setEditing(true);
+  };
+
   const mode = row.Selection_Mode;
   const heading = mode === "ColumnList" ? "Columns"
     : mode === "Span" ? "Trench sections" : "Service plots";
@@ -198,7 +278,94 @@ function CallOffDetail({ row, onBack, onMove }) {
         <span className={`co-st big s-${String(row.Status || "").replace(/\W+/g, "").toLowerCase()}`}>
           {row.Status}
         </span>
+        {!editing && (
+          <>
+            <button className="btn ghost sm" onClick={startEdit}>Edit</button>
+            {/* Deleting takes the spans and any assignments with it, so
+                it says so before it happens. */}
+            {/* "btn ghost danger", which is how the rest of the app
+                spells a destructive button — "btn danger" is defined
+                nowhere and would have rendered as a plain button, with
+                Delete looking exactly like Edit. */}
+            <button className="btn ghost sm co-del"
+              onClick={() => onDelete?.(row.Submission_ID)}>Delete</button>
+          </>
+        )}
       </div>
+
+      {editing && (
+        <div className="co-card">
+          <h3>Edit call-off</h3>
+          <div className="co-edit">
+            {[
+              ["Preferred_Date", "Preferred date", "date"],
+              ["Alternative_Date", "Alternative date", "date"],
+              ["Contact_Name", "Contact", "text"],
+              ["Contact_Phone", "Phone", "text"],
+              ["Contact_Company", "Company", "text"],
+            ].map(([k, label, type]) => (
+              <label className="co-ed" key={k}>
+                <span>{label}</span>
+                <input type={type} value={draft[k]}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))} />
+              </label>
+            ))}
+            {[
+              ["Obstruction_Free", "Obstruction free"],
+              ["Ground_Unmade", "Ground unmade"],
+              ["Line_Level_Required", "Line and level"],
+            ].map(([k, label]) => (
+              <label className="co-ed" key={k}>
+                <span>{label}</span>
+                <select value={draft[k]}
+                  onChange={(e) => setDraft((d) => ({ ...d, [k]: e.target.value }))}>
+                  <option value="">&mdash;</option>
+                  <option value="Yes">Yes</option>
+                  <option value="No">No</option>
+                </select>
+              </label>
+            ))}
+            <label className="co-ed wide">
+              <span>Notes</span>
+              <textarea rows={3} value={draft.Notes}
+                onChange={(e) => setDraft((d) => ({ ...d, Notes: e.target.value }))} />
+            </label>
+          </div>
+
+          {/* Said plainly rather than left to be discovered: the runs
+              are picked on the drawing and cannot be typed here. */}
+          <p className="hint co-ed-note">
+            {row.Selection_Mode === "Span"
+              ? "The trench sections are picked on the GIS canvas. To change "
+                + "them, raise the call-off again from there."
+              : "The plots are chosen on the project's Call-offs tab."}
+          </p>
+
+          <div className="co-actions">
+            <button className="btn ghost" onClick={() => setEditing(false)}>Cancel</button>
+            <button className="btn accent" disabled={saving}
+              onClick={async () => {
+                setSaving(true);
+                const ok = await onSave?.(row.Submission_ID, {
+                  ...draft,
+                  /* Blank optional fields as null, not "" — an empty
+                     string reads as an answer of nothing rather than as
+                     no answer. */
+                  Alternative_Date: draft.Alternative_Date || null,
+                  Contact_Company: draft.Contact_Company || null,
+                  Obstruction_Free: draft.Obstruction_Free || null,
+                  Ground_Unmade: draft.Ground_Unmade || null,
+                  Line_Level_Required: draft.Line_Level_Required || null,
+                  Notes: draft.Notes || null,
+                });
+                setSaving(false);
+                if (ok) setEditing(false);
+              }}>
+              {saving ? "Saving\u2026" : "Save changes"}
+            </button>
+          </div>
+        </div>
+      )}
 
       <div className="co-card">
         <h3>Request</h3>
@@ -981,6 +1148,30 @@ const CSS = `
 .co-step.on { background: #fef3c7; border-color: #fcd34d; color: #92400e; }
 .co-dot { display: inline-block; width: 5px; height: 5px; border-radius: 50%;
   background: currentColor; margin-right: 6px; vertical-align: middle; }
+.co-edit { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
+  gap: 11px 14px; }
+.co-ed { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
+.co-ed.wide { grid-column: 1 / -1; }
+.co-ed > span { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.co-ed input, .co-ed select, .co-ed textarea { font: 500 12.5px inherit;
+  padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; }
+.co-ed-note { margin: 12px 0; }
+/* The row buttons: quiet until the row is under the cursor, so a table
+   of forty call-offs is not eighty buttons demanding attention. */
+.co-act-h { width: 1%; }
+.co-act { white-space: nowrap; text-align: right; }
+.co-rb { background: none; border: 1px solid transparent; border-radius: 5px;
+  cursor: pointer; font: 600 11px inherit; padding: 3px 9px; color: var(--accent);
+  opacity: 0; transition: opacity .12s; }
+.co-tbl tbody tr:hover .co-rb { opacity: 1; }
+.co-rb:hover { border-color: var(--border); background: var(--white); }
+.co-rb.del { color: #b91c1c; }
+.co-rb.del:hover { background: #fef2f2; border-color: #fecaca; }
+/* On a touch screen there is no hover, so they are always shown. */
+@media (hover: none) { .co-rb { opacity: 1; } }
+.co-del { color: #b91c1c; }
+.co-del:hover { background: #fef2f2; border-color: #fecaca; }
 .co-todo { border-style: dashed; }
 .co-todo p { margin: 0; font-size: 12.5px; color: var(--muted); line-height: 1.6; }
 `;

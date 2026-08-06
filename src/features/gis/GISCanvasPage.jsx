@@ -58,6 +58,7 @@ import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
 import { find as findFeatures, strays, gaps } from "./find.js";
+import { planSpanNodes, plantLabel } from "./spanNodes.js";
 import SchematicModal from "./SchematicModal.jsx";
 import {
   planDeveloperAssignment, developerAreas, assignmentStale,
@@ -4419,6 +4420,88 @@ export default function GISCanvasPage() {
      takes its own shortest route, so nobody is further from the
      substation than the site allows, and the shading says which sections
      are carrying the site. */
+  /* Placing span nodes on the trench network.
+
+     They mark where a run divides or stops, which is a fact about the
+     dig — so they can be placed the moment the trenches are drawn,
+     before any circuit exists. A mains call-off names a run as "A1 to
+     A5" and could not be raised until an LV network had been built,
+     which had it backwards.
+
+     Existing nodes are matched by position and renumbered rather than
+     replaced: one somebody moved or added by hand is theirs, and
+     deleting it to put an identical one back would lose whatever else
+     was set on it. */
+  async function placeSpanNodes() {
+    const trenches = features.filter((f) =>
+      f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    const plant = features.find((f) => plantLabel(f));
+
+    const plan = planSpanNodes(trenches, plant);
+    if (plan.error) { setError(plan.error); return; }
+
+    setBusy("spannodes");
+    try {
+      const existing = features.filter((f) => f.Feature_Role === "spannode");
+      const claimed = new Set();
+      let made = 0;
+      let moved = 0;
+
+      for (const nd of plan.nodes) {
+        const match = existing.find((f) => !claimed.has(f.Feature_ID)
+          && Math.hypot((f.Geometry?.[0]?.[0] ?? 0) - nd.at[0],
+                        (f.Geometry?.[0]?.[1] ?? 0) - nd.at[1]) < 1);
+
+        if (match) {
+          claimed.add(match.Feature_ID);
+          /* Only where the label actually changes — replacing every node
+             on every run would churn the drawing for nothing. */
+          if (match.Attributes?.Span_Label !== nd.label) {
+            await bulkUpdateFeatures(projectId, [{
+              Feature_ID: match.Feature_ID,
+              Label: `Point ${nd.label}`,
+              Attributes: {
+                ...match.Attributes,
+                Span_Seq: nd.seq, Span_Label: nd.label, Span_Kind: nd.kind,
+              },
+            }]);
+            moved += 1;
+          }
+          continue;
+        }
+
+        await createFeature(projectId, {
+          /* On the trench layer, because that is what it belongs to —
+             with its own class so it can be hidden without hiding the
+             trenches it sits on. */
+          Layer_Key: "trench",
+          Feature_Type: "point",
+          Feature_Role: "spannode",
+          Geometry: [nd.at],
+          Label: `Point ${nd.label}`,
+          Attributes: {
+            Span_Seq: nd.seq, Span_Label: nd.label, Span_Kind: nd.kind,
+            Connects: [],
+          },
+        });
+        made += 1;
+      }
+
+      /* Nodes the plan did not want. Left alone rather than deleted:
+         somebody put them there, and a run they are measuring from is
+         theirs to remove. */
+      const spare = existing.filter((f) => !claimed.has(f.Feature_ID)).length;
+
+      await load(projectId);
+      setStatus(`${made} placed, ${moved} renumbered`
+        + (spare ? `, ${spare} left alone` : "")
+        + (plan.plant ? ` \u00b7 plant is ${plan.plant.label}` : ""));
+      setTimeout(() => setStatus(""), 10000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   function findGaps() {
     const list = gaps(features, {
       isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
@@ -4937,6 +5020,9 @@ export default function GISCanvasPage() {
      generated ones — a cable drawn by hand is somebody's decision and
      survives. */
   async function buildLvNetwork(opts = {}) {
+    /* Points the walk wanted and did not find. See below: the build no
+       longer creates span nodes. */
+    let missingNodes = 0;
     /* The drawing to route from, and whether to ask first.
 
        Both exist for the automatic rebuild after a meter is moved
@@ -5088,7 +5174,7 @@ export default function GISCanvasPage() {
 
       let step = 0;
       const total = totalRuns + totalNodes;
-      let runs = 0, cables = 0, nodesMade = 0, renumbered = 0;
+      let runs = 0, cables = 0, renumbered = 0;
 
       for (const { circuit: c, sections, nodes } of planned) {
         for (const [i, sec] of sections.entries()) {
@@ -5164,25 +5250,22 @@ export default function GISCanvasPage() {
             continue;
           }
 
-          await createFeature(projectId, {
-            Layer_Key: "electric",
-            Feature_Type: "point",
-            Feature_Role: "spannode",
-            Geometry: [nd.point],
-            Label: `Point ${label}`,
-            Attributes: {
-              Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
-              Span_Seq: num, Span_Label: label,
-              /* Which kind it is, so a report can tell the substation
-                 origin from a branch or the far end of a run. */
-              Span_Kind: nd.kind,
-              /* The cable feeding this point. Nothing feeds the origin,
-                 so it gets none — the sum starts at the transformer. */
-              ...(startCable && nd.kind !== "origin"
-                ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
-            },
-          });
-          nodesMade += 1;
+          /* No longer created here.
+
+             Span nodes belong to the trench network — they mark where a
+             run divides or stops, which is a fact about the dig and not
+             about a circuit design. Creating them here meant a mains
+             call-off naming "A1 to A5" could not be raised until an LV
+             network had been built, which is the wrong way round: the
+             trench is dug first.
+
+             The build now uses the nodes that are already there and
+             numbers them into circuits. A point the walk expects and
+             cannot find is reported rather than made, because the fix is
+             to place the nodes on the trench — Trench → Place Span
+             Nodes — not to have two places that create them and
+             disagree. */
+          missingNodes += 1;
         }
 
         /* Nodes the build did not place — put there by hand, or left
@@ -5261,7 +5344,12 @@ export default function GISCanvasPage() {
 
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
         + (jointsMade ? `, ${jointsMade} joint(s)` : "")
-        + (nodesMade ? `, ${nodesMade} span node(s)` : "")
+        /* What the build wanted and could not find, so the gap is
+           reported rather than filled in silently. */
+        + (missingNodes
+          ? `, ${missingNodes} span node(s) missing \u2014 place them from `
+            + "Trench \u2192 Place Span Nodes"
+          : "")
         + (renumbered ? `, ${renumbered} renumbered` : "")
         + (startCable
           ? `, on ${cableName(startCable)}`
@@ -6900,6 +6988,10 @@ export default function GISCanvasPage() {
                         after: a gap explains most surprising answers,
                         and it is invisible at any zoom where the site
                         fits on screen. */}
+                    <MenuItem label="Place Span Nodes"
+                      hint="At every junction and end of the trench network, A1 upwards"
+                      disabled={!!busy || !projectId}
+                      onClick={placeSpanNodes} />
                     <MenuItem label="Check Trench Joins"
                       hint="Trench ends close to another trench but not joined"
                       disabled={!!busy || !projectId}
@@ -6950,6 +7042,20 @@ export default function GISCanvasPage() {
                     
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
+                    {/* Its own row, so the nodes can be hidden without
+                        hiding the trenches they sit on.
+
+                        They live on the trench layer now — they describe
+                        the dig — but on a dense drawing they are the
+                        first thing somebody wants out of the way, and
+                        hiding the trench to lose them would take the
+                        thing being looked at with them. */}
+                    <MenuLayer label="Span nodes" colour="#1e3a5f"
+                      count={classCount["role:spannode"] || 0}
+                      hidden={hidden.includes("role:spannode")}
+                      solo={solo === "role:spannode"}
+                      onHide={() => toggleClass("role:spannode")}
+                      onSolo={() => soloClass("role:spannode")} />
                     {typesOn("trench").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}

@@ -77,6 +77,19 @@ export function lengthWithin(line = [], trench = [], opts = {}) {
    before a cable that clips the end of it. */
 export function contentsOf(trench, features = [], opts = {}) {
   const {
+    /* Which line types are services, and which trench types are.
+
+       A mains trench carries mains — the LV cable, the gas pipe, the
+       water pipe — and a service trench carries services. Measuring
+       proximity alone put every service pipe running along a road into
+       the mains trench beside it, which is not what is in it: they are
+       two trenches, and the service is in its own.
+
+       Passed in rather than decided here, for the same reason the span
+       nodes are: the types are configured, and a module guessing at
+       their names is wrong the day somebody renames one. */
+    serviceLineTypes = null,
+    serviceTrenchTypes = null,
     withinM = 1.5,
     /* A line sharing less than this much of itself with the trench is
        crossing it, not in it. A quarter is deliberately generous: a
@@ -101,6 +114,18 @@ export function contentsOf(trench, features = [], opts = {}) {
        junction, and one running beside it is a second trench — neither
        is something laid inside this one. */
     if (isTrench(f)) continue;
+
+    /* Mains in a mains trench, services in a service trench.
+
+       Where nothing says which is which, everything is reported — a
+       drawing whose types are not configured is better served by too
+       much than by an empty panel it cannot explain. */
+    if (serviceLineTypes && serviceTrenchTypes) {
+      const trenchIsService = serviceTrenchTypes.has(
+        trench.Attributes?.Line_Type);
+      const lineIsService = serviceLineTypes.has(f.Attributes?.Line_Type);
+      if (trenchIsService !== lineIsService) continue;
+    }
 
     const lg = f.Geometry || [];
     if (lg.length < 2) continue;

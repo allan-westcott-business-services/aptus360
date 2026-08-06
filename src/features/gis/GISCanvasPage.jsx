@@ -5101,7 +5101,21 @@ export default function GISCanvasPage() {
   }
 
   function inspectTrench(f) {
+    /* Which types are services, from the configured list.
+
+       A mains trench carries mains and a service trench carries
+       services — without this, every service pipe running along a road
+       was reported as being in the mains trench beside it. */
+    const serviceLineTypes = new Set(lineTypes
+      .filter((t) => t.Layer_Key !== "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key));
+    const serviceTrenchTypes = new Set(["trench_service", ...lineTypes
+      .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)]);
+
     const res = contentsOf(f, features, {
+      serviceLineTypes,
+      serviceTrenchTypes,
       isTrench: (x) => x.Feature_Type === "line"
         && isTrenchType(x.Attributes?.Line_Type, lineTypes),
       labelOf: (x) => x.Label

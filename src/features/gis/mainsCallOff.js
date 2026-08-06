@@ -435,14 +435,42 @@ export function rangesToSpans(features = [], ranges = [], opts = {}) {
 
    One per span, matching Mains_Call_Off_Span: the plots as written, the
    estimated length, and the order they were named in. */
-export function toCallOffRows(spans = []) {
-  return spans.map((sp, i) => ({
-    Plots: sp.plots.length
-      ? `${sp.from}\u2013${sp.to} (${sp.plots.join(", ")})`
-      : `${sp.from}\u2013${sp.to}`,
-    D_or_P: null,
-    Energisation_Date: null,
-    Estimated_Length_m: sp.lengthM,
-    Sort_Order: i,
-  }));
+export function toCallOffRows(ranges = []) {
+  /* One row per range, named by the two nodes it runs between.
+
+     A row per span was written first — A1–A2, A2–A3, A3–A4 — which is
+     how the work divides but not how it was asked for. Somebody raising
+     a call-off says "A1 to A5" and the row should say that back; the
+     spans between are how it is measured, not what it is called.
+
+     Given a list of spans rather than ranges, each span is its own
+     range, so this stays correct however it is called. */
+  const asRanges = ranges.map((r) => (r.spans ? r : { spans: [r] }));
+
+  return asRanges.map((r, i) => {
+    const spans = r.spans || [];
+    if (!spans.length) return null;
+
+    const plots = [...new Set(spans.flatMap((sp) => sp.plots || []))];
+    plots.sort((x, y) => {
+      const nx = Number(x);
+      const ny = Number(y);
+      if (Number.isFinite(nx) && Number.isFinite(ny)) return nx - ny;
+      return String(x).localeCompare(String(y));
+    });
+
+    const from = spans[0].from;
+    const to = spans[spans.length - 1].to;
+    const total = spans.reduce((t, sp) => t + sp.lengthM, 0);
+
+    return {
+      Plots: plots.length
+        ? `Span Node ${from} to ${to} (plots ${plots.join(", ")})`
+        : `Span Node ${from} to ${to}`,
+      D_or_P: null,
+      Energisation_Date: null,
+      Estimated_Length_m: Math.round(total * 10) / 10,
+      Sort_Order: i,
+    };
+  }).filter(Boolean);
 }

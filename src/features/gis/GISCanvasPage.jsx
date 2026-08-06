@@ -4684,7 +4684,9 @@ export default function GISCanvasPage() {
            call-off itself, which is where the dates belong. */
         Preferred_Date: new Date().toISOString().slice(0, 10),
         Created_By: user?.email ?? null,
-        items: toCallOffRows(callOff.spans),
+        /* The ranges, not the spans — a row per run as it was asked
+           for, named "Span Node A1 to A5". */
+        items: toCallOffRows(callOff.ranges),
       });
 
       setCallOffOpen(false);
@@ -7969,10 +7971,21 @@ export default function GISCanvasPage() {
               <div className="gis-co">
                 <div className="gco-head">
                   <strong>Mains call-off</strong>
+                  {/* What to do next, at every point in the picking.
+
+                      "Click a span node, then the one it runs to" was
+                      the only thing it ever said, so after a range was
+                      added there was nothing to suggest another could
+                      be. Adding more was always possible and never
+                      said. */}
                   <span className="gco-hint">
                     {pick
-                      ? `From ${spanNodeLabel(pick) ?? "\u2014"} \u2014 click the node it runs to`
-                      : "Click a span node, then the one it runs to"}
+                      ? `From ${spanNodeLabel(pick) ?? "\u2014"} \u2014 `
+                        + "click the node it runs to"
+                      : ranges.length
+                        ? "Click another span node to add a second run, "
+                          + "or raise the call-off"
+                        : "Click a span node, then the one it runs to"}
                   </span>
                   <button className="gco-x"
                     onClick={() => { setCallOffOpen(false); setPick(null); setRanges([]); }}>
@@ -8029,6 +8042,7 @@ export default function GISCanvasPage() {
                 {callOff?.spans?.length > 0 && (
                   <div className="gco-foot">
                     <span className="gco-tot">
+                      {`${callOff.ranges.length} run(s) \u00b7 `}
                       {`${callOff.spans.length} span(s) \u00b7 ${callOff.totalM} m \u00b7 `}
                       {`${callOff.plotCount} plot(s)`}
                     </span>

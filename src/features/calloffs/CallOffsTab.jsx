@@ -458,8 +458,8 @@ function ItemRows({ mode, items, plots, setRow, onAdd, onRemove }) {
             title="Energisation date"
             onChange={(e) => setRow(i, "Energisation_Date")(e.target.value)} />
 
-          <button className="co-x" onClick={() => onRemove(i)} aria-label="Remove row">
-            &times;
+          <button className="btn delete sm" onClick={() => onRemove(i)}>
+            Remove
           </button>
         </div>
       ))}

@@ -413,7 +413,7 @@ function FragmentInvoice({
                 {inv.Status}
               </span>)
             : c.key === "act" ? (<>
-              <button className="row-edit" onClick={onEdit}>Edit</button>
+              <button className="btn edit sm" onClick={onEdit}>Edit</button>
               <button className="row-del" onClick={onDelete}>&#10005;</button>
             </>)
             : null}
@@ -476,7 +476,7 @@ function FragmentInvoice({
                       </td>
                       <td>{l.Notes || <span className="pi-none">&mdash;</span>}</td>
                       <td className="num nowrap">
-                        <button className="row-edit" onClick={() => onEditLine(l)}>Edit</button>
+                        <button className="btn edit sm" onClick={() => onEditLine(l)}>Edit</button>
                         <button className="row-del" onClick={() => onDeleteLine(l)}>&#10005;</button>
                       </td>
                     </tr>

@@ -266,7 +266,7 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
                     <strong>{basemap.File_Name || "Plan"}</strong>
                     <span>{basemap.Image_Width}×{basemap.Image_Height}px</span>
                   </div>
-                  <button className="btn ghost danger" onClick={discard} disabled={busy}>Remove</button>
+                  <button className="btn delete" onClick={discard} disabled={busy}>Remove</button>
                 </div>
               )}
             </div>

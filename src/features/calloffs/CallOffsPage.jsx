@@ -216,11 +216,11 @@ export default function CallOffsPage() {
                     and without it Delete would open the one it had just
                     removed. */}
                 <td className="co-act">
-                  <button className="co-rb"
+                  <button className="btn edit sm"
                     onClick={(e) => { e.stopPropagation(); setOpenId(r.Submission_ID); }}>
                     Edit
                   </button>
-                  <button className="co-rb del"
+                  <button className="btn delete sm"
                     onClick={(e) => { e.stopPropagation(); remove(r.Submission_ID, r.Project_ID); }}>
                     Delete
                   </button>
@@ -281,14 +281,14 @@ function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
         </span>
         {!editing && (
           <>
-            <button className="btn ghost sm" onClick={startEdit}>Edit</button>
+            <button className="btn edit sm" onClick={startEdit}>Edit</button>
             {/* Deleting takes the spans and any assignments with it, so
                 it says so before it happens. */}
             {/* "btn ghost danger", which is how the rest of the app
                 spells a destructive button — "btn danger" is defined
                 nowhere and would have rendered as a plain button, with
                 Delete looking exactly like Edit. */}
-            <button className="btn ghost sm co-del"
+            <button className="btn delete sm"
               onClick={() => onDelete?.(row.Submission_ID)}>Delete</button>
           </>
         )}
@@ -909,11 +909,11 @@ function Assignments({ row }) {
                     ? <span className="asg-off-tag">&#10003; Off site</span>
                     : null;
                 })()}
-                <button className="asg-edit"
+                <button className="btn edit sm"
                   onClick={() => editFor(a)}>Edit</button>
-                <button className="co-x" aria-label="Delete"
+                <button className="btn delete sm"
                   disabled={busy === `d:${a.Assignment_ID}`}
-                  onClick={() => remove(a.Assignment_ID)}>&times;</button>
+                  onClick={() => remove(a.Assignment_ID)}>Delete</button>
               </div>
             ))}
 

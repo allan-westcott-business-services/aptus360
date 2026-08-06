@@ -8506,9 +8506,13 @@ export default function GISCanvasPage() {
                         {`${r.spans.length} span(s) \u00b7 `}
                         {`${Math.round(r.spans.reduce((t, x) => t + x.lengthM, 0) * 10) / 10} m`}
                       </span>
-                      <button className="gco-x"
+                      {/* The word, not a cross. A × reads as "close
+                          this panel" at least as readily as "remove
+                          this run", and the two are a long way apart in
+                          consequence. */}
+                      <button className="btn delete sm"
                         onClick={() => setRanges((rs) => rs.filter((_, j) => j !== i))}>
-                        &times;
+                        Remove
                       </button>
                     </div>
                     {r.spans.map((sp, k) => (

@@ -472,8 +472,8 @@ export default function OrganisationsAdmin() {
                       onClick={() => startRoleRef(r)}>
                       {r.Reference || "+ ref"}
                     </button>
-                    <button className="oa-x" title="Remove role"
-                      onClick={() => detachRole(r.Organisation_Role_ID)}>&times;</button>
+                    <button className="btn delete sm"
+                      onClick={() => detachRole(r.Organisation_Role_ID)}>Remove</button>
                   </span>
                 ))}
               </div>

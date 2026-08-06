@@ -1125,7 +1125,7 @@ export default function FeatureEditor({
         </div>
 
         <div className="fe-foot">
-          <button className="btn ghost danger" disabled={busy} onClick={remove}>Delete</button>
+          <button className="btn delete" disabled={busy} onClick={remove}>Delete</button>
           <span className="fe-spacer" />
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn accent" disabled={busy} onClick={save}>

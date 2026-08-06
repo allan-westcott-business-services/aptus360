@@ -697,10 +697,9 @@ function AwayList({ rows = [], busy, onRemove }) {
             {when(h.End_DateTime)}
           </span>
           <span className="pr-away-why">{h.Reason || ""}</span>
-          <button className="pr-away-x"
+          <button className="btn delete sm"
             disabled={busy === `away:${h.Person_Holiday_ID}`}
-            aria-label="Remove"
-            onClick={() => onRemove(h.Person_Holiday_ID)}>&times;</button>
+            onClick={() => onRemove(h.Person_Holiday_ID)}>Delete</button>
         </div>
       ))}
     </div>

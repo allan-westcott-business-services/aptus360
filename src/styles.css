@@ -245,6 +245,25 @@ input[type="radio"]:disabled { cursor: not-allowed; opacity: 0.6; }
 .btn.accent:hover { background: var(--accent-dark); }
 .btn:disabled { opacity: 0.55; cursor: not-allowed; }
 
+/* Edit and Delete, defined once.
+
+   Every screen had invented its own: some a bordered ghost, some a bare
+   × in a box, some a link. The result was that the same action looked
+   different on each page and a destructive one did not always look
+   destructive — a × in a square reads as "close this" at least as
+   readily as "delete this", which is a bad thing to be ambiguous about.
+
+   Blue for edit, red for delete, white text on both, and the word rather
+   than a symbol. A word cannot be misread. */
+.btn.edit { background: var(--accent); color: #fff; }
+.btn.edit:hover { background: var(--accent-dark); }
+.btn.delete { background: #b91c1c; color: #fff; }
+.btn.delete:hover { background: #991b1b; }
+
+/* The small form, for a button sitting inside a table row or a list
+   where a full-sized one would push the row taller than its content. */
+.btn.sm { padding: 4px 12px; font-size: 11.5px; }
+
 .done { text-align: center; padding: 46px 20px; }
 .done-tick {
   width: 46px; height: 46px; border-radius: 50%; background: var(--ok-bg);

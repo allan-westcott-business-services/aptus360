@@ -579,7 +579,7 @@ export default function PlotsTab({ projectId, projectRef }) {
               <button className="btn accent" disabled={bulkBusy || (!hasBulk && !bulkDev)} onClick={applyBulk}>
                 {bulkBusy ? "Applying\u2026" : "Apply"}
               </button>
-              <button className="btn ghost danger" disabled={bulkBusy} onClick={deleteSelected}>Delete</button>
+              <button className="btn delete" disabled={bulkBusy} onClick={deleteSelected}>Delete</button>
               <button className="bulk-x" onClick={() => setSelected([])} title="Clear selection">&#10005;</button>
             </div>
           )}

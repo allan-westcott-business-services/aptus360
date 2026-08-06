@@ -326,9 +326,9 @@ export default function TeamsAdmin() {
                         onClick={() => makeLeader(m)}>
                         {m.Is_Team_Leader ? "\u2605 Leader" : "\u2606"}
                       </button>
-                      <button className="tm-x" aria-label="Remove"
+                      <button className="btn delete sm"
                         disabled={busy === `m:${m.Team_Member_ID}`}
-                        onClick={() => removeMember(m.Team_Member_ID)}>&times;</button>
+                        onClick={() => removeMember(m.Team_Member_ID)}>Remove</button>
                     </div>
                   ))}
 

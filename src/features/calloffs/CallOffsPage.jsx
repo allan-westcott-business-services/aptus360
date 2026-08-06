@@ -564,10 +564,24 @@ function Assignments({ row }) {
     setDraft({
       Task_Type_ID: phase.Task_Type_ID,
       Team_ID: "",
-      /* Which run this covers. Blank means the whole call-off, which is
-         right for one with a single run and is what an assignment made
-         before spans could be named meant. */
-      Span_ID: "",
+      /* The first run nobody is on yet.
+
+         Blank — the whole call-off — is only right where nothing is
+         assigned. Once one run has a team, opening the form on "all
+         spans" offers something that would overlap, and somebody has to
+         notice and change it before anything else works. */
+      Span_ID: (() => {
+        if (row.Selection_Mode !== "Span") return "";
+        const onPhase = mine.filter((a) =>
+          Number(a.Task_Type_ID) === Number(phase.Task_Type_ID));
+        const taken = new Set(onPhase
+          .filter((a) => a.Span_ID != null)
+          .map((a) => Number(a.Span_ID)));
+        if (!taken.size) return "";
+        const free = (row.items || [])
+          .find((it) => !taken.has(Number(it.Span_ID)));
+        return free ? String(free.Span_ID) : "";
+      })(),
       /* Defaulted to the earliest it may start — the preferred date, or
          later if an earlier phase pushes it. */
       Start_Date: floor?.date || row.Preferred_Date || "",
@@ -787,11 +801,24 @@ function Assignments({ row }) {
                 {row.Region_ID ? " in this region" : ""}
                 {` \u00b7 ${can.length} team${can.length === 1 ? "" : "s"}`}
               </span>
-              <button className="btn accent sm"
-                disabled={!can.length}
-                onClick={() => openFor(ph)}>
-                + Assign
-              </button>
+              {(() => {
+                /* Nothing left to assign on this phase: said on the
+                   button rather than found after opening the form. */
+                const taken = new Set(rows
+                  .filter((a) => a.Span_ID != null)
+                  .map((a) => Number(a.Span_ID)));
+                const allTaken = row.Selection_Mode === "Span"
+                  && (row.items?.length ?? 0) > 0
+                  && (row.items || []).every((it) => taken.has(Number(it.Span_ID)));
+                return (
+                  <button className="btn accent sm"
+                    disabled={!can.length || allTaken}
+                    title={allTaken ? "Every span on this phase is assigned" : ""}
+                    onClick={() => openFor(ph)}>
+                    {allTaken ? "All assigned" : "+ Assign"}
+                  </button>
+                );
+              })()}
             </div>
 
             {/* Why a phase cannot start yet, before somebody tries. */}
@@ -909,12 +936,47 @@ function Assignments({ row }) {
                       onChange={(e) => setDraft((d2) => ({
                         ...d2, Span_ID: e.target.value,
                       }))}>
-                      <option value="">All spans</option>
-                      {(row.items || []).map((it) => (
-                        <option key={it.Span_ID} value={it.Span_ID}>
-                          {it.Plots}
-                        </option>
-                      ))}
+                      {/* Spans nobody is on yet.
+
+                          A run already assigned on this phase is not
+                          available on it again — offering it means
+                          picking it, filling in the dates and being
+                          refused, when the answer was known before the
+                          dropdown opened.
+
+                          Per phase, not per call-off: the same run is
+                          excavated, jointed and reinstated, by
+                          different gangs at different times. */}
+                      {(() => {
+                        const taken = new Set(rows
+                          .filter((x) => x.Span_ID != null)
+                          .filter((x) => editing == null
+                            || Number(x.Assignment_ID) !== Number(editing))
+                          .map((x) => Number(x.Span_ID)));
+
+                        const free = (row.items || [])
+                          .filter((it) => !taken.has(Number(it.Span_ID)));
+
+                        return (
+                          <>
+                            {/* "All spans" only where nothing is taken.
+                                Once one run has a team on it, an
+                                assignment covering everything would
+                                overlap it. */}
+                            {!taken.size && <option value="">All spans</option>}
+                            {free.map((it) => (
+                              <option key={it.Span_ID} value={it.Span_ID}>
+                                {it.Plots}
+                              </option>
+                            ))}
+                            {!free.length && (
+                              <option value="" disabled>
+                                Every span on this phase is assigned
+                              </option>
+                            )}
+                          </>
+                        );
+                      })()}
                     </select>
                   )}
                   <select className="asg-team-sel" value={draft.Team_ID}

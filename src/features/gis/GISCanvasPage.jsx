@@ -5118,9 +5118,39 @@ export default function GISCanvasPage() {
       serviceTrenchTypes,
       isTrench: (x) => x.Feature_Type === "line"
         && isTrenchType(x.Attributes?.Line_Type, lineTypes),
-      labelOf: (x) => x.Label
-        ?? lineTypes.find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label
-        ?? null,
+      /* What the thing is, not what it feeds.
+
+         A cable's Label is its circuit and way — "1A" — which says
+         which run it is and nothing about what was laid. Somebody
+         asking what is in a trench wants the cable type: whether that
+         185mm² will take another circuit is the question, and "1A" does
+         not answer it.
+
+         The size where there is one, then the line type's own name, and
+         the label only as a last resort. */
+      labelOf: (x) => {
+        const sizeId = x.Attributes?.Cable_Size_ID ?? x.Attributes?.VD_Cable_Size_ID;
+        const size = sizeId != null
+          ? (lookups?.cableSizes || []).find((c) =>
+            String(c.Cable_Size_ID) === String(sizeId))?.Size_Label
+          : null;
+        if (size) return size;
+
+        /* Gas and water carry their size as free text on the feature —
+           there is no catalogue for pipe the way there is for cable.
+           Shown the same way, because "63mm PE" answers the same
+           question about a gas main that a cable size answers about a
+           feeder: whether what is in the ground is big enough.
+
+           With the type name beside it, since "63mm PE" alone does not
+           say what it carries. */
+        const typeName = lineTypes
+          .find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label ?? null;
+        const pipe = String(x.Attributes?.Size ?? "").trim();
+        if (pipe) return typeName ? `${pipe} ${typeName}` : pipe;
+
+        return typeName ?? x.Label ?? null;
+      },
     });
     if (res.error) { setError(res.error); return; }
     setInspect(res);
@@ -9741,7 +9771,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
 .ins-util { text-transform: capitalize; }
-.ins-label { font-weight: 700; width: 74px; }
+/* Wide enough for a cable size — "185mm\u00b2 WF Al" is longer than the
+   circuit label it replaced, and a truncated cable size is a cable size
+   nobody can act on. */
+.ins-label { font-weight: 700; flex: 1 1 auto; min-width: 0; }
 .gco-plots { font-size: 11.5px; color: var(--muted); margin-top: 2px; }
 .gco-span { display: flex; gap: 8px; font-size: 11px; padding: 1px 0;
   margin-top: 3px; }

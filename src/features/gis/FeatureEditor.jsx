@@ -331,7 +331,16 @@ export default function FeatureEditor({
 
   return (
     <div className="fe-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
-      <div className="fe" onClick={(e) => e.stopPropagation()} style={drag.panelStyle} role="dialog" aria-label="Edit feature">
+      {/* Wider for a trench, which lays its fields out three across.
+
+          420px was right when everything was stacked in one column. Three
+          dropdowns in that width leaves each about 130px, which truncates
+          "To be Removed" and "On-site or Off-site" to the point of
+          guessing. A plot seed still has few enough fields that the
+          narrow form is the better shape. */}
+      <div className={isTrench ? "fe fe-wide" : "fe"}
+        onClick={(e) => e.stopPropagation()} style={drag.panelStyle}
+        role="dialog" aria-label="Edit feature">
         <style>{CSS}</style>
 
         <div className="fe-head" {...drag.handleProps}
@@ -1223,6 +1232,9 @@ export default function FeatureEditor({
 const CSS = `
 .fe-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.34); z-index: 1000;
   display: flex; align-items: center; justify-content: center; padding: 24px; }
+/* Half again as wide, so three controls in a row have room for their
+   longest option rather than truncating it. */
+.fe.fe-wide { width: min(630px, 94vw); }
 .fe { background: var(--white); border-radius: 12px; width: min(420px, 92vw);
   max-height: 88vh; display: flex; flex-direction: column;
   box-shadow: 0 18px 46px rgba(15,23,42,.3); }

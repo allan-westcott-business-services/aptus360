@@ -110,7 +110,8 @@ export function eligibleTeams(teams = [], opts = {}) {
    Only phases before this one in the work type's order count, and only
    assignments that share plots with what is being scheduled — two gangs
    on opposite ends of a site do not wait for each other. */
-export function earliestStart(phases = [], assignments = [], taskTypeId, plots = []) {
+export function earliestStart(phases = [], assignments = [], taskTypeId,
+  plots = [], spanId = null) {
   const order = new Map(phases.map((p, i) => [Number(p.Task_Type_ID), i]));
   const mine = order.get(Number(taskTypeId));
   if (mine == null) return null;
@@ -123,7 +124,16 @@ export function earliestStart(phases = [], assignments = [], taskTypeId, plots =
     const theirs = order.get(Number(a.Task_Type_ID));
     if (theirs == null || theirs >= mine) continue;
 
-    if (want.size) {
+    /* Only work on the same ground counts.
+
+       On a service call-off that is the shared plots. On a mains
+       call-off it is the span: jointing A7 to A12 has no reason to wait
+       for excavation on A1 to A5, and with no plots to compare the first
+       version made every phase wait for every other — which would have
+       held up half a site for work at the other end of it. */
+    if (spanId != null && a.Span_ID != null) {
+      if (Number(a.Span_ID) !== Number(spanId)) continue;
+    } else if (want.size) {
       const shared = parsePlots(a.Plot_Range).some((p) => want.has(p));
       if (!shared) continue;
     }
@@ -205,7 +215,8 @@ export function validate(draft, opts = {}) {
   }
 
   const plots = parsePlots(draft.Plot_Range);
-  const floor = earliestStart(phases, assignments, draft.Task_Type_ID, plots);
+  const floor = earliestStart(phases, assignments, draft.Task_Type_ID, plots,
+    draft.Span_ID ?? null);
   if (floor && draft.Start_Date && draft.Start_Date < floor.date) {
     /* The date as written, since this string reaches the screen. The
        panel formats what it prints; a rule that returns a raw ISO date

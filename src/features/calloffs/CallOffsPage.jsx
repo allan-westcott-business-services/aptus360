@@ -546,6 +546,7 @@ function Assignments({ row }) {
       Assignment_ID: a.Assignment_ID,
       Task_Type_ID: a.Task_Type_ID,
       Team_ID: String(a.Team_ID),
+      Span_ID: a.Span_ID ? String(a.Span_ID) : "",
       Start_Date: a.Start_Date,
       End_Date: a.End_Date,
       plots: parsePlots(a.Plot_Range),
@@ -562,6 +563,10 @@ function Assignments({ row }) {
     setDraft({
       Task_Type_ID: phase.Task_Type_ID,
       Team_ID: "",
+      /* Which run this covers. Blank means the whole call-off, which is
+         right for one with a single run and is what an assignment made
+         before spans could be named meant. */
+      Span_ID: "",
       /* Defaulted to the earliest it may start — the preferred date, or
          later if an earlier phase pushes it. */
       Start_Date: floor?.date || row.Preferred_Date || "",
@@ -615,6 +620,7 @@ function Assignments({ row }) {
         Submission_ID: row.Submission_ID,
         Task_Type_ID: draft.Task_Type_ID,
         Team_ID: Number(draft.Team_ID),
+        Span_ID: draft.Span_ID ? Number(draft.Span_ID) : null,
         Start_Date: draft.Start_Date,
         End_Date: draft.End_Date,
         /* A mains assignment covers the spans the call-off names, so
@@ -746,7 +752,8 @@ function Assignments({ row }) {
           craftId: ph.Craft_ID,
           regionId: row.Region_ID ?? null,
         });
-        const floor = earliestStart(phases, mine, ph.Task_Type_ID, plotUniverse);
+    const floor = earliestStart(phases, mine, ph.Task_Type_ID, plotUniverse,
+          null);
 
         return (
           <div className="asg-phase" key={ph.Task_Type_ID}>
@@ -801,7 +808,10 @@ function Assignments({ row }) {
                 </span>
                 <span className="asg-plots">
                   {row.Selection_Mode === "Span"
-                    ? "all spans" : (a.Plot_Range || "all plots")}
+                    ? (row.items || []).find((it) =>
+                      Number(it.Span_ID) === Number(a.Span_ID))?.Plots
+                      ?? "all spans"
+                    : (a.Plot_Range || "all plots")}
                 </span>
                 {/* How much of the booking is off site, from the days
                     rather than the booking — a week with one off-site
@@ -830,6 +840,24 @@ function Assignments({ row }) {
                     characters, and a form four times taller than it
                     needed to be. */}
                 <div className="asg-line">
+                  {/* Which run, where there is more than one.
+
+                      A call-off with a single run has nothing to
+                      choose, and a dropdown of one is furniture. */}
+                  {row.Selection_Mode === "Span" && (row.items?.length ?? 0) > 1 && (
+                    <select className="asg-span-sel" value={draft.Span_ID}
+                      aria-label="Span"
+                      onChange={(e) => setDraft((d2) => ({
+                        ...d2, Span_ID: e.target.value,
+                      }))}>
+                      <option value="">All spans</option>
+                      {(row.items || []).map((it) => (
+                        <option key={it.Span_ID} value={it.Span_ID}>
+                          {it.Plots}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <select className="asg-team-sel" value={draft.Team_ID}
                     aria-label="Team"
                     onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
@@ -1038,6 +1066,7 @@ const CSS = `
   font: 500 12px inherit; padding: 5px 8px;
   border: 1px solid var(--border); border-radius: 6px; background: var(--white); }
 .asg-team-sel { min-width: 150px; max-width: 220px; }
+.asg-span-sel { min-width: 160px; max-width: 260px; }
 /* Wide enough for dd/mm/yyyy and the picker button, and no wider. */
 .asg-date { width: 140px; }
 .asg-to { font-size: 11.5px; color: var(--muted); }
@@ -1157,19 +1186,25 @@ const CSS = `
 .co-ed input, .co-ed select, .co-ed textarea { font: 500 12.5px inherit;
   padding: 6px 9px; border: 1px solid var(--border); border-radius: 6px; }
 .co-ed-note { margin: 12px 0; }
-/* The row buttons: quiet until the row is under the cursor, so a table
-   of forty call-offs is not eighty buttons demanding attention. */
+/* The row buttons, always visible.
+
+   Hidden until hover to begin with, on the reasoning that a table of
+   forty call-offs need not show eighty buttons. That was the wrong
+   trade: an action nobody can see is an action nobody knows about, and
+   somebody scanning the table for a way to remove a row found nothing
+   until the cursor happened to cross it.
+
+   Kept quiet rather than hidden — outlined, in the accent and the
+   danger colours, so they read as available without competing with the
+   call-off's own details. */
 .co-act-h { width: 1%; }
 .co-act { white-space: nowrap; text-align: right; }
-.co-rb { background: none; border: 1px solid transparent; border-radius: 5px;
-  cursor: pointer; font: 600 11px inherit; padding: 3px 9px; color: var(--accent);
-  opacity: 0; transition: opacity .12s; }
-.co-tbl tbody tr:hover .co-rb { opacity: 1; }
-.co-rb:hover { border-color: var(--border); background: var(--white); }
+.co-rb { background: var(--white); border: 1px solid var(--border);
+  border-radius: 5px; cursor: pointer; font: 600 11px inherit;
+  padding: 3px 10px; color: var(--accent); margin-left: 5px; }
+.co-rb:hover { background: #eff6ff; border-color: var(--accent); }
 .co-rb.del { color: #b91c1c; }
 .co-rb.del:hover { background: #fef2f2; border-color: #fecaca; }
-/* On a touch screen there is no hover, so they are always shown. */
-@media (hover: none) { .co-rb { opacity: 1; } }
 .co-del { color: #b91c1c; }
 .co-del:hover { background: #fef2f2; border-color: #fecaca; }
 .co-todo { border-style: dashed; }

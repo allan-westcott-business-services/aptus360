@@ -59,6 +59,9 @@ import {
 } from "./locking.js";
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel } from "./spanNodes.js";
+import {
+  BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
+} from "./buildStatus.js";
 import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
   from "./mainsCallOff.js";
 import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
@@ -278,6 +281,8 @@ export default function GISCanvasPage() {
 
   const [callOffOpen, setCallOffOpen] = useState(false);
   const [pick, setPick] = useState(null);
+  /* Whether to ask for another run. See where a range is added. */
+  const [askAnother, setAskAnother] = useState(false);
   const [ranges, setRanges] = useState([]);
 
   /* The call-off just raised, waiting for the rest of its details.
@@ -299,6 +304,16 @@ export default function GISCanvasPage() {
      Loaded once with the drawing rather than recomputed: a call-off is
      raised rarely and read constantly. */
   const [calledOff, setCalledOff] = useState([]);
+
+  /* Marking a length of trench as existing, planned, to be removed or
+     as-built.
+
+     Two clicks on one trench: where the length starts and where it
+     stops. Either can be an end or any point along it — a run is drawn
+     as one line because that is how it was drawn, not because all of it
+     is at the same stage. */
+  const [marking, setMarking] = useState(null);   // { status } while picking
+  const [markFrom, setMarkFrom] = useState(null); // { feature, point }
 
   useEffect(() => {
     if (!projectId) { setCalledOff([]); return; }
@@ -1159,9 +1174,24 @@ export default function GISCanvasPage() {
     const layer = layers.find((l) => l.Layer_Key === f.Layer_Key);
     /* Falls back to what the canvas drew before styles existed, so an
        unstyled project looks exactly as it did. */
+    /* A build status overrides the line type's colour.
+
+       A length marked as to-be-removed has to look different from one
+       marked as-built, and the only place that reads on the drawing is
+       the colour of the trench itself. The type's colour is what it
+       falls back to where nothing has been marked, so an unmarked
+       drawing looks exactly as it did.
+
+       Dashed for planned and to-be-removed: those are lengths that are
+       not in the ground, and a solid line for something that does not
+       exist yet is the drawing saying something untrue. */
+    const bs = statusOf(f);
+    const bsColour = bs ? statusColour(bs) : null;
+
     return appearance(resolved, view.scale, {
-      colour: lt?.Colour ?? layer?.Colour ?? "#64748b",
+      colour: bsColour ?? lt?.Colour ?? layer?.Colour ?? "#64748b",
       widthPx: lt?.Width_px ?? 2,
+      ...(bs === "planned" || bs === "remove" ? { dashed: true } : {}),
       ...fallback,
     });
   }, [styles, layers, lineTypes, standard, view.scale]);
@@ -1399,7 +1429,32 @@ export default function GISCanvasPage() {
        Under the picking highlight, so a run being picked now reads as
        yellow over pink rather than being hidden by it — that pair is
        exactly the case somebody needs to notice. */
+    /* Where the length being marked starts. */
+    const paintMark = () => {
+      if (!markFrom) return;
+      const q = toPx(markFrom.point);
+      ctx.save();
+      ctx.beginPath();
+      ctx.arc(q.x, q.y, 8, 0, Math.PI * 2);
+      ctx.fillStyle = statusColour(marking?.status) || "#1e3a5f";
+      ctx.fill();
+      ctx.strokeStyle = "#fff";
+      ctx.lineWidth = 2.5;
+      ctx.stroke();
+      ctx.restore();
+    };
+
     const paintCalledOff = () => {
+      /* Only while a new call-off is being picked.
+
+         Shown all the time to begin with, on the reasoning that knowing
+         what has been asked for is always useful. It is not: on an
+         ordinary look at the drawing it is one more colour competing
+         with the trace, the circuits and the levels check, and it
+         answers a question nobody is asking at that moment.
+
+         While picking a run it answers exactly the question in hand. */
+      if (!callOffOpen) return;
       if (!calledOffSpans.length) return;
       ctx.save();
       for (const sp of calledOffSpans) {
@@ -2443,11 +2498,12 @@ export default function GISCanvasPage() {
     /* Last, so the proposal sits over the drawing rather than under the
        span node labels. */
     paintRoute();
+    paintMark();
     paintCalledOff();
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -2577,6 +2633,32 @@ export default function GISCanvasPage() {
       }
     }
 
+    /* Picking the two ends of a length to mark. */
+    if (marking && e.button === 0) {
+      const at = toM(px, py);
+      const hit = features.find((f) => f.Feature_Type === "line"
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes)
+        && alongLine(at, f.Geometry || []).d <= HIT_PX / view.scale);
+
+      if (!hit) return;
+
+      if (!markFrom) {
+        setMarkFrom({ feature: hit, point: alongLine(at, hit.Geometry).point });
+        return;
+      }
+      /* Both points have to be on the same trench: a length that spans
+         two features is two lengths, and marking them together would
+         quietly do something different from what was asked. */
+      if (hit.Feature_ID !== markFrom.feature.Feature_ID) {
+        setError("Both ends must be on the same trench.");
+        setMarkFrom(null);
+        return;
+      }
+      applyMark(markFrom.feature, markFrom.point,
+        alongLine(at, hit.Geometry).point);
+      return;
+    }
+
     /* Picking span nodes for a mains call-off.
 
        Taken before drawing and before selection, because while the mode
@@ -2596,6 +2678,28 @@ export default function GISCanvasPage() {
       if (!pick) { setPick(hit); return; }
       if (hit.Feature_ID === pick.Feature_ID) { setPick(null); return; }
 
+      /* A run that is already called off cannot be called off again.
+
+         Refused here rather than found at save time: somebody picking a
+         second run wants to know now, while looking at the pink, not
+         after filling in the dates. */
+      const wanted = rangesToSpans(features, [{
+        fromId: pick.Feature_ID, toId: hit.Feature_ID,
+      }], {
+        isTrench: (f) => f.Feature_Type === "line"
+          && isTrenchType(f.Attributes?.Line_Type, lineTypes),
+      });
+      const taken = new Set(calledOffSpans.map((sp) => `${sp.fromId}:${sp.toId}`));
+      const clash = (wanted.spans || []).filter((sp) =>
+        taken.has(`${sp.fromId}:${sp.toId}`) || taken.has(`${sp.toId}:${sp.fromId}`));
+
+      if (clash.length) {
+        setError(`${clash.map((sp) => `${sp.from}\u2013${sp.to}`).join(", ")} `
+          + `already called off \u2014 pick a run that is not pink.`);
+        setPick(null);
+        return;
+      }
+
       setRanges((rs) => [...rs, {
         fromId: pick.Feature_ID,
         toId: hit.Feature_ID,
@@ -2603,6 +2707,14 @@ export default function GISCanvasPage() {
         to: spanNodeLabel(hit) ?? hit.Attributes?.Span_Label,
       }]);
       setPick(null);
+      /* Asked rather than assumed.
+
+         The panel used to say "click another span node to add a second
+         run", which is a hint somebody has to notice and act on. Being
+         asked outright is what makes the two-run case as easy as the
+         one-run case, and it says plainly that answering No commits
+         what has been picked. */
+      setAskAnother(true);
       return;
     }
 
@@ -4803,6 +4915,7 @@ export default function GISCanvasPage() {
 
       setRanges([]);
       setPick(null);
+      setAskAnother(false);
       /* Straight into finishing it, rather than closing and leaving it
          to be found later. */
       setRaised({
@@ -4856,6 +4969,69 @@ export default function GISCanvasPage() {
         }
         setCalledOff(spans);
       }).catch(() => {});
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Applying a build status to a length of trench.
+
+     Splitting a run is a real change to the drawing, so it says what it
+     is about to do and waits. Somebody marking half a road expects half
+     a road marked; they do not necessarily expect one feature to become
+     three, and finding that out afterwards is worse than being asked. */
+  async function applyMark(trench, fromPoint, toPoint) {
+    const plan = planMark(trench, fromPoint, toPoint, marking.status);
+    if (plan.error) { setError(plan.error); setMarkFrom(null); return; }
+
+    if (plan.splits > 0) {
+      const ok = window.confirm(
+        `Mark ${plan.markedM} m as ${statusLabel(marking.status)}?\n\n`
+        + `This splits the trench into ${plan.splits + 1} sections.`);
+      if (!ok) { setMarkFrom(null); return; }
+    }
+
+    if (isFeatureLocked(trench, lockedClasses)) {
+      setError("That trench is locked against changes.");
+      setMarkFrom(null);
+      return;
+    }
+
+    setBusy("mark");
+    try {
+      /* The offcuts first. If one of these fails the original is still
+         whole, which is recoverable; shortening it first and then
+         failing would lose the rest of the run. */
+      for (const piece of plan.creates) {
+        await createFeature(projectId, {
+          Layer_Key: trench.Layer_Key,
+          Feature_Type: "line",
+          Geometry: piece.geometry,
+          Attributes: {
+            ...trench.Attributes,
+            ...(piece.status
+              ? { Build_Status: piece.status }
+              : { Build_Status: undefined }),
+          },
+        });
+      }
+
+      const attrs = { ...trench.Attributes, Build_Status: marking.status };
+      if (plan.update.geometry) {
+        await moveFeatures(projectId, [{
+          Feature_ID: trench.Feature_ID, Geometry: plan.update.geometry,
+        }]);
+      }
+      await bulkUpdateFeatures(projectId, [{
+        Feature_ID: trench.Feature_ID, Attributes: attrs,
+      }]);
+
+      setMarkFrom(null);
+      await load(projectId);
+      setStatus(`${plan.markedM ?? "Whole run"} marked as `
+        + `${statusLabel(marking.status)}`
+        + (plan.splits ? `, split into ${plan.splits + 1}` : ""));
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
   }
@@ -7346,6 +7522,20 @@ export default function GISCanvasPage() {
                         after: a gap explains most surprising answers,
                         and it is invisible at any zoom where the site
                         fits on screen. */}
+                    <MenuGroup label="Build status" />
+                    {BUILD_STATUSES.map((bs) => (
+                      <MenuItem key={bs.key} label={bs.label} indent
+                        active={marking?.status === bs.key}
+                        disabled={!!busy || !projectId}
+                        hint="Click where the length starts, then where it stops"
+                        onClick={() => {
+                          setMarking(marking?.status === bs.key
+                            ? null : { status: bs.key });
+                          setMarkFrom(null);
+                        }} />
+                    ))}
+                    <div className="gm-sep" />
+                    <MenuGroup label="Route" />
                     <MenuItem label="New Mains Call-off"
                       hint="Pick two span nodes for each run to be laid"
                       active={callOffOpen}
@@ -7353,6 +7543,7 @@ export default function GISCanvasPage() {
                       onClick={() => {
                         setCallOffOpen(!callOffOpen);
                         setPick(null);
+                        setAskAnother(false);
                         if (callOffOpen) setRanges([]);
                       }} />
                     <MenuItem label="Place Span Nodes"
@@ -8125,6 +8316,27 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {/* Marking a length of trench. */}
+            {marking && (
+              <div className="gis-step">
+                <span className="gsp-plot">{statusLabel(marking.status)}</span>
+                <span className="gsp-f">
+                  {markFrom
+                    ? "Now click where the length stops"
+                    : "Click where the length starts"}
+                </span>
+                {markFrom && (
+                  <button className="gsp-b" onClick={() => setMarkFrom(null)}>
+                    Start again
+                  </button>
+                )}
+                <button className="gsp-x"
+                  onClick={() => { setMarking(null); setMarkFrom(null); }}>
+                  Done
+                </button>
+              </div>
+            )}
+
             {/* Raising a mains call-off from the drawing. */}
             {/* Finishing the call-off just raised.
 
@@ -8198,6 +8410,21 @@ export default function GISCanvasPage() {
 
             {callOffOpen && !raised && (
               <div className="gis-co">
+                {/* After each run: another, or commit what is picked. */}
+                {askAnother && (
+                  <div className="gco-ask">
+                    <strong>Add another span?</strong>
+                    <button className="btn ghost sm"
+                      onClick={() => { setAskAnother(false); submitCallOff(); }}>
+                      No, raise it
+                    </button>
+                    <button className="btn accent sm"
+                      onClick={() => setAskAnother(false)}>
+                      Yes
+                    </button>
+                  </div>
+                )}
+
                 <div className="gco-head">
                   <strong>Mains call-off</strong>
                   {/* What to do next, at every point in the picking.
@@ -9309,6 +9536,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-foot { display: flex; align-items: center; gap: 9px; margin-top: 9px;
   padding-top: 9px; border-top: 1px solid var(--border); }
 .gco-tot { flex: 1; font-weight: 700; }
+/* The prompt sits above the list, where the eye already is after
+   picking, rather than at the foot where the totals are. */
+.gco-ask { display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
+  padding: 8px 10px; background: #eff6ff; border: 1px solid #bfdbfe;
+  border-radius: 8px; }
+.gco-ask strong { flex: 1; font-size: 12.5px; }
 .gco-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
 .gco-fld { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
 .gco-fld.wide { grid-column: 1 / -1; }

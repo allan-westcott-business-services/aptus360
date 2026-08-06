@@ -201,11 +201,13 @@ export function contentsOf(trench, features = [], opts = {}) {
     serviceLineTypes = null,
     serviceTrenchTypes = null,
     withinM = 1.5,
-    /* A line sharing less than this much of itself with the trench is
-       crossing it, not in it. A quarter is deliberately generous: a
-       service cable that leaves the trench after a few metres is still
-       partly in it, and saying so is more use than a rule that only
-       counts a perfect match. */
+    /* How much of the shorter of the line and the stretch has to be
+       shared before the line counts as being in it — see the note at
+       the test itself for why it is the shorter of the two and not the
+       line. A quarter is deliberately generous: a service cable that
+       leaves the trench after a few metres is still partly in it, and
+       saying so is more use than a rule that only counts a perfect
+       match. */
     minShare = 0.25,
     /* And a decent share of the trench. Without it a two-metre clip of
        a hundred-metre cable passed the line test — two metres is a
@@ -246,9 +248,20 @@ export function contentsOf(trench, features = [], opts = {}) {
     const lg = f.Geometry || [];
     if (lg.length < 2) continue;
 
-    const within = lengthWithin(lg, g, { withinM, ...opts });
     const total = lengthOf(lg);
     if (!total) continue;
+
+    /* Capped at the length of the stretch.
+
+       The tolerance is a band a metre and a half either side, so a cable
+       swinging round the corner at the end is inside it for a moment
+       after the trench has stopped. Uncapped that reported sixteen
+       metres of cable in a fourteen-metre trench, which reads as an
+       arithmetic fault whatever else the panel says. Nothing is laid in
+       a stretch for longer than the stretch. */
+    const within = Math.min(
+      lengthWithin(lg, g, { withinM, ...opts }),
+      trenchM || Infinity);
     /* Passing the corner is not being in it.
 
        A cable that turns at a junction runs within a metre of the end of
@@ -260,7 +273,24 @@ export function contentsOf(trench, features = [], opts = {}) {
        Two bars, both of which have to be cleared: a decent share of the
        line, and a decent share of the trench. A cable genuinely laid in
        a stretch runs along it; one clipping the corner does neither. */
-    const shareOfLine = within / total;
+    /* Measured against the shorter of the two, not against the line.
+
+       A share of the line only means anything where the line is the
+       shorter thing. The trench here is one stretch between span nodes,
+       while a cable is the whole feature — so asking what is in the
+       fourteen metres from the substation to the breech joint, the
+       feeder that carries on round the estate for another hundred and
+       fifty shares nine per cent of itself with that stretch and failed,
+       while the one terminating at the joint shared all of itself and
+       passed. Two cables in the ground, one on the panel, and the longer
+       the cable the more certainly it was dropped — which is backwards,
+       since a feeder running the full length of a stretch is the
+       clearest case of being in it there is.
+
+       Against the shorter of the two both read 100%, because the whole
+       of that stretch is the whole of what either has in it. */
+    const shorter = Math.min(total, trenchM || total) || total;
+    const shareOfLine = within / shorter;
     const shareOfTrench = trenchM ? within / trenchM : 0;
 
     if (shareOfLine < minShare || shareOfTrench < minTrenchShare) {

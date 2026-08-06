@@ -415,8 +415,15 @@ function Assignments({ row }) {
     setError("");
   }
 
+  /* A mains call-off divides spans, not plots, so the plot rule does not
+     apply to it — requiring at least one plot would make every mains
+     assignment impossible to save. */
   const problems = openPhase != null
-    ? checkAssignment({ ...draft, Plot_Range: serialisePlots(draft.plots || []) }, {
+    ? checkAssignment({
+      ...draft,
+      Plot_Range: row.Selection_Mode === "Span"
+        ? "n/a" : serialisePlots(draft.plots || []),
+    }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
       exceptId: editing,
       /* The start this assignment already had, so an unchanged past date
@@ -443,7 +450,10 @@ function Assignments({ row }) {
         Team_ID: Number(draft.Team_ID),
         Start_Date: draft.Start_Date,
         End_Date: draft.End_Date,
-        Plot_Range: serialisePlots(draft.plots) || null,
+        /* A mains assignment covers the spans the call-off names, so
+           there is nothing to record here. */
+        Plot_Range: row.Selection_Mode === "Span"
+          ? null : (serialisePlots(draft.plots) || null),
       };
 
       let saved;
@@ -622,7 +632,10 @@ function Assignments({ row }) {
                 <span className="asg-when">
                   {fmt(a.Start_Date)} to {fmt(a.End_Date)}
                 </span>
-                <span className="asg-plots">{a.Plot_Range || "all plots"}</span>
+                <span className="asg-plots">
+                  {row.Selection_Mode === "Span"
+                    ? "all spans" : (a.Plot_Range || "all plots")}
+                </span>
                 {/* How much of the booking is off site, from the days
                     rather than the booking — a week with one off-site
                     Tuesday reads as one day, not as a whole week. */}
@@ -725,8 +738,14 @@ function Assignments({ row }) {
 
                 {/* Plots as pills, as they are chosen everywhere else on
                     a call-off — clicking one off is quicker than editing
-                    a range by hand, and a pill cannot produce "1-4, 4". */}
-                {plotUniverse.length > 0 && (
+                    a range by hand, and a pill cannot produce "1-4, 4".
+
+                    Not on a mains call-off. That names spans of trench —
+                    A1 to A5 — and the whole span is laid; there is no
+                    sense in which one team takes some of its plots and
+                    another the rest, because the plots are not what is
+                    being divided. */}
+                {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
                   <div className="asg-plots-pick">
                     <div className="asg-days-head">
                       <strong>Plots</strong>

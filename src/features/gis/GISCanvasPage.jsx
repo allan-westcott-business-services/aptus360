@@ -8500,20 +8500,18 @@ export default function GISCanvasPage() {
                   </p>
                 )}
 
-                {/* Near this stretch but not in it — a cable turning
-                    at a junction at one end, typically.
+                {/* What was near this stretch but not laid in it used
+                    to be listed here.
 
-                    Said rather than dropped: somebody who can see a
-                    cable at the corner and does not find it listed will
-                    wonder whether the panel is wrong. */}
-                {inspect.passing?.length > 0 && (
-                  <p className="ins-passing">
-                    {`${inspect.passing.length} more at the junction, `}
-                    {"not laid in this length: "}
-                    {inspect.passing.map((x) => x.label).join(", ")}
-                  </p>
-                )}
+                    Removed. On a real drawing it came out as nineteen
+                    identical "95"s — every cable in the circuit passes
+                    within a metre of a junction at some point — which
+                    told nobody anything and buried the three lines that
+                    mattered underneath it.
 
+                    The panel answers one question: what is in this
+                    length. Everything else near it is a different
+                    question and belongs to whatever asks it. */}
                 {inspect.byUtility.map((u) => (
                   <div className="gco-range" key={u.utility}>
                     <div className="gco-range-head">
@@ -9809,8 +9807,6 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
 .gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
 .ins-util { text-transform: capitalize; }
-.ins-passing { margin: 8px 0 0; font-size: 11px; color: var(--muted);
-  font-style: italic; line-height: 1.4; }
 /* Wide enough for a cable size — "185mm\u00b2 WF Al" is longer than the
    circuit label it replaced, and a truncated cable size is a cable size
    nobody can act on. */

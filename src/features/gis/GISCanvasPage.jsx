@@ -61,7 +61,7 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel } from "./spanNodes.js";
 import { rangesToSpans, toCallOffRows, labelOf as spanNodeLabel }
   from "./mainsCallOff.js";
-import { createCallOff } from "../../api/calloffs.js";
+import { createCallOff, updateCallOff } from "../../api/calloffs.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import SchematicModal from "./SchematicModal.jsx";
 import {
@@ -261,6 +261,15 @@ export default function GISCanvasPage() {
   const [callOffOpen, setCallOffOpen] = useState(false);
   const [pick, setPick] = useState(null);
   const [ranges, setRanges] = useState([]);
+
+  /* The call-off just raised, waiting for the rest of its details.
+
+     Raising it from the drawing captures the runs, which is the part
+     only the drawing knows. The dates, the contact and the notes are
+     the part somebody types — and sending them off to find the
+     call-offs page to do it means the call-off sits half-finished until
+     they remember. */
+  const [raised, setRaised] = useState(null);
 
   /* What the picked ranges come to.
 
@@ -4689,13 +4698,48 @@ export default function GISCanvasPage() {
         items: toCallOffRows(callOff.ranges),
       });
 
-      setCallOffOpen(false);
       setRanges([]);
       setPick(null);
-      setStatus(`Mains call-off #${created?.Submission_ID ?? ""} raised \u2014 `
-        + `${callOff.spans.length} span(s), ${callOff.totalM} m`
-        + (created?.warning ? ` \u2014 ${created.warning}` : ""));
+      /* Straight into finishing it, rather than closing and leaving it
+         to be found later. */
+      setRaised({
+        Submission_ID: created?.Submission_ID,
+        spans: callOff.spans.length,
+        totalM: callOff.totalM,
+        Preferred_Date: new Date().toISOString().slice(0, 10),
+        Alternative_Date: "",
+        Contact_Name: user?.email?.split("@")[0] || "",
+        Contact_Phone: "",
+        Notes: "",
+        Obstruction_Free: "",
+        Ground_Unmade: "",
+        Line_Level_Required: "",
+      });
+      setError(created?.warning || "");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Finishing the call-off just raised. */
+  async function saveRaised() {
+    if (!raised?.Submission_ID) { setRaised(null); setCallOffOpen(false); return; }
+    setBusy("calloff");
+    try {
+      await updateCallOff(projectId, raised.Submission_ID, {
+        Preferred_Date: raised.Preferred_Date || null,
+        Alternative_Date: raised.Alternative_Date || null,
+        Contact_Name: raised.Contact_Name || "Site",
+        Contact_Phone: raised.Contact_Phone || "N/A",
+        Notes: raised.Notes || null,
+        Obstruction_Free: raised.Obstruction_Free || null,
+        Ground_Unmade: raised.Ground_Unmade || null,
+        Line_Level_Required: raised.Line_Level_Required || null,
+      });
+      setStatus(`Mains call-off #${raised.Submission_ID} raised \u2014 `
+        + `${raised.spans} span(s), ${raised.totalM} m`);
       setTimeout(() => setStatus(""), 12000);
+      setRaised(null);
+      setCallOffOpen(false);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -7967,7 +8011,77 @@ export default function GISCanvasPage() {
             )}
 
             {/* Raising a mains call-off from the drawing. */}
-            {callOffOpen && (
+            {/* Finishing the call-off just raised.
+
+                The runs are captured; this is the part somebody types.
+                In the same panel rather than on another page, because
+                the alternative is a call-off left half-finished until
+                whoever raised it remembers to go back to it. */}
+            {raised && (
+              <div className="gis-co">
+                <div className="gco-head">
+                  <strong>Call-off #{raised.Submission_ID}</strong>
+                  <span className="gco-hint">
+                    {`${raised.spans} span(s) \u00b7 ${raised.totalM} m`}
+                  </span>
+                </div>
+
+                <div className="gco-fields">
+                  {[
+                    ["Preferred_Date", "Preferred date", "date"],
+                    ["Alternative_Date", "Alternative date", "date"],
+                    ["Contact_Name", "Contact", "text"],
+                    ["Contact_Phone", "Phone", "text"],
+                  ].map(([k, label, type]) => (
+                    <label className="gco-fld" key={k}>
+                      <span>{label}</span>
+                      <input type={type} value={raised[k]}
+                        onChange={(e) => setRaised((r) => ({ ...r, [k]: e.target.value }))} />
+                    </label>
+                  ))}
+
+                  {/* What the gang will find. Asked rather than assumed:
+                      a wasted visit costs more than three questions. */}
+                  {[
+                    ["Obstruction_Free", "Obstruction free"],
+                    ["Ground_Unmade", "Ground unmade"],
+                    ["Line_Level_Required", "Line and level"],
+                  ].map(([k, label]) => (
+                    <label className="gco-fld" key={k}>
+                      <span>{label}</span>
+                      <select value={raised[k]}
+                        onChange={(e) => setRaised((r) => ({ ...r, [k]: e.target.value }))}>
+                        <option value="">&mdash;</option>
+                        <option value="Yes">Yes</option>
+                        <option value="No">No</option>
+                      </select>
+                    </label>
+                  ))}
+
+                  <label className="gco-fld wide">
+                    <span>Notes</span>
+                    <textarea rows={2} value={raised.Notes}
+                      onChange={(e) => setRaised((r) => ({ ...r, Notes: e.target.value }))} />
+                  </label>
+                </div>
+
+                <div className="gco-foot">
+                  {/* Already saved: this only adds to it. Said plainly,
+                      so nobody thinks closing loses the call-off. */}
+                  <span className="gco-tot">Raised. Add the rest.</span>
+                  <button className="btn ghost sm"
+                    onClick={() => { setRaised(null); setCallOffOpen(false); }}>
+                    Later
+                  </button>
+                  <button className="btn accent sm" disabled={!!busy}
+                    onClick={saveRaised}>
+                    {busy === "calloff" ? "Saving\u2026" : "Save"}
+                  </button>
+                </div>
+              </div>
+            )}
+
+            {callOffOpen && !raised && (
               <div className="gis-co">
                 <div className="gco-head">
                   <strong>Mains call-off</strong>
@@ -9080,6 +9194,14 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-foot { display: flex; align-items: center; gap: 9px; margin-top: 9px;
   padding-top: 9px; border-top: 1px solid var(--border); }
 .gco-tot { flex: 1; font-weight: 700; }
+.gco-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
+.gco-fld { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
+.gco-fld.wide { grid-column: 1 / -1; }
+.gco-fld > span { font: 700 9.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.gco-fld input, .gco-fld select, .gco-fld textarea {
+  font: 500 11.5px inherit; padding: 4px 7px;
+  border: 1px solid var(--border); border-radius: 5px; width: 100%; }
 .gis-step { position: absolute; left: 50%; transform: translateX(-50%);
   bottom: 18px; z-index: 40; display: flex; align-items: center; gap: 10px;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;

@@ -67,6 +67,13 @@ export default async function handler() {
         .select("Transformer_Size_ID,Label,Rating_kVA,Loop_Impedance_Ohm")
         .eq("Is_Active", true).order("Sort_Order"),
       vdSettings: db.from("Electric_VD_Setting").select("*").limit(1),
+      /* What size of water pipe carries how many plots. Ordered by what
+         they carry rather than by diameter: that is the order the sizing
+         reads them in, and the two only agree while somebody keeps them
+         agreeing. */
+      waterPipeSizes: db.from("Water_Pipe_Size")
+        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order")
+        .eq("Is_Active", true).order("Max_Meters"),
       vatRates:       db.from("VAT_Rate").select("VAT_Rate_ID,Rate,Effective_From,Label").order("Effective_From", { ascending: false }),
       /* Make and reference travel with the model because the model name
          alone is ambiguous — the register lists the same name under

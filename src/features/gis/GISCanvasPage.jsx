@@ -65,6 +65,7 @@ import {
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { gasMainRuns } from "./gasNetwork.js";
+import { waterMainRuns } from "./waterNetwork.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
@@ -6292,6 +6293,142 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); }
   }
 
+  /* ── Build Water Network ──
+
+     Pipe from the water POC along the mains trench, sized by the plots
+     it feeds.
+
+     The same shape as the gas build above — the routing is in
+     waterNetwork.js, this writes what it decides — with one difference
+     worth naming: every run arrives carrying a size, because in water
+     the size *is* the design. Gas has nothing to work out and electric
+     works it out from physics; water reads it off a table against a
+     count, and that count changes along the network as services tee
+     off. So a run here ends where the size changes as well as where the
+     main divides.
+
+     No gate on a water design or an agreement. Gas has both because
+     they were asked for; adding them here unasked would be this build
+     deciding a commercial rule on its own. */
+  async function buildWaterNetwork() {
+    if (!projectId) return;
+    const src = features;
+
+    const mainType = lineTypes.find((t) => t.Layer_Key === "water"
+      && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+    if (!mainType) {
+      return setError("No water mains line type is configured \u2014 add one in "
+        + "Admin \u203a GIS Styles before building.");
+    }
+
+    const plan = waterMainRuns(src, {
+      lineTypes,
+      pipeSizes: lookups?.waterPipeSizes || [],
+    });
+    if (plan.error) return setError(plan.error);
+    if (!plan.runs.length) {
+      return setError("Nothing to lay \u2014 the POC is on the network but no "
+        + "mains trench leads away from it.");
+    }
+
+    const old = src.filter((f) => f.Feature_Type === "line"
+      && f.Layer_Key === "water"
+      && !!f.Attributes?.Generated);
+
+    if (!window.confirm(
+      `Lay ${plan.runs.length} run(s) of water main \u2014 ${plan.totalM} m `
+      + `to ${plan.meters} water meter(s)?`
+      + `\n\n${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join("\n")}`
+      + (old.length ? `\n\nThis redraws ${old.length} existing water main(s).` : "")
+      /* Said before anything is drawn. A run carrying more than the
+         table allows is a design question, and finding it in a status
+         line after the fact is finding it too late. */
+      + (plan.oversized.length
+        ? `\n\n${plan.oversized.length} run(s) feed more than ${plan.largest.max} `
+          + `meters, which is the most ${plan.largest.label} will carry. They will be `
+          + "drawn with no size set \u2014 add a larger pipe in Admin \u203a Water "
+          + "Pipe Sizes." : "")
+      + (plan.unservedM
+        ? `\n\n${plan.unservedM} m of mains trench has no water service beyond it `
+          + "and will get no pipe." : "")
+      + (plan.strandedMeters.length
+        ? `\n\n${plan.strandedMeters.length} water meter(s) sit on no service trench.` : "")
+    )) return;
+
+    setBusy("waternet");
+    try {
+      setProgress({ done: 0, total: plan.runs.length, label: "Laying water main" });
+      if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
+
+      for (const [i, r] of plan.runs.entries()) {
+        await createFeature(projectId, {
+          Layer_Key: "water",
+          Feature_Type: "line",
+          Geometry: r.pts,
+          Label: `W${i + 1}`,
+          Attributes: {
+            Line_Type: mainType.Type_Key,
+            /* The size, as both the reference and the text.
+
+               The id is what the editor edits and what a schedule can
+               join on; Size is what every existing display already
+               reads \u2014 trench contents labels a pipe with it. Written
+               together here and together in the editor, so there is one
+               place either of them changes and they cannot drift into
+               naming different pipes.
+
+               Left unset where the table does not reach: a run whose
+               size nobody has configured should look unset, because it
+               is. */
+            ...(r.size
+              ? { Water_Pipe_Size_ID: r.size.id, Size: r.size.label }
+              : {}),
+            /* What decided that size, so the drawing carries its own
+               reasoning and the number can be checked without rerunning
+               anything. */
+            Meters: r.meters,
+            Services: r.services,
+            Generated: true,
+          },
+        });
+        setProgress({ done: i + 1, total: plan.runs.length, label: `Run ${i + 1} of ${plan.runs.length}` });
+      }
+
+      setProgress({ done: plan.runs.length, total: plan.runs.length, label: "Linking" });
+      const fresh = await listGis(projectId);
+      const all = fresh.features || [];
+      const links = all
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+        .map((f) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
+        }))
+        .filter((u) => {
+          const was = all.find((f) => f.Feature_ID === u.Feature_ID)?.Attributes?.Connects || [];
+          return [...was].sort().join(",") !== [...u.Attributes.Connects].sort().join(",");
+        });
+      for (let i = 0; i < links.length; i += 100) {
+        await bulkUpdateFeatures(projectId, links.slice(i, i + 100));
+      }
+
+      await load(projectId);
+      setError("");
+      setStatus(`Water network: ${plan.runs.length} run(s), ${plan.totalM} m`
+        + `, ${plan.meters} water meter(s) \u2014 `
+        + plan.bySize.map((b) => `${b.label} ${b.metres} m`).join(", ")
+        + (plan.oversized.length
+          ? ` \u2014 ${plan.oversized.length} run(s) over ${plan.largest.label} capacity` : "")
+        + (plan.unservedM
+          ? ` \u2014 ${plan.unservedM} m of mains trench with no water beyond it` : "")
+        + (plan.unreachable.length
+          ? ` \u2014 ${plan.unreachable.length} mains trench(es) not joined to the POC` : "")
+        + (plan.strandedMeters.length
+          ? ` \u2014 ${plan.strandedMeters.length} water meter(s) on no service trench` : ""));
+      setTimeout(() => setStatus(""), 14000);
+    } catch (e) { setError(e.message); await load(projectId); }
+    finally { setBusy(""); setProgress(null); }
+  }
+
   /* Start drawing a particular line type. The menus name the thing being
      drawn — Mains trench, LV feeder — rather than putting the tool and a
      type picker side by side and leaving them to be combined. */
@@ -8248,22 +8385,29 @@ export default function GISCanvasPage() {
                             disabled={!projectId}
                             onClick={() => placeNode("governor", key)} />
                         )}
-                        {/* Building the main is a gas action for now.
+{/* Gas and water each build their own.
 
-                            Water works the same way — one pipe along
-                            the mains trench — and the routing module
-                            takes the layer as an option for that
-                            reason. It is offered on gas alone until
-                            somebody asks for water, because an item
-                            that has never been run against a real water
-                            drawing should not look as settled as one
-                            that has. */}
+                            They looked like one routine with a layer
+                            argument, and stopped looking like it the
+                            moment water needed sizing: gas covers the
+                            trench, water covers it and works out what
+                            diameter each length is from the plots
+                            beyond. Two modules sharing their walk
+                            rather than one with a flag deciding
+                            whether half of it runs. */}
                         {key === "gas" && (
                           <MenuItem
                             label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
                             hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
                             disabled={!projectId || !!busy}
                             onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
+                        )}
+                        {key === "water" && (
+                          <MenuItem
+                            label={busy === "waternet" ? "Building\u2026" : "Build Water Network"}
+                            hint="Lays water main from the POC along mains trench, sized by the plots each length feeds"
+                            disabled={!projectId || !!busy}
+                            onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
                         )}
 
                         <div className="gm-sep" />

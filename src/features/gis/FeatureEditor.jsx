@@ -44,6 +44,14 @@ export default function FeatureEditor({
     const t = lineTypes.find((x) => x.Type_Key === f.Attributes?.Line_Type);
     return t ? t.Layer_Key === "electric" : feature.Layer_Key === "electric";
   })();
+  /* A water line picks its pipe from the configured sizes, by the same
+     test and for the same reason: the size is a row in a table, not
+     text, because the build reads it back to decide what a length
+     carries and "63" typed by hand matches nothing. */
+  const isWater = feature.Feature_Type === "line" && !isTrench && (() => {
+    const t = lineTypes.find((x) => x.Type_Key === f.Attributes?.Line_Type);
+    return t ? t.Layer_Key === "water" : feature.Layer_Key === "water";
+  })();
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
@@ -982,6 +990,55 @@ export default function FeatureEditor({
                         rebuilding will not overwrite a cable you have chosen.
                       </p>
                     )}
+                  </div>
+                ) : isWater ? (
+                  /* Water sizes from the table, not from typing.
+
+                     Build Water Network sets this on every run it draws
+                     \u2014 the smallest pipe that carries the plots beyond
+                     that length \u2014 and this is where it is seen and
+                     overridden. A length somebody sizes up by hand
+                     because of a future phase is a real decision, and
+                     the drawing should be able to hold it. */
+                  <div className="fld">
+                    <label htmlFor="fe-pipe">Pipe</label>
+                    <select id="fe-pipe" value={f.Attributes.Water_Pipe_Size_ID ?? ""}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null;
+                        const row = (lookups?.waterPipeSizes || [])
+                          .find((x) => Number(x.Water_Pipe_Size_ID) === id);
+                        setAttr("Water_Pipe_Size_ID")(id);
+                        /* Size follows the choice rather than being a
+                           second field to keep in step. Everything that
+                           already shows a pipe reads Size \u2014 trench
+                           contents labels one with it \u2014 so the two are
+                           written together, here and in the build, and
+                           there is nowhere for them to drift apart. */
+                        setAttr("Size")(row
+                          ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
+                          : null);
+                      }}>
+                      <option value="">&mdash; not set &mdash;</option>
+                      {(lookups?.waterPipeSizes || []).map((x) => (
+                        <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
+                          {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
+                          {` \u2014 up to ${x.Max_Meters} plots`}
+                        </option>
+                      ))}
+                    </select>
+                    {!(lookups?.waterPipeSizes || []).length ? (
+                      <p className="hint">
+                        No pipe sizes yet &mdash; add them in
+                        Admin &rsaquo; Water Pipe Sizes.
+                      </p>
+                    ) : f.Attributes.Meters != null ? (
+                      /* What the build counted, kept beside the choice:
+                         a size overridden by hand should be overridden
+                         against a number rather than a hunch. */
+                      <p className="hint">
+                        Feeds {f.Attributes.Meters} plot(s) beyond this length.
+                      </p>
+                    ) : null}
                   </div>
                 ) : (
                   <div className="fld">

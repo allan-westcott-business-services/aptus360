@@ -41,6 +41,8 @@ const TABLES = {
      in. Ordered by Display_Order so the pill menu reads in workflow
      order rather than alphabetically, which would put Complete second. */
   Call_Off_Status:     { pk: "Call_Off_Status_ID",     order: "Display_Order" },
+  /* Water pipe sizes against the plots they carry. */
+  Water_Pipe_Size:     { pk: "Water_Pipe_Size_ID",     order: "Max_Meters" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

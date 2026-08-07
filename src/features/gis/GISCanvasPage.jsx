@@ -980,6 +980,30 @@ export default function GISCanvasPage() {
       liveTrenchOnly, liveTrenchIds, lineTypes]
   );
 
+  /* Plots with a water supply, and whether their mark should be drawn.
+
+     Worked out once rather than per seed per frame: a seed does not
+     know its utilities, so the answer is "is there a water meter
+     carrying this Plot_ID", and asking that inside the draw loop is a
+     scan of every feature for every plot on the site.
+
+     Keyed on Plot_ID rather than on the seed, because that is what a
+     meter carries. */
+  const waterPlots = useMemo(() => {
+    const out = new Set();
+    for (const f of features) {
+      if (f.Feature_Role !== "meter" || f.Layer_Key !== "water") continue;
+      if (f.Plot_ID != null) out.add(Number(f.Plot_ID));
+    }
+    return out;
+  }, [features]);
+
+  /* Hidden with the water layer, since that is what it belongs to. The
+     mark sits on a plot seed, so nothing else would take it away. */
+  const waterShown = useMemo(
+    () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
+    [hidden]);
+
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
   const classCount = useMemo(() => {
@@ -1946,7 +1970,7 @@ export default function GISCanvasPage() {
           if (Array.isArray(at) && at.length === 2) {
             const b = toPx([Number(at[0]), Number(at[1])]);
             if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
-              ctx.save();
+            ctx.save();
               ctx.globalAlpha = on ? 0.9 : 0.5;
               ctx.beginPath();
               ctx.moveTo(p.x, p.y);
@@ -1957,17 +1981,61 @@ export default function GISCanvasPage() {
               ctx.stroke();
               ctx.setLineDash([]);
 
-              ctx.beginPath();
-              ctx.moveTo(b.x, b.y - 4);
-              ctx.lineTo(b.x + 4, b.y);
-              ctx.lineTo(b.x, b.y + 4);
-              ctx.lineTo(b.x - 4, b.y);
-              ctx.closePath();
-              ctx.fillStyle = "#fff";
-              ctx.fill();
-              ctx.strokeStyle = "#64748b";
-              ctx.lineWidth = 1.5;
-              ctx.stroke();
+              /* A circled A where the plot takes water.
+
+                 The mark a water drawing carries at the boundary — the
+                 point the supply becomes the property's. Drawn in the
+                 water layer's colour, so it follows the utility with
+                 everything else rather than being a colour of its own.
+
+                 It replaces the plain diamond rather than sitting beside
+                 it: both mean the same point, and two marks on one
+                 position read as two things.
+
+                 Sized in pixels, not metres. It is an annotation rather
+                 than a thing in the ground — the same reason a label
+                 does not grow — and one that scaled would be a speck at
+                 site level and cover the plot zoomed in. It is held back
+                 until there is room for it to be legible at all. */
+              const isWater = waterShown && f.Plot_ID != null
+                && waterPlots.has(Number(f.Plot_ID));
+
+              if (isWater && view.scale > 3) {
+                const r = 9;
+                ctx.globalAlpha = 1;
+                ctx.beginPath();
+                ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+                /* Filled white first, so the circle reads over a trench
+                   or a basemap line running under it. */
+                ctx.fillStyle = "#fff";
+                ctx.fill();
+                ctx.strokeStyle = layerOf("water").Colour || "#3b82f6";
+                ctx.lineWidth = 2.5;
+                ctx.stroke();
+
+                ctx.fillStyle = layerOf("water").Colour || "#3b82f6";
+                ctx.font = `700 ${Math.round(r * 1.5)}px ui-sans-serif, system-ui, sans-serif`;
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                /* Baseline set explicitly and put back after: the label
+                   drawing further down assumes the default, and leaving
+                   it on middle shifted every label on the drawing by
+                   half a line. */
+                ctx.fillText("A", b.x, b.y + 0.5);
+                ctx.textBaseline = "alphabetic";
+              } else {
+                ctx.beginPath();
+                ctx.moveTo(b.x, b.y - 4);
+                ctx.lineTo(b.x + 4, b.y);
+                ctx.lineTo(b.x, b.y + 4);
+                ctx.lineTo(b.x - 4, b.y);
+                ctx.closePath();
+                ctx.fillStyle = "#fff";
+                ctx.fill();
+                ctx.strokeStyle = "#64748b";
+                ctx.lineWidth = 1.5;
+                ctx.stroke();
+              }
               ctx.restore();
               ctx.beginPath();
             }
@@ -2646,7 +2714,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

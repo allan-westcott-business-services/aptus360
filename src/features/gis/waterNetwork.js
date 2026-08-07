@@ -67,21 +67,62 @@ function distToLine(p, g = []) {
   return best;
 }
 
-/* The sizes, smallest capacity first.
+/* The sizes that apply to this project, smallest capacity first.
 
-   Sorted by what they carry rather than by diameter, because that is
-   what is being chosen against, and the two orders only agree while
-   somebody keeps them agreeing. A 90mm row that carries fewer than the
-   63mm row is a mistake in the table, but sorting by capacity means the
-   sizing still picks a pipe that fits rather than one that does not. */
-export function sizeTable(rows = []) {
-  return rows
-    .filter((r) => r.Is_Active !== false && Number(r.Max_Meters) > 0)
+   ── Sorted by capacity, not diameter ──
+
+   That is what is being chosen against, and the two orders only agree
+   while somebody keeps them agreeing. A 90mm row carrying fewer plots
+   than the 63mm row is a mistake in the table, but sorting by capacity
+   means the sizing still picks a pipe that fits rather than one that
+   does not.
+
+   ── Whose rule ──
+
+   A row may name a DNO, an IDNO, both, or neither, because the standard
+   belongs to the adopting operator rather than to the industry: one NAV
+   allows twenty plots on 63mm where another allows sixteen. Naming
+   neither is the house standard and applies anywhere.
+
+   Rows naming an operator this project is not with are dropped. Of what
+   is left, where a diameter appears more than once the one naming the
+   operator wins — per diameter, so an operator differing on 63mm alone
+   needs one row and still inherits the 90 and the 125. Keeping only the
+   most specific *tier* would have been fewer lines and would silently
+   drop every size that operator had not restated. */
+export function sizeTable(rows = [], opts = {}) {
+  const { idnoId = null, dnoId = null } = opts;
+  const same = (a, b) => a != null && b != null && Number(a) === Number(b);
+
+  const applies = rows.filter((r) => {
+    if (r.Is_Active === false || !(Number(r.Max_Meters) > 0)) return false;
+    if (r.IDNO_ID != null && !same(r.IDNO_ID, idnoId)) return false;
+    if (r.DNO_ID != null && !same(r.DNO_ID, dnoId)) return false;
+    return true;
+  });
+
+  /* Naming the operator beats naming nobody. An IDNO is the operator a
+     water scheme is adopted by, so it outranks a DNO where a row
+     somehow names both. */
+  const rank = (r) => (same(r.IDNO_ID, idnoId) ? 2 : 0) + (same(r.DNO_ID, dnoId) ? 1 : 0);
+
+  const best = new Map();
+  for (const r of applies) {
+    const key = Number(r.Diameter_mm);
+    const held = best.get(key);
+    if (!held || rank(r) > rank(held)) best.set(key, r);
+  }
+
+  return [...best.values()]
     .map((r) => ({
       id: r.Water_Pipe_Size_ID,
       diameter: Number(r.Diameter_mm),
       label: r.Size_Label || `${Number(r.Diameter_mm)}mm`,
       max: Number(r.Max_Meters),
+      /* Whether this row was chosen for this operator or is the house
+         standard \u2014 so the build can say which table it used, and a
+         figure that looks wrong can be traced to the rule behind it. */
+      forOperator: rank(r) > 0,
     }))
     .sort((a, b) => a.max - b.max || a.diameter - b.diameter);
 }
@@ -96,17 +137,28 @@ export function waterMainRuns(features = [], opts = {}) {
   const {
     lineTypes = [],
     pipeSizes = [],
+    /* Who is adopting this scheme. The rules are read for them. */
+    idnoId = null,
+    dnoId = null,
     eps = CONNECT_EPS,
     tol = SNAP_TOL,
     layerKey = "water",
   } = opts;
 
-  const table = sizeTable(pipeSizes);
+  const table = sizeTable(pipeSizes, { idnoId, dnoId });
   if (!table.length) {
+    /* Two different faults, and the fix differs: an empty table, or a
+       table whose every row names an operator this project is not
+       with. The second reads as the first unless it is said. */
+    const anyActive = pipeSizes.some((r) => r.Is_Active !== false);
     return {
-      error: "No water pipe sizes are configured \u2014 add them in Admin \u203a "
-        + "Water Pipe Sizes. A size is read off that table, so there is nothing "
-        + "to draw without it.",
+      error: anyActive
+        ? "No water pipe size applies to this project's operator \u2014 every rule "
+          + "configured names a different DNO or IDNO. Add a rule for this one, or "
+          + "clear the operator on a rule to make it the standard."
+        : "No water pipe sizes are configured \u2014 add them in Admin \u203a "
+          + "Water Pipe Sizes. A size is read off that table, so there is nothing "
+          + "to draw without it.",
     };
   }
 
@@ -396,6 +448,10 @@ export function waterMainRuns(features = [], opts = {}) {
     /* Runs carrying more than the largest configured pipe will take. */
     oversized,
     largest: table[table.length - 1],
+    /* The rules this was built with, and how many were chosen for the
+       operator rather than inherited. */
+    sizeRules: table.length,
+    operatorRules: table.filter((t) => t.forOperator).length,
     strandedMeters,
     unattachedServices,
     unreachable,

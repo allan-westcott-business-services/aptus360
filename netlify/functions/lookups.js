@@ -72,7 +72,7 @@ export default async function handler() {
          reads them in, and the two only agree while somebody keeps them
          agreeing. */
       waterPipeSizes: db.from("Water_Pipe_Size")
-        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order")
+        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order,DNO_ID,IDNO_ID")
         .eq("Is_Active", true).order("Max_Meters"),
       vatRates:       db.from("VAT_Rate").select("VAT_Rate_ID,Rate,Effective_From,Label").order("Effective_From", { ascending: false }),
       /* Make and reference travel with the model because the model name

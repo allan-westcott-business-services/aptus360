@@ -151,6 +151,13 @@ export const ADMIN_TABLES = [
       { col: "Diameter_mm", label: "Diameter (mm)", type: "number", required: true },
       { col: "Size_Label", label: "Label", type: "text" },
       { col: "Max_Meters", label: "Max Water Meters", type: "number", required: true },
+      /* Whose rule this is. Both empty is the house standard and applies
+         to any project; naming an operator makes it theirs, and the
+         build prefers it over the standard for that diameter alone. */
+      { col: "IDNO_ID", label: "IDNO / NAV (blank = any)", type: "lookup",
+        table: "IDNO", value: "IDNO_ID", text: "IDNO_Name" },
+      { col: "DNO_ID", label: "DNO (blank = any)", type: "lookup",
+        table: "DNO", value: "DNO_ID", text: "DNO_Name" },
       { col: "Display_Order", label: "Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },

@@ -71,6 +71,7 @@ import {
 } from "./mainsCallOff.js";
 import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
 import { listAgreements } from "../../api/av.js";
+import { listPoc } from "../../api/poc.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import { personFor, displayName } from "../poc/whoAmI.js";
 import SchematicModal from "./SchematicModal.jsx";
@@ -6380,9 +6381,45 @@ export default function GISCanvasPage() {
         + "agreement to adopt it under. Add one on the Asset Value tab.");
     }
 
+    /* ── Whose rules to size by ──
+
+       A pipe size rule may name an operator, so the build has to know
+       which one this scheme is with. Three places carry that, and they
+       are asked in the order of how firmly they mean it:
+
+         the water outline design    who the design is being done for
+         the NAV Clean agreement     who has agreed to adopt it
+         the water POC application   who was approached
+
+       The design first because it is the one somebody sets deliberately
+       for this utility; the agreement next because it is the one that
+       has been signed. The POC is the fallback and also the only place
+       a DNO appears at all — water is adopted by NAVs, and the DNO
+       column exists for the case that is not true.
+
+       No operator found is not an error. It means the house standard
+       applies, which is what an unconfigured project should get. */
+    let idnoId = design.IDNO_ID ?? agreement.IDNO_ID ?? null;
+    let dnoId = null;
+    try {
+      const { rows: pocs = [] } = await listPoc(projectId);
+      const mine = pocs.find((r) => Number(r.Utility_ID) === Number(utilityId));
+      if (mine) {
+        idnoId = idnoId ?? mine.IDNO_ID ?? null;
+        dnoId = mine.DNO_ID ?? null;
+      }
+    } catch {
+      /* Swallowed on purpose, unlike the agreement check above. The POC
+         is the last of three fallbacks and only refines which rules are
+         read; refusing to draw a network because a POC list would not
+         load would be failing over the least important of the three. */
+    }
+
     const plan = waterMainRuns(src, {
       lineTypes,
       pipeSizes: lookups?.waterPipeSizes || [],
+      idnoId,
+      dnoId,
     });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {
@@ -6398,6 +6435,12 @@ export default function GISCanvasPage() {
       `Lay ${plan.runs.length} run(s) of water main \u2014 ${plan.totalM} m `
       + `to ${plan.meters} water meter(s)?`
       + `\n\n${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join("\n")}`
+      /* Which rules these sizes came from. A figure somebody disagrees
+         with is nearly always a rule they did not know applied. */
+      + `\n\nSized by ${plan.sizeRules} rule(s)`
+      + (plan.operatorRules
+        ? `, ${plan.operatorRules} of them set for this project\u2019s operator.`
+        : " \u2014 the standard rules, none set for this project\u2019s operator.")
       + (old.length ? `\n\nThis redraws ${old.length} existing water main(s).` : "")
       /* Said before anything is drawn. A run carrying more than the
          table allows is a design question, and finding it in a status

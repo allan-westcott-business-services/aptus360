@@ -1019,12 +1019,32 @@ export default function FeatureEditor({
                           : null);
                       }}>
                       <option value="">&mdash; not set &mdash;</option>
-                      {(lookups?.waterPipeSizes || []).map((x) => (
-                        <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
-                          {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
-                          {` \u2014 up to ${x.Max_Meters} plots`}
-                        </option>
-                      ))}
+                      {(lookups?.waterPipeSizes || []).map((x) => {
+                        /* Whose rule it is, where it is somebody's.
+
+                           The same diameter can appear more than once —
+                           one NAV allows twenty plots on 63mm and
+                           another sixteen — and two options reading
+                           "63mm" with different plot counts are
+                           indistinguishable until the operator is on
+                           them. The build picks the right rule on its
+                           own; this list is for overriding by hand, and
+                           an override should be made knowingly. */
+                        const op = x.IDNO_ID != null
+                          ? (lookups?.idnos || []).find((i) =>
+                            Number(i.IDNO_ID) === Number(x.IDNO_ID))?.IDNO_Name
+                          : x.DNO_ID != null
+                            ? (lookups?.dnos || []).find((d) =>
+                              Number(d.DNO_ID) === Number(x.DNO_ID))?.DNO_Name
+                            : null;
+                        return (
+                          <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
+                            {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
+                            {` \u2014 up to ${x.Max_Meters} plots`}
+                            {op ? ` (${op})` : ""}
+                          </option>
+                        );
+                      })}
                     </select>
                     {!(lookups?.waterPipeSizes || []).length ? (
                       <p className="hint">

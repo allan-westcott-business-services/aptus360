@@ -50,6 +50,8 @@ export default function AdminMenuAdmin() {
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
   const [adding, setAdding] = useState(null);   // "section" | "group" | null
+  const [dragId, setDragId] = useState(null);
+  const [overId, setOverId] = useState(null);
   const [newLabel, setNewLabel] = useState("");
 
   async function load() {
@@ -76,39 +78,99 @@ export default function AdminMenuAdmin() {
     setBusy(id);
     try {
       await adminUpdate("Admin_Menu", id, changes);
+      /* Not re-sorted: the list is already in the order it is being
+         shown in, and sorting here would jump a row somebody has just
+         dragged into a gap back to wherever its number falls. */
       setRows((xs) => xs.map((x) =>
-        (x.Admin_Menu_ID === id ? { ...x, ...changes } : x)).sort(byOrder));
+        (x.Admin_Menu_ID === id ? { ...x, ...changes } : x)));
       setError("");
     } catch (e) { setError(e.message); await load(); }
     finally { setBusy(null); }
   }
 
-  /* Swap with the neighbour, which is two writes rather than a hundred. */
-  async function move(row, by) {
-    const i = rows.findIndex((x) => x.Admin_Menu_ID === row.Admin_Menu_ID);
-    const j = i + by;
-    if (j < 0 || j >= rows.length) return;
-    const other = rows[j];
+  /* ── Moving a row ──
 
-    /* Equal orders would swap to no effect and leave the pair stuck.
-       Numbering them apart first costs one extra write, once. */
-    const a = Number(row.Display_Order);
-    const b = Number(other.Display_Order);
-    const [mine, theirs] = a === b ? [b + (by > 0 ? 1 : -1), b] : [b, a];
+     The list moves first and the database catches up.
 
-    setBusy(row.Admin_Menu_ID);
+     It used to be the other way round: two writes, awaited one after
+     the other, and only then did the row move on screen — so every
+     nudge cost two round trips before anything happened, and the
+     buttons were disabled throughout. Arranging forty rows that way is
+     eighty waits, which is what made it unusable rather than merely
+     slow. Nothing else was competing for the machine; the time was all
+     network, and all of it avoidable.
+
+     Now the reorder is local and instant, and one row is written in the
+     background. A failure puts the list back and says so, which is the
+     price of not waiting and a fair one for a menu.
+
+     ── One write, not forty ──
+
+     The moved row takes a number between its new neighbours rather than
+     the list being renumbered. Dropping row forty at position two
+     renumbers thirty-eight rows if you do it sequentially; a midpoint
+     touches one.
+
+     Room runs out eventually — orders seeded ten apart allow three or
+     four drops into the same gap before the numbers meet — and then the
+     whole list is renumbered once and the gaps are back. That is rare
+     enough to be worth its cost and simple enough to be obviously
+     correct. */
+  const [saving, setSaving] = useState(0);
+
+  async function write(changes) {
+    if (!changes.length) return;
+    setSaving((n) => n + 1);
     try {
-      await adminUpdate("Admin_Menu", row.Admin_Menu_ID, { Display_Order: mine });
-      await adminUpdate("Admin_Menu", other.Admin_Menu_ID, { Display_Order: theirs });
-      setRows((xs) => xs.map((x) => {
-        if (x.Admin_Menu_ID === row.Admin_Menu_ID) return { ...x, Display_Order: mine };
-        if (x.Admin_Menu_ID === other.Admin_Menu_ID) return { ...x, Display_Order: theirs };
-        return x;
-      }).sort(byOrder));
+      await Promise.all(changes.map((c) =>
+        adminUpdate("Admin_Menu", c.Admin_Menu_ID, { Display_Order: c.Display_Order })));
       setError("");
-    } catch (e) { setError(e.message); await load(); }
-    finally { setBusy(null); }
+    } catch (e) {
+      setError(`${e.message} — the order on screen may not have saved.`);
+      await load();
+    } finally { setSaving((n) => n - 1); }
   }
+
+  function reorder(from, to) {
+    if (from === to || from < 0 || to < 0 || from >= rows.length || to >= rows.length) return;
+
+    const next = [...rows];
+    const [moved] = next.splice(from, 1);
+    next.splice(to, 0, moved);
+
+    /* Between the two it now sits between. Open-ended at either end of
+       the list, where there is only one neighbour to be beside. */
+    const before = next[to - 1];
+    const after = next[to + 1];
+    const lo = before ? Number(before.Display_Order) : null;
+    const hi = after ? Number(after.Display_Order) : null;
+
+    let order = null;
+    if (lo == null && hi == null) order = 10;
+    else if (lo == null) order = hi - 10;
+    else if (hi == null) order = lo + 10;
+    else if (hi - lo > 1) order = Math.floor((lo + hi) / 2);
+
+    if (order != null) {
+      const one = { ...moved, Display_Order: order };
+      next[to] = one;
+      setRows(next);
+      write([{ Admin_Menu_ID: one.Admin_Menu_ID, Display_Order: order }]);
+      return;
+    }
+
+    /* No room left between the neighbours. Renumber the lot, ten apart,
+       and write only the rows whose number actually changed. */
+    const spaced = next.map((r, i) => ({ ...r, Display_Order: (i + 1) * 10 }));
+    setRows(spaced);
+    write(spaced
+      .filter((r, i) => Number(next[i].Display_Order) !== r.Display_Order)
+      .map((r) => ({ Admin_Menu_ID: r.Admin_Menu_ID, Display_Order: r.Display_Order })));
+  }
+
+  const move = (row, by) => reorder(
+    rows.findIndex((x) => x.Admin_Menu_ID === row.Admin_Menu_ID),
+    rows.findIndex((x) => x.Admin_Menu_ID === row.Admin_Menu_ID) + by);
 
   async function addHeading(kind) {
     const label = newLabel.trim();
@@ -162,7 +224,14 @@ export default function AdminMenuAdmin() {
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="am-head">
-        <h3>Menu Layout</h3>
+        <h3>
+          Menu Layout
+          {/* Quiet, and only while something is in flight. The order is
+              already on screen; this says the database has caught up,
+              which is a different question from whether the move
+              worked. */}
+          {saving > 0 && <span className="am-saving">saving&hellip;</span>}
+        </h3>
         <p className="am-sub">
           The order of this menu, its headings, and the names on them. What each
           screen contains is set by the screen itself &mdash; renaming an entry
@@ -170,19 +239,59 @@ export default function AdminMenuAdmin() {
         </p>
       </div>
 
+      {/* ── Dragging ──
+
+          The browser's own drag and drop, with no library: a row is
+          draggable, the row under the pointer marks itself, and the
+          drop moves it. That is enough for a list on a desktop admin
+          screen, and it costs nothing to carry.
+
+          The up and down buttons stay. Dragging cannot be done from a
+          keyboard, and a control that only works with a mouse is one
+          some people cannot use at all — the buttons are now instant
+          too, so they are a real alternative rather than a slow one. */}
       <div className="am-list">
         {rows.map((r, i) => {
           const screen = r.Kind === "screen" ? screenFor(r.Screen_Key) : null;
           const gone = r.Kind === "screen" && !screen;
           return (
             <div key={r.Admin_Menu_ID}
-              className={`am-row ${r.Kind}${r.Is_Active === false ? " off" : ""}`}>
+              draggable
+              onDragStart={(e) => {
+                setDragId(r.Admin_Menu_ID);
+                e.dataTransfer.effectAllowed = "move";
+                /* Firefox will not start a drag without payload. */
+                e.dataTransfer.setData("text/plain", String(r.Admin_Menu_ID));
+              }}
+              onDragEnd={() => { setDragId(null); setOverId(null); }}
+              onDragOver={(e) => {
+                if (dragId == null || dragId === r.Admin_Menu_ID) return;
+                e.preventDefault();
+                e.dataTransfer.dropEffect = "move";
+                if (overId !== r.Admin_Menu_ID) setOverId(r.Admin_Menu_ID);
+              }}
+              onDragLeave={() => { if (overId === r.Admin_Menu_ID) setOverId(null); }}
+              onDrop={(e) => {
+                e.preventDefault();
+                const from = rows.findIndex((x) => x.Admin_Menu_ID === dragId);
+                if (from >= 0 && from !== i) reorder(from, i);
+                setDragId(null);
+                setOverId(null);
+              }}
+              className={`am-row ${r.Kind}`
+                + (r.Is_Active === false ? " off" : "")
+                + (dragId === r.Admin_Menu_ID ? " dragging" : "")
+                + (overId === r.Admin_Menu_ID ? " over" : "")}>
+              <span className="am-grip" title="Drag to move">&#8942;&#8942;</span>
               <div className="am-move">
+                {/* Never disabled by a save in flight. The list has
+                    already moved; waiting on the write to allow the
+                    next nudge is what made this slow. */}
                 <button className="btn ghost sm" title="Move up"
-                  disabled={i === 0 || busy === r.Admin_Menu_ID}
+                  disabled={i === 0}
                   onClick={() => move(r, -1)}>&uarr;</button>
                 <button className="btn ghost sm" title="Move down"
-                  disabled={i === rows.length - 1 || busy === r.Admin_Menu_ID}
+                  disabled={i === rows.length - 1}
                   onClick={() => move(r, 1)}>&darr;</button>
               </div>
 
@@ -280,6 +389,12 @@ const CSS = `
 .am-list { border: 1px solid var(--border); border-radius: 10px; overflow: hidden; }
 .am-row { display: flex; align-items: center; gap: 10px; padding: 6px 10px;
   border-bottom: 1px solid var(--border); background: #fff; }
+.am-row.dragging { opacity: .4; }
+.am-row.over { box-shadow: inset 0 2px 0 var(--accent); }
+.am-grip { cursor: grab; color: var(--border); font-size: 11px; letter-spacing: -2px;
+  user-select: none; flex: none; }
+.am-row:hover .am-grip { color: var(--muted); }
+.am-saving { margin-left: 10px; font: 600 10.5px inherit; color: var(--muted); }
 .am-row:last-child { border-bottom: none; }
 .am-row.section { background: var(--bg); }
 .am-row.group { background: #fafafa; }

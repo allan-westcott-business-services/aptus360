@@ -390,12 +390,16 @@ export function waterMainRuns(features = [], opts = {}) {
     for (const first of kids(u)) {
       let cur = first;
       const pts = [nodes[u].slice(), nodes[first].slice()];
+      /* Which lengths of trench this run occupies, kept so a ring can
+         be recognised afterwards as the set of runs around it. */
+      const edges = new Set([edgeKey(u, first)]);
       covered.add(edgeKey(u, first));
       let teed = tees.has(first) ? 1 : 0;
 
       while (!isBreak(cur)) {
         const next = kids(cur)[0];
         pts.push(nodes[next].slice());
+        edges.add(edgeKey(cur, next));
         covered.add(edgeKey(cur, next));
         if (tees.has(next)) teed += 1;
         cur = next;
@@ -418,8 +422,115 @@ export function waterMainRuns(features = [], opts = {}) {
       if (!size) {
         oversized.push({ meters: carries, metres: run.metres, at: nodes[u].slice() });
       }
+      run.edges = edges;
       runs.push(run);
       walk.push(cur);
+    }
+  }
+
+  /* ── Rings ──
+
+     A trench that comes back round to itself is a ring main, and the
+     walk out from the POC does not see it as one: breadth-first reaches
+     every node by the shortest way, so the length that closes the loop
+     is never walked at all. It came out with no pipe on it and was
+     reported as trench with no water beyond it — the one length on the
+     site that is neither.
+
+     Two things follow from a loop, and both are done here rather than
+     in the walk, because a loop is a fact about the graph as a whole
+     and the walk only ever sees one branch at a time.
+
+     ── Closing it ──
+
+     The unwalked length gets its own run, so the ring is drawn as a
+     ring. It feeds nothing directly — everything on it is already fed
+     from one side or the other — so its own count is nil and it takes
+     its size from the loop.
+
+     ── One size round it ──
+
+     Water in a ring can arrive either way, so every length of it has to
+     carry what the worst case sends: the whole loop takes the largest
+     size any part of it needs. Sized arm by arm, a ring reads as two
+     thin legs and a thin closing length, and none of them is what the
+     ground would be laid with.
+
+     The largest of the sizes worked out around the loop, not a size
+     worked out from everything the loop feeds. Those differ — a ring
+     feeding twelve plots through two arms of eight and four is sized on
+     the eight, not the twelve — and this is the reading the standard
+     was given as: the higher spec of pipe, not a recalculation. */
+  const ancestors = (n) => {
+    const out = [];
+    for (let x = n; x >= 0; x = parent[x]) out.push(x);
+    return out;
+  };
+
+  const loops = [];
+  for (const f of mains) {
+    const ids = trenchNodes.get(f.Feature_ID) || [];
+    for (let i = 0; i + 1 < ids.length; i++) {
+      const a = ids[i];
+      const b = ids[i + 1];
+      if (a === b) continue;
+      if (!seen[a] || !seen[b]) continue;
+      if (covered.has(edgeKey(a, b))) continue;
+      if (served[a] <= 0 && served[b] <= 0) continue;   // nothing on it either way
+
+      /* Where the two sides meet, walking back towards the POC. The
+         loop is everything from each end up to that point, plus the
+         length joining them. */
+      const upA = ancestors(a);
+      const rank = new Map(upA.map((x, k) => [x, k]));
+      let meet = -1;
+      const upB = [];
+      for (let x = b; x >= 0; x = parent[x]) {
+        upB.push(x);
+        if (rank.has(x)) { meet = x; break; }
+      }
+      if (meet < 0) continue;
+
+      const edges = new Set([edgeKey(a, b)]);
+      for (let k = 0; k < rank.get(meet); k++) edges.add(edgeKey(upA[k], upA[k + 1]));
+      for (let k = 0; k + 1 < upB.length; k++) edges.add(edgeKey(upB[k], upB[k + 1]));
+
+      const pts = [nodes[a].slice(), nodes[b].slice()];
+      covered.add(edgeKey(a, b));
+      const run = {
+        pts,
+        metres: Math.round(lengthOf(pts) * 10) / 10,
+        fromNode: a,
+        endNode: b,
+        /* Nothing hangs off it that is not already counted on one side
+           or the other. Counting it again here would double the plots
+           the ring reports. */
+        meters: 0,
+        services: 0,
+        size: null,
+        loop: true,
+        edges: new Set([edgeKey(a, b)]),
+      };
+      runs.push(run);
+      loops.push(edges);
+    }
+  }
+
+  /* One size round each loop: the largest any of its runs needed.
+
+     A run over capacity has no size at all, and that has to win — a
+     ring where one arm is beyond the table is a ring the table cannot
+     size, and giving the rest of it the biggest pipe that does fit
+     would be the drawing answering a question nobody has. */
+  for (const edges of loops) {
+    const round = runs.filter((r) => [...r.edges].some((e) => edges.has(e)));
+    if (!round.length) continue;
+    const over = round.some((r) => !r.size && r.meters > 0);
+    const biggest = over ? null : round.reduce(
+      (best, r) => (r.size && (!best || r.size.max > best.max) ? r.size : best), null);
+    for (const r of round) {
+      r.size = biggest;
+      r.inLoop = true;
     }
   }
 

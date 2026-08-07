@@ -6925,7 +6925,13 @@ export default function GISCanvasPage() {
 
       await load(projectId);
       setError("");
+      /* Rings named separately. A length of ring carries the size the
+         whole loop needed rather than the size its own count asked
+         for, so a figure that looks too generous has a reason and the
+         status is where to find it. */
+      const looped = plan.runs.filter((r) => r.inLoop).length;
       setStatus(`Water network: ${plan.runs.length} run(s), ${plan.totalM} m`
+        + (looped ? `, ${looped} of them ring main sized as one` : "")
         + (valveCount ? `, ${valveCount} service valve(s)` : "")
         + `, ${plan.meters} water meter(s) \u2014 `
         + plan.bySize.map((b) => `${b.label} ${b.metres} m`).join(", ")

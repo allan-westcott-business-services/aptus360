@@ -15,6 +15,19 @@ import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admi
    Master and detail, as Teams does for crafts and regions. The list is
    the rules; the panel is one rule's numbers and a row of checkboxes.
 
+   ── Which operators are offered ──
+
+   Those working in water, from Operator_Utility — the view 0069 built
+   for exactly this question. Not the IDNO and DNO tables: neither knows
+   which utility anybody covers, so the list was every operator on the
+   system including the electric and gas ones, and a DNO set up the
+   modern way as an organisation with a role had no row in "DNO" at all
+   and was simply absent.
+
+   An operator with no utilities assigned is hidden, and the screen says
+   how many and where to fix it. Hiding without saying is what the old
+   list did, and being told a name is missing beats wondering why.
+
    ── No operators means everybody ──
 
    The thing this screen has to make obvious, because it is the default
@@ -38,8 +51,8 @@ const blank = () => ({
 export default function WaterPipeSizesAdmin() {
   const [sizes, setSizes] = useState([]);
   const [links, setLinks] = useState([]);
-  const [idnos, setIdnos] = useState([]);
-  const [dnos, setDnos] = useState([]);
+  const [operators, setOperators] = useState([]);
+  const [utilities, setUtilities] = useState([]);
 
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -50,16 +63,16 @@ export default function WaterPipeSizesAdmin() {
 
   async function load() {
     try {
-      const [w, o, i, d] = await Promise.all([
+      const [w, o, ops, u] = await Promise.all([
         adminList("Water_Pipe_Size"),
         adminList("Water_Pipe_Size_Operator").catch(() => ({ rows: [] })),
-        adminList("IDNO"),
-        adminList("DNO").catch(() => ({ rows: [] })),
+        adminList("Operator_Utility"),
+        adminList("Utility"),
       ]);
       setSizes(w.rows || []);
       setLinks(o.rows || []);
-      setIdnos(i.rows || []);
-      setDnos((d.rows || []).filter((x) => x.Is_Active !== false));
+      setOperators(ops.rows || []);
+      setUtilities(u.rows || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -79,10 +92,36 @@ export default function WaterPipeSizesAdmin() {
   const linksFor = (id) => links.filter((l) =>
     Number(l.Water_Pipe_Size_ID) === Number(id));
 
-  const nameOf = (l) => (l.IDNO_ID != null
-    ? idnos.find((x) => Number(x.IDNO_ID) === Number(l.IDNO_ID))?.IDNO_Name
-    : dnos.find((x) => Number(x.DNO_ID) === Number(l.DNO_ID))?.DNO_Name)
+  const nameOf = (l) => operators.find((o) =>
+    Number(o.Organisation_ID) === Number(l.Organisation_ID))?.Name
     ?? "unknown operator";
+
+  /* Water, by name rather than by a hard-coded id — the ids differ
+     between databases and the Utility table is the only thing that
+     knows. Every water utility, since a NAV covering clean and waste
+     is on both and either makes it a water operator. */
+  const waterIds = useMemo(() => utilities
+    .filter((u) => /water/i.test(String(u.Utility || "")))
+    .map((u) => Number(u.Utility_ID)), [utilities]);
+
+  const covers = (o, ids) => (o.utility_ids || []).some((x) => ids.includes(Number(x)));
+
+  const waterOperators = useMemo(() => operators
+    .filter((o) => covers(o, waterIds))
+    .sort((a, b) => String(a.Name).localeCompare(String(b.Name))),
+  [operators, waterIds]);
+
+  /* Assigned to nothing at all, so nobody can say whether they do
+     water. Counted rather than listed: the fix is one screen away and
+     the number is enough to send somebody there. */
+  const unassigned = operators.filter((o) => !(o.utility_ids || []).length).length;
+
+  const roleOf = (o) => {
+    const keys = o.role_keys || [];
+    const has = (k) => keys.some((x) => String(x).toLowerCase() === k);
+    return has("idno") && has("dno") ? "IDNO / DNO"
+      : has("idno") ? "IDNO" : has("dno") ? "DNO" : null;
+  };
 
   const labelOf = (s) => s.Size_Label || `${Number(s.Diameter_mm)}mm`;
 
@@ -91,13 +130,12 @@ export default function WaterPipeSizesAdmin() {
      Written straight through rather than gathered and saved: one
      checkbox is one row, and a Save button over a grid of them invites
      changes that are lost by navigating away. */
-  async function toggle(field, value) {
+  async function toggle(organisationId) {
     if (!current) return;
-    const key = `${field}:${value}`;
     const held = links.find((l) =>
       Number(l.Water_Pipe_Size_ID) === Number(current.Water_Pipe_Size_ID)
-      && Number(l[field]) === Number(value));
-    setBusy(key);
+      && Number(l.Organisation_ID) === Number(organisationId));
+    setBusy(`op:${organisationId}`);
     try {
       if (held) {
         await adminDelete("Water_Pipe_Size_Operator", held.Water_Pipe_Size_Operator_ID);
@@ -105,7 +143,8 @@ export default function WaterPipeSizesAdmin() {
           x.Water_Pipe_Size_Operator_ID !== held.Water_Pipe_Size_Operator_ID));
       } else {
         const made = await adminCreate("Water_Pipe_Size_Operator", {
-          Water_Pipe_Size_ID: current.Water_Pipe_Size_ID, [field]: value,
+          Water_Pipe_Size_ID: current.Water_Pipe_Size_ID,
+          Organisation_ID: organisationId,
         });
         setLinks((xs) => [...xs, made]);
       }
@@ -291,43 +330,43 @@ export default function WaterPipeSizesAdmin() {
                     ? "only the operators ticked"
                     : "every operator \u2014 tick some to make this rule theirs alone"}
                 </span>
+                <span className="wp-ops-note">Water operators only.</span>
               </h4>
 
-              <p className="wp-group">IDNO / NAV</p>
-              <div className="wp-grid">
-                {!idnos.length && <p className="wp-none">None configured.</p>}
-                {idnos.map((o) => {
-                  const on = !!links.find((l) =>
-                    Number(l.Water_Pipe_Size_ID) === Number(current.Water_Pipe_Size_ID)
-                    && Number(l.IDNO_ID) === Number(o.IDNO_ID));
-                  return (
-                    <label key={`i${o.IDNO_ID}`} className={on ? "wp-op on" : "wp-op"}>
-                      <input type="checkbox" checked={on}
-                        disabled={busy === `IDNO_ID:${o.IDNO_ID}`}
-                        onChange={() => toggle("IDNO_ID", o.IDNO_ID)} />
-                      <span>{o.IDNO_Name}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              {!waterOperators.length ? (
+                <p className="wp-none">
+                  No operator is marked as working in water. Assign utilities to
+                  them in Admin &rsaquo; Organisations, then they appear here.
+                </p>
+              ) : (
+                <div className="wp-grid">
+                  {waterOperators.map((o) => {
+                    const on = !!links.find((l) =>
+                      Number(l.Water_Pipe_Size_ID) === Number(current.Water_Pipe_Size_ID)
+                      && Number(l.Organisation_ID) === Number(o.Organisation_ID));
+                    return (
+                      <label key={o.Organisation_ID} className={on ? "wp-op on" : "wp-op"}>
+                        <input type="checkbox" checked={on}
+                          disabled={busy === `op:${o.Organisation_ID}`}
+                          onChange={() => toggle(o.Organisation_ID)} />
+                        <span className="wp-op-name">{o.Name}</span>
+                        {roleOf(o) && <span className="wp-role">{roleOf(o)}</span>}
+                      </label>
+                    );
+                  })}
+                </div>
+              )}
 
-              <p className="wp-group">DNO</p>
-              <div className="wp-grid">
-                {!dnos.length && <p className="wp-none">None configured.</p>}
-                {dnos.map((o) => {
-                  const on = !!links.find((l) =>
-                    Number(l.Water_Pipe_Size_ID) === Number(current.Water_Pipe_Size_ID)
-                    && Number(l.DNO_ID) === Number(o.DNO_ID));
-                  return (
-                    <label key={`d${o.DNO_ID}`} className={on ? "wp-op on" : "wp-op"}>
-                      <input type="checkbox" checked={on}
-                        disabled={busy === `DNO_ID:${o.DNO_ID}`}
-                        onChange={() => toggle("DNO_ID", o.DNO_ID)} />
-                      <span>{o.DNO_Name}</span>
-                    </label>
-                  );
-                })}
-              </div>
+              {/* Said, not silently dropped. An operator missing from
+                  this list because nobody recorded which utilities it
+                  works in looks exactly like an operator that does not
+                  exist. */}
+              {unassigned > 0 && (
+                <p className="wp-hidden">
+                  {unassigned} operator(s) are not shown because no utilities are
+                  assigned to them. Set those in Admin &rsaquo; Organisations.
+                </p>
+              )}
             </div>
 
             <div className="wp-foot">
@@ -377,8 +416,11 @@ const CSS = `
 .wp-ops h4 { margin: 0 0 2px; font-size: 12.5px; display: flex; gap: 8px;
   align-items: baseline; flex-wrap: wrap; }
 .wp-ops-note { font: 500 11px inherit; color: var(--muted); }
-.wp-group { margin: 14px 0 6px; font: 700 10.5px inherit; color: var(--muted);
-  letter-spacing: .04em; text-transform: uppercase; }
+.wp-op-name { flex: 1; }
+.wp-role { font: 700 9.5px inherit; letter-spacing: .04em; color: var(--muted);
+  background: var(--bg); border-radius: 4px; padding: 2px 6px; }
+.wp-op.on .wp-role { background: #dbeafe; color: var(--accent); }
+.wp-hidden { margin: 12px 0 0; font-size: 11.5px; color: #b45309; font-weight: 600; }
 .wp-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(190px, 1fr));
   gap: 6px; }
 .wp-op { display: flex; align-items: center; gap: 8px; font-size: 12.5px;

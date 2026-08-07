@@ -47,6 +47,12 @@ const TABLES = {
      them — see 0119. */
   Water_Pipe_Size_Operator: { pk: "Water_Pipe_Size_Operator_ID",
     order: "Water_Pipe_Size_ID" },
+  /* Read-only here: a view, listed so the pipe size screen can offer
+     the operators that actually work in water. Writes to it would fail
+     at the database, which is the right answer — an operator's
+     utilities are edited in Organisations. */
+  Operator_Utility: { pk: "Organisation_ID",       order: "Name" },
+  Utility:          { pk: "Utility_ID",            order: "Sort_Order" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

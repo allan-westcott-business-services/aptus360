@@ -6383,44 +6383,52 @@ export default function GISCanvasPage() {
 
     /* ── Whose rules to size by ──
 
-       A pipe size rule may name an operator, so the build has to know
-       which one this scheme is with. Three places carry that, and they
-       are asked in the order of how firmly they mean it:
+       A pipe size rule may name operators, so the build has to know
+       which one this scheme is with. An organisation, not an IDNO row:
+       the same company can hold both roles and the rules are recorded
+       against the company.
 
-         the water outline design    who the design is being done for
+       Three places carry it, asked in the order of how firmly they mean
+       it:
+
          the NAV Clean agreement     who has agreed to adopt it
+         the water outline design    who the design is being done for
          the water POC application   who was approached
 
-       The design first because it is the one somebody sets deliberately
-       for this utility; the agreement next because it is the one that
-       has been signed. The POC is the fallback and also the only place
-       a DNO appears at all — water is adopted by NAVs, and the DNO
-       column exists for the case that is not true.
+       The agreement first here, unlike the gate above, because it is
+       the only one of the three that records an organisation directly.
+       The other two hold a legacy IDNO id, which is followed to its
+       organisation through the IDNO list — every IDNO row carries one.
 
        No operator found is not an error. It means the house standard
        applies, which is what an unconfigured project should get. */
-    let idnoId = design.IDNO_ID ?? agreement.IDNO_ID ?? null;
-    let dnoId = null;
-    try {
-      const { rows: pocs = [] } = await listPoc(projectId);
-      const mine = pocs.find((r) => Number(r.Utility_ID) === Number(utilityId));
-      if (mine) {
-        idnoId = idnoId ?? mine.IDNO_ID ?? null;
-        dnoId = mine.DNO_ID ?? null;
+    const orgOfIdno = (id) => (id == null ? null
+      : (lookups?.idnos || []).find((x) =>
+        Number(x.IDNO_ID) === Number(id))?.Organisation_ID ?? null);
+
+    let operatorId = agreement.IDNO_Organisation_ID
+      ?? orgOfIdno(design.IDNO_ID)
+      ?? orgOfIdno(agreement.IDNO_ID)
+      ?? null;
+
+    if (operatorId == null) {
+      try {
+        const { rows: pocs = [] } = await listPoc(projectId);
+        const mine = pocs.find((r) => Number(r.Utility_ID) === Number(utilityId));
+        operatorId = orgOfIdno(mine?.IDNO_ID) ?? null;
+      } catch {
+        /* Swallowed, unlike the agreement check above. The POC is the
+           last of three fallbacks and only refines which rules are
+           read; refusing to draw because a POC list would not load
+           would be failing on the least important of the three. */
       }
-    } catch {
-      /* Swallowed on purpose, unlike the agreement check above. The POC
-         is the last of three fallbacks and only refines which rules are
-         read; refusing to draw a network because a POC list would not
-         load would be failing over the least important of the three. */
     }
 
     const plan = waterMainRuns(src, {
       lineTypes,
       pipeSizes: lookups?.waterPipeSizes || [],
       pipeSizeOperators: lookups?.waterPipeSizeOperators || [],
-      idnoId,
-      dnoId,
+      operatorId,
     });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {

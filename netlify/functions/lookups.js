@@ -79,8 +79,15 @@ export default async function handler() {
          alongside the sizes rather than joined into them, because the
          interesting case is the absence of a row. */
       waterPipeSizeOperators: db.from("Water_Pipe_Size_Operator")
-        .select("Water_Pipe_Size_Operator_ID,Water_Pipe_Size_ID,DNO_ID,IDNO_ID")
+        .select("Water_Pipe_Size_Operator_ID,Water_Pipe_Size_ID,Organisation_ID")
         .order("Water_Pipe_Size_ID"),
+      /* Companies holding an IDNO or DNO role, with the utilities they
+         work in. The complete list — the legacy IDNO and DNO tables
+         are each missing operators set up the other way, and neither
+         knows which utility anybody covers. */
+      operators: db.from("Operator_Utility")
+        .select("Organisation_ID,Name,Code,utility_ids,role_keys")
+        .order("Name"),
       vatRates:       db.from("VAT_Rate").select("VAT_Rate_ID,Rate,Effective_From,Label").order("Effective_From", { ascending: false }),
       /* Make and reference travel with the model because the model name
          alone is ambiguous — the register lists the same name under

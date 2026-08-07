@@ -86,6 +86,11 @@ function distToLine(p, g = []) {
    The names live in Water_Pipe_Size_Operator, a row per operator, and
    arrive here as `operators`.
 
+   An operator is an organisation, not an IDNO row and not a DNO row.
+   The same company can hold both roles, and which one it is being dealt
+   with as has nothing to do with what size pipe it will adopt — 0069
+   makes that argument for agreements and it is the same argument here.
+
    Naming nobody is the house standard and applies anywhere.
 
    Rules naming operators this project is not with are dropped. Of what
@@ -99,7 +104,7 @@ function distToLine(p, g = []) {
    than an unanswerable question: the lower Display_Order wins, so the
    drawing is the same every time it is built. */
 export function sizeTable(rows = [], opts = {}) {
-  const { idnoId = null, dnoId = null, operators = [] } = opts;
+  const { operatorId = null, operators = [] } = opts;
   const same = (a, b) => a != null && b != null && Number(a) === Number(b);
 
   /* The operators each rule names, gathered once rather than scanned
@@ -111,18 +116,13 @@ export function sizeTable(rows = [], opts = {}) {
     named.get(key).push(o);
   }
 
-  /* 2 where the rule names this project's IDNO, 1 for its DNO, 0 where
-     it names nobody at all — the house standard. A rule naming only
-     other operators scores -1 and is dropped: it is somebody else's.
-
-     The IDNO outranks the DNO because a water scheme is adopted by a
-     NAV; the DNO is there for the case where that is not true. */
+  /* 1 where the rule names this project's operator, 0 where it names
+     nobody at all — the house standard. A rule naming only other
+     operators scores -1 and is dropped: it is somebody else's. */
   const rank = (r) => {
     const mine = named.get(Number(r.Water_Pipe_Size_ID)) || [];
     if (!mine.length) return 0;
-    if (mine.some((o) => same(o.IDNO_ID, idnoId))) return 2;
-    if (mine.some((o) => same(o.DNO_ID, dnoId))) return 1;
-    return -1;
+    return mine.some((o) => same(o.Organisation_ID, operatorId)) ? 1 : -1;
   };
 
   const applies = rows.filter((r) =>
@@ -165,15 +165,15 @@ export function waterMainRuns(features = [], opts = {}) {
     pipeSizes = [],
     /* Which operators each rule names, from Water_Pipe_Size_Operator. */
     pipeSizeOperators = [],
-    /* Who is adopting this scheme. The rules are read for them. */
-    idnoId = null,
-    dnoId = null,
+    /* Who is adopting this scheme, as an organisation. The rules are
+       read for them. */
+    operatorId = null,
     eps = CONNECT_EPS,
     tol = SNAP_TOL,
     layerKey = "water",
   } = opts;
 
-  const table = sizeTable(pipeSizes, { idnoId, dnoId, operators: pipeSizeOperators });
+  const table = sizeTable(pipeSizes, { operatorId, operators: pipeSizeOperators });
   if (!table.length) {
     /* Two different faults, and the fix differs: an empty table, or a
        table whose every row names an operator this project is not
@@ -182,8 +182,8 @@ export function waterMainRuns(features = [], opts = {}) {
     return {
       error: anyActive
         ? "No water pipe size applies to this project's operator \u2014 every rule "
-          + "configured names a different DNO or IDNO. Add a rule for this one, or "
-          + "clear the operator on a rule to make it the standard."
+          + "configured names a different operator. Add a rule for this one, or "
+          + "untick its operators to make it the standard."
         : "No water pipe sizes are configured \u2014 add them in Admin \u203a "
           + "Water Pipe Sizes. A size is read off that table, so there is nothing "
           + "to draw without it.",

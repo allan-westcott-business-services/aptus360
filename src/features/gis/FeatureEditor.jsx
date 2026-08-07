@@ -1033,11 +1033,8 @@ export default function FeatureEditor({
                         const named = (lookups?.waterPipeSizeOperators || [])
                           .filter((o) =>
                             Number(o.Water_Pipe_Size_ID) === Number(x.Water_Pipe_Size_ID))
-                          .map((o) => (o.IDNO_ID != null
-                            ? (lookups?.idnos || []).find((i) =>
-                              Number(i.IDNO_ID) === Number(o.IDNO_ID))?.IDNO_Name
-                            : (lookups?.dnos || []).find((d) =>
-                              Number(d.DNO_ID) === Number(o.DNO_ID))?.DNO_Name))
+                          .map((o) => (lookups?.operators || []).find((p) =>
+                            Number(p.Organisation_ID) === Number(o.Organisation_ID))?.Name)
                           .filter(Boolean);
                         /* Two named is a list; six is a count. A rule
                            shared by every NAV on the system would

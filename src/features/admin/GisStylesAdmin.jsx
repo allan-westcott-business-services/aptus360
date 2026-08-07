@@ -42,7 +42,32 @@ const BLANK = {
   Sort_Order: 0, Is_Active: true, Notes: "",
 };
 
-const ROLES = ["", "plot", "meter", "joint", "source"];
+/* Every role a feature can hold, with the name it goes by.
+
+   It was five of them — plot, meter, joint, source — and the register
+   has grown to twelve since. Anything missing here cannot be styled at
+   all: there was no way to scope a row to a service valve, a POC or a
+   span node, so those drew in their layer's colour and nothing could
+   say otherwise.
+
+   The list matches the CHECK constraint on GIS_Feature."Feature_Role",
+   last set by migration 0124. A role added there wants adding here too,
+   or it arrives on the drawing with no way to style it. */
+const ROLES = [
+  ["", "Any"],
+  ["plot", "Plot seed"],
+  ["meter", "Meter"],
+  ["joint", "Joint"],
+  ["source", "Source"],
+  ["poc", "POC"],
+  ["substation", "Substation"],
+  ["governor", "Gas governor"],
+  ["servicevalve", "Service valve"],
+  ["spannode", "Span node"],
+  ["linkbox", "Link box"],
+  ["column", "Lighting column"],
+  ["shape", "Shape"],
+];
 
 export default function GisStylesAdmin() {
   const [rows, setRows] = useState([]);
@@ -318,7 +343,9 @@ export default function GisStylesAdmin() {
                 <div className="fld">
                   <label htmlFor="gs-role">Point role</label>
                   <select id="gs-role" value={draft.Feature_Role} onChange={set("Feature_Role")}>
-                    {ROLES.map((r) => <option key={r} value={r}>{r || "Any"}</option>)}
+                    {ROLES.map(([r, name]) => (
+                      <option key={r} value={r}>{name}</option>
+                    ))}
                   </select>
                 </div>
               </div>

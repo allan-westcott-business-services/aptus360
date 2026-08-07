@@ -2105,7 +2105,17 @@ export default function GISCanvasPage() {
             ctx.stroke();
 
             if (view.scale > 2) {
-              ctx.fillStyle = on ? "#1d4ed8" : fill;
+              /* The letters take the style's label colour, and fall back
+                 to the bar's own rather than to the near-black every
+                 other label uses.
+
+                 A valve is a bar and two letters that mean one thing, so
+                 they match unless somebody says otherwise — defaulting
+                 them to black would have changed how every existing
+                 drawing reads on the strength of adding a setting. Set
+                 Label colour on a style row scoped to the service valve
+                 role to part them. */
+              ctx.fillStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
               ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
               ctx.textAlign = "left";
               ctx.textBaseline = "middle";

@@ -146,6 +146,9 @@ export default function GISCanvasPage() {
   const [utilities, setUtilities] = useState([]);
   const [queue, setQueue] = useState([]);          // plots being placed, in order
   const [meterFor, setMeterFor] = useState(null);  // { plot, seedPoint, utility, all, placed }
+  /* The click between the seed and the meters: where the property
+     boundary is. { plot, seedPoint, tempId } */
+  const [boundaryFor, setBoundaryFor] = useState(null);
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
   /* The equipment this project's outline designs say new runs are made
@@ -1121,7 +1124,8 @@ export default function GISCanvasPage() {
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   };
   const placing = queue.some((q) => !q.done);
-  const nextPlot = meterFor?.plot || queue.find((q) => !q.done) || null;
+  const nextPlot = meterFor?.plot || boundaryFor?.plot
+    || queue.find((q) => !q.done) || null;
 
   const isPdfMap = basemap?.Source_Kind === "pdf";
 
@@ -1912,6 +1916,48 @@ export default function GISCanvasPage() {
         const fill = isSeed ? ss.colour : colour;
 
         if (isSeed) {
+          /* The boundary point, where the plot has one.
+
+             A small open diamond with a hair line back to the seed. It
+             has to be visible or it cannot be checked: it is clicked
+             once, it decides where every service trench on that plot
+             stops, and an invisible point is one nobody can tell is in
+             the wrong place until the dig is drawn.
+
+             Drawn under the seed symbol, thin and grey, because it is a
+             note about the plot rather than another thing on the site —
+             a hundred of these should not read as a hundred features. */
+          const at = f.Attributes?.Boundary_At;
+          if (Array.isArray(at) && at.length === 2) {
+            const b = toPx([Number(at[0]), Number(at[1])]);
+            if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
+              ctx.save();
+              ctx.globalAlpha = on ? 0.9 : 0.5;
+              ctx.beginPath();
+              ctx.moveTo(p.x, p.y);
+              ctx.lineTo(b.x, b.y);
+              ctx.strokeStyle = "#64748b";
+              ctx.lineWidth = 1;
+              ctx.setLineDash([3, 3]);
+              ctx.stroke();
+              ctx.setLineDash([]);
+
+              ctx.beginPath();
+              ctx.moveTo(b.x, b.y - 4);
+              ctx.lineTo(b.x + 4, b.y);
+              ctx.lineTo(b.x, b.y + 4);
+              ctx.lineTo(b.x - 4, b.y);
+              ctx.closePath();
+              ctx.fillStyle = "#fff";
+              ctx.fill();
+              ctx.strokeStyle = "#64748b";
+              ctx.lineWidth = 1.5;
+              ctx.stroke();
+              ctx.restore();
+              ctx.beginPath();
+            }
+          }
+
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
                 } else {
           /* Symbol and size come from the style, so a DNO that draws
@@ -2357,7 +2403,46 @@ export default function GISCanvasPage() {
     if (placing && cursor) {
       ctx.save();
 
-      if (meterFor) {
+      if (boundaryFor) {
+        /* A dashed leader back to the seed, and a hollow diamond at the
+           cursor: the same language as the meter prompt, in a shape
+           that is not a meter. */
+        const c = toPx(cursor);
+        const origin = toPx(boundaryFor.seedPoint);
+
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(origin.x, origin.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.strokeStyle = "#0f172a";
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.moveTo(c.x, c.y - 6);
+        ctx.lineTo(c.x + 6, c.y);
+        ctx.lineTo(c.x, c.y + 6);
+        ctx.lineTo(c.x - 6, c.y);
+        ctx.closePath();
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.globalAlpha = 1;
+        const label = `${boundaryFor.plot.plot_number} boundary`;
+        ctx.font = "700 11px ui-monospace, Menlo, monospace";
+        ctx.textAlign = "center";
+        const w = ctx.measureText(label).width + 12;
+        ctx.fillStyle = "rgba(15,23,42,.85)";
+        ctx.fillRect(c.x - w / 2, c.y - 32, w, 17);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, c.x, c.y - 20);
+      } else if (meterFor) {
         const c = toPx(cursor);
         const origin = toPx(meterFor.seedPoint);
 
@@ -2544,7 +2629,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -3389,6 +3474,7 @@ export default function GISCanvasPage() {
   function startPlacing(list) {
     setQueue(list.map((p) => ({ ...p, done: false })));
     setMeterFor(null);
+    setBoundaryFor(null);
     setTool("select");
     setSelected([]);
   }
@@ -3396,6 +3482,11 @@ export default function GISCanvasPage() {
   function stopPlacing() {
     setQueue([]);
     setMeterFor(null);
+    /* A seed waiting for its boundary point was never written, so
+       cancelling has to take it off the drawing too. Leaving it would
+       show a plot that exists on screen and in nothing else. */
+    if (boundaryFor?.tempId) rollback(boundaryFor.tempId);
+    setBoundaryFor(null);
   }
 
   /* Draw it immediately, confirm with the server after. Waiting for a
@@ -3442,11 +3533,59 @@ export default function GISCanvasPage() {
       return;
     }
 
+    /* The property boundary point, for the plot just seeded.
+
+       Where the dig stops. A service trench comes off the main, crosses
+       the verge and ends at the boundary; everything past it is inside
+       the property and is the plot's own pipework. Auto Service has no
+       way to work that point out — a meter is wherever the plot puts
+       it, and the seed is at the dwelling — so it is asked for.
+
+       The seed is written here rather than on its own click. It is
+       shown from the moment it is clicked, so placing still feels
+       immediate, but nothing reaches the database until both points are
+       known: a seed saved without its boundary, and then abandoned,
+       would be a plot Auto Service quietly treats as one of the old
+       ones. */
+    if (boundaryFor) {
+      const { plot, seedPoint, tempId } = boundaryFor;
+      const draftFeature = {
+        Project_ID: Number(projectId),
+        Layer_Key: "plot",
+        Feature_Type: "point",
+        Feature_Role: "plot",
+        Geometry: [seedPoint],
+        Label: plot.plot_number,
+        Plot_ID: plot.plot_id,
+        Attributes: {
+          Bedrooms: plot.bedrooms ?? null,
+          Config: plot.config_code ?? null,
+          Boundary_At: point,
+        },
+      };
+      setFeatures((f) => f.map((x) =>
+        (x.Feature_ID === tempId ? { ...draftFeature, Feature_ID: tempId } : x)));
+      setBoundaryFor(null);
+
+      if (utilities.length) {
+        setMeterFor({
+          plot, seedPoint, utility: utilities[0], all: utilities, placed: [],
+        });
+      } else {
+        markPlaced(plot.plot_id);
+      }
+
+      try { reconcile(tempId, await createFeature(projectId, draftFeature)); }
+      catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
+      return;
+    }
+
     // The seed itself
     const plot = queue.find((q) => !q.done);
     if (!plot) return;
 
-    const draftFeature = {
+    /* Drawn now, written once the boundary point is known. */
+    const tempId = addOptimistic({
       Project_ID: Number(projectId),
       Layer_Key: "plot",
       Feature_Type: "point",
@@ -3455,17 +3594,8 @@ export default function GISCanvasPage() {
       Label: plot.plot_number,
       Plot_ID: plot.plot_id,
       Attributes: { Bedrooms: plot.bedrooms ?? null, Config: plot.config_code ?? null },
-    };
-    const tempId = addOptimistic(draftFeature);
-
-    if (utilities.length) {
-      setMeterFor({ plot, seedPoint: point, utility: utilities[0], all: utilities, placed: [] });
-    } else {
-      markPlaced(plot.plot_id);
-    }
-
-    try { reconcile(tempId, await createFeature(projectId, draftFeature)); }
-    catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
+    });
+    setBoundaryFor({ plot, seedPoint: point, tempId });
   }
 
   async function finishDrawing(geometry) {
@@ -7224,6 +7354,17 @@ export default function GISCanvasPage() {
         + (relink.length ? `, ${relink.length} link(s) rebuilt` : "")
         + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
         + (skipped.length ? `, ${skipped.length} skipped` : "")
+        /* Plots with no boundary point, dug to their furthest meter
+           instead. Said rather than left to be noticed: the two shapes
+           look alike on a drawing, and the difference is which point
+           decided where the trench stops. */
+        + ((() => {
+          const old = plans.filter((x) => !x.boundary).length;
+          return old
+            ? ` \u2014 ${old} plot(s) have no boundary point, so the dig ran to `
+              + "their furthest meter"
+            : "";
+        })())
         + (selected.length ? " \u2014 selected plot only" : "")
         + (stopped ? " \u2014 run it again to carry on where it stopped." : "")
       );
@@ -9526,6 +9667,7 @@ export default function GISCanvasPage() {
                   queue={queue}
                   current={nextPlot}
                   meterFor={meterFor}
+                  boundaryFor={boundaryFor}
                   onStart={startPlacing}
                   onCancel={() => { stopPlacing(); setPlaceOpen(false); }}
                 />

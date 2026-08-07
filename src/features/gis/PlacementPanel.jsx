@@ -12,7 +12,7 @@ const PICK_LIMIT = 24;
    which side the meters go. The second click is a direction, not a
    position — the meters space themselves 2m out and 1.4m apart. */
 export default function PlacementPanel({
-  plots, utilities, queue, current, meterFor, onStart, onCancel, onAdd,
+  plots, utilities, queue, current, meterFor, boundaryFor, onStart, onCancel, onAdd,
 }) {
   const [range, setRange] = useState("");
 
@@ -48,7 +48,25 @@ export default function PlacementPanel({
         </div>
 
         {current ? (
-          meterFor ? (
+          /* Three steps, and the panel says which one this click is.
+
+             The boundary comes between the seed and the meters because
+             that is the order somebody reads a plot: here is the house,
+             here is where its frontage meets the verge, and here is
+             where each meter sits. */
+          boundaryFor ? (
+            <>
+              <p className="pp-now">
+                Plot <strong>{current.plot_number}</strong> placed. Now click its{" "}
+                <strong>property boundary point</strong> &mdash; where the service
+                trench will stop.
+              </p>
+              <p className="pp-hint">
+                The dig runs square from the mains trench to this point. Meters
+                come next.
+              </p>
+            </>
+          ) : meterFor ? (
             <>
               <p className="pp-now">
                 Plot <strong>{current.plot_number}</strong> placed. Now click where its{" "}

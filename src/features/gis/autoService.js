@@ -1,9 +1,14 @@
 /* Auto Service.
 
    A port of gisAutoServiceTrench from the original. For each plot seed
-   it drops a perpendicular onto the nearest mains trench, lays a service
-   trench along it, stacks that plot's meters just beyond the seed, and
-   runs a service cable or pipe down the trench to each meter.
+   it drops a perpendicular from the plot's boundary point onto the
+   nearest mains trench, lays a service trench along it, and runs a
+   service cable or pipe down that trench to the boundary and on to each
+   meter.
+
+   The boundary point is placed with the seed. Where a plot has none —
+   seeded before it was asked for — the meters are stacked beyond the
+   seed as they always were and the dig runs to the furthest of them.
 
    Everything here is pure and in metres. The canvas does the writing;
    this only decides what should exist. That split is what makes the
@@ -172,23 +177,28 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      The end meeting the main is the junction and never grows a lead:
      that was the subtle bit in the original, and getting it wrong puts a
      spur of cable through the tee and out the other side. */
-  /* Where the service actually leaves the main.
+  /* Where the dig stops: the property boundary point.
 
-     Measured from the meter, not from the seed. The seed decided the
-     foot while the meters were being placed — it has to, since there is
-     nowhere else to measure from before they exist — but once they are
-     placed it is the meter that the service runs to, and the shortest
-     line to the main is the one square to it from there.
+     Placed with the seed, and the one point on a plot that a service
+     trench actually runs to — the dig comes off the main, crosses the
+     verge and stops at the boundary, and everything past it is inside
+     the property. Meters sit wherever the plot puts them, several
+     metres apart and often nowhere near each other; running the trench
+     to one of them made its position decide the dig for all of them.
 
-     Taking the seed's foot and then drawing to the meter was what put an
-     L in every service: out to the seed's foot, then a turn to reach a
-     meter the foot was never chosen for. The nearest point on a segment
-     is the perpendicular foot, so measuring from the meter gives both
-     the shortest route and the right angle at once, with no corner to
-     construct.
+     Falls back to the furthest meter for plots seeded before the
+     boundary point was asked for. Not to the seed: the seed is at the
+     dwelling, so a trench to it would run through the garden. The
+     furthest meter is what this did before and is still the better of
+     the two wrong answers.
 
-     Falls back to the seed's foot where a plot has no meters — there is
-     nothing else to measure from. */
+     Where the service leaves the main is then the nearest point on it
+     to the boundary — which is the perpendicular foot, square to the
+     main, because the closest point on a segment always is. The only
+     exception is a boundary point past the end of a segment, where the
+     nearest point is that end and the line is not square; there is no
+     perpendicular to draw in that case, and the shortest route is the
+     right answer anyway. */
   const ends = meters.map((m) => m.point).filter(Boolean);
   const furthest = ends.length
     ? ends.reduce((far, q) => (
@@ -196,30 +206,41 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
       > Math.hypot(far[0] - best.foot[0], far[1] - best.foot[1]) ? q : far), ends[0])
     : seedPt;
 
-  const fromMeter = ends.length ? nearestMains(furthest, trenches) : null;
-  const tee = fromMeter || best;
+  const at = seed.Attributes?.Boundary_At;
+  const boundary = Array.isArray(at) && at.length === 2
+    && Number.isFinite(Number(at[0])) && Number.isFinite(Number(at[1]))
+    ? [Number(at[0]), Number(at[1])]
+    : null;
+
+  const stop = boundary || furthest;
+  const fromStop = nearestMains(stop, trenches);
+  const tee = fromStop || best;
 
   /* One foot for the whole plot. Every cable shares the dig, so a
      cable measured to its own foot would leave the trench and come back
      — the furthest meter decides where the service tees in and the rest
      follow it. */
-  const trench = [tee.foot, furthest];
+  const trench = [tee.foot, stop];
 
-  /* Within a millimetre is the same place. The furthest meter *is* the
-     end of the trench, so repeating it would leave a zero-length
-     segment on that one cable — invisible on the drawing, and a
-     duplicate vertex for everything downstream to trip over. */
+  /* Within a millimetre is the same place. A meter sitting on the
+     boundary point would otherwise get a zero-length segment on the end
+     of its cable — invisible on the drawing, and a duplicate vertex for
+     everything downstream to trip over. */
   const samePlace = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-3;
 
   const cables = meters.map((m) => ({
     utility: m.utility,
-    geometry: samePlace(m.point, furthest)
+    geometry: samePlace(m.point, stop)
       ? [tee.foot, m.point]
-      : [tee.foot, furthest, m.point],
+      : [tee.foot, stop, m.point],
   }));
 
   return {
     seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables,
+    /* Whether the dig was measured to a boundary point or guessed from
+       a meter, so the run can say how many plots are still on the old
+       shape rather than quietly mixing the two. */
+    boundary: !!boundary,
     /* Named so the summary can say what was left alone rather than
        quietly doing less than the count suggests. */
     skippedMeters: already,

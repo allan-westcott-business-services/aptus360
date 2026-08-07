@@ -1005,6 +1005,24 @@ export default function GISCanvasPage() {
     () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
     [hidden]);
 
+  /* The colour the water layer draws in, resolved rather than read.
+
+     The boundary mark and the service valves are annotations on the
+     water network, so they have to be the colour the water network
+     actually is — and that is not simply GIS_Layer."Colour". A style row
+     scoped to the layer overrides it, which is how "Water (layer
+     default)" works, and reading the layer directly meant the mains
+     followed that row while the marks beside them stayed on the layer's
+     own colour. Two greens on one drawing, disagreeing.
+
+     Asked with no line type and no role, so it resolves the layer's
+     default rather than a main's or a meter's — which is what these are
+     annotating. Falls back the same way everything else does. */
+  const waterColour = useMemo(
+    () => styleFor({ Layer_Key: "water", Feature_Type: "point", Attributes: {} }).colour
+      || "#3b82f6",
+    [styleFor]);
+
   /* Service valves, worked out from the drawn mains.
 
      Not stored. A valve is where it is because of where the pipes are,
@@ -2023,11 +2041,11 @@ export default function GISCanvasPage() {
                    or a basemap line running under it. */
                 ctx.fillStyle = "#fff";
                 ctx.fill();
-                ctx.strokeStyle = layerOf("water").Colour || "#3b82f6";
+                ctx.strokeStyle = waterColour;
                 ctx.lineWidth = 2.5;
                 ctx.stroke();
 
-                ctx.fillStyle = layerOf("water").Colour || "#3b82f6";
+                ctx.fillStyle = waterColour;
                 ctx.font = `700 ${Math.round(r * 1.5)}px ui-sans-serif, system-ui, sans-serif`;
                 ctx.textAlign = "center";
                 ctx.textBaseline = "middle";
@@ -2409,7 +2427,7 @@ export default function GISCanvasPage() {
        scales where a metre is a couple of pixels and the pair would be
        a smudge. */
     if (valves.length && view.scale > 2) {
-      const colour = layerOf("water").Colour || "#3b82f6";
+      const colour = waterColour;
       const halfPx = (VALVE_WIDTH_M / 2) * view.scale;
 
       ctx.save();
@@ -2780,7 +2798,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, valves, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, valves, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

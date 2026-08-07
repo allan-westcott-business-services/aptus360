@@ -1039,12 +1039,26 @@ export default function GISCanvasPage() {
      or "isolate this". */
   const [solo, setSolo] = useState(null);
 
-  const toggleClass = useCallback((key) => {
-    /* Hiding by hand ends a solo. Otherwise S would still be lit while
-       the visible set no longer matches what it isolated. */
+  /* Hide and show are two acts, not one toggle.
+
+     H and S each say what they do and can be used on as many layers as
+     you like; a single toggle meant the button's effect depended on a
+     state you had to read off the row first. Both end an isolate, since
+     changing what is visible by hand means the visible set no longer
+     matches what I put on screen — and leaving it lit would say
+     otherwise.
+
+     Kept as one function taking a flag rather than two nearly identical
+     ones, so the solo-clearing cannot be remembered in one and
+     forgotten in the other. */
+  const setClassHidden = useCallback((key, hide) => {
     setSolo(null);
-    setHidden((h) => (h.includes(key) ? h.filter((x) => x !== key) : [...h, key]));
+    setHidden((h) => (hide
+      ? (h.includes(key) ? h : [...h, key])
+      : h.filter((x) => x !== key)));
   }, []);
+  const hideClass = useCallback((key) => setClassHidden(key, true), [setClassHidden]);
+  const showClass = useCallback((key) => setClassHidden(key, false), [setClassHidden]);
 
   /* Isolate one class: hide every class key that isn't carried by a
      feature carrying this one.
@@ -3102,6 +3116,33 @@ export default function GISCanvasPage() {
       }
     }
 
+    /* ── The property boundary point ──
+
+       Grabbed before the ordinary hit test, because it sits on top of a
+       plot seed's leader and often within a few metres of the seed
+       itself — asking for candidates first would hand back the seed
+       every time and the point could never be caught.
+
+       It is an attribute of the seed rather than a feature of its own,
+       so there is nothing to select in the usual sense: picking it up
+       selects the seed, which is the thing that will be saved, and
+       drags the attribute. */
+    if (tool === "select" && boundaryShown && !e.altKey) {
+      const grabbed = boundaryAt(px, py);
+      if (grabbed) {
+        if (locked(grabbed)) { setError(whyLocked(grabbed)); return; }
+        setSelected([grabbed.Feature_ID]);
+        drag.current = {
+          mode: "boundary",
+          featureId: grabbed.Feature_ID,
+          /* Where it was, so a failed save has something to put back
+             and undo has something to restore. */
+          startAt: [...grabbed.Attributes.Boundary_At],
+        };
+        return;
+      }
+    }
+
     const cands = candidatesAt(px, py);
     /* More than one thing under the cursor, and none of them already
        chosen — ask rather than pick. Shift keeps multi-select quick by
@@ -3288,6 +3329,18 @@ export default function GISCanvasPage() {
       return;
     }
 
+    /* Follows the cursor absolutely, like a vertex and unlike a label,
+       so it belongs above the line that takes a delta. Snapped the same
+       way anything else is dragged: a boundary point often wants to sit
+       on the plot line or the back of the footway. */
+    if (d.mode === "boundary") {
+      const { point } = resolve(raw[0], raw[1]);
+      setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId
+        ? { ...f, Attributes: { ...f.Attributes, Boundary_At: point } }
+        : f)));
+      return;
+    }
+
     if (d.mode === "vertex") {
       const { featureId, index, isEnd, lineType: ownType } = d;
       /* An end vertex is how one line is joined to another, so it gets
@@ -3406,6 +3459,29 @@ export default function GISCanvasPage() {
           Attributes: { ...f.Attributes, Label_Offset: f.Attributes.Label_Offset },
         }]);
       } catch (e) { setError(e.message); await load(projectId); }
+      return;
+    }
+
+    if (d?.mode === "boundary") {
+      setSnapHit(null);
+      const f = features.find((x) => x.Feature_ID === d.featureId);
+      if (!f) return;
+      /* Nothing to save where it did not actually move — a click that
+         happens to land on it should not write to the database. */
+      const at = f.Attributes?.Boundary_At;
+      if (!at || (at[0] === d.startAt[0] && at[1] === d.startAt[1])) return;
+      try {
+        await bulkUpdateFeatures(projectId, [{
+          Feature_ID: f.Feature_ID,
+          Attributes: { ...f.Attributes, Boundary_At: at },
+        }]);
+        setError("");
+      } catch (e) {
+        setFeatures((fs) => fs.map((x) => (x.Feature_ID === d.featureId
+          ? { ...x, Attributes: { ...x.Attributes, Boundary_At: d.startAt } }
+          : x)));
+        setError(e.message);
+      }
       return;
     }
 
@@ -4090,6 +4166,25 @@ export default function GISCanvasPage() {
       if (d < bd) { bd = d; bi = i; }
     });
     return bi;
+  }
+
+  /* The plot seed whose boundary point is under the cursor.
+
+     Ten pixels, not metres: it is a handle being grabbed, and a handle
+     has to be the same size to catch at every zoom. The nearest one
+     wins, so two plots whose boundary points are close together still
+     give you the one you aimed at. */
+  function boundaryAt(px, py) {
+    let best = null;
+    for (const f of features) {
+      if (f.Feature_Role !== "plot") continue;
+      const at = f.Attributes?.Boundary_At;
+      if (!Array.isArray(at) || at.length !== 2) continue;
+      const b = toPx([Number(at[0]), Number(at[1])]);
+      const d = Math.hypot(b.x - px, b.y - py);
+      if (d <= 10 && (!best || d < best.d)) best = { d, f };
+    }
+    return best?.f ?? null;
   }
 
   function vertexAt(f, px, py) {
@@ -8443,56 +8538,100 @@ export default function GISCanvasPage() {
                         setShowBasemap(true); setLiveTrenchOnly(false);
                       }} />
                     <div className="gm-sep" />
-                    <MenuGroup label="Hide or Solo" />
+                    <MenuGroup label="Show or Hide" />
                     <p className="gm-note">
-                      Hide a layer or isolate it with the Solo button.
+                      H hides a layer, S shows it, I leaves only that one on screen.
+                      These are the same switches as on the other menus.
                     </p>
-                    {layers.map((l) => (
-                      <MenuLayer key={l.Layer_Key} label={l.Label} colour={l.Colour}
-                        count={classCount[l.Layer_Key] || 0}
-                        hidden={hidden.includes(l.Layer_Key)}
-                        solo={solo === l.Layer_Key}
-                        onHide={() => toggleClass(l.Layer_Key)}
-                        onSolo={() => soloClass(l.Layer_Key)} />
-                    ))}
-                    {/* Listed with the layers rather than among the
-                        view settings: it is a thing on the drawing that
-                        can be in the way, which is what the rest of this
-                        list is. Only when one is attached — an entry for
-                        a plan that does not exist is a control that does
-                        nothing. */}
-                    {basemap?.Metres_Per_Pixel && (
-                      <MenuLayer label="Background plan" colour="#94a3b8"
-                        count={1}
-                        hidden={!showBasemap}
-                        onHide={() => setShowBasemap(!showBasemap)} />
-                    )}
-                    <MenuLayer label="Span Nodes" colour="#334155"
-                      count={classCount["role:spannode"] || 0}
-                      hidden={hidden.includes("role:spannode")}
-                      solo={solo === "role:spannode"}
-                      onHide={() => toggleClass("role:spannode")}
-                      onSolo={() => soloClass("role:spannode")} />
 
-                    {/* The two boundaries separately. They share a layer
-                        and used to share a control, so hiding the red
-                        line took the developer areas with it — and with
-                        areas drawn over the whole site, that is the one
-                        combination nobody wants. */}
-                    <MenuLayer label="Site boundary"
-                      count={classCount["boundary:site"] || 0}
-                      hidden={hidden.includes("boundary:site")}
-                      solo={solo === "boundary:site"}
-                      onHide={() => toggleClass("boundary:site")}
-                      onSolo={() => soloClass("boundary:site")} />
-                    {classCount["boundary:dev"] > 0 && (
-                      <MenuLayer label="Developer areas"
-                        count={classCount["boundary:dev"] || 0}
-                        hidden={hidden.includes("boundary:dev")}
-                        solo={solo === "boundary:dev"}
-                        onHide={() => toggleClass("boundary:dev")}
-                        onSolo={() => soloClass("boundary:dev")} />
-                    )}
+                    {/* ── The order ──
+
+                        Listed the way somebody reads a drawing rather
+                        than in the order the layers were added to the
+                        database: the plan underneath, then what bounds
+                        the site, then what is being built on it, then
+                        the utilities, then the writing on top.
+
+                        Held as a list of keys rather than a Sort_Order
+                        column, because two of these rows are not layers
+                        at all — the boundaries are one layer split in
+                        two, and span nodes are a role — and a column
+                        could not order them among the rest.
+
+                        Anything not named here still appears, after the
+                        ones that are. A layer added later should show up
+                        somewhere obvious rather than not at all. */}
+                    {(() => {
+                      const ORDER = ["trench", "electric", "gas", "water", "lighting", "note"];
+                      const RENAME = { plot: "Plot Seeds" };
+                      const named = new Set([...ORDER, "plot", "boundary"]);
+                      const rowFor = (l) => (
+                        <MenuLayer key={l.Layer_Key} label={RENAME[l.Layer_Key] ?? l.Label}
+                          colour={l.Colour}
+                          count={classCount[l.Layer_Key] || 0}
+                          hidden={hidden.includes(l.Layer_Key)}
+                          solo={solo === l.Layer_Key}
+                          onHide={() => hideClass(l.Layer_Key)}
+                          onShow={() => showClass(l.Layer_Key)}
+                          onSolo={() => soloClass(l.Layer_Key)} />
+                      );
+                      const byKey = (k) => layers.find((l) => l.Layer_Key === k);
+                      const plot = byKey("plot");
+                      return (
+                        <>
+                          {/* The survey underneath everything. Only when
+                              one is attached — an entry for a plan that
+                              does not exist is a control that does
+                              nothing. */}
+                          {basemap?.Metres_Per_Pixel && (
+                            <MenuLayer label="Background Plan" colour="#94a3b8"
+                              count={1}
+                              hidden={!showBasemap}
+                              onHide={() => setShowBasemap(false)}
+                              onShow={() => setShowBasemap(true)} />
+                          )}
+
+                          {/* The two boundaries separately, and the
+                              layer they share not at all.
+
+                              That layer had a row of its own, which is
+                              the second Site Boundary in this menu: one
+                              entry hid the red line and the developer
+                              areas together, the other hid only the red
+                              line, and both were called the same thing.
+                              The layer row is gone; these two cover
+                              everything on it between them. */}
+                          <MenuLayer label="Site Boundary" colour={byKey("boundary")?.Colour}
+                            count={classCount["boundary:site"] || 0}
+                            hidden={hidden.includes("boundary:site")}
+                            solo={solo === "boundary:site"}
+                            onHide={() => hideClass("boundary:site")}
+                            onShow={() => showClass("boundary:site")}
+                            onSolo={() => soloClass("boundary:site")} />
+                          <MenuLayer label="Developer Boundary" colour={byKey("boundary")?.Colour}
+                            count={classCount["boundary:dev"] || 0}
+                            hidden={hidden.includes("boundary:dev")}
+                            solo={solo === "boundary:dev"}
+                            onHide={() => hideClass("boundary:dev")}
+                            onShow={() => showClass("boundary:dev")}
+                            onSolo={() => soloClass("boundary:dev")} />
+
+                          {plot && rowFor(plot)}
+
+                          <MenuLayer label="Span Nodes" colour="#334155"
+                            count={classCount["role:spannode"] || 0}
+                            hidden={hidden.includes("role:spannode")}
+                            solo={solo === "role:spannode"}
+                            onHide={() => hideClass("role:spannode")}
+                            onShow={() => showClass("role:spannode")}
+                            onSolo={() => soloClass("role:spannode")} />
+
+                          {ORDER.map(byKey).filter(Boolean).map(rowFor)}
+                          {layers.filter((l) => !named.has(l.Layer_Key)).map(rowFor)}
+                        </>
+                      );
+                    })()}
+
                     <div className="gm-sep" />
                     {/* Moved from Tools rather than added there as well:
                         two controls for one setting is how they drift out
@@ -8526,7 +8665,8 @@ export default function GISCanvasPage() {
                         two different ways in one menu. */}
                     <MenuLayer label="Labels" colour="#64748b"
                       hidden={!showLabels}
-                      onHide={() => setShowLabels(!showLabels)} />
+                      onHide={() => setShowLabels(false)}
+                      onShow={() => setShowLabels(true)} />
 
                     <div className="gm-sep" />
                     <MenuGroup label="Locked against moving" />
@@ -8632,14 +8772,16 @@ export default function GISCanvasPage() {
                       count={classCount["role:spannode"] || 0}
                       hidden={hidden.includes("role:spannode")}
                       solo={solo === "role:spannode"}
-                      onHide={() => toggleClass("role:spannode")}
+                      onHide={() => hideClass("role:spannode")}
+                      onShow={() => showClass("role:spannode")}
                       onSolo={() => soloClass("role:spannode")} />
                     {typesOn("trench").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}
                         hidden={hidden.includes(`lt:${t.Type_Key}`)}
                         solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                      onShow={() => showClass(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
 
@@ -8718,7 +8860,8 @@ export default function GISCanvasPage() {
                         count={classCount[`role:${role}`] || 0}
                         hidden={hidden.includes(`role:${role}`)}
                         solo={solo === `role:${role}`}
-                        onHide={() => toggleClass(`role:${role}`)}
+                        onHide={() => hideClass(`role:${role}`)}
+                      onShow={() => showClass(`role:${role}`)}
                         onSolo={() => soloClass(`role:${role}`)} />
                     ))}
                     {typesOn("electric").map((t) => (
@@ -8726,14 +8869,16 @@ export default function GISCanvasPage() {
                         count={classCount[`lt:${t.Type_Key}`] || 0}
                         hidden={hidden.includes(`lt:${t.Type_Key}`)}
                         solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                      onShow={() => showClass(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <MenuLayer label="Electric Meters"
                       count={classCount["electric:role:meter"] || 0}
                       hidden={hidden.includes("electric:role:meter")}
                       solo={solo === "electric:role:meter"}
-                      onHide={() => toggleClass("electric:role:meter")}
+                      onHide={() => hideClass("electric:role:meter")}
+                      onShow={() => showClass("electric:role:meter")}
                       onSolo={() => soloClass("electric:role:meter")} />
                     {[["joint", "Joints"], ["linkbox", "Link boxes"],
                       ["spannode", "Span nodes"]].map(([role, label]) => (
@@ -8741,7 +8886,8 @@ export default function GISCanvasPage() {
                           count={classCount[`role:${role}`] || 0}
                           hidden={hidden.includes(`role:${role}`)}
                           solo={solo === `role:${role}`}
-                          onHide={() => toggleClass(`role:${role}`)}
+                          onHide={() => hideClass(`role:${role}`)}
+                      onShow={() => showClass(`role:${role}`)}
                           onSolo={() => soloClass(`role:${role}`)} />
                       ))}
                     {/* The layer as a whole, matching the row the gas and
@@ -8754,7 +8900,8 @@ export default function GISCanvasPage() {
                       count={classCount.electric || 0}
                       hidden={hidden.includes("electric")}
                       solo={solo === "electric"}
-                      onHide={() => toggleClass("electric")}
+                      onHide={() => hideClass("electric")}
+                      onShow={() => showClass("electric")}
                       onSolo={() => soloClass("electric")} />
 
                     <div className="gm-sep" />
@@ -8862,14 +9009,16 @@ export default function GISCanvasPage() {
                             count={classCount[`lt:${t.Type_Key}`] || 0}
                             hidden={hidden.includes(`lt:${t.Type_Key}`)}
                             solo={solo === `lt:${t.Type_Key}`}
-                            onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                            onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                      onShow={() => showClass(`lt:${t.Type_Key}`)}
                             onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                         ))}
                         <MenuLayer label="Meters"
                           count={classCount[`${key}:role:meter`] || 0}
                           hidden={hidden.includes(`${key}:role:meter`)}
                           solo={solo === `${key}:role:meter`}
-                          onHide={() => toggleClass(`${key}:role:meter`)}
+                          onHide={() => hideClass(`${key}:role:meter`)}
+                      onShow={() => showClass(`${key}:role:meter`)}
                           onSolo={() => soloClass(`${key}:role:meter`)} />
                         <div className="gm-sep" />
                         {/* The fixed plant on this utility. Gas has a
@@ -8923,7 +9072,8 @@ export default function GISCanvasPage() {
                           colour={layer?.Colour} count={classCount[key] || 0}
                           hidden={hidden.includes(key)}
                           solo={solo === key}
-                          onHide={() => toggleClass(key)}
+                          onHide={() => hideClass(key)}
+                      onShow={() => showClass(key)}
                           onSolo={() => soloClass(key)} />
                       </Menu>
                     );
@@ -8936,13 +9086,15 @@ export default function GISCanvasPage() {
                         count={classCount[`lt:${t.Type_Key}`] || 0}
                         hidden={hidden.includes(`lt:${t.Type_Key}`)}
                         solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => toggleClass(`lt:${t.Type_Key}`)}
+                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                      onShow={() => showClass(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <MenuLayer label="Columns" count={classCount["role:column"] || 0}
                       hidden={hidden.includes("role:column")}
                       solo={solo === "role:column"}
-                      onHide={() => toggleClass("role:column")}
+                      onHide={() => hideClass("role:column")}
+                      onShow={() => showClass("role:column")}
                       onSolo={() => soloClass("role:column")} />
                     {!typesOn("lighting").length && (
                       <MenuItem label="Lighting Layer Missing" hint="run migration 0072" disabled />
@@ -10088,14 +10240,14 @@ export default function GISCanvasPage() {
                 )}
                 <div className="gc-sep" />
                 <button className="gc-item" onClick={() => {
-                  toggleClass(ctx.feature.Layer_Key);
+                  hideClass(ctx.feature.Layer_Key);
                   setCtx(null);
                 }}>
                   Hide {layerOf(ctx.feature.Layer_Key).Label ?? "this"} layer
                 </button>
                 {ctx.feature.Attributes?.Line_Type && (
                   <button className="gc-item" onClick={() => {
-                    toggleClass(`lt:${ctx.feature.Attributes.Line_Type}`);
+                    hideClass(`lt:${ctx.feature.Attributes.Line_Type}`);
                     setCtx(null);
                   }}>
                     Hide {classLabel(ctx.feature, lineTypes)} only

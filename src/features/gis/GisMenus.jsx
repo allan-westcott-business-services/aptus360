@@ -100,23 +100,54 @@ export function MenuItem({
    Both are buttons rather than a checkbox because both are actions with
    an effect elsewhere: H changes this row, S changes every other. A
    checkbox implies it only speaks for itself. */
-export function MenuLayer({ label, hidden, solo, onHide, onSolo, colour, count }) {
+/* Three buttons, three verbs.
+
+   H hides this layer, S shows it, I isolates it. H and S each say what
+   they do and can be pressed on as many layers as you like; I is the
+   odd one, because isolating two things at once is not isolating.
+
+   It used to be two: H toggled, and S meant solo. Which made S mean
+   "show only this" on a control where H meant "hide this" — the same
+   letter reading as the opposite of hide on one row and as a mode on
+   the next. Splitting hide from show costs a button and takes the
+   guesswork out of both.
+
+   Every one of these controls, on every menu, drives the same hidden
+   set. Hiding gas from the Gas menu and showing it again from Layers is
+   the same layer either way. */
+export function MenuLayer({
+  label, hidden, solo, onHide, onShow, onSolo, colour, count,
+}) {
   return (
     <div className={hidden ? "gm-row off" : "gm-row"} data-keep-open>
       {colour && <span className="gm-dot" style={{ background: colour }} />}
       <span className="gm-lbl">{label}</span>
       {count != null && <em>{count}</em>}
+
+      {/* Lit when hidden, and dead when there is nothing left to do —
+          H on an already hidden layer, S on a showing one.
+
+          Only H lights. Lighting S on every visible row would be a wall
+          of colour saying what the drawing already says, and the row
+          dims when hidden, so the state is legible without it. The
+          disabled button is the feedback: it says the layer is already
+          in that state. */}
       <button className={hidden ? "gm-hs on" : "gm-hs"}
-        title={hidden ? `Show ${label}` : `Hide ${label}`}
+        title={`Hide ${label}`} disabled={hidden}
         aria-pressed={hidden} onClick={onHide}>H</button>
-      {/* Solo only where there is something to solo against. The
-          background plan has no soloing — hiding everything else to
-          leave a survey on its own is what the Hide buttons already do,
-          and a button that does nothing is worse than no button. */}
+
+      <button className="gm-hs"
+        title={`Show ${label}`} disabled={!hidden}
+        aria-pressed={!hidden} onClick={onShow}>S</button>
+
+      {/* Isolate only where there is something to isolate against. The
+          background plan has none — hiding everything else to leave a
+          survey on its own is what H already does, and a button that
+          does nothing is worse than no button. */}
       {onSolo && (
         <button className={solo ? "gm-hs solo on" : "gm-hs solo"}
           title={solo ? "Show everything again" : `Show only ${label}`}
-          aria-pressed={solo} onClick={onSolo}>S</button>
+          aria-pressed={solo} onClick={onSolo}>I</button>
       )}
     </div>
   );
@@ -191,7 +222,11 @@ const CSS = `
 .gm-hs { width: 20px; height: 20px; flex: none; border: 1px solid var(--border);
   background: var(--white); border-radius: 4px; cursor: pointer; font: 700 10px inherit;
   color: var(--muted); display: inline-flex; align-items: center; justify-content: center; }
-.gm-hs:hover { border-color: var(--accent); color: var(--accent); }
+.gm-hs:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
+.gm-hs:disabled { opacity: .35; cursor: default; }
+/* Except the hidden one, which has to stay readable while it is off:
+   it is the button saying why the row is dimmed. */
+.gm-hs.on:disabled { opacity: 1; }
 .gm-hs.on { background: #b91c1c; border-color: #b91c1c; color: #fff; }
 .gm-hs.solo.on { background: var(--accent); border-color: var(--accent); }
 .gm-sep { height: 1px; background: var(--border); margin: 5px 0; }

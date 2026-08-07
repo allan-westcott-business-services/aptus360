@@ -1913,7 +1913,22 @@ export default function GISCanvasPage() {
            colour was computed and then thrown away, and changing a house
            type left every seed the colour of the type it used to be. */
         const ss = isSeed ? seedStyle(f, on) : null;
-        const fill = isSeed ? ss.colour : colour;
+        /* What this point is painted with.
+
+           A seed takes the bedroom colour, which is its own thing. Every
+           other point took `colour` — the layer's, read straight off
+           GIS_Layer — and so ignored the style cascade entirely: a style
+           row could change a meter's symbol and its size but not its
+           colour, because the resolved colour was computed into `ps` and
+           then only ever used for stroke-only symbols.
+
+           Which is why setting "Gas (layer default)" to red moved the
+           gas mains and left the gas meters where they were.
+
+           styleFor falls back to the line type, then the layer, then
+           grey, so a point with no style row saying anything is painted
+           exactly as it was. */
+        let fill = isSeed ? ss.colour : colour;
 
         if (isSeed) {
           /* The boundary point, where the plot has one.
@@ -1960,9 +1975,11 @@ export default function GISCanvasPage() {
 
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
                 } else {
-          /* Symbol and size come from the style, so a DNO that draws
-             meters as hexagons gets hexagons without a code change. */
+          /* Symbol, size and colour come from the style, so a DNO that
+             draws meters as hexagons in its own green gets both without
+             a code change. */
           const ps = styleFor(f);
+          fill = ps.colour ?? fill;
           const r = (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx);
 
           /* The circuit this meter is on, drawn round it.

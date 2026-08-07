@@ -6418,6 +6418,7 @@ export default function GISCanvasPage() {
     const plan = waterMainRuns(src, {
       lineTypes,
       pipeSizes: lookups?.waterPipeSizes || [],
+      pipeSizeOperators: lookups?.waterPipeSizeOperators || [],
       idnoId,
       dnoId,
     });

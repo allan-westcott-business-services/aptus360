@@ -79,38 +79,64 @@ function distToLine(p, g = []) {
 
    ── Whose rule ──
 
-   A row may name a DNO, an IDNO, both, or neither, because the standard
-   belongs to the adopting operator rather than to the industry: one NAV
-   allows twenty plots on 63mm where another allows sixteen. Naming
-   neither is the house standard and applies anywhere.
+   A rule may name any number of operators, because the standard belongs
+   to the adopting operator rather than to the industry — one NAV allows
+   twenty plots on 63mm where another allows sixteen — and because
+   operators mostly agree, so one rule usually covers several of them.
+   The names live in Water_Pipe_Size_Operator, a row per operator, and
+   arrive here as `operators`.
 
-   Rows naming an operator this project is not with are dropped. Of what
+   Naming nobody is the house standard and applies anywhere.
+
+   Rules naming operators this project is not with are dropped. Of what
    is left, where a diameter appears more than once the one naming the
    operator wins — per diameter, so an operator differing on 63mm alone
-   needs one row and still inherits the 90 and the 125. Keeping only the
-   most specific *tier* would have been fewer lines and would silently
-   drop every size that operator had not restated. */
+   needs one rule and still inherits the 90 and the 125. Keeping only
+   the most specific *tier* would have been fewer lines and would
+   silently drop every size that operator had not restated.
+
+   Two equally specific rules for one diameter is an untidy table rather
+   than an unanswerable question: the lower Display_Order wins, so the
+   drawing is the same every time it is built. */
 export function sizeTable(rows = [], opts = {}) {
-  const { idnoId = null, dnoId = null } = opts;
+  const { idnoId = null, dnoId = null, operators = [] } = opts;
   const same = (a, b) => a != null && b != null && Number(a) === Number(b);
 
-  const applies = rows.filter((r) => {
-    if (r.Is_Active === false || !(Number(r.Max_Meters) > 0)) return false;
-    if (r.IDNO_ID != null && !same(r.IDNO_ID, idnoId)) return false;
-    if (r.DNO_ID != null && !same(r.DNO_ID, dnoId)) return false;
-    return true;
-  });
+  /* The operators each rule names, gathered once rather than scanned
+     per rule per diameter. */
+  const named = new Map();
+  for (const o of operators) {
+    const key = Number(o.Water_Pipe_Size_ID);
+    if (!named.has(key)) named.set(key, []);
+    named.get(key).push(o);
+  }
 
-  /* Naming the operator beats naming nobody. An IDNO is the operator a
-     water scheme is adopted by, so it outranks a DNO where a row
-     somehow names both. */
-  const rank = (r) => (same(r.IDNO_ID, idnoId) ? 2 : 0) + (same(r.DNO_ID, dnoId) ? 1 : 0);
+  /* 2 where the rule names this project's IDNO, 1 for its DNO, 0 where
+     it names nobody at all — the house standard. A rule naming only
+     other operators scores -1 and is dropped: it is somebody else's.
+
+     The IDNO outranks the DNO because a water scheme is adopted by a
+     NAV; the DNO is there for the case where that is not true. */
+  const rank = (r) => {
+    const mine = named.get(Number(r.Water_Pipe_Size_ID)) || [];
+    if (!mine.length) return 0;
+    if (mine.some((o) => same(o.IDNO_ID, idnoId))) return 2;
+    if (mine.some((o) => same(o.DNO_ID, dnoId))) return 1;
+    return -1;
+  };
+
+  const applies = rows.filter((r) =>
+    r.Is_Active !== false && Number(r.Max_Meters) > 0 && rank(r) >= 0);
 
   const best = new Map();
   for (const r of applies) {
     const key = Number(r.Diameter_mm);
     const held = best.get(key);
-    if (!held || rank(r) > rank(held)) best.set(key, r);
+    if (!held) { best.set(key, r); continue; }
+    const drop = rank(r) - rank(held)
+      || (Number(held.Display_Order ?? 100) - Number(r.Display_Order ?? 100))
+      || (Number(held.Water_Pipe_Size_ID) - Number(r.Water_Pipe_Size_ID));
+    if (drop > 0) best.set(key, r);
   }
 
   return [...best.values()]
@@ -119,7 +145,7 @@ export function sizeTable(rows = [], opts = {}) {
       diameter: Number(r.Diameter_mm),
       label: r.Size_Label || `${Number(r.Diameter_mm)}mm`,
       max: Number(r.Max_Meters),
-      /* Whether this row was chosen for this operator or is the house
+      /* Whether this rule was chosen for this operator or is the house
          standard \u2014 so the build can say which table it used, and a
          figure that looks wrong can be traced to the rule behind it. */
       forOperator: rank(r) > 0,
@@ -137,6 +163,8 @@ export function waterMainRuns(features = [], opts = {}) {
   const {
     lineTypes = [],
     pipeSizes = [],
+    /* Which operators each rule names, from Water_Pipe_Size_Operator. */
+    pipeSizeOperators = [],
     /* Who is adopting this scheme. The rules are read for them. */
     idnoId = null,
     dnoId = null,
@@ -145,7 +173,7 @@ export function waterMainRuns(features = [], opts = {}) {
     layerKey = "water",
   } = opts;
 
-  const table = sizeTable(pipeSizes, { idnoId, dnoId });
+  const table = sizeTable(pipeSizes, { idnoId, dnoId, operators: pipeSizeOperators });
   if (!table.length) {
     /* Two different faults, and the fix differs: an empty table, or a
        table whose every row names an operator this project is not

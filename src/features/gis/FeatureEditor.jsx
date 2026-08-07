@@ -1030,13 +1030,22 @@ export default function FeatureEditor({
                            them. The build picks the right rule on its
                            own; this list is for overriding by hand, and
                            an override should be made knowingly. */
-                        const op = x.IDNO_ID != null
-                          ? (lookups?.idnos || []).find((i) =>
-                            Number(i.IDNO_ID) === Number(x.IDNO_ID))?.IDNO_Name
-                          : x.DNO_ID != null
-                            ? (lookups?.dnos || []).find((d) =>
-                              Number(d.DNO_ID) === Number(x.DNO_ID))?.DNO_Name
-                            : null;
+                        const named = (lookups?.waterPipeSizeOperators || [])
+                          .filter((o) =>
+                            Number(o.Water_Pipe_Size_ID) === Number(x.Water_Pipe_Size_ID))
+                          .map((o) => (o.IDNO_ID != null
+                            ? (lookups?.idnos || []).find((i) =>
+                              Number(i.IDNO_ID) === Number(o.IDNO_ID))?.IDNO_Name
+                            : (lookups?.dnos || []).find((d) =>
+                              Number(d.DNO_ID) === Number(o.DNO_ID))?.DNO_Name))
+                          .filter(Boolean);
+                        /* Two named is a list; six is a count. A rule
+                           shared by every NAV on the system would
+                           otherwise push the plot figure off the end of
+                           the option. */
+                        const op = !named.length ? null
+                          : named.length <= 2 ? named.join(", ")
+                            : `${named.length} operators`;
                         return (
                           <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
                             {x.Size_Label || `${Number(x.Diameter_mm)}mm`}

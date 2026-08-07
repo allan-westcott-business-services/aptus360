@@ -72,8 +72,15 @@ export default async function handler() {
          reads them in, and the two only agree while somebody keeps them
          agreeing. */
       waterPipeSizes: db.from("Water_Pipe_Size")
-        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order,DNO_ID,IDNO_ID")
+        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order")
         .eq("Is_Active", true).order("Max_Meters"),
+      /* Which operators each rule names. A rule with no rows here is the
+         house standard and applies to any project — so this is read
+         alongside the sizes rather than joined into them, because the
+         interesting case is the absence of a row. */
+      waterPipeSizeOperators: db.from("Water_Pipe_Size_Operator")
+        .select("Water_Pipe_Size_Operator_ID,Water_Pipe_Size_ID,DNO_ID,IDNO_ID")
+        .order("Water_Pipe_Size_ID"),
       vatRates:       db.from("VAT_Rate").select("VAT_Rate_ID,Rate,Effective_From,Label").order("Effective_From", { ascending: false }),
       /* Make and reference travel with the model because the model name
          alone is ambiguous — the register lists the same name under

@@ -43,6 +43,10 @@ const TABLES = {
   Call_Off_Status:     { pk: "Call_Off_Status_ID",     order: "Display_Order" },
   /* Water pipe sizes against the plots they carry. */
   Water_Pipe_Size:     { pk: "Water_Pipe_Size_ID",     order: "Max_Meters" },
+  /* Which operators a size rule applies to. No rows means all of
+     them — see 0119. */
+  Water_Pipe_Size_Operator: { pk: "Water_Pipe_Size_Operator_ID",
+    order: "Water_Pipe_Size_ID" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

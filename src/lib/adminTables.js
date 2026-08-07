@@ -137,30 +137,15 @@ export const ADMIN_TABLES = [
       { col: "Is_Closed", label: "Closed", type: "checkbox" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
-  /* What size of water pipe feeds how many plots.
+  /* What size of water pipe feeds how many plots, and whose rule each
+     one is.
 
-     The whole of the water design rule: a pipe is sized by counting the
-     water meters beyond the point being sized and reading the smallest
-     row that will take them. Twenty per 63mm is the standard given; the
-     rest is set here.
-
-     Max_Meters is a ceiling, not a band. Rows of 20, 50 and 100 mean 21
-     meters takes the 50, and adding a size later needs one row rather
-     than its neighbours being corrected. */
-  { key: "Water_Pipe_Size", label: "Water Pipe Sizes", pk: "Water_Pipe_Size_ID", fields: [
-      { col: "Diameter_mm", label: "Diameter (mm)", type: "number", required: true },
-      { col: "Size_Label", label: "Label", type: "text" },
-      { col: "Max_Meters", label: "Max Water Meters", type: "number", required: true },
-      /* Whose rule this is. Both empty is the house standard and applies
-         to any project; naming an operator makes it theirs, and the
-         build prefers it over the standard for that diameter alone. */
-      { col: "IDNO_ID", label: "IDNO / NAV (blank = any)", type: "lookup",
-        table: "IDNO", value: "IDNO_ID", text: "IDNO_Name" },
-      { col: "DNO_ID", label: "DNO (blank = any)", type: "lookup",
-        table: "DNO", value: "DNO_ID", text: "DNO_Name" },
-      { col: "Display_Order", label: "Order", type: "number" },
-      { col: "Is_Active", label: "Active", type: "checkbox" },
-    ] },
+     Its own screen rather than the generic editor: a rule may name any
+     number of operators, and a many-to-many is a row of checkboxes here
+     as it is for teams and their crafts. The generic editor can show a
+     column that points at one thing; it has no way to show a column
+     that points at several. */
+  { key: "Water_Pipe_Size", label: "Water Pipe Sizes", special: "waterpipes" },
   { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
       { col: "Craft_Name", label: "Craft", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

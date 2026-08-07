@@ -22,34 +22,40 @@ export default async function handler(req, context) {
       ]);
       for (const r of [f, l, t, st, su, ut]) if (r.error) throw r.error;
 
-      /* The utility's colour, filled in wherever nothing overrides it.
+      /* The utility's colour, applied to what reads it.
 
          Done here rather than in the canvas because of how many places
          read a colour: the drawing, the layer menus, the line type
          menus, the legend, the swatch beside a feature in the editor.
-         Every one of them takes Colour off the layer or the line type
-         and would have needed the same three-step fallback written
-         again, and the one that got missed would be the one drawing in
-         grey.
+         Every one takes Colour off the layer or the line type and would
+         have needed the same fallback written again — and the one that
+         got missed would be the one drawing in grey.
 
-         Filled, not overridden, for line types: one that carries its
-         own colour is a deliberate departure — a brown trench on the
-         electric layer — and keeps it. Null means "the utility's",
-         which is what 0123 left behind everywhere the colour was merely
-         a copy.
+         Done at read time rather than by rewriting the rows, because
+         Colour is NOT NULL on both tables and neither is editable
+         anywhere in the application. Nothing is destroyed: clearing the
+         utility's colour puts every drawing back exactly as it was.
 
-         Layers are the other way round: the utility wins over what the
-         layer stores. GIS_Layer."Colour" is NOT NULL so it cannot say
-         "inherit", and a layer stands one-to-one with its utility — the
-         electric layer is the electric utility — so a colour there is
-         the same fact written twice rather than an override worth
-         honouring. Nothing in the application edits it.
+         A layer takes its utility's colour outright. It stands
+         one-to-one with the utility — the electric layer is the
+         electric utility — so what it stores is the same fact written
+         twice, not an override.
+
+         A line type takes it only where its own colour is the layer's.
+         That is the seeded case, where the copy means nothing. A type
+         coloured differently from its layer was somebody drawing a
+         distinction, and it keeps it.
 
          A layer with no utility, which is what trench is, comes back
          exactly as it is stored. */
+      const same = (a, b) => !!a && !!b
+        && String(a).toLowerCase() === String(b).toLowerCase();
+
       const byUtility = new Map((ut.data || [])
         .filter((u) => u.Colour)
         .map((u) => [Number(u.Utility_ID), u.Colour]));
+
+      const storedLayer = new Map((l.data || []).map((x) => [x.Layer_Key, x.Colour]));
 
       const layers = (l.data || []).map((x) => ({
         ...x,
@@ -57,10 +63,16 @@ export default async function handler(req, context) {
       }));
       const layerColour = new Map(layers.map((x) => [x.Layer_Key, x.Colour]));
 
-      const lineTypes = (t.data || []).map((x) => ({
-        ...x,
-        Colour: x.Colour ?? layerColour.get(x.Layer_Key) ?? null,
-      }));
+      const lineTypes = (t.data || []).map((x) => {
+        const wasTheLayers = x.Colour == null
+          || same(x.Colour, storedLayer.get(x.Layer_Key));
+        return {
+          ...x,
+          Colour: wasTheLayers
+            ? (layerColour.get(x.Layer_Key) ?? x.Colour ?? null)
+            : x.Colour,
+        };
+      });
 
       /* Style rows are left alone. A null colour there already means
          "inherit", and the cascade in gisStyle.js resolves it against

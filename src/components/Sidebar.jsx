@@ -67,6 +67,9 @@ const SIDEBAR_CSS = `
 .chevron.down { transform: rotate(90deg); }
 
 .nav-section-items { padding: 3px 8px 6px; }
+/* A header that is a link rather than a lid. Marked when it is the
+   screen you are on, since it has no items below it to carry that. */
+.nav-section-header.direct.on { font-weight: 700; }
 .nav-item {
   width: 100%; text-align: left; background: none; border: 1px solid transparent;
   border-radius: 6px; padding: 6px 10px; margin-bottom: 1px; cursor: pointer;
@@ -193,10 +196,17 @@ export default function Sidebar({ view, onNavigate, collapsed, onToggle }) {
         <nav className="sidebar-nav">
           {NAV_SECTIONS.map((section) => (
             <div className="nav-section" key={section.id}>
+              {/* A section with `direct` set is one screen, so its header
+                  is the link to it — no chevron, nothing to expand, and
+                  the active state on the header itself. Expanding to a
+                  list of one is a click that only ever leads one place. */}
               <button
-                className="nav-section-header"
-                onClick={() => toggleSection(section.id)}
-                aria-expanded={!!open[section.id]}
+                className={section.direct && view === section.direct
+                  ? "nav-section-header direct on" : "nav-section-header"}
+                onClick={() => (section.direct
+                  ? onNavigate(section.direct)
+                  : toggleSection(section.id))}
+                aria-expanded={section.direct ? undefined : !!open[section.id]}
                 style={{
                   color: section.colour,
                   borderLeft: `4px solid ${section.colour}`,
@@ -204,12 +214,15 @@ export default function Sidebar({ view, onNavigate, collapsed, onToggle }) {
                 }}
               >
                 <span>{section.label}</span>
-                <span className={open[section.id] ? "chevron down" : "chevron"} style={{ color: section.colour }}>
-                  &#9656;
-                </span>
+                {!section.direct && (
+                  <span className={open[section.id] ? "chevron down" : "chevron"}
+                    style={{ color: section.colour }}>
+                    &#9656;
+                  </span>
+                )}
               </button>
 
-              {open[section.id] && (
+              {!section.direct && open[section.id] && (
                 <div className="nav-section-items">
                   {section.items.map((item) => {
                     const cls = [

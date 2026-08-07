@@ -91,6 +91,7 @@ export const ADMIN_TABLES = [
     ] },
 
   { separator: true, label: "Organisations & People" },
+  { group: true, label: "Organisations" },
   { key: "Organisation", label: "Organisations", special: "organisations" },
   { key: "Customer", label: "Customers & Branches", special: "customers" },
   { key: "IDNO_Source_Mapping", label: "IDNO Source Mapping", pk: "IDNO_Source_Mapping_ID", fields: [
@@ -170,6 +171,7 @@ export const ADMIN_TABLES = [
   { key: "Sub_Region", label: "Sub Region", special: "subregions" },
 
   { separator: true, label: "Utilities & Connections" },
+  { group: true, label: "Utilities" },
   { key: "IDNO", label: "IDNO / IGT / NAV", pk: "IDNO_ID", fields: [
       { col: "IDNO_Name", label: "Operator Name", type: "text", required: true },
     ] },
@@ -209,6 +211,7 @@ export const ADMIN_TABLES = [
     ] },
 
   { separator: true, label: "Drawings" },
+  { group: true, label: "Styles" },
   { key: "GIS_Style", label: "GIS Styles", special: "gisstyles" },
 ];
 

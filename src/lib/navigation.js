@@ -144,11 +144,19 @@ export const NAV_SECTIONS = [
   },
 ];
 
+/* Admin is one screen, so its section header is the link.
+
+   It used to expand to a single item called "Reference Data" — a click
+   to open a list of one, and a name for the admin suite that stopped
+   being true once it held teams, styles and pipe sizes. `direct` says
+   the header navigates instead of toggling; the item stays so that
+   findNavItem still resolves the view to a section. */
 NAV_SECTIONS.push({
   id: "admin",
   label: "Admin",
   colour: "#64748b",
-  items: [{ view: "admin", label: "Reference Data", built: true }],
+  direct: "admin",
+  items: [{ view: "admin", label: "Admin", built: true }],
 });
 
 export const findNavItem = (view) => {

@@ -16,18 +16,37 @@ import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
 export default function AdminPage() {
-  const first = ADMIN_TABLES.find((t) => !t.separator);
+  /* Headings are rows in the same list, so anything that walks it for a
+     screen has to step over both kinds. */
+  const isScreen = (t) => !t.separator && !t.group;
+  const first = ADMIN_TABLES.find(isScreen);
   const [active, setActive] = useState(first.key);
-  const table = ADMIN_TABLES.find((t) => !t.separator && t.key === active);
+  const table = ADMIN_TABLES.find((t) => isScreen(t) && t.key === active);
 
   return (
     <div className="admin-shell">
       <style>{CSS}</style>
 
+      {/* ── The menu ──
+
+          Three kinds of entry, all of them rows in ADMIN_TABLES so the
+          order on screen is the order in that file and nothing else:
+
+            { separator: true, label } a section
+            { group: true, label }     a sub-section under it
+            { key, label, ... }        a screen
+
+          Renaming is the label, reordering is moving the line, and a new
+          section is one row. Held as a list rather than as nested arrays
+          because a flat list can be reordered across a boundary — moving
+          a screen from one section to another is a cut and paste, not a
+          restructure. */}
       <nav className="admin-nav">
         {ADMIN_TABLES.map((t, i) =>
           t.separator ? (
             <p className="admin-sep" key={`sep${i}`}>{t.label}</p>
+          ) : t.group ? (
+            <p className="admin-group" key={`grp${i}`}>{t.label}</p>
           ) : (
             <button
               key={t.key}
@@ -77,6 +96,10 @@ const CSS = `
   width: 210px; flex: none; border-right: 1px solid var(--border);
   padding-right: 14px; max-height: 76vh; overflow-y: auto;
 }
+/* A sub-heading inside a section: quieter than the section above it,
+   indented to the depth of the items it gathers. */
+.admin-group { margin: 10px 0 2px 10px; font: 700 9.5px inherit; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); opacity: .8; }
 .admin-sep {
   font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .07em;
   color: var(--muted); margin: 14px 0 5px; padding: 0 8px;

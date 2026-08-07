@@ -6,6 +6,8 @@ import Select from "../../components/Select.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getProject, updateProject } from "../../api/projects.js";
 import { listContacts, saveContact, deleteContact } from "../../api/stakeholders.js";
+import { updateScope } from "../../api/scopes.js";
+import { utilityById } from "../../lib/utilities.js";
 import DevelopersSection from "./DevelopersSection.jsx";
 
 /* Everyone outside Aptus with a stake in the site: the authorities that
@@ -21,6 +23,10 @@ export default function StakeholderTab({ projectId }) {
   const [saving, setSaving] = useState(false);
   const [draft, setDraft] = useState(blankContact());
   const [editingId, setEditingId] = useState(null);
+  /* The project's utilities, one scope row each, which is where the DNO
+     for that utility is recorded. */
+  const [scopes, setScopes] = useState([]);
+  const [savingDno, setSavingDno] = useState(null);
 
   function blankContact() {
     return { Contact_Name: "", Job_Title: "", Telephone: "", Email: "", Is_Primary: false };
@@ -40,6 +46,7 @@ export default function StakeholderTab({ projectId }) {
       setF(picked);
       setSaved(picked);
       setContacts(cs.rows || []);
+      setScopes(proj.scopes || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -62,6 +69,33 @@ export default function StakeholderTab({ projectId }) {
       setTimeout(() => setFlash(""), 2400);
     } catch (e) { setError(e.message); }
     finally { setSaving(false); }
+  }
+
+  /* ── The DNO for one utility ──
+
+     Written on the spot rather than gathered behind a Save button: it
+     is one field per utility and there are three of them, and a Save
+     that covers a form somebody has already left is how a change goes
+     missing.
+
+     Stored on Project_Scope, which is already one row per project per
+     utility — so a scheme doing electric and water has two rows and
+     therefore two DNOs, and this list is however many utilities the
+     project has rather than three fixed fields. */
+  async function setDno(scope, organisationId) {
+    setSavingDno(scope.Project_Scope_ID);
+    try {
+      await updateScope(scope.Project_Scope_ID, {
+        DNO_Organisation_ID: organisationId || null,
+      });
+      setScopes((xs) => xs.map((x) =>
+        Number(x.Project_Scope_ID) === Number(scope.Project_Scope_ID)
+          ? { ...x, DNO_Organisation_ID: organisationId || null } : x));
+      setFlash("DNO saved");
+      setTimeout(() => setFlash(""), 2400);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setSavingDno(null); }
   }
 
   async function submitContact() {
@@ -96,6 +130,8 @@ export default function StakeholderTab({ projectId }) {
       {error && <Banner kind="error">{error}</Banner>}
 
       <DevelopersSection projectId={projectId} />
+
+      <DnoSection scopes={scopes} lookups={lookups} onSet={setDno} saving={savingDno} />
 
       <Section
         title="Authorities"
@@ -210,6 +246,85 @@ export default function StakeholderTab({ projectId }) {
   );
 }
 
+/* The distribution operator for each utility on this project.
+
+   ── Why here ──
+
+   A DNO is an outside organisation with a stake in the site, which is
+   what this tab is for. It was on the outline design modal, two clicks
+   further in and beside the adopting operator — a reasonable place for
+   a design decision and the wrong one for a fact about who the site
+   connects to.
+
+   One place, not two. The same column edited on two screens is how a
+   record ends up disagreeing with itself, so it has moved rather than
+   been copied.
+
+   ── Only that utility's DNOs ──
+
+   Filtered by the utility the scope belongs to, from Organisation_Utility
+   by way of the Operator_Utility view: the water design must not offer
+   the electric DNO. Anything already saved stays in its own list even
+   if it would not qualify, so a project set up before this rule shows
+   what it holds instead of appearing empty.
+
+   An operator with no utilities assigned cannot be placed, so it is not
+   offered — but the count is shown, because a name missing from a
+   dropdown with no explanation is exactly the fault this fixes. */
+function DnoSection({ scopes, lookups, onSet, saving }) {
+  const operators = (lookups?.operators || [])
+    .filter((o) => (o.role_keys || []).some((k) => String(k).toLowerCase() === "dno"));
+  const unassigned = operators.filter((o) => !(o.utility_ids || []).length).length;
+
+  if (!scopes.length) {
+    return (
+      <Section title="Distribution operators">
+        <p className="dno-none">
+          This project has no utilities yet. Add them on the Outline Designs tab
+          and each one can be given its DNO here.
+        </p>
+      </Section>
+    );
+  }
+
+  return (
+    <Section title="Distribution operators">
+      <div className="auth-grid">
+        {scopes.map((sc) => {
+          const utility = utilityById(sc.Utility_ID);
+          const forThis = operators.filter((o) =>
+            (o.utility_ids || []).some((x) => Number(x) === Number(sc.Utility_ID))
+            || Number(o.Organisation_ID) === Number(sc.DNO_Organisation_ID));
+          return (
+            <Field key={sc.Project_Scope_ID} label={`${utility?.name ?? "Utility"} DNO`}>
+              <Select value={sc.DNO_Organisation_ID ?? ""}
+                disabled={saving === sc.Project_Scope_ID}
+                onChange={(v) => onSet(sc, v ? Number(v) : null)}>
+                <option value="">&mdash; None &mdash;</option>
+                {forThis.map((o) => (
+                  <option key={o.Organisation_ID} value={o.Organisation_ID}>{o.Name}</option>
+                ))}
+              </Select>
+              {!forThis.length && (
+                <p className="dno-note">
+                  No DNO is marked as working in this utility &mdash; set that in
+                  Admin &rsaquo; Organisations.
+                </p>
+              )}
+            </Field>
+          );
+        })}
+      </div>
+      {unassigned > 0 && (
+        <p className="dno-note">
+          {unassigned} DNO(s) are not offered because no utilities are assigned
+          to them.
+        </p>
+      )}
+    </Section>
+  );
+}
+
 function AuthorityNote({ a }) {
   if (!a) return null;
   const bits = [a.Contact_Name, a.Telephone, a.Email].filter(Boolean);
@@ -218,6 +333,8 @@ function AuthorityNote({ a }) {
 }
 
 const CSS = `
+.dno-note { margin: 4px 0 0; font-size: 11px; color: #b45309; font-weight: 600; }
+.dno-none { font-size: 12.5px; color: var(--muted); margin: 0; }
 .auth-grid { display: grid; grid-template-columns: repeat(3, minmax(200px, 1fr)); gap: 14px; }
 .auth-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
 .btn.sm { padding: 4px 12px; font-size: 11.5px; }

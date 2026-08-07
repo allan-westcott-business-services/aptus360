@@ -3,7 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { BUILD_STATUSES } from "./buildStatus.js";
 import { utilityById } from "../../lib/utilities.js";
-import { lineLength, isTrenchType } from "./snapping.js";
+import { lineLength, isTrenchType, classLabel } from "./snapping.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
@@ -242,10 +242,20 @@ export default function FeatureEditor({
   const length = (isLine || isPoly) ? lineLength(feature.Geometry || []) : 0;
   const vertices = (feature.Geometry || []).length;
 
+  /* What this actually is, at the top of the panel.
+
+     Every line said "Line", which is the one thing the panel does not
+     need to tell you — you right-clicked it. The line type's own label
+     says whether it is a gas main or an electric service, which is what
+     somebody with four of these open needs to read at a glance.
+
+     The configured label, not a name built here from the key: renaming
+     a type in admin should rename it everywhere, and a second spelling
+     invented in this file would be the one that stops matching. */
   const kind = isSeed ? "Plot seed"
     : isMeter ? "Meter"
     : isPoly ? "Area"
-    : isLine ? "Line"
+    : isLine ? (classLabel(f, lineTypes) || "Line")
     : "Point";
 
   async function save() {
@@ -952,24 +962,46 @@ export default function FeatureEditor({
                      a generated feeder arrives with a cable already on
                      it — this is where you see and change it. */
                   <div className="fld">
-                    <label htmlFor="fe-cablesize">Cable</label>
+                    <label htmlFor="fe-cablesize">Cable size</label>
                     <select id="fe-cablesize" value={f.Attributes.VD_Cable_Size_ID ?? ""}
                       onChange={(e) => setAttr("VD_Cable_Size_ID")(
                         e.target.value ? Number(e.target.value) : null)}>
                       <option value="">&mdash; not set &mdash;</option>
+                      {/* The cable and nothing else. The material and
+                          the missing-figures warning were on every
+                          option and turned a list of sizes into a list
+                          of sentences \u2014 both are below, about the one
+                          actually chosen. */}
                       {cableChoices.list.map((c) => {
                         const t = (lookups?.cableTypes || [])
                           .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
-                        const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
                         return (
                           <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
                             {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
-                            {c.Material ? ` (${c.Material})` : ""}
-                            {usable ? "" : " \u2014 no figures"}
                           </option>
                         );
                       })}
                     </select>
+                    {(() => {
+                      /* What was lost from the options, said once about
+                         the cable selected.
+
+                         The warning matters and must not go: a cable
+                         with no impedance or volt drop figure computes
+                         nothing, so a levels check on it silently
+                         reports no drop at all rather than a wrong one. */
+                      const c = (lookups?.cableSizes || []).find((x) =>
+                        Number(x.Cable_Size_ID) === Number(f.Attributes.VD_Cable_Size_ID));
+                      if (!c) return null;
+                      const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
+                      return (
+                        <p className={usable ? "hint" : "fe-warn"}>
+                          {c.Material ? `${c.Material}. ` : ""}
+                          {usable ? "" : "No impedance or volt drop figures \u2014 "
+                            + "a levels check cannot compute a drop for this cable."}
+                        </p>
+                      );
+                    })()}
                     {cableChoices.filtered ? (
                       <p className="hint">
                         {cableUsage === "service"
@@ -1001,7 +1033,7 @@ export default function FeatureEditor({
                      because of a future phase is a real decision, and
                      the drawing should be able to hold it. */
                   <div className="fld">
-                    <label htmlFor="fe-pipe">Pipe</label>
+                    <label htmlFor="fe-pipe">Pipe size</label>
                     <select id="fe-pipe" value={f.Attributes.Water_Pipe_Size_ID ?? ""}
                       onChange={(e) => {
                         const id = e.target.value ? Number(e.target.value) : null;
@@ -1019,52 +1051,55 @@ export default function FeatureEditor({
                           : null);
                       }}>
                       <option value="">&mdash; not set &mdash;</option>
-                      {(lookups?.waterPipeSizes || []).map((x) => {
-                        /* Whose rule it is, where it is somebody's.
+                      {/* The size and nothing else.
 
-                           The same diameter can appear more than once —
-                           one NAV allows twenty plots on 63mm and
-                           another sixteen — and two options reading
-                           "63mm" with different plot counts are
-                           indistinguishable until the operator is on
-                           them. The build picks the right rule on its
-                           own; this list is for overriding by hand, and
-                           an override should be made knowingly. */
-                        const named = (lookups?.waterPipeSizeOperators || [])
-                          .filter((o) =>
-                            Number(o.Water_Pipe_Size_ID) === Number(x.Water_Pipe_Size_ID))
-                          .map((o) => (lookups?.operators || []).find((p) =>
-                            Number(p.Organisation_ID) === Number(o.Organisation_ID))?.Name)
-                          .filter(Boolean);
-                        /* Two named is a list; six is a count. A rule
-                           shared by every NAV on the system would
-                           otherwise push the plot figure off the end of
-                           the option. */
-                        const op = !named.length ? null
-                          : named.length <= 2 ? named.join(", ")
-                            : `${named.length} operators`;
-                        return (
-                          <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
-                            {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
-                            {` \u2014 up to ${x.Max_Meters} plots`}
-                            {op ? ` (${op})` : ""}
-                          </option>
-                        );
-                      })}
+                          The capacity and the operators were on each
+                          option and made a dropdown of six read like a
+                          paragraph. What is being chosen is a size, so
+                          that is what the options say; the rule behind
+                          the one selected is spelled out below, where
+                          it can be read once rather than seven times. */}
+                      {(lookups?.waterPipeSizes || []).map((x) => (
+                        <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
+                          {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
+                        </option>
+                      ))}
                     </select>
                     {!(lookups?.waterPipeSizes || []).length ? (
                       <p className="hint">
                         No pipe sizes yet &mdash; add them in
                         Admin &rsaquo; Water Pipe Sizes.
                       </p>
-                    ) : f.Attributes.Meters != null ? (
-                      /* What the build counted, kept beside the choice:
-                         a size overridden by hand should be overridden
-                         against a number rather than a hunch. */
-                      <p className="hint">
-                        Feeds {f.Attributes.Meters} plot(s) beyond this length.
-                      </p>
-                    ) : null}
+                    ) : (() => {
+                      /* The rule behind the chosen size, and what the
+                         build counted here. Said once, under the field,
+                         rather than repeated on every option: a size
+                         overridden by hand should be overridden against
+                         a number rather than a hunch, but the number
+                         belongs to the one chosen. */
+                      const row = (lookups?.waterPipeSizes || []).find((x) =>
+                        Number(x.Water_Pipe_Size_ID) === Number(f.Attributes.Water_Pipe_Size_ID));
+                      const named = row
+                        ? (lookups?.waterPipeSizeOperators || [])
+                          .filter((o) =>
+                            Number(o.Water_Pipe_Size_ID) === Number(row.Water_Pipe_Size_ID))
+                          .map((o) => (lookups?.operators || []).find((p) =>
+                            Number(p.Organisation_ID) === Number(o.Organisation_ID))?.Name)
+                          .filter(Boolean)
+                        : [];
+                      const bits = [];
+                      if (row) {
+                        bits.push(`Carries up to ${row.Max_Meters} plots`);
+                        bits.push(named.length
+                          ? (named.length <= 2 ? `for ${named.join(" and ")}`
+                            : `for ${named.length} operators`)
+                          : "for any operator");
+                      }
+                      if (f.Attributes.Meters != null) {
+                        bits.push(`\u2014 feeds ${f.Attributes.Meters} plot(s) beyond this length`);
+                      }
+                      return bits.length ? <p className="hint">{bits.join(" ")}</p> : null;
+                    })()}
                   </div>
                 ) : (
                   <div className="fld">

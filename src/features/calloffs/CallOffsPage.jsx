@@ -531,6 +531,44 @@ function Assignments({ row }) {
     .map((it) => it.Plot ?? it.Plots ?? String(it.Street_Light_ID ?? ""))
     .filter(Boolean);
 
+  /* The metres an assignment covers.
+
+     A team turning up to dig wants to know how much, and the figure was
+     already on the call-off — every item carries Estimated_Length_m and
+     the items table above shows it — but it stopped there, so the
+     assignment rows named a span and said nothing about its size.
+
+     Three cases, and only three are answerable:
+
+       a named span      that span's length
+       no span named     the whole call-off, which is what it covers
+       a plot range      nothing
+
+     The last is a refusal on purpose. In plot mode the metres belong to
+     the runs, not to the plots, and there is no honest way to divide a
+     span's length between the plots along it — a number worked out that
+     way would look exactly as authoritative as the other two and be a
+     guess. Better a blank the reader can chase than a figure they
+     cannot. */
+  const metresFor = (a) => {
+    const items = row.items || [];
+    const num = (v) => {
+      const n = Number(v);
+      return Number.isFinite(n) && n > 0 ? n : 0;
+    };
+
+    if (a.Span_ID != null) {
+      const it = items.find((x) => Number(x.Span_ID) === Number(a.Span_ID));
+      return it ? num(it.Estimated_Length_m) : 0;
+    }
+    /* No span named: the assignment is the whole call-off. In plot mode
+       that only holds when it takes all the plots too. */
+    if (row.Selection_Mode === "Span" || !a.Plot_Range) {
+      return items.reduce((t, x) => t + num(x.Estimated_Length_m), 0);
+    }
+    return 0;
+  };
+
   const craftName = (id) =>
     crafts.find((c) => Number(c.Craft_ID) === Number(id))?.Craft_Name ?? null;
   const teamName = (id) =>
@@ -890,6 +928,29 @@ function Assignments({ row }) {
                       ?? "all spans"
                     : (a.Plot_Range || "all plots")}
                 </span>
+                {/* How much of it there is.
+
+                    Whole metres. The drawing measures to a tenth, which
+                    is precision a schedule cannot use — "123.4m" of
+                    trench to a team with a digger says nothing "123m"
+                    does not, and reads as though somebody measured it.
+
+                    Nothing at all where there is no length recorded,
+                    rather than "(0m)": a call-off item whose length was
+                    never filled in is not a zero-metre dig, and the
+                    items table above already shows the dash. */}
+                {(() => {
+                  const m = metresFor(a);
+                  if (!m) return null;
+                  return (
+                    <span className="asg-len"
+                      title={a.Span_ID != null
+                        ? "Length of this span"
+                        : "Total length of the spans on this call-off"}>
+                      ({Math.round(m)}m)
+                    </span>
+                  );
+                })()}
                 {/* Off site, from the span this assignment covers.
 
                     A property of the trench, not of the day: a length
@@ -1196,6 +1257,11 @@ const CSS = `
 .asg-part-tag { font: 700 10.5px inherit; padding: 2px 8px; border-radius: 4px;
   background: #e0e7ff; color: #3730a3; white-space: nowrap; }
 .asg-plots { margin-left: auto; font-weight: 600; }
+/* Beside the span it measures, and lighter than it: the label is what
+   the row is, the length is a fact about it. Fixed width so the figures
+   line up down the panel and can be read as a column. */
+.asg-len { min-width: 62px; color: var(--muted); font-weight: 600;
+  font-variant-numeric: tabular-nums; }
 /* Each control the width of what goes in it.
 
    A date field holds ten characters and a team name perhaps thirty —

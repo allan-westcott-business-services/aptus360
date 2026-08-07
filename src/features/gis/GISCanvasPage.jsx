@@ -1039,26 +1039,80 @@ export default function GISCanvasPage() {
      or "isolate this". */
   const [solo, setSolo] = useState(null);
 
-  /* Hide and show are two acts, not one toggle.
+  /* ── H, S and I ──
 
-     H and S each say what they do and can be used on as many layers as
-     you like; a single toggle meant the button's effect depended on a
-     state you had to read off the row first. Both end an isolate, since
-     changing what is visible by hand means the visible set no longer
-     matches what I put on screen — and leaving it lit would say
-     otherwise.
+     Three verbs over one visible set.
 
-     Kept as one function taking a flag rather than two nearly identical
-     ones, so the solo-clearing cannot be remembered in one and
-     forgotten in the other. */
-  const setClassHidden = useCallback((key, hide) => {
+     H hides a layer and leaves the rest alone. S builds a list: press it
+     on gas and only gas is on screen, press it on water as well and
+     both are — S is I with more than one thing in it. I is the same
+     act limited to one, so choosing another drops the first.
+
+     `shownOnly` is what the S buttons are lit by; `hidden` stays the
+     one thing the drawing reads. Two states rather than one because
+     they answer different questions — what did somebody pick, and what
+     is off screen — and deriving the picks back out of the hidden set
+     is not possible once an H has been pressed as well. */
+  const [shownOnly, setShownOnly] = useState([]);
+
+  /* Show only these, and work out what that hides.
+
+     From the features rather than from a list of known classes: a
+     feature is hidden if ANY of its keys is hidden, so showing an
+     electric line type has to leave "electric" showing too or the line
+     disappears under a key nobody pressed. */
+  const applyShown = useCallback((keys) => {
+    setShownOnly(keys);
+    setSolo(keys.length === 1 ? keys[0] : null);
+    if (!keys.length) { setHidden([]); return; }
+
+    const keep = new Set();
+    const all = new Set();
+    for (const f of features) {
+      const ks = classKeys(f);
+      ks.forEach((k) => all.add(k));
+      if (ks.some((k) => keys.includes(k))) ks.forEach((k) => keep.add(k));
+    }
+    setHidden([...all].filter((k) => !keep.has(k)));
+  }, [features, classKeys]);
+
+  /* S means show this, and what that takes depends on what is running.
+
+     With a list in force — after an I, or after another S added to one —
+     S adds this layer to it, so pressing it on gas and then on water
+     leaves both on screen. Pressing it on one already in the list takes
+     it back out.
+
+     With no list running, S simply unhides. That case matters more than
+     it looks: H then S is how anybody expects to put a layer back, and
+     if S started a list instead, hiding gas and showing it again would
+     have hidden everything else on the drawing. */
+  const showClass = useCallback((key) => {
+    if (shownOnly.length) {
+      applyShown(shownOnly.includes(key)
+        ? shownOnly.filter((x) => x !== key)
+        : [...shownOnly, key]);
+      return;
+    }
     setSolo(null);
-    setHidden((h) => (hide
-      ? (h.includes(key) ? h : [...h, key])
-      : h.filter((x) => x !== key)));
-  }, []);
-  const hideClass = useCallback((key) => setClassHidden(key, true), [setClassHidden]);
-  const showClass = useCallback((key) => setClassHidden(key, false), [setClassHidden]);
+    setHidden((h) => h.filter((x) => x !== key));
+  }, [applyShown, shownOnly]);
+
+  const hideClass = useCallback((key) => {
+    /* Hiding one of the layers a list is showing takes it off the list,
+       rather than hiding it twice over. Otherwise pressing H on the
+       only layer showing would leave an empty list still in force and
+       nothing on screen, with every S lit. */
+    if (shownOnly.includes(key)) {
+      applyShown(shownOnly.filter((x) => x !== key));
+      return;
+    }
+    /* Pressing H on a hidden layer puts it back. The button is the one
+       anybody reaches for to undo the press that hid it, and refusing
+       there sends them looking for a control that already exists. */
+    setSolo(null);
+    setHidden((h) => (h.includes(key) ? h.filter((x) => x !== key) : [...h, key]));
+  }, [applyShown, shownOnly]);
 
   /* Isolate one class: hide every class key that isn't carried by a
      feature carrying this one.
@@ -1068,17 +1122,11 @@ export default function GISCanvasPage() {
      soloing an electric line type has to leave "electric" visible or the
      thing being soloed disappears with everything else. */
   const soloClass = useCallback((key) => {
-    if (solo === key) { setSolo(null); setHidden([]); return; }
-    const keep = new Set();
-    const all = new Set();
-    for (const f of features) {
-      const ks = classKeys(f);
-      ks.forEach((k) => all.add(k));
-      if (ks.includes(key)) ks.forEach((k) => keep.add(k));
-    }
-    setSolo(key);
-    setHidden([...all].filter((k) => !keep.has(k)));
-  }, [features, classKeys, solo]);
+    /* The same act as S, with room for one. Pressing it again shows
+       everything, which is the only way back from an isolate that does
+       not require remembering what was on before it. */
+    applyShown(solo === key && shownOnly.length === 1 ? [] : [key]);
+  }, [applyShown, solo, shownOnly]);
 
   /* Show one circuit and hide the rest.
 
@@ -8534,7 +8582,7 @@ export default function GISCanvasPage() {
                         && (showBasemap || !basemap?.Metres_Per_Pixel)}
                       hint="Unhides every layer and ends any circuit isolation"
                       onClick={() => {
-                        setHidden([]); setSolo(null); setIsolatedCircuit(null);
+                        setHidden([]); setSolo(null); setShownOnly([]); setIsolatedCircuit(null);
                         setShowBasemap(true); setLiveTrenchOnly(false);
                       }} />
                     <div className="gm-sep" />
@@ -8573,6 +8621,8 @@ export default function GISCanvasPage() {
                           solo={solo === l.Layer_Key}
                           onHide={() => hideClass(l.Layer_Key)}
                           onShow={() => showClass(l.Layer_Key)}
+                          shown={shownOnly.includes(l.Layer_Key)}
+                          shown={shownOnly.includes(l.Layer_Key)}
                           onSolo={() => soloClass(l.Layer_Key)} />
                       );
                       const byKey = (k) => layers.find((l) => l.Layer_Key === k);
@@ -8607,6 +8657,8 @@ export default function GISCanvasPage() {
                             solo={solo === "boundary:site"}
                             onHide={() => hideClass("boundary:site")}
                             onShow={() => showClass("boundary:site")}
+                            shown={shownOnly.includes("boundary:site")}
+                            shown={shownOnly.includes("boundary:site")}
                             onSolo={() => soloClass("boundary:site")} />
                           <MenuLayer label="Developer Boundary" colour={byKey("boundary")?.Colour}
                             count={classCount["boundary:dev"] || 0}
@@ -8614,6 +8666,8 @@ export default function GISCanvasPage() {
                             solo={solo === "boundary:dev"}
                             onHide={() => hideClass("boundary:dev")}
                             onShow={() => showClass("boundary:dev")}
+                            shown={shownOnly.includes("boundary:dev")}
+                            shown={shownOnly.includes("boundary:dev")}
                             onSolo={() => soloClass("boundary:dev")} />
 
                           {plot && rowFor(plot)}
@@ -8624,6 +8678,8 @@ export default function GISCanvasPage() {
                             solo={solo === "role:spannode"}
                             onHide={() => hideClass("role:spannode")}
                             onShow={() => showClass("role:spannode")}
+                            shown={shownOnly.includes("role:spannode")}
+                            shown={shownOnly.includes("role:spannode")}
                             onSolo={() => soloClass("role:spannode")} />
 
                           {ORDER.map(byKey).filter(Boolean).map(rowFor)}
@@ -8774,6 +8830,8 @@ export default function GISCanvasPage() {
                       solo={solo === "role:spannode"}
                       onHide={() => hideClass("role:spannode")}
                       onShow={() => showClass("role:spannode")}
+                      shown={shownOnly.includes("role:spannode")}
+                      shown={shownOnly.includes("role:spannode")}
                       onSolo={() => soloClass("role:spannode")} />
                     {typesOn("trench").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
@@ -8782,6 +8840,8 @@ export default function GISCanvasPage() {
                         solo={solo === `lt:${t.Type_Key}`}
                         onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
 
@@ -8862,6 +8922,8 @@ export default function GISCanvasPage() {
                         solo={solo === `role:${role}`}
                         onHide={() => hideClass(`role:${role}`)}
                       onShow={() => showClass(`role:${role}`)}
+                      shown={shownOnly.includes(`role:${role}`)}
+                      shown={shownOnly.includes(`role:${role}`)}
                         onSolo={() => soloClass(`role:${role}`)} />
                     ))}
                     {typesOn("electric").map((t) => (
@@ -8871,6 +8933,8 @@ export default function GISCanvasPage() {
                         solo={solo === `lt:${t.Type_Key}`}
                         onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <MenuLayer label="Electric Meters"
@@ -8879,6 +8943,8 @@ export default function GISCanvasPage() {
                       solo={solo === "electric:role:meter"}
                       onHide={() => hideClass("electric:role:meter")}
                       onShow={() => showClass("electric:role:meter")}
+                      shown={shownOnly.includes("electric:role:meter")}
+                      shown={shownOnly.includes("electric:role:meter")}
                       onSolo={() => soloClass("electric:role:meter")} />
                     {[["joint", "Joints"], ["linkbox", "Link boxes"],
                       ["spannode", "Span nodes"]].map(([role, label]) => (
@@ -8888,6 +8954,8 @@ export default function GISCanvasPage() {
                           solo={solo === `role:${role}`}
                           onHide={() => hideClass(`role:${role}`)}
                       onShow={() => showClass(`role:${role}`)}
+                      shown={shownOnly.includes(`role:${role}`)}
+                      shown={shownOnly.includes(`role:${role}`)}
                           onSolo={() => soloClass(`role:${role}`)} />
                       ))}
                     {/* The layer as a whole, matching the row the gas and
@@ -8902,6 +8970,8 @@ export default function GISCanvasPage() {
                       solo={solo === "electric"}
                       onHide={() => hideClass("electric")}
                       onShow={() => showClass("electric")}
+                      shown={shownOnly.includes("electric")}
+                      shown={shownOnly.includes("electric")}
                       onSolo={() => soloClass("electric")} />
 
                     <div className="gm-sep" />
@@ -9011,6 +9081,8 @@ export default function GISCanvasPage() {
                             solo={solo === `lt:${t.Type_Key}`}
                             onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                             onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                         ))}
                         <MenuLayer label="Meters"
@@ -9019,6 +9091,8 @@ export default function GISCanvasPage() {
                           solo={solo === `${key}:role:meter`}
                           onHide={() => hideClass(`${key}:role:meter`)}
                       onShow={() => showClass(`${key}:role:meter`)}
+                      shown={shownOnly.includes(`${key}:role:meter`)}
+                      shown={shownOnly.includes(`${key}:role:meter`)}
                           onSolo={() => soloClass(`${key}:role:meter`)} />
                         <div className="gm-sep" />
                         {/* The fixed plant on this utility. Gas has a
@@ -9074,6 +9148,8 @@ export default function GISCanvasPage() {
                           solo={solo === key}
                           onHide={() => hideClass(key)}
                       onShow={() => showClass(key)}
+                      shown={shownOnly.includes(key)}
+                      shown={shownOnly.includes(key)}
                           onSolo={() => soloClass(key)} />
                       </Menu>
                     );
@@ -9088,6 +9164,8 @@ export default function GISCanvasPage() {
                         solo={solo === `lt:${t.Type_Key}`}
                         onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <MenuLayer label="Columns" count={classCount["role:column"] || 0}
@@ -9095,6 +9173,8 @@ export default function GISCanvasPage() {
                       solo={solo === "role:column"}
                       onHide={() => hideClass("role:column")}
                       onShow={() => showClass("role:column")}
+                      shown={shownOnly.includes("role:column")}
+                      shown={shownOnly.includes("role:column")}
                       onSolo={() => soloClass("role:column")} />
                     {!typesOn("lighting").length && (
                       <MenuItem label="Lighting Layer Missing" hint="run migration 0072" disabled />
@@ -10007,7 +10087,7 @@ export default function GISCanvasPage() {
               <button className="gis-hidden"
                 title="Unhide every layer and end any circuit isolation"
                 onClick={() => {
-                  setHidden([]); setSolo(null); setIsolatedCircuit(null);
+                  setHidden([]); setSolo(null); setShownOnly([]); setIsolatedCircuit(null);
                   setShowBasemap(true); setLiveTrenchOnly(false);
                   setGapList(null);
                 }}>

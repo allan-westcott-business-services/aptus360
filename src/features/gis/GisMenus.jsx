@@ -116,7 +116,7 @@ export function MenuItem({
    set. Hiding gas from the Gas menu and showing it again from Layers is
    the same layer either way. */
 export function MenuLayer({
-  label, hidden, solo, onHide, onShow, onSolo, colour, count,
+  label, hidden, shown, solo, onHide, onShow, onSolo, colour, count,
 }) {
   return (
     <div className={hidden ? "gm-row off" : "gm-row"} data-keep-open>
@@ -124,21 +124,28 @@ export function MenuLayer({
       <span className="gm-lbl">{label}</span>
       {count != null && <em>{count}</em>}
 
-      {/* Lit when hidden, and dead when there is nothing left to do —
-          H on an already hidden layer, S on a showing one.
+      {/* Never disabled.
 
-          Only H lights. Lighting S on every visible row would be a wall
-          of colour saying what the drawing already says, and the row
-          dims when hidden, so the state is legible without it. The
-          disabled button is the feedback: it says the layer is already
-          in that state. */}
+          It was, while the layer was already hidden, on the grounds
+          that there was nothing left for it to do. Which is true and
+          unhelpful: H is the button somebody reaches for to undo an H,
+          and finding it greyed out reads as a broken control rather
+          than as a hint to use the one beside it. It now puts the layer
+          back, so the same button both hides and unhides — and S is
+          left to mean the other thing entirely. */}
       <button className={hidden ? "gm-hs on" : "gm-hs"}
-        title={`Hide ${label}`} disabled={hidden}
+        title={hidden ? `Show ${label}` : `Hide ${label}`}
         aria-pressed={hidden} onClick={onHide}>H</button>
 
-      <button className="gm-hs"
-        title={`Show ${label}`} disabled={!hidden}
-        aria-pressed={!hidden} onClick={onShow}>S</button>
+      {/* S is a pick, not a state, so it stays live whatever the layer
+          is doing: pressing it on a second layer adds that one to what
+          is on screen, and pressing it again on a lit one takes it
+          away. It was disabled while the layer was showing, which made
+          the commonest thing anybody wants — these two and nothing else
+          — impossible to ask for. */}
+      <button className={shown ? "gm-hs pick on" : "gm-hs pick"}
+        title={shown ? `Stop showing only ${label}` : `Show ${label}`}
+        aria-pressed={!!shown} onClick={onShow}>S</button>
 
       {/* Isolate only where there is something to isolate against. The
           background plan has none — hiding everything else to leave a
@@ -222,12 +229,11 @@ const CSS = `
 .gm-hs { width: 20px; height: 20px; flex: none; border: 1px solid var(--border);
   background: var(--white); border-radius: 4px; cursor: pointer; font: 700 10px inherit;
   color: var(--muted); display: inline-flex; align-items: center; justify-content: center; }
-.gm-hs:hover:not(:disabled) { border-color: var(--accent); color: var(--accent); }
-.gm-hs:disabled { opacity: .35; cursor: default; }
-/* Except the hidden one, which has to stay readable while it is off:
-   it is the button saying why the row is dimmed. */
-.gm-hs.on:disabled { opacity: 1; }
+.gm-hs:hover { border-color: var(--accent); color: var(--accent); }
 .gm-hs.on { background: #b91c1c; border-color: #b91c1c; color: #fff; }
 .gm-hs.solo.on { background: var(--accent); border-color: var(--accent); }
+/* A pick, in the accent rather than the red of hidden: it says what is
+   being shown, and the two must not read as the same kind of thing. */
+.gm-hs.pick.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .gm-sep { height: 1px; background: var(--border); margin: 5px 0; }
 `;

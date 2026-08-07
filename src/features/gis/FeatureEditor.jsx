@@ -55,6 +55,7 @@ export default function FeatureEditor({
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
+  const isValve = feature.Feature_Role === "servicevalve";
 
   /* The circuits already on this drawing, with how many meters each
      holds — the count is what tells one circuit from another when the
@@ -384,6 +385,40 @@ export default function FeatureEditor({
               joint looked identical once drawn, and neither said whose
               service it made. Both matter when someone is checking a
               schedule against the ground. */}
+          {/* ── Turning a service valve ──
+
+              The bar is drawn square to the pipe, so what is edited is
+              the pipe's bearing rather than the bar's — the same fact
+              the placement takes off the main it snapped to.
+
+              Here because it cannot always be worked out: a valve
+              dropped where no main has been drawn yet has no angle to
+              take, and one on a main that has since been redrawn keeps
+              the old one. Ninety degrees at a time covers nearly every
+              case, and the box is there for the rest. */}
+          {isValve && (
+            <div className="fld">
+              <label htmlFor="fe-angle">Angle of the main (degrees)</label>
+              <div className="fe-angle">
+                <input id="fe-angle" type="number" step="1"
+                  value={f.Attributes.Angle_Deg ?? ""}
+                  placeholder="0"
+                  onChange={(e) => setAttr("Angle_Deg")(
+                    e.target.value === "" ? null : Number(e.target.value))} />
+                <button className="btn ghost sm"
+                  onClick={() => setAttr("Angle_Deg")(
+                    (((Number(f.Attributes.Angle_Deg) || 0) + 90) % 360 + 360) % 360)}>
+                  Rotate 90&deg;
+                </button>
+              </div>
+              <p className="hint">
+                {f.Attributes.Angle_Deg == null
+                  ? "No main was found under this valve, so it is drawn square to the screen."
+                  : "Taken from the main it sits on. The valve is drawn across it."}
+              </p>
+            </div>
+          )}
+
           {isJoint && (
             <div className="fe-joint">
               <div className="fe-joint-h">
@@ -1394,6 +1429,8 @@ const CSS = `
 .fe-board-hint > span { flex: 1; }
 .fe-way-sel { border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
   font: 600 11px inherit; padding: 1px 3px; background: var(--white); }
+.fe-angle { display: flex; gap: 8px; align-items: center; }
+.fe-angle input { flex: 1; min-width: 0; }
 .fe-warn { margin: 5px 0 0; font-size: 10.5px; font-weight: 600; color: #b45309; }
 .fe-free { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10px inherit; padding: 2px 7px; color: var(--accent); }

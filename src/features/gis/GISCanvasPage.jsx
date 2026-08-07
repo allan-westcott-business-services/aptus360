@@ -1005,19 +1005,6 @@ export default function GISCanvasPage() {
     () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
     [hidden]);
 
-  /* Service valves, worked out from the drawn mains.
-
-     Not stored. A valve is where it is because of where the pipes are,
-     so recording one would be a second copy of a fact the drawing
-     already holds — and one that a redrawn main would leave behind in
-     the wrong place. Recomputed when the features change, which is the
-     only time the answer can differ. */
-  const valves = useMemo(
-    () => (hidden.includes("water")
-      ? []
-      : serviceValves(features, { lineTypes }).valves),
-    [features, lineTypes, hidden]);
-
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
   const classCount = useMemo(() => {
@@ -2088,6 +2075,55 @@ export default function GISCanvasPage() {
              a code change. */
           const ps = styleFor(f);
           fill = ps.colour ?? fill;
+
+          /* ── A service valve ──
+
+             A bar across the pipe, a metre of real ground wide, with SV
+             beside it. Not a symbol from the style table: every symbol
+             there is drawn about its own centre with no direction, and
+             a valve is only meaningful turned to the main it sits in.
+
+             Angle_Deg is the bearing of the pipe. The bar is drawn
+             square to it, turned here rather than stored that way, so
+             the drawing and the stored fact cannot come apart.
+
+             The screen's y grows downward and the drawing's does not
+             flip it — toPx is a plain scale and translate — so the
+             normal is (-sin, cos) with no sign correction. Negating y
+             here was what put the bar at a mirror of the right angle:
+             square on a pipe running north or east, visibly wrong on
+             anything diagonal, which is why the axis-aligned tests all
+             passed. */
+          if (f.Feature_Role === "servicevalve") {
+            const deg = Number(f.Attributes?.Angle_Deg);
+            const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+            const halfPx = (VALVE_WIDTH_M / 2) * view.scale;
+            const nx = -Math.sin(rad) * halfPx;
+            const ny = Math.cos(rad) * halfPx;
+
+            ctx.save();
+            ctx.strokeStyle = on ? "#1d4ed8" : fill;
+            ctx.lineWidth = Math.max(2, Math.min(6, 0.12 * view.scale));
+            ctx.lineCap = "butt";
+            ctx.beginPath();
+            ctx.moveTo(p.x - nx, p.y - ny);
+            ctx.lineTo(p.x + nx, p.y + ny);
+            ctx.stroke();
+
+            if (view.scale > 2) {
+              ctx.fillStyle = on ? "#1d4ed8" : fill;
+              ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              ctx.fillText("SV", p.x + nx + 4, p.y + ny);
+              ctx.textBaseline = "alphabetic";
+            }
+            ctx.restore();
+            /* Nothing else to draw: the bar is the symbol. Returning
+               here skips the fill and stroke below, which would put a
+               circle on top of it. */
+            return;
+          }
           const r = (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx);
 
           /* The circuit this meter is on, drawn round it.
@@ -2418,58 +2454,6 @@ export default function GISCanvasPage() {
         }
       }
     });
-
-    /* ── Service valves ──
-
-       A bar across the spur a metre and a half down from the tee, with
-       SV beside it. Where they go is worked out from the mains, so this
-       only draws them.
-
-       After the features rather than among them: a valve annotates the
-       run it sits on and belongs over it, and drawing it inside the
-       loop would put it under whatever was drawn next.
-
-       The bar is a metre of real ground, so it is scaled — it is a
-       thing in the trench with a size. The letters are not, for the
-       same reason a label is not, and both are held back at small
-       scales where a metre is a couple of pixels and the pair would be
-       a smudge. */
-    if (valves.length && view.scale > 2) {
-      const colour = waterColour;
-      const halfPx = (VALVE_WIDTH_M / 2) * view.scale;
-
-      ctx.save();
-      ctx.strokeStyle = colour;
-      ctx.lineWidth = Math.max(2, Math.min(6, 0.12 * view.scale));
-      ctx.lineCap = "butt";
-      ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
-      ctx.fillStyle = colour;
-      ctx.textAlign = "left";
-      ctx.textBaseline = "middle";
-
-      for (const v of valves) {
-        const c = toPx(v.at);
-        /* Square to the pipe. The left normal of the direction the
-           module handed back, turned here rather than stored there —
-           the same fact twice is the same fact drifting. */
-        const nx = -v.dir[1];
-        const ny = v.dir[0];
-        /* Screen y grows downward while the drawing's grows up, so the
-           normal is flipped on that axis to keep the bar square to the
-           pipe as drawn rather than to the pipe as stored. */
-        const dx = nx * halfPx;
-        const dy = -ny * halfPx;
-
-        ctx.beginPath();
-        ctx.moveTo(c.x - dx, c.y - dy);
-        ctx.lineTo(c.x + dx, c.y + dy);
-        ctx.stroke();
-
-        /* Beside the bar, off its end, clear of the pipe it crosses. */
-        ctx.fillText("SV", c.x + dx + 4, c.y + dy);
-      }
-      ctx.restore();
-    }
 
     /* Where the next click will land, and what it is latching onto.
 
@@ -2806,7 +2790,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, valves, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -4503,6 +4487,9 @@ export default function GISCanvasPage() {
        plant standing in the ground, not a point on a main. Snapping it
        to the nearest gas main would put it wherever the pipe happens to
        run rather than where the kiosk goes. */
+    /* A service valve goes on the main itself, and needs to know which
+       way the main runs so the bar can be drawn across it. */
+    const isValve = role === "servicevalve";
     const toTrench = role === "substation" || role === "governor";
     const targets = toTrench
       ? visible.filter((f) => f.Feature_Type === "line"
@@ -4516,11 +4503,37 @@ export default function GISCanvasPage() {
       const r = nearestOnPolyline(point, t.Geometry || []);
       if (r && (!best || r.d < best.d)) best = { ...r, line: t };
     }
-    if (best) { point = best.q; note = ` on ${best.line.Label ?? "the network"}`; }
-    else {
+    /* The bearing of the main under it, where there is one.
+
+       Taken from the segment the snap landed on, which is the length of
+       pipe the valve is actually in — not from the line's first and
+       last point, which on a main that turns a corner would be a
+       direction the pipe never runs.
+
+       Null where no main was found. The valve is still placed, drawn
+       across nothing in particular, and can be turned by hand: a valve
+       somebody has put down and cannot angle is worse than one pointing
+       the wrong way. */
+    let angle = null;
+
+    if (best) {
+      point = best.q;
+      note = ` on ${best.line.Label ?? "the network"}`;
+      if (isValve) {
+        const g = best.line.Geometry || [];
+        const a = g[best.index - 1];
+        const b = g[best.index];
+        if (a && b) {
+          const d = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (d) angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+        }
+      }
+    } else {
       note = toTrench
         ? " \u2014 not on a trench yet, draw one through it to join the network"
-        : " \u2014 not on a main yet, draw the main through it later";
+        : isValve
+          ? " \u2014 not on a main, so it is drawn square to the screen. Turn it in the editor."
+          : " \u2014 not on a main yet, draw the main through it later";
     }
 
     const count = features.filter((f) => f.Feature_Role === role).length + 1;
@@ -4528,7 +4541,8 @@ export default function GISCanvasPage() {
       ?? (layerKey === "gas" ? "Gas" : layerKey === "water" ? "Water" : "Electric");
     const label = role === "substation" ? `Substation ${count}`
       : role === "governor" ? `Gas Governor ${count}`
-        : `${utilityName} POC`;
+        : isValve ? `SV ${count}`
+          : `${utilityName} POC`;
 
     try {
       await createFeature(projectId, {
@@ -4537,7 +4551,13 @@ export default function GISCanvasPage() {
         Feature_Role: role,
         Geometry: [point],
         Label: label,
-        Attributes: role === "substation" ? {} : { Output: null },
+        Attributes: role === "substation" ? {}
+          /* Angle_Deg is the bearing of the pipe, not of the bar. The
+             bar is drawn square to it, and storing the thing being
+             measured rather than the thing being drawn means the two
+             cannot disagree about which is which. */
+          : isValve ? { Angle_Deg: angle }
+            : { Output: null },
       });
       await load(projectId);
       setStatus(`${label} placed${note}`);
@@ -6820,6 +6840,50 @@ export default function GISCanvasPage() {
       setProgress({ done: plan.runs.length, total: plan.runs.length, label: "Linking" });
       const fresh = await listGis(projectId);
       const all = fresh.features || [];
+
+      /* ── Service valves ──
+
+         A bar across each spur, a metre and a half down from the tee.
+         Worked out from the mains that have just been drawn, which is
+         why this reads them back rather than using the plan: the runs
+         are geometry, and where a spur leaves is a fact about the
+         network they form.
+
+         Real features, not something drawn each frame. A valve has to
+         be selectable and deletable — a drawing has valves somebody
+         adds and takes away — and a mark computed at render time can be
+         neither.
+
+         Generated ones are replaced on every rebuild, like the pipe.
+         One placed by hand is left exactly where it is, for the same
+         reason a hand-drawn cable survives Build LV Network. */
+      const oldValves = all.filter((f) => f.Feature_Role === "servicevalve"
+        && f.Layer_Key === "water"
+        && !!f.Attributes?.Generated);
+      if (oldValves.length) {
+        await deleteFeatures(projectId, oldValves.map((f) => f.Feature_ID));
+      }
+
+      const { valves } = serviceValves(all, { lineTypes });
+      let valveCount = 0;
+      for (const [i, v] of valves.entries()) {
+        await createFeature(projectId, {
+          Layer_Key: "water",
+          Feature_Type: "point",
+          Feature_Role: "servicevalve",
+          Geometry: [v.at],
+          Label: `SV ${i + 1}`,
+          Attributes: {
+            /* The bearing of the pipe it sits in. The bar is drawn
+               square to this. */
+            Angle_Deg: Math.round(
+              (Math.atan2(v.dir[1], v.dir[0]) * 180) / Math.PI * 10) / 10,
+            Generated: true,
+          },
+        });
+        valveCount += 1;
+      }
+
       const links = all
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
         .map((f) => ({
@@ -6837,6 +6901,7 @@ export default function GISCanvasPage() {
       await load(projectId);
       setError("");
       setStatus(`Water network: ${plan.runs.length} run(s), ${plan.totalM} m`
+        + (valveCount ? `, ${valveCount} service valve(s)` : "")
         + `, ${plan.meters} water meter(s) \u2014 `
         + plan.bySize.map((b) => `${b.label} ${b.metres} m`).join(", ")
         + (plan.oversized.length
@@ -8835,6 +8900,12 @@ export default function GISCanvasPage() {
                             hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
                             disabled={!projectId || !!busy}
                             onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
+                        )}
+                        {key === "water" && (
+                          <MenuItem label="+ Service Valve"
+                            hint="Snaps to the nearest water main and takes its angle"
+                            disabled={!projectId}
+                            onClick={() => placeNode("servicevalve", "water")} />
                         )}
                         {key === "water" && (
                           <MenuItem

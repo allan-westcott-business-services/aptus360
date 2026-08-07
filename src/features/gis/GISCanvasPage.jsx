@@ -5698,6 +5698,16 @@ export default function GISCanvasPage() {
     /* Points the walk wanted and did not find. See below: the build no
        longer creates span nodes. */
     let missingNodes = 0;
+    /* Nodes already spoken for by a circuit earlier in this run.
+
+       `src` is a snapshot taken before any of this, so a node adopted by
+       circuit A still reads as unassigned when circuit B comes to look
+       at it, and both would claim the same point. */
+    const takenNodes = new Set();
+    /* And points that are where this circuit wants one but belong to
+       another circuit, which is a different problem from none being
+       there and reads differently on the status line. */
+    let contested = 0;
     /* The drawing to route from, and whether to ask first.
 
        Both exist for the automatic rebuild after a meter is moved
@@ -5892,8 +5902,39 @@ export default function GISCanvasPage() {
            A node already within a metre of a planned position keeps its
            identity — its cable, and anything referring to its id — and
            takes the new number. */
+        /* This circuit's own nodes. Used at the end to renumber the
+           ones the walk did not ask for — those are this circuit's to
+           renumber and nobody else's. */
         const existing = src.filter((f) => f.Feature_Role === "spannode"
           && Number(f.Attributes?.Circuit_ID) === Number(c.id));
+
+        /* And the nodes this circuit may adopt: its own, plus any that
+           belong to no circuit yet.
+
+           This is the fix for a break between two routines that each
+           looked correct on its own. Trench › Place Span Nodes puts
+           nodes on the trench and gives them no circuit, because a span
+           node is a fact about the dig — the note below says so, and it
+           is right. The build then looked for nodes that already carried
+           this circuit's id, so it never saw them, counted every one as
+           missing, and left the drawing with a single span node: the
+           origin, created when the circuit was linked.
+
+           Nothing else assigns Circuit_ID to a span node, so the gap was
+           permanent, and its symptom was silent. A levels check filters
+           its stops by circuit, found only A0, and every leg therefore
+           ran to a dead end — which the tracer labels with the meters
+           it ends at. The table read "A0 → Electric Meter 15" where it
+           should have read "A0 → A1", and looked like a naming fault
+           rather than an empty circuit.
+
+           A node belonging to a different circuit is left alone. Two
+           circuits can run through the same trench, and taking a point
+           the other one is measuring from would move its schedule. */
+        const adoptable = src.filter((f) => f.Feature_Role === "spannode"
+          && !takenNodes.has(f.Feature_ID)
+          && (f.Attributes?.Circuit_ID == null
+            || Number(f.Attributes.Circuit_ID) === Number(c.id)));
         const claimed = new Set();
         const renumber = [];
         let seq = 0;
@@ -5905,21 +5946,28 @@ export default function GISCanvasPage() {
           const num = nd.kind === "origin" ? 0 : (seq += 1);
           const label = spanLabel(c.letter, num);
 
-          const match = existing.find((f) => !claimed.has(f.Feature_ID)
-            && Math.hypot(f.Geometry[0][0] - nd.point[0],
-                          f.Geometry[0][1] - nd.point[1]) < 1);
+          const near = (f) => Math.hypot(f.Geometry[0][0] - nd.point[0],
+                                         f.Geometry[0][1] - nd.point[1]) < 1;
+          const match = adoptable.find((f) => !claimed.has(f.Feature_ID) && near(f));
 
           if (match) {
             claimed.add(match.Feature_ID);
+            takenNodes.add(match.Feature_ID);
             /* Only where something actually differs — a rebuild that
-               changes nothing should write nothing. */
+               changes nothing should write nothing. Membership counts as
+               a difference: a node sitting in the right place with the
+               right number and no circuit is the case this whole thing
+               was failing on, and skipping it as unchanged would leave
+               it exactly as it was. */
             if (String(match.Attributes?.Span_Seq) !== String(num)
-                || match.Attributes?.Span_Kind !== nd.kind) {
+                || match.Attributes?.Span_Kind !== nd.kind
+                || Number(match.Attributes?.Circuit_ID) !== Number(c.id)) {
               renumber.push({
                 Feature_ID: match.Feature_ID,
                 Label: `Point ${label}`,
                 Attributes: {
                   ...match.Attributes,
+                  Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
                   Span_Seq: num, Span_Label: label, Span_Kind: nd.kind,
                   /* A node that had no cable gets the default; one that
                      has a cable someone chose keeps it. */
@@ -5947,7 +5995,8 @@ export default function GISCanvasPage() {
              to place the nodes on the trench — Trench → Place Span
              Nodes — not to have two places that create them and
              disagree. */
-          missingNodes += 1;
+          if (src.some((f) => f.Feature_Role === "spannode" && near(f))) contested += 1;
+          else missingNodes += 1;
         }
 
         /* Nodes the build did not place — put there by hand, or left
@@ -6028,6 +6077,8 @@ export default function GISCanvasPage() {
         + (jointsMade ? `, ${jointsMade} joint(s)` : "")
         /* What the build wanted and could not find, so the gap is
            reported rather than filled in silently. */
+        + (contested
+          ? `, ${contested} span node(s) belong to another circuit` : "")
         + (missingNodes
           ? `, ${missingNodes} span node(s) missing \u2014 place them from `
             + "Trench \u2192 Place Span Nodes"

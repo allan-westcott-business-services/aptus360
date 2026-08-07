@@ -100,6 +100,13 @@ import { usePdfPage, drawTile } from "./usePdfPage.js";
 const GRID_M = 5;                 // metres between grid lines
 const HIT_PX = 10;
 
+/* The boundary point is drawn in ink rather than in a utility's colour.
+
+   It marks one place for electric, gas and water alike — where the
+   network stops and the property begins — so painting it green would
+   say it was the gas one's. */
+const BOUNDARY_INK = "#334155";
+
 export default function GISCanvasPage() {
   const wrapRef = useRef(null);
   const canvasRef = useRef(null);
@@ -999,11 +1006,23 @@ export default function GISCanvasPage() {
     return out;
   }, [features]);
 
-  /* Hidden with the water layer, since that is what it belongs to. The
-     mark sits on a plot seed, so nothing else would take it away. */
+  /* Whether the circled A is drawn rather than the plain diamond. The
+     A is a water mark; the point under it is not. */
   const waterShown = useMemo(
     () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
     [hidden]);
+
+  /* Whether boundary points are drawn at all.
+
+     They belong to every utility, so they are shown while any of them
+     is — or while the plots are. Isolating a utility hides the plot
+     layer, since a seed carries no utility's keys, and tying the mark
+     to the seed is what made Isolate Water take the boundary points
+     with it. */
+  const boundaryShown = useMemo(() => {
+    if (!hidden.includes("plot")) return true;
+    return layers.some((l) => l.Utility_ID != null && !hidden.includes(l.Layer_Key));
+  }, [hidden, layers]);
 
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
@@ -1963,6 +1982,9 @@ export default function GISCanvasPage() {
            the copy stored on the seed when it was placed — so seedStyle's
            colour was computed and then thrown away, and changing a house
            type left every seed the colour of the type it used to be. */
+        /* Resolved once for the whole point, because the label below
+           needs it as well as the symbol does. */
+        const pointStyle = styleFor(f);
         const ss = isSeed ? seedStyle(f, on) : null;
         /* What this point is painted with.
 
@@ -1982,98 +2004,12 @@ export default function GISCanvasPage() {
         let fill = isSeed ? ss.colour : colour;
 
         if (isSeed) {
-          /* The boundary point, where the plot has one.
-
-             A small open diamond with a hair line back to the seed. It
-             has to be visible or it cannot be checked: it is clicked
-             once, it decides where every service trench on that plot
-             stops, and an invisible point is one nobody can tell is in
-             the wrong place until the dig is drawn.
-
-             Drawn under the seed symbol, thin and grey, because it is a
-             note about the plot rather than another thing on the site —
-             a hundred of these should not read as a hundred features. */
-          const at = f.Attributes?.Boundary_At;
-          if (Array.isArray(at) && at.length === 2) {
-            const b = toPx([Number(at[0]), Number(at[1])]);
-            if (Number.isFinite(b.x) && Number.isFinite(b.y)) {
-            ctx.save();
-              ctx.globalAlpha = on ? 0.9 : 0.5;
-              ctx.beginPath();
-              ctx.moveTo(p.x, p.y);
-              ctx.lineTo(b.x, b.y);
-              ctx.strokeStyle = "#64748b";
-              ctx.lineWidth = 1;
-              ctx.setLineDash([3, 3]);
-              ctx.stroke();
-              ctx.setLineDash([]);
-
-              /* A circled A where the plot takes water.
-
-                 The mark a water drawing carries at the boundary — the
-                 point the supply becomes the property's. Drawn in the
-                 water layer's colour, so it follows the utility with
-                 everything else rather than being a colour of its own.
-
-                 It replaces the plain diamond rather than sitting beside
-                 it: both mean the same point, and two marks on one
-                 position read as two things.
-
-                 Sized in pixels, not metres. It is an annotation rather
-                 than a thing in the ground — the same reason a label
-                 does not grow — and one that scaled would be a speck at
-                 site level and cover the plot zoomed in. It is held back
-                 until there is room for it to be legible at all. */
-              const isWater = waterShown && f.Plot_ID != null
-                && waterPlots.has(Number(f.Plot_ID));
-
-              if (isWater && view.scale > 3) {
-                const r = 9;
-                ctx.globalAlpha = 1;
-                ctx.beginPath();
-                ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
-                /* Filled white first, so the circle reads over a trench
-                   or a basemap line running under it. */
-                ctx.fillStyle = "#fff";
-                ctx.fill();
-                ctx.strokeStyle = waterColour;
-                ctx.lineWidth = 2.5;
-                ctx.stroke();
-
-                ctx.fillStyle = waterColour;
-                ctx.font = `700 ${Math.round(r * 1.5)}px ui-sans-serif, system-ui, sans-serif`;
-                ctx.textAlign = "center";
-                ctx.textBaseline = "middle";
-                /* Baseline set explicitly and put back after: the label
-                   drawing further down assumes the default, and leaving
-                   it on middle shifted every label on the drawing by
-                   half a line. */
-                ctx.fillText("A", b.x, b.y + 0.5);
-                ctx.textBaseline = "alphabetic";
-              } else {
-                ctx.beginPath();
-                ctx.moveTo(b.x, b.y - 4);
-                ctx.lineTo(b.x + 4, b.y);
-                ctx.lineTo(b.x, b.y + 4);
-                ctx.lineTo(b.x - 4, b.y);
-                ctx.closePath();
-                ctx.fillStyle = "#fff";
-                ctx.fill();
-                ctx.strokeStyle = "#64748b";
-                ctx.lineWidth = 1.5;
-                ctx.stroke();
-              }
-              ctx.restore();
-              ctx.beginPath();
-            }
-          }
-
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
                 } else {
           /* Symbol, size and colour come from the style, so a DNO that
              draws meters as hexagons in its own green gets both without
              a code change. */
-          const ps = styleFor(f);
+          const ps = pointStyle;
           fill = ps.colour ?? fill;
 
           /* ── A service valve ──
@@ -2179,7 +2115,7 @@ export default function GISCanvasPage() {
            is. */
         if (f.Label && (on || showLabels) && view.scale > 2.5
             && !isMeter && f.Feature_Role !== "spannode") {
-          ctx.fillStyle = "#0f172a";
+          ctx.fillStyle = pointStyle.labelColour;
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";
           ctx.fillText(f.Label, p.x, p.y - (isSeed ? 15 : 11));
@@ -2448,12 +2384,101 @@ export default function GISCanvasPage() {
 
             ctx.fillStyle = "rgba(255,255,255,.9)";
             ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
-            ctx.fillStyle = "#0f172a";
+            /* The white plate behind it stays white whatever the text
+               is. It exists so a tag can be read over a trench, and
+               colouring it with the label would take that away just
+               where it is needed most. */
+            ctx.fillStyle = st.labelColour;
             ctx.fillText(txt, mid.x, mid.y - 9);
           }
         }
       }
     });
+
+    /* ── Boundary points ──
+
+       Where a plot's services stop being the network's and start being
+       the property's. Drawn here, in a pass of their own over every
+       seed rather than inside the one that draws them.
+
+       It used to be drawn with the seed, which meant it was hidden with
+       the seed — and isolating a utility hides the plot layer, because
+       a seed carries no utility's keys. So Isolate Water took the
+       boundary points with it, at exactly the moment somebody is
+       looking at where the water stops.
+
+       A boundary point belongs to every utility rather than to any one
+       of them, so it is shown while anything it relates to is shown:
+       the plots themselves, or any utility layer. Only when all of them
+       are off does it go.
+
+       Neutral, not the water colour it had. It marks one point for
+       electric, gas and water alike, and painting it in one of their
+       colours says it belongs to that one. */
+    if (boundaryShown) {
+      for (const f of features) {
+        if (f.Feature_Role !== "plot") continue;
+        const at = f.Attributes?.Boundary_At;
+        if (!Array.isArray(at) || at.length !== 2) continue;
+        const b = toPx([Number(at[0]), Number(at[1])]);
+        if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
+        const on = selected.includes(f.Feature_ID);
+
+        ctx.save();
+        ctx.globalAlpha = on ? 0.95 : 0.7;
+
+        /* A leader back to the seed, only while the seed is there to
+           lead to. With the plots hidden it would point at nothing. */
+        if (!hidden.includes("plot") && (f.Geometry || []).length) {
+          const p0 = toPx(f.Geometry[0]);
+          ctx.beginPath();
+          ctx.moveTo(p0.x, p0.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.strokeStyle = "#64748b";
+          ctx.lineWidth = 1;
+          ctx.setLineDash([3, 3]);
+          ctx.stroke();
+          ctx.setLineDash([]);
+        }
+
+        const isWater = waterShown && f.Plot_ID != null
+          && waterPlots.has(Number(f.Plot_ID));
+
+        if (isWater && view.scale > 3) {
+          const r = 9;
+          ctx.globalAlpha = 1;
+          ctx.beginPath();
+          ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
+          /* White behind it, so the ring reads over a trench or a
+             basemap line running under it. */
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.strokeStyle = BOUNDARY_INK;
+          ctx.lineWidth = 2.5;
+          ctx.stroke();
+
+          ctx.fillStyle = BOUNDARY_INK;
+          ctx.font = `700 ${Math.round(r * 1.5)}px ui-sans-serif, system-ui, sans-serif`;
+          ctx.textAlign = "center";
+          ctx.textBaseline = "middle";
+          ctx.fillText("A", b.x, b.y + 0.5);
+          ctx.textBaseline = "alphabetic";
+        } else {
+          ctx.beginPath();
+          ctx.moveTo(b.x, b.y - 4);
+          ctx.lineTo(b.x + 4, b.y);
+          ctx.lineTo(b.x, b.y + 4);
+          ctx.lineTo(b.x - 4, b.y);
+          ctx.closePath();
+          ctx.fillStyle = "#fff";
+          ctx.fill();
+          ctx.strokeStyle = "#64748b";
+          ctx.lineWidth = 1.5;
+          ctx.stroke();
+        }
+        ctx.restore();
+      }
+    }
 
     /* Where the next click will land, and what it is latching onto.
 
@@ -2790,7 +2815,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, boundaryShown, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

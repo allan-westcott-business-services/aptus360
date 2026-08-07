@@ -29,7 +29,7 @@ const WEIGHT = {
 /* The fields a style can carry. Anything null on a row is inherited
    from the row below it rather than overriding with a blank. */
 const FIELDS = [
-  "Colour", "Dashed", "Dash_Pattern", "Symbol",
+  "Colour", "Label_Colour", "Dashed", "Dash_Pattern", "Symbol",
   "Width_Px", "Width_M", "Scale_Width", "Min_Width_Px", "Max_Width_Px",
   "Symbol_Size_Px", "Symbol_Size_M", "Scale_Symbol", "Min_Symbol_Px", "Max_Symbol_Px",
   "Min_Scale", "Max_Scale", "Label_Min_Scale",
@@ -124,6 +124,15 @@ export function appearance(style, scale, fallback = {}) {
   return {
     visible,
     colour: style.Colour ?? fallback.colour ?? "#64748b",
+    /* The text drawn for this feature. Its own field rather than the
+       line's colour: a label has to be read against the background it
+       sits on, and the thing it names is often the wrong colour for
+       that — a label in a pale amber over a white drawing is the run
+       being legible and its name not.
+
+       Near-black where nothing sets one, which is what the canvas
+       painted before there was anywhere to say otherwise. */
+    labelColour: style.Label_Colour ?? fallback.labelColour ?? "#0f172a",
     widthPx: Math.max(0.5, widthPx),
     dash: style.Dashed ? parseDash(style.Dash_Pattern) : [],
     symbol: style.Symbol ?? fallback.symbol ?? "circle",

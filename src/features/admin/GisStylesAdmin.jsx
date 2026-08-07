@@ -32,7 +32,7 @@ const asPct = (v) => {
 const BLANK = {
   Style_Name: "", Layer_Key: "", Line_Type: "", Feature_Role: "",
   Utility_ID: "", Organisation_ID: "", Site: "",
-  Colour: "#64748b", Dashed: false, Dash_Pattern: "", Symbol: "",
+  Colour: "#64748b", Label_Colour: "", Dashed: false, Dash_Pattern: "", Symbol: "",
   Width_Px: "", Width_M: "", Scale_Width: false,
   Min_Width_Px: "", Max_Width_Px: "", Symbol_Size_Px: "",
   Symbol_Size_M: "", Scale_Symbol: false, Min_Symbol_Px: "", Max_Symbol_Px: "",
@@ -96,6 +96,9 @@ export default function GisStylesAdmin() {
     const num = (v) => (v === "" || v == null ? null : Number(v));
     return appearance({
       Colour: draft.Colour || null,
+      /* Blank means inherit, so it is stored as null rather than as an
+         empty string — the cascade tests for null and "" is a value. */
+      Label_Colour: draft.Label_Colour || null,
       Dashed: !!draft.Dashed,
       Dash_Pattern: draft.Dash_Pattern || null,
       Symbol: draft.Symbol || null,
@@ -328,6 +331,32 @@ export default function GisStylesAdmin() {
                     <input id="gs-col" type="color" value={draft.Colour || "#64748b"}
                       onChange={set("Colour")} />
                     <input value={draft.Colour} onChange={set("Colour")} placeholder="#64748b" />
+                  </div>
+                </div>
+
+                {/* The text drawn for whatever this row matches.
+
+                    Its own field rather than following the line's
+                    colour: a label has to read against the drawing it
+                    sits on, and the thing it names is often the wrong
+                    colour for that.
+
+                    Blank inherits — from a less specific row, and from
+                    the canvas default when nothing sets one. The Clear
+                    button is how it gets back to blank once a picker
+                    has been used, since a colour input has no empty. */}
+                <div className="fld">
+                  <label htmlFor="gs-lblcol">Label colour</label>
+                  <div className="gs-colrow">
+                    <input id="gs-lblcol" type="color"
+                      value={draft.Label_Colour || "#0f172a"}
+                      onChange={set("Label_Colour")} />
+                    <input value={draft.Label_Colour} onChange={set("Label_Colour")}
+                      placeholder="inherits" />
+                    <button className="btn ghost sm"
+                      onClick={() => setDraft((d) => ({ ...d, Label_Colour: "" }))}>
+                      Clear
+                    </button>
                   </div>
                 </div>
                 <div className="fld">

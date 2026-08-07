@@ -950,13 +950,6 @@ function Assignments({ row }) {
                     </span>
                   );
                 })()}
-                <span className="asg-plots">
-                  {row.Selection_Mode === "Span"
-                    ? (row.items || []).find((it) =>
-                      Number(it.Span_ID) === Number(a.Span_ID))?.Plots
-                      ?? "all spans"
-                    : (a.Plot_Range || "all plots")}
-                </span>
                 {/* Where this team's work has got to.
 
                     A select rather than a pill with a menu behind it:
@@ -989,6 +982,13 @@ function Assignments({ row }) {
                     </select>
                   </label>
                 )}
+                <span className="asg-plots">
+                  {row.Selection_Mode === "Span"
+                    ? (row.items || []).find((it) =>
+                      Number(it.Span_ID) === Number(a.Span_ID))?.Plots
+                      ?? "all spans"
+                    : (a.Plot_Range || "all plots")}
+                </span>
                 {/* How much of it there is.
 
                     Whole metres. The drawing measures to a tenth, which

@@ -30,6 +30,37 @@ export default function DesignEditModal({
      picker rather than silently turning into a text box. */
   const isElectric = Number(f.Utility_ID) === 1;
 
+  /* ── The operators this utility's design may name ──
+
+     Filtered by the utility, which is what Organisation_Utility records
+     and what the legacy IDNO and DNO tables cannot answer. A water
+     design should not offer the electric DNO, and until now every
+     picker offered everybody.
+
+     An operator with no utilities assigned is not shown — nobody has
+     said whether it does water — but the count is, because a name
+     missing from a dropdown with no explanation is the fault this is
+     fixing, and hiding a different set silently would just move it.
+
+     Whatever is already selected stays in its list even if it would not
+     qualify, so opening a design saved before this rule shows what it
+     actually holds rather than appearing empty. */
+  const utilityId = Number(f.Utility_ID);
+  const covers = (ids) => (ids || []).some((x) => Number(x) === utilityId);
+
+  const idnoChoices = (lookups.idnos || [])
+    .filter((i) => covers(i.utility_ids) || Number(i.IDNO_ID) === Number(f.IDNO_ID));
+
+  const dnoChoices = (lookups.operators || [])
+    .filter((o) => (o.role_keys || []).some((k) => String(k).toLowerCase() === "dno"))
+    .filter((o) => covers(o.utility_ids)
+      || Number(o.Organisation_ID) === Number(f.DNO_Organisation_ID));
+
+  /* Operators holding the role but assigned to no utility at all. */
+  const unassignedDnos = (lookups.operators || [])
+    .filter((o) => (o.role_keys || []).some((k) => String(k).toLowerCase() === "dno"))
+    .filter((o) => !(o.utility_ids || []).length).length;
+
   const cableLabel = (c) => {
     const t = (lookups.cableTypes || []).find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
@@ -150,17 +181,43 @@ export default function DesignEditModal({
             </div>
           </div>
 
-          <p className="dm-label">Adopting operator</p>
+          <p className="dm-label">Operators</p>
           <div className="dm-grid">
             <div className="fld">
-              <label htmlFor="dm-idno">Operator</label>
+              <label htmlFor="dm-idno">Adopting operator</label>
               <select id="dm-idno" value={f.IDNO_ID ?? ""}
                 onChange={(e) => set("IDNO_ID")(num(e.target.value))}>
                 <option value="">&mdash;</option>
-                {(lookups.idnos || []).map((i) => (
+                {idnoChoices.map((i) => (
                   <option key={i.IDNO_ID} value={i.IDNO_ID}>{i.IDNO_Name}</option>
                 ))}
               </select>
+            </div>
+            {/* The DNO for this utility \u2014 the electric one on the
+                electric design, the water one on the water design. One
+                field per design rather than three on the project,
+                because a design is already per utility and a fourth
+                utility should not need a new column. */}
+            <div className="fld">
+              <label htmlFor="dm-dno">DNO</label>
+              <select id="dm-dno" value={f.DNO_Organisation_ID ?? ""}
+                onChange={(e) => set("DNO_Organisation_ID")(num(e.target.value))}>
+                <option value="">&mdash;</option>
+                {dnoChoices.map((o) => (
+                  <option key={o.Organisation_ID} value={o.Organisation_ID}>{o.Name}</option>
+                ))}
+              </select>
+              {!dnoChoices.length && (
+                <p className="hint">
+                  No DNO is marked as working in this utility. Set that in
+                  Admin &rsaquo; Organisations.
+                </p>
+              )}
+              {unassignedDnos > 0 && (
+                <p className="hint">
+                  {unassignedDnos} DNO(s) hidden &mdash; no utilities assigned to them.
+                </p>
+              )}
             </div>
             <div className="fld grow">
               <label htmlFor="dm-ref">Reference</label>

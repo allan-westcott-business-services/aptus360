@@ -11,6 +11,10 @@ const DESIGN_FIELDS = new Set([
   "Designer_ID", "Design_Status_ID", "Design_Checked_By", "POC_Status_ID",
   "Target_Date", "Actual_Date", "Revision", "Carried_Forward",
   "External_Design", "IDNO_ID", "Reference",
+  /* The DNO for this utility. A design fact, edited beside the adopting
+     operator — and, like the defaults below, dropped silently by the
+     PATCH if it is not named here. */
+  "DNO_Organisation_ID",
   "Manual_Base_Points", "Base_Points_Overridden",
   /* What new runs on this utility are drawn with. A design decision, so
      it belongs with the design fields — and it has to be listed here or

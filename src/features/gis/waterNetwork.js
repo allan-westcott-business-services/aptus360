@@ -104,8 +104,11 @@ function distToLine(p, g = []) {
    than an unanswerable question: the lower Display_Order wins, so the
    drawing is the same every time it is built. */
 export function sizeTable(rows = [], opts = {}) {
-  const { operatorId = null, operators = [] } = opts;
-  const same = (a, b) => a != null && b != null && Number(a) === Number(b);
+  /* Operators, plural: a project has an adopting operator and a DNO,
+     and a rule may be written against either. Both are organisations,
+     so this is one list rather than two fields to compare separately. */
+  const { operatorIds = [], operators = [] } = opts;
+  const mineIds = operatorIds.filter((x) => x != null).map(Number);
 
   /* The operators each rule names, gathered once rather than scanned
      per rule per diameter. */
@@ -122,7 +125,7 @@ export function sizeTable(rows = [], opts = {}) {
   const rank = (r) => {
     const mine = named.get(Number(r.Water_Pipe_Size_ID)) || [];
     if (!mine.length) return 0;
-    return mine.some((o) => same(o.Organisation_ID, operatorId)) ? 1 : -1;
+    return mine.some((o) => mineIds.includes(Number(o.Organisation_ID))) ? 1 : -1;
   };
 
   const applies = rows.filter((r) =>
@@ -165,15 +168,15 @@ export function waterMainRuns(features = [], opts = {}) {
     pipeSizes = [],
     /* Which operators each rule names, from Water_Pipe_Size_Operator. */
     pipeSizeOperators = [],
-    /* Who is adopting this scheme, as an organisation. The rules are
-       read for them. */
-    operatorId = null,
+    /* The operators this scheme is with, as organisations — whoever is
+       adopting it, and the DNO. The rules are read for them. */
+    operatorIds = [],
     eps = CONNECT_EPS,
     tol = SNAP_TOL,
     layerKey = "water",
   } = opts;
 
-  const table = sizeTable(pipeSizes, { operatorId, operators: pipeSizeOperators });
+  const table = sizeTable(pipeSizes, { operatorIds, operators: pipeSizeOperators });
   if (!table.length) {
     /* Two different faults, and the fix differs: an empty table, or a
        table whose every row names an operator this project is not

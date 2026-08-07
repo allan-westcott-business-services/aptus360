@@ -6406,16 +6406,16 @@ export default function GISCanvasPage() {
       : (lookups?.idnos || []).find((x) =>
         Number(x.IDNO_ID) === Number(id))?.Organisation_ID ?? null);
 
-    let operatorId = agreement.IDNO_Organisation_ID
+    let adopting = agreement.IDNO_Organisation_ID
       ?? orgOfIdno(design.IDNO_ID)
       ?? orgOfIdno(agreement.IDNO_ID)
       ?? null;
 
-    if (operatorId == null) {
+    if (adopting == null) {
       try {
         const { rows: pocs = [] } = await listPoc(projectId);
         const mine = pocs.find((r) => Number(r.Utility_ID) === Number(utilityId));
-        operatorId = orgOfIdno(mine?.IDNO_ID) ?? null;
+        adopting = orgOfIdno(mine?.IDNO_ID) ?? null;
       } catch {
         /* Swallowed, unlike the agreement check above. The POC is the
            last of three fallbacks and only refines which rules are
@@ -6424,11 +6424,16 @@ export default function GISCanvasPage() {
       }
     }
 
+    /* And the DNO recorded on the water design. A rule may be written
+       against either operator, so both are offered and the rules
+       decide which one they were meant for. */
+    const operatorIds = [adopting, design.DNO_Organisation_ID].filter((x) => x != null);
+
     const plan = waterMainRuns(src, {
       lineTypes,
       pipeSizes: lookups?.waterPipeSizes || [],
       pipeSizeOperators: lookups?.waterPipeSizeOperators || [],
-      operatorId,
+      operatorIds,
     });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {

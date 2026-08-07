@@ -24,6 +24,10 @@ const SCOPE_COLUMNS = [
   "Designer_ID", "Design_Status_ID", "Design_Checked_By", "POC_Status_ID",
   "Target_Date", "Actual_Date", "Revision",
   "Carried_Forward", "External_Design", "IDNO_ID", "Reference",
+  /* The distribution operator for this utility — 0121. Listed here or
+     the scope comes back without it and the picker opens empty on a
+     project that has one set. */
+  "DNO_Organisation_ID",
   "Auto_Base_Points", "Manual_Base_Points", "Base_Points_Overridden",
   /* What new runs on this utility are drawn with. Electric takes a
      cable from the catalogue; gas and water take free text, because

@@ -1005,24 +1005,6 @@ export default function GISCanvasPage() {
     () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
     [hidden]);
 
-  /* The colour the water layer draws in, resolved rather than read.
-
-     The boundary mark and the service valves are annotations on the
-     water network, so they have to be the colour the water network
-     actually is — and that is not simply GIS_Layer."Colour". A style row
-     scoped to the layer overrides it, which is how "Water (layer
-     default)" works, and reading the layer directly meant the mains
-     followed that row while the marks beside them stayed on the layer's
-     own colour. Two greens on one drawing, disagreeing.
-
-     Asked with no line type and no role, so it resolves the layer's
-     default rather than a main's or a meter's — which is what these are
-     annotating. Falls back the same way everything else does. */
-  const waterColour = useMemo(
-    () => styleFor({ Layer_Key: "water", Feature_Type: "point", Attributes: {} }).colour
-      || "#3b82f6",
-    [styleFor]);
-
   /* Service valves, worked out from the drawn mains.
 
      Not stored. A valve is where it is because of where the pipes are,
@@ -1270,6 +1252,32 @@ export default function GISCanvasPage() {
       ...fallback,
     });
   }, [styles, layers, lineTypes, standard, view.scale]);
+
+  /* Declared after styleFor, not beside the other water state.
+
+     It was above it, and styleFor is a const — so the memo ran during
+     render and read it before initialisation, which took the canvas out
+     with "Cannot access 'ki' before initialization": the name after
+     minification, meaning nothing to anyone reading it. Anything built
+     from a resolved style has to come after the resolver. */
+  /* The colour the water layer draws in, resolved rather than read.
+
+     The boundary mark and the service valves are annotations on the
+     water network, so they have to be the colour the water network
+     actually is — and that is not simply GIS_Layer."Colour". A style row
+     scoped to the layer overrides it, which is how "Water (layer
+     default)" works, and reading the layer directly meant the mains
+     followed that row while the marks beside them stayed on the layer's
+     own colour. Two greens on one drawing, disagreeing.
+
+     Asked with no line type and no role, so it resolves the layer's
+     default rather than a main's or a meter's — which is what these are
+     annotating. Falls back the same way everything else does. */
+  const waterColour = useMemo(
+    () => styleFor({ Layer_Key: "water", Feature_Type: "point", Attributes: {} }).colour
+      || "#3b82f6",
+    [styleFor]);
+
 
   /* A plot seed's size and symbol are configurable like anything else,
      but its colour is not: it carries the bedroom colour used on the

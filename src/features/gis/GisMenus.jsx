@@ -137,14 +137,18 @@ export function MenuLayer({
         title={hidden ? `Show ${label}` : `Hide ${label}`}
         aria-pressed={hidden} onClick={onHide}>H</button>
 
-      {/* S is a pick, not a state, so it stays live whatever the layer
-          is doing: pressing it on a second layer adds that one to what
-          is on screen, and pressing it again on a lit one takes it
-          away. It was disabled while the layer was showing, which made
-          the commonest thing anybody wants — these two and nothing else
-          — impossible to ask for. */}
+      {/* S isolates, and holds as many layers as are lit.
+
+          The same act as I with room for more than one: press it on gas
+          and only gas is on screen, press it on water as well and both
+          are. Pressing it on a lit one drops that layer; pressing the
+          last lit one brings the drawing back.
+
+          Always live, and never disabled — the state it is in is a pick
+          somebody made, not a property of the layer, so there is no
+          moment when it has nothing to do. */}
       <button className={shown ? "gm-hs pick on" : "gm-hs pick"}
-        title={shown ? `Stop showing only ${label}` : `Show ${label}`}
+        title={shown ? `Stop showing only ${label}` : `Show only ${label}`}
         aria-pressed={!!shown} onClick={onShow}>S</button>
 
       {/* Isolate only where there is something to isolate against. The
@@ -153,7 +157,7 @@ export function MenuLayer({
           does nothing is worse than no button. */}
       {onSolo && (
         <button className={solo ? "gm-hs solo on" : "gm-hs solo"}
-          title={solo ? "Show everything again" : `Show only ${label}`}
+          title={solo ? "Show everything again" : `Show only ${label}, on its own`}
           aria-pressed={solo} onClick={onSolo}>I</button>
       )}
     </div>

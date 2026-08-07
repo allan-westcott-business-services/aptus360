@@ -1076,26 +1076,22 @@ export default function GISCanvasPage() {
     setHidden([...all].filter((k) => !keep.has(k)));
   }, [features, classKeys]);
 
-  /* S means show this, and what that takes depends on what is running.
+  /* S isolates, and more than one can be lit.
 
-     With a list in force — after an I, or after another S added to one —
-     S adds this layer to it, so pressing it on gas and then on water
-     leaves both on screen. Pressing it on one already in the list takes
-     it back out.
+     Press it on gas and only gas is on screen. Press it on water as
+     well and both are, and nothing else. Press it again on a lit one
+     and that layer drops out; press it on the last lit one and the
+     whole drawing comes back, which is the way out.
 
-     With no list running, S simply unhides. That case matters more than
-     it looks: H then S is how anybody expects to put a layer back, and
-     if S started a list instead, hiding gas and showing it again would
-     have hidden everything else on the drawing. */
+     So S and I do the same thing and differ only in how many they will
+     hold: I is S limited to one, and choosing another I drops the
+     first. Putting a single hidden layer back is H's job — it toggles —
+     which is what keeps this free to mean isolate at all times rather
+     than meaning it only sometimes. */
   const showClass = useCallback((key) => {
-    if (shownOnly.length) {
-      applyShown(shownOnly.includes(key)
-        ? shownOnly.filter((x) => x !== key)
-        : [...shownOnly, key]);
-      return;
-    }
-    setSolo(null);
-    setHidden((h) => h.filter((x) => x !== key));
+    applyShown(shownOnly.includes(key)
+      ? shownOnly.filter((x) => x !== key)
+      : [...shownOnly, key]);
   }, [applyShown, shownOnly]);
 
   const hideClass = useCallback((key) => {
@@ -8588,8 +8584,10 @@ export default function GISCanvasPage() {
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
                     <p className="gm-note">
-                      H hides a layer, S shows it, I leaves only that one on screen.
-                      These are the same switches as on the other menus.
+                      H hides a layer and hides it again to bring it back.
+                      S shows only the layers whose S is lit — as many as you
+                      like. I is the same with room for one. The same switches
+                      as on the other menus.
                     </p>
 
                     {/* ── The order ──

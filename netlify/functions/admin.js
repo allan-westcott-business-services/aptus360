@@ -98,9 +98,33 @@ export default async function handler(req, context) {
       return json({ rows: data || [] });
     }
 
+    /* The primary key is never written, on either verb.
+
+       An edit in the generic table copies the whole row into the draft
+       and sends it back, key included. That was harmless while every
+       table used serial — a serial column is an ordinary column with a
+       default, and setting it to the value it already holds does
+       nothing. The tables added since are GENERATED ALWAYS AS IDENTITY,
+       which Postgres refuses to write at all, even to the value already
+       there:
+
+         column "Water_Pipe_Size_ID" can only be updated to DEFAULT
+
+       Stripped here rather than in the screen that sends it. A PATCH
+       names its row in the URL, so the key in the body is redundant on
+       every table and every caller — and any future table declared the
+       modern way would have hit this in turn, each one looking like a
+       fault in that table. */
+    const withoutKey = (body) => {
+      const out = { ...body };
+      delete out[meta.pk];
+      return out;
+    };
+
     if (req.method === "POST") {
       const body = await req.json();
-      const { data, error } = await db.from(table).insert(nullEmpty(body)).select().single();
+      const { data, error } = await db.from(table)
+        .insert(nullEmpty(withoutKey(body))).select().single();
       if (error && error.code === "23505") {
         return json({ error: "That entry already exists." }, 409);
       }
@@ -112,7 +136,7 @@ export default async function handler(req, context) {
       if (!id) return json({ error: "id required" }, 400);
       const body = await req.json();
       const { data, error } = await db
-        .from(table).update(nullEmpty(body)).eq(meta.pk, id).select().single();
+        .from(table).update(nullEmpty(withoutKey(body))).eq(meta.pk, id).select().single();
       if (error) throw error;
       return json(data);
     }

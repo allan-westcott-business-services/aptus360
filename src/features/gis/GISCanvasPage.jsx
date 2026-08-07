@@ -6321,6 +6321,65 @@ export default function GISCanvasPage() {
         + "Admin \u203a GIS Styles before building.");
     }
 
+    /* ── Whether this project should have a water main at all ──
+
+       The same two questions gas asks, with a stricter second one: not
+       any water agreement, but a Water NAV Clean. A scheme adopted for
+       waste and not for clean water is a scheme somebody else is laying
+       the clean main on, and drawing one here is quantities against
+       work this business is not doing.
+
+       Refused rather than warned, for the reason the gas gate gives:
+       a confirm box asking whether to carry on regardless is answered
+       yes by everybody. */
+    const waterLayer = layers.find((l) => l.Layer_Key === "water");
+    const utilityId = waterLayer?.Utility_ID;
+    if (utilityId == null) {
+      return setError("The water layer has no utility set, so there is no design or "
+        + "agreement to check it against \u2014 set it in Admin \u203a GIS Styles.");
+    }
+
+    const design = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(utilityId));
+    if (!design) {
+      return setError("This project has no water outline design \u2014 add water on the "
+        + "Outline Designs tab before laying a main.");
+    }
+
+    /* The agreement type, by name.
+
+       A name rather than an id because the requirement is a name: the
+       row is seeded by migration 0062 and the id it happens to have
+       differs between databases. Matched loosely on case and spacing,
+       since somebody retyping it in admin will not match the seed
+       exactly. */
+    const WANTED = "water nav clean";
+    const wantedType = (lookups?.avAgreementTypes || []).find((t) =>
+      String(t.AV_Agreement_Type || "").trim().toLowerCase() === WANTED);
+    if (!wantedType) {
+      /* Its own message. "No agreement" sends somebody to the Asset
+         Value tab to add one; this sends them to the agreement types,
+         which is where the problem actually is. */
+      return setError("No agreement type called \u201cWater NAV Clean\u201d is "
+        + "configured, so there is nothing to check against \u2014 add it in "
+        + "Admin \u203a AV Agreement Type.");
+    }
+
+    let agreement = null;
+    try {
+      const { rows = [] } = await listAgreements(projectId);
+      agreement = rows.find((a) =>
+        Number(a.AV_Agreement_Type_ID) === Number(wantedType.AV_Agreement_Type_ID));
+    } catch (e) {
+      /* Not the same as not having one: only one of the two is the
+         user's to fix. */
+      return setError(`Couldn\u2019t check the water asset value agreement: ${e.message}`);
+    }
+    if (!agreement) {
+      return setError("This project has no Water NAV Clean asset value agreement \u2014 "
+        + "the clean water main is adopted work, so it is drawn once there is an "
+        + "agreement to adopt it under. Add one on the Asset Value tab.");
+    }
+
     const plan = waterMainRuns(src, {
       lineTypes,
       pipeSizes: lookups?.waterPipeSizes || [],
@@ -8405,7 +8464,7 @@ export default function GISCanvasPage() {
                         {key === "water" && (
                           <MenuItem
                             label={busy === "waternet" ? "Building\u2026" : "Build Water Network"}
-                            hint="Lays water main from the POC along mains trench, sized by the plots each length feeds"
+                            hint="Lays water main from the POC along mains trench, sized by the plots each length feeds. Needs a water outline design and a Water NAV Clean agreement"
                             disabled={!projectId || !!busy}
                             onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
                         )}

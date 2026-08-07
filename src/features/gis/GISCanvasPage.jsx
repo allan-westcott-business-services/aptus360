@@ -5542,8 +5542,10 @@ export default function GISCanvasPage() {
       setStatus("Every trench end is either joined or clear of the others");
       setTimeout(() => setStatus(""), 8000);
     } else {
-      /* Straight to the worst one: a list of coordinates is no use on a
-         site this size. */
+      /* Straight to the narrowest, which is the worst: it looks joined
+         at any sensible zoom, so nobody goes looking, and the network
+         is severed there. A list of coordinates is no use on a site
+         this size. */
       zoomToPoints([list[0].at]);
     }
   }
@@ -8616,29 +8618,13 @@ export default function GISCanvasPage() {
                         onClick={() => drawAs(t.Type_Key)} />
                     ))}
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Build status" />
-                    {BUILD_STATUSES.map((bs) => (
-                      <MenuItem key={bs.key} label={bs.label} indent
-                        active={marking?.status === bs.key}
-                        disabled={!!busy || !projectId}
-                        hint="Click where the length starts, then where it stops"
-                        onClick={() => {
-                          setMarking(marking?.status === bs.key
-                            ? null : { status: bs.key });
-                          setMarkFrom(null);
-                        }} />
-                    ))}
-
-                    <div className="gm-sep" />
-                    <MenuGroup label="Off site" />
-                    <MenuItem label="Mark selected as Off Site" indent
-                      hint="A different rate, different notice, often a different permit"
-                      disabled={!!busy || !selected.length}
-                      onClick={() => toggleOffSite(true)} />
-                    <MenuItem label="Clear Off Site" indent
-                      disabled={!!busy || !selected.length}
-                      onClick={() => toggleOffSite(false)} />
+                    {/* Build status and Off site were here, as a set of
+                        buttons that marked whatever was selected. Both
+                        are properties of one object, and the trench
+                        editor is where an object's properties are set —
+                        two ways to change one field is two places for
+                        them to disagree, and the menu was the one with
+                        no record of what it had just changed. */}
 
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
@@ -8674,29 +8660,15 @@ export default function GISCanvasPage() {
                         if (callOffOpen) setRanges([]);
                       }} />
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Routing" />
-                    <MenuItem label="Trace All Meters"
-                      hint="Shortest route home for every meter, shaded by how many use each section"
-                      disabled={!!busy || !projectId}
-                      onClick={traceRoute} />
-                    <MenuItem label="Step Through Traces"
-                      hint="One meter at a time, with its own route to the substation"
-                      disabled={!!busy || !projectId}
-                      onClick={() => { stepThrough(); }} />
-                    <MenuItem label="Suggest Trench Route"
-                      hint="Which drawn trenches must be live to reach every meter"
-                      disabled={!!busy || !projectId}
-                      onClick={suggestRoute} />
-                    <MenuItem label="Only Live Trench"
-                      active={liveTrenchOnly}
-                      disabled={!liveTrenchIds}
-                      hint={liveTrenchIds
-                        ? (liveTrenchOnly
-                          ? `Showing ${liveTrenchIds.size} of the trenches drawn`
-                          : "Hide the trench the route does not need")
-                        : "Suggest or accept a route first"}
-                      onClick={() => setLiveTrenchOnly(!liveTrenchOnly)} />
+                    {/* Routing was here: Trace All Meters, Step Through
+                        Traces, Suggest Trench Route, Only Live Trench.
+
+                        The code behind them is still in this file and is
+                        now unreachable — nothing else opens a trace.
+                        Left rather than torn out, because deleting four
+                        features' worth of working machinery on the
+                        strength of a menu change is a bigger decision
+                        than a menu change. */}
 
                     <div className="gm-sep" />
                     <MenuGroup label="Services" />

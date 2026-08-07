@@ -226,7 +226,13 @@ export function gaps(features = [], opts = {}) {
     }
   }
 
-  /* Widest first: the one most likely to be deliberate is last, and the
-     hairline ones at the top are the ones costing routes. */
+  /* Narrowest first, and the comment used to say "widest first" while
+     the code did the opposite. The code was right and the first three
+     words were not.
+
+     A hairline gap is the one costing routes: it looks joined at any
+     sensible zoom, so nobody goes looking, and the network is severed
+     there. A two-metre gap is usually somebody's intention, and if it
+     is not, it is visible. So the ones needing attention come first. */
   return out.sort((a, b) => a.gapM - b.gapM);
 }

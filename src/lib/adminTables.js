@@ -81,6 +81,11 @@ export const ADMIN_TABLES = [
     ] },
   { key: "Utility", label: "Utility", pk: "Utility_ID", fields: [
       { col: "Utility", label: "Utility Name", type: "text", required: true },
+      /* The default colour for everything on this utility — mains,
+         services, meters, joints. A line type or a style row may still
+         override it, and one that does is a deliberate departure rather
+         than a copy of this. */
+      { col: "Colour", label: "Default Colour", type: "colour" },
       { col: "Is_Lighting", label: "Street lighting", type: "checkbox" },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
     ] },

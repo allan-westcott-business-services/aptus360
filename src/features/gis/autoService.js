@@ -146,14 +146,24 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
     return { seed, skipped: `every meter already has a service (${already})` };
   }
 
-  /* The cable runs from the main to its own meter, and nowhere else.
+  /* The cable runs down the trench, and only leaves it at the end.
 
-     It used to go by way of the seed — [foot, seed, meter] — which put a
-     bend in every service at a point that is not a physical thing. A
-     plot seed marks which plot this is; it is not a position the cable
-     passes through, and routing through it made every service longer
-     than it is and put a vertex in the middle of it that nothing
-     corresponds to.
+     Not straight from the tee to its own meter. Every service pipe and
+     cable is laid in the dig, so it follows the trench for the whole of
+     its length and breaks out at the far end to reach the meter it
+     feeds — which is what a jointer does on site and what the quantities
+     have to say. Cutting the corner made a cable shorter than the one
+     that will actually be pulled, on every plot with more than one
+     utility.
+
+     Only the furthest meter's cable is a straight run, because for that
+     one the end of the trench and the meter are the same place.
+
+     Not by way of the seed, though — [foot, seed, meter] was the older
+     shape and the bend it put in was at a point that is not a physical
+     thing. A plot seed marks which plot this is; it is not a position
+     anything passes through. The end of the trench is: it is where the
+     dig stops.
 
      The meter is the one that is actually there, not the slot it would
      have taken. Routing to an empty slot beside a real meter would leave
@@ -193,12 +203,20 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      cable measured to its own foot would leave the trench and come back
      — the furthest meter decides where the service tees in and the rest
      follow it. */
+  const trench = [tee.foot, furthest];
+
+  /* Within a millimetre is the same place. The furthest meter *is* the
+     end of the trench, so repeating it would leave a zero-length
+     segment on that one cable — invisible on the drawing, and a
+     duplicate vertex for everything downstream to trip over. */
+  const samePlace = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-3;
+
   const cables = meters.map((m) => ({
     utility: m.utility,
-    geometry: [tee.foot, m.point],
+    geometry: samePlace(m.point, furthest)
+      ? [tee.foot, m.point]
+      : [tee.foot, furthest, m.point],
   }));
-
-  const trench = [tee.foot, furthest];
 
   return {
     seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables,

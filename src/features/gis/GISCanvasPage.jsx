@@ -66,6 +66,7 @@ import {
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { gasMainRuns } from "./gasNetwork.js";
 import { waterMainRuns } from "./waterNetwork.js";
+import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
@@ -1003,6 +1004,19 @@ export default function GISCanvasPage() {
   const waterShown = useMemo(
     () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
     [hidden]);
+
+  /* Service valves, worked out from the drawn mains.
+
+     Not stored. A valve is where it is because of where the pipes are,
+     so recording one would be a second copy of a fact the drawing
+     already holds — and one that a redrawn main would leave behind in
+     the wrong place. Recomputed when the features change, which is the
+     only time the answer can differ. */
+  const valves = useMemo(
+    () => (hidden.includes("water")
+      ? []
+      : serviceValves(features, { lineTypes }).valves),
+    [features, lineTypes, hidden]);
 
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
@@ -2379,6 +2393,58 @@ export default function GISCanvasPage() {
       }
     });
 
+    /* ── Service valves ──
+
+       A bar across the spur a metre and a half down from the tee, with
+       SV beside it. Where they go is worked out from the mains, so this
+       only draws them.
+
+       After the features rather than among them: a valve annotates the
+       run it sits on and belongs over it, and drawing it inside the
+       loop would put it under whatever was drawn next.
+
+       The bar is a metre of real ground, so it is scaled — it is a
+       thing in the trench with a size. The letters are not, for the
+       same reason a label is not, and both are held back at small
+       scales where a metre is a couple of pixels and the pair would be
+       a smudge. */
+    if (valves.length && view.scale > 2) {
+      const colour = layerOf("water").Colour || "#3b82f6";
+      const halfPx = (VALVE_WIDTH_M / 2) * view.scale;
+
+      ctx.save();
+      ctx.strokeStyle = colour;
+      ctx.lineWidth = Math.max(2, Math.min(6, 0.12 * view.scale));
+      ctx.lineCap = "butt";
+      ctx.font = "700 11px ui-sans-serif, system-ui, sans-serif";
+      ctx.fillStyle = colour;
+      ctx.textAlign = "left";
+      ctx.textBaseline = "middle";
+
+      for (const v of valves) {
+        const c = toPx(v.at);
+        /* Square to the pipe. The left normal of the direction the
+           module handed back, turned here rather than stored there —
+           the same fact twice is the same fact drifting. */
+        const nx = -v.dir[1];
+        const ny = v.dir[0];
+        /* Screen y grows downward while the drawing's grows up, so the
+           normal is flipped on that axis to keep the bar square to the
+           pipe as drawn rather than to the pipe as stored. */
+        const dx = nx * halfPx;
+        const dy = -ny * halfPx;
+
+        ctx.beginPath();
+        ctx.moveTo(c.x - dx, c.y - dy);
+        ctx.lineTo(c.x + dx, c.y + dy);
+        ctx.stroke();
+
+        /* Beside the bar, off its end, clear of the pipe it crosses. */
+        ctx.fillText("SV", c.x + dx + 4, c.y + dy);
+      }
+      ctx.restore();
+    }
+
     /* Where the next click will land, and what it is latching onto.
 
        One marker for every kind of snap told you something was
@@ -2714,7 +2780,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, valves, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

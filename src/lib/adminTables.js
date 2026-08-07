@@ -119,6 +119,24 @@ export const ADMIN_TABLES = [
       { col: "Display_Order", label: "Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
+  /* Where a team's work has got to, and what colour to draw it.
+
+     Next to the phases, because the two describe the same rows from
+     different angles: a phase is what the work is, a status is how far
+     along it is. */
+  { key: "Call_Off_Status", label: "Call-Off Statuses", pk: "Call_Off_Status_ID", fields: [
+      { col: "Status_Name", label: "Status", type: "text", required: true },
+      { col: "Colour", label: "Pill Colour", type: "colour" },
+      /* Blank means the app picks black or white from the background's
+         brightness. Set it only where that answer is legible but
+         unattractive. */
+      { col: "Text_Colour", label: "Text Colour (optional)", type: "colour" },
+      { col: "Display_Order", label: "Order", type: "number" },
+      /* Work that is done with. The call-offs list opens on work still
+         to do and reads this to decide what that means. */
+      { col: "Is_Closed", label: "Closed", type: "checkbox" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
       { col: "Craft_Name", label: "Craft", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

@@ -37,6 +37,10 @@ const TABLES = {
      reopening showed what was still in the table. The assignment itself
      saved; the days did not. */
   Call_Off_Work_Day:   { pk: "Work_Day_ID",            order: "Work_Date" },
+  /* The states a team's work can be in, and the colour each is drawn
+     in. Ordered by Display_Order so the pill menu reads in workflow
+     order rather than alphabetically, which would put Complete second. */
+  Call_Off_Status:     { pk: "Call_Off_Status_ID",     order: "Display_Order" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

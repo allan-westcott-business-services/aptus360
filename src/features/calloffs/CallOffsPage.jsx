@@ -4,6 +4,7 @@ import {
 } from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
+import { pillStyle } from "../../lib/pillColour.js";
 import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots,
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
@@ -430,26 +431,15 @@ function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
         )}
       </div>
 
-      <div className="co-card">
-        <h3>Status</h3>
-        <p className="hint">Move this call-off through its workflow.</p>
-        <div className="co-steps">
-          {STATUSES.map((s) => (
-            <button key={s}
-              className={s === row.Status ? "co-step on" : "co-step"}
-              onClick={() => onMove(row.Submission_ID, s)}>
-              {s === row.Status && <span className="co-dot" />}
-              {s}
-            </button>
-          ))}
-        </div>
-      </div>
 
       <Assignments row={row} />
 
       <div className="co-card">
-        <h3>Status</h3>
-        <p className="hint">Move this call-off through its workflow.</p>
+        <h3>Request status</h3>
+        <p className="hint">
+          Where the request itself has got to — raised, reviewed, withdrawn.
+          What each team has done with the work is on its own assignment above.
+        </p>
         <div className="co-steps">
           {STATUSES.map((s) => (
             <button key={s}
@@ -489,6 +479,10 @@ function Assignments({ row }) {
   const [draft, setDraft] = useState({});
   const [workDays, setWorkDays] = useState([]);
   const [saidSaved, setSaidSaved] = useState("");
+  /* The states a team's work can be in, with their colours. From the
+     table rather than a list in this file, so adding "On Hold" is an
+     admin job and not a deploy. */
+  const [statuses, setStatuses] = useState([]);
 
   async function load() {
     try {
@@ -499,6 +493,14 @@ function Assignments({ row }) {
       ]);
       const wd = await adminList("Call_Off_Work_Day").catch(() => ({ rows: [] }));
       setWorkDays(wd.rows || []);
+      /* Tolerated missing, like the work days above: an assignment whose
+         status cannot be read is still an assignment worth showing, and
+         a panel that renders nothing because a lookup table is absent is
+         worse than one with grey pills on it. */
+      const st = await adminList("Call_Off_Status").catch(() => ({ rows: [] }));
+      setStatuses((st.rows || [])
+        .filter((x) => x.Is_Active !== false)
+        .sort((a, b) => (a.Display_Order ?? 0) - (b.Display_Order ?? 0)));
       /* The phases this work type involves, in its own order — the same
          phase can sit at a different point in different work types. */
       const mine = (map.rows || [])
@@ -568,6 +570,33 @@ function Assignments({ row }) {
     }
     return 0;
   };
+
+  /* Moving one assignment along.
+
+     Written on the spot rather than through the edit form: a gang
+     finishing a span is the most frequent thing anybody records here,
+     and making it open a form, change a dropdown and save is three
+     actions for a fact that takes one.
+
+     Shown before it is saved and put back if the save fails. The
+     alternative — waiting for the round trip — makes a click on a pill
+     feel like it did nothing, which is how the same click gets made
+     three times. */
+  async function moveStatus(a, next) {
+    const was = a.Status;
+    if (next === was) return;
+    setAll((xs) => xs.map((x) =>
+      Number(x.Assignment_ID) === Number(a.Assignment_ID) ? { ...x, Status: next } : x));
+    setBusy(`s:${a.Assignment_ID}`);
+    try {
+      await adminUpdate("Call_Off_Assignment", a.Assignment_ID, { Status: next });
+      setError("");
+    } catch (e) {
+      setAll((xs) => xs.map((x) =>
+        Number(x.Assignment_ID) === Number(a.Assignment_ID) ? { ...x, Status: was } : x));
+      setError(e.message);
+    } finally { setBusy(null); }
+  }
 
   const craftName = (id) =>
     crafts.find((c) => Number(c.Craft_ID) === Number(id))?.Craft_Name ?? null;
@@ -928,6 +957,38 @@ function Assignments({ row }) {
                       ?? "all spans"
                     : (a.Plot_Range || "all plots")}
                 </span>
+                {/* Where this team's work has got to.
+
+                    A select rather than a pill with a menu behind it:
+                    it is one control, it opens on a tap, it works from
+                    the keyboard, and it cannot get out of step with the
+                    list of statuses because it is drawn from it. The
+                    colour comes from the status, so the row reads at a
+                    glance across a phase with four teams on it. */}
+                {statuses.length > 0 && (
+                  <label className="asg-status"
+                    style={pillStyle(
+                      statuses.find((x) => x.Status_Name === a.Status)?.Colour,
+                      statuses.find((x) => x.Status_Name === a.Status)?.Text_Colour)}>
+                    <span className="sr-only">Status</span>
+                    <select value={a.Status ?? ""}
+                      disabled={busy === `s:${a.Assignment_ID}`}
+                      onChange={(e) => moveStatus(a, e.target.value)}>
+                      {/* A status that is no longer active, or was
+                          renamed under the row's feet, still has to
+                          appear or the select would silently show the
+                          wrong one. */}
+                      {a.Status && !statuses.some((x) => x.Status_Name === a.Status) && (
+                        <option value={a.Status}>{a.Status}</option>
+                      )}
+                      {statuses.map((x) => (
+                        <option key={x.Call_Off_Status_ID} value={x.Status_Name}>
+                          {x.Status_Name}
+                        </option>
+                      ))}
+                    </select>
+                  </label>
+                )}
                 {/* How much of it there is.
 
                     Whole metres. The drawing measures to a tenth, which
@@ -1256,6 +1317,22 @@ const CSS = `
 .asg-when { color: var(--muted); }
 .asg-part-tag { font: 700 10.5px inherit; padding: 2px 8px; border-radius: 4px;
   background: #e0e7ff; color: #3730a3; white-space: nowrap; }
+/* The pill. The select sits inside it with no chrome of its own, so it
+   reads as a label and behaves as a control — the arrow and the border a
+   browser would draw would make a row of these look like a form. */
+.asg-status { display: inline-flex; align-items: center; border-radius: 999px;
+  padding: 3px 12px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
+  cursor: pointer; }
+.asg-status select { appearance: none; -webkit-appearance: none; background: none;
+  border: none; color: inherit; font: inherit; letter-spacing: inherit;
+  cursor: pointer; padding: 0; text-align: center; }
+.asg-status select:focus-visible { outline: 2px solid var(--accent); outline-offset: 3px; }
+.asg-status select:disabled { cursor: progress; opacity: .7; }
+/* The option list is drawn by the browser on its own background, so the
+   pill's white-on-colour text would be white on white in the menu. */
+.asg-status option { background: #fff; color: #1f2937; }
+.sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
+  clip: rect(0 0 0 0); white-space: nowrap; }
 .asg-plots { margin-left: auto; font-weight: 600; }
 /* Beside the span it measures, and lighter than it: the label is what
    the row is, the length is a fact about it. Fixed width so the figures

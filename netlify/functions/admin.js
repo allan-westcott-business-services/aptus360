@@ -53,6 +53,8 @@ const TABLES = {
      utilities are edited in Organisations. */
   Operator_Utility: { pk: "Organisation_ID",       order: "Name" },
   Utility:          { pk: "Utility_ID",            order: "Sort_Order" },
+  /* The shape of the admin menu itself — see 0127. */
+  Admin_Menu:       { pk: "Admin_Menu_ID",         order: "Display_Order" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },
   Customer_Branch: { pk: "Branch_ID",          order: "Branch_Name" },
   IDNO_Source_Mapping: { pk: "IDNO_Source_Mapping_ID", order: "Mapping_Name" },

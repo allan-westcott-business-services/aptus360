@@ -194,12 +194,14 @@ export const ADMIN_TABLES = [
       { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },
     ] },
 
-  { key: "Team", label: "Teams", pk: "Team_ID", fields: [
-      { col: "Team_Name", label: "Team", type: "text", required: true },
-      { col: "Sort_Order", label: "Sort Order", type: "number" },
-      { col: "Notes", label: "Notes", type: "text" },
-      { col: "Is_Active", label: "Active", type: "checkbox" },
-    ] },
+  /* A second Teams entry stood here — the plain table editor over
+     Team, alongside the bespoke screen up in Organisations & People.
+
+     It never opened: both carried key "Team", the menu resolves a key
+     with find(), and the first one won. So this row rendered the
+     bespoke screen while claiming to be its own thing, and only showed
+     up when the menu became data and the unique index on Screen_Key
+     refused the pair. */
 
   { key: "VAT_Rate", label: "VAT Rates", pk: "VAT_Rate_ID", fields: [
       { col: "Label", label: "Rate name", type: "text", required: true },

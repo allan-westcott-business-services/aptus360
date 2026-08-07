@@ -1,5 +1,6 @@
-import { useState } from "react";
+import { useState, useEffect, useMemo } from "react";
 import { ADMIN_TABLES } from "../../lib/adminTables.js";
+import { adminList } from "../../api/admin.js";
 import GenericTable from "./GenericTable.jsx";
 import PropertyConfigAdmin from "./PropertyConfigAdmin.jsx";
 import PeopleRolesAdmin from "./PeopleRolesAdmin.jsx";
@@ -12,6 +13,7 @@ import CustomersAdmin from "./CustomersAdmin.jsx";
 import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
 import GisStylesAdmin from "./GisStylesAdmin.jsx";
 import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
+import AdminMenuAdmin from "./AdminMenuAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
    right. Mirrors the original app's admin panel. */
@@ -19,9 +21,78 @@ export default function AdminPage() {
   /* Headings are rows in the same list, so anything that walks it for a
      screen has to step over both kinds. */
   const isScreen = (t) => !t.separator && !t.group;
-  const first = ADMIN_TABLES.find(isScreen);
-  const [active, setActive] = useState(first.key);
-  const table = ADMIN_TABLES.find((t) => isScreen(t) && t.key === active);
+
+  /* ── The menu, arranged in the database ──
+
+     Admin_Menu says what order the screens go in, what headings they sit
+     under and what each is called. What a screen *is* stays in
+     adminTables.js, so a row here is a label and a position pointing at
+     a key.
+
+     Three things this has to survive, because the menu is the way back
+     to everything including the screen that edits it:
+
+       The table not loading at all — a network failure, or the
+       migration not run yet. The code order is used instead, which is
+       exactly what the menu was before it became data.
+
+       A screen the table does not mention. Appended, so anything added
+       by a later release turns up somewhere obvious rather than
+       nowhere.
+
+       The layout editor itself, pinned at the end and never in the
+       table. Deleting every row leaves the one entry that puts the rest
+       back. */
+  const [arrangement, setArrangement] = useState(null);
+
+  useEffect(() => {
+    let live = true;
+    adminList("Admin_Menu")
+      .then(({ rows = [] }) => { if (live) setArrangement(rows); })
+      .catch(() => { if (live) setArrangement([]); });
+    return () => { live = false; };
+  }, []);
+
+  const menu = useMemo(() => {
+    const pinned = [
+      { separator: true, label: "This menu" },
+      { key: "Admin_Menu", label: "Menu Layout", special: "menulayout" },
+    ];
+    if (!arrangement?.length) return [...ADMIN_TABLES, ...pinned];
+
+    const byKey = new Map(ADMIN_TABLES.filter(isScreen).map((t) => [t.key, t]));
+    const out = [];
+    for (const r of [...arrangement].sort((a, b) =>
+      (Number(a.Display_Order) - Number(b.Display_Order))
+      || (Number(a.Admin_Menu_ID) - Number(b.Admin_Menu_ID)))) {
+      /* A screen switched off is spoken for: it has a row, somebody
+         turned it off, and it stays off. Skipping before this line left
+         it looking unplaced and put it back at the bottom of the menu,
+         which is the opposite of what the switch says. */
+      if (r.Is_Active === false) {
+        if (r.Screen_Key) byKey.delete(r.Screen_Key);
+        continue;
+      }
+      if (r.Kind === "section") { out.push({ separator: true, label: r.Label }); continue; }
+      if (r.Kind === "group") { out.push({ group: true, label: r.Label }); continue; }
+      const t = byKey.get(r.Screen_Key);
+      /* A row naming a screen this build does not have is skipped rather
+         than shown as a dead entry. The layout editor lists it as
+         missing, which is where that belongs. */
+      if (!t) continue;
+      byKey.delete(r.Screen_Key);
+      out.push({ ...t, label: r.Label || t.label });
+    }
+    if (byKey.size) {
+      out.push({ separator: true, label: "Not placed yet" });
+      for (const t of byKey.values()) out.push(t);
+    }
+    return [...out, ...pinned];
+  }, [arrangement]);
+
+  const first = menu.find(isScreen);
+  const [active, setActive] = useState(ADMIN_TABLES.find(isScreen).key);
+  const table = menu.find((t) => isScreen(t) && t.key === active) ?? first;
 
   return (
     <div className="admin-shell">
@@ -42,7 +113,7 @@ export default function AdminPage() {
           a screen from one section to another is a cut and paste, not a
           restructure. */}
       <nav className="admin-nav">
-        {ADMIN_TABLES.map((t, i) =>
+        {menu.map((t, i) =>
           t.separator ? (
             <p className="admin-sep" key={`sep${i}`}>{t.label}</p>
           ) : t.group ? (
@@ -78,6 +149,8 @@ export default function AdminPage() {
           <OrganisationsAdmin />
         ) : table?.special === "customers" ? (
           <CustomersAdmin />
+        ) : table?.special === "menulayout" ? (
+          <AdminMenuAdmin />
         ) : table?.special === "gisstyles" ? (
           <GisStylesAdmin />
         ) : table?.special === "waterpipes" ? (

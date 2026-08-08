@@ -37,8 +37,31 @@ export const METERS_PER_CABLE = 70;
 
 /* How far a seed may sit from the network and still be counted as on it.
    A seed is placed by eye against a plan, so it will not land exactly on
-   a trench vertex. */
-export const SNAP_TOL = 8;
+   a trench vertex.
+
+   ── Raised from 8 to 12 ──
+
+   8 m was tight enough that a meter 9.08 m from its service trench —
+   the trench stopping about a metre short of the meter it feeds, which
+   is a drawing nobody would look at twice — dropped out of the gas
+   build and took its plot's load with it. The symptom was a site total
+   one meter light, with every other check reporting clear.
+
+   12 m is the figure to argue with if this ever bites the other way.
+   The risk of raising it is a meter being claimed by a neighbour's
+   spur rather than its own: the builders take the *nearest* service,
+   so a wrong assignment needs another trench to be closer still, and
+   on a residential layout plots are not four metres apart. On a flatted
+   scheme with meters banked together they can be, which is the case to
+   watch — a bank of meters all reading as served by one spur is what
+   too generous a tolerance looks like.
+
+   Shared by the electric feeder, gas, water, routing and service
+   valves, so this moves all five together. That is deliberate: they are
+   all answering "is this meter on this network", and five different
+   answers to one question is worse than one answer somebody disagrees
+   with. */
+export const SNAP_TOL = 12;
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 

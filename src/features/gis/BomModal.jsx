@@ -3,6 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import * as XLSX from "xlsx";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
+import { parseHex, tint, contrast } from "../../lib/pillColour.js";
 
 /* Bill of materials.
 
@@ -111,8 +112,70 @@ export function sheetName(raw, used = new Set()) {
   return base.slice(0, 31);
 }
 
-export default function BomModal({ projectId, projectName, onClose }) {
+/* ── What a section is painted with ──
+
+   One colour, given four ways, so the section reads as one block: the
+   band at full strength, the column headings at a little over half, the
+   rows barely tinted, and the rules between them somewhere in between.
+
+   Mixed towards white rather than made translucent, for the reason
+   `tint` gives: alpha takes the colour of whatever is behind it, and a
+   modal that is dragged over a drawing has something different behind
+   it every time it moves.
+
+   The ink on the band is worked out rather than fixed at white. Every
+   utility on a seeded drawing is dark enough to take white, but the
+   colour is editable — it is one UPDATE on Utility — and white on a
+   pale yellow is the sort of thing that ships because nobody tried it.
+   The same contrast comparison the status pills use, so a colour that
+   reads one way there cannot read the other way here.
+
+   Null where there is no usable colour, and the section then draws
+   exactly as it did before: a utility somebody has not coloured should
+   look plain rather than look broken. */
+export function utilitySkin(colour) {
+  if (!parseHex(colour)) return null;
+  const bg = String(colour).trim();
+  return {
+    "--u": bg,
+    "--u-ink": contrast(bg, "#1f2937") >= contrast(bg, "#ffffff") ? "#1f2937" : "#ffffff",
+    "--u-head": tint(bg, 0.55),
+    "--u-row": tint(bg, 0.9),
+    "--u-line": tint(bg, 0.72),
+  };
+}
+
+export default function BomModal({ projectId, projectName, utilities = [], layers = [], onClose }) {
   const [rows, setRows] = useState([]);
+  /* ── The colour each section is drawn in ──
+
+     Keyed on the name the bill puts in the section heading, because
+     that is all a row carries: gis_bom returns the utility's name, and
+     falls back to the layer's label for anything on a layer with no
+     utility — trench, which is most of the metres on a drawing.
+
+     So both are read, and the utility second so it wins where a layer
+     happens to be labelled the same as a utility.
+
+     A utility with no colour of its own falls through to its layer's,
+     which is where the colour lived before 0123 moved it up. Nothing
+     here writes a colour or picks one: a section whose utility nobody
+     has coloured stays plain, which is the honest answer rather than a
+     palette invented at render time. */
+  const skins = useMemo(() => {
+    const out = new Map();
+    const put = (name, colour) => {
+      const skin = utilitySkin(colour);
+      if (name && skin) out.set(String(name).trim().toLowerCase(), skin);
+    };
+    for (const l of layers) put(l.Label, l.Colour);
+    for (const u of utilities) {
+      put(u.Utility, u.Colour
+        || layers.find((l) => Number(l.Utility_ID) === Number(u.Utility_ID))?.Colour);
+    }
+    return out;
+  }, [utilities, layers]);
+
   /* Whose bill is on screen. "" is the whole site — the same rows added
      up without the split, so the parts always reconcile against it. */
   const [whose, setWhose] = useState("");
@@ -357,41 +420,50 @@ export default function BomModal({ projectId, projectName, onClose }) {
                 </p>
               )}
 
-              {groups.map((g) => (
-                <div className="bom-grp" key={`${g.site}-${g.utility}`}>
-                  <p className="bom-grp-head">
-                    {/* No pill where there is no site: an empty badge
-                        reads as a missing value rather than as a row that
-                        does not have one. */}
-                    {g.site && (
-                      <span className={`bom-pill bom-${g.site.toLowerCase().replace("-", "")}`}>
-                        {g.site}
-                      </span>
-                    )}
-                    {g.utility}
-                  </p>
-                  <table className="bom-tbl">
-                    <thead>
-                      <tr>
-                        <th>Item</th><th>Surface</th>
-                        <th className="num">Quantity</th><th className="num">Features</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {g.items.map((r, i) => (
-                        <tr key={i}>
-                          <td>{r.item}</td>
-                          <td className="bom-surf">{r.surface || "\u2014"}</td>
-                          <td className="num">
-                            {Number(r.quantity).toFixed(r.unit === "m" ? 1 : 0)} {r.unit}
-                          </td>
-                          <td className="num bom-count">{r.features}</td>
+              {groups.map((g) => {
+                /* Null for a section with no colour behind it, and the
+                   class goes with it — so the tinted rules never apply
+                   with the variables they read left undefined, which
+                   would paint a section in whatever `background: var(--u)`
+                   falls back to. */
+                const skin = skins.get(String(g.utility).trim().toLowerCase()) ?? null;
+                return (
+                  <div className={`bom-grp${skin ? " tinted" : ""}`} style={skin ?? undefined}
+                    key={`${g.site}-${g.utility}`}>
+                    <p className="bom-grp-head">
+                      {/* No pill where there is no site: an empty badge
+                          reads as a missing value rather than as a row that
+                          does not have one. */}
+                      {g.site && (
+                        <span className={`bom-pill bom-${g.site.toLowerCase().replace("-", "")}`}>
+                          {g.site}
+                        </span>
+                      )}
+                      {g.utility}
+                    </p>
+                    <table className="bom-tbl">
+                      <thead>
+                        <tr>
+                          <th>Item</th><th>Surface</th>
+                          <th className="num">Quantity</th><th className="num">Features</th>
                         </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                </div>
-              ))}
+                      </thead>
+                      <tbody>
+                        {g.items.map((r, i) => (
+                          <tr key={i}>
+                            <td>{r.item}</td>
+                            <td className="bom-surf">{r.surface || "\u2014"}</td>
+                            <td className="num">
+                              {Number(r.quantity).toFixed(r.unit === "m" ? 1 : 0)} {r.unit}
+                            </td>
+                            <td className="num bom-count">{r.features}</td>
+                          </tr>
+                        ))}
+                      </tbody>
+                    </table>
+                  </div>
+                );
+              })}
             </>
           )}
         </div>
@@ -451,4 +523,35 @@ const CSS = `
 .bom-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .bom-surf { color: var(--muted); }
 .bom-count { color: var(--muted); font-size: 11.5px; }
+
+/* ── A section in its utility's colour ──
+
+   Only where one was resolved. Everything below is scoped to .tinted,
+   so a section with no colour keeps the plain heading and the plain
+   rules it has always had rather than falling back to an undefined
+   variable.
+
+   The block is clipped and the band square, so the band, the headings
+   and the rows read as one thing with one edge — the point of colouring
+   them at all is that the eye can find where gas stops and water
+   starts without reading the words. */
+.bom-grp.tinted { border: 1px solid var(--u-line); border-radius: 8px; overflow: hidden; }
+.bom-grp.tinted .bom-grp-head { background: var(--u); color: var(--u-ink);
+  margin: 0; padding: 6px 10px; font-size: 13px; letter-spacing: .01em; }
+/* On the band the site badge is a chip of the band itself rather than
+   its own green or purple: two saturated colours a few pixels apart
+   compete, and the word inside it already says which site it is. */
+.bom-grp.tinted .bom-grp-head .bom-pill { background: rgba(255,255,255,.24);
+  color: inherit; border-color: rgba(255,255,255,.5); }
+.bom-grp.tinted .bom-tbl th { background: var(--u-head); color: #1f2937;
+  border-bottom-color: var(--u-line); padding: 5px 10px; }
+.bom-grp.tinted .bom-tbl td { background: var(--u-row);
+  border-bottom-color: var(--u-line); padding: 5px 10px; }
+/* Nothing under the last row: the block's own border is the edge, and a
+   rule just inside it reads as a line that failed to line up. */
+.bom-grp.tinted .bom-tbl tr:last-child td { border-bottom: 0; }
+/* The muted greys are legible on a tint this pale, but only just once
+   the utility is a dark one — so they take the ink rather than the
+   grey, at the weight that kept them secondary in the first place. */
+.bom-grp.tinted .bom-surf, .bom-grp.tinted .bom-count { color: #6b7280; }
 `;

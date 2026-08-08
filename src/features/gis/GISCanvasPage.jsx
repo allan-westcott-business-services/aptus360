@@ -10255,6 +10255,10 @@ export default function GISCanvasPage() {
         <BomModal
           projectId={projectId}
           projectName={project?.Project_Name ?? project?.Project_Ref}
+          /* The Utility rows carry the colour; the layers are what a
+             section on no utility — trench — is coloured from. */
+          utilities={lookups?.utilities || []}
+          layers={layers}
           onClose={() => setBomOpen(false)}
         />
       )}

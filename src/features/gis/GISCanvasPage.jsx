@@ -2722,8 +2722,45 @@ export default function GISCanvasPage() {
                alpha takes the colour of whatever it lands on, so the
                same label would read one way over grass and another over
                a road. */
-            ctx.fillStyle = own ? tint(st.colour, 0.86) : "rgba(255,255,255,.9)";
-            ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
+            /* Drawn as a pill: rounded, filled in the line's own colour
+               taken most of the way to white, and edged in that colour
+               at a quarter strength.
+
+               The edge does more than decorate. A flat tint on a pale
+               basemap has no boundary, so the label has no apparent
+               size and there is nothing to aim at; the outline is what
+               makes it look like an object worth clicking, which is
+               half of why these were awkward to pick up.
+
+               The box is exactly the one recorded for hit testing —
+               same origin, same width, same height — so what can be
+               clicked is what can be seen. Rounding the corners takes
+               nothing off that: the radius is inside the rectangle. */
+            const bx = mid.x - w / 2;
+            const by = mid.y - 20;
+            const bh = 15;
+            const rad = 4;
+
+            ctx.beginPath();
+            if (ctx.roundRect) ctx.roundRect(bx, by, w, bh, rad);
+            else {
+              /* Older canvases have no roundRect. The same shape by
+                 hand rather than a square one, so a browser that lacks
+                 it does not quietly draw a different label. */
+              ctx.moveTo(bx + rad, by);
+              ctx.arcTo(bx + w, by, bx + w, by + bh, rad);
+              ctx.arcTo(bx + w, by + bh, bx, by + bh, rad);
+              ctx.arcTo(bx, by + bh, bx, by, rad);
+              ctx.arcTo(bx, by, bx + w, by, rad);
+              ctx.closePath();
+            }
+            ctx.fillStyle = own ? tint(st.colour, 0.86) : "rgba(255,255,255,.92)";
+            ctx.fill();
+            if (own) {
+              ctx.strokeStyle = tint(st.colour, 0.45);
+              ctx.lineWidth = 1;
+              ctx.stroke();
+            }
             /* The white plate stays white whatever the text is. It
                exists so a tag can be read over a trench, and colouring
                it with the label would take that away just where it is
@@ -3292,7 +3329,16 @@ export default function GISCanvasPage() {
           x = r.cx + dx * cos - dy * sin;
           y = r.cy + dx * sin + dy * cos;
         }
-        return x >= r.x && x <= r.x + r.w && y >= r.y - 4 && y <= r.y + r.h + 4;
+        /* Six pixels of slack on every side, not four on two of them.
+
+           A label is fifteen pixels tall and often the smallest thing
+           on the drawing; asking for a click inside those fifteen is
+           asking for precision nobody has with a trackpad on a moving
+           plan. The padding is even, so aiming slightly left is as
+           forgiving as aiming slightly high. */
+        const PAD = 6;
+        return x >= r.x - PAD && x <= r.x + r.w + PAD
+          && y >= r.y - PAD && y <= r.y + r.h + PAD;
       };
       const lab = [...labelHits.current].reverse().find(inLabel);
       if (lab) {
@@ -3695,6 +3741,12 @@ export default function GISCanvasPage() {
        so it belongs above the line that takes a delta. Snapped the same
        way anything else is dragged: a boundary point often wants to sit
        on the plot line or the back of the footway. */
+    if (d.mode === "label") {
+      /* Told apart from a click, so releasing without moving can mean
+         something different from finishing a drag. */
+      d.moved = true;
+    }
+
     if (d.mode === "boundary") {
       const { point } = resolve(raw[0], raw[1]);
       setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId
@@ -3815,6 +3867,23 @@ export default function GISCanvasPage() {
     if (d?.mode === "label") {
       const f = features.find((x) => x.Feature_ID === d.featureId);
       if (!f) return;
+
+      /* A click that did not move selects the line the label is on.
+
+         Clicking a label did nothing at all unless it was dragged: the
+         line it names stayed unselected, the editor stayed shut, and
+         the label is the easiest part of a thin cable to hit. So it
+         behaves like clicking the cable, which is what somebody aiming
+         at it means.
+
+         Nothing is written either — a click is not an edit, and saving
+         on one puts a row through the database every time somebody
+         touches a label to see what it belongs to. */
+      if (!d.moved) {
+        setSelected([f.Feature_ID]);
+        return;
+      }
+
       try {
         await bulkUpdateFeatures(projectId, [{
           Feature_ID: f.Feature_ID,

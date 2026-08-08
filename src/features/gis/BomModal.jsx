@@ -149,29 +149,42 @@ export default function BomModal({ projectId, projectName, utilities = [], layer
   const [rows, setRows] = useState([]);
   /* ── The colour each section is drawn in ──
 
-     Keyed on the name the bill puts in the section heading, because
-     that is all a row carries: gis_bom returns the utility's name, and
-     falls back to the layer's label for anything on a layer with no
-     utility — trench, which is most of the metres on a drawing.
+     Off the layer, which is the colour the canvas itself draws that
+     utility in — `layerOf(f.Layer_Key).Colour` is what every line, pipe
+     and meter on the drawing is painted with. A bill whose gas section
+     is a different red from the gas on the drawing behind it is two
+     answers to one question, and the drawing is the one being read.
 
-     So both are read, and the utility second so it wins where a layer
-     happens to be labelled the same as a utility.
+     The layer already carries the utility's colour where there is one:
+     gis.js fills it at read time, because a layer stands one-to-one
+     with its utility and what it stores is the same fact written twice.
+     So reading the layer gets the utility default and the layer default
+     both, without this having to know which of them applied.
 
-     A utility with no colour of its own falls through to its layer's,
-     which is where the colour lived before 0123 moved it up. Nothing
-     here writes a colour or picks one: a section whose utility nobody
-     has coloured stays plain, which is the honest answer rather than a
-     palette invented at render time. */
+     ── Why the utilities are still needed ──
+
+     Not for a colour. A bill row carries a *name* and nothing else —
+     gis_bom returns the utility's name, falling back to the layer's
+     label for anything on a layer with no utility, which is trench and
+     most of the metres on a drawing. So the utilities are the index
+     that turns "Electric" into the layer whose colour to use, and the
+     labels cover the rest.
+
+     First layer wins where two share a utility, since they arrive in
+     sort order — the same order the layer menu lists them in. Nothing
+     here picks a colour: a section whose layer has none stays plain. */
   const skins = useMemo(() => {
     const out = new Map();
     const put = (name, colour) => {
+      const key = String(name ?? "").trim().toLowerCase();
+      if (!key || out.has(key)) return;
       const skin = utilitySkin(colour);
-      if (name && skin) out.set(String(name).trim().toLowerCase(), skin);
+      if (skin) out.set(key, skin);
     };
-    for (const l of layers) put(l.Label, l.Colour);
-    for (const u of utilities) {
-      put(u.Utility, u.Colour
-        || layers.find((l) => Number(l.Utility_ID) === Number(u.Utility_ID))?.Colour);
+    for (const l of layers) {
+      put(utilities.find((u) => Number(u.Utility_ID) === Number(l.Utility_ID))?.Utility,
+        l.Colour);
+      put(l.Label, l.Colour);
     }
     return out;
   }, [utilities, layers]);

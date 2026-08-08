@@ -41,7 +41,7 @@ import { ON_SITE, OFF_SITE } from "./boundary.js";
    the export reading differently from the modal it was taken from. */
 const SITE_ORDER = ["Off-site", "On-site", "Unclassified", ""];
 
-/* ── The two colours with nowhere to live ──
+/* ── The one colour with nowhere to live ──
 
    On-site trench is drawn in the trench layer's colour, and the bill
    follows it. Off-site is drawn in the same colour, because nothing
@@ -56,15 +56,9 @@ const SITE_ORDER = ["Off-site", "On-site", "Unclassified", ""];
    drawing and the bill agree again, which is the better end state; this
    is what the bill does in the meantime.
 
-   "Not site-dependent" has no drawing behind it at all. It is the
-   meters, joints, cables and pipes that carry no site, gathered under
-   one heading because a bill has to put them somewhere, so there is no
-   layer, no style row and no utility to ask. It is a constant and can
-   only be one. Both live here, next to SITE_ORDER, rather than in the
-   stylesheet, so a colour somebody wants to change is where they would
-   think to look for it. */
+   Here rather than in the stylesheet, so a colour somebody wants to
+   change is where they would think to look for it. */
 const SITE_FALLBACK = { [OFF_SITE]: "#9333ea" };
-const NO_SITE_COLOUR = "#9333ea";
 
 /* A name Excel will accept for a worksheet.
 
@@ -358,23 +352,31 @@ export default function BomModal({
   const totalsFor = (items, unit) =>
     items.filter((r) => r.unit === unit).reduce((t, r) => t + Number(r.quantity), 0);
 
-  /* Totals per site cover trench only, because only trench has a site.
-     The unsplit rows get their own line rather than being folded in —
-     adding cable metres to trench metres would produce a figure nobody
-     wants. */
+  /* ── Totals per site, and only per site ──
+
+     Trench only, because only trench has a site. The rows that carry
+     none had a card of their own and it has gone: it summed every
+     cable, pipe and meter on the drawing into one figure, and every one
+     of those is already set out below under its own utility, in the
+     units it is ordered in. A metre of cable added to a metre of gas
+     main is not a quantity anybody uses, and a card showing it invites
+     the reader to check a number that answers nothing.
+
+     They are still counted — they are the sections further down, and
+     the Excel summary still carries the line so a sheet can be
+     reconciled end to end. What has gone is the card. */
   const siteTotals = useMemo(() => SITE_ORDER.map((site) => {
     const items = shown.filter((r) => r.site === site);
     return {
       /* The raw value as well as the label. The label is what somebody
-         reads; the key is what the colour is looked up by, and "" is a
-         real answer — no site — rather than a missing one. */
+         reads; the key is what the colour is looked up by. */
       key: site,
       site: site || "Not site-dependent",
       metres: totalsFor(items, "m"),
       count: totalsFor(items, "no."),
       items: items.length,
     };
-  }).filter((s) => s.items), [shown]);
+  }).filter((s) => s.items && s.key), [shown]);
 
   const unclassified = shown.filter((r) => r.site === "Unclassified").length;
 
@@ -516,12 +518,9 @@ export default function BomModal({
                 {siteTotals.map((s) => {
                   /* The same colour the section below carries, so the
                      card at the top and the band it summarises are
-                     recognisably the same thing. The no-site card takes
-                     the constant instead, having no section of its own
-                     and nothing on the drawing to follow. */
-                  const skin = s.key
-                    ? siteSkins.get(s.key) ?? null
-                    : utilitySkin(NO_SITE_COLOUR);
+                     recognisably the same thing. Unclassified has a
+                     site key but no colour, and keeps the plain card. */
+                  const skin = siteSkins.get(s.key) ?? null;
                   return (
                     <div className={`bom-card${skin ? " tinted" : ""}`}
                       style={skin ?? undefined} key={s.site}>

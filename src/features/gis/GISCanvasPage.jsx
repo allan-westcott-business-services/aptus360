@@ -1126,6 +1126,25 @@ export default function GISCanvasPage() {
       : [...shownOnly, key]);
   }, [applyShown, shownOnly]);
 
+  /* Everything a feature of this class carries.
+
+     A plot seed answers to "plot", "role:plot" and "plot:role:plot".
+     Isolating a utility hides all three, and taking one back off the
+     hidden list left the other two on it — so unhiding plot seeds after
+     an isolate appeared to do nothing at all, because a feature goes if
+     any of its keys is hidden.
+
+     Gathered from the features rather than from a list of key shapes,
+     so a class this file has never heard of behaves the same. */
+  const kinOf = useCallback((key) => {
+    const out = new Set([key]);
+    for (const f of features) {
+      const ks = classKeys(f);
+      if (ks.includes(key)) ks.forEach((k) => out.add(k));
+    }
+    return out;
+  }, [features, classKeys]);
+
   const hideClass = useCallback((key) => {
     /* Hiding one of the layers a list is showing takes it off the list,
        rather than hiding it twice over. Otherwise pressing H on the
@@ -1137,10 +1156,30 @@ export default function GISCanvasPage() {
     }
     /* Pressing H on a hidden layer puts it back. The button is the one
        anybody reaches for to undo the press that hid it, and refusing
-       there sends them looking for a control that already exists. */
+       there sends them looking for a control that already exists.
+
+       While a show list is running, putting a layer back means joining
+       the list. Anything else leaves the two disagreeing — the list
+       saying "only electric" while plot seeds are on screen — and the
+       next press of any S would recompute from the list and hide them
+       again, which reads as the drawing undoing what you just did.
+
+       With no list running it is a straight unhide, of every key the
+       class carries rather than only the one named. That is what was
+       wrong: an isolate hides "plot", "role:plot" and "plot:role:plot",
+       taking one off left the other two on, and a feature goes if any
+       of its keys is hidden. So the seeds stayed away and the button
+       looked broken. */
+    if (hidden.includes(key)) {
+      if (shownOnly.length) { applyShown([...shownOnly, key]); return; }
+      const kin = kinOf(key);
+      setSolo(null);
+      setHidden((h) => h.filter((x) => !kin.has(x)));
+      return;
+    }
     setSolo(null);
-    setHidden((h) => (h.includes(key) ? h.filter((x) => x !== key) : [...h, key]));
-  }, [applyShown, shownOnly]);
+    setHidden((h) => [...h, key]);
+  }, [applyShown, shownOnly, hidden, kinOf]);
 
   /* Isolate one class: hide every class key that isn't carried by a
      feature carrying this one.
@@ -1356,6 +1395,23 @@ export default function GISCanvasPage() {
      with "Cannot access 'ki' before initialization": the name after
      minification, meaning nothing to anyone reading it. Anything built
      from a resolved style has to come after the resolver. */
+  /* The cable a line was drawn with, as it is written on a drawing.
+
+     Built once rather than searched per line per frame: a site has a
+     few dozen cable sizes and several hundred cables, and the label
+     draw runs on every pan. */
+  const cableNames = useMemo(() => {
+    const types = new Map((lookups?.cableTypes || [])
+      .map((t) => [Number(t.Cable_Type_ID), t.Cable_Type]));
+    const out = new Map();
+    for (const c of lookups?.cableSizes || []) {
+      const type = types.get(Number(c.Cable_Type_ID));
+      out.set(Number(c.Cable_Size_ID),
+        [type, c.Size_Label].filter(Boolean).join(" "));
+    }
+    return out;
+  }, [lookups]);
+
   /* The colour the water layer draws in, resolved rather than read.
 
      The boundary mark and the service valves are annotations on the
@@ -2516,10 +2572,35 @@ export default function GISCanvasPage() {
             ? `${a.Size ?? "size not set"}  ${lineLength(f.Geometry).toFixed(1)} m`
             : "";
 
+          /* ── What a cable says ──
+
+             The same as a water main: what it was built with, and how
+             long it is. A circuit tag alone answers which way the
+             current goes and nothing about what is in the ground, so
+             the drawing had to be read against a schedule to know
+             either.
+
+             Kept beside the tag rather than replacing it — 1B is how a
+             circuit is spoken about on site, and dropping it to make
+             room for the cable would trade one fact for another.
+
+             Both read off the drawing: the length is measured from the
+             geometry, so it follows a run edited since, and the cable is
+             the one on the line now, so a size changed in the editor
+             shows immediately. */
+          const cabled = f.Layer_Key === "electric" && a.VD_Cable_Size_ID != null
+            ? `${cableNames.get(Number(a.VD_Cable_Size_ID)) ?? "cable not in the catalogue"}`
+              + `  ${lineLength(f.Geometry).toFixed(1)} m`
+            : "";
+
+          /* The line's own label, as against the circuit's. Water and
+             electric answer the same question in the same shape. */
+          const own = sized || cabled;
+
           const txt = on
             ? [spelled || a.Size, `${lineLength(f.Geometry).toFixed(1)} m`]
               .filter(Boolean).join("  ")
-            : (tag || sized);
+            : [tag, own].filter(Boolean).join("  ");
 
           if (txt) placements.forEach((pl, idx) => {
             const placed = !!pl;
@@ -2599,7 +2680,11 @@ export default function GISCanvasPage() {
               if (set != null && Number.isFinite(Number(set))) {
                 return (Number(set) * Math.PI) / 180;
               }
-              if (!sized) return 0;
+              /* Angled when the label is about the line itself. A bare
+                 circuit tag stays horizontal: it is a name read at a
+                 glance across a page, and turning a hundred of them
+                 would scatter them. */
+              if (!own) return 0;
               let r = Math.atan2(anchor.dy ?? 0, anchor.dx ?? 1);
               if (r > Math.PI / 2) r -= Math.PI;
               if (r < -Math.PI / 2) r += Math.PI;

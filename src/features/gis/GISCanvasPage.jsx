@@ -10260,6 +10260,12 @@ export default function GISCanvasPage() {
              section's name into the layer it belongs to. */
           utilities={lookups?.utilities || []}
           layers={layers}
+          /* On-site and off-site trench are coloured by resolving the
+             same style rows the canvas draws them with, so the bill
+             follows the GIS Styles screen rather than holding its own
+             copy of the answer. */
+          styles={styles}
+          standard={standard}
           onClose={() => setBomOpen(false)}
         />
       )}

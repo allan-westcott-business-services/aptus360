@@ -4,6 +4,8 @@ import * as XLSX from "xlsx";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
 import { parseHex, tint, contrast } from "../../lib/pillColour.js";
+import { resolveStyle } from "../../lib/gisStyle.js";
+import { ON_SITE, OFF_SITE } from "./boundary.js";
 
 /* Bill of materials.
 
@@ -38,6 +40,31 @@ import { parseHex, tint, contrast } from "../../lib/pillColour.js";
    cannot disagree; changing one without the other is what would leave
    the export reading differently from the modal it was taken from. */
 const SITE_ORDER = ["Off-site", "On-site", "Unclassified", ""];
+
+/* ── The two colours with nowhere to live ──
+
+   On-site trench is drawn in the trench layer's colour, and the bill
+   follows it. Off-site is drawn in the same colour, because nothing
+   seeds a style row for it — so a bill that only followed the drawing
+   would put two identical brown bands one above the other and leave the
+   reader telling them apart by the word on each, which is the job the
+   colour is there to do.
+
+   So off-site has a default, and a style row scoped to Site = Off-site
+   beats it — the cascade is asked first and this is only reached when
+   it has nothing to say. Add that row on the GIS Styles screen and the
+   drawing and the bill agree again, which is the better end state; this
+   is what the bill does in the meantime.
+
+   "Not site-dependent" has no drawing behind it at all. It is the
+   meters, joints, cables and pipes that carry no site, gathered under
+   one heading because a bill has to put them somewhere, so there is no
+   layer, no style row and no utility to ask. It is a constant and can
+   only be one. Both live here, next to SITE_ORDER, rather than in the
+   stylesheet, so a colour somebody wants to change is where they would
+   think to look for it. */
+const SITE_FALLBACK = { [OFF_SITE]: "#9333ea" };
+const NO_SITE_COLOUR = "#9333ea";
 
 /* A name Excel will accept for a worksheet.
 
@@ -145,7 +172,11 @@ export function utilitySkin(colour) {
   };
 }
 
-export default function BomModal({ projectId, projectName, utilities = [], layers = [], onClose }) {
+export default function BomModal({
+  projectId, projectName,
+  utilities = [], layers = [], styles = [], standard = null,
+  onClose,
+}) {
   const [rows, setRows] = useState([]);
   /* ── The colour each section is drawn in ──
 
@@ -188,6 +219,46 @@ export default function BomModal({ projectId, projectName, utilities = [], layer
     }
     return out;
   }, [utilities, layers]);
+
+  /* ── On site and off it ──
+
+     A trench section is split by which side of the red line it falls,
+     and the two are different work: inside is the developer's, outside
+     needs a notice, a reinstatement and somebody else's permission. So
+     they get their own colours rather than two bands of the same brown
+     distinguished only by a word.
+
+     Asked of the style cascade rather than read off a row, which is
+     what the canvas does with the trenches themselves — resolveStyle is
+     given a subject and answers what it looks like. Two consequences
+     worth having: an operator-scoped override wins here exactly as it
+     wins on the drawing, and a colour changed on the GIS Styles screen
+     moves the bill with it, because this is asking the same question
+     rather than keeping a second copy of the answer.
+
+     Falls back to the off-site default above, and then to the trench
+     layer's own colour — which is where on-site lands, since that is
+     what an on-site trench is drawn in. */
+  const siteSkins = useMemo(() => {
+    const out = new Map();
+    const trench = layers.find((l) => l.Layer_Key === "trench");
+    if (!trench) return out;
+
+    for (const site of [ON_SITE, OFF_SITE]) {
+      const resolved = resolveStyle({
+        Layer_Key: trench.Layer_Key,
+        Line_Type: null,
+        Feature_Role: null,
+        Site: site,
+        Utility_ID: trench.Utility_ID ?? null,
+      }, styles, { organisationId: standard || null });
+      const skin = utilitySkin(resolved.Colour
+        ?? SITE_FALLBACK[site]
+        ?? trench.Colour);
+      if (skin) out.set(site, skin);
+    }
+    return out;
+  }, [layers, styles, standard]);
 
   /* Whose bill is on screen. "" is the whole site — the same rows added
      up without the split, so the parts always reconcile against it. */
@@ -256,6 +327,10 @@ export default function BomModal({ projectId, projectName, utilities = [], layer
   const siteTotals = useMemo(() => SITE_ORDER.map((site) => {
     const items = shown.filter((r) => r.site === site);
     return {
+      /* The raw value as well as the label. The label is what somebody
+         reads; the key is what the colour is looked up by, and "" is a
+         real answer — no site — rather than a missing one. */
+      key: site,
       site: site || "Not site-dependent",
       metres: totalsFor(items, "m"),
       count: totalsFor(items, "no."),
@@ -400,29 +475,40 @@ export default function BomModal({ projectId, projectName, utilities = [], layer
           {!loading && rows.length > 0 && (
             <>
               <div className="bom-tot">
-                {siteTotals.map((s) => (
-                  <div className={`bom-card bom-${s.site.toLowerCase().replace("-", "")}`} key={s.site}>
-                    <span className="bc-label">{s.site}</span>
-                    <span className="bc-main">{s.metres.toFixed(1)} m</span>
-                    {/* Counted objects, and only where they are counted.
+                {siteTotals.map((s) => {
+                  /* The same colour the section below carries, so the
+                     card at the top and the band it summarises are
+                     recognisably the same thing. The no-site card takes
+                     the constant instead, having no section of its own
+                     and nothing on the drawing to follow. */
+                  const skin = s.key
+                    ? siteSkins.get(s.key) ?? null
+                    : utilitySkin(NO_SITE_COLOUR);
+                  return (
+                    <div className={`bom-card${skin ? " tinted" : ""}`}
+                      style={skin ?? undefined} key={s.site}>
+                      <span className="bc-label">{s.site}</span>
+                      <span className="bc-main">{s.metres.toFixed(1)} m</span>
+                      {/* Counted objects, and only where they are counted.
 
-                        On-site and Off-site are trench, and a trench is
-                        a length — so those cards showed "0 points" for
-                        ever, which reads as "we found none" rather than
-                        "this is not counted here". Meters, joints and
-                        the rest carry no site, so they all fall under
-                        Not site-dependent.
+                          On-site and Off-site are trench, and a trench is
+                          a length — so those cards showed "0 points" for
+                          ever, which reads as "we found none" rather than
+                          "this is not counted here". Meters, joints and
+                          the rest carry no site, so they all fall under
+                          Not site-dependent.
 
-                        Called objects rather than points: this app has
-                        design points on the Outline Designs tab, and
-                        they are a different quantity entirely. */}
-                    <span className="bc-sub">
-                      {s.count > 0
-                        ? `${s.count} object${s.count === 1 ? "" : "s"}`
-                        : `${s.items} line${s.items === 1 ? "" : "s"} of detail`}
-                    </span>
-                  </div>
-                ))}
+                          Called objects rather than points: this app has
+                          design points on the Outline Designs tab, and
+                          they are a different quantity entirely. */}
+                      <span className="bc-sub">
+                        {s.count > 0
+                          ? `${s.count} object${s.count === 1 ? "" : "s"}`
+                          : `${s.items} line${s.items === 1 ? "" : "s"} of detail`}
+                      </span>
+                    </div>
+                  );
+                })}
               </div>
 
               {unclassified > 0 && (
@@ -438,8 +524,17 @@ export default function BomModal({ projectId, projectName, utilities = [], layer
                    class goes with it — so the tinted rules never apply
                    with the variables they read left undefined, which
                    would paint a section in whatever `background: var(--u)`
-                   falls back to. */
-                const skin = skins.get(String(g.utility).trim().toLowerCase()) ?? null;
+                   falls back to.
+
+                   The site wins over the utility where there is one.
+                   Only trench carries a site, and a drawing's trench is
+                   one colour — so colouring these two sections by their
+                   utility would give the reader two identical brown
+                   bands to tell apart by reading the word on them,
+                   which is the thing the colour is there to save. */
+                const skin = (g.site && siteSkins.get(g.site))
+                  ?? skins.get(String(g.utility).trim().toLowerCase())
+                  ?? null;
                 return (
                   <div className={`bom-grp${skin ? " tinted" : ""}`} style={skin ?? undefined}
                     key={`${g.site}-${g.utility}`}>
@@ -448,9 +543,7 @@ export default function BomModal({ projectId, projectName, utilities = [], layer
                           reads as a missing value rather than as a row that
                           does not have one. */}
                       {g.site && (
-                        <span className={`bom-pill bom-${g.site.toLowerCase().replace("-", "")}`}>
-                          {g.site}
-                        </span>
+                        <span className="bom-pill">{g.site}</span>
                       )}
                       {g.utility}
                     </p>
@@ -513,8 +606,10 @@ const CSS = `
   gap: 10px; margin-bottom: 14px; }
 .bom-card { border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
   display: flex; flex-direction: column; gap: 1px; }
-.bom-card.bom-onsite { border-color: #16a34a; background: #f0fdf4; }
-.bom-card.bom-offsite { border-color: #9333ea; background: #faf5ff; }
+/* The site's own colour, off the same style rows the trenches are
+   drawn with. The pair used to be a green and a purple chosen here,
+   which agreed with nothing on the drawing. */
+.bom-card.tinted { border-color: var(--u-line); background: var(--u-row); }
 .bc-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); }
 .bc-main { font-size: 19px; font-weight: 700; }
@@ -527,8 +622,8 @@ const CSS = `
 .bom-pill { font-size: 9.5px; font-weight: 700; text-transform: uppercase; letter-spacing: .05em;
   border-radius: 20px; padding: 1px 8px; background: var(--bg); color: var(--muted);
   border: 1px solid var(--border); }
-.bom-pill.bom-onsite { background: #16a34a; color: #fff; border-color: #16a34a; }
-.bom-pill.bom-offsite { background: #9333ea; color: #fff; border-color: #9333ea; }
+/* On a coloured band the badge is a chip of the band itself — see the
+   tinted rule below. Off one, it stays the neutral pill. */
 .bom-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px; }
 .bom-tbl th { text-align: left; font-size: 10px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); padding: 4px 8px; border-bottom: 1px solid var(--border); }

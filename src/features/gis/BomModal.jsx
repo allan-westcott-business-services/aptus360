@@ -352,32 +352,21 @@ export default function BomModal({
   const totalsFor = (items, unit) =>
     items.filter((r) => r.unit === unit).reduce((t, r) => t + Number(r.quantity), 0);
 
-  /* ── Totals per site, and only per site ──
+  /* ── No totals row ──
 
-     Trench only, because only trench has a site. The rows that carry
-     none had a card of their own and it has gone: it summed every
-     cable, pipe and meter on the drawing into one figure, and every one
-     of those is already set out below under its own utility, in the
-     units it is ordered in. A metre of cable added to a metre of gas
-     main is not a quantity anybody uses, and a card showing it invites
-     the reader to check a number that answers nothing.
+     There were three cards here, then two, and now none.
 
-     They are still counted — they are the sections further down, and
-     the Excel summary still carries the line so a sheet can be
-     reconciled end to end. What has gone is the card. */
-  const siteTotals = useMemo(() => SITE_ORDER.map((site) => {
-    const items = shown.filter((r) => r.site === site);
-    return {
-      /* The raw value as well as the label. The label is what somebody
-         reads; the key is what the colour is looked up by. */
-      key: site,
-      site: site || "Not site-dependent",
-      metres: totalsFor(items, "m"),
-      count: totalsFor(items, "no."),
-      items: items.length,
-    };
-  }).filter((s) => s.items && s.key), [shown]);
+     What they summed was trench, split by which side of the red line it
+     falls — a real distinction, but one the two trench sections below
+     already make, with the same colours and the same figures a few
+     centimetres further down. The cards restated them above the fold
+     and pushed the bill itself off the bottom of the panel, so the
+     first thing the reader saw was a summary of the smallest part of
+     the drawing.
 
+     The Excel Summary sheet keeps its totals. A sheet is read away from
+     here and has to reconcile on its own; a panel is read with the
+     detail directly under it. */
   const unclassified = shown.filter((r) => r.site === "Unclassified").length;
 
   function exportXlsx() {
@@ -514,40 +503,6 @@ export default function BomModal({
 
           {!loading && rows.length > 0 && (
             <>
-              <div className="bom-tot">
-                {siteTotals.map((s) => {
-                  /* The same colour the section below carries, so the
-                     card at the top and the band it summarises are
-                     recognisably the same thing. Unclassified has a
-                     site key but no colour, and keeps the plain card. */
-                  const skin = siteSkins.get(s.key) ?? null;
-                  return (
-                    <div className={`bom-card${skin ? " tinted" : ""}`}
-                      style={skin ?? undefined} key={s.site}>
-                      <span className="bc-label">{s.site}</span>
-                      <span className="bc-main">{s.metres.toFixed(1)} m</span>
-                      {/* Counted objects, and only where they are counted.
-
-                          On-site and Off-site are trench, and a trench is
-                          a length — so those cards showed "0 points" for
-                          ever, which reads as "we found none" rather than
-                          "this is not counted here". Meters, joints and
-                          the rest carry no site, so they all fall under
-                          Not site-dependent.
-
-                          Called objects rather than points: this app has
-                          design points on the Outline Designs tab, and
-                          they are a different quantity entirely. */}
-                      <span className="bc-sub">
-                        {s.count > 0
-                          ? `${s.count} object${s.count === 1 ? "" : "s"}`
-                          : `${s.items} line${s.items === 1 ? "" : "s"} of detail`}
-                      </span>
-                    </div>
-                  );
-                })}
-              </div>
-
               {unclassified > 0 && (
                 <p className="bom-warn">
                   {unclassified} row{unclassified === 1 ? "" : "s"} unclassified &mdash; drawn
@@ -652,18 +607,6 @@ const CSS = `
 .bom-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
 .bom-body { padding: 15px 18px; overflow-y: auto; flex: 1; }
 .bom-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 50px 20px; }
-.bom-tot { display: grid; grid-template-columns: repeat(auto-fit, minmax(140px, 1fr));
-  gap: 10px; margin-bottom: 14px; }
-.bom-card { border: 1px solid var(--border); border-radius: 8px; padding: 9px 12px;
-  display: flex; flex-direction: column; gap: 1px; }
-/* The site's own colour, off the same style rows the trenches are
-   drawn with. The pair used to be a green and a purple chosen here,
-   which agreed with nothing on the drawing. */
-.bom-card.tinted { border-color: var(--u-line); background: var(--u-row); }
-.bc-label { font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: .06em; color: var(--muted); }
-.bc-main { font-size: 19px; font-weight: 700; }
-.bc-sub { font-size: 11px; color: var(--muted); }
 .bom-warn { font-size: 11.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a;
   border-radius: 6px; padding: 7px 10px; margin: 0 0 14px; }
 .bom-grp { margin-bottom: 16px; }

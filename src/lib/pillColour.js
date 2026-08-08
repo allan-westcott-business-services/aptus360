@@ -60,6 +60,23 @@ export function contrast(a, b) {
   return (hi + 0.05) / (lo + 0.05);
 }
 
+/* A colour mixed towards white.
+
+   Used behind a label so the plate belongs to its utility without
+   competing with the text on it. Mixed rather than made translucent:
+   an alpha over a drawing takes the colour of whatever it lands on, so
+   the same label reads green over grass and grey over a road, and two
+   labels on one line look like two different things.
+
+   `amount` is how far towards white, 0 to 1. */
+export function tint(colour, amount = 0.85) {
+  const rgb = parseHex(colour);
+  if (!rgb) return "#ffffff";
+  const a = Math.max(0, Math.min(1, amount));
+  const mix = rgb.map((v) => Math.round(v + (255 - v) * a));
+  return `#${mix.map((v) => v.toString(16).padStart(2, "0")).join("")}`;
+}
+
 /* The style for a pill, given what admin recorded.
 
    A status with no colour set gets the neutral pill rather than nothing:

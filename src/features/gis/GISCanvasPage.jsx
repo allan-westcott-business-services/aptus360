@@ -86,6 +86,7 @@ import {
 } from "./undoStack.js";
 import TrenchCheck from "./TrenchCheck.jsx";
 import { usePdfPage, drawTile } from "./usePdfPage.js";
+import { tint } from "../../lib/pillColour.js";
 
 /* GIS canvas — stage 1.
 
@@ -2657,6 +2658,12 @@ export default function GISCanvasPage() {
               id: f.Feature_ID, idx: placed ? idx : null, anchor, txt,
               cx: mid.x, cy: mid.y,
               x: mid.x - w / 2, y: mid.y - 20, w, h: 15,
+              /* Set below, once the angle is worked out. A rotated label
+                 was tested against an upright box: the further from
+                 horizontal it sat, the less the box matched what was on
+                 screen, so clicks landed beside it or caught a label two
+                 rows away. */
+              spin: 0,
             });
 
             /* ── Which way up ──
@@ -2691,6 +2698,8 @@ export default function GISCanvasPage() {
               return r;
             })();
 
+            labelHits.current[labelHits.current.length - 1].spin = spin;
+
             ctx.save();
             if (spin) {
               /* Turned about the label's own anchor, so rotating does
@@ -2700,7 +2709,20 @@ export default function GISCanvasPage() {
               ctx.rotate(spin);
               ctx.translate(-mid.x, -mid.y);
             }
-            ctx.fillStyle = "rgba(255,255,255,.9)";
+            /* The plate, in the line's own colour taken most of the way
+               to white.
+
+               It was flat white, which read as a hole cut in the drawing
+               and said nothing about which utility a label belonged to
+               when four ran side by side. A tint says whose it is and
+               still leaves the text at better than fourteen to one
+               against the ink.
+
+               Mixed towards white rather than drawn at low opacity: an
+               alpha takes the colour of whatever it lands on, so the
+               same label would read one way over grass and another over
+               a road. */
+            ctx.fillStyle = own ? tint(st.colour, 0.86) : "rgba(255,255,255,.9)";
             ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
             /* The white plate stays white whatever the text is. It
                exists so a tag can be read over a trench, and colouring
@@ -3252,8 +3274,27 @@ export default function GISCanvasPage() {
        and anyone clicking a label means the label. Searched newest first
        so the one drawn last — the one visibly on top — wins. */
     if (!drawing && !placing) {
-      const lab = [...labelHits.current].reverse().find((r) =>
-        px >= r.x && px <= r.x + r.w && py >= r.y - 4 && py <= r.y + r.h + 4);
+      /* Tested in the label's own frame.
+
+         The pointer is turned back about the label's anchor by however
+         far the label was turned forward, and then compared with the
+         upright box it was drawn from. A box that does not rotate with
+         what it stands for is the whole reason these were hard to
+         catch. */
+      const inLabel = (r) => {
+        let x = px;
+        let y = py;
+        if (r.spin) {
+          const dx = px - r.cx;
+          const dy = py - r.cy;
+          const cos = Math.cos(-r.spin);
+          const sin = Math.sin(-r.spin);
+          x = r.cx + dx * cos - dy * sin;
+          y = r.cy + dx * sin + dy * cos;
+        }
+        return x >= r.x && x <= r.x + r.w && y >= r.y - 4 && y <= r.y + r.h + 4;
+      };
+      const lab = [...labelHits.current].reverse().find(inLabel);
       if (lab) {
         const f = features.find((x) => x.Feature_ID === lab.id);
         drag.current = {

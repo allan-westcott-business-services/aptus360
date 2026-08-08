@@ -3141,9 +3141,14 @@ export default function GISCanvasPage() {
         const f = features.find((x) => x.Feature_ID === lab.id);
         drag.current = {
           mode: "label", featureId: lab.id, startPx: [px, py],
-          labelIdx: hit.idx ?? null,
-          startOffset: (hit.idx != null
-            ? f?.Attributes?.Labels?.[hit.idx]?.off
+          /* From the label that was hit — `lab` — and not from `hit`,
+             which is the name the feature hit test uses further down
+             this function and does not exist yet up here. Reading a
+             property off it threw, the click handler stopped where it
+             stood, and every label became unpickable. */
+          labelIdx: lab.idx ?? null,
+          startOffset: (lab.idx != null
+            ? f?.Attributes?.Labels?.[lab.idx]?.off
             : f?.Attributes?.Label_Offset) ?? [0, 0],
         };
         return;

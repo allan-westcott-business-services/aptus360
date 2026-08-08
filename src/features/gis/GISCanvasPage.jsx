@@ -9959,9 +9959,22 @@ export default function GISCanvasPage() {
                       bar wraps to. */}
                   <div className="gis-findbox">
                     <input className="gis-find-in" value={findQ} ref={findRef}
-                      placeholder="&#128269; Find a plot, span or kind"
+                      placeholder="&#128269; Plot 34, A12, substation&hellip;"
                       aria-label="Find a feature"
-                      title="Find a feature by label, plot or circuit (Ctrl/Cmd + F)"
+                      /* Examples rather than a list of the fields it
+                         searches. It read "Find a plot, span or kind",
+                         and "kind" is this file's word for what a thing
+                         is — the line type's label, or the role — not a
+                         word anybody would use out loud, so it named
+                         the implementation and left the reader none the
+                         wiser about what to type.
+
+                         Three examples cover the three ways in: a plot
+                         number, a span code, and the name of a kind of
+                         thing. The tooltip spells it out for anyone who
+                         wants the full answer. */
+                      title={"Find by plot number, span code, label, or what a thing is"
+                        + " \u2014 34, A12, substation, service trench (Ctrl/Cmd + F)"}
                       onFocus={() => setFindFocus(true)}
                       onBlur={() => setFindFocus(false)}
                       onChange={(e) => setFindQ(e.target.value)}

@@ -96,6 +96,22 @@
 
 import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "./feeder.js";
 
+/* ── How far the main runs past the last tee ──
+
+   A main does not stop at the last service it feeds. It carries on a
+   little way and is capped, so the next connection has something to cut
+   into rather than a live end to dig back to.
+
+   A metre and a half of it, and it is real pipe: laid, adopted and paid
+   for. So it goes in the geometry rather than being drawn on top of it,
+   which is what puts it in the run's length, in the schedule against
+   its own size, and in the BOM — the length trigger reads the geometry,
+   so anything not in there is pipe nobody buys.
+
+   The cap on the end is the other half of this and is *not* here: it is
+   drawn from the geometry at render time, in gasEnds.js. */
+export const END_EXTEND_M = 1.5;
+
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 const lengthOf = (pts = []) => {
@@ -308,6 +324,12 @@ export function gasMainRuns(features = [], opts = {}) {
     /* Which utility this is. The gas POC and gas meters, because a site
        has electric ones too and they are nowhere near each other. */
     layerKey = "gas",
+
+    /* How far the main runs past its last tee before it is capped.
+       Zero lays it exactly to the last tee, which is what this did
+       before — kept as a number rather than a flag so a scheme whose
+       operator wants two metres is a call site, not a fork. */
+    endExtendM = END_EXTEND_M,
 
     /* ── Sizing ──
 
@@ -707,11 +729,88 @@ export function gasMainRuns(features = [], opts = {}) {
   const oversized = [];
   const covered = new Set();
   const edgeKey = (a, b) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+
+  /* ── The stub past a dead end ──
+
+     Measured along the trench where there is trench to follow, and
+     straight on where there is not.
+
+     Both cases are ordinary. A main that stops after the last house
+     usually has trench carrying on past it — the spur was dug to the
+     end of the road whether or not gas goes that far — and pipe laid
+     there follows the ground, so a trench that turns within the first
+     metre and a half turns the stub with it. Where the trench really
+     does end, the pipe carries on in the direction it was going, which
+     is the only answer available and the one somebody drawing it by
+     hand would give.
+
+     `adj` rather than `children`, because the onward trench has no gas
+     beyond it and so was filtered out of the tree the runs walk. The
+     turn limit is the water builder's, for its reason: an estate road
+     bends, and a spur leaves at something near a right angle. A stub
+     that took the sharp turn would double back alongside the main it
+     just left. */
+  const EXTEND_TURN_LIMIT_DEG = 60;
+
+  function extendPast(prevIdx, endIdx, want) {
+    const out = [];
+    if (!(want > 0)) return out;
+
+    let aIdx = prevIdx;
+    let bIdx = endIdx;
+    let a = nodes[aIdx];
+    let b = nodes[bIdx];
+    let left = want;
+    /* Every edge is taken at most once, so a stub that meets a loop of
+       trench stops rather than circling it. */
+    const walked = new Set([edgeKey(aIdx, bIdx)]);
+
+    while (left > 1e-9) {
+      const len = dist(a, b);
+      if (!len) break;
+      const inc = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+
+      let best = null;
+      for (const v of adj.get(bIdx) || []) {
+        if (v === aIdx || walked.has(edgeKey(bIdx, v))) continue;
+        const d = dist(nodes[bIdx], nodes[v]);
+        if (!d) continue;
+        const dir = [(nodes[v][0] - b[0]) / d, (nodes[v][1] - b[1]) / d];
+        const dot = Math.max(-1, Math.min(1, dir[0] * inc[0] + dir[1] * inc[1]));
+        const turn = (Math.acos(dot) * 180) / Math.PI;
+        if (turn > EXTEND_TURN_LIMIT_DEG) continue;
+        if (!best || turn < best.turn) best = { v, turn, dir, d };
+      }
+
+      /* Nowhere to follow, or the next length of trench is longer than
+         what is left: either way the stub ends inside this step. */
+      if (!best) {
+        out.push([b[0] + inc[0] * left, b[1] + inc[1] * left]);
+        break;
+      }
+      if (best.d >= left) {
+        out.push([b[0] + best.dir[0] * left, b[1] + best.dir[1] * left]);
+        break;
+      }
+
+      out.push(nodes[best.v].slice());
+      left -= best.d;
+      walked.add(edgeKey(bIdx, best.v));
+      aIdx = bIdx; a = b;
+      bIdx = best.v; b = nodes[bIdx];
+    }
+    return out;
+  }
+
   const walk = [root];
   while (walk.length) {
     const u = walk.shift();
     for (const first of kids(u)) {
       let cur = first;
+      /* The node the run arrives from, which is the direction the stub
+         at a dead end carries on in. Tracked here rather than read back
+         off `pts`, because by then the stub has been appended to it. */
+      let prevIdx = u;
       const pts = [nodes[u].slice(), nodes[first].slice()];
       covered.add(edgeKey(u, first));
       let teed = tees.has(first) ? 1 : 0;
@@ -723,8 +822,23 @@ export function gasMainRuns(features = [], opts = {}) {
         covered.add(edgeKey(cur, next));
         if (tees.has(next)) teed += 1;
         fed += demand[next];
+        prevIdx = cur;
         cur = next;
       }
+
+      /* ── Past the last tee ──
+
+         Only where the main stops. A run that ends because it divides,
+         or because the size changes, carries straight on as the next
+         run — capping it there would put an end in the middle of a
+         continuous pipe.
+
+         `endNode` stays the node it was: the run ends where the network
+         ends, and the stub is pipe past it rather than a new place for
+         the next run to start from. */
+      const tail = kids(cur).length ? [] : extendPast(prevIdx, cur, endExtendM);
+      const beforeTail = lengthOf(pts);
+      if (tail.length) pts.push(...tail);
 
       /* Read at the top of the run, which is the most it carries and
          therefore what sizes it. The far end carries less — every tee
@@ -745,6 +859,18 @@ export function gasMainRuns(features = [], opts = {}) {
         /* Everything beyond the far end of this run, which is what says
            whether it is the spine or a leg off it. */
         metersBeyond: served[cur],
+        /* This run ends the main, so it gets the cap. Read by the
+           canvas off the geometry rather than off this flag — the flag
+           is for the counts in the confirm box, which are worked out
+           before anything is written. */
+        endCap: tail.length > 0,
+        /* How much of `metres` is stub rather than main proper. The two
+           are the same pipe and are not separated in the schedule, but
+           a total that grew by six metres between one build and the
+           next should say where the six metres came from. */
+        extendedM: tail.length
+          ? Math.round((lengthOf(pts) - beforeTail) * 10) / 10
+          : 0,
         /* Null throughout where no rules were supplied, which is the
            unsized build and not a failure of one. */
         size,
@@ -834,6 +960,13 @@ export function gasMainRuns(features = [], opts = {}) {
     bySize,
     sized: sizing,
     totalM: Math.round(runs.reduce((t, r) => t + r.metres, 0) * 10) / 10,
+    /* How many ends the main has, and how much of the total is the pipe
+       run past them. Both in `totalM` and in the schedule already —
+       said separately because it is the figure that changes an existing
+       quantity, and a total that moved with no explanation reads as a
+       drawing that changed. */
+    endCaps: runs.filter((r) => r.endCap).length,
+    extendedM: Math.round(runs.reduce((t, r) => t + r.extendedM, 0) * 10) / 10,
     poc,
     pocGap: Math.round(rootGap * 10) / 10,
     /* Tees the main now runs past, and the meters they carry. */

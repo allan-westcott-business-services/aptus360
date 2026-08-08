@@ -67,6 +67,7 @@ import { contentsOf, stretchAt } from "./trenchContents.js";
 import { gasMainRuns } from "./gasNetwork.js";
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
+import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
@@ -1438,6 +1439,20 @@ export default function GISCanvasPage() {
     });
   }, [features]);
 
+  /* Where each gas main stops, so the cap can be drawn there.
+
+     Once per change of drawing rather than once per repaint: finding a
+     free end means measuring every end against every other main, and
+     that is not work to do on each frame of a pan. Keyed on Feature_ID,
+     so the line being drawn asks about itself.
+
+     Depends on lineTypes as well as features, because what counts as a
+     main is read off the type — renaming one in admin has to move the
+     caps with it. */
+  const gasCaps = useMemo(
+    () => gasMainEnds(features, { lineTypes }),
+    [features, lineTypes]);
+
   /* One resolver for the whole frame. Styles and layers change rarely,
      the chosen standard almost never, so the closure is rebuilt only
      when one of them does — not per feature, per repaint. */
@@ -2382,6 +2397,58 @@ export default function GISCanvasPage() {
         if (f.Feature_Type === "polygon") {
           ctx.fillStyle = colour + "18";
           ctx.fill();
+        }
+
+        /* ── Where a gas main stops ──
+
+           A bar across the pipe with a short return off each end of it,
+           facing back down the main: the mark for a capped end.
+
+           Drawn from the geometry rather than from a feature of its
+           own, for the reasons gasEnds.js gives, and drawn solid
+           whatever the pipe is drawn with — a planned main is dashed
+           because it is not in the ground yet, and dashing the cap as
+           well would leave a mark too broken to read at the size it is.
+
+           One path, four points. The E has three strokes and a spine,
+           but the middle stroke of it is the main itself arriving, so
+           what is left is a single line: back along the pipe, across
+           it, and back along it again.
+
+           The screen's y grows downward and toPx does not flip it, so
+           the normal is (-dy, dx) with no sign correction — the same
+           fact the service valve bar records, and the same place a
+           negated y would put the mark at a mirror of the right angle
+           on everything except a pipe running due north or east. */
+        const caps = f.Feature_Type === "line"
+          ? gasCaps.get(Number(f.Feature_ID))
+          : null;
+        /* Below about four pixels across it is a smudge on the end of a
+           line and not a symbol, so it waits until there is room. The
+           size is real ground, like the valve bar, so this is a zoom
+           threshold rather than a floor on the size. */
+        if (caps && (GAS_CAP_SPINE_M / 2) * view.scale >= 2) {
+          const halfPx = (GAS_CAP_SPINE_M / 2) * view.scale;
+          const armPx = GAS_CAP_ARM_M * view.scale;
+          ctx.save();
+          ctx.strokeStyle = on ? "#1d4ed8" : st.colour;
+          ctx.lineWidth = st.widthPx;
+          ctx.lineCap = "butt";
+          ctx.lineJoin = "miter";
+          for (const cap of caps) {
+            const q = toPx(cap.at);
+            const nx = -cap.dir[1] * halfPx;
+            const ny = cap.dir[0] * halfPx;
+            const bx = -cap.dir[0] * armPx;
+            const by = -cap.dir[1] * armPx;
+            ctx.beginPath();
+            ctx.moveTo(q.x + nx + bx, q.y + ny + by);
+            ctx.lineTo(q.x + nx, q.y + ny);
+            ctx.lineTo(q.x - nx, q.y - ny);
+            ctx.lineTo(q.x - nx + bx, q.y - ny + by);
+            ctx.stroke();
+          }
+          ctx.restore();
         }
         /* Markers repeated along the run — an E every ten metres, a tick
            along a ducted section. Configured per style, so a drawing
@@ -7228,6 +7295,14 @@ export default function GISCanvasPage() {
     if (!window.confirm(
       `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m `
       + `to ${plan.services} service trench(es), ${plan.meters} gas meter(s)?`
+      /* The stub past each end is in that total, so it is named. A
+         quantity that grew since the last build with nothing on the
+         drawing to account for it is the sort of thing that gets
+         checked twice and believed neither time. */
+      + (plan.endCaps
+        ? `\n\n${plan.extendedM} m of that is the ${plan.endCaps} capped end(s), `
+          + "run on past the last service."
+        : "")
       /* The schedule, and the two figures behind it. A diversified load
          on its own cannot be argued with — the raw sum and the factor
          that shrank it are what somebody checks. */
@@ -7380,6 +7455,8 @@ export default function GISCanvasPage() {
          already right. */
       setGasUnserved(plan.unservedMeters?.length ? plan.unservedMeters : null);
       setStatus(`Gas network: ${plan.runs.length} run(s), ${plan.totalM} m of main`
+        + (plan.endCaps
+          ? ` (${plan.extendedM} m of it past ${plan.endCaps} capped end(s))` : "")
         + `, ${plan.services} service trench(es), ${plan.meters} gas meter(s)`
         + (plan.sized
           ? ` \u2014 ${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join(", ")}`

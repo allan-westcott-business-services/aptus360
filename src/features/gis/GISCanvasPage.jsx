@@ -2400,9 +2400,38 @@ export default function GISCanvasPage() {
             : a.Way
               ? `Feeder ${a.Way}${a.Hop ? ` · hop ${a.Hop}` : ""}`
               : "";
+          /* ── What a water main says ──
+
+             The tag above is built from Circuit_Letter and Way, which
+             only electric carries — so a water main had no label at
+             all, whatever was in its Label field. This is the line's
+             own label rather than a circuit's: the size it was built
+             to, and how long it is.
+
+             Both from the drawing rather than from what the build
+             wrote: the length is measured off the geometry, so it
+             follows a run that has been edited since, and the size is
+             the one on the pipe now, so an override in the editor shows
+             here immediately.
+
+             Water only. Gas carries a size too and the same line would
+             label it, but that would put text on every gas main on
+             every existing drawing on the strength of a change nobody
+             asked for. One word if it is wanted. */
+          const sized = f.Layer_Key === "water"
+            /* Meters counts as well as a size. A run the table could not
+               size carries a plot count and no diameter — and that is
+               the one length on the drawing most worth reading, so
+               keying only off the size left it blank exactly where the
+               label was needed. */
+            && (a.Size || a.Water_Pipe_Size_ID != null || a.Meters != null)
+            ? `${a.Size ?? "size not set"}  ${lineLength(f.Geometry).toFixed(1)} m`
+            : "";
+
           const txt = on
-            ? [spelled, `${lineLength(f.Geometry).toFixed(1)} m`].filter(Boolean).join("  ")
-            : tag;
+            ? [spelled || a.Size, `${lineLength(f.Geometry).toFixed(1)} m`]
+              .filter(Boolean).join("  ")
+            : (tag || sized);
           /* One tag per place.
 
              Several cables meeting at a plot each label themselves at
@@ -8790,10 +8819,12 @@ export default function GISCanvasPage() {
                         circuit. Anyone who could not find one was stuck
                         with meters they could not see and no way to say
                         so. */}
-                    {/* Also on the menu. A shortcut is faster once it is
-                        known and invisible until then. */}
-                    <MenuItem label="Find…" hint="Ctrl/Cmd + F"
-                      onClick={() => setFindOpen(true)} />
+                    {/* Find is on the toolbar now, beside Tools &
+                        Reporting. It was in here because the layer
+                        menu is where hiding things happens and finding
+                        one is the other half of that — but it is not a
+                        layer control, and it was two clicks deep for
+                        something reached constantly. */}
 
                     {/* The background plan counts as hidden too.
 
@@ -9230,6 +9261,18 @@ export default function GISCanvasPage() {
                       disabled={!projectId || !features.length}
                       onClick={() => setBulkDelOpen(true)} />
                   </Menu>
+
+                  {/* Find, on the bar rather than inside a menu.
+
+                      Not a Menu: it opens a dialog rather than a list,
+                      so it takes the bar's own button style and stays a
+                      single click. The shortcut still works and is
+                      shown on it, since a shortcut nobody is told about
+                      is one nobody uses. */}
+                  <button className="gis-find-btn" onClick={() => setFindOpen(true)}
+                    title="Find a feature by label, plot or circuit (Ctrl/Cmd + F)">
+                    &#128269; Find
+                  </button>
 
                 </>
               )}
@@ -11169,6 +11212,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   background: #16a34a; color: #fff; }
 .tip-warn { margin-left: 10px; padding: 1px 8px; border-radius: 20px; font-weight: 700;
   background: #b45309; color: #fff; }
+/* Sits with the menu buttons and reads as one of them, without being a
+   menu: no chevron, and it opens on the way down rather than waiting to
+   see whether a list is coming. */
+.gis-find-btn { display: inline-flex; align-items: center; gap: 5px; background: none;
+  border: 1px solid transparent; border-radius: 7px; cursor: pointer;
+  font: 600 12px inherit; color: var(--text); padding: 6px 10px; white-space: nowrap; }
+.gis-find-btn:hover { background: var(--bg); border-color: var(--border); }
 .gis-mixed { font-size: 11px; color: var(--muted); font-style: italic; max-width: 22ch; }
 .gis-snap { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);

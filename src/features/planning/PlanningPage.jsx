@@ -5,6 +5,7 @@ import {
   DAY_MS, buildRows, packLanes, daysInRange, isWeekend, todayMs, toISO,
   phaseColours, activeDays, nextActiveDay, prevActiveDay,
 } from "./timeline.js";
+import { shiftByHalves } from "../calloffs/assignments.js";
 import AssignmentModal from "./AssignmentModal.jsx";
 import PmColoursModal from "./PmColoursModal.jsx";
 
@@ -182,7 +183,7 @@ export default function PlanningPage() {
     try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
     setDrag({
       id: item.id, assignmentId: item.assignmentId,
-      dayPx, startX: e.clientX, offsetPx: 0, shiftDays: 0, moved: false,
+      dayPx, startX: e.clientX, offsetPx: 0, halves: 0, moved: false,
     });
   };
 
@@ -192,12 +193,18 @@ export default function PlanningPage() {
       const d = dragRef.current;
       if (!d) return;
       const dx = e.clientX - d.startX;
-      /* Snapped to whole days, because the schema stores days. Half-day
-         snapping would let a drag land somewhere the database cannot
-         record, and the bar would spring back on reload. */
-      const shiftDays = Math.round(dx / d.dayPx);
-      setDrag((cur) => (cur && (cur.shiftDays !== shiftDays || !cur.moved)
-        ? { ...cur, shiftDays, offsetPx: shiftDays * cur.dayPx, moved: cur.moved || Math.abs(dx) > 3 }
+      /* Snapped to half days, which is the smallest thing the schedule
+         records: Call_Off_Work_Day carries a Part, so a morning is a
+         position the database can hold. Snapping to whole days meant a
+         booking could only be nudged in steps of two, and a gang
+         starting after lunch could not be said at all.
+
+         The bar preview follows the same snap, so what is let go of is
+         what gets written. */
+      const halfPx = d.dayPx / 2;
+      const halves = Math.round(dx / halfPx);
+      setDrag((cur) => (cur && (cur.halves !== halves || !cur.moved)
+        ? { ...cur, halves, offsetPx: halves * halfPx, moved: cur.moved || Math.abs(dx) > 3 }
         : cur));
     };
     const up = async () => {
@@ -205,20 +212,29 @@ export default function PlanningPage() {
       setDrag(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (!d || !d.moved || !d.shiftDays) return;
+      if (!d || !d.moved || !d.halves) return;
       /* Optimistic, then reconciled. The board is the thing being
          worked in, and waiting for a round trip before the bar moves
-         makes a drag feel broken on a slow connection. */
-      setData((cur) => shiftInPlace(cur, d.assignmentId, d.shiftDays));
+         makes a drag feel broken on a slow connection.
+
+         The previous state is kept rather than the move being undone by
+         shifting back: a shift is not always reversible once the
+         weekend has absorbed a half, and putting the old days back is
+         the only way to be sure the board shows what the database
+         holds. */
+      /* The board as it was before the drag started — this closure is
+         built when the pointer goes down and deliberately does not
+         follow `data` afterwards, so it holds the state to put back if
+         the write fails rather than the optimistic one. */
+      const before = data;
+      setData((cur) => shiftInPlace(cur, d.assignmentId, d.halves));
       try {
-        await moveAssignment(d.assignmentId, d.shiftDays);
-        say(`Moved ${Math.abs(d.shiftDays)} day${Math.abs(d.shiftDays) === 1 ? "" : "s"} `
-          + `${d.shiftDays > 0 ? "later" : "earlier"}.`);
+        await moveAssignment(d.assignmentId, d.halves);
+        const n = Math.abs(d.halves) / 2;
+        say(`Moved ${n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`} `
+          + `${d.halves > 0 ? "later" : "earlier"}.`);
       } catch (err) {
-        /* Put it back. A failed write that leaves the bar where it was
-           dropped is worse than no move at all: the board would show a
-           booking on a day the database has never heard of. */
-        setData((cur) => shiftInPlace(cur, d.assignmentId, -d.shiftDays));
+        setData(before);
         setError(`Could not move it: ${err.message}`);
       }
     };
@@ -579,29 +595,70 @@ export default function PlanningPage() {
 
 /* Moving a booking in the copy the board is drawing from.
 
-   Both the assignment and its days, because the footprint is read from
-   the days where there are any — shifting the assignment alone would
-   move the dates in the panel and leave the bar exactly where it was.
+   The days are re-laid rather than shifted, through the same function
+   the endpoint's own copy is checked against — so what appears the
+   instant a bar is dropped is what the database is about to be told,
+   and the board does not flicker into a different answer when the
+   response arrives.
 
-   Exported so the shift can be checked without a browser. */
-export function shiftInPlace(data, assignmentId, days) {
+   Both the assignment and its days: the bar's footprint is read from
+   the days where there are any, so moving the assignment alone would
+   change the dates in the panel and leave the bar where it was.
+
+   Exported so the move can be checked without a browser. */
+export function shiftInPlace(data, assignmentId, halves) {
   if (!data) return data;
-  const move = (d) => {
-    if (!d) return d;
-    const [y, m, dd] = String(d).slice(0, 10).split("-").map(Number);
-    if (!y || !m || !dd) return d;
-    return toISO(new Date(y, m - 1, dd).getTime() + days * DAY_MS);
+  const id = Number(assignmentId);
+
+  const asgn = (data.assignments || [])
+    .find((a) => Number(a.Assignment_ID) === id);
+  if (!asgn) return data;
+
+  const mine = (data.workDays || [])
+    .filter((w) => Number(w.Assignment_ID) === id)
+    .map((w) => ({ date: String(w.Work_Date).slice(0, 10), part: w.Part || "Full", offSite: !!w.Off_Site, row: w }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
+  /* No day rows: the booking is only its two dates, and there is
+     nothing to lay. Shifted whole days so a drag still does something
+     visible, rounded away from zero so half a day still moves it. */
+  if (!mine.length) {
+    const by = halves > 0 ? Math.ceil(halves / 2) : Math.floor(halves / 2);
+    const move = (d) => {
+      if (!d) return d;
+      const [y, m, dd] = String(d).slice(0, 10).split("-").map(Number);
+      if (!y || !m || !dd) return d;
+      return toISO(new Date(y, m - 1, dd).getTime() + by * DAY_MS);
+    };
+    return {
+      ...data,
+      assignments: data.assignments.map((a) => (Number(a.Assignment_ID) === id
+        ? { ...a, Start_Date: move(a.Start_Date), End_Date: move(a.End_Date) } : a)),
+    };
+  }
+
+  const weekend = {
+    Sat_AM: !!asgn.Sat_AM, Sat_PM: !!asgn.Sat_PM,
+    Sun_AM: !!asgn.Sun_AM, Sun_PM: !!asgn.Sun_PM,
   };
+  const laid = shiftByHalves(mine, halves, weekend);
+  if (!laid.days.length) return data;
+
   return {
     ...data,
-    assignments: (data.assignments || []).map((a) =>
-      (Number(a.Assignment_ID) === Number(assignmentId)
-        ? { ...a, Start_Date: move(a.Start_Date), End_Date: move(a.End_Date) }
-        : a)),
-    workDays: (data.workDays || []).map((w) =>
-      (Number(w.Assignment_ID) === Number(assignmentId)
-        ? { ...w, Work_Date: move(w.Work_Date) }
-        : w)),
+    assignments: data.assignments.map((a) => (Number(a.Assignment_ID) === id
+      ? { ...a, Start_Date: laid.days[0].date, End_Date: laid.end } : a)),
+    workDays: [
+      ...(data.workDays || []).filter((w) => Number(w.Assignment_ID) !== id),
+      ...laid.days.map((d, i) => ({
+        ...(mine[i]?.row ?? {}),
+        Work_Day_ID: mine[i]?.row?.Work_Day_ID ?? `tmp-${id}-${i}`,
+        Assignment_ID: id,
+        Work_Date: d.date,
+        Part: d.part,
+        Off_Site: d.offSite,
+      })),
+    ],
   };
 }
 

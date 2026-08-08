@@ -78,8 +78,61 @@ const partOn = (date, a) => {
   return null;
 };
 
-/* `count` working days from `from` inclusive, stepping over the halves
-   this assignment does not work. */
+const halfIsWorked = (date, pm, a) => {
+  const p = partOn(date, a);
+  return !!p && (p === "Full" || p === (pm ? "PM" : "AM"));
+};
+
+/* The nearest worked half to a target, stepping whole days in the
+   direction of travel and keeping the half it was asked for. Both parts
+   of that matter and are argued in features/calloffs/assignments.js,
+   where the same rule lives for the browser. */
+function resolveStartHalf(date, pm, a, dir) {
+  let d = date;
+  for (let i = 0; i < 10; i++) {
+    if (halfIsWorked(d, pm, a)) return { date: d, pm: !!pm };
+    if (halfIsWorked(d, !pm, a)) return { date: d, pm: !pm };
+    d = shiftDay(d, dir > 0 ? 1 : -1);
+    if (!d) return null;
+  }
+  return null;
+}
+
+/* `halves` laid from a day and a half of it, stepping over the weekend
+   halves this assignment does not work. Each entry carries whatever
+   travelled with it — off site, so far — and a day is off site if
+   either of its halves was. */
+function layHalves(start, startPM, halves, a) {
+  const rows = [];
+  let cursor = start;
+  let idx = 0;
+  let first = true;
+  let guard = 0;
+  while (idx < halves.length && guard++ < 400) {
+    const avail = partOn(cursor, a);
+    if (avail) {
+      const canAM = (avail === "Full" || avail === "AM") && !(first && startPM);
+      const canPM = avail === "Full" || avail === "PM";
+      const taken = [];
+      if (canAM && idx < halves.length) taken.push(["AM", halves[idx++]]);
+      if (canPM && idx < halves.length) taken.push(["PM", halves[idx++]]);
+      if (taken.length) {
+        rows.push({
+          date: cursor,
+          part: taken.length === 2 ? "Full" : taken[0][0],
+          offSite: taken.some(([, h]) => !!h?.offSite),
+        });
+      }
+      first = false;
+    }
+    cursor = shiftDay(cursor, 1);
+    if (!cursor) break;
+  }
+  return rows;
+}
+
+/* `count` working days from `from` inclusive — used only to give a
+   booking with no day rows a length. */
 function layDays(from, count, a) {
   const out = [];
   let cursor = from;
@@ -101,15 +154,21 @@ export default async function handler(req, context) {
       return json({ error: "Not found" }, 404);
     }
 
-    const { days } = await req.json();
-    const shift = Number(days);
+    const body = await req.json();
+    /* Half-days, because that is the smallest thing the schedule
+       records. `days` is still accepted so an older client — a tab left
+       open across a deploy — moves by the right amount rather than by
+       half of it. */
+    const shift = Number.isFinite(Number(body.halves))
+      ? Math.round(Number(body.halves))
+      : Math.round(Number(body.days) * 2);
     if (!Number.isInteger(shift)) {
-      return json({ error: "days must be a whole number of days." }, 400);
+      return json({ error: "halves must be a whole number of half-days." }, 400);
     }
     /* A drag that lands where it started is not an error and not a
        write. Answered rather than rejected, so the board can call this
        without first working out whether it needs to. */
-    if (shift === 0) return json({ moved: 0, days: 0 });
+    if (shift === 0) return json({ moved: 0, halves: 0 });
 
     const { data: asgn, error: readErr } = await db
       .from("Call_Off_Assignment")
@@ -123,35 +182,60 @@ export default async function handler(req, context) {
       .select("Work_Day_ID,Work_Date,Part,Off_Site")
       .eq("Assignment_ID", id)
       .order("Work_Date");
-    const had = existing || [];
+    const had = (existing || []).map((r) => ({
+      ...r, Work_Date: String(r.Work_Date).slice(0, 10),
+    }));
 
-    /* Where the booking now starts. Shifted, then pushed forward to the
-       first day it can work — dragging onto a Saturday it does not work
-       means it begins on the Monday, not that it begins on a day off. */
-    let start = shiftDay(asgn.Start_Date, shift);
-    if (!start) {
+    /* No day rows — a booking made before that table existed. There is
+       nothing to lay, so it moves in whole days, rounded away from zero
+       so half a day still moves it somewhere. */
+    if (!had.length) {
+      const by = shift > 0 ? Math.ceil(shift / 2) : Math.floor(shift / 2);
+      const s = shiftDay(asgn.Start_Date, by);
+      const e = shiftDay(asgn.End_Date, by);
+      if (!s || !e) {
+        return json({ error: "This assignment has no usable start and end date." }, 400);
+      }
+      const { error } = await db.from("Call_Off_Assignment")
+        .update({ Start_Date: s, End_Date: e }).eq("Assignment_ID", id);
+      if (error) throw error;
+      return json({
+        Assignment_ID: Number(id), Start_Date: s, End_Date: e,
+        halves: shift, movedDays: 0, partial: false,
+      });
+    }
+
+    /* The booking exploded into half-days in order, each carrying what
+       travels with it. Shifting the sequence and recomposing is what
+       lets a move of half a day turn two whole days into an afternoon,
+       a day and a morning — the same work, differently cut. */
+    const parts = [];
+    for (const r of had) {
+      const p = r.Part || "Full";
+      if (p === "Full") parts.push({ offSite: !!r.Off_Site }, { offSite: !!r.Off_Site });
+      else parts.push({ offSite: !!r.Off_Site });
+    }
+
+    const firstPM = (had[0].Part || "Full") === "PM";
+    const pos = (firstPM ? 1 : 0) + shift;
+    const target = shiftDay(had[0].Work_Date, Math.floor(pos / 2));
+    if (!target) {
       return json({ error: "This assignment has no usable start date." }, 400);
     }
-    for (let i = 0; i < 8 && !partOn(start, asgn); i++) start = shiftDay(start, 1);
-    if (!partOn(start, asgn)) {
+    const startHalf = resolveStartHalf(target, ((pos % 2) + 2) % 2 === 1,
+      asgn, shift < 0 ? -1 : 1);
+    if (!startHalf) {
       return json({
-        error: "This assignment works no days of the week, so it cannot be placed.",
+        error: "This assignment works no half of any day, so it cannot be placed.",
       }, 400);
     }
 
-    /* Its length: however many days it works. From the day rows where
-       there are any, since those are what was agreed; from the date
-       span where there are none, which is a booking made before that
-       table existed. */
-    const length = had.length
-      || layDays(asgn.Start_Date,
-        Math.max(1, Math.round(
-          (isoDay(asgn.End_Date) - isoDay(asgn.Start_Date)) / 86400000) + 1),
-        asgn).length
-      || 1;
-
-    const laid = layDays(start, length, asgn);
-    const end = laid.length ? laid[laid.length - 1].date : start;
+    const laid = layHalves(startHalf.date, startHalf.pm, parts, asgn);
+    if (!laid.length) {
+      return json({ error: "There was nowhere to put this booking." }, 400);
+    }
+    const start = laid[0].date;
+    const end = laid[laid.length - 1].date;
 
     const { error: updErr } = await db
       .from("Call_Off_Assignment")
@@ -167,32 +251,41 @@ export default async function handler(req, context) {
 
        Tolerated missing. An assignment made before the day table
        existed has none, and moving it is still moving it. */
+    /* The day rows rewritten rather than shifted: a move of half a day
+       changes how many rows there are — two full days become three
+       rows, one of them a morning — so the ones that are left over are
+       deleted and the ones that are short are created. */
     let movedDays = 0;
-    for (let i = 0; i < had.length && i < laid.length; i++) {
-      const row = had[i];
+    for (let i = 0; i < laid.length; i++) {
       const to = laid[i];
-      /* Off site travels with the day; the part is taken from where it
-         has landed. A full day dragged onto a Saturday morning is a
-         morning, because that is all the assignment works then — and
-         keeping "Full" would be the row disagreeing with the rule
-         above it. */
-      const { error } = await db
-        .from("Call_Off_Work_Day")
-        .update({ Work_Date: to.date, Part: to.part === "Full" ? (row.Part || "Full") : to.part })
-        .eq("Work_Day_ID", row.Work_Day_ID);
+      const row = had[i];
+      const values = {
+        Assignment_ID: Number(id),
+        Work_Date: to.date,
+        Part: to.part,
+        Off_Site: to.offSite,
+      };
+      const { error } = row
+        ? await db.from("Call_Off_Work_Day").update(values)
+          .eq("Work_Day_ID", row.Work_Day_ID)
+        : await db.from("Call_Off_Work_Day").insert(values);
       if (!error) movedDays += 1;
+    }
+    const spare = had.slice(laid.length).map((r) => r.Work_Day_ID);
+    if (spare.length) {
+      await db.from("Call_Off_Work_Day").delete().in("Work_Day_ID", spare);
     }
 
     return json({
       Assignment_ID: Number(id),
       Start_Date: start,
       End_Date: end,
-      days: shift,
+      halves: shift,
       movedDays,
       /* Reported rather than thrown: the assignment has already moved,
          and failing here would leave the caller believing nothing
          happened when the larger half of it did. */
-      partial: movedDays !== had.length,
+      partial: movedDays !== laid.length,
     });
   } catch (e) {
     return fail(e, 400);

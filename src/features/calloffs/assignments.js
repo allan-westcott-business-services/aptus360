@@ -460,6 +460,156 @@ export function workedDaysIn(start, end, weekend = {}) {
     .filter((x) => x.part != null);
 }
 
+/* ── The same booking, half a day at a time ──
+
+   laySchedule above counts whole days, which is what the form asks for:
+   somebody books a gang for four days. Moving a booking is a different
+   question — it keeps whatever shape it has and slides it — and a slide
+   of half a day turns whole days into halves. A two-day booking nudged
+   forward by a morning is an afternoon, a full day, and a morning: the
+   same amount of work, decomposed differently.
+
+   So a booking is exploded into an ordered list of half-days, moved,
+   and recomposed. Everything that travels with a day — off site is the
+   only thing so far — travels on the half, and a recomposed day is off
+   site if either of its halves was. That is what keeps an off-site
+   Tuesday off site after the booking shifts, rather than the flag
+   sliding onto whichever row happens to be second.
+
+   Working in halves rather than in dates is also what makes the weekend
+   rule apply on the way: a Saturday with only the morning ticked offers
+   one half, not two, so a booking sliding across it takes the morning
+   and continues on the Monday afternoon. */
+export function explodeHalves(days = []) {
+  const out = [];
+  for (const d of days) {
+    const part = d.part || d.Part || "Full";
+    const offSite = !!(d.offSite ?? d.Off_Site);
+    if (part === "Full") out.push({ offSite }, { offSite });
+    else out.push({ offSite });
+  }
+  return out;
+}
+
+/* `halves` laid from a given day and half, over the weekend rule.
+
+   `startPM` says the booking begins in the afternoon. It applies only
+   to the first day actually worked — if that day turns out to offer no
+   afternoon, the booking starts on the next available half rather than
+   on a half nobody works. */
+export function layHalves(start, startPM, halves = [], weekend = {}) {
+  const rows = [];
+  if (!halves.length) return { days: [], end: null };
+
+  const from = at(start);
+  if (!from) return { days: [], end: null };
+
+  let cursor = iso(from);
+  let idx = 0;
+  let first = true;
+  let guard = 0;
+
+  while (idx < halves.length && guard++ < 400) {
+    const avail = availablePart(cursor, weekend);
+    if (avail) {
+      const canAM = (avail === "Full" || avail === "AM") && !(first && startPM);
+      const canPM = avail === "Full" || avail === "PM";
+      const taken = [];
+      if (canAM && idx < halves.length) taken.push(["AM", halves[idx++]]);
+      if (canPM && idx < halves.length) taken.push(["PM", halves[idx++]]);
+      if (taken.length) {
+        rows.push({
+          date: cursor,
+          part: taken.length === 2 ? "Full" : taken[0][0],
+          offSite: taken.some(([, h]) => !!h?.offSite),
+        });
+      }
+      first = false;
+    }
+    const dt = at(cursor);
+    dt.setDate(dt.getDate() + 1);
+    cursor = iso(dt);
+  }
+
+  return { days: rows, end: rows.length ? rows[rows.length - 1].date : null };
+}
+
+/* Whether a given half of a given day is worked. */
+export function halfIsWorked(date, pm, weekend = {}) {
+  const a = availablePart(date, weekend);
+  if (!a) return false;
+  return a === "Full" || a === (pm ? "PM" : "AM");
+}
+
+/* The nearest worked half to a target, in a given direction.
+
+   Two things this has to get right, and the first version got neither.
+
+   Direction. A booking dragged forward onto a Sunday should land on the
+   Monday; dragged *backward* onto the same Sunday it should land on the
+   Friday. Searching forwards in both cases moved a booking later when
+   somebody had dragged it earlier, which is the one thing a drag must
+   never do.
+
+   Which half. Searching half by half, a two-day booking pulled back
+   across a weekend landed on the Friday *afternoon* — because that is
+   the nearest worked half to Sunday morning — and two whole days became
+   an afternoon, a day and a morning. So the search steps whole days and
+   keeps the half it was asked for, taking the other half of a day only
+   where that day offers no other. A booking of whole days stays whole
+   days, which is what dragging it a day sideways should do. */
+export function resolveStartHalf(date, pm, weekend = {}, dir = 1) {
+  let d = date;
+  for (let i = 0; i < 10; i++) {
+    if (halfIsWorked(d, pm, weekend)) return { date: d, pm: !!pm };
+    if (halfIsWorked(d, !pm, weekend)) return { date: d, pm: !pm };
+    const x = at(d);
+    if (!x) return null;
+    x.setDate(x.getDate() + (dir > 0 ? 1 : -1));
+    d = iso(x);
+  }
+  return null;
+}
+
+/* Moving a booking by a number of half-days, signed.
+
+   The whole operation in one place, so the board and the endpoint that
+   writes for it cannot come to different answers about where a bar
+   lands. Given the days as they stand it returns the days as they
+   should be.
+
+   The new start is worked out in halves from the old one: an odd shift
+   flips which half of the day it begins on, and every two halves is a
+   day. Where the result lands on a day the booking does not work,
+   layHalves steps over it — so dragging onto a Sunday puts the work on
+   the Monday rather than on a day nobody is there. */
+export function shiftByHalves(days = [], halfShift = 0, weekend = {}) {
+  if (!days.length) return { days: [], end: null };
+
+  const sorted = [...days].sort((a, b) =>
+    String(a.date || a.Work_Date).localeCompare(String(b.date || b.Work_Date)));
+  const firstDate = String(sorted[0].date || sorted[0].Work_Date).slice(0, 10);
+  const firstPart = sorted[0].part || sorted[0].Part || "Full";
+
+  /* Where it starts now, as a half-slot from midnight on its first day,
+     and where that lands after the shift. Floor rather than truncate,
+     so moving earlier across a day boundary goes to the afternoon of
+     the day before rather than back to its morning. */
+  const pos = (firstPart === "PM" ? 1 : 0) + Math.round(halfShift);
+  const dayDelta = Math.floor(pos / 2);
+  const startPM = ((pos % 2) + 2) % 2 === 1;
+
+  const dt = at(firstDate);
+  if (!dt) return { days: [], end: null };
+  dt.setDate(dt.getDate() + dayDelta);
+
+  const start = resolveStartHalf(iso(dt), startPM, weekend,
+    Math.round(halfShift) < 0 ? -1 : 1);
+  if (!start) return { days: [], end: null };
+
+  return layHalves(start.date, start.pm, explodeHalves(sorted), weekend);
+}
+
 /* The days an assignment covers, as rows to be marked up.
 
    Built from the two dates rather than stored as a count: a five-day

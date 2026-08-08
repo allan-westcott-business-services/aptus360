@@ -12,11 +12,13 @@ export async function getPlanning() {
 
 /* Dragging a booking along the schedule.
 
-   Whole days, and the assignment's work days move with it. Signed:
-   negative is earlier. */
-export async function moveAssignment(assignmentId, days) {
-  if (USE_MOCKS) { await delay(180); return { Assignment_ID: assignmentId, days }; }
-  return http.patch(`/planning/assignments/${assignmentId}/move`, { days });
+   Measured in half-days, because that is the smallest thing the
+   schedule records — a booking can start after lunch. Signed: negative
+   is earlier. The assignment's work days are re-laid to match, over
+   whatever weekend halves it works. */
+export async function moveAssignment(assignmentId, halves) {
+  if (USE_MOCKS) { await delay(180); return { Assignment_ID: assignmentId, halves }; }
+  return http.patch(`/planning/assignments/${assignmentId}/move`, { halves });
 }
 
 /* A person's colour on the board. The generic admin endpoint would do

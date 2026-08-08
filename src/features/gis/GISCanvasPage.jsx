@@ -2361,41 +2361,41 @@ export default function GISCanvasPage() {
 
              Measured instead: half the drawn length, then walked to
              find where that falls. */
-          const anchor = (() => {
-            /* Where somebody put it, if they did.
+          /* ── Labels on a line ──
 
-               Add Label stores the point on the pipe that was clicked,
-               so the label and its leader stay on that spot rather than
-               sliding to the middle of the run. The direction comes
-               from the same segment, so it still lies along the pipe
-               where it actually sits — which on a run that bends is not
-               the angle it would have at the midpoint. */
-            const put = f.Attributes?.Label_At;
-            if (Array.isArray(put) && put.length === 2) {
-              const q = toPx([Number(put[0]), Number(put[1])]);
-              let best = null;
-              for (let i = 1; i < pts.length; i++) {
-                const a = pts[i - 1];
-                const b = pts[i];
-                const seg = Math.hypot(b.x - a.x, b.y - a.y);
-                if (seg <= 0) continue;
-                const t = Math.max(0, Math.min(1,
-                  ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / (seg * seg)));
-                const px2 = a.x + t * (b.x - a.x);
-                const py2 = a.y + t * (b.y - a.y);
-                const d = Math.hypot(q.x - px2, q.y - py2);
-                if (!best || d < best.d) {
-                  best = { d, dx: (b.x - a.x) / seg, dy: (b.y - a.y) / seg };
-                }
-              }
-              return { x: q.x, y: q.y, dx: best?.dx ?? 1, dy: best?.dy ?? 0 };
-            }
+             A run has one automatic label and any number placed by
+             hand. Add Label appends to Attributes.Labels rather than
+             writing a single Label_At, which is what it did at first —
+             so a second label moved the first instead of joining it,
+             and the one before appeared to vanish. Placements are a
+             list because that is what they are.
 
+             Legacy Label_At and Label_Offset are read as one placement,
+             so a pipe labelled before this change keeps its label
+             exactly where it was put. */
+          const placements = (() => {
+            const list = f.Attributes?.Labels;
+            if (Array.isArray(list) && list.length) return list;
+            const at = f.Attributes?.Label_At;
+            const off = f.Attributes?.Label_Offset;
+            if (at || off) return [{ at, off }];
+            return [null];        // the automatic one, at the midpoint
+          })();
+
+          /* Half way along the run, not the middle vertex.
+
+             It was pts[Math.floor(pts.length / 2)] — the middle of the
+             list, and only the middle of the cable when the vertices
+             happen to be evenly spaced. They rarely are: a tee puts a
+             vertex wherever a service leaves, so a run with three
+             vertices bunched at one end had its label pointing there
+             while the cable ran on for another forty metres. */
+          const midAnchor = (() => {
             const half = drawnLenPx / 2;
             let acc = 0;
-            for (let i = 1; i < pts.length; i++) {
-              const a = pts[i - 1];
-              const b = pts[i];
+            for (let k = 1; k < pts.length; k++) {
+              const a = pts[k - 1];
+              const b = pts[k];
               const seg = Math.hypot(b.x - a.x, b.y - a.y);
               if (seg <= 0) continue;
               if (acc + seg >= half) {
@@ -2403,10 +2403,6 @@ export default function GISCanvasPage() {
                 return {
                   x: a.x + t * (b.x - a.x),
                   y: a.y + t * (b.y - a.y),
-                  /* The direction the pipe runs where the label sits —
-                     that segment, not the line's overall bearing, which
-                     on a run that turns a corner is a direction the
-                     pipe never takes. */
                   dx: (b.x - a.x) / seg,
                   dy: (b.y - a.y) / seg,
                 };
@@ -2418,10 +2414,31 @@ export default function GISCanvasPage() {
             const d = Math.hypot(last.x - prev.x, last.y - prev.y) || 1;
             return { ...last, dx: (last.x - prev.x) / d, dy: (last.y - prev.y) / d };
           })();
-          const off = f.Attributes?.Label_Offset;
-          const mid = off
-            ? { x: anchor.x + off[0] * view.scale, y: anchor.y + off[1] * view.scale }
-            : anchor;
+
+          /* A point on the pipe, and the direction the pipe runs there —
+             so a label lies along the length it is actually beside,
+             which on a run that bends is not the midpoint's angle. */
+          const anchorAt = (put) => {
+            if (!Array.isArray(put) || put.length !== 2) return midAnchor;
+            const q = toPx([Number(put[0]), Number(put[1])]);
+            let best = null;
+            for (let k = 1; k < pts.length; k++) {
+              const a = pts[k - 1];
+              const b = pts[k];
+              const seg = Math.hypot(b.x - a.x, b.y - a.y);
+              if (seg <= 0) continue;
+              const t = Math.max(0, Math.min(1,
+                ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / (seg * seg)));
+              const cx = a.x + t * (b.x - a.x);
+              const cy = a.y + t * (b.y - a.y);
+              const d = Math.hypot(q.x - cx, q.y - cy);
+              if (!best || d < best.d) {
+                best = { d, dx: (b.x - a.x) / seg, dy: (b.y - a.y) / seg };
+              }
+            }
+            return { x: q.x, y: q.y, dx: best?.dx ?? 1, dy: best?.dy ?? 0 };
+          };
+
           const a = f.Attributes || {};
           /* A real circuit if the cable belongs to one, and a hop count
              otherwise — never both, and never the two confused.
@@ -2441,30 +2458,28 @@ export default function GISCanvasPage() {
             : a.Way
               ? `Feeder ${a.Way}${a.Hop ? ` · hop ${a.Hop}` : ""}`
               : "";
+
           /* ── What a water main says ──
 
              The tag above is built from Circuit_Letter and Way, which
              only electric carries — so a water main had no label at
-             all, whatever was in its Label field. This is the line's
-             own label rather than a circuit's: the size it was built
-             to, and how long it is.
+             all, whatever was in its Label field. This is the line's own
+             label rather than a circuit's: the size it was built to, and
+             how long it is.
 
-             Both from the drawing rather than from what the build
-             wrote: the length is measured off the geometry, so it
-             follows a run that has been edited since, and the size is
-             the one on the pipe now, so an override in the editor shows
-             here immediately.
+             Both read off the drawing rather than off what the build
+             wrote, so the length follows a run edited since and the size
+             is the one on the pipe now.
+
+             Meters counts as well as a size: a run the table could not
+             size carries a plot count and no diameter, and that is the
+             length most worth reading.
 
              Water only. Gas carries a size too and the same line would
-             label it, but that would put text on every gas main on
-             every existing drawing on the strength of a change nobody
-             asked for. One word if it is wanted. */
+             label it, which would put text on every gas main on every
+             existing drawing on the strength of a change nobody asked
+             for. */
           const sized = f.Layer_Key === "water"
-            /* Meters counts as well as a size. A run the table could not
-               size carries a plot count and no diameter — and that is
-               the one length on the drawing most worth reading, so
-               keying only off the size left it blank exactly where the
-               label was needed. */
             && (a.Size || a.Water_Pipe_Size_ID != null || a.Meters != null)
             ? `${a.Size ?? "size not set"}  ${lineLength(f.Geometry).toFixed(1)} m`
             : "";
@@ -2473,38 +2488,42 @@ export default function GISCanvasPage() {
             ? [spelled || a.Size, `${lineLength(f.Geometry).toFixed(1)} m`]
               .filter(Boolean).join("  ")
             : (tag || sized);
-          /* One tag per place.
 
-             Several cables meeting at a plot each label themselves at
-             their own midpoint, and on short stubs those midpoints are
-             within a few pixels of each other — so the same "1B"
-             appeared three times over one point, once per cable. They
-             are not different facts; they are one fact drawn repeatedly.
+          if (txt) placements.forEach((pl, idx) => {
+            const placed = !!pl;
+            const anchor = anchorAt(pl?.at);
+            const off = pl?.off ?? (placed ? null : null);
+            const mid = off
+              ? { x: anchor.x + off[0] * view.scale, y: anchor.y + off[1] * view.scale }
+              : anchor;
 
-             A label is skipped if the same text has already been drawn
-             nearby this frame. The first one drawn wins, which is stable
-             because the draw order is. A selected line is exempt: if you
-             have clicked it you want its label, whatever else is there.
+            /* One tag per place.
 
-             Moved labels are exempt too — dragging one somewhere clear
-             is a deliberate request to see it. */
-          const dup = !on && !off && txt && labelHits.current.some((r) =>
-            r.txt === txt && Math.hypot(r.cx - mid.x, r.cy - mid.y) < 26);
+               Several cables meeting at a plot each label themselves at
+               their own midpoint, and on short stubs those midpoints are
+               within a few pixels of each other — so the same "1B"
+               appeared three times over one point, once per cable. They
+               are not different facts; they are one fact drawn
+               repeatedly.
 
-          if (txt && !dup) {
+               A label is skipped if the same text has already been drawn
+               nearby this frame. The first drawn wins, which is stable
+               because the draw order is. A selected line is exempt: if
+               you have clicked it you want its label. So is a placed
+               one — putting it there was the request. */
+            const dup = !on && !placed && !off && labelHits.current.some((r) =>
+              r.txt === txt && Math.hypot(r.cx - mid.x, r.cy - mid.y) < 26);
+            if (dup) return;
+
             ctx.font = "700 11px ui-monospace, Menlo, monospace";
             ctx.textAlign = "center";
             const w = ctx.measureText(txt).width + 10;
 
-            /* A leader from the label back to the cable, drawn only when
-               it has been moved far enough that the connection is no
-               longer obvious. */
-            /* A placed label always gets its leader. The distance test
-               is there so a label nudged a few pixels does not sprout
-               one; a label somebody put beside a pipe on purpose is
-               pointing at a spot, and the line saying which is the
-               point of it. */
-            if (off && (f.Attributes?.Label_At
+            /* A leader back to the pipe. Always for a placed label —
+               it is pointing at a spot and the line says which — and
+               otherwise only once a dragged one has moved far enough
+               that the connection is no longer obvious. */
+            if (off && (placed
               || Math.hypot(mid.x - anchor.x, mid.y - anchor.y) > 14)) {
               ctx.save();
               ctx.strokeStyle = "#94a3b8";
@@ -2519,9 +2538,10 @@ export default function GISCanvasPage() {
 
             /* Where the label sits on screen, so a pointer can find it.
                Rebuilt every frame rather than stored: it moves with the
-               view, and a stale rect catches clicks in the wrong place. */
+               view, and a stale rect catches clicks in the wrong place.
+               The index says which placement was grabbed. */
             labelHits.current.push({
-              id: f.Feature_ID, anchor, txt,
+              id: f.Feature_ID, idx: placed ? idx : null, anchor, txt,
               cx: mid.x, cy: mid.y,
               x: mid.x - w / 2, y: mid.y - 20, w, h: 15,
             });
@@ -2529,26 +2549,25 @@ export default function GISCanvasPage() {
             /* ── Which way up ──
 
                A pipe label runs along the pipe. A circuit tag stays
-               horizontal: it is a name, read at a glance across a
+               horizontal: it is a name read at a glance across a
                drawing, and turning it would make a page of them a page
                of scattered angles.
 
-               Label_Angle overrides the pipe, in degrees, and is what
-               the editor's rotate control writes. Null means follow the
-               pipe, which is not the same as zero — zero is somebody
-               choosing horizontal and having it stay horizontal when
-               the run is redrawn.
+               An angle on the placement overrides the pipe, in degrees,
+               and is what the editor's rotate control writes. Null means
+               follow the pipe, which is not the same as zero — zero is
+               somebody choosing horizontal and having it stay horizontal
+               when the run is redrawn.
 
-               Read upright either way. Text at 100 degrees is upside
-               down, so anything past a right angle is turned a half
-               turn to face the other way; it runs along the same line
-               and can still be read. */
+               Read upright either way: text at 100 degrees is upside
+               down, so anything past a right angle is turned a half turn
+               to face the other way. */
             const spin = (() => {
-              const set = f.Attributes?.Label_Angle;
+              const set = pl?.angle ?? a.Label_Angle;
               if (set != null && Number.isFinite(Number(set))) {
                 return (Number(set) * Math.PI) / 180;
               }
-              if (!sized || !txt) return 0;
+              if (!sized) return 0;
               let r = Math.atan2(anchor.dy ?? 0, anchor.dx ?? 1);
               if (r > Math.PI / 2) r -= Math.PI;
               if (r < -Math.PI / 2) r += Math.PI;
@@ -2566,14 +2585,14 @@ export default function GISCanvasPage() {
             }
             ctx.fillStyle = "rgba(255,255,255,.9)";
             ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
-            /* The white plate behind it stays white whatever the text
-               is. It exists so a tag can be read over a trench, and
-               colouring it with the label would take that away just
-               where it is needed most. */
+            /* The white plate stays white whatever the text is. It
+               exists so a tag can be read over a trench, and colouring
+               it with the label would take that away just where it is
+               needed most. */
             ctx.fillStyle = st.labelColour;
             ctx.fillText(txt, mid.x, mid.y - 9);
             ctx.restore();
-          }
+          });
         }
       }
     });
@@ -3122,7 +3141,10 @@ export default function GISCanvasPage() {
         const f = features.find((x) => x.Feature_ID === lab.id);
         drag.current = {
           mode: "label", featureId: lab.id, startPx: [px, py],
-          startOffset: f?.Attributes?.Label_Offset ?? [0, 0],
+          labelIdx: hit.idx ?? null,
+          startOffset: (hit.idx != null
+            ? f?.Attributes?.Labels?.[hit.idx]?.off
+            : f?.Attributes?.Label_Offset) ?? [0, 0],
         };
         return;
       }
@@ -3491,10 +3513,18 @@ export default function GISCanvasPage() {
       /* Held in metres, not pixels, so a label stays where it was put
          when the drawing is zoomed. */
       const dm = [(px - d.startPx[0]) / view.scale, (py - d.startPx[1]) / view.scale];
-      setFeatures((fs) => fs.map((f) => (f.Feature_ID === d.featureId
-        ? { ...f, Attributes: { ...f.Attributes,
-            Label_Offset: [d.startOffset[0] + dm[0], d.startOffset[1] + dm[1]] } }
-        : f)));
+      const moved = [d.startOffset[0] + dm[0], d.startOffset[1] + dm[1]];
+      setFeatures((fs) => fs.map((f) => {
+        if (f.Feature_ID !== d.featureId) return f;
+        /* One of several, or the automatic one. Written into its own
+           entry so dragging the third label does not move the first. */
+        if (d.labelIdx != null && Array.isArray(f.Attributes?.Labels)) {
+          const list = f.Attributes.Labels.map((pl, i) =>
+            (i === d.labelIdx ? { ...pl, off: moved } : pl));
+          return { ...f, Attributes: { ...f.Attributes, Labels: list } };
+        }
+        return { ...f, Attributes: { ...f.Attributes, Label_Offset: moved } };
+      }));
       return;
     }
 
@@ -3625,7 +3655,10 @@ export default function GISCanvasPage() {
       try {
         await bulkUpdateFeatures(projectId, [{
           Feature_ID: f.Feature_ID,
-          Attributes: { ...f.Attributes, Label_Offset: f.Attributes.Label_Offset },
+          /* The whole attributes object: a drag may have written into
+             Labels rather than Label_Offset, and naming one key saved
+             the wrong thing. */
+          Attributes: { ...f.Attributes },
         }]);
       } catch (e) { setError(e.message); await load(projectId); }
       return;
@@ -10506,11 +10539,29 @@ export default function GISCanvasPage() {
                       (at[0] - near.q[0]) * -dy + (at[1] - near.q[1]) * dx) || 1;
                     const OFF_M = 3;
 
-                    const A = {
-                      ...f.Attributes,
-                      Label_At: near.q,
-                      Label_Offset: [-dy * OFF_M * side, dx * OFF_M * side],
-                    };
+                    /* Appended. Writing Label_At moved the one label a
+                       pipe was allowed, so adding a second took the
+                       first away — which is what "the other labels
+                       disappear" was. A pipe can carry as many as
+                       somebody wants to put on it.
+
+                       Anything placed before this change is carried into
+                       the list first, so the label already on the pipe
+                       stays where it was rather than being replaced by
+                       the new one. */
+                    const held = Array.isArray(f.Attributes?.Labels)
+                      ? [...f.Attributes.Labels]
+                      : (f.Attributes?.Label_At || f.Attributes?.Label_Offset
+                        ? [{ at: f.Attributes.Label_At, off: f.Attributes.Label_Offset }]
+                        : []);
+
+                    const A = { ...f.Attributes };
+                    delete A.Label_At;
+                    delete A.Label_Offset;
+                    A.Labels = [...held, {
+                      at: near.q,
+                      off: [-dy * OFF_M * side, dx * OFF_M * side],
+                    }];
                     setFeatures((fs) => fs.map((x) =>
                       (x.Feature_ID === f.Feature_ID ? { ...x, Attributes: A } : x)));
                     bulkUpdateFeatures(projectId, [{ Feature_ID: f.Feature_ID, Attributes: A }])
@@ -10518,7 +10569,8 @@ export default function GISCanvasPage() {
                   }}>Add Label</button>
                 )}
                 {(ctx.feature.Attributes?.Label_Offset
-                  || ctx.feature.Attributes?.Label_At) && (
+                  || ctx.feature.Attributes?.Label_At
+                  || ctx.feature.Attributes?.Labels?.length) && (
                   <button className="gc-item" onClick={() => {
                     const f = ctx.feature;
                     setCtx(null);
@@ -10528,11 +10580,16 @@ export default function GISCanvasPage() {
                        the midpoint's offset while still pointing at the
                        place somebody clicked. */
                     delete A.Label_At;
+                    /* Every placed label, not only the first. The entry
+                       says "put the label back", and leaving four of
+                       them on the pipe is not that. */
+                    delete A.Labels;
                     setFeatures((fs) => fs.map((x) =>
                       (x.Feature_ID === f.Feature_ID ? { ...x, Attributes: A } : x)));
                     bulkUpdateFeatures(projectId, [{ Feature_ID: f.Feature_ID, Attributes: A }])
                       .catch((e) => setError(e.message));
-                  }}>Put the label back</button>
+                  }}>{ctx.feature.Attributes?.Labels?.length > 1
+                    ? "Remove the labels" : "Put the label back"}</button>
                 )}
 
                 <div className="gc-sep" />

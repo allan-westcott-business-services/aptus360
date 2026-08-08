@@ -2362,6 +2362,35 @@ export default function GISCanvasPage() {
              Measured instead: half the drawn length, then walked to
              find where that falls. */
           const anchor = (() => {
+            /* Where somebody put it, if they did.
+
+               Add Label stores the point on the pipe that was clicked,
+               so the label and its leader stay on that spot rather than
+               sliding to the middle of the run. The direction comes
+               from the same segment, so it still lies along the pipe
+               where it actually sits — which on a run that bends is not
+               the angle it would have at the midpoint. */
+            const put = f.Attributes?.Label_At;
+            if (Array.isArray(put) && put.length === 2) {
+              const q = toPx([Number(put[0]), Number(put[1])]);
+              let best = null;
+              for (let i = 1; i < pts.length; i++) {
+                const a = pts[i - 1];
+                const b = pts[i];
+                const seg = Math.hypot(b.x - a.x, b.y - a.y);
+                if (seg <= 0) continue;
+                const t = Math.max(0, Math.min(1,
+                  ((q.x - a.x) * (b.x - a.x) + (q.y - a.y) * (b.y - a.y)) / (seg * seg)));
+                const px2 = a.x + t * (b.x - a.x);
+                const py2 = a.y + t * (b.y - a.y);
+                const d = Math.hypot(q.x - px2, q.y - py2);
+                if (!best || d < best.d) {
+                  best = { d, dx: (b.x - a.x) / seg, dy: (b.y - a.y) / seg };
+                }
+              }
+              return { x: q.x, y: q.y, dx: best?.dx ?? 1, dy: best?.dy ?? 0 };
+            }
+
             const half = drawnLenPx / 2;
             let acc = 0;
             for (let i = 1; i < pts.length; i++) {
@@ -2470,7 +2499,13 @@ export default function GISCanvasPage() {
             /* A leader from the label back to the cable, drawn only when
                it has been moved far enough that the connection is no
                longer obvious. */
-            if (off && Math.hypot(mid.x - anchor.x, mid.y - anchor.y) > 14) {
+            /* A placed label always gets its leader. The distance test
+               is there so a label nudged a few pixels does not sprout
+               one; a label somebody put beside a pipe on purpose is
+               pointing at a spot, and the line saying which is the
+               point of it. */
+            if (off && (f.Attributes?.Label_At
+              || Math.hypot(mid.x - anchor.x, mid.y - anchor.y) > 14)) {
               ctx.save();
               ctx.strokeStyle = "#94a3b8";
               ctx.lineWidth = 1;
@@ -10435,12 +10470,64 @@ export default function GISCanvasPage() {
                     Hide {classLabel(ctx.feature, lineTypes)} only
                   </button>
                 )}
-                {ctx.feature.Attributes?.Label_Offset && (
+                {/* ── Add Label ──
+
+                    Puts the label where the pipe was clicked rather
+                    than at its midpoint, with a leader back to that
+                    exact point.
+
+                    The anchor is the click projected onto the pipe, not
+                    the click itself: a leader has to land on the line it
+                    is pointing at, and a right-click lands a few pixels
+                    off however carefully it is aimed.
+
+                    Offset to the side the click fell on, so the label
+                    goes where there was room — that is what the click
+                    was saying. Three metres, which is far enough to
+                    clear the pipe and its own plate at any working
+                    zoom. */}
+                {ctx.feature.Feature_Type === "line"
+                  && ctx.feature.Layer_Key === "water" && (
+                  <button className="gc-item" onClick={() => {
+                    const f = ctx.feature;
+                    const at = ctx.atM;
+                    setCtx(null);
+
+                    const g = f.Geometry || [];
+                    const near = nearestOnPolyline(at, g);
+                    if (!near) return;
+                    const a = g[near.index - 1];
+                    const b = g[near.index];
+                    const len = Math.hypot(b[0] - a[0], b[1] - a[1]) || 1;
+                    const dx = (b[0] - a[0]) / len;
+                    const dy = (b[1] - a[1]) / len;
+                    /* Which side of the pipe the click fell on. */
+                    const side = Math.sign(
+                      (at[0] - near.q[0]) * -dy + (at[1] - near.q[1]) * dx) || 1;
+                    const OFF_M = 3;
+
+                    const A = {
+                      ...f.Attributes,
+                      Label_At: near.q,
+                      Label_Offset: [-dy * OFF_M * side, dx * OFF_M * side],
+                    };
+                    setFeatures((fs) => fs.map((x) =>
+                      (x.Feature_ID === f.Feature_ID ? { ...x, Attributes: A } : x)));
+                    bulkUpdateFeatures(projectId, [{ Feature_ID: f.Feature_ID, Attributes: A }])
+                      .catch((e) => setError(e.message));
+                  }}>Add Label</button>
+                )}
+                {(ctx.feature.Attributes?.Label_Offset
+                  || ctx.feature.Attributes?.Label_At) && (
                   <button className="gc-item" onClick={() => {
                     const f = ctx.feature;
                     setCtx(null);
                     const A = { ...f.Attributes };
                     delete A.Label_Offset;
+                    /* And where it was anchored, or it would go back to
+                       the midpoint's offset while still pointing at the
+                       place somebody clicked. */
+                    delete A.Label_At;
                     setFeatures((fs) => fs.map((x) =>
                       (x.Feature_ID === f.Feature_ID ? { ...x, Attributes: A } : x)));
                     bulkUpdateFeatures(projectId, [{ Feature_ID: f.Feature_ID, Attributes: A }])

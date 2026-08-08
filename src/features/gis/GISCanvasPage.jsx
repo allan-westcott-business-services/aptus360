@@ -9747,10 +9747,28 @@ export default function GISCanvasPage() {
                       onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
                   </Menu>
 
-                  {["gas", "water"].map((key) => {
+                  {/* Gas and Water, the two menus built from the layer
+                      list rather than written out.
+
+                      The fallback is the name, not the key. It was the
+                      key — so for the second or two between the canvas
+                      mounting and the layers arriving, the bar read
+                      "gas" and "water" in lower case beside Electric
+                      and Street Lighting, and then changed under the
+                      reader. A menu heading that rewrites itself looks
+                      like a fault whatever it settles on.
+
+                      Written out rather than capitalised from the key,
+                      on the same argument the bill makes for its role
+                      names: "Gas" is a fact about what the thing is
+                      called, not about the string 'gas', and a key that
+                      needs two words or an acronym would come out
+                      wrong. The layer's own Label still wins the moment
+                      it loads, so renaming one in Admin still works. */}
+                  {[["gas", "Gas"], ["water", "Water"]].map(([key, name]) => {
                     const layer = layers.find((l) => l.Layer_Key === key);
                     return (
-                      <Menu key={key} id={key} label={layer?.Label ?? key}
+                      <Menu key={key} id={key} label={layer?.Label ?? name}
                         open={open} setOpen={setOpen}>
                         <MenuGroup label="Show or Hide" />
                         {/* As on the Electric menu: the whole utility as
@@ -9759,10 +9777,10 @@ export default function GISCanvasPage() {
                         <MenuItem
                           label={solo === key
                             ? "Show all layers"
-                            : `Isolate ${layer?.Label ?? key}`}
+                            : `Isolate ${layer?.Label ?? name}`}
                           hint={solo === key
                             ? "Bring back everything that was hidden"
-                            : `Show only ${layer?.Label ?? key} objects, hiding every other utility`}
+                            : `Show only ${layer?.Label ?? name} objects, hiding every other utility`}
                           active={solo === key}
                           disabled={!(classCount[key] > 0)}
                           onClick={() => soloClass(key)} />

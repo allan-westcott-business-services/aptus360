@@ -1,4 +1,4 @@
-import { useState, useEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { listProjects, getProject } from "../../api/projects.js";
 import {
@@ -534,6 +534,39 @@ export default function GISCanvasPage() {
      Held together so the two can never disagree about which feature the
      options apply to. */
   const [ctx, setCtx] = useState(null);   // { feature, atM, x, y }
+  const ctxRef = useRef(null);
+
+  /* ── Keep the right-click menu on screen ──
+
+     It opens down and to the right of the cursor, which runs it off the
+     bottom of the panel on anything clicked in the last inch or so —
+     and the panel clips, so the items simply are not reachable.
+
+     Measured rather than guessed: the menu's height depends on which
+     feature was clicked, so a fixed allowance would be wrong for most
+     of them. Laid out at the cursor, measured, then flipped to open
+     upward or leftward if it does not fit.
+
+     useLayoutEffect rather than useEffect, so the move happens before
+     the browser paints and the menu is never seen in the wrong place.
+
+     The guard is what stops this looping: the second pass computes the
+     same position and sets nothing. */
+  useLayoutEffect(() => {
+    if (!ctx) return;
+    const el = ctxRef.current;
+    const host = el?.offsetParent;
+    if (!el || !host) return;
+
+    const { width: w, height: h } = el.getBoundingClientRect();
+    /* Flipped to the other side of the cursor, not merely nudged up:
+       nudging leaves the menu under the pointer, so the first item is
+       whatever the cursor is already sitting on. */
+    const x = ctx.px + w > host.clientWidth ? Math.max(4, ctx.px - w) : ctx.px;
+    const y = ctx.py + h > host.clientHeight ? Math.max(4, ctx.py - h) : ctx.py;
+
+    if (x !== ctx.x || y !== ctx.y) setCtx((c) => (c ? { ...c, x, y } : c));
+  }, [ctx]);
   /* Placing plots floats over the canvas rather than sitting in a
      sidebar. It has to stay open while the canvas is clicked — two clicks
      per plot — so it cannot be a modal with a backdrop. */
@@ -1110,18 +1143,24 @@ export default function GISCanvasPage() {
 
        It is an image rather than a feature, so the sweep above cannot
        see it and it sat outside all of this — which is why its S did
-       nothing and it had no I at all. Adding the key here is what lets
-       one set of rules cover it: picked, it stays; not picked, it goes,
-       exactly as a layer does.
+       nothing and it had no I at all. Naming it here is what lets it be
+       picked and isolated like anything else.
 
-       That does mean isolating gas now takes the survey with it, where
-       before the survey stayed put. Deliberate: S means "only these",
-       and a survey that ignored the word "only" was the inconsistency
-       being complained about. Wanting gas over the plan is two presses
-       — S on gas, S on Background Plan — which is what S already
-       promises on every other row. */
+       ── But it survives everybody else's isolate ──
+
+       Always kept, never swept. Isolating gas leaves the survey exactly
+       where it was, because a utility shown without the ground it runs
+       over is half a drawing — the same argument span nodes get above,
+       and the same one the circuit isolate makes for not using this
+       function at all.
+
+       So S and I on another row mean "only this, over the plan", and S
+       or I on this row means the plan on its own, since picking it
+       sweeps every feature key and keeps only this one. Its own H still
+       hides it, which is the way to get a utility with no survey under
+       it. */
     all.add(BASEMAP_KEY);
-    if (keys.includes(BASEMAP_KEY)) keep.add(BASEMAP_KEY);
+    keep.add(BASEMAP_KEY);
 
     /* Span nodes survive an isolate. Nothing on an electric drawing
        carries "role:spannode", so the sweep above would hide it — and a
@@ -1568,10 +1607,7 @@ export default function GISCanvasPage() {
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
-    /* Two ways it can be off, and both have to be honoured: its own H,
-       and a pick list that did not include it. Reading only the first
-       is what let an isolate leave the survey on screen. */
-    if (showBasemap && !hidden.includes(BASEMAP_KEY) && basemap?.Metres_Per_Pixel) {
+    if (showBasemap && basemap?.Metres_Per_Pixel) {
       const mpp = Number(basemap.Metres_Per_Pixel);
       const ox = Number(basemap.Origin_X) || 0;
       const oy = Number(basemap.Origin_Y) || 0;
@@ -9237,30 +9273,21 @@ export default function GISCanvasPage() {
                           {basemap?.Metres_Per_Pixel && (
                             <MenuLayer label="Background Plan" colour="#94a3b8"
                               count={1}
-                              /* Off for either reason — its own H, or a
-                                 pick list it is not in — so the row
-                                 always reads as what is on screen. */
-                              hidden={!showBasemap || hidden.includes(BASEMAP_KEY)}
+                              /* Only its own H can hide it — no pick
+                                 sweeps it away — so the row reads from
+                                 that one switch. */
+                              hidden={!showBasemap}
                               solo={solo === BASEMAP_KEY}
                               shown={shownOnly.includes(BASEMAP_KEY)}
-                              /* H toggles, and while a pick list is
-                                 running it joins the list instead —
-                                 the same rule hideClass follows for
-                                 every other layer, so putting the plan
-                                 back never fights the list. */
+                              /* H toggles. Hiding it while it is one of
+                                 the picks takes it off that list too,
+                                 otherwise S stays lit over a plan that
+                                 is not on screen — and dropping the
+                                 only pick brings the drawing back,
+                                 which is what H does everywhere else. */
                               onHide={() => {
-                                if (shownOnly.includes(BASEMAP_KEY)) {
+                                if (showBasemap && shownOnly.includes(BASEMAP_KEY)) {
                                   applyShown(shownOnly.filter((x) => x !== BASEMAP_KEY));
-                                  return;
-                                }
-                                if (hidden.includes(BASEMAP_KEY)) {
-                                  if (shownOnly.length) {
-                                    applyShown([...shownOnly, BASEMAP_KEY]);
-                                  } else {
-                                    setHidden((h) => h.filter((x) => x !== BASEMAP_KEY));
-                                  }
-                                  setShowBasemap(true);
-                                  return;
                                 }
                                 setShowBasemap((v) => !v);
                               }}
@@ -10731,8 +10758,7 @@ export default function GISCanvasPage() {
                 {gapList?.length > 0 && (
                   <span>{`${gapList.length} unjoined trench end(s)`}</span>
                 )}
-                {(!showBasemap || hidden.includes(BASEMAP_KEY))
-                  && basemap?.Metres_Per_Pixel && (
+                {!showBasemap && basemap?.Metres_Per_Pixel && (
                   <span>Background plan hidden</span>
                 )}
                 {isolatedCircuit != null && (
@@ -10805,7 +10831,8 @@ export default function GISCanvasPage() {
               /* Positioned inside the canvas wrapper, so it travels with
                  the panel rather than sitting at a page coordinate that
                  stops matching the moment anything scrolls. */
-              <div className="gis-ctx" style={{ left: ctx.x, top: ctx.y }}
+              <div className="gis-ctx" ref={ctxRef}
+                style={{ left: ctx.x, top: ctx.y }}
                 role="menu" onClick={(e) => e.stopPropagation()}>
                 <p className="gc-head">{classLabel(ctx.feature, lineTypes)}</p>
 
@@ -11679,7 +11706,11 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .tr-scn-n { margin: 5px 0 0; font-size: 11.5px; color: var(--muted); line-height: 1.45; }
 .gis-ctx { position: absolute; z-index: 30; background: var(--white);
   border: 1px solid var(--border); border-radius: 9px; padding: 5px; min-width: 168px;
-  box-shadow: 0 10px 28px rgba(15,23,42,.2); }
+  box-shadow: 0 10px 28px rgba(15,23,42,.2);
+  /* The backstop for a menu taller than the panel it sits in, where
+     flipping it cannot help: it starts at the top and scrolls, rather
+     than running off the bottom either way. */
+  max-height: 80%; overflow-y: auto; }
 .gc-head { margin: 3px 8px 5px; font-size: 9.5px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--muted); }
 .gc-item { display: block; width: 100%; text-align: left; background: none; border: none;

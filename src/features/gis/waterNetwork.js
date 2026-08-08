@@ -478,6 +478,22 @@ export function waterMainRuns(features = [], opts = {}) {
       if (covered.has(edgeKey(a, b))) continue;
       if (served[a] <= 0 && served[b] <= 0) continue;   // nothing on it either way
 
+      /* A length of the tree, not a length closing a loop.
+
+         The walk reaches every node by the shortest way, so an edge it
+         did not cover is either the one that closes a ring or a branch
+         that was pruned for having no water beyond it. Both look the
+         same here — uncovered, with a served node at one end — and
+         treating the second as a ring produced a short run of pipe with
+         no size on it: nothing else lay round its "loop", so there was
+         no size to take, and it reached the bill as "Water Main (pipe
+         size not set)".
+
+         A dead end is a length nobody needs piping. Told apart by the
+         parent link: on a ring the two ends are reached by different
+         routes and neither is the other's parent. */
+      if (parent[b] === a || parent[a] === b) continue;
+
       /* Where the two sides meet, walking back towards the POC. The
          loop is everything from each end up to that point, plus the
          length joining them. */

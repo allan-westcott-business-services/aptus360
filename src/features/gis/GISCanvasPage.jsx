@@ -7967,13 +7967,38 @@ export default function GISCanvasPage() {
        the electric doing and the gas leaving. */
     const meterServed = (point) => meterHasService(point, svcTrenches);
 
+    /* Which heat sources mean gas, by name rather than by id.
+
+       This read `heat_source_id !== 1`, with 1 taken to be gas. It is
+       whatever the table happened to be seeded with, and on this
+       database 1 is ASHP and gas is 3 — so the test excluded gas from
+       every gas plot and included it on every air source one. Auto
+       Service laid no gas services at all and nobody could see why:
+       the plots were right, the drawing was right, and the rule was
+       reading a different row.
+
+       Matched the way 0053 and gis_unplaced_plots match it, on the
+       word rather than the number, so renaming a lookup in Admin
+       cannot break it and the database and the canvas cannot disagree
+       about which plots take gas. */
+    const gasSourceIds = new Set((lookups?.heatSources || [])
+      .filter((h) => /(^|[^a-z])gas([^a-z]|$)/i.test(String(h.Heat_Source || "")))
+      .map((h) => Number(h.Heat_Source_ID)));
+
     const utilitiesFor = (seed) => {
       const plot = plotList.find((p) => p.plot_id === seed.Plot_ID);
-      return utilities.filter((u) =>
-        /* Electric-only plot gets no gas meter — the original read the
-           plot's heat source for this. */
-        !(u.layer_key === "gas" && plot && plot.heat_source_id != null
-          && Number(plot.heat_source_id) !== 1));
+      return utilities.filter((u) => {
+        if (u.layer_key !== "gas") return true;
+        /* No plot behind the seed, or no heat source recorded: left as
+           it was, which is to offer gas. A seed with nothing known
+           about it is not evidence that it takes no gas, and dropping
+           the meter would hide the gap rather than show it. */
+        if (!plot || plot.heat_source_id == null) return true;
+        /* And where the lookup could not be read at all, the same:
+           better a gas meter to delete than a plot silently missed. */
+        if (!gasSourceIds.size) return true;
+        return gasSourceIds.has(Number(plot.heat_source_id));
+      });
     };
 
     /* A meter already at this plot for this utility. Matched on the plot

@@ -509,16 +509,21 @@ export function buildRows(data, opts = {}) {
     return [...groups].map(([sid, items]) => {
       const sub = subById.get(Number(sid));
       const site = sub?.Site_Name ? ` \u00b7 ${sub.Site_Name}` : "";
-      /* The work type as well as the reference. One site raises several
-         call-offs and they carry the same AP number, so a row labelled
-         with the reference alone appears twice with no way to tell
-         which is the mains and which the services — which is the first
-         thing somebody looking at this pivot needs to know. */
+      /* The project number, as on the bars. The call-off's own
+         reference is often not set at all — a submission raised from
+         the drawing has no AP number until somebody types one — and the
+         row then read "#12", which is a database id and tells nobody
+         which site it is.
+
+         The work type stays on the end, because one project raises
+         several call-offs and they all carry the same number: without
+         it the pivot shows three rows called 2607.001 and no way to
+         tell the mains from the services. */
       const wt = workTypes.find((w) =>
         Number(w.Work_Type_ID) === Number(sub?.Work_Type_ID))?.Work_Type_Name;
       return {
         key: `ref-${sid}`,
-        label: `${sub?.AP_Number || `#${sid}`}${site}${wt ? ` \u00b7 ${wt}` : ""}`,
+        label: `${refOf(sub)}${site}${wt ? ` \u00b7 ${wt}` : ""}`,
         submissionId: Number(sid),
         items,
       };

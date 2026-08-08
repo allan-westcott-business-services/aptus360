@@ -99,6 +99,14 @@ import { tint } from "../../lib/pillColour.js";
    Drawing tools and the electrical model come next. */
 
 const GRID_M = 5;                 // metres between grid lines
+
+/* The background plan's class key.
+
+   Every layer row is driven by a key some feature carries. The survey
+   is an image and carries nothing, so it needs a name of its own to
+   take part — one no feature will ever produce, which is why it is a
+   plain word rather than a "role:" or "layer:" form. */
+const BASEMAP_KEY = "basemap";
 const HIT_PX = 10;
 
 /* The boundary point is drawn in ink rather than in a utility's colour.
@@ -1092,6 +1100,23 @@ export default function GISCanvasPage() {
       if (ks.some((k) => keys.includes(k))) ks.forEach((k) => keep.add(k));
     }
 
+    /* The background plan, as a key no feature carries.
+
+       It is an image rather than a feature, so the sweep above cannot
+       see it and it sat outside all of this — which is why its S did
+       nothing and it had no I at all. Adding the key here is what lets
+       one set of rules cover it: picked, it stays; not picked, it goes,
+       exactly as a layer does.
+
+       That does mean isolating gas now takes the survey with it, where
+       before the survey stayed put. Deliberate: S means "only these",
+       and a survey that ignored the word "only" was the inconsistency
+       being complained about. Wanting gas over the plan is two presses
+       — S on gas, S on Background Plan — which is what S already
+       promises on every other row. */
+    all.add(BASEMAP_KEY);
+    if (keys.includes(BASEMAP_KEY)) keep.add(BASEMAP_KEY);
+
     /* Span nodes survive an isolate. Nothing on an electric drawing
        carries "role:spannode", so the sweep above would hide it — and a
        utility isolated without the points it is measured between is
@@ -1537,7 +1562,10 @@ export default function GISCanvasPage() {
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
-    if (showBasemap && basemap?.Metres_Per_Pixel) {
+    /* Two ways it can be off, and both have to be honoured: its own H,
+       and a pick list that did not include it. Reading only the first
+       is what let an isolate leave the survey on screen. */
+    if (showBasemap && !hidden.includes(BASEMAP_KEY) && basemap?.Metres_Per_Pixel) {
       const mpp = Number(basemap.Metres_Per_Pixel);
       const ox = Number(basemap.Origin_X) || 0;
       const oy = Number(basemap.Origin_Y) || 0;
@@ -7146,6 +7174,19 @@ export default function GISCanvasPage() {
       + (plan.unreachable.length
         ? `\n\n${plan.unreachable.length} mains trench(es) aren\u2019t joined to the `
           + "POC and will get no pipe." : "")
+      /* Said before it happens, not only in the status line afterwards.
+
+         This is the fault that takes meters off the count while every
+         other check passes: the spur touches the main, shares a node
+         with it, and that node sits on a length of trench the POC
+         cannot reach. Services to mains does not test reachability, so
+         it reports all clear — and the only sign was a total quietly
+         one short. */
+      + (plan.unattachedServices.length
+        ? `\n\n${plan.unattachedServices.length} service trench(es) reach a gas meter `
+          + "but not the main, so their meters are not counted: "
+          + plan.unattachedServices.slice(0, 5).map((u) => u.label).join(", ")
+          + (plan.unattachedServices.length > 5 ? "\u2026" : "") : "")
       + (plan.strandedMeters.length
         ? `\n\n${plan.strandedMeters.length} gas meter(s) sit on no service trench.` : "")
     )) return;
@@ -9158,9 +9199,45 @@ export default function GISCanvasPage() {
                           {basemap?.Metres_Per_Pixel && (
                             <MenuLayer label="Background Plan" colour="#94a3b8"
                               count={1}
-                              hidden={!showBasemap}
-                              onHide={() => setShowBasemap(false)}
-                              onShow={() => setShowBasemap(true)} />
+                              /* Off for either reason — its own H, or a
+                                 pick list it is not in — so the row
+                                 always reads as what is on screen. */
+                              hidden={!showBasemap || hidden.includes(BASEMAP_KEY)}
+                              solo={solo === BASEMAP_KEY}
+                              shown={shownOnly.includes(BASEMAP_KEY)}
+                              /* H toggles, and while a pick list is
+                                 running it joins the list instead —
+                                 the same rule hideClass follows for
+                                 every other layer, so putting the plan
+                                 back never fights the list. */
+                              onHide={() => {
+                                if (shownOnly.includes(BASEMAP_KEY)) {
+                                  applyShown(shownOnly.filter((x) => x !== BASEMAP_KEY));
+                                  return;
+                                }
+                                if (hidden.includes(BASEMAP_KEY)) {
+                                  if (shownOnly.length) {
+                                    applyShown([...shownOnly, BASEMAP_KEY]);
+                                  } else {
+                                    setHidden((h) => h.filter((x) => x !== BASEMAP_KEY));
+                                  }
+                                  setShowBasemap(true);
+                                  return;
+                                }
+                                setShowBasemap((v) => !v);
+                              }}
+                              onShow={() => {
+                                /* Picking it also undoes its own H.
+                                   Otherwise S would light up and
+                                   nothing would appear, because the
+                                   other switch was still off. */
+                                setShowBasemap(true);
+                                showClass(BASEMAP_KEY);
+                              }}
+                              onSolo={() => {
+                                setShowBasemap(true);
+                                soloClass(BASEMAP_KEY);
+                              }} />
                           )}
 
                           {/* The two boundaries separately, and the
@@ -10616,7 +10693,8 @@ export default function GISCanvasPage() {
                 {gapList?.length > 0 && (
                   <span>{`${gapList.length} unjoined trench end(s)`}</span>
                 )}
-                {!showBasemap && basemap?.Metres_Per_Pixel && (
+                {(!showBasemap || hidden.includes(BASEMAP_KEY))
+                  && basemap?.Metres_Per_Pixel && (
                   <span>Background plan hidden</span>
                 )}
                 {isolatedCircuit != null && (

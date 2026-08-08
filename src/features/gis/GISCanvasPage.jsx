@@ -65,7 +65,7 @@ import {
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { gasMainRuns } from "./gasNetwork.js";
-import { waterMainRuns } from "./waterNetwork.js";
+import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
@@ -7776,6 +7776,42 @@ export default function GISCanvasPage() {
       }
     }
 
+    /* ── What a water service is laid in ──
+
+       Read from the service rules rather than fixed at 25mm in this
+       file. A service feeds one property, so the size is the smallest
+       service rule that carries one meter — which with the standard
+       25mm rule is 25mm, and follows an operator who rules otherwise
+       without this code being touched.
+
+       The operator here is taken from the water design alone, not from
+       the agreement and the POC as the mains build does. Auto Service
+       runs across every utility on the drawing and should not fetch two
+       endpoints to size a spur; the design is the one of the three that
+       is already loaded, and it is the one somebody sets deliberately.
+
+       Nothing is written where no service rule fits. A spur with no
+       size shows as "pipe size not set" on the bill, which is true and
+       findable, and better than a number this file invented. */
+    const serviceSize = (() => {
+      const waterLayer = layers.find((l) => l.Layer_Key === "water");
+      const design = waterLayer?.Utility_ID != null
+        ? scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(waterLayer.Utility_ID))
+        : null;
+      const orgOfIdno = (id) => (id == null ? null
+        : (lookups?.idnos || []).find((x) =>
+          Number(x.IDNO_ID) === Number(id))?.Organisation_ID ?? null);
+      const operatorIds = [orgOfIdno(design?.IDNO_ID), design?.DNO_Organisation_ID]
+        .filter((x) => x != null);
+
+      const table = sizeTable(lookups?.waterPipeSizes || [], {
+        kind: "service",
+        operatorIds,
+        operators: lookups?.waterPipeSizeOperators || [],
+      });
+      return sizeFor(table, 1);
+    })();
+
     const { plans, skipped } = planAutoService(seeds, trenches, utilitiesFor, {
       alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
       meterServed,
@@ -7867,6 +7903,11 @@ export default function GISCanvasPage() {
               Line_Type: lineTypes.find((t) => t.Layer_Key === c.utility.layer_key
                 && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
               Seed_Feature_ID: plan.seed.Feature_ID,
+              /* The size of a water service, off the same table the
+                 mains are sized from. */
+              ...(c.utility.layer_key === "water" && serviceSize
+                ? { Water_Pipe_Size_ID: serviceSize.id, Size: serviceSize.label }
+                : {}),
               Connects: connectedTo(c.geometry, features, null),
             },
           });

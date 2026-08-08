@@ -151,7 +151,26 @@ export function sizeTable(rows = [], opts = {}) {
     if (drop > 0) best.set(key, r);
   }
 
-  return [...best.values()]
+  /* ── The operator's rule wins its band as well as its diameter ──
+
+     The pass above keeps the most specific rule per diameter, which is
+     how a mains standard is departed from: the same 63mm, a lower
+     ceiling. Services depart the other way — the same one property, a
+     different diameter — and per-diameter grouping let both survive, so
+     an operator's 32mm sat beside the standard 25mm and the smaller won
+     on capacity. Their rule was configured, applicable, and ignored.
+
+     So where an operator's rule exists for a given ceiling, the generic
+     rules for that same ceiling go. Nothing is dropped that the
+     operator has not replaced. */
+  const bands = new Set([...best.values()]
+    .filter((r) => rank(r) > 0)
+    .map((r) => Number(r.Max_Meters)));
+
+  const chosen = [...best.values()].filter((r) =>
+    rank(r) > 0 || !bands.has(Number(r.Max_Meters)));
+
+  return chosen
     .map((r) => ({
       id: r.Water_Pipe_Size_ID,
       diameter: Number(r.Diameter_mm),

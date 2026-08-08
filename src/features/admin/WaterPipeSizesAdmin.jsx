@@ -43,7 +43,20 @@ import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admi
    as in the code, since this is the screen where somebody decides
    whether to add a rule or edit one. */
 
-const blank = () => ({
+/* Two sets of rules, told apart by what they size.
+
+   A main is sized by the plots beyond a point on it; a service by the
+   one property it feeds. Their diameters and ceilings do not overlap,
+   and reading them as one list meant a 25mm service rule carrying one
+   plot was the smallest pipe that carried one plot — so every short
+   spur of main came out at a service size. */
+const KINDS = [
+  ["main", "Mains"],
+  ["service", "Service"],
+];
+
+const blank = (kind = "main") => ({
+  Pipe_Kind: kind,
   Diameter_mm: "", Size_Label: "", Max_Meters: "",
   Display_Order: 100, Is_Active: true,
 });
@@ -60,6 +73,10 @@ export default function WaterPipeSizesAdmin() {
   const [selected, setSelected] = useState(null);
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState(blank());
+  /* Which set is being looked at. A filter rather than two screens: the
+     operators, the ordering and the editing are identical, and the only
+     question is which pipe a rule is about. */
+  const [kind, setKind] = useState("main");
 
   async function load() {
     try {
@@ -85,9 +102,12 @@ export default function WaterPipeSizesAdmin() {
   /* Sorted by what they carry rather than by diameter, which is the
      order the sizing reads them in — so the list on screen is the list
      the build walks. */
-  const ordered = useMemo(() => [...sizes].sort((a, b) =>
-    Number(a.Max_Meters) - Number(b.Max_Meters)
-    || Number(a.Diameter_mm) - Number(b.Diameter_mm)), [sizes]);
+  const ordered = useMemo(() => sizes
+    .filter((s) => (s.Pipe_Kind ?? "main") === kind)
+    .sort((a, b) => Number(a.Max_Meters) - Number(b.Max_Meters)
+      || Number(a.Diameter_mm) - Number(b.Diameter_mm)), [sizes, kind]);
+
+  const countOf = (k) => sizes.filter((s) => (s.Pipe_Kind ?? "main") === k).length;
 
   const linksFor = (id) => links.filter((l) =>
     Number(l.Water_Pipe_Size_ID) === Number(id));
@@ -174,6 +194,10 @@ export default function WaterPipeSizesAdmin() {
     try {
       const made = await adminCreate("Water_Pipe_Size", {
         ...draft,
+        /* The set being viewed, so a rule added while looking at the
+           service list is a service rule without anybody choosing it
+           twice. */
+        Pipe_Kind: kind,
         Diameter_mm: Number(draft.Diameter_mm),
         Max_Meters: Number(draft.Max_Meters),
         Display_Order: Number(draft.Display_Order) || 100,
@@ -181,7 +205,7 @@ export default function WaterPipeSizesAdmin() {
       setSizes((xs) => [...xs, made]);
       setSelected(made.Water_Pipe_Size_ID);
       setAdding(false);
-      setDraft(blank());
+      setDraft(blank(kind));
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(null); }
@@ -216,6 +240,23 @@ export default function WaterPipeSizesAdmin() {
           standard and applies everywhere; one that names an operator is used for
           them instead, for that diameter alone.
         </p>
+
+        {/* Which pipe these rules are about.
+
+            A tab rather than a column on each row: the two sets are read
+            separately — nobody sizes a main and a service in the same
+            breath — and mixing them in one list was what let a service
+            diameter be chosen for a main. */}
+        <div className="wp-kinds">
+          {KINDS.map(([k, name]) => (
+            <button key={k}
+              className={kind === k ? "wp-kind on" : "wp-kind"}
+              onClick={() => { setKind(k); setSelected(null); setAdding(false); }}>
+              {name}
+              <em>{countOf(k)}</em>
+            </button>
+          ))}
+        </div>
       </div>
 
       <div className="wp-split">
@@ -242,14 +283,18 @@ export default function WaterPipeSizesAdmin() {
                   Add
                 </button>
                 <button className="btn ghost sm"
-                  onClick={() => { setAdding(false); setDraft(blank()); }}>
+                  onClick={() => { setAdding(false); setDraft(blank(kind)); }}>
                   Cancel
                 </button>
               </div>
             </div>
           )}
 
-          {!ordered.length && <p className="wp-none">No rules yet.</p>}
+          {!ordered.length && (
+            <p className="wp-none">
+              No {kind === "service" ? "service" : "mains"} rules yet.
+            </p>
+          )}
           {ordered.map((s) => {
             const mine = linksFor(s.Water_Pipe_Size_ID);
             return (
@@ -278,6 +323,7 @@ export default function WaterPipeSizesAdmin() {
             <div className="wp-detail-head">
               <h3>{labelOf(current)}</h3>
               <p className="wp-sub">
+                {(current.Pipe_Kind ?? "main") === "service" ? "Service pipe. " : "Mains pipe. "}
                 Carries up to {current.Max_Meters} water meters
                 {linksFor(current.Water_Pipe_Size_ID).length
                   ? ` for ${linksFor(current.Water_Pipe_Size_ID).map(nameOf).join(", ")}.`
@@ -386,6 +432,12 @@ const CSS = `
 .wp-head h3 { margin: 0; font-size: 16px; }
 .wp-sub { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); max-width: 70ch; }
 .wp-split { display: grid; grid-template-columns: 260px 1fr; gap: 18px; }
+.wp-kinds { display: flex; gap: 6px; margin-top: 12px; }
+.wp-kind { display: inline-flex; align-items: center; gap: 6px; cursor: pointer;
+  background: none; border: 1px solid var(--border); border-radius: 999px;
+  padding: 5px 14px; font: 700 11.5px inherit; color: var(--muted); }
+.wp-kind em { font-style: normal; font-weight: 600; opacity: .7; }
+.wp-kind.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 .wp-list { border-right: 1px solid var(--border); padding-right: 16px; }
 .wp-list-head { margin-bottom: 10px; }
 .wp-new { display: flex; flex-direction: column; gap: 6px; margin-bottom: 10px;

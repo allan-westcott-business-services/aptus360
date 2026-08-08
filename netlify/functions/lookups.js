@@ -72,7 +72,7 @@ export default async function handler() {
          reads them in, and the two only agree while somebody keeps them
          agreeing. */
       waterPipeSizes: db.from("Water_Pipe_Size")
-        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order")
+        .select("Water_Pipe_Size_ID,Diameter_mm,Size_Label,Max_Meters,Display_Order,Pipe_Kind")
         .eq("Is_Active", true).order("Max_Meters"),
       /* Which operators each rule names. A rule with no rows here is the
          house standard and applies to any project — so this is read

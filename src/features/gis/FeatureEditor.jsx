@@ -52,6 +52,12 @@ export default function FeatureEditor({
     const t = lineTypes.find((x) => x.Type_Key === f.Attributes?.Line_Type);
     return t ? t.Layer_Key === "water" : feature.Layer_Key === "water";
   })();
+  /* Main or service, off the line type — the same test the network
+     builder uses, so the editor offers what the build would choose. */
+  const isServiceLine = /service/i.test(f.Attributes?.Line_Type || "");
+  const pipeChoices = (lookups?.waterPipeSizes || [])
+    .filter((x) => (x.Pipe_Kind ?? "main") === (isServiceLine ? "service" : "main"));
+
   const isPoly = feature.Feature_Type === "polygon";
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
@@ -1060,14 +1066,21 @@ export default function FeatureEditor({
                   </div>
                 ) : isWater ? (
                   <>
-                  /* Water sizes from the table, not from typing.
+                  {/* Water sizes from the table, not from typing.
 
-                     Build Water Network sets this on every run it draws
-                     \u2014 the smallest pipe that carries the plots beyond
-                     that length \u2014 and this is where it is seen and
-                     overridden. A length somebody sizes up by hand
-                     because of a future phase is a real decision, and
-                     the drawing should be able to hold it. */
+                      Build Water Network sets this on every run it draws
+                      — the smallest pipe that carries the plots beyond
+                      that length — and this is where it is seen and
+                      overridden. A length somebody sizes up by hand
+                      because of a future phase is a real decision, and
+                      the drawing should be able to hold it.
+
+                      In braces. It was a plain block comment, which was
+                      correct while it sat in the parentheses of a
+                      conditional — a JavaScript position. Wrapping this
+                      branch in a fragment to fit the label control in
+                      made it a child of that fragment, so JSX read it
+                      as text and printed it in the modal. */}
                   <div className="fld">
                     <label htmlFor="fe-pipe">Pipe size</label>
                     <select id="fe-pipe" value={f.Attributes.Water_Pipe_Size_ID ?? ""}
@@ -1095,16 +1108,24 @@ export default function FeatureEditor({
                           that is what the options say; the rule behind
                           the one selected is spelled out below, where
                           it can be read once rather than seven times. */}
-                      {(lookups?.waterPipeSizes || []).map((x) => (
+                      {/* Only the rules for this kind of pipe.
+
+                          A service spur was offered the mains diameters
+                          and a main the service ones — and picking from
+                          the wrong set writes a size the build would
+                          never have chosen, which then reads on the
+                          drawing as though it had. Judged by the line
+                          type, which is what says main or service. */}
+                      {pipeChoices.map((x) => (
                         <option key={x.Water_Pipe_Size_ID} value={x.Water_Pipe_Size_ID}>
                           {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
                         </option>
                       ))}
                     </select>
-                    {!(lookups?.waterPipeSizes || []).length ? (
+                    {!pipeChoices.length ? (
                       <p className="hint">
-                        No pipe sizes yet &mdash; add them in
-                        Admin &rsaquo; Water Pipe Sizes.
+                        No {isServiceLine ? "service" : "mains"} pipe sizes yet &mdash;
+                        add them in Admin &rsaquo; Water Pipe Sizes.
                       </p>
                     ) : (() => {
                       /* The rule behind the chosen size, and what the

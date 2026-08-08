@@ -106,8 +106,14 @@ function distToLine(p, g = []) {
 export function sizeTable(rows = [], opts = {}) {
   /* Operators, plural: a project has an adopting operator and a DNO,
      and a rule may be written against either. Both are organisations,
-     so this is one list rather than two fields to compare separately. */
-  const { operatorIds = [], operators = [] } = opts;
+     so this is one list rather than two fields to compare separately.
+
+     `kind` is which set of rules is being read. A service rule carrying
+     one plot would otherwise be the smallest pipe that carries one
+     plot, and every short spur of main on the site would come out at a
+     service diameter. Defaulted to mains, since that is what every rule
+     was before there were two kinds. */
+  const { operatorIds = [], operators = [], kind = "main" } = opts;
   const mineIds = operatorIds.filter((x) => x != null).map(Number);
 
   /* The operators each rule names, gathered once rather than scanned
@@ -129,7 +135,10 @@ export function sizeTable(rows = [], opts = {}) {
   };
 
   const applies = rows.filter((r) =>
-    r.Is_Active !== false && Number(r.Max_Meters) > 0 && rank(r) >= 0);
+    r.Is_Active !== false
+    && (r.Pipe_Kind ?? "main") === kind
+    && Number(r.Max_Meters) > 0
+    && rank(r) >= 0);
 
   const best = new Map();
   for (const r of applies) {
@@ -181,13 +190,14 @@ export function waterMainRuns(features = [], opts = {}) {
     /* Two different faults, and the fix differs: an empty table, or a
        table whose every row names an operator this project is not
        with. The second reads as the first unless it is said. */
-    const anyActive = pipeSizes.some((r) => r.Is_Active !== false);
+    const anyActive = pipeSizes.some((r) => r.Is_Active !== false
+      && (r.Pipe_Kind ?? "main") === "main");
     return {
       error: anyActive
-        ? "No water pipe size applies to this project's operator \u2014 every rule "
-          + "configured names a different operator. Add a rule for this one, or "
+        ? "No mains pipe size applies to this project's operator \u2014 every mains "
+          + "rule configured names a different operator. Add a rule for this one, or "
           + "untick its operators to make it the standard."
-        : "No water pipe sizes are configured \u2014 add them in Admin \u203a "
+        : "No mains pipe sizes are configured \u2014 add them in Admin \u203a "
           + "Water Pipe Sizes. A size is read off that table, so there is nothing "
           + "to draw without it.",
     };

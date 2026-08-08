@@ -25,7 +25,18 @@ import { getGisBom } from "../../api/gis.js";
    and reinstated to differs either side of the boundary, and so does the
    rate. A metre of cable costs what it costs wherever it is laid, so
    those rows come back with no site and group on their own. */
-const SITE_ORDER = ["On-site", "Off-site", "Unclassified", ""];
+/* The order the sections read in.
+
+   Off-site first. It is the work that has to happen before anything on
+   the development can be connected — the main brought to the site
+   boundary — so a bill walked top to bottom follows the order the
+   ground is dug in rather than the order the two happen to be named.
+
+   Drives the sections, the per-site totals and the Excel summary
+   together. gis_bom orders the same way, so the sheet and the screen
+   cannot disagree; changing one without the other is what would leave
+   the export reading differently from the modal it was taken from. */
+const SITE_ORDER = ["Off-site", "On-site", "Unclassified", ""];
 
 /* A name Excel will accept for a worksheet.
 

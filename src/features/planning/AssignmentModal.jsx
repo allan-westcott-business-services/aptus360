@@ -64,6 +64,14 @@ export default function AssignmentModal({ item, data, utilities = [], onClose })
               {item.ref}
               {sub?.Site_Name ? ` \u00b7 ${sub.Site_Name}` : ""}
             </h3>
+            {/* The bar falls back to the call-off's reference where
+                there is no project, and a heading that looks like any
+                other would hide that. Said once, here, rather than
+                leaving somebody to notice the number is the wrong
+                shape. */}
+            {!project && (
+              <p className="pam-warn">Not linked to a project</p>
+            )}
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
@@ -95,11 +103,13 @@ export default function AssignmentModal({ item, data, utilities = [], onClose })
               )}
             </dd>
 
-            <dt>Project</dt>
+            <dt>Call-off</dt>
             <dd>
-              {project
-                ? `${project.Display_Ref || project.Project_Ref || `#${project.Project_ID}`}`
-                : "\u2014 not linked to a project \u2014"}
+              {item.apNumber || `#${item.submissionId}`}
+              {/* The reference the request was raised under. It has left
+                  the bar, where the project number is more use at a
+                  glance, so it belongs here — this is where somebody
+                  comes to find the call-off in the list. */}
             </dd>
 
             <dt>Manager</dt>
@@ -197,6 +207,9 @@ const CSS = `
 .pam-head h3 { margin: 2px 0 0; font-size: 16px; font-weight: 700; }
 .pam-kicker { margin: 0; font-size: 10px; text-transform: uppercase; letter-spacing: .08em;
   opacity: .8; }
+.pam-warn { margin: 3px 0 0; font-size: 11px; font-weight: 700;
+  background: rgba(255,255,255,.24); border-radius: 20px; padding: 1px 9px;
+  display: inline-block; }
 .pam-head > div { flex: 1; min-width: 0; }
 .pam-head .fe-x { color: #fff; }
 .pam-body { padding: 15px 18px; overflow-y: auto; flex: 1; }

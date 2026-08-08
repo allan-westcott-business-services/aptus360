@@ -249,6 +249,29 @@ export function buildRows(data, opts = {}) {
   const projectOf = (sub) => (sub?.Project_ID != null
     ? projById.get(Number(sub.Project_ID)) : null);
 
+  /* ── What a bar is labelled with ──
+
+     The project number, not the call-off's own reference.
+
+     A bar is a couple of centimetres wide and carries one line of text,
+     so that line has to be the thing somebody scanning the board is
+     looking for — and that is the site, which they know by its project
+     number. A call-off reference identifies the request rather than the
+     job, and a week's worth of them tells you how many requests are
+     open without telling you which sites are being worked.
+
+     Falls back through the AP number to the submission id. Both are
+     worse than the project number and better than a blank bar: a
+     call-off raised against no project is a fault, and it should be
+     visible on the board rather than drawn as an unlabelled block. */
+  const refOf = (sub) => {
+    const project = projectOf(sub);
+    return project?.Display_Ref
+      || project?.Project_Ref
+      || sub?.AP_Number
+      || `#${sub?.Submission_ID ?? "?"}`;
+  };
+
   const itemFor = (a) => {
     const sub = subById.get(Number(a.Submission_ID));
     const parts = daysByAssignment.get(Number(a.Assignment_ID)) || [];
@@ -264,9 +287,14 @@ export function buildRows(data, opts = {}) {
       submissionId: Number(a.Submission_ID),
       taskTypeId: Number(a.Task_Type_ID),
       ...span,
-      ref: sub?.AP_Number || `#${a.Submission_ID}`,
+      ref: refOf(sub),
+      /* The call-off's own reference, kept alongside rather than
+         dropped: the bar does not show it, but the panel behind the bar
+         is where somebody goes to find the request, and that is what
+         they will search the call-off list for. */
+      apNumber: sub?.AP_Number || null,
       phase: task?.Task_Type_Name || `Phase ${a.Task_Type_ID}`,
-      label: `${sub?.AP_Number || `#${a.Submission_ID}`} \u00b7 `
+      label: `${refOf(sub)} \u00b7 `
         + `${task?.Task_Type_Name || `Phase ${a.Task_Type_ID}`}`
         + (a.Plot_Range ? ` \u00b7 Plots ${a.Plot_Range}` : ""),
       colour: colours.get(Number(a.Task_Type_ID)) || "#6b7280",
@@ -327,9 +355,10 @@ export function buildRows(data, opts = {}) {
           submissionId: Number(sub.Submission_ID),
           taskTypeId: Number(tid),
           ...span,
-          ref: sub.AP_Number || `#${sub.Submission_ID}`,
+          ref: refOf(sub),
+          apNumber: sub.AP_Number || null,
           phase: name,
-          label: `${sub.AP_Number || `#${sub.Submission_ID}`} \u00b7 ${name}`,
+          label: `${refOf(sub)} \u00b7 ${name}`,
           colour: colours.get(Number(tid)) || "#6b7280",
           offSite: false,
           projectId: sub.Project_ID ?? null,

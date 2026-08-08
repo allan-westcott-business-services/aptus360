@@ -214,3 +214,108 @@ export const adminMock = {
     { Sub_Region_ID: 4, Region_ID: 3, Sub_Region: "Wessex", Sort_Order: 10 },
   ],
 };
+
+/* ── Sample schedule for the Planning board ──
+
+   Built relative to today rather than at fixed dates, so the sample
+   always lands in the window the board opens on. A fixture dated 2026
+   is a fixture that looks like an empty schedule the following spring,
+   and "no data" is exactly the thing somebody would be trying to rule
+   out when they turn the mocks on.
+
+   Deliberately awkward in three places: two bookings that overlap on
+   one team so the lane packing shows, a booking that starts before the
+   default window so clipping shows, and a call-off with nothing
+   assigned so the unassigned row has something in it. */
+export function planningMock() {
+  const d = new Date();
+  d.setHours(0, 0, 0, 0);
+  const day = (n) => {
+    const x = new Date(d.getTime() + n * 86400000);
+    const p = (v) => String(v).padStart(2, "0");
+    return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+  };
+
+  const assignments = [
+    { Assignment_ID: 1, Submission_ID: 501, Task_Type_ID: 1, Team_ID: 1, Start_Date: day(-2), End_Date: day(1), Plot_Range: "1-8", Status: "In Progress" },
+    { Assignment_ID: 2, Submission_ID: 501, Task_Type_ID: 3, Team_ID: 2, Start_Date: day(2), End_Date: day(3), Plot_Range: "1-8", Status: "Scheduled" },
+    { Assignment_ID: 3, Submission_ID: 502, Task_Type_ID: 1, Team_ID: 1, Start_Date: day(1), End_Date: day(4), Plot_Range: "12-20", Status: "Scheduled" },
+    { Assignment_ID: 4, Submission_ID: 503, Task_Type_ID: 4, Team_ID: 3, Start_Date: day(5), End_Date: day(6), Plot_Range: null, Status: "Scheduled" },
+  ];
+
+  return {
+    submissions: [
+      { Submission_ID: 501, Status: "Scheduled", Project_ID: 1, AP_Number: "AP-2607.001", Site_Name: "Willow Grange", Customer_Name: "Anwyl Homes", Work_Type_ID: 1, Preferred_Date: day(-2) },
+      { Submission_ID: 502, Status: "Scheduled", Project_ID: 2, AP_Number: "AP-2607.014", Site_Name: "Kestrel Rise", Customer_Name: "Redrow", Work_Type_ID: 1, Preferred_Date: day(1) },
+      { Submission_ID: 503, Status: "Reviewed", Project_ID: 1, AP_Number: "AP-2607.001", Site_Name: "Willow Grange", Customer_Name: "Anwyl Homes", Work_Type_ID: 2, Preferred_Date: day(5) },
+      { Submission_ID: 504, Status: "Pending Review", Project_ID: 3, AP_Number: "AP-2608.002", Site_Name: "Marsh Fields", Customer_Name: "Bellway", Work_Type_ID: 1, Preferred_Date: day(3) },
+    ],
+    assignments,
+    workDays: [
+      { Work_Day_ID: 1, Assignment_ID: 1, Work_Date: day(-2), Part: "Full", Off_Site: true },
+      { Work_Day_ID: 2, Assignment_ID: 1, Work_Date: day(-1), Part: "Full", Off_Site: false },
+      { Work_Day_ID: 3, Assignment_ID: 1, Work_Date: day(0), Part: "Full", Off_Site: false },
+      { Work_Day_ID: 4, Assignment_ID: 1, Work_Date: day(1), Part: "AM", Off_Site: false },
+      { Work_Day_ID: 5, Assignment_ID: 2, Work_Date: day(2), Part: "PM", Off_Site: false },
+      { Work_Day_ID: 6, Assignment_ID: 2, Work_Date: day(3), Part: "Full", Off_Site: false },
+      { Work_Day_ID: 7, Assignment_ID: 3, Work_Date: day(1), Part: "Full", Off_Site: false },
+      { Work_Day_ID: 8, Assignment_ID: 3, Work_Date: day(4), Part: "Full", Off_Site: false },
+    ],
+    workTypes: [
+      { Work_Type_ID: 1, Work_Type_Name: "Mains Call Off", Display_Order: 10 },
+      { Work_Type_ID: 2, Work_Type_Name: "Service Call Off", Display_Order: 20 },
+    ],
+    taskTypes: [
+      { Task_Type_ID: 1, Task_Type_Name: "Excavation", Display_Order: 10 },
+      { Task_Type_ID: 2, Task_Type_Name: "Laying", Display_Order: 20 },
+      { Task_Type_ID: 3, Task_Type_Name: "Jointing", Display_Order: 30 },
+      { Task_Type_ID: 4, Task_Type_Name: "Reinstatement", Display_Order: 40 },
+    ],
+    workTypeTasks: [
+      { Work_Type_ID: 1, Task_Type_ID: 1, Display_Order: 10 },
+      { Work_Type_ID: 1, Task_Type_ID: 2, Display_Order: 20 },
+      { Work_Type_ID: 1, Task_Type_ID: 3, Display_Order: 30 },
+      { Work_Type_ID: 1, Task_Type_ID: 4, Display_Order: 40 },
+      { Work_Type_ID: 2, Task_Type_ID: 1, Display_Order: 10 },
+      { Work_Type_ID: 2, Task_Type_ID: 4, Display_Order: 20 },
+    ],
+    teams: [
+      { Team_ID: 1, Team_Name: "MU Gang 1", Active: true },
+      { Team_ID: 2, Team_Name: "Jointing North", Active: true },
+      { Team_ID: 3, Team_Name: "Reinstatement A", Active: true },
+      { Team_ID: 4, Team_Name: "MU Gang 2", Active: true },
+      { Team_ID: 5, Team_Name: "Old Gang", Active: false },
+    ],
+    regions: [
+      { Region_ID: 1, Region: "North" },
+      { Region_ID: 2, Region: "Midlands" },
+      { Region_ID: 3, Region: "South" },
+    ],
+    projects: [
+      { Project_ID: 1, Display_Ref: "2607.001", Site_Name: "Willow Grange", Region_ID: 1, Project_Manager_ID: 2 },
+      { Project_ID: 2, Display_Ref: "2607.014", Site_Name: "Kestrel Rise", Region_ID: 2, Project_Manager_ID: 3 },
+      { Project_ID: 3, Display_Ref: "2608.002", Site_Name: "Marsh Fields", Region_ID: 1, Project_Manager_ID: null },
+    ],
+    people: [
+      { Person_ID: 2, Person_Name: "R. Nkemelu", Planner_Colour: "#0891b2" },
+      { Person_ID: 3, Person_Name: "J. Farrell", Planner_Colour: null },
+    ],
+    peopleHaveColours: true,
+    statuses: [
+      { Call_Off_Status_ID: 1, Status: "Scheduled", Colour: "#3b82f6", Display_Order: 10, Is_Active: true },
+      { Call_Off_Status_ID: 2, Status: "In Progress", Colour: "#f59e0b", Display_Order: 20, Is_Active: true },
+      { Call_Off_Status_ID: 3, Status: "Complete", Colour: "#16a34a", Display_Order: 30, Is_Active: true },
+    ],
+    agreements: [
+      { Project_ID: 1, Utility_ID: 1 },
+      { Project_ID: 1, Utility_ID: 2 },
+      { Project_ID: 2, Utility_ID: 1 },
+      { Project_ID: 2, Utility_ID: 3 },
+    ],
+    utilities: [
+      { Utility_ID: 1, Utility: "Electric", Colour: "#ffbb00", Sort_Order: 10 },
+      { Utility_ID: 2, Utility: "Gas", Colour: "#ff0000", Sort_Order: 20 },
+      { Utility_ID: 3, Utility: "Water", Colour: "#2ccc00", Sort_Order: 30 },
+    ],
+  };
+}

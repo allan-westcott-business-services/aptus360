@@ -20,6 +20,7 @@ const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
 const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmin.jsx"));
 const CustomerProjectsPage = lazy(() => import("./features/customers/CustomerProjectsPage.jsx"));
 const CallOffsPage = lazy(() => import("./features/calloffs/CallOffsPage.jsx"));
+const PlanningPage = lazy(() => import("./features/planning/PlanningPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
 
@@ -75,7 +76,7 @@ function useBlockPageZoom() {
 const VIEWS = [
   "projects", "admin", "plot-connections", "gis-canvas",
   "generate-av-invoices", "av-invoices", "organisations", "customer-projects",
-  "call-offs",
+  "call-offs", "planning",
 ];
 
 function Shell() {
@@ -105,6 +106,10 @@ function Shell() {
   /* No card wrapper: the page has its own header bar and switches between
      a list and a detail view, both of which own their padding. */
   else if (view === "call-offs") content = <CallOffsPage />;
+  /* Same reason as the call-offs page: it owns its toolbar and its
+     own padding, and a card around a board that fills the width would
+     put a border a few pixels inside another one. */
+  else if (view === "planning") content = <PlanningPage />;
   else content = <NotBuilt view={view} />;
 
   return (

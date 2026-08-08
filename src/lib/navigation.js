@@ -59,7 +59,7 @@ export const NAV_SECTIONS = [
     items: [
       { view: "operations-dashboard", label: "Operations Dashboard", soon: true },
       { view: "call-offs", label: "Call-offs", built: true },
-      { view: "planning", label: "Planning" },
+      { view: "planning", label: "Planning", built: true },
       { view: "field-team-work", label: "Field Team Work" },
       { view: "plot-connections", label: "Plot Connections", built: true },
       { view: "sc-log", label: "Service Card Log" },

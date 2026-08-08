@@ -5811,13 +5811,37 @@ export default function GISCanvasPage() {
     if (plan.error) { setError(plan.error); return; }
 
     setBusy("spannodes");
+    /* Each node is its own round trip, so a site with a couple of
+       hundred of them takes long enough that a still screen reads as a
+       hung one. Same bar and the same Stop button as Auto Service and
+       the network builds — this was the one long run that had neither. */
+    cancelRef.current = false;
+    setProgress({
+      done: 0,
+      total: plan.nodes.length,
+      label: `Placing ${plan.nodes.length} span node(s)`,
+    });
     try {
       const existing = features.filter((f) => f.Feature_Role === "spannode");
       const claimed = new Set();
       let made = 0;
       let moved = 0;
+      let doneCount = 0;
+      let stopped = false;
 
       for (const nd of plan.nodes) {
+        /* Stopping part-way is safe here, as it is for Auto Service: a
+           node already placed is matched and claimed on the next run
+           rather than duplicated, so running it again carries on rather
+           than starting over. */
+        if (cancelRef.current) { stopped = true; break; }
+        setProgress({
+          done: doneCount,
+          total: plan.nodes.length,
+          label: `Node ${doneCount + 1} of ${plan.nodes.length} \u00b7 ${nd.label}`,
+        });
+        doneCount += 1;
+
         const match = existing.find((f) => !claimed.has(f.Feature_ID)
           && Math.hypot((f.Geometry?.[0]?.[0] ?? 0) - nd.at[0],
                         (f.Geometry?.[0]?.[1] ?? 0) - nd.at[1]) < 1);
@@ -5859,21 +5883,34 @@ export default function GISCanvasPage() {
 
       /* Nodes the plan did not want. Left alone rather than deleted:
          somebody put them there, and a run they are measuring from is
-         theirs to remove. */
-      const spare = existing.filter((f) => !claimed.has(f.Feature_ID)).length;
+         theirs to remove.
 
+         Only meaningful on a run that finished — stopping part-way
+         leaves every node past that point unclaimed, and calling those
+         "left alone" would report a hundred nodes as spare when they
+         were simply never reached. */
+      const spare = stopped
+        ? 0
+        : existing.filter((f) => !claimed.has(f.Feature_ID)).length;
+
+      setProgress({
+        done: plan.nodes.length, total: plan.nodes.length, label: "Reloading",
+      });
       await load(projectId);
       /* What was ignored as a service, so a classification that found
          nothing is visible rather than showing up as nodes in the wrong
          places. */
-      setStatus(`${made} placed, ${moved} renumbered`
+      setStatus((stopped
+        ? `Stopped after ${doneCount} of ${plan.nodes.length} node(s). ` : "")
+        + `${made} placed, ${moved} renumbered`
         + (spare ? `, ${spare} left alone` : "")
         + ` \u00b7 ${plan.servicesIgnored} service trench(es) ignored`
-        + (plan.plant ? `, plant is ${plan.plant.label}` : ""));
-      setTimeout(() => setStatus(""), 10000);
+        + (plan.plant ? `, plant is ${plan.plant.label}` : "")
+        + (stopped ? " \u2014 run it again to carry on where it stopped." : ""));
+      setTimeout(() => setStatus(""), stopped ? 12000 : 10000);
       setError("");
     } catch (e) { setError(e.message); }
-    finally { setBusy(""); }
+    finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
 
   async function submitCallOff() {

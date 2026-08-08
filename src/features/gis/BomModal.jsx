@@ -532,7 +532,20 @@ export default function BomModal({
                    utility would give the reader two identical brown
                    bands to tell apart by reading the word on them,
                    which is the thing the colour is there to save. */
-                const skin = (g.site && siteSkins.get(g.site))
+                /* A ternary rather than `g.site && siteSkins.get(...)`.
+
+                   That version returned the empty string for every
+                   section with no site — which is every utility section
+                   — because `&&` yields its left operand, and `??` then
+                   passed it straight through: "" is neither null nor
+                   undefined. The empty string reached the style prop,
+                   and React refuses a string there.
+
+                   The lesson is about the pair, not either half: `&&`
+                   short-circuits to a falsy *value*, `??` only catches
+                   two of them, so chaining one into the other leaks
+                   "" and 0. */
+                const skin = (g.site ? siteSkins.get(g.site) : null)
                   ?? skins.get(String(g.utility).trim().toLowerCase())
                   ?? null;
                 return (

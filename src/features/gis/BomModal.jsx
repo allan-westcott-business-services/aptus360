@@ -4,7 +4,7 @@ import * as XLSX from "xlsx";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
 import { parseHex, tint, contrast } from "../../lib/pillColour.js";
-import { resolveStyle } from "../../lib/gisStyle.js";
+import { resolveStyle, styleMatches } from "../../lib/gisStyle.js";
 import { ON_SITE, OFF_SITE } from "./boundary.js";
 
 /* Bill of materials.
@@ -186,11 +186,22 @@ export default function BomModal({
      is a different red from the gas on the drawing behind it is two
      answers to one question, and the drawing is the one being read.
 
-     The layer already carries the utility's colour where there is one:
-     gis.js fills it at read time, because a layer stands one-to-one
-     with its utility and what it stores is the same fact written twice.
-     So reading the layer gets the utility default and the layer default
-     both, without this having to know which of them applied.
+     Resolved through the style cascade, not read off the layer, and
+     that distinction is the whole of this. `GIS_Layer."Colour"` is what
+     the layer stores; what the canvas paints with is `resolveStyle`,
+     and a style row scoped to the layer outranks the stored value —
+     which is exactly what the "Gas (layer default)" row on the GIS
+     Styles screen is. Reading the layer directly produced a bill in the
+     colours the drawing had before anybody edited those rows: gas
+     green, water blue, and the drawing behind it in neither.
+
+     The same trap `waterColour` in GISCanvasPage.jsx was written to
+     avoid, in the same words. Asked with no line type, no role and no
+     site, so what comes back is the layer's default rather than a
+     main's or a meter's — a section heading is none of those.
+
+     The stored colour is the fallback, which is what the cascade
+     resolves to anyway where no row names the layer.
 
      ── Why the utilities are still needed ──
 
@@ -213,12 +224,19 @@ export default function BomModal({
       if (skin) out.set(key, skin);
     };
     for (const l of layers) {
-      put(utilities.find((u) => Number(u.Utility_ID) === Number(l.Utility_ID))?.Utility,
-        l.Colour);
-      put(l.Label, l.Colour);
+      const colour = resolveStyle({
+        Layer_Key: l.Layer_Key,
+        Line_Type: null,
+        Feature_Role: null,
+        Site: null,
+        Utility_ID: l.Utility_ID ?? null,
+      }, styles, { organisationId: standard || null }).Colour ?? l.Colour;
+
+      put(utilities.find((u) => Number(u.Utility_ID) === Number(l.Utility_ID))?.Utility, colour);
+      put(l.Label, colour);
     }
     return out;
-  }, [utilities, layers]);
+  }, [utilities, layers, styles, standard]);
 
   /* ── On site and off it ──
 
@@ -236,24 +254,44 @@ export default function BomModal({
      moves the bill with it, because this is asking the same question
      rather than keeping a second copy of the answer.
 
-     Falls back to the off-site default above, and then to the trench
-     layer's own colour — which is where on-site lands, since that is
-     what an on-site trench is drawn in. */
+     ── Why the site is asked about twice ──
+
+     The cascade always answers. Ask it what an off-site trench looks
+     like and it returns the trench colour, because the row scoped to
+     the layer matches everything on that layer whatever its site — so
+     `resolved.Colour ?? SITE_FALLBACK` would never reach the fallback,
+     and off-site would silently stay brown.
+
+     So the resolved colour is only preferred where a row actually names
+     the site. That is the question being asked: has somebody decided
+     what off-site looks like? If they have, it wins here as it wins on
+     the drawing. If they have not, the default applies, and the moment
+     such a row is added it takes over with nothing to change here.
+
+     On-site names no fallback, so it lands on the layer's colour, which
+     is what an on-site trench is drawn in. */
   const siteSkins = useMemo(() => {
     const out = new Map();
     const trench = layers.find((l) => l.Layer_Key === "trench");
     if (!trench) return out;
 
+    const ctx = { organisationId: standard || null };
     for (const site of [ON_SITE, OFF_SITE]) {
-      const resolved = resolveStyle({
+      const subject = {
         Layer_Key: trench.Layer_Key,
         Line_Type: null,
         Feature_Role: null,
         Site: site,
         Utility_ID: trench.Utility_ID ?? null,
-      }, styles, { organisationId: standard || null });
-      const skin = utilitySkin(resolved.Colour
+      };
+      const named = styles.some((s) => s.Site != null
+        && String(s.Site) === site
+        && styleMatches(s, subject, ctx));
+      const resolved = resolveStyle(subject, styles, ctx).Colour;
+
+      const skin = utilitySkin((named ? resolved : null)
         ?? SITE_FALLBACK[site]
+        ?? resolved
         ?? trench.Colour);
       if (skin) out.set(site, skin);
     }

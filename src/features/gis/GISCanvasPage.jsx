@@ -2371,11 +2371,23 @@ export default function GISCanvasPage() {
               if (seg <= 0) continue;
               if (acc + seg >= half) {
                 const t = (half - acc) / seg;
-                return { x: a.x + t * (b.x - a.x), y: a.y + t * (b.y - a.y) };
+                return {
+                  x: a.x + t * (b.x - a.x),
+                  y: a.y + t * (b.y - a.y),
+                  /* The direction the pipe runs where the label sits —
+                     that segment, not the line's overall bearing, which
+                     on a run that turns a corner is a direction the
+                     pipe never takes. */
+                  dx: (b.x - a.x) / seg,
+                  dy: (b.y - a.y) / seg,
+                };
               }
               acc += seg;
             }
-            return pts[pts.length - 1];
+            const last = pts[pts.length - 1];
+            const prev = pts[pts.length - 2] ?? last;
+            const d = Math.hypot(last.x - prev.x, last.y - prev.y) || 1;
+            return { ...last, dx: (last.x - prev.x) / d, dy: (last.y - prev.y) / d };
           })();
           const off = f.Attributes?.Label_Offset;
           const mid = off
@@ -2479,6 +2491,44 @@ export default function GISCanvasPage() {
               x: mid.x - w / 2, y: mid.y - 20, w, h: 15,
             });
 
+            /* ── Which way up ──
+
+               A pipe label runs along the pipe. A circuit tag stays
+               horizontal: it is a name, read at a glance across a
+               drawing, and turning it would make a page of them a page
+               of scattered angles.
+
+               Label_Angle overrides the pipe, in degrees, and is what
+               the editor's rotate control writes. Null means follow the
+               pipe, which is not the same as zero — zero is somebody
+               choosing horizontal and having it stay horizontal when
+               the run is redrawn.
+
+               Read upright either way. Text at 100 degrees is upside
+               down, so anything past a right angle is turned a half
+               turn to face the other way; it runs along the same line
+               and can still be read. */
+            const spin = (() => {
+              const set = f.Attributes?.Label_Angle;
+              if (set != null && Number.isFinite(Number(set))) {
+                return (Number(set) * Math.PI) / 180;
+              }
+              if (!sized || !txt) return 0;
+              let r = Math.atan2(anchor.dy ?? 0, anchor.dx ?? 1);
+              if (r > Math.PI / 2) r -= Math.PI;
+              if (r < -Math.PI / 2) r += Math.PI;
+              return r;
+            })();
+
+            ctx.save();
+            if (spin) {
+              /* Turned about the label's own anchor, so rotating does
+                 not also move it — the offset is a separate thing
+                 somebody set by dragging. */
+              ctx.translate(mid.x, mid.y);
+              ctx.rotate(spin);
+              ctx.translate(-mid.x, -mid.y);
+            }
             ctx.fillStyle = "rgba(255,255,255,.9)";
             ctx.fillRect(mid.x - w / 2, mid.y - 20, w, 15);
             /* The white plate behind it stays white whatever the text
@@ -2487,6 +2537,7 @@ export default function GISCanvasPage() {
                where it is needed most. */
             ctx.fillStyle = st.labelColour;
             ctx.fillText(txt, mid.x, mid.y - 9);
+            ctx.restore();
           }
         }
       }

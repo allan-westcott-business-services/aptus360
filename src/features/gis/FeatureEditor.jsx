@@ -1059,6 +1059,7 @@ export default function FeatureEditor({
                     )}
                   </div>
                 ) : isWater ? (
+                  <>
                   /* Water sizes from the table, not from typing.
 
                      Build Water Network sets this on every run it draws
@@ -1136,6 +1137,41 @@ export default function FeatureEditor({
                       return bits.length ? <p className="hint">{bits.join(" ")}</p> : null;
                     })()}
                   </div>
+                  {/* ── The label on the pipe ──
+
+                      It runs along the pipe by default and sits just
+                      off it. Dragging it on the canvas moves it; this
+                      turns it.
+
+                      Blank means follow the pipe, which is not the same
+                      as zero: zero is a decision to keep it horizontal
+                      and have it stay horizontal when the run is
+                      redrawn at a different angle. */}
+                  <div className="fld">
+                    <label htmlFor="fe-langle">Label angle</label>
+                    <div className="fe-angle">
+                      <input id="fe-langle" type="number" step="5"
+                        value={f.Attributes.Label_Angle ?? ""}
+                        placeholder="follows the pipe"
+                        onChange={(e) => setAttr("Label_Angle")(
+                          e.target.value === "" ? null : Number(e.target.value))} />
+                      <button className="btn ghost sm"
+                        onClick={() => setAttr("Label_Angle")(
+                          ((((Number(f.Attributes.Label_Angle) || 0) + 90) % 360) + 360) % 360)}>
+                        Rotate 90&deg;
+                      </button>
+                      {f.Attributes.Label_Angle != null && (
+                        <button className="btn ghost sm"
+                          onClick={() => setAttr("Label_Angle")(null)}>
+                          Follow the pipe
+                        </button>
+                      )}
+                    </div>
+                    <p className="hint">
+                      Drag the label on the drawing to move it.
+                    </p>
+                  </div>
+                  </>
                 ) : (
                   <div className="fld">
                     <label htmlFor="fe-size">Size</label>

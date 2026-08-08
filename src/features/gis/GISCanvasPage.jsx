@@ -974,7 +974,24 @@ export default function GISCanvasPage() {
 
   const visible = useMemo(
     () => features.filter((f) => {
-      if (classKeys(f).some((k) => hidden.includes(k))) return false;
+      /* ── Span nodes answer to their own switch only ──
+
+         A span node sits on the trench and is created there, so it
+         carries the trench layer's key — which meant isolating a
+         utility took every span node with it, because no electric
+         feature carries "trench". They are the points a levels check
+         and a call-off are measured between: the drawing they are read
+         against is a utility's, and losing them the moment you look at
+         one is losing them exactly when they are wanted.
+
+         So a span node is hidden by its own entry and by nothing else.
+         Hiding the trench layer leaves the nodes standing, which is
+         also right — the dig and the points along it are different
+         facts about the same line. */
+      const keys = f.Feature_Role === "spannode"
+        ? ["role:spannode", `${f.Layer_Key}:role:spannode`]
+        : classKeys(f);
+      if (keys.some((k) => hidden.includes(k))) return false;
       if (outsideCircuit(f, isolatedCircuit)) return false;
 
       if (liveTrenchOnly && liveTrenchIds
@@ -1073,6 +1090,21 @@ export default function GISCanvasPage() {
       ks.forEach((k) => all.add(k));
       if (ks.some((k) => keys.includes(k))) ks.forEach((k) => keep.add(k));
     }
+
+    /* Span nodes survive an isolate. Nothing on an electric drawing
+       carries "role:spannode", so the sweep above would hide it — and a
+       utility isolated without the points it is measured between is
+       half the drawing. Their own H still hides them.
+
+       Both forms of the key, not just the plain one. A node placed on
+       the trench also carries "trench:role:spannode", and keeping only
+       "role:spannode" left the narrower key hidden — which was enough
+       to take the node with it, since a feature goes if any of its keys
+       is hidden. */
+    for (const k of all) {
+      if (k === "role:spannode" || k.endsWith(":role:spannode")) keep.add(k);
+    }
+
     setHidden([...all].filter((k) => !keep.has(k)));
   }, [features, classKeys]);
 

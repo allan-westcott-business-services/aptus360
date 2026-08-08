@@ -9,6 +9,7 @@ import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots,
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
   bookedParts, partIsFree,
+  WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
 } from "./assignments.js";
 
 /* Call-offs across the business.
@@ -24,6 +25,27 @@ export const STATUSES = [
   "Pending Review", "Reviewed", "Scheduled", "In Progress",
   "Complete", "Withdrawn (Customer)", "Withdrawn (Aptus)",
 ];
+
+/* Whether a booking runs across a Saturday or a Sunday.
+
+   The weekend controls appear only when it does — see the comment where
+   they are rendered. Measured across the laid-out range rather than the
+   typed one, because pushing past one weekend can reach the next. */
+export function spansAWeekend(start, end) {
+  if (!start || !end) return false;
+  return daysBetween(start, end).some((d) => {
+    const [y, m, dd] = d.split("-").map(Number);
+    const w = new Date(y, m - 1, dd, 12).getDay();
+    return w === 0 || w === 6;
+  });
+}
+
+/* How much of a day is booked: what somebody chose, unless the weekend
+   rule has already decided it. A Saturday with only the morning ticked
+   is a morning whatever is in `parts`, which may hold "Full" from
+   before the rule was changed. */
+const partFor = ({ date, part: allowed }, draft) =>
+  (allowed !== "Full" ? allowed : (draft.parts?.[date] || "Full"));
 
 /* Statuses that mean the job is done with, one way or another. Kept
    apart because the default view is work still to do, and a list that
@@ -571,6 +593,31 @@ function Assignments({ row }) {
     return 0;
   };
 
+  /* ── The days this booking actually falls on ──
+
+     Length in days of work, laid out from the start over the weekend
+     rule. Everything the form shows below — the day rows, the total,
+     the end date it saves — reads this, so the three cannot disagree
+     about whether the Saturday counts.
+
+     The length comes from the days already worked when an existing
+     booking is reopened, and from the calendar span when one is being
+     entered. That is what makes the round trip stable: four days laid
+     from a Friday end on the Wednesday, and reopening that finds four
+     worked days and lays them on the same four dates. Measuring the
+     length in calendar days both times would walk the end date two
+     further out every time somebody opened it. */
+  const schedule = useMemo(() => {
+    const weekend = draft.weekend || {};
+    if (!draft.Start_Date || !draft.End_Date) {
+      return { days: [], end: null, pushed: 0, weekend };
+    }
+    const length = editing != null
+      ? workedDaysIn(draft.Start_Date, draft.End_Date, weekend).length
+      : daysBetween(draft.Start_Date, draft.End_Date).length;
+    return { ...laySchedule(draft.Start_Date, length, weekend), weekend };
+  }, [draft.Start_Date, draft.End_Date, draft.weekend, editing]);
+
   /* Moving one assignment along.
 
      Written on the spot rather than through the edit form: a gang
@@ -617,6 +664,9 @@ function Assignments({ row }) {
       Span_ID: a.Span_ID ? String(a.Span_ID) : "",
       Start_Date: a.Start_Date,
       End_Date: a.End_Date,
+      /* The rule as saved, so reopening a Saturday-working booking does
+         not quietly reschedule it as a weekday one. */
+      weekend: Object.fromEntries(WEEKEND_PARTS.map((w) => [w.key, !!a[w.key]])),
       plots: parsePlots(a.Plot_Range),
       parts: Object.fromEntries(mineDays.map((d) => [d.Work_Date, d.Part])),
       offDays: Object.fromEntries(mineDays.map((d) => [d.Work_Date, !!d.Off_Site])),
@@ -660,6 +710,10 @@ function Assignments({ row }) {
          with all six and two of them refused. */
       plots: plotUniverse.filter((pl) =>
         !takenPlots(mine, phase.Task_Type_ID).has(pl)),
+      /* No weekend working unless somebody ticks it. The common case,
+         and the safe default: a booking that quietly put a gang on a
+         Sunday would be found by the gang. */
+      weekend: {},
       /* Marked full and on site unless somebody says otherwise. */
       parts: {},
       offDays: {},
@@ -679,6 +733,7 @@ function Assignments({ row }) {
         ? "n/a" : serialisePlots(draft.plots || []),
     }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
+      /* So a Sunday nobody is on site for is not tested for clashes. */
       exceptId: editing,
       /* So a clash is checked half-day by half-day: a gang doing one
          span in the morning can do another in the afternoon. */
@@ -707,7 +762,12 @@ function Assignments({ row }) {
         Team_ID: Number(draft.Team_ID),
         Span_ID: draft.Span_ID ? Number(draft.Span_ID) : null,
         Start_Date: draft.Start_Date,
-        End_Date: draft.End_Date,
+        /* The end the schedule arrived at, not the one that was typed.
+           Where the weekend pushed the job out, those are different,
+           and the one that matches the days is the one worth storing. */
+        End_Date: schedule.end || draft.End_Date,
+        ...Object.fromEntries(WEEKEND_PARTS
+          .map((w) => [w.key, !!draft.weekend?.[w.key]])),
         /* A mains assignment covers the spans the call-off names, so
            there is nothing to record here. */
         Plot_Range: row.Selection_Mode === "Span"
@@ -733,16 +793,19 @@ function Assignments({ row }) {
          The table is a handful of rows per assignment. */
       const id = saved.Assignment_ID;
       const old = workDays.filter((d) => Number(d.Assignment_ID) === Number(id));
-      const days = daysBetween(draft.Start_Date, draft.End_Date);
+      /* The days the schedule laid, so a weekend nobody works gets no
+         row — which is what makes the board draw a gap there and the
+         work instruction leave it out. */
+      const days = schedule.days;
       try {
         for (const d of old) await adminDelete("Call_Off_Work_Day", d.Work_Day_ID);
         const made = [];
         for (const d of days) {
           made.push(await adminCreate("Call_Off_Work_Day", {
             Assignment_ID: id,
-            Work_Date: d,
-            Part: draft.parts?.[d] || "Full",
-            Off_Site: !!draft.offDays?.[d],
+            Work_Date: d.date,
+            Part: partFor(d, draft),
+            Off_Site: !!draft.offDays?.[d.date],
           }));
         }
         setWorkDays((xs) => [
@@ -842,7 +905,11 @@ function Assignments({ row }) {
         const busyAcross = (t) => {
           if (!draft.Start_Date || !draft.End_Date) return false;
           const taken = bookedParts(t.Team_ID, all, workDays, editing);
-          const days = daysBetween(draft.Start_Date, draft.End_Date);
+          /* The days the booking actually falls on. A weekend it does
+             not work cannot make a team busy, and counting it would
+             drop teams from the list for being unavailable on a day
+             nobody is asking them for. */
+          const days = schedule.days.map((x) => x.date);
           if (!days.length) return false;
           return days.every((d) => !partIsFree(taken.get(d), "AM")
             && !partIsFree(taken.get(d), "PM"));
@@ -1126,22 +1193,63 @@ function Assignments({ row }) {
                     there all day — half a day here and half at the next
                     site is ordinary, and booking whole days overstates
                     what the team can take on. */}
-                {daysBetween(draft.Start_Date, draft.End_Date).length > 0 && (
+                {/* ── The weekend ──
+
+                    Offered only where the booking actually meets one.
+                    Four toggles on a Tuesday-to-Thursday job are four
+                    controls that can do nothing, and a form full of
+                    those teaches people to stop reading it.
+
+                    Each half on its own, because that is how it is
+                    agreed: a gang in on Saturday morning to finish a
+                    joint is not a gang in all weekend. */}
+                {spansAWeekend(draft.Start_Date, schedule.end || draft.End_Date) && (
+                  <div className="asg-wknd">
+                    <strong>Weekend</strong>
+                    {WEEKEND_PARTS.map((w) => (
+                      <button key={w.key} type="button"
+                        className={draft.weekend?.[w.key] ? "asg-part on" : "asg-part"}
+                        aria-pressed={!!draft.weekend?.[w.key]}
+                        onClick={() => setDraft((dd) => ({
+                          ...dd,
+                          weekend: { ...(dd.weekend || {}), [w.key]: !dd.weekend?.[w.key] },
+                        }))}>
+                        {w.label}
+                      </button>
+                    ))}
+                    <span className="asg-wknd-n">
+                      {worksAnyWeekend(draft.weekend)
+                        ? "Worked as ticked."
+                        : "Not worked \u2014 the job carries on the next weekday."}
+                    </span>
+                  </div>
+                )}
+
+                {/* What the weekend did to the end date. Said in words
+                    rather than left for somebody to notice that the
+                    date they typed is not the date that saved. */}
+                {schedule.pushed > 0 && schedule.end && (
+                  <p className="asg-pushed">
+                    {schedule.pushed} day{schedule.pushed === 1 ? "" : "s"} of weekend in
+                    the way, so this finishes on <strong>{fmt(schedule.end)}</strong>.
+                  </p>
+                )}
+
+                {schedule.days.length > 0 && (
                   <div className="asg-days">
                     <div className="asg-days-head">
                       <strong>Days</strong>
                       <span className="asg-days-tot">
                         {(() => {
-                          const ds = daysBetween(draft.Start_Date, draft.End_Date);
-                          const parts = Object.fromEntries(
-                            ds.map((d) => [d, draft.parts?.[d] || "Full"]));
+                          const parts = Object.fromEntries(schedule.days
+                            .map((x) => [x.date, partFor(x, draft)]));
                           const t = dayTotal(parts);
                           return `${t} day${t === 1 ? "" : "s"}`;
                         })()}
                       </span>
                     </div>
-                    {daysBetween(draft.Start_Date, draft.End_Date).map((d) => {
-                      const part = draft.parts?.[d] || "Full";
+                    {schedule.days.map(({ date: d, part: allowed }) => {
+                      const part = partFor({ date: d, part: allowed }, draft);
                       return (
                         <div className="asg-day" key={d}>
                           <span className="asg-day-d">{fmt(d)}</span>
@@ -1160,14 +1268,22 @@ function Assignments({ row }) {
                             const taken = draft.Team_ID
                               ? bookedParts(draft.Team_ID, all, workDays, editing).get(d)
                               : null;
-                            const free = partIsFree(taken, opt);
+                            /* A weekend half is decided by the rule
+                               above, not here. Offering "Full day" on a
+                               Saturday where only the morning is ticked
+                               would let the form contradict the thing
+                               that put the Saturday in the list. */
+                            const fixed = allowed !== "Full" && opt !== allowed;
+                            const free = !fixed && partIsFree(taken, opt);
                             return (
                               <button key={opt} type="button"
                                 className={part === opt ? "asg-part on" : "asg-part"}
                                 aria-pressed={part === opt}
-                                disabled={!free && part !== opt}
-                                title={free ? "" : `Team already booked ${
-                                  [...(taken || [])].join(" and ")} that day`}
+                                disabled={fixed || (!free && part !== opt)}
+                                title={fixed
+                                  ? "Set by the weekend rule above"
+                                  : (free ? "" : `Team already booked ${
+                                    [...(taken || [])].join(" and ")} that day`)}
                                 onClick={() => setDraft((dd) => ({
                                   ...dd, parts: { ...(dd.parts || {}), [d]: opt },
                                 }))}>
@@ -1360,6 +1476,13 @@ const CSS = `
   font: 600 11.5px inherit; cursor: pointer; }
 .asg-off input { width: auto; }
 
+.asg-wknd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
+  margin-top: 12px; padding-top: 10px; border-top: 1px dashed var(--border); }
+.asg-wknd strong { font-size: 12px; margin-right: 3px; }
+.asg-wknd-n { font-size: 11px; color: var(--muted); margin-left: 4px; }
+.asg-pushed { margin: 8px 0 0; font-size: 11.5px; color: #92400e;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+  padding: 6px 9px; }
 .asg-days, .asg-plots-pick { margin-top: 12px; padding-top: 10px;
   border-top: 1px dashed var(--border); }
 .asg-days-head { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }

@@ -289,7 +289,11 @@ export function validate(draft, opts = {}) {
   const workDays = opts.workDays ?? null;
   if (workDays) {
     const taken = bookedParts(draft.Team_ID, assignments, workDays, exceptId);
-    const days = daysBetween(draft.Start_Date, draft.End_Date);
+    /* Only the days the assignment works. A Sunday nobody is on site
+       for cannot clash with anything, and checking it would refuse a
+       booking on the strength of a day that is not in it. */
+    const days = workedDaysIn(draft.Start_Date, draft.End_Date, draft.weekend || {})
+      .map((x) => x.date);
     const bad = [];
     for (const d of days) {
       const part = draft.parts?.[d] || "Full";
@@ -318,15 +322,154 @@ export function validate(draft, opts = {}) {
 }
 
 
+/* ── Working the weekend ──
+
+   A gang on a programme under pressure works Saturdays, and sometimes
+   half of one. So an assignment carries which weekend halves it works —
+   Saturday morning, Saturday afternoon, Sunday morning, Sunday
+   afternoon — and everything else follows from that.
+
+   ── Why this is a rule on the assignment, not four more day rows ──
+
+   Call_Off_Work_Day could say it already: a row dated Saturday with
+   Part = AM is a Saturday morning worked. But the day rows are the
+   *result* of a decision, and the decision has to survive the days
+   changing. A booking that runs Monday to Wednesday has no weekend in
+   it and therefore no rows to read; extend it to the Friday and
+   something has to know whether the Saturday counts. Deriving the
+   answer from rows that do not exist yet is guessing, and the guess
+   would be "no" on a gang that has worked every Saturday this year.
+
+   So the rule is stored, and the rows are laid from it. */
+export const WEEKEND_PARTS = [
+  { key: "Sat_AM", dow: 6, part: "AM", label: "Sat AM" },
+  { key: "Sat_PM", dow: 6, part: "PM", label: "Sat PM" },
+  { key: "Sun_AM", dow: 0, part: "AM", label: "Sun AM" },
+  { key: "Sun_PM", dow: 0, part: "PM", label: "Sun PM" },
+];
+
+export const worksAnyWeekend = (weekend = {}) =>
+  WEEKEND_PARTS.some((w) => !!weekend[w.key]);
+
+/* Noon, so a clock change cannot move a date by a day — the same guard
+   daysBetween uses, and the reason it uses it. */
+const at = (d) => {
+  const [y, m, dd] = String(d).slice(0, 10).split("-").map(Number);
+  if (!y || !m || !dd) return null;
+  return new Date(y, m - 1, dd, 12);
+};
+
+const iso = (dt) => {
+  const p = (n) => String(n).padStart(2, "0");
+  return `${dt.getFullYear()}-${p(dt.getMonth() + 1)}-${p(dt.getDate())}`;
+};
+
+/* How much of a given day this assignment can work.
+
+   A weekday is a whole day. A Saturday with both halves ticked is a
+   whole day too; with one, that half; with neither, nothing at all —
+   and nothing at all is what makes the schedule step over it.
+
+   Null rather than "None", because the caller's question is "is there a
+   day here", and a falsy answer is the honest shape for "no". */
+export function availablePart(date, weekend = {}) {
+  const dt = at(date);
+  if (!dt) return null;
+  const d = dt.getDay();
+  if (d !== 0 && d !== 6) return "Full";
+  const am = !!weekend[d === 6 ? "Sat_AM" : "Sun_AM"];
+  const pm = !!weekend[d === 6 ? "Sat_PM" : "Sun_PM"];
+  if (am && pm) return "Full";
+  if (am) return "AM";
+  if (pm) return "PM";
+  return null;
+}
+
+export const isWorkingDay = (date, weekend = {}) =>
+  availablePart(date, weekend) != null;
+
+/* The next day this assignment could work, from `date` inclusive. */
+export function nextWorkingDay(date, weekend = {}) {
+  let dt = at(date);
+  if (!dt) return null;
+  /* Seven is enough to clear any weekend; the guard is against a rule
+     with nothing ticked and a date that is somehow always a Sunday. */
+  for (let i = 0; i < 8; i++) {
+    if (isWorkingDay(iso(dt), weekend)) return iso(dt);
+    dt = new Date(dt.getTime());
+    dt.setDate(dt.getDate() + 1);
+  }
+  return null;
+}
+
+/* ── Laying a booking out ──
+
+   Given a start and how many days of work, the days it actually falls
+   on. Weekend days the assignment does not work are stepped over, and
+   the work continues on the next weekday — which is the whole point:
+   four days from a Friday, with no weekend working, is Friday, Monday,
+   Tuesday, Wednesday, not Friday and two days nobody is on site.
+
+   A weekend day that *is* worked comes back with the half it is worked,
+   already set: a Saturday morning is half a day and the form should not
+   offer to make it a full one, because the rule above says it is not.
+
+   The end date comes out of this rather than being asked for. Two dates
+   and a weekend rule can disagree — a range ending on a Sunday that is
+   not worked has an end nobody is there for — and the way to make that
+   impossible is for only one of them to be stored as a decision. */
+export function laySchedule(start, length, weekend = {}) {
+  const days = [];
+  const want = Math.max(0, Math.floor(Number(length) || 0));
+  if (!want) return { days, end: null, pushed: 0 };
+
+  let cursor = nextWorkingDay(start, weekend);
+  if (!cursor) return { days, end: null, pushed: 0 };
+
+  let skipped = 0;
+  let guard = 0;
+  while (days.length < want && guard++ < 400) {
+    const part = availablePart(cursor, weekend);
+    if (part) days.push({ date: cursor, part });
+    else skipped += 1;
+    const dt = at(cursor);
+    dt.setDate(dt.getDate() + 1);
+    cursor = iso(dt);
+  }
+
+  return {
+    days,
+    end: days.length ? days[days.length - 1].date : null,
+    /* How many days the weekend pushed it out by, for the sentence the
+       form says out loud. A booking that quietly finished two days late
+       is the thing this feature exists to stop. */
+    pushed: skipped,
+  };
+}
+
+/* The days worked inside a range that has already been decided.
+
+   Used when reading an existing booking back: its length is however
+   many days it actually works, and re-laying that many from the same
+   start lands on the same dates. That round trip has to hold, or
+   opening an assignment and saving it unchanged would walk its end date
+   further out every time. */
+export function workedDaysIn(start, end, weekend = {}) {
+  return daysBetween(start, end)
+    .map((d) => ({ date: d, part: availablePart(d, weekend) }))
+    .filter((x) => x.part != null);
+}
+
 /* The days an assignment covers, as rows to be marked up.
 
    Built from the two dates rather than stored as a count: a five-day
    assignment with a half-day Friday is not "four and a half days", it is
    five days one of which is a half, and only the second says which.
 
-   Weekends are included. A gang working a Saturday is ordinary on a
-   programme under pressure, and leaving them out would mean the form
-   silently disagreeing with what was agreed. */
+   Every calendar day in the range, weekends included. What the
+   assignment actually works is laySchedule's answer, which steps over
+   the weekend halves the rule does not cover — this is the raw span,
+   and is what that stepping is measured against. */
 export function daysBetween(start, end) {
   if (!start || !end || end < start) return [];
   const out = [];

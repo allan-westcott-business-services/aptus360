@@ -486,6 +486,24 @@ export default function PlanningPage() {
                             if (drag?.moved) return;
                             if (item.kind === "assignment") setOpenBar(item);
                           }}>
+                          {/* Days inside the booking nobody is working
+                              — a weekend it does not cover, or a day
+                              the gang is off. Drawn through the bar
+                              rather than splitting it into two, because
+                              it is one booking. */}
+                          {(item.gaps || []).map((g) => {
+                            const gFrom = Math.max(from, g.startHalf);
+                            const gTo = Math.min(to, g.startHalf + g.lengthHalves);
+                            if (gTo <= gFrom) return null;
+                            const span = to - from;
+                            return (
+                              <span key={g.startHalf} className="pln-gap"
+                                style={{
+                                  left: `${((gFrom - from) / span) * 100}%`,
+                                  width: `${((gTo - gFrom) / span) * 100}%`,
+                                }} />
+                            );
+                          })}
                           {item.offSite && <span className="pln-off" title="Off site">!</span>}
                           <span className="pln-ref">{item.ref}</span>
                           <span className="pln-phase">{item.phase}</span>
@@ -672,6 +690,14 @@ const CSS = `
   font-weight: 600; opacity: .85; font-size: 9.5px; }
 .pln-utils { display: flex; gap: 3px; margin-top: 1px; }
 .pln-utils i { width: 7px; height: 7px; border-radius: 50%; border: 1px solid rgba(255,255,255,.7); }
+/* A day inside a booking that nobody is working. Hatched rather than
+   hollow: a hole in the bar would read as two bookings, and the
+   thing being said is that this one booking pauses. */
+.pln-gap { position: absolute; top: 0; bottom: 0; pointer-events: none;
+  background: repeating-linear-gradient(135deg,
+    rgba(255,255,255,.55) 0 3px, rgba(255,255,255,0) 3px 7px);
+  border-left: 1px solid rgba(255,255,255,.5);
+  border-right: 1px solid rgba(255,255,255,.5); }
 .pln-off { position: absolute; top: -7px; left: -7px; width: 16px; height: 16px;
   border-radius: 50%; background: #dc2626; color: #fff; border: 2px solid #fff;
   display: flex; align-items: center; justify-content: center; font-size: 10px;

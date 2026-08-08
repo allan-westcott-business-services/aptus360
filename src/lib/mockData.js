@@ -239,7 +239,7 @@ export function planningMock() {
   const assignments = [
     { Assignment_ID: 1, Submission_ID: 501, Task_Type_ID: 1, Team_ID: 1, Start_Date: day(-2), End_Date: day(1), Plot_Range: "1-8", Status: "In Progress" },
     { Assignment_ID: 2, Submission_ID: 501, Task_Type_ID: 3, Team_ID: 2, Start_Date: day(2), End_Date: day(3), Plot_Range: "1-8", Status: "Scheduled" },
-    { Assignment_ID: 3, Submission_ID: 502, Task_Type_ID: 1, Team_ID: 1, Start_Date: day(1), End_Date: day(4), Plot_Range: "12-20", Status: "Scheduled" },
+    { Assignment_ID: 3, Submission_ID: 502, Task_Type_ID: 1, Team_ID: 1, Start_Date: day(1), End_Date: day(4), Plot_Range: "12-20", Status: "Scheduled", Sat_AM: true, Sat_PM: true },
     { Assignment_ID: 4, Submission_ID: 503, Task_Type_ID: 4, Team_ID: 3, Start_Date: day(5), End_Date: day(6), Plot_Range: null, Status: "Scheduled" },
   ];
 

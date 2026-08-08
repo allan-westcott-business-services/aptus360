@@ -46,6 +46,9 @@ const SUB_COLS = [
 const ASGN_COLS = [
   "Assignment_ID", "Submission_ID", "Task_Type_ID", "Team_ID", "Span_ID",
   "Start_Date", "End_Date", "Plot_Range", "Status",
+  /* Which weekend halves this booking works — 0133. The board shows it
+     on the panel behind a bar, and a drag has to respect it. */
+  "Sat_AM", "Sat_PM", "Sun_AM", "Sun_PM",
 ].join(",");
 
 /* Submissions nobody is planning. Held here rather than imported from

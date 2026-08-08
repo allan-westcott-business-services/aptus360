@@ -46,6 +46,53 @@ const shiftDay = (d, days) => {
   return x.toISOString().slice(0, 10);
 };
 
+/* ── The weekend, on the way past ──
+
+   A drag is a number of calendar days, and a booking shifted three days
+   can land a Friday on a Monday or a Thursday on a Sunday. The second
+   is the one that matters: without this, dragging a bar would put work
+   on a weekend nobody has said they are working, and the first anyone
+   would know is a gang not turning up.
+
+   So the days are re-laid rather than shifted. The booking keeps its
+   length and its shape — which day is a morning, which is off site —
+   and steps over the weekend halves the assignment does not work,
+   exactly as the form does when it lays them in the first place.
+
+   The rule is duplicated here rather than imported from
+   features/calloffs/assignments.js on purpose: nothing under
+   netlify/functions may import from src/, because these run with the
+   service-role key and that boundary is the reason the key is safe.
+   The two are checked against each other by the test rather than by
+   being one file. */
+const partOn = (date, a) => {
+  const x = isoDay(date);
+  if (!x) return null;
+  const d = x.getUTCDay();
+  if (d !== 0 && d !== 6) return "Full";
+  const am = !!(d === 6 ? a.Sat_AM : a.Sun_AM);
+  const pm = !!(d === 6 ? a.Sat_PM : a.Sun_PM);
+  if (am && pm) return "Full";
+  if (am) return "AM";
+  if (pm) return "PM";
+  return null;
+};
+
+/* `count` working days from `from` inclusive, stepping over the halves
+   this assignment does not work. */
+function layDays(from, count, a) {
+  const out = [];
+  let cursor = from;
+  let guard = 0;
+  while (out.length < count && guard++ < 400) {
+    const part = partOn(cursor, a);
+    if (part) out.push({ date: cursor, part });
+    cursor = shiftDay(cursor, 1);
+    if (!cursor) break;
+  }
+  return out;
+}
+
 export default async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
@@ -66,16 +113,45 @@ export default async function handler(req, context) {
 
     const { data: asgn, error: readErr } = await db
       .from("Call_Off_Assignment")
-      .select("Assignment_ID,Start_Date,End_Date")
+      .select("Assignment_ID,Start_Date,End_Date,Sat_AM,Sat_PM,Sun_AM,Sun_PM")
       .eq("Assignment_ID", id)
       .single();
     if (readErr) throw readErr;
 
-    const start = shiftDay(asgn.Start_Date, shift);
-    const end = shiftDay(asgn.End_Date, shift);
-    if (!start || !end) {
-      return json({ error: "This assignment has no usable start and end date." }, 400);
+    const { data: existing } = await db
+      .from("Call_Off_Work_Day")
+      .select("Work_Day_ID,Work_Date,Part,Off_Site")
+      .eq("Assignment_ID", id)
+      .order("Work_Date");
+    const had = existing || [];
+
+    /* Where the booking now starts. Shifted, then pushed forward to the
+       first day it can work — dragging onto a Saturday it does not work
+       means it begins on the Monday, not that it begins on a day off. */
+    let start = shiftDay(asgn.Start_Date, shift);
+    if (!start) {
+      return json({ error: "This assignment has no usable start date." }, 400);
     }
+    for (let i = 0; i < 8 && !partOn(start, asgn); i++) start = shiftDay(start, 1);
+    if (!partOn(start, asgn)) {
+      return json({
+        error: "This assignment works no days of the week, so it cannot be placed.",
+      }, 400);
+    }
+
+    /* Its length: however many days it works. From the day rows where
+       there are any, since those are what was agreed; from the date
+       span where there are none, which is a booking made before that
+       table existed. */
+    const length = had.length
+      || layDays(asgn.Start_Date,
+        Math.max(1, Math.round(
+          (isoDay(asgn.End_Date) - isoDay(asgn.Start_Date)) / 86400000) + 1),
+        asgn).length
+      || 1;
+
+    const laid = layDays(start, length, asgn);
+    const end = laid.length ? laid[laid.length - 1].date : start;
 
     const { error: updErr } = await db
       .from("Call_Off_Assignment")
@@ -92,21 +168,18 @@ export default async function handler(req, context) {
        Tolerated missing. An assignment made before the day table
        existed has none, and moving it is still moving it. */
     let movedDays = 0;
-    const { data: rows } = await db
-      .from("Call_Off_Work_Day")
-      .select("Work_Day_ID,Work_Date")
-      .eq("Assignment_ID", id);
-
-    for (const r of rows || []) {
-      const when = shiftDay(r.Work_Date, shift);
-      if (!when) continue;
+    for (let i = 0; i < had.length && i < laid.length; i++) {
+      const row = had[i];
+      const to = laid[i];
+      /* Off site travels with the day; the part is taken from where it
+         has landed. A full day dragged onto a Saturday morning is a
+         morning, because that is all the assignment works then — and
+         keeping "Full" would be the row disagreeing with the rule
+         above it. */
       const { error } = await db
         .from("Call_Off_Work_Day")
-        .update({ Work_Date: when })
-        .eq("Work_Day_ID", r.Work_Day_ID);
-      /* Reported rather than thrown: the assignment has already moved,
-         and failing here would leave the caller believing nothing
-         happened when the larger half of it did. */
+        .update({ Work_Date: to.date, Part: to.part === "Full" ? (row.Part || "Full") : to.part })
+        .eq("Work_Day_ID", row.Work_Day_ID);
       if (!error) movedDays += 1;
     }
 
@@ -116,7 +189,10 @@ export default async function handler(req, context) {
       End_Date: end,
       days: shift,
       movedDays,
-      partial: movedDays !== (rows || []).length,
+      /* Reported rather than thrown: the assignment has already moved,
+         and failing here would leave the caller believing nothing
+         happened when the larger half of it did. */
+      partial: movedDays !== had.length,
     });
   } catch (e) {
     return fail(e, 400);

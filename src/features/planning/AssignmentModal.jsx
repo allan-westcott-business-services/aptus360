@@ -121,6 +121,22 @@ export default function AssignmentModal({ item, data, utilities = [], onClose })
             <dt>Work type</dt>
             <dd>{workType?.Work_Type_Name || "\u2014"}</dd>
 
+            <dt>Weekend</dt>
+            <dd>
+              {/* Named halves rather than yes or no. "Works weekends"
+                  is not something a gang does; being in on Saturday
+                  morning is. */}
+              {(() => {
+                const on = [
+                  ["Sat_AM", "Sat AM"], ["Sat_PM", "Sat PM"],
+                  ["Sun_AM", "Sun AM"], ["Sun_PM", "Sun PM"],
+                ].filter(([k]) => item.raw?.[k]).map(([, l]) => l);
+                return on.length
+                  ? on.join(", ")
+                  : <span className="pam-none">Not worked {"\u2014"} runs on to the next weekday</span>;
+              })()}
+            </dd>
+
             {item.raw?.Plot_Range && (
               <>
                 <dt>Plots</dt>

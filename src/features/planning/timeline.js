@@ -114,6 +114,47 @@ export function halfSpan({ startDate, endDate, parts = [] }, rangeStartMs) {
   };
 }
 
+/* The days between a booking's first and last that carry no work.
+
+   Half-slot ranges, in the same coordinates as the span they sit
+   inside, so the board can draw them without converting anything. A day
+   worked as a half leaves the other half a gap, which is right: a
+   Saturday morning is a morning, and the afternoon of it is not being
+   worked any more than the Sunday is. */
+export function gapsIn(parts = [], span, rangeStartMs) {
+  if (!span || !parts.length) return [];
+
+  const worked = new Map();
+  for (const p of parts) {
+    if (!p?.Work_Date) continue;
+    worked.set(String(p.Work_Date).slice(0, 10), p.Part || "Full");
+  }
+
+  const out = [];
+  const first = Math.floor(span.startHalf / 2);
+  const last = Math.floor((span.startHalf + span.lengthHalves - 1) / 2);
+  for (let d = first; d <= last; d++) {
+    const iso = toISO(rangeStartMs + d * DAY_MS);
+    const part = worked.get(iso);
+    /* Not in the list at all, so neither half is worked. */
+    if (!part) { out.push({ startHalf: d * 2, lengthHalves: 2 }); continue; }
+    if (part === "AM") out.push({ startHalf: d * 2 + 1, lengthHalves: 1 });
+    if (part === "PM") out.push({ startHalf: d * 2, lengthHalves: 1 });
+  }
+
+  /* Trimmed to the booking, since the first and last day may themselves
+     be halves and the loop above works in whole days. */
+  const from = span.startHalf;
+  const to = span.startHalf + span.lengthHalves;
+  return out
+    .map((g) => ({
+      startHalf: Math.max(g.startHalf, from),
+      lengthHalves: Math.min(g.startHalf + g.lengthHalves, to)
+        - Math.max(g.startHalf, from),
+    }))
+    .filter((g) => g.lengthHalves > 0);
+}
+
 /* ── Lanes ──
 
    Two bookings on one row that overlap in time would sit on top of each
@@ -302,6 +343,21 @@ export function buildRows(data, opts = {}) {
          the gang leaves the development, and it applies to the visit
          rather than to the Tuesday of it. */
       offSite: parts.some((p) => p.Off_Site),
+      /* ── Days inside the bar that nobody is working ──
+
+         A booking that runs Friday to Wednesday over a weekend it does
+         not work is one booking with two empty days in the middle, and
+         a solid bar across them says the gang is on site. So the holes
+         come out as half-slot ranges for the board to draw through,
+         measured the same way the bar itself is so the two line up.
+
+         Any missing day, not only a weekend: a gang off on the
+         Wednesday leaves the same hole and deserves the same mark.
+
+         Empty where there are no day rows at all — nothing is then
+         known about the middle of the booking, and drawing it full of
+         holes would be inventing that. */
+      gaps: gapsIn(parts, span, rangeStart),
       projectId: sub?.Project_ID ?? null,
       raw: a,
       sub,

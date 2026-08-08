@@ -437,7 +437,14 @@ export default function GISCanvasPage() {
   /* The find box. Open and query kept apart so closing it does not lose
      what was typed — reopening to correct a typo and finding it gone is
      a small thing that makes a tool feel hostile. */
-  const [findOpen, setFindOpen] = useState(false);
+  /* Find is a box on the bar, not a dialog, so there is no "open".
+
+     What is left is whether the cursor is in it — which decides only
+     whether the strays list shows, since that is offered to somebody
+     who has come looking without knowing what for. The results
+     themselves follow what is typed and nothing else. */
+  const [findFocus, setFindFocus] = useState(false);
+  const findRef = useRef(null);
   const [findQ, setFindQ] = useState("");
 
   const [lockedClasses, setLockedClasses] = useState(
@@ -880,17 +887,21 @@ export default function GISCanvasPage() {
     return m;
   }, [groupPlan]);
 
-  const found = useMemo(() => (findOpen && findQ
+  const found = useMemo(() => (findQ
     ? findFeatures(features, findQ, {
       lineTypes, layers, plotById: (id) => plotList.find((p) => p.plot_id === id),
     })
-    : { shown: [], total: 0 }), [findOpen, findQ, features, lineTypes, layers, plotList]);
+    : { shown: [], total: 0 }), [findQ, features, lineTypes, layers, plotList]);
 
   /* Things sitting a long way from everything else — the shape of
-     something dragged off by accident. Only worked out while the box is
-     open, since it walks every feature. */
+     something dragged off by accident. Offered while the box has focus
+     and nothing is typed, which is the moment somebody is looking for
+     something without knowing what: it was what the dialog showed on
+     opening, and the box has no opening.
+
+     Still only worked out then, since it walks every feature. */
   const wanderers = useMemo(
-    () => (findOpen ? strays(features) : []), [findOpen, features]);
+    () => (findFocus && !findQ ? strays(features) : []), [findFocus, findQ, features]);
 
   /* Whether a feature refuses to move, and why.
 
@@ -8942,10 +8953,12 @@ export default function GISCanvasPage() {
          cannot search a canvas. */
       if ((e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "f") {
         e.preventDefault();
-        setFindOpen(true);
+        /* Focus and select, so a second press replaces the last search
+           rather than appending to it. */
+        findRef.current?.focus();
+        findRef.current?.select();
         return;
       }
-      if (!typing && e.key === "Escape" && findOpen) { setFindOpen(false); return; }
 
       if (!typing && (e.metaKey || e.ctrlKey) && e.key.toLowerCase() === "z") {
         e.preventDefault();
@@ -9929,17 +9942,104 @@ export default function GISCanvasPage() {
                       onClick={() => setBulkDelOpen(true)} />
                   </Menu>
 
-                  {/* Find, on the bar rather than inside a menu.
+                  {/* Find, as a box on the bar rather than a button
+                      that opens one.
 
-                      Not a Menu: it opens a dialog rather than a list,
-                      so it takes the bar's own button style and stays a
-                      single click. The shortcut still works and is
-                      shown on it, since a shortcut nobody is told about
-                      is one nobody uses. */}
-                  <button className="gis-find-btn" onClick={() => setFindOpen(true)}
-                    title="Find a feature by label, plot or circuit (Ctrl/Cmd + F)">
-                    &#128269; Find
-                  </button>
+                      It was a dialog, which meant a click to open, a
+                      type, a click to close, and a panel sitting over
+                      the top-left of the drawing while you read it.
+                      Finding a plot is not a task with a beginning and
+                      an end — it is something done twenty times in a
+                      session, between other things — so the field is
+                      simply there, and the results hang under it only
+                      while there is something typed.
+
+                      The wrapper is what the results are positioned
+                      against, so the list follows the box wherever the
+                      bar wraps to. */}
+                  <div className="gis-findbox">
+                    <input className="gis-find-in" value={findQ} ref={findRef}
+                      placeholder="&#128269; Find a plot, span or kind"
+                      aria-label="Find a feature"
+                      title="Find a feature by label, plot or circuit (Ctrl/Cmd + F)"
+                      onFocus={() => setFindFocus(true)}
+                      onBlur={() => setFindFocus(false)}
+                      onChange={(e) => setFindQ(e.target.value)}
+                      onKeyDown={(e) => {
+                        /* Escape clears rather than closes: there is
+                           nothing to close now, and a box holding a
+                           search nobody can see the results of is the
+                           thing to get rid of. */
+                        if (e.key === "Escape") { setFindQ(""); e.currentTarget.blur(); return; }
+                        /* Enter takes the first result, so a plot number
+                           and a return key is the whole interaction. */
+                        if (e.key === "Enter" && found.shown[0]) {
+                          const f = found.shown[0].feature;
+                          setSelected([f.Feature_ID]);
+                          zoomTo([f.Feature_ID]);
+                          setTool("select");
+                        }
+                      }} />
+                    {findQ && (
+                      <button className="gf-x" onClick={() => { setFindQ(""); findRef.current?.focus(); }}
+                        aria-label="Clear find">&times;</button>
+                    )}
+
+                    {findQ && (
+                      <div className="gf-list"
+                        /* Keeps the cursor in the box when a row is
+                           clicked. Without it the input blurs first,
+                           the strays list unmounts under the pointer,
+                           and the click lands on nothing. */
+                        onMouseDown={(e) => e.preventDefault()}>
+                        {!found.shown.length && (
+                          <p className="gf-none">Nothing matches that.</p>
+                        )}
+                        {found.shown.map((r) => (
+                          <button key={r.feature.Feature_ID} className="gf-row"
+                            onClick={() => {
+                              setSelected([r.feature.Feature_ID]);
+                              zoomTo([r.feature.Feature_ID]);
+                              setTool("select");
+                            }}>
+                            <span className="gf-l">{r.label}</span>
+                            <span className="gf-w">{r.where}</span>
+                          </button>
+                        ))}
+                        {found.total > found.shown.length && (
+                          <p className="gf-more">
+                            and {found.total - found.shown.length} more &mdash; narrow it down
+                          </p>
+                        )}
+                      </div>
+                    )}
+
+                    {/* Offered without being asked for, because somebody
+                        who clicks into Find often does not know what is
+                        missing — only that something is. */}
+                    {!findQ && wanderers.length > 0 && (
+                      <div className="gf-list" onMouseDown={(e) => e.preventDefault()}>
+                        <p className="gf-none">
+                          {wanderers.length} feature{wanderers.length === 1 ? "" : "s"} sitting
+                          well away from the rest of the drawing:
+                        </p>
+                        {wanderers.slice(0, 10).map((f) => (
+                          <button key={f.Feature_ID} className="gf-row"
+                            onClick={() => {
+                              setSelected([f.Feature_ID]);
+                              zoomTo([f.Feature_ID]);
+                              setTool("select");
+                            }}>
+                            <span className="gf-l">
+                              {f.Label ?? f.Attributes?.Span_Label
+                                ?? `${f.Feature_Role ?? f.Attributes?.Line_Type ?? "Feature"}`}
+                            </span>
+                            <span className="gf-w">{layerOf(f.Layer_Key)?.Label ?? ""}</span>
+                          </button>
+                        ))}
+                      </div>
+                    )}
+                  </div>
 
                 </>
               )}
@@ -10717,77 +10817,6 @@ export default function GISCanvasPage() {
                 </div>
               );
             })()}
-
-            {/* Find. */}
-            {findOpen && (
-              <div className="gis-find">
-                <input autoFocus value={findQ} placeholder="Plot number, span code, or kind"
-                  onChange={(e) => setFindQ(e.target.value)}
-                  onKeyDown={(e) => {
-                    if (e.key === "Escape") { setFindOpen(false); return; }
-                    /* Enter takes the first result, so a plot number and
-                       a return key is the whole interaction. */
-                    if (e.key === "Enter" && found.shown[0]) {
-                      const f = found.shown[0].feature;
-                      setSelected([f.Feature_ID]);
-                      zoomTo([f.Feature_ID]);
-                      setTool("select");
-                    }
-                  }} />
-                <button className="gf-x" onClick={() => setFindOpen(false)}
-                  aria-label="Close find">&times;</button>
-
-                {findQ && (
-                  <div className="gf-list">
-                    {!found.shown.length && (
-                      <p className="gf-none">Nothing matches that.</p>
-                    )}
-                    {found.shown.map((r) => (
-                      <button key={r.feature.Feature_ID} className="gf-row"
-                        onClick={() => {
-                          setSelected([r.feature.Feature_ID]);
-                          zoomTo([r.feature.Feature_ID]);
-                          setTool("select");
-                        }}>
-                        <span className="gf-l">{r.label}</span>
-                        <span className="gf-w">{r.where}</span>
-                      </button>
-                    ))}
-                    {found.total > found.shown.length && (
-                      <p className="gf-more">
-                        and {found.total - found.shown.length} more &mdash; narrow it down
-                      </p>
-                    )}
-                  </div>
-                )}
-
-                {/* Offered without being asked for, because the person
-                    opening this often does not know what is missing —
-                    only that something is. */}
-                {!findQ && wanderers.length > 0 && (
-                  <div className="gf-list">
-                    <p className="gf-none">
-                      {wanderers.length} feature{wanderers.length === 1 ? "" : "s"} sitting
-                      well away from the rest of the drawing:
-                    </p>
-                    {wanderers.slice(0, 10).map((f) => (
-                      <button key={f.Feature_ID} className="gf-row"
-                        onClick={() => {
-                          setSelected([f.Feature_ID]);
-                          zoomTo([f.Feature_ID]);
-                          setTool("select");
-                        }}>
-                        <span className="gf-l">
-                          {f.Label ?? f.Attributes?.Span_Label
-                            ?? `${f.Feature_Role ?? f.Attributes?.Line_Type ?? "Feature"}`}
-                        </span>
-                        <span className="gf-w">{layerOf(f.Layer_Key)?.Label ?? ""}</span>
-                      </button>
-                    ))}
-                  </div>
-                )}
-              </div>
-            )}
 
             {lockedClasses.length > 0 && (
               <button className="gis-hidden gis-locked"
@@ -11929,14 +11958,23 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gsg-no { background: none; border: none; cursor: pointer; font: 600 11px inherit;
   color: var(--muted); text-decoration: underline; }
 .gsg-go:disabled, .gsg-no:disabled { opacity: .5; cursor: not-allowed; }
-.gis-find { position: absolute; left: 12px; top: 12px; z-index: 9; width: 300px;
-  background: var(--white); border: 1px solid var(--border); border-radius: 9px;
-  box-shadow: 0 10px 30px rgba(15,23,42,.18); padding: 8px; }
-.gis-find > input { width: 100%; border: 1px solid var(--border); border-radius: 6px;
-  font: 500 12px inherit; padding: 6px 26px 6px 9px; }
-.gf-x { position: absolute; right: 12px; top: 12px; background: none; border: none;
-  cursor: pointer; font-size: 15px; color: var(--muted); line-height: 1; }
-.gf-list { max-height: 300px; overflow-y: auto; margin-top: 6px; }
+/* Find, on the bar. The wrapper is what the results hang from, so the
+   list follows the box wherever the bar wraps to. */
+.gis-findbox { position: relative; display: inline-flex; align-items: center; }
+.gis-find-in { width: 210px; border: 1px solid var(--border); border-radius: 7px;
+  font: 500 12px inherit; padding: 6px 24px 6px 9px; color: var(--text);
+  background: var(--white); }
+.gis-find-in:focus { outline: none; border-color: var(--accent);
+  box-shadow: 0 0 0 3px var(--accent-light); }
+.gf-x { position: absolute; right: 6px; background: none; border: none;
+  cursor: pointer; font-size: 15px; color: var(--muted); line-height: 1; padding: 0 2px; }
+/* Hangs under the box rather than sitting in it, so the bar keeps its
+   height and the drawing is not covered until there is something to
+   show. */
+.gf-list { position: absolute; top: 100%; left: 0; margin-top: 4px; z-index: 40;
+  width: 300px; max-height: 300px; overflow-y: auto; background: var(--white);
+  border: 1px solid var(--border); border-radius: 9px; padding: 5px;
+  box-shadow: 0 10px 30px rgba(15,23,42,.18); }
 .gf-row { display: flex; align-items: baseline; gap: 8px; width: 100%; background: none;
   border: none; cursor: pointer; text-align: left; padding: 5px 8px; border-radius: 5px;
   font: 500 11.5px inherit; }
@@ -12016,10 +12054,6 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* Sits with the menu buttons and reads as one of them, without being a
    menu: no chevron, and it opens on the way down rather than waiting to
    see whether a list is coming. */
-.gis-find-btn { display: inline-flex; align-items: center; gap: 5px; background: none;
-  border: 1px solid transparent; border-radius: 7px; cursor: pointer;
-  font: 600 12px inherit; color: var(--text); padding: 6px 10px; white-space: nowrap; }
-.gis-find-btn:hover { background: var(--bg); border-color: var(--border); }
 .gis-mixed { font-size: 11px; color: var(--muted); font-style: italic; max-width: 22ch; }
 .gis-snap { display: inline-flex; align-items: center; gap: 7px; font-size: 12px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--muted); background: var(--white);

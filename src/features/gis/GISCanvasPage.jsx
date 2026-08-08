@@ -7062,7 +7062,39 @@ export default function GISCanvasPage() {
         + "under. Add one on the Asset Value tab.");
     }
 
-    const plan = gasMainRuns(src, { lineTypes });
+    /* Whose standard sizes this. The adopting operator from the
+       agreement just checked, and the DNO on the gas design — a rule may
+       be written against either, so both are offered and the rules
+       decide which one they were meant for. Same three-way resolution
+       the water build uses. */
+    const gasOperatorIds = [
+      agreement.IDNO_Organisation_ID ?? null,
+      design.DNO_Organisation_ID ?? null,
+    ].filter((x) => x != null);
+
+    const plan = gasMainRuns(src, {
+      lineTypes,
+      pipeSizes: lookups?.gasPipeSizes || [],
+      pipeSizeOperators: lookups?.gasPipeSizeOperators || [],
+      diversity: lookups?.gasDiversity || [],
+      diversityOperators: lookups?.gasDiversityOperators || [],
+      operatorIds: gasOperatorIds,
+      /* ── LP, and not yet a choice ──
+
+         Nothing in the schema records what tier a scheme runs at, so
+         this is the assumption rather than a reading: a housing estate
+         is low pressure unless somebody says otherwise, and most are.
+
+         Hard-coded on purpose instead of reaching for a column that
+         does not exist. `design.Pressure_Tier` would have read as
+         undefined, fallen through to "LP", and looked for all the world
+         like it was configurable — which is how a named column that was
+         never in the schema gets into three more call sites before
+         anyone notices. When MP schemes need sizing, the column goes on
+         Project_Scope and this line reads it. */
+      tier: "LP",
+      plotById: (id) => plotList.find((p) => p.plot_id === id),
+    });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {
       return setError("Nothing to lay \u2014 the POC is on the network but no "
@@ -7078,6 +7110,32 @@ export default function GISCanvasPage() {
     if (!window.confirm(
       `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m `
       + `to ${plan.services} service trench(es), ${plan.meters} gas meter(s)?`
+      /* The schedule, and the two figures behind it. A diversified load
+         on its own cannot be argued with — the raw sum and the factor
+         that shrank it are what somebody checks. */
+      + (plan.sized
+        ? `\n\n${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join("\n")}`
+          + `\n\n${plan.rawKw} kW summed peak, ${plan.kw} kW diversified.`
+          + `\nSized by ${plan.sizeRules} pipe rule(s)`
+          + (plan.operatorRules
+            ? `, ${plan.operatorRules} set for this project\u2019s operator,`
+            : " \u2014 the standard rules, none for this project\u2019s operator \u2014")
+          + ` and ${plan.diversityRules} diversity rule(s).`
+        : "")
+      /* Every pipe upstream of a plot with no figure is sized light,
+         which is the dangerous direction. Said before it is drawn. */
+      + (plan.noLoad?.length
+        ? `\n\n${plan.noLoad.length} gas meter(s) have no load on their plot and `
+          + "count as nothing. Every main upstream of them is sized light." : "")
+      + (plan.oversized?.length
+        ? `\n\n${plan.oversized.length} run(s) carry more than the largest `
+          + "configured pipe and will be drawn without a size." : "")
+      + (plan.overDiverse?.length
+        ? "\n\nMore supplies than the diversity table covers at "
+          + `${plan.overDiverse.length} point(s).` : "")
+      + (plan.diversityInversions?.length
+        ? `\n\n${plan.diversityInversions.length} diversity rule(s) diversify less `
+          + "at a higher supply count than at a lower one \u2014 check the table." : "")
       + (old.length ? `\n\nThis redraws ${old.length} existing gas main(s).` : "")
       /* Said before it happens, not after. The two are different kinds
          of gap — one is trench nobody joined up, the other is trench
@@ -7116,6 +7174,28 @@ export default function GISCanvasPage() {
                answers to one question. Nothing is invented where the
                design sets nothing. */
             ...defaultsFor(mainType.Type_Key),
+            /* The size worked out for this length, where there is one,
+               overriding the design's blanket default.
+
+               Written after defaultsFor rather than before it, so a
+               calculated size wins over a scheme-wide one. The design's
+               default answers "what do we normally lay here"; this
+               answers "what does this length have to carry", and the
+               second is the better answer wherever it exists.
+
+               Spread rather than assigned so that an unsized build —
+               no rules configured — leaves the default exactly as it
+               was instead of overwriting it with undefined. */
+            ...(r.size ? {
+              Pipe_Size: r.size.label,
+              Diameter_mm: r.size.diameter,
+              /* What it was sized on, kept with the pipe. A diameter
+                 somebody disagrees with six months on is answerable
+                 from the drawing rather than by rebuilding it. */
+              Load_kW: r.kw,
+              Raw_Load_kW: r.rawKw,
+              Supplies: r.supplies,
+            } : {}),
             /* How many services come off this length, and how many
                meters they carry — the numbers somebody would otherwise
                count off the drawing by hand when checking a quantity. */
@@ -7157,7 +7237,15 @@ export default function GISCanvasPage() {
       setError("");
       setStatus(`Gas network: ${plan.runs.length} run(s), ${plan.totalM} m of main`
         + `, ${plan.services} service trench(es), ${plan.meters} gas meter(s)`
+        + (plan.sized
+          ? ` \u2014 ${plan.bySize.map((b) => `${b.label}: ${b.metres} m`).join(", ")}`
+            + ` at ${plan.kw} kW diversified`
+          : "")
         + (links.length ? `, ${links.length} link(s) recorded` : "")
+        + (plan.noLoad?.length
+          ? ` \u2014 ${plan.noLoad.length} gas meter(s) with no plot load` : "")
+        + (plan.oversized?.length
+          ? ` \u2014 ${plan.oversized.length} run(s) over the largest configured pipe` : "")
         /* What got no pipe, and why. A build that quietly covers most
            of a site reads as a build that worked. */
         + (plan.unservedM
@@ -9051,7 +9139,6 @@ export default function GISCanvasPage() {
                           onHide={() => hideClass(l.Layer_Key)}
                           onShow={() => showClass(l.Layer_Key)}
                           shown={shownOnly.includes(l.Layer_Key)}
-                          shown={shownOnly.includes(l.Layer_Key)}
                           onSolo={() => soloClass(l.Layer_Key)} />
                       );
                       const byKey = (k) => layers.find((l) => l.Layer_Key === k);
@@ -9087,7 +9174,6 @@ export default function GISCanvasPage() {
                             onHide={() => hideClass("boundary:site")}
                             onShow={() => showClass("boundary:site")}
                             shown={shownOnly.includes("boundary:site")}
-                            shown={shownOnly.includes("boundary:site")}
                             onSolo={() => soloClass("boundary:site")} />
                           <MenuLayer label="Developer Boundary" colour={byKey("boundary")?.Colour}
                             count={classCount["boundary:dev"] || 0}
@@ -9095,7 +9181,6 @@ export default function GISCanvasPage() {
                             solo={solo === "boundary:dev"}
                             onHide={() => hideClass("boundary:dev")}
                             onShow={() => showClass("boundary:dev")}
-                            shown={shownOnly.includes("boundary:dev")}
                             shown={shownOnly.includes("boundary:dev")}
                             onSolo={() => soloClass("boundary:dev")} />
 
@@ -9107,7 +9192,6 @@ export default function GISCanvasPage() {
                             solo={solo === "role:spannode"}
                             onHide={() => hideClass("role:spannode")}
                             onShow={() => showClass("role:spannode")}
-                            shown={shownOnly.includes("role:spannode")}
                             shown={shownOnly.includes("role:spannode")}
                             onSolo={() => soloClass("role:spannode")} />
 
@@ -9262,7 +9346,6 @@ export default function GISCanvasPage() {
                       onHide={() => hideClass("role:spannode")}
                       onShow={() => showClass("role:spannode")}
                       shown={shownOnly.includes("role:spannode")}
-                      shown={shownOnly.includes("role:spannode")}
                       onSolo={() => soloClass("role:spannode")} />
                     {typesOn("trench").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
@@ -9271,7 +9354,6 @@ export default function GISCanvasPage() {
                         solo={solo === `lt:${t.Type_Key}`}
                         onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                       shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
@@ -9354,7 +9436,6 @@ export default function GISCanvasPage() {
                         onHide={() => hideClass(`role:${role}`)}
                       onShow={() => showClass(`role:${role}`)}
                       shown={shownOnly.includes(`role:${role}`)}
-                      shown={shownOnly.includes(`role:${role}`)}
                         onSolo={() => soloClass(`role:${role}`)} />
                     ))}
                     {typesOn("electric").map((t) => (
@@ -9365,7 +9446,6 @@ export default function GISCanvasPage() {
                         onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
                       shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <MenuLayer label="Electric Meters"
@@ -9374,7 +9454,6 @@ export default function GISCanvasPage() {
                       solo={solo === "electric:role:meter"}
                       onHide={() => hideClass("electric:role:meter")}
                       onShow={() => showClass("electric:role:meter")}
-                      shown={shownOnly.includes("electric:role:meter")}
                       shown={shownOnly.includes("electric:role:meter")}
                       onSolo={() => soloClass("electric:role:meter")} />
                     {[["joint", "Joints"], ["linkbox", "Link boxes"],
@@ -9385,7 +9464,6 @@ export default function GISCanvasPage() {
                           solo={solo === `role:${role}`}
                           onHide={() => hideClass(`role:${role}`)}
                       onShow={() => showClass(`role:${role}`)}
-                      shown={shownOnly.includes(`role:${role}`)}
                       shown={shownOnly.includes(`role:${role}`)}
                           onSolo={() => soloClass(`role:${role}`)} />
                       ))}
@@ -9401,7 +9479,6 @@ export default function GISCanvasPage() {
                       solo={solo === "electric"}
                       onHide={() => hideClass("electric")}
                       onShow={() => showClass("electric")}
-                      shown={shownOnly.includes("electric")}
                       shown={shownOnly.includes("electric")}
                       onSolo={() => soloClass("electric")} />
 
@@ -9513,7 +9590,6 @@ export default function GISCanvasPage() {
                             onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
                       shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                             onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                         ))}
                         <MenuLayer label="Meters"
@@ -9522,7 +9598,6 @@ export default function GISCanvasPage() {
                           solo={solo === `${key}:role:meter`}
                           onHide={() => hideClass(`${key}:role:meter`)}
                       onShow={() => showClass(`${key}:role:meter`)}
-                      shown={shownOnly.includes(`${key}:role:meter`)}
                       shown={shownOnly.includes(`${key}:role:meter`)}
                           onSolo={() => soloClass(`${key}:role:meter`)} />
                         <div className="gm-sep" />
@@ -9580,7 +9655,6 @@ export default function GISCanvasPage() {
                           onHide={() => hideClass(key)}
                       onShow={() => showClass(key)}
                       shown={shownOnly.includes(key)}
-                      shown={shownOnly.includes(key)}
                           onSolo={() => soloClass(key)} />
                       </Menu>
                     );
@@ -9596,7 +9670,6 @@ export default function GISCanvasPage() {
                         onHide={() => hideClass(`lt:${t.Type_Key}`)}
                       onShow={() => showClass(`lt:${t.Type_Key}`)}
                       shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
                     <MenuLayer label="Columns" count={classCount["role:column"] || 0}
@@ -9604,7 +9677,6 @@ export default function GISCanvasPage() {
                       solo={solo === "role:column"}
                       onHide={() => hideClass("role:column")}
                       onShow={() => showClass("role:column")}
-                      shown={shownOnly.includes("role:column")}
                       shown={shownOnly.includes("role:column")}
                       onSolo={() => soloClass("role:column")} />
                     {!typesOn("lighting").length && (

@@ -81,6 +81,26 @@ export default async function handler() {
       waterPipeSizeOperators: db.from("Water_Pipe_Size_Operator")
         .select("Water_Pipe_Size_Operator_ID,Water_Pipe_Size_ID,Organisation_ID")
         .order("Water_Pipe_Size_ID"),
+      /* What size of gas pipe carries how much load. Mains by kW,
+         services by kW and length, both by pressure tier — so the
+         column list carries all four keys and dropping any of them
+         silently changes which rule is picked rather than failing. */
+      gasPipeSizes: db.from("Gas_Pipe_Size")
+        .select("Gas_Pipe_Size_ID,Pipe_Kind,Pressure_Tier,Diameter_mm,Size_Label,Max_kW,Max_Length_m,Display_Order")
+        .eq("Is_Active", true).order("Max_kW"),
+      gasPipeSizeOperators: db.from("Gas_Pipe_Size_Operator")
+        .select("Gas_Pipe_Size_Operator_ID,Gas_Pipe_Size_ID,Organisation_ID")
+        .order("Gas_Pipe_Size_ID"),
+      /* Diversity, which the gas build refuses to size without. Empty
+         on a database where nobody has configured it, and that is the
+         intended state rather than a fault to work around here — the
+         build says so, in the one place somebody can act on it. */
+      gasDiversity: db.from("Gas_Diversity")
+        .select("Gas_Diversity_ID,Max_Supplies,Factor,Notes,Display_Order")
+        .eq("Is_Active", true).order("Max_Supplies"),
+      gasDiversityOperators: db.from("Gas_Diversity_Operator")
+        .select("Gas_Diversity_Operator_ID,Gas_Diversity_ID,Organisation_ID")
+        .order("Gas_Diversity_ID"),
       /* Companies holding an IDNO or DNO role, with the utilities they
          work in. The complete list — the legacy IDNO and DNO tables
          are each missing operators set up the other way, and neither

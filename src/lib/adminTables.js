@@ -152,6 +152,16 @@ export const ADMIN_TABLES = [
      column that points at one thing; it has no way to show a column
      that points at several. */
   { key: "Water_Pipe_Size", label: "Water Pipe Sizes", special: "waterpipes" },
+  /* The gas pair, kept beside water because they answer the same
+     question and somebody configuring one usually configures both.
+
+     Two screens rather than one with tabs: a pipe rule and a diversity
+     rule are not two views of a thing, they are two inputs to one
+     calculation, and the diversity table is the one that stops a build
+     when it is empty. Burying that behind a tab would hide the only
+     screen in Admin whose emptiness has a consequence elsewhere. */
+  { key: "Gas_Pipe_Size", label: "Gas Pipe Sizes", special: "gaspipes" },
+  { key: "Gas_Diversity", label: "Gas Diversity", special: "gasdiversity" },
   { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
       { col: "Craft_Name", label: "Craft", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

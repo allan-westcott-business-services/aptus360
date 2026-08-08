@@ -170,6 +170,12 @@ const COLS = (cfg, typeName, hpName) => [
   { key: "dev",    label: "Developer",    width: 170, type: "multi", raw: (p) => p.Project_Developer_ID },
   { key: "heat",   label: "Heat source",  width: 150, type: "multi", raw: (p) => p.Heat_Source_ID },
   { key: "kva",    label: "kVA",          width: 82,  type: "num",   align: "right", raw: (p) => p.KVA_Resolved ?? p.KVA_Load ?? null },
+  /* Gas beside electric, and read the same way: the resolved figure
+     where the function returns one, the plot's own override otherwise.
+     Blank on a plot that takes no gas, which is most of an all-electric
+     site and not a gap — the source column on the placement list is
+     what tells those two apart. */
+  { key: "gaskw",  label: "Gas kW",       width: 82,  type: "num",   align: "right", raw: (p) => p.Gas_Load_Resolved ?? p.Gas_Load_kW ?? null },
   { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
   { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
   { key: "slp",    label: "SLP",          width: 60,  type: "bool",  align: "center", raw: (p) => !!p.Self_Lay_Provider },
@@ -664,6 +670,25 @@ export default function PlotsTab({ projectId, projectRef }) {
                                       {p.KVA_Source === "entered" && <span className="kva-own">*</span>}
                                     </span>
                               )
+                            : col.key === "gaskw" ? (
+                                /* Three states, not two. A plot on air
+                                   source correctly has no gas figure
+                                   and reads as blank; a gas plot with
+                                   nobody having set one is a gap that
+                                   sizes every main upstream of it light,
+                                   and it gets the dash and the warning.
+                                   Showing both as "—" is what would let
+                                   the second go unnoticed. */
+                                (p.Gas_Load_Resolved ?? p.Gas_Load_kW) == null
+                                  ? (p.Gas_Load_Source === "no gas"
+                                    ? <span className="gas-none" title="Not a gas plot">&nbsp;</span>
+                                    : <span className="kva-unset" title="No gas load: set one on the house type, or enter a figure on the plot">&#8212;</span>)
+                                  : <span title={p.Gas_Load_Source === "entered"
+                                    ? "Entered on this plot" : "From the house type"}>
+                                      {p.Gas_Load_Resolved ?? p.Gas_Load_kW}
+                                      {p.Gas_Load_Source === "entered" && <span className="kva-own">*</span>}
+                                    </span>
+                              )
                             : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")
                             : col.key === "slp" ? (p.Self_Lay_Provider ? <span className="tick">&#10003;</span> : "")
@@ -744,6 +769,10 @@ const CSS = FILTER_CSS + `
 .inherited { color: var(--muted); font-style: italic; }
 .tick { color: #059669; font-weight: 700; }
 .kva-unset { color: #b45309; font-weight: 600; }
+/* A plot that takes no gas. Empty rather than dashed: a dash in this
+   column means "should have a figure and hasn't", and the two must not
+   look the same. */
+.gas-none { display: inline-block; }
 .kva-own { color: var(--muted); font-size: 10px; margin-left: 2px; }
 .code-chip { font-family: ui-monospace, Menlo, monospace; font-weight: 700; font-size: 11px;
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 5px; }

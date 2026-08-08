@@ -3,6 +3,12 @@ import { supabase, json, fail } from "./_supabase.js";
 const PLOT_COLUMNS = [
   "Plot_ID", "Project_ID", "Plot_Number", "Plot_Ref", "Property_Config_ID",
   "PV", "Heat_Pump_Model_ID", "Heat_Source_ID", "KVA_Load", "Self_Lay_Provider", "Project_Developer_ID",
+  /* The gas override, beside the electric one and read the same way:
+     normally empty, with the working figure coming from the house type.
+     Listed here because a column absent from this list is neither saved
+     nor returned, and the screen shows a blank that looks like a plot
+     with no gas rather than a column nobody wired up. */
+  "Gas_Load_kW",
 ].join(",");
 
 export default async function handler(req, context) {
@@ -50,6 +56,17 @@ export default async function handler(req, context) {
             /* 'entered', 'house type' or 'not set', straight from the
                database's own verdict rather than inferred here. */
             KVA_Source: r?.kva_source ?? "not set",
+            /* And the same for gas, from the same function for the same
+               reason: one rule for what a plot draws, so the canvas and
+               this page cannot disagree about the same plot.
+
+               The source carries a fourth verdict the electric one has
+               no use for — 'no gas' — because a plot on air source
+               correctly has no figure, and that is not the same as a
+               gas plot nobody has set one for. The screen shows those
+               two differently and needs to be told which is which. */
+            Gas_Load_Resolved: r?.gas_load_kw ?? null,
+            Gas_Load_Source: r?.gas_load_source ?? "not set",
           };
         }),
       });

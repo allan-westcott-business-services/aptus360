@@ -7,10 +7,45 @@
 
    An LV feeder has to be designed: load accumulates from the meters
    back to the substation, the number of cables follows from the meter
-   count, and a run breaks mid-trench where that count changes. None of
-   that applies here. A gas main is one pipe, and where it goes is
-   already decided by where the trench was dug — so this is a covering
-   problem rather than a sizing one.
+   count, and impedance and volt drop decide the rest. Gas is a shorter
+   argument. A gas main is one pipe and where it goes is already decided
+   by where the trench was dug, so the route is a covering problem — but
+   the size is not, and used not to be answered at all.
+
+   ── Sizing: what changed ──
+
+   This module once returned geometry and left every pipe unsized,
+   because there was no table to size against. There is now: 0130 holds
+   what diameter carries what load, keyed on kW rather than on a plot
+   count, because a four-bed with a boiler and a hob is not the same
+   demand as a flat with a combi and neither is the commercial unit at
+   the end of the road.
+
+   So the walk that already accumulated presence now accumulates load as
+   well, and a run breaks where the size changes — the same three-way
+   break the water builder uses, for the same reason: cutting only at
+   junctions gives one pipe where the ground holds a taper, cutting at
+   every tee gives a schedule of two hundred pipes on an estate that has
+   four.
+
+   ── Diversity, and why it can stop the build ──
+
+   Forty boilers do not draw forty times one boiler, and Cadent's tables
+   are keyed on the diversified figure. So the summed peak beyond a
+   point is multiplied by a factor read against the number of supplies
+   beyond that same point, from 0131.
+
+   That table ships empty, and where it is empty this returns an error
+   rather than a network. The rule belongs to IGE/GL/1 and is not
+   something to guess at: a factor wrong in the unsafe direction
+   undersizes a gas main, and the drawing looks equally confident either
+   way. An unsized main was honest about knowing nothing. A main sized
+   from an invented factor would not be.
+
+   The factor is applied per node against what lies beyond that node,
+   not once across the site — which is how the standard reads and also
+   the only version that gets the spine and its legs right, since a leg
+   feeding four houses diversifies less than the spine feeding ninety.
 
    ── But not every trench ──
 
@@ -88,6 +123,177 @@ function distToLine(p, g = []) {
   return best;
 }
 
+/* ── The sizes that apply to this project ──
+
+   Same resolution as the water builder's sizeTable and for the same
+   reasons, which are argued at length there: a rule may name any number
+   of operators, naming nobody is the house standard, rules naming other
+   operators are dropped, and where an operator has restated a ceiling
+   its rule takes that band from the generic one.
+
+   Kept as its own function rather than shared with water because the
+   two are keyed differently — water on a meter count, gas on kW and, for
+   services, a length as well. A single parameterised resolver would
+   have one argument meaning three things and would be read wrongly the
+   first time somebody changed either standard. */
+export function gasSizeTable(rows = [], opts = {}) {
+  const {
+    operatorIds = [], operators = [],
+    kind = "main",
+    tier = "LP",
+  } = opts;
+  const mineIds = operatorIds.filter((x) => x != null).map(Number);
+
+  const named = new Map();
+  for (const o of operators) {
+    const key = Number(o.Gas_Pipe_Size_ID);
+    if (!named.has(key)) named.set(key, []);
+    named.get(key).push(o);
+  }
+
+  /* 1 where the rule names this project's operator, 0 where it names
+     nobody — the house standard. Naming only other operators scores -1
+     and is dropped: it is somebody else's. */
+  const rank = (r) => {
+    const mine = named.get(Number(r.Gas_Pipe_Size_ID)) || [];
+    if (!mine.length) return 0;
+    return mine.some((o) => mineIds.includes(Number(o.Organisation_ID))) ? 1 : -1;
+  };
+
+  const applies = rows.filter((r) =>
+    r.Is_Active !== false
+    && (r.Pipe_Kind ?? "main") === kind
+    && (r.Pressure_Tier ?? "LP") === tier
+    && Number(r.Max_kW) > 0
+    && rank(r) >= 0);
+
+  /* Grouped by the whole band, not by diameter alone.
+
+     Water groups by diameter because its rules vary a ceiling against a
+     fixed size. A gas service rule varies two things at once — the same
+     32mm appears at 32.5 kW over 63 m and at 65 kW over 30 m — so
+     diameter alone would collapse rows that say different things and
+     the second would silently replace the first. */
+  const bandOf = (r) =>
+    `${Number(r.Diameter_mm)}|${Number(r.Max_kW)}|${r.Max_Length_m ?? ""}`;
+
+  const best = new Map();
+  for (const r of applies) {
+    const key = bandOf(r);
+    const held = best.get(key);
+    if (!held) { best.set(key, r); continue; }
+    const drop = rank(r) - rank(held)
+      || (Number(held.Display_Order ?? 100) - Number(r.Display_Order ?? 100))
+      || (Number(held.Gas_Pipe_Size_ID) - Number(r.Gas_Pipe_Size_ID));
+    if (drop > 0) best.set(key, r);
+  }
+
+  /* Where an operator has ruled on a ceiling, the generic rules for the
+     same ceiling go — so their 90mm at 1100 kW replaces the house 63mm
+     rather than sitting beside it and losing on diameter. Nothing is
+     dropped that the operator has not replaced. */
+  const ruled = new Set([...best.values()]
+    .filter((r) => rank(r) > 0)
+    .map((r) => `${Number(r.Max_kW)}|${r.Max_Length_m ?? ""}`));
+
+  const chosen = [...best.values()].filter((r) =>
+    rank(r) > 0 || !ruled.has(`${Number(r.Max_kW)}|${r.Max_Length_m ?? ""}`));
+
+  return chosen
+    .map((r) => ({
+      id: r.Gas_Pipe_Size_ID,
+      diameter: Number(r.Diameter_mm),
+      label: r.Size_Label || `${Number(r.Diameter_mm)}mm`,
+      maxKw: Number(r.Max_kW),
+      maxLength: r.Max_Length_m == null ? null : Number(r.Max_Length_m),
+      forOperator: rank(r) > 0,
+    }))
+    /* Ascending diameter, because that is what is being minimised. Two
+       rows can both carry the load and the smaller pipe is the answer —
+       which is not the same as the lower ceiling, and sorting by kW
+       would pick the wrong one on any length-banded service rule. */
+    .sort((a, b) => a.diameter - b.diameter
+      || a.maxKw - b.maxKw
+      || (a.maxLength ?? Infinity) - (b.maxLength ?? Infinity));
+}
+
+/* The smallest pipe that carries this load over this length, or null
+   where the table does not go that far.
+
+   Length is ignored by mains rules, which carry no band — a main is cut
+   where its size changes rather than where it gets long. */
+export function gasSizeFor(table, kw, metres = 0) {
+  return table.find((s) => s.maxKw >= kw
+    && (s.maxLength == null || s.maxLength >= metres)) || null;
+}
+
+/* ── Diversity ──
+
+   Resolved the same way as the sizes: the operator's rules win, naming
+   nobody is the house standard, and other operators' rules are dropped. */
+export function diversityTable(rows = [], opts = {}) {
+  const { operatorIds = [], operators = [] } = opts;
+  const mineIds = operatorIds.filter((x) => x != null).map(Number);
+
+  const named = new Map();
+  for (const o of operators) {
+    const key = Number(o.Gas_Diversity_ID);
+    if (!named.has(key)) named.set(key, []);
+    named.get(key).push(o);
+  }
+  const rank = (r) => {
+    const mine = named.get(Number(r.Gas_Diversity_ID)) || [];
+    if (!mine.length) return 0;
+    return mine.some((o) => mineIds.includes(Number(o.Organisation_ID))) ? 1 : -1;
+  };
+
+  const applies = rows.filter((r) =>
+    r.Is_Active !== false
+    && Number(r.Max_Supplies) > 0
+    && Number(r.Factor) > 0
+    && rank(r) >= 0);
+
+  const best = new Map();
+  for (const r of applies) {
+    const key = Number(r.Max_Supplies);
+    const held = best.get(key);
+    if (!held) { best.set(key, r); continue; }
+    const drop = rank(r) - rank(held)
+      || (Number(held.Display_Order ?? 100) - Number(r.Display_Order ?? 100));
+    if (drop > 0) best.set(key, r);
+  }
+
+  return [...best.values()]
+    .map((r) => ({
+      id: r.Gas_Diversity_ID,
+      max: Number(r.Max_Supplies),
+      factor: Number(r.Factor),
+      forOperator: rank(r) > 0,
+    }))
+    .sort((a, b) => a.max - b.max);
+}
+
+/* The factor for this many supplies, or null above the top of the table.
+
+   Null rather than the last row carried onward: a table stopping at
+   fifty says nothing about ninety, and a site larger than the standard
+   was written for is a question for the operator. */
+export const diversityFor = (table, supplies) =>
+  table.find((d) => d.max >= supplies) || null;
+
+/* Rows that undo the point of the table — a larger count diversifying
+   less than a smaller one. Reported rather than corrected, because
+   which of the two rows is the typo is not knowable from here. */
+export function diversityInversions(table = []) {
+  const bad = [];
+  for (let i = 1; i < table.length; i++) {
+    if (table[i].factor > table[i - 1].factor) {
+      bad.push({ lower: table[i - 1], higher: table[i] });
+    }
+  }
+  return bad;
+}
+
 /* The runs of gas main a drawing calls for.
 
    Pure: it reads features and returns geometry. Creating anything is
@@ -102,7 +308,34 @@ export function gasMainRuns(features = [], opts = {}) {
     /* Which utility this is. The gas POC and gas meters, because a site
        has electric ones too and they are nowhere near each other. */
     layerKey = "gas",
+
+    /* ── Sizing ──
+
+       All optional. Given none of them this returns what it always did:
+       runs, lengths and counts, with no size on anything. That is the
+       behaviour a drawing built before 0130 gets, and it is a real
+       answer rather than a degraded one — the route was never the part
+       that needed a table. */
+    pipeSizes = [],
+    pipeSizeOperators = [],
+    diversity = [],
+    diversityOperators = [],
+    /* The operators this scheme is with, as organisations: whoever is
+       adopting it, and the GT. Rules are read for both and the rules
+       decide which one they were meant for. */
+    operatorIds = [],
+    /* LP or MP. The same load takes different pipe on each, so this is
+       not a display detail. */
+    tier = "LP",
+    /* Plot_ID to the plot row, for the gas load. A function rather than
+       a map because that is how the electric side takes it and there is
+       no reason for the two to differ. */
+    plotById = null,
   } = opts;
+
+  /* Sizing is asked for by supplying a table, not by a flag. A caller
+     that has the rules wants them used; one that has none cannot. */
+  const sizing = pipeSizes.length > 0;
 
   const trenches = features.filter((f) =>
     f.Feature_Type === "line"
@@ -211,8 +444,27 @@ export function gasMainRuns(features = [], opts = {}) {
     && m.Layer_Key === layerKey
     && (m.Geometry || []).length);
 
-  /* How many gas meters each service trench carries. */
+  /* How many gas meters each service trench carries, and what they
+     draw.
+
+     Counted and summed in the same pass because they answer to the same
+     question — which spur is this meter on — and separating them would
+     mean two walks that could disagree about the answer.
+
+     A meter whose plot has no gas load is named rather than counted as
+     zero. Zero is a legitimate figure for a plot that takes no gas, and
+     a plot that takes gas with nobody having said how much is a gap; on
+     a total they look identical, and the second one undersizes a main. */
   const servedBy = new Map();
+  const kwBy = new Map();
+  const noLoad = [];
+  const loadOf = (m) => {
+    if (!plotById || m.Plot_ID == null) return null;
+    const plot = plotById(m.Plot_ID);
+    const kw = plot?.gas_load_kw ?? plot?.Gas_Load_kW;
+    return kw != null && kw !== "" ? Number(kw) : null;
+  };
+
   const strandedMeters = [];
   for (const m of meters) {
     const seed = seedOf(m);
@@ -229,6 +481,19 @@ export function gasMainRuns(features = [], opts = {}) {
     }
     if (best && best.d <= tol) {
       servedBy.set(best.sv.Feature_ID, (servedBy.get(best.sv.Feature_ID) || 0) + 1);
+      const kw = loadOf(m);
+      if (kw == null) {
+        if (sizing) {
+          noLoad.push({
+            id: m.Feature_ID,
+            label: m.Label || `Meter ${m.Feature_ID}`,
+            plotId: m.Plot_ID ?? null,
+            at: m.Geometry[0],
+          });
+        }
+      } else {
+        kwBy.set(best.sv.Feature_ID, (kwBy.get(best.sv.Feature_ID) || 0) + kw);
+      }
     } else {
       /* Named rather than counted: a gas meter on no service trench is
          a plot that will not get gas, and somebody has to go and look
@@ -244,11 +509,13 @@ export function gasMainRuns(features = [], opts = {}) {
 
   /* ── Where those services meet the main ── */
   const demand = new Array(nodes.length).fill(0);
+  const demandKw = new Array(nodes.length).fill(0);
   const tees = new Set();
   const unattachedServices = [];
 
   for (const sv of services) {
     const carried = servedBy.get(sv.Feature_ID) || 0;
+    const carriedKw = kwBy.get(sv.Feature_ID) || 0;
     if (!carried) continue;                 // carries no gas meter
 
     const g = sv.Geometry;
@@ -263,6 +530,7 @@ export function gasMainRuns(features = [], opts = {}) {
 
     if (hit >= 0 && bd <= eps && seen[hit]) {
       demand[hit] += carried;
+      demandKw[hit] += carriedKw;
       tees.add(hit);
     } else {
       /* Reaches a meter but not the main. The gas has nowhere to come
@@ -291,10 +559,95 @@ export function gasMainRuns(features = [], opts = {}) {
      Backwards down the visit order, so a node is summed only once
      everything beyond it has been. */
   const served = demand.slice();
+  const servedKw = demandKw.slice();
   for (let i = order.length - 1; i >= 0; i--) {
     const u = order[i];
-    if (parent[u] >= 0) served[parent[u]] += served[u];
+    if (parent[u] >= 0) {
+      served[parent[u]] += served[u];
+      servedKw[parent[u]] += servedKw[u];
+    }
   }
+
+  /* ── What sizes it ──
+
+     Built here rather than at the top because everything above is worth
+     answering whether or not a size is wanted: a caller with no rules
+     still gets its runs, its lengths and the two kinds of bare trench. */
+  const table = sizing
+    ? gasSizeTable(pipeSizes, {
+      operatorIds, operators: pipeSizeOperators, kind: "main", tier,
+    })
+    : [];
+  const divTable = sizing
+    ? diversityTable(diversity, { operatorIds, operators: diversityOperators })
+    : [];
+
+  if (sizing && !table.length) {
+    /* Two faults that read as one: an empty table, or a table whose
+       every row names an operator this project is not with. */
+    const anyActive = pipeSizes.some((r) => r.Is_Active !== false
+      && (r.Pipe_Kind ?? "main") === "main"
+      && (r.Pressure_Tier ?? "LP") === tier);
+    return {
+      error: anyActive
+        ? `No ${tier} mains pipe size applies to this project\u2019s operator \u2014 `
+          + "every rule configured for that tier names a different one. Add a rule "
+          + "for this operator, or untick its operators to make it the standard."
+        : `No ${tier} mains pipe sizes are configured \u2014 add them in Admin \u203a `
+          + "Gas Pipe Sizes. A size is read off that table, so there is nothing "
+          + "to size a main with.",
+    };
+  }
+
+  if (sizing && !divTable.length) {
+    /* The one case where having the sizes is not enough. Said at length
+       because the fix is a purchase and a decision, not a tick box. */
+    return {
+      error: "No gas diversity factors are configured, so a main cannot be sized "
+        + "\u2014 the pipe tables are keyed on diversified load, and the summed "
+        + "peak of every plot is not that figure. Add them in Admin \u203a Gas "
+        + "Diversity, from IGE/GL/1 Appendix A5 or your operator\u2019s own "
+        + "standard. The main can still be laid unsized in the meantime.",
+    };
+  }
+
+  const inversions = diversityInversions(divTable);
+
+  /* Diversified load beyond a node: what the plots past it draw at
+     once, times the factor for how many of them there are.
+
+     Both readings taken at the same node. A factor from the site total
+     applied to a leg's load, or the reverse, would be two different
+     points in the network answering one question. */
+  const overDiverse = [];
+  const loadAt = (v) => {
+    if (!sizing) return null;
+    const supplies = served[v];
+    if (!supplies) return 0;
+    const d = diversityFor(divTable, supplies);
+    if (!d) {
+      overDiverse.push({ supplies, at: nodes[v].slice() });
+      return null;
+    }
+    return Math.round(servedKw[v] * d.factor * 100) / 100;
+  };
+
+  /* The size of the length arriving at v is decided by everything from
+     v outward — the load it still has to carry. */
+  const sizeAt = (v) => {
+    const kw = loadAt(v);
+    return kw == null ? null : gasSizeFor(table, kw);
+  };
+  /* "over" and "unknown" are different answers and must not collapse
+     into one break: a run past the top of the pipe table and a run past
+     the top of the diversity table are different faults with different
+     fixes, and a size change between them is a real change. */
+  const sizeKey = (v) => {
+    if (!sizing) return "";
+    const kw = loadAt(v);
+    if (kw == null) return "nodiv";
+    return sizeAt(v)?.id ?? "over";
+  };
 
   const children = new Map();
   for (let i = 0; i < nodes.length; i++) {
@@ -308,14 +661,27 @@ export function gasMainRuns(features = [], opts = {}) {
   const kids = (u) => (children.get(u) || []).filter((c) => served[c] > 0);
 
   /* ── The runs ──
-     A run ends where the main divides, where it stops, and — if asked —
-     where a service tees off it. A corner is none of those, so the run
-     carries on through it. */
+     A run ends where the main divides, where it stops, where the size
+     changes, and — if asked — where a service tees off it. A corner is
+     none of those, so the run carries on through it.
+
+     The size break is what makes a sized main read as a taper. Without
+     it the spine would be one pipe at one diameter from the POC to the
+     last house, which is neither what the table says nor what gets
+     laid. With sizing off, sizeKey is constant and the break is the
+     three-way one this always had. */
   const isBreak = (u) => u === root
     || kids(u).length !== 1
-    || (breakAtServices && tees.has(u));
+    || (breakAtServices && tees.has(u))
+    || sizeKey(kids(u)[0]) !== sizeKey(u);
 
   const runs = [];
+  /* Runs carrying more than the largest configured pipe will take.
+     Collected rather than rounded up to the biggest available, for the
+     reason 0117 gives for water and Cadent's own table gives for gas:
+     past the top of it the answer is "by negotiation", which is exactly
+     the question a drawing must not answer on its own. */
+  const oversized = [];
   const covered = new Set();
   const edgeKey = (a, b) => (a < b ? `${a}:${b}` : `${b}:${a}`);
   const walk = [root];
@@ -337,21 +703,44 @@ export function gasMainRuns(features = [], opts = {}) {
         cur = next;
       }
 
-      runs.push({
+      /* Read at the top of the run, which is the most it carries and
+         therefore what sizes it. The far end carries less — every tee
+         along the way has taken its share — and sizing on that would
+         put the thinnest pipe of the run on the whole of it. */
+      const carriesKw = loadAt(first);
+      const size = carriesKw == null ? null : gasSizeFor(table, carriesKw);
+      const run = {
         pts,
         metres: Math.round(lengthOf(pts) * 10) / 10,
         fromNode: u,
         endNode: cur,
         /* How many services come off this length, and how many meters
-           they carry. Not used to size anything — there is nothing to
-           size — but it is what somebody counts off the drawing by hand
-           when checking a quantity. */
+           they carry — the numbers somebody counts off the drawing by
+           hand when checking a quantity. */
         services: teed,
         meters: fed,
         /* Everything beyond the far end of this run, which is what says
            whether it is the spine or a leg off it. */
         metersBeyond: served[cur],
-      });
+        /* Null throughout where no rules were supplied, which is the
+           unsized build and not a failure of one. */
+        size,
+        kw: carriesKw,
+        /* Undiversified as well, because the two together are what
+           somebody checks a factor against — a diversified figure alone
+           cannot be argued with. */
+        rawKw: Math.round(servedKw[first] * 100) / 100,
+        supplies: served[first],
+      };
+      if (sizing && !size) {
+        oversized.push({
+          kw: carriesKw,
+          supplies: served[first],
+          metres: run.metres,
+          at: nodes[u].slice(),
+        });
+      }
+      runs.push(run);
       /* Carry on from the far end, so the runs come out in the order
          they leave the POC and G1 is the first length of main. */
       walk.push(cur);
@@ -400,14 +789,55 @@ export function gasMainRuns(features = [], opts = {}) {
     }
   }
 
+  /* How much of each size, for the schedule. Nothing to group by on an
+     unsized build, so it comes back empty rather than as one nameless
+     row holding everything. */
+  const bySize = [];
+  if (sizing) {
+    for (const r of runs) {
+      const key = r.size?.id ?? "over";
+      let row = bySize.find((x) => x.key === key);
+      if (!row) {
+        row = { key, label: r.size?.label ?? "over capacity", runs: 0, metres: 0 };
+        bySize.push(row);
+      }
+      row.runs += 1;
+      row.metres = Math.round((row.metres + r.metres) * 10) / 10;
+    }
+  }
+
   return {
     runs,
+    bySize,
+    sized: sizing,
     totalM: Math.round(runs.reduce((t, r) => t + r.metres, 0) * 10) / 10,
     poc,
     pocGap: Math.round(rootGap * 10) / 10,
     /* Tees the main now runs past, and the meters they carry. */
     services: tees.size,
     meters: served[root],
+    /* What the site draws, before and after diversity. Both, because a
+       factor is only checkable against the figure it was applied to. */
+    rawKw: Math.round(servedKw[root] * 100) / 100,
+    kw: loadAt(root),
+    /* Runs past the top of the pipe table, and points past the top of
+       the diversity table. Two different fixes, so two lists. */
+    oversized,
+    overDiverse,
+    largest: table[table.length - 1] ?? null,
+    /* Gas meters on a service trench whose plot has no gas load. They
+       contribute nothing to the total, so every pipe upstream of them
+       is sized light until somebody sets a figure. */
+    noLoad,
+    /* The rules this was built with, and how many were chosen for the
+       operator rather than inherited. A figure somebody disagrees with
+       is nearly always a rule they did not know applied. */
+    sizeRules: table.length,
+    operatorRules: table.filter((t) => t.forOperator).length,
+    diversityRules: divTable.length,
+    /* A descending factor that ascends. Not corrected here — which of
+       the two rows is the typo is not knowable from a drawing. */
+    diversityInversions: inversions,
     /* Gas meters on no service trench at all. */
     strandedMeters,
     /* Service trenches that reach a meter but not the main. */

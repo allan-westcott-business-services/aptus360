@@ -47,6 +47,19 @@ const TABLES = {
      them — see 0119. */
   Water_Pipe_Size_Operator: { pk: "Water_Pipe_Size_Operator_ID",
     order: "Water_Pipe_Size_ID" },
+  /* Gas pipe sizes against the load they carry. Ordered by kW for the
+     same reason water is ordered by meters: that is the order the
+     sizing reads them in, and a list on screen that walks differently
+     from the build is a list that will be argued with. */
+  Gas_Pipe_Size:       { pk: "Gas_Pipe_Size_ID",       order: "Max_kW" },
+  Gas_Pipe_Size_Operator: { pk: "Gas_Pipe_Size_Operator_ID",
+    order: "Gas_Pipe_Size_ID" },
+  /* Diversity factors against supply count. Empty until somebody
+     configures it, and the gas build refuses to size a main rather than
+     assuming a factor — see 0131. */
+  Gas_Diversity:       { pk: "Gas_Diversity_ID",       order: "Max_Supplies" },
+  Gas_Diversity_Operator: { pk: "Gas_Diversity_Operator_ID",
+    order: "Gas_Diversity_ID" },
   /* Read-only here: a view, listed so the pipe size screen can offer
      the operators that actually work in water. Writes to it would fail
      at the database, which is the right answer — an operator's

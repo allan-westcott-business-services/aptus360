@@ -13,6 +13,8 @@ import CustomersAdmin from "./CustomersAdmin.jsx";
 import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
 import GisStylesAdmin from "./GisStylesAdmin.jsx";
 import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
+import GasPipeSizesAdmin from "./GasPipeSizesAdmin.jsx";
+import GasDiversityAdmin from "./GasDiversityAdmin.jsx";
 import AdminMenuAdmin from "./AdminMenuAdmin.jsx";
 
 /* Admin shell: a list of reference tables on the left, the editor on the
@@ -155,6 +157,10 @@ export default function AdminPage() {
           <GisStylesAdmin />
         ) : table?.special === "waterpipes" ? (
           <WaterPipeSizesAdmin />
+        ) : table?.special === "gaspipes" ? (
+          <GasPipeSizesAdmin />
+        ) : table?.special === "gasdiversity" ? (
+          <GasDiversityAdmin />
         ) : table ? (
           <GenericTable table={table} />
         ) : null}

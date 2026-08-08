@@ -358,6 +358,17 @@ export function buildRows(data, opts = {}) {
          known about the middle of the booking, and drawing it full of
          holes would be inventing that. */
       gaps: gapsIn(parts, span, rangeStart),
+      /* The day rows, normalised, in date order. The board lays a drag
+         out from these — it is the same list the endpoint will work
+         from, in the same shape, so what a bar does the instant it is
+         dropped is what the database is about to be told. */
+      parts: [...parts]
+        .map((p) => ({
+          date: String(p.Work_Date).slice(0, 10),
+          part: p.Part || "Full",
+          offSite: !!p.Off_Site,
+        }))
+        .sort((a, b) => a.date.localeCompare(b.date)),
       projectId: sub?.Project_ID ?? null,
       raw: a,
       sub,

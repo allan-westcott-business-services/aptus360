@@ -131,21 +131,6 @@ function layHalves(start, startPM, halves, a) {
   return rows;
 }
 
-/* `count` working days from `from` inclusive — used only to give a
-   booking with no day rows a length. */
-function layDays(from, count, a) {
-  const out = [];
-  let cursor = from;
-  let guard = 0;
-  while (out.length < count && guard++ < 400) {
-    const part = partOn(cursor, a);
-    if (part) out.push({ date: cursor, part });
-    cursor = shiftDay(cursor, 1);
-    if (!cursor) break;
-  }
-  return out;
-}
-
 export default async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
@@ -162,6 +147,22 @@ export default async function handler(req, context) {
     const shift = Number.isFinite(Number(body.halves))
       ? Math.round(Number(body.halves))
       : Math.round(Number(body.days) * 2);
+
+    /* An answer to "which weekend halves does this work", given because
+       the move ran into a weekend and the board asked. Saved with the
+       move rather than before it: the flags and the days they produce
+       are one decision, and writing the flags first would leave a
+       booking claiming Saturdays with its days still on weekdays if the
+       move then failed.
+
+       Only the four keys, and only as booleans. Whatever else is in the
+       body is not a weekend rule. */
+    const asked = body.weekend && typeof body.weekend === "object"
+      ? {
+        Sat_AM: !!body.weekend.Sat_AM, Sat_PM: !!body.weekend.Sat_PM,
+        Sun_AM: !!body.weekend.Sun_AM, Sun_PM: !!body.weekend.Sun_PM,
+      }
+      : null;
     if (!Number.isInteger(shift)) {
       return json({ error: "halves must be a whole number of half-days." }, 400);
     }
@@ -176,6 +177,10 @@ export default async function handler(req, context) {
       .eq("Assignment_ID", id)
       .single();
     if (readErr) throw readErr;
+
+    /* What the days are laid over: the answer just given, or what the
+       booking already claimed. */
+    const rule = asked || asgn;
 
     const { data: existing } = await db
       .from("Call_Off_Work_Day")
@@ -197,7 +202,8 @@ export default async function handler(req, context) {
         return json({ error: "This assignment has no usable start and end date." }, 400);
       }
       const { error } = await db.from("Call_Off_Assignment")
-        .update({ Start_Date: s, End_Date: e }).eq("Assignment_ID", id);
+        .update({ Start_Date: s, End_Date: e, ...(asked || {}) })
+        .eq("Assignment_ID", id);
       if (error) throw error;
       return json({
         Assignment_ID: Number(id), Start_Date: s, End_Date: e,
@@ -223,14 +229,14 @@ export default async function handler(req, context) {
       return json({ error: "This assignment has no usable start date." }, 400);
     }
     const startHalf = resolveStartHalf(target, ((pos % 2) + 2) % 2 === 1,
-      asgn, shift < 0 ? -1 : 1);
+      rule, shift < 0 ? -1 : 1);
     if (!startHalf) {
       return json({
         error: "This assignment works no half of any day, so it cannot be placed.",
       }, 400);
     }
 
-    const laid = layHalves(startHalf.date, startHalf.pm, parts, asgn);
+    const laid = layHalves(startHalf.date, startHalf.pm, parts, rule);
     if (!laid.length) {
       return json({ error: "There was nowhere to put this booking." }, 400);
     }
@@ -239,7 +245,7 @@ export default async function handler(req, context) {
 
     const { error: updErr } = await db
       .from("Call_Off_Assignment")
-      .update({ Start_Date: start, End_Date: end })
+      .update({ Start_Date: start, End_Date: end, ...(asked || {}) })
       .eq("Assignment_ID", id);
     if (updErr) throw updErr;
 

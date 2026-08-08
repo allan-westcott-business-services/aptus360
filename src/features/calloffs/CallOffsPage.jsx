@@ -3,6 +3,7 @@ import {
   listAllCallOffs, setCallOffStatus, updateCallOff, deleteCallOff,
 } from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
+import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import {
@@ -76,6 +77,27 @@ export default function CallOffsPage() {
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(() => recall("callOffStatus", "open"));
   const [openId, setOpenId] = useState(null);
+
+  /* Arrived here from the planning board, which asked for one call-off
+     in particular. Taken on mount and whenever another request comes in
+     — the page may already be showing, in which case nothing remounts
+     and only the listener fires.
+
+     The status filter is cleared as well: a booking on the board can
+     belong to a call-off the current filter hides, and switching to a
+     page that says "no results" is a worse answer than switching to the
+     row somebody asked for. */
+  useEffect(() => {
+    const take = (intent) => {
+      const id = Number(intent?.submissionId);
+      if (!id) return;
+      setOpenId(id);
+      setStatus("all");
+      setQ("");
+    };
+    take(takeCallOffIntent());
+    return onOpenCallOff(take);
+  }, []);
 
   useEffect(() => remember("callOffStatus", status), [status]);
 

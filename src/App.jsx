@@ -1,6 +1,7 @@
 import { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import { onOpenGis } from "./lib/gisIntent.js";
+import { onOpenCallOff } from "./lib/callOffIntent.js";
 import { remember, recallOneOf } from "./lib/session.js";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
@@ -92,6 +93,12 @@ function Shell() {
      is left for the canvas to collect; all the shell has to do is put it
      on screen. */
   useEffect(() => onOpenGis(() => setView("gis-canvas")), []);
+
+  /* The planning board handing somebody over to where a booking is
+     actually edited. Same arrangement as the canvas above: the board
+     says where it wants to go, the shell switches, and the call-offs
+     page collects the payload when it mounts. */
+  useEffect(() => onOpenCallOff(() => setView("call-offs")), []);
   const [collapsed, setCollapsed] = useState(false);
 
   let content;

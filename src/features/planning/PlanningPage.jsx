@@ -1,13 +1,15 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { getPlanning, moveAssignment } from "../../api/planning.js";
+import { getPlanning, moveAssignment, deleteAssignment } from "../../api/planning.js";
 import { remember, recall } from "../../lib/session.js";
 import {
   DAY_MS, buildRows, packLanes, daysInRange, isWeekend, todayMs, toISO,
   phaseColours, activeDays, nextActiveDay, prevActiveDay,
 } from "./timeline.js";
 import { shiftByHalves } from "../calloffs/assignments.js";
+import { openCallOff } from "../../lib/callOffIntent.js";
 import AssignmentModal from "./AssignmentModal.jsx";
 import PmColoursModal from "./PmColoursModal.jsx";
+import WeekendDropModal from "./WeekendDropModal.jsx";
 
 /* The schedule, as a board.
 
@@ -79,6 +81,13 @@ export default function PlanningPage() {
   const [activeOnly, setActiveOnly] = useState(false);
   const [collapsed, setCollapsed] = useState(() => new Set());
   const [openBar, setOpenBar] = useState(null);
+  /* Where the right-click menu is, and what it is about. Null when
+     closed — the position is part of the same value so the two can
+     never disagree about whether there is a menu. */
+  const [menu, setMenu] = useState(null);
+  /* A drop that ran into a weekend, held until somebody says what to do
+     with it. Nothing is written and the bar does not move until then. */
+  const [weekendAsk, setWeekendAsk] = useState(null);
   const [coloursOpen, setColoursOpen] = useState(false);
 
   useEffect(() => remember("planPivot", pivot), [pivot]);
@@ -94,6 +103,21 @@ export default function PlanningPage() {
   }
   useEffect(() => { load(); }, []);
 
+  /* Escape closes the menu, and closes it before anything else does —
+     a menu that survives the key that closes everything else is a menu
+     somebody has to hunt for a way out of. */
+  useEffect(() => {
+    if (!menu) return undefined;
+    const key = (e) => { if (e.key === "Escape") setMenu(null); };
+    const scroll = () => setMenu(null);
+    window.addEventListener("keydown", key);
+    window.addEventListener("scroll", scroll, true);
+    return () => {
+      window.removeEventListener("keydown", key);
+      window.removeEventListener("scroll", scroll, true);
+    };
+  }, [menu]);
+
   /* A message that clears itself. Used for the two edges of the jump
      buttons and for what a drag did, neither of which is an error and
      neither of which should stay on screen. */
@@ -102,6 +126,12 @@ export default function PlanningPage() {
     window.clearTimeout(say._t);
     say._t = window.setTimeout(() => setNote(""), 4000);
   }, []);
+
+  /* The current board, readable from a closure that was built earlier.
+     The commit path needs the state to put back on failure, and it must
+     be the state as it is when the write starts. */
+  const dataRef = useRef(null);
+  dataRef.current = data;
 
   const days = useMemo(() => daysInRange(rangeStart, rangeDays), [rangeStart, rangeDays]);
   const rangeEnd = rangeStart + rangeDays * DAY_MS;
@@ -169,6 +199,42 @@ export default function PlanningPage() {
      few hundred absolutely positioned divs, and rebuilding it sixty
      times a second to follow a cursor is how a drag becomes a stutter. */
   const trackRef = useRef(null);
+
+  /* The bars currently drawn, by id. A ref rather than state: the drop
+     handler is a closure built when the pointer went down, and it needs
+     whatever is on screen *now* — reading it from a ref means the
+     listener does not have to be torn down and rebuilt every time the
+     board re-renders mid-drag. */
+  const itemsById = useRef(new Map());
+
+  /* Writing a move, once it is settled.
+
+     One path whether the drop needed a question or not, so a move that
+     was answered at the dialog and one that went straight through
+     cannot end up doing different things. Optimistic, then reconciled:
+     the board is the thing being worked in, and waiting for a round
+     trip before the bar moves makes a drag feel broken on a slow
+     connection.
+
+     `before` is the board as it was, kept rather than the move being
+     undone by shifting back — a shift is not always reversible once the
+     weekend has absorbed a half, and putting the old state back is the
+     only way to be sure the board shows what the database holds. */
+  const commitMove = useCallback(async (assignmentId, halves, weekend, item) => {
+    const before = dataRef.current;
+    setData((cur) => shiftInPlace(cur, assignmentId, halves, weekend));
+    try {
+      await moveAssignment(assignmentId, halves, weekend);
+      const n = Math.abs(halves) / 2;
+      const much = n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`;
+      say(`${item?.ref ? `${item.ref} \u00b7 ` : ""}moved ${much} `
+        + `${halves > 0 ? "later" : "earlier"}.`);
+    } catch (err) {
+      setData(before);
+      setError(`Could not move it: ${err.message}`);
+    }
+  }, [say]);
+
   const [drag, setDrag] = useState(null);
   const dragRef = useRef(null);
   dragRef.current = drag;
@@ -213,30 +279,22 @@ export default function PlanningPage() {
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
       if (!d || !d.moved || !d.halves) return;
-      /* Optimistic, then reconciled. The board is the thing being
-         worked in, and waiting for a round trip before the bar moves
-         makes a drag feel broken on a slow connection.
+      const item = itemsById.current.get(d.id);
 
-         The previous state is kept rather than the move being undone by
-         shifting back: a shift is not always reversible once the
-         weekend has absorbed a half, and putting the old days back is
-         the only way to be sure the board shows what the database
-         holds. */
-      /* The board as it was before the drag started — this closure is
-         built when the pointer goes down and deliberately does not
-         follow `data` afterwards, so it holds the state to put back if
-         the write fails rather than the optimistic one. */
-      const before = data;
-      setData((cur) => shiftInPlace(cur, d.assignmentId, d.halves));
-      try {
-        await moveAssignment(d.assignmentId, d.halves);
-        const n = Math.abs(d.halves) / 2;
-        say(`Moved ${n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`} `
-          + `${d.halves > 0 ? "later" : "earlier"}.`);
-      } catch (err) {
-        setData(before);
-        setError(`Could not move it: ${err.message}`);
+      /* Does this land on a weekend? Asked of the move itself rather
+         than of where the cursor was: a booking can be dropped on a
+         Thursday and still spill into Saturday, and dropping *onto* a
+         Saturday it already works is not a question at all.
+
+         Where it does, nothing is written until somebody answers. The
+         bar stays where it was, which is the honest state — the move
+         has not happened yet. */
+      if (item && landsOnWeekend(item.parts || [], d.halves, weekendOf(item))) {
+        setWeekendAsk({ item, halves: d.halves, days: item.parts || [] });
+        return;
       }
+      await commitMove(d.assignmentId, d.halves, null, item);
+      return;
     };
     window.addEventListener("pointermove", move);
     window.addEventListener("pointerup", up);
@@ -441,6 +499,7 @@ export default function PlanningPage() {
               }
 
               const { spans, laneCount } = packLanes((row.items || []).map((it) => ({ ...it })));
+              for (const sp of spans) itemsById.current.set(sp.id, sp);
               const height = Math.max(ROW_MIN_H, laneCount * LANE_H + 8);
 
               return (
@@ -494,6 +553,27 @@ export default function PlanningPage() {
                           }}
                           title={`${item.label}\n${item.startDate} \u2192 ${item.endDate}`}
                           onPointerDown={(e) => onBarPointerDown(e, item)}
+                          onContextMenu={(e) => {
+                            /* Unassigned chips have nothing to edit and
+                               nothing to delete — there is no booking
+                               yet — so they keep the browser's own
+                               menu rather than being given one that
+                               can only disappoint. */
+                            if (item.kind !== "assignment") return;
+                            e.preventDefault();
+                            /* Kept inside the window here, where the
+                               pointer is, rather than while rendering.
+                               A component that reads window.innerWidth
+                               to draw itself cannot be rendered outside
+                               a browser, and being able to render it
+                               outside one is what has caught two of the
+                               faults in this file. */
+                            setMenu({
+                              item,
+                              x: Math.min(e.clientX, window.innerWidth - 210),
+                              y: Math.min(e.clientY, window.innerHeight - 120),
+                            });
+                          }}
                           onClick={() => {
                             /* A drag ends with a click. Opening the
                                panel every time somebody moved a bar
@@ -559,11 +639,93 @@ export default function PlanningPage() {
           </div>
 
           <p className="pln-help">
-            Drag a booking sideways to move it &mdash; its work days move with it.
-            Hold the middle mouse button to pan. Moving work to a different team is
-            done on the call-off, where the teams qualified for the phase are shown.
+            Drag a booking sideways to move it &mdash; its work days move with it, half
+            a day at a time. Right-click one to edit or delete it. Hold the middle
+            mouse button to pan. Moving work to a different team is done on the
+            call-off, where the teams qualified for the phase are shown.
           </p>
         </>
+      )}
+
+      {/* ── The right-click menu ──
+
+          Two things: open the call-off where this booking is edited,
+          and delete it. Deliberately not an editor of its own — moving
+          work to another team is a question about craft, region and
+          clashes, and a second place that half-answers it is how the
+          two come to disagree about what is allowed.
+
+          Positioned where the pointer was, and closed by anything: a
+          click, a scroll, Escape. A menu that outlives the thing it is
+          about is worse than no menu. */}
+      {menu && (
+        <>
+          <div className="pln-menu-veil" onClick={() => setMenu(null)}
+            onContextMenu={(e) => { e.preventDefault(); setMenu(null); }} />
+          <div className="pln-menu" role="menu"
+            style={{ left: menu.x, top: menu.y }}>
+            <p className="pln-menu-t">{menu.item.ref} &middot; {menu.item.phase}</p>
+            <button role="menuitem" onClick={() => {
+              const sid = menu.item.submissionId;
+              setMenu(null);
+              openCallOff({ submissionId: sid });
+            }}>
+              Edit on the call-off
+            </button>
+            <button role="menuitem" className="danger" onClick={async () => {
+              const it = menu.item;
+              setMenu(null);
+              if (!window.confirm(
+                `Delete this booking?\n\n${it.ref} \u00b7 ${it.phase}\n`
+                + `${it.startDate} to ${it.endDate}\n\n`
+                + "The days under it go too. The phase goes back to unassigned.")) return;
+              const before = dataRef.current;
+              const dayIds = (data.workDays || [])
+                .filter((w) => Number(w.Assignment_ID) === it.assignmentId)
+                .map((w) => w.Work_Day_ID);
+              /* Taken off the board first. A delete that leaves the bar
+                 sitting there until a round trip finishes reads as a
+                 click that did not register, and the second click
+                 deletes something else. */
+              setData((cur) => ({
+                ...cur,
+                assignments: (cur.assignments || [])
+                  .filter((a) => Number(a.Assignment_ID) !== it.assignmentId),
+                workDays: (cur.workDays || [])
+                  .filter((w) => Number(w.Assignment_ID) !== it.assignmentId),
+              }));
+              try {
+                await deleteAssignment(it.assignmentId, dayIds);
+                say(`Deleted ${it.ref} \u00b7 ${it.phase}.`);
+              } catch (err) {
+                setData(before);
+                setError(`Could not delete it: ${err.message}`);
+              }
+            }}>
+              Delete booking
+            </button>
+          </div>
+        </>
+      )}
+
+      {/* ── A move that ran into the weekend ──
+
+          Nothing has been written and the bar has not moved. Whatever
+          is chosen here is applied as one operation: the days and the
+          weekend rule they were laid over, together. */}
+      {weekendAsk && (
+        <WeekendDropModal
+          item={weekendAsk.item}
+          days={weekendAsk.days}
+          halves={weekendAsk.halves}
+          weekend={weekendOf(weekendAsk.item)}
+          onCancel={() => setWeekendAsk(null)}
+          onConfirm={(weekend) => {
+            const ask = weekendAsk;
+            setWeekendAsk(null);
+            commitMove(ask.item.assignmentId, ask.halves, weekend, ask.item);
+          }}
+        />
       )}
 
       {openBar && data && (
@@ -593,6 +755,55 @@ export default function PlanningPage() {
   );
 }
 
+/* The four flags as this booking currently claims them. */
+export const weekendOf = (item) => ({
+  Sat_AM: !!item?.raw?.Sat_AM, Sat_PM: !!item?.raw?.Sat_PM,
+  Sun_AM: !!item?.raw?.Sun_AM, Sun_PM: !!item?.raw?.Sun_PM,
+});
+
+/* Would this move put work on a Saturday or a Sunday?
+
+   Asked by laying the move out twice: once as if every weekend half
+   were worked, and once over what this booking actually claims. If the
+   first touches a weekend and the two disagree, the weekend is in the
+   way and somebody has to say what happens to it.
+
+   Both halves of that test matter.
+
+   Laying it with every half worked is what finds the case in the
+   question. A full day on the Friday nudged half a day forward is an
+   afternoon on the Friday and a morning that falls on the Saturday —
+   and the booking's own rule, which says no weekend working, quietly
+   pushes that morning to Monday. Comparing the move against itself
+   would never notice, because that is exactly what its rule says to do.
+   The question is not "does the rule put work on a weekend", it is
+   "does this move run into one".
+
+   Comparing the two is what stops it asking when there is nothing to
+   ask. A gang that already works Saturday mornings, moved so a morning
+   lands on a Saturday, gets what it was always going to get — the two
+   lays are identical and no question is worth putting on screen.
+
+   Asked of the naive lay rather than of where the cursor was let go: a
+   booking can be dropped on a Thursday and still spill into Saturday. */
+const ALL_WEEKEND = { Sat_AM: true, Sat_PM: true, Sun_AM: true, Sun_PM: true };
+
+export function landsOnWeekend(days, halves, weekend) {
+  if (!days?.length) return false;
+
+  const naive = shiftByHalves(days, halves, ALL_WEEKEND);
+  const onWeekend = naive.days.some((d) => {
+    const [y, m, dd] = String(d.date).slice(0, 10).split("-").map(Number);
+    const w = new Date(y, m - 1, dd, 12).getDay();
+    return w === 0 || w === 6;
+  });
+  if (!onWeekend) return false;
+
+  const asIs = shiftByHalves(days, halves, weekend || {});
+  const key = (r) => r.days.map((d) => `${d.date}:${d.part}`).join("|");
+  return key(asIs) !== key(naive);
+}
+
 /* Moving a booking in the copy the board is drawing from.
 
    The days are re-laid rather than shifted, through the same function
@@ -606,7 +817,7 @@ export default function PlanningPage() {
    change the dates in the panel and leave the bar where it was.
 
    Exported so the move can be checked without a browser. */
-export function shiftInPlace(data, assignmentId, halves) {
+export function shiftInPlace(data, assignmentId, halves, weekendOverride) {
   if (!data) return data;
   const id = Number(assignmentId);
 
@@ -637,7 +848,10 @@ export function shiftInPlace(data, assignmentId, halves) {
     };
   }
 
-  const weekend = {
+  /* The answer just given at the dialog, where there was one, so the
+     board shows what is about to be written rather than what the
+     booking claimed a moment ago. */
+  const weekend = weekendOverride || {
     Sat_AM: !!asgn.Sat_AM, Sat_PM: !!asgn.Sat_PM,
     Sun_AM: !!asgn.Sun_AM, Sun_PM: !!asgn.Sun_PM,
   };
@@ -647,7 +861,8 @@ export function shiftInPlace(data, assignmentId, halves) {
   return {
     ...data,
     assignments: data.assignments.map((a) => (Number(a.Assignment_ID) === id
-      ? { ...a, Start_Date: laid.days[0].date, End_Date: laid.end } : a)),
+      ? { ...a, Start_Date: laid.days[0].date, End_Date: laid.end, ...(weekendOverride || {}) }
+      : a)),
     workDays: [
       ...(data.workDays || []).filter((w) => Number(w.Assignment_ID) !== id),
       ...laid.days.map((d, i) => ({
@@ -771,4 +986,18 @@ const CSS = `
 .pln-key-waiting { border: 2px dashed #94a3b8; background: rgba(148,163,184,.3); }
 .pln-key-now { width: 2px !important; height: 13px; background: #ef4444; border-radius: 0; }
 .pln-help { font-size: 11.5px; color: var(--muted); margin: 0; }
+
+.pln-menu-veil { position: fixed; inset: 0; z-index: 40; }
+.pln-menu { position: fixed; z-index: 41; background: var(--white);
+  border: 1px solid var(--border); border-radius: 8px; min-width: 190px;
+  box-shadow: 0 12px 32px rgba(15,23,42,.22); padding: 4px; }
+.pln-menu-t { margin: 0; padding: 5px 9px 6px; font-size: 10.5px; font-weight: 700;
+  color: var(--muted); border-bottom: 1px solid var(--border);
+  white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 260px; }
+.pln-menu button { display: block; width: 100%; text-align: left; border: 0;
+  background: transparent; padding: 7px 9px; font: 600 12.5px inherit;
+  color: var(--text); border-radius: 5px; cursor: pointer; }
+.pln-menu button:hover { background: #f1f5f9; }
+.pln-menu button.danger { color: #b91c1c; }
+.pln-menu button.danger:hover { background: #fef2f2; }
 `;

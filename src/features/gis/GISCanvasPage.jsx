@@ -7174,24 +7174,30 @@ export default function GISCanvasPage() {
                answers to one question. Nothing is invented where the
                design sets nothing. */
             ...defaultsFor(mainType.Type_Key),
-            /* The size worked out for this length, where there is one,
-               overriding the design's blanket default.
+            /* The size worked out for this length, as both the
+               reference and the text.
 
-               Written after defaultsFor rather than before it, so a
-               calculated size wins over a scheme-wide one. The design's
-               default answers "what do we normally lay here"; this
-               answers "what does this length have to carry", and the
-               second is the better answer wherever it exists.
+               Same pair the water build writes, and for the reason its
+               comment gives: the id is what a schedule joins on, and
+               Size is what every existing display already reads —
+               trench contents labels a pipe with it. Naming them
+               anything else produces a sized main that looks unsized,
+               which is exactly what the first version of this did.
 
-               Spread rather than assigned so that an unsized build —
-               no rules configured — leaves the default exactly as it
-               was instead of overwriting it with undefined. */
+               Written after defaultsFor rather than before, so a
+               calculated size wins over the scheme-wide default. The
+               design's default answers "what do we normally lay here";
+               this answers "what does this length have to carry".
+
+               Spread rather than assigned, so an unsized build — no
+               rules configured — leaves the default exactly as it was
+               instead of overwriting it with undefined. */
             ...(r.size ? {
-              Pipe_Size: r.size.label,
-              Diameter_mm: r.size.diameter,
-              /* What it was sized on, kept with the pipe. A diameter
-                 somebody disagrees with six months on is answerable
-                 from the drawing rather than by rebuilding it. */
+              Gas_Pipe_Size_ID: r.size.id,
+              Size: r.size.label,
+              /* What decided that size, so the drawing carries its own
+                 reasoning and the number can be checked without
+                 rerunning anything. */
               Load_kW: r.kw,
               Raw_Load_kW: r.rawKw,
               Supplies: r.supplies,

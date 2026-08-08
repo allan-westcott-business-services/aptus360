@@ -522,6 +522,12 @@ export default function GISCanvasPage() {
   /* Where each label landed this frame, so one can be picked up. */
   const labelHits = useRef([]);
   const [svcCheck, setSvcCheck] = useState(null);
+  /* Which gas meters the last build could not reach.
+
+     Held past the build rather than shown in the confirm box: a list
+     read before pressing OK is a list read while deciding whether to
+     press it, and this is the one somebody works from afterwards. */
+  const [gasUnserved, setGasUnserved] = useState(null);
   const [classPlan, setClassPlan] = useState(null);
   const [reclass, setReclass] = useState(false);
   /* Right-click menu: what was clicked, and where to put the menu.
@@ -7282,6 +7288,13 @@ export default function GISCanvasPage() {
 
       await load(projectId);
       setError("");
+      /* The shortfall, kept on screen and clickable.
+
+         Cleared on a clean build rather than left showing the last
+         one — a panel naming a meter that is now served is worse than
+         no panel, because it sends somebody to look at a plot that is
+         already right. */
+      setGasUnserved(plan.unservedMeters?.length ? plan.unservedMeters : null);
       setStatus(`Gas network: ${plan.runs.length} run(s), ${plan.totalM} m of main`
         + `, ${plan.services} service trench(es), ${plan.meters} gas meter(s)`
         + (plan.sized
@@ -11101,6 +11114,59 @@ export default function GISCanvasPage() {
                     onChange={(e) => { setReclass(e.target.checked); setClassPlan(null); }} />
                   Re-check features that already have a classification
                 </label>
+              </div>
+            )}
+
+            {gasUnserved && (
+              <div className="gis-trace" role="dialog"
+                aria-label="Gas meters not reached">
+                <div className="gt-head">
+                  <strong>Gas meters not reached</strong>
+                  <button className="fe-x" onClick={() => setGasUnserved(null)}
+                    aria-label="Close">&times;</button>
+                </div>
+
+                <p className="tc-sum">
+                  {gasUnserved.length} gas meter(s) are not fed by the main that
+                  was just laid, so they count for nothing in its size.
+                </p>
+
+                <table className="gt-tbl">
+                  <thead>
+                    <tr><th>Plot</th><th>Why</th></tr>
+                  </thead>
+                  <tbody>
+                    {gasUnserved.map((m) => (
+                      <tr key={m.id} className="tc-row"
+                        onClick={() => {
+                          /* The service where there is one, since that
+                             is the thing to drag; the meter otherwise,
+                             because there is nothing else to look at. */
+                          const id = m.serviceId ?? m.id;
+                          setSelected([id]); zoomTo([id]); setTool("select");
+                        }}
+                        title="Select and zoom to it">
+                        <td>{(() => {
+                          /* The plot number, which is what somebody
+                             walks the site with. The meter's own label
+                             where there is no plot behind it — a seed
+                             placed without one is still a thing on the
+                             drawing to go and look at. */
+                          const p = plotList?.find((x) =>
+                            Number(x.plot_id ?? x.Plot_ID) === Number(m.plotId));
+                          return p?.plot_number ?? p?.Plot_Number ?? m.label;
+                        })()}</td>
+                        <td>{m.why}</td>
+                      </tr>
+                    ))}
+                  </tbody>
+                </table>
+
+                <p className="tc-hint">
+                  Click a row to find it. A meter on no service trench needs one
+                  drawing or Auto Service running; a service that doesn&rsquo;t
+                  land needs its end dragging onto the mains. Then build again.
+                </p>
               </div>
             )}
 

@@ -457,6 +457,13 @@ export function gasMainRuns(features = [], opts = {}) {
      a total they look identical, and the second one undersizes a main. */
   const servedBy = new Map();
   const kwBy = new Map();
+  /* And which meters, not only how many.
+
+     The counts answer "is this right"; the list answers "which one is
+     wrong", and only the second is actionable. A total one short sends
+     somebody hunting across seventy plots for a meter the build already
+     knew the name of. */
+  const metersBy = new Map();
   const noLoad = [];
   const loadOf = (m) => {
     if (!plotById || m.Plot_ID == null) return null;
@@ -481,6 +488,13 @@ export function gasMainRuns(features = [], opts = {}) {
     }
     if (best && best.d <= tol) {
       servedBy.set(best.sv.Feature_ID, (servedBy.get(best.sv.Feature_ID) || 0) + 1);
+      if (!metersBy.has(best.sv.Feature_ID)) metersBy.set(best.sv.Feature_ID, []);
+      metersBy.get(best.sv.Feature_ID).push({
+        id: m.Feature_ID,
+        label: m.Label || `Meter ${m.Feature_ID}`,
+        plotId: m.Plot_ID ?? null,
+        at: m.Geometry[0],
+      });
       const kw = loadOf(m);
       if (kw == null) {
         if (sizing) {
@@ -535,12 +549,21 @@ export function gasMainRuns(features = [], opts = {}) {
     } else {
       /* Reaches a meter but not the main. The gas has nowhere to come
          from, and the pipe should not be drawn to a tee that isn't
-         there. */
+         there.
+
+         Two ways to land here, and the gap tells them apart: a spur
+         that stops short of the main, and one that meets it at a point
+         the POC cannot reach. The second has a small gap and a real
+         join, which is why every proximity check passes on it. */
       unattachedServices.push({
         id: sv.Feature_ID,
         label: sv.Label || `Service trench ${sv.Feature_ID}`,
         meters: carried,
+        /* The meters that go with it, so the shortfall can be named
+           rather than counted. */
+        meterList: metersBy.get(sv.Feature_ID) || [],
         gap: Math.round(bd * 100) / 100,
+        reached: hit >= 0 && bd <= eps,
         at: g[0],
       });
     }
@@ -842,6 +865,27 @@ export function gasMainRuns(features = [], opts = {}) {
     strandedMeters,
     /* Service trenches that reach a meter but not the main. */
     unattachedServices,
+    /* ── Every meter the main does not reach, by name ──
+
+       The two lists above say what is wrong with the drawing; this says
+       who it costs. They are kept separate because the fixes differ —
+       one is a missing spur, the other a spur that does not land — but
+       a total one short is a question about meters, and answering it
+       should not mean cross-referencing two lists and a plot schedule.
+
+       `why` travels with each row so the panel can say which fix
+       applies without recomputing anything. */
+    unservedMeters: [
+      ...strandedMeters.map((m) => ({ ...m, why: "on no service trench" })),
+      ...unattachedServices.flatMap((s) => (s.meterList || []).map((m) => ({
+        ...m,
+        why: s.reached
+          ? "its service meets the main at a point the POC can\u2019t reach"
+          : `its service stops ${s.gap} m short of the main`,
+        serviceId: s.id,
+        serviceLabel: s.label,
+      }))),
+    ],
     /* Mains trench with no pipe: not joined to the POC, or nothing
        taking gas beyond it. */
     unreachable,

@@ -264,14 +264,30 @@ export default function PlanningPage() {
   }, []);
 
   const commitMove = useCallback(async (op) => {
-    const { assignmentId, startShift, endShift, weekend, item, toTeam } = op;
+    /* Called with an object, and only ever with an object. Checked
+       because it has not always been: an earlier version took five
+       positional arguments, one call site was left behind when it
+       changed, and destructuring a number gave undefined for every
+       field — which travelled all the way to a message reading
+       "shortened by NaN days" and a bar that snapped back.
+
+       A missing id is the one field that cannot be recovered from, so
+       it is the one that is checked. Said out loud rather than swallowed:
+       a drag that does nothing and explains nothing is worse than one
+       that admits it went wrong. */
+    if (!op || typeof op !== "object" || !op.assignmentId) {
+      setError("Something went wrong moving that booking — nothing has changed.");
+      return;
+    }
+    const { assignmentId, startShift = 0, endShift = 0, weekend, item, toTeam } = op;
     const before = dataRef.current;
     setData((cur) => shiftInPlace(cur, assignmentId, startShift, endShift, weekend, toTeam));
     try {
       await moveAssignment(assignmentId, { startShift, endShift, weekend, teamId: toTeam });
 
       const much = (h) => {
-        const n = Math.abs(h) / 2;
+        const n = Math.abs(Number(h)) / 2;
+        if (!Number.isFinite(n) || !n) return "";
         return n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`;
       };
       const team = toTeam
@@ -283,9 +299,9 @@ export default function PlanningPage() {
          should not make somebody work out which it was. */
       const grew = endShift - startShift;
       const what = [
-        (startShift && startShift === endShift)
+        (startShift && startShift === endShift && much(startShift))
           ? `moved ${much(startShift)} ${startShift > 0 ? "later" : "earlier"}` : null,
-        (grew !== 0)
+        (grew && much(grew))
           ? `${grew > 0 ? "extended" : "shortened"} by ${much(grew)}` : null,
         team ? `given to ${team}` : null,
       ].filter(Boolean).join(", ");
@@ -475,17 +491,13 @@ export default function PlanningPage() {
           + "Use right-click \u2192 Delete to remove it.");
         return;
       }
-      await commitMove(d.assignmentId, d.halves, null, item, toTeam);
-      return;
+      /* Does this run into a weekend? Asked of the work rather than of
+         where the cursor was: a booking can be dropped on a Thursday
+         and still spill into Saturday.
 
-      /* Does this land on a weekend? Asked of the move itself rather
-         than of where the cursor was: a booking can be dropped on a
-         Thursday and still spill into Saturday, and dropping *onto* a
-         Saturday it already works is not a question at all.
-
-         Where it does, nothing is written until somebody answers. The
-         bar stays where it was, which is the honest state — the move
-         has not happened yet. */
+         Nothing is written until somebody answers. The bar stays where
+         it was, which is the honest state — the move has not happened
+         yet. */
       if (touchesWeekend(item.parts || [], startShift, endShift)) {
         setWeekendAsk({
           kind: "move", item, startShift, endShift, toTeam, days: item.parts || [],

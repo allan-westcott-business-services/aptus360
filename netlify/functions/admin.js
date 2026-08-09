@@ -29,6 +29,8 @@ const TABLES = {
   Team_Region:     { pk: "Team_Region_ID",     order: "Team_Region_ID" },
   /* Phases, which work type involves which, and who is doing them. */
   Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
+  Dependency_Type:     { pk: "Dependency_Type_ID",     order: "Sort_Order" },
+  Task_Dependency:     { pk: "Task_Dependency_ID",     order: "Task_Dependency_ID" },
   Work_Type_Task_Type: { pk: "Work_Type_Task_Type_ID", order: "Display_Order" },
   Call_Off_Assignment: { pk: "Assignment_ID",          order: "Start_Date" },
   /* The days under an assignment. Missing from this list, every write

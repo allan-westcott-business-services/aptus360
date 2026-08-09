@@ -324,6 +324,17 @@ export function planningMock() {
       { Craft_ID: 5, Craft_Name: "Reinstatement" },
     ],
     teamRulesKnown: true,
+    /* Jointing and reinstatement both follow the dig, finish to start —
+       the two rules 0134 seeds. */
+    dependencies: [
+      { Task_Dependency_ID: 1, Predecessor_Task_Type_ID: 1, Successor_Task_Type_ID: 3, Dependency_Type_ID: 1, Work_Type_ID: null, Is_Active: true },
+      { Task_Dependency_ID: 2, Predecessor_Task_Type_ID: 1, Successor_Task_Type_ID: 4, Dependency_Type_ID: 1, Work_Type_ID: null, Is_Active: true },
+    ],
+    dependencyTypes: [
+      { Dependency_Type_ID: 1, Dependency_Type: "Finish to start", Kind: "finish_to_start", Lag_Halves: 0, Sort_Order: 10, Is_Active: true },
+      { Dependency_Type_ID: 2, Dependency_Type: "Start to start", Kind: "start_to_start", Lag_Halves: 0, Sort_Order: 20, Is_Active: true },
+      { Dependency_Type_ID: 3, Dependency_Type: "Start to start, half a day later", Kind: "start_to_start", Lag_Halves: 1, Sort_Order: 30, Is_Active: true },
+    ],
     statuses: [
       { Call_Off_Status_ID: 1, Status: "Scheduled", Colour: "#3b82f6", Display_Order: 10, Is_Active: true },
       { Call_Off_Status_ID: 2, Status: "In Progress", Colour: "#f59e0b", Display_Order: 20, Is_Active: true },

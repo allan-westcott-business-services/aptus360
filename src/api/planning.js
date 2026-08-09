@@ -18,7 +18,7 @@ export async function getPlanning() {
    is earlier. The assignment's work days are re-laid to match, over
    whatever weekend halves it works. */
 export async function moveAssignment(assignmentId, op = {}) {
-  const { startShift = 0, endShift = 0, weekend, teamId } = op;
+  const { startShift = 0, endShift = 0, weekend, teamId, also } = op;
   if (USE_MOCKS) {
     await delay(180);
     return { Assignment_ID: assignmentId, startShift, endShift };
@@ -37,6 +37,11 @@ export async function moveAssignment(assignmentId, op = {}) {
     endShift,
     ...(weekend ? { weekend } : {}),
     ...(teamId ? { teamId } : {}),
+    /* The bookings that follow this one, moving with it. Sent as part
+       of the same request rather than as one request each: they are one
+       decision, and half a cascade written is a schedule that no longer
+       says what anybody agreed. */
+    ...(also?.length ? { also } : {}),
   });
 }
 

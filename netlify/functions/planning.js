@@ -143,6 +143,18 @@ export default async function handler(req) {
       .select("Call_Off_Status_ID,Status,Colour,Display_Order,Is_Active")
       .order("Display_Order");
 
+    /* What follows what — 0134. Sent with the board because moving a
+       booking has to move its dependents in the same gesture, and
+       fetching the rules at that moment would mean a bar hanging under
+       the cursor. Tolerated missing, like the rest: a board with no
+       dependency rules is a board where nothing cascades. */
+    const { data: dependencies } = await db.from("Task_Dependency")
+      .select("Task_Dependency_ID,Predecessor_Task_Type_ID,Successor_Task_Type_ID,"
+        + "Dependency_Type_ID,Work_Type_ID,Is_Active");
+    const { data: dependencyTypes } = await db.from("Dependency_Type")
+      .select("Dependency_Type_ID,Dependency_Type,Kind,Lag_Halves,Sort_Order,Is_Active")
+      .order("Sort_Order");
+
     /* Which utilities each project has an agreement for. The original
        classified these by keyword on the agreement type's name because
        that was all it had; here the agreement carries Utility_ID, so
@@ -173,6 +185,8 @@ export default async function handler(req) {
       people,
       peopleHaveColours,
       statuses: statuses || [],
+      dependencies: (dependencies || []).filter((d) => d.Is_Active !== false),
+      dependencyTypes: dependencyTypes || [],
       agreements: agreements || [],
       utilities: utilities || [],
     });

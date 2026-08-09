@@ -131,6 +131,127 @@ function layHalves(start, startPM, halves, a) {
   return rows;
 }
 
+/* Applying one booking's move. The handler does this for the booking
+   that was dragged and then for each that follows it, which is why it
+   is a function and not the body of the handler: a cascade written half
+   one way and half another is exactly the kind of difference nobody
+   finds until the dates disagree. */
+async function applyMove(db, id, { startShift, endShift, asked, toTeam }) {
+  const { data: asgn, error: readErr } = await db
+    .from("Call_Off_Assignment")
+    .select("Assignment_ID,Submission_ID,Task_Type_ID,Team_ID,"
+      + "Start_Date,End_Date,Sat_AM,Sat_PM,Sun_AM,Sun_PM")
+    .eq("Assignment_ID", id)
+    .single();
+  if (readErr) throw readErr;
+
+  const rule = asked || asgn;
+
+  const { data: existing } = await db
+    .from("Call_Off_Work_Day")
+    .select("Work_Day_ID,Work_Date,Part,Off_Site")
+    .eq("Assignment_ID", id)
+    .order("Work_Date");
+  const had = (existing || []).map((r) => ({
+    ...r, Work_Date: String(r.Work_Date).slice(0, 10),
+  }));
+
+  if (!startShift && !endShift) {
+    const patch = { ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}) };
+    if (Object.keys(patch).length) {
+      const { error } = await db.from("Call_Off_Assignment")
+        .update(patch).eq("Assignment_ID", id);
+      if (error) throw error;
+    }
+    return {
+      Assignment_ID: Number(id),
+      Start_Date: asgn.Start_Date, End_Date: asgn.End_Date,
+      movedDays: 0, partial: false,
+    };
+  }
+
+  if (!had.length) {
+    const by = startShift > 0 ? Math.ceil(startShift / 2) : Math.floor(startShift / 2);
+    const s = shiftDay(asgn.Start_Date, by);
+    const e = shiftDay(asgn.End_Date, by);
+    if (!s || !e) throw new Error("This assignment has no usable start and end date.");
+    const { error } = await db.from("Call_Off_Assignment")
+      .update({
+        Start_Date: s, End_Date: e,
+        ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}),
+      })
+      .eq("Assignment_ID", id);
+    if (error) throw error;
+    return { Assignment_ID: Number(id), Start_Date: s, End_Date: e, movedDays: 0, partial: false };
+  }
+
+  let parts = [];
+  for (const r of had) {
+    const p = r.Part || "Full";
+    if (p === "Full") parts.push({ offSite: !!r.Off_Site }, { offSite: !!r.Off_Site });
+    else parts.push({ offSite: !!r.Off_Site });
+  }
+
+  if (startShift > 0) parts = parts.slice(startShift);
+  else if (startShift < 0) {
+    parts = [...Array(-startShift).fill(null).map(() => ({ offSite: false })), ...parts];
+  }
+  if (endShift > 0) {
+    parts = [...parts, ...Array(endShift).fill(null).map(() => ({ offSite: false }))];
+  } else if (endShift < 0) parts = parts.slice(0, parts.length + endShift);
+
+  if (!parts.length) throw new Error("A booking cannot be shorter than half a day.");
+
+  const firstPM = (had[0].Part || "Full") === "PM";
+  const pos = (firstPM ? 1 : 0) + startShift;
+  const target = shiftDay(had[0].Work_Date, Math.floor(pos / 2));
+  if (!target) throw new Error("This assignment has no usable start date.");
+  const startHalf = resolveStartHalf(target, ((pos % 2) + 2) % 2 === 1,
+    rule, startShift < 0 ? -1 : 1);
+  if (!startHalf) throw new Error("This assignment works no half of any day.");
+
+  const laid = layHalves(startHalf.date, startHalf.pm, parts, rule);
+  if (!laid.length) throw new Error("There was nowhere to put this booking.");
+  const start = laid[0].date;
+  const end = laid[laid.length - 1].date;
+
+  const { error: updErr } = await db
+    .from("Call_Off_Assignment")
+    .update({
+      Start_Date: start, End_Date: end,
+      ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}),
+    })
+    .eq("Assignment_ID", id);
+  if (updErr) throw updErr;
+
+  let movedDays = 0;
+  for (let i = 0; i < laid.length; i++) {
+    const to = laid[i];
+    const row = had[i];
+    const values = {
+      Assignment_ID: Number(id),
+      Work_Date: to.date,
+      Part: to.part,
+      Off_Site: to.offSite,
+    };
+    const { error } = row
+      ? await db.from("Call_Off_Work_Day").update(values).eq("Work_Day_ID", row.Work_Day_ID)
+      : await db.from("Call_Off_Work_Day").insert(values);
+    if (!error) movedDays += 1;
+  }
+  const spare = had.slice(laid.length).map((r) => r.Work_Day_ID);
+  if (spare.length) {
+    await db.from("Call_Off_Work_Day").delete().in("Work_Day_ID", spare);
+  }
+
+  return {
+    Assignment_ID: Number(id),
+    Start_Date: start, End_Date: end,
+    movedDays,
+    partial: movedDays !== laid.length,
+  };
+}
+
 export default async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
@@ -188,26 +309,17 @@ export default async function handler(req, context) {
 
     const { data: asgn, error: readErr } = await db
       .from("Call_Off_Assignment")
-      .select("Assignment_ID,Submission_ID,Task_Type_ID,Team_ID,"
-        + "Start_Date,End_Date,Sat_AM,Sat_PM,Sun_AM,Sun_PM")
+      .select("Assignment_ID,Submission_ID,Task_Type_ID,Team_ID")
       .eq("Assignment_ID", id)
       .single();
     if (readErr) throw readErr;
-
-    /* What the days are laid over: the answer just given, or what the
-       booking already claimed. */
-    const rule = asked || asgn;
 
     /* ── May that gang take this work? ──
 
        The same two rules the browser applied, applied again here. Not
        because the board is untrusted so much as because this endpoint
        is reachable without it, and a booking given to a gang that does
-       not cover the region is a gang sent to the wrong county.
-
-       Region first, and only where the project has one — a project with
-       no region should not make every team ineligible, which is the
-       allowance the shared rule makes for the same reason. */
+       not cover the region is a gang sent to the wrong county. */
     if (toTeam) {
       const { data: sub } = await db.from("Mains_Call_Off_Submission")
         .select("Submission_ID,Project_ID,Work_Type_ID")
@@ -226,8 +338,7 @@ export default async function handler(req, context) {
 
       if (project?.Region_ID != null) {
         const { data: covers } = await db.from("Team_Region")
-          .select("Team_ID").eq("Team_ID", toTeam)
-          .eq("Region_ID", project.Region_ID);
+          .select("Team_ID").eq("Team_ID", toTeam).eq("Region_ID", project.Region_ID);
         if (!covers?.length) {
           const { data: region } = await db.from("Region")
             .select("Region").eq("Region_ID", project.Region_ID).single();
@@ -246,169 +357,59 @@ export default async function handler(req, context) {
           .select("Team_ID").eq("Team_ID", toTeam).eq("Craft_ID", task.Craft_ID);
         if (!holds?.length) {
           return json({
-            error: `${team.Team_Name} does not hold the craft `
-              + `${task.Task_Type_Name || "this phase"} needs.`,
+            error: `${team.Team_Name} is not set up to perform `
+              + `${task.Task_Type_Name || "that work"}.`,
           }, 400);
         }
       }
     }
 
-    const { data: existing } = await db
-      .from("Call_Off_Work_Day")
-      .select("Work_Day_ID,Work_Date,Part,Off_Site")
-      .eq("Assignment_ID", id)
-      .order("Work_Date");
-    const had = (existing || []).map((r) => ({
-      ...r, Work_Date: String(r.Work_Date).slice(0, 10),
-    }));
+    const main = await applyMove(db, id, { startShift, endShift, asked, toTeam });
 
-    /* No day rows — a booking made before that table existed. There is
-       nothing to lay, so it moves in whole days, rounded away from zero
-       so half a day still moves it somewhere. */
-    /* Handed to another gang on the same days. Nothing to re-lay — the
-       dates and the halves are unchanged and only the team moves. Taken
-       before the laying below, which assumes there is a shift to apply
-       and would otherwise walk the booking to where it already is. */
-    if (!startShift && !endShift) {
-      const { error } = await db.from("Call_Off_Assignment")
-        .update({ Team_ID: toTeam, ...(asked || {}) })
-        .eq("Assignment_ID", id);
-      if (error) throw error;
-      return json({
-        Assignment_ID: Number(id),
-        Start_Date: asgn.Start_Date,
-        End_Date: asgn.End_Date,
-        Team_ID: toTeam,
-        halves: 0,
-        movedDays: 0,
-        partial: false,
-      });
-    }
+    /* ── What follows it ──
 
-    if (!had.length) {
-      const by = shift > 0 ? Math.ceil(shift / 2) : Math.floor(shift / 2);
-      const s = shiftDay(asgn.Start_Date, by);
-      const e = shiftDay(asgn.End_Date, by);
-      if (!s || !e) {
-        return json({ error: "This assignment has no usable start and end date." }, 400);
+       Each with its own shift and its own weekend answer, worked out by
+       the board from the rules in Task_Dependency and sent with the
+       move. Applied here rather than recomputed, so the schedule that
+       was previewed and agreed to is the schedule that is written.
+
+       One at a time and reported one at a time: there is no transaction
+       across these, so what matters is that the caller can be told
+       exactly how far it got rather than being left to guess. */
+    const followed = [];
+    const failed = [];
+    for (const step of Array.isArray(body.also) ? body.also : []) {
+      const stepId = Number(step.assignmentId);
+      if (!stepId || stepId === Number(id)) continue;
+      const stepWeekend = step.weekend && typeof step.weekend === "object"
+        ? {
+          Sat_AM: !!step.weekend.Sat_AM, Sat_PM: !!step.weekend.Sat_PM,
+          Sun_AM: !!step.weekend.Sun_AM, Sun_PM: !!step.weekend.Sun_PM,
+        }
+        : null;
+      try {
+        followed.push(await applyMove(db, stepId, {
+          startShift: Math.round(Number(step.startShift) || 0),
+          endShift: Math.round(Number(step.endShift) || 0),
+          asked: stepWeekend,
+          toTeam: null,
+        }));
+      } catch (e) {
+        failed.push({ Assignment_ID: stepId, error: e.message });
       }
-      const { error } = await db.from("Call_Off_Assignment")
-        .update({
-          Start_Date: s, End_Date: e,
-          ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}),
-        })
-        .eq("Assignment_ID", id);
-      if (error) throw error;
-      return json({
-        Assignment_ID: Number(id), Start_Date: s, End_Date: e,
-        halves: shift, movedDays: 0, partial: false,
-      });
-    }
-
-    /* The booking exploded into half-days in order, each carrying what
-       travels with it. Shifting the sequence and recomposing is what
-       lets a move of half a day turn two whole days into an afternoon,
-       a day and a morning — the same work, differently cut. */
-    let parts = [];
-    for (const r of had) {
-      const p = r.Part || "Full";
-      if (p === "Full") parts.push({ offSite: !!r.Off_Site }, { offSite: !!r.Off_Site });
-      else parts.push({ offSite: !!r.Off_Site });
-    }
-
-    /* Trimmed or padded at whichever end was dragged. A booking grown
-       gains plain half-days — on site, because nobody has said
-       otherwise — and one shrunk loses whatever the dropped halves
-       carried. The mirror of resizeByHalves in
-       features/calloffs/assignments.js, checked against it by test. */
-    if (startShift > 0) parts = parts.slice(startShift);
-    else if (startShift < 0) {
-      parts = [...Array(-startShift).fill(null).map(() => ({ offSite: false })), ...parts];
-    }
-    if (endShift > 0) {
-      parts = [...parts, ...Array(endShift).fill(null).map(() => ({ offSite: false }))];
-    } else if (endShift < 0) parts = parts.slice(0, parts.length + endShift);
-
-    if (!parts.length) {
-      return json({
-        error: "A booking cannot be shorter than half a day.",
-      }, 400);
-    }
-
-    const firstPM = (had[0].Part || "Full") === "PM";
-    const pos = (firstPM ? 1 : 0) + shift;
-    const target = shiftDay(had[0].Work_Date, Math.floor(pos / 2));
-    if (!target) {
-      return json({ error: "This assignment has no usable start date." }, 400);
-    }
-    const startHalf = resolveStartHalf(target, ((pos % 2) + 2) % 2 === 1,
-      rule, shift < 0 ? -1 : 1);
-    if (!startHalf) {
-      return json({
-        error: "This assignment works no half of any day, so it cannot be placed.",
-      }, 400);
-    }
-
-    const laid = layHalves(startHalf.date, startHalf.pm, parts, rule);
-    if (!laid.length) {
-      return json({ error: "There was nowhere to put this booking." }, 400);
-    }
-    const start = laid[0].date;
-    const end = laid[laid.length - 1].date;
-
-    const { error: updErr } = await db
-      .from("Call_Off_Assignment")
-      .update({
-        Start_Date: start, End_Date: end,
-        ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}),
-      })
-      .eq("Assignment_ID", id);
-    if (updErr) throw updErr;
-
-    /* The days move with it, each by the same shift. Read then written
-       one at a time rather than recomputed from the new range: the days
-       are not necessarily every day between start and end — a gang off
-       on the Wednesday has a gap — and rebuilding the range would
-       quietly fill it in.
-
-       Tolerated missing. An assignment made before the day table
-       existed has none, and moving it is still moving it. */
-    /* The day rows rewritten rather than shifted: a move of half a day
-       changes how many rows there are — two full days become three
-       rows, one of them a morning — so the ones that are left over are
-       deleted and the ones that are short are created. */
-    let movedDays = 0;
-    for (let i = 0; i < laid.length; i++) {
-      const to = laid[i];
-      const row = had[i];
-      const values = {
-        Assignment_ID: Number(id),
-        Work_Date: to.date,
-        Part: to.part,
-        Off_Site: to.offSite,
-      };
-      const { error } = row
-        ? await db.from("Call_Off_Work_Day").update(values)
-          .eq("Work_Day_ID", row.Work_Day_ID)
-        : await db.from("Call_Off_Work_Day").insert(values);
-      if (!error) movedDays += 1;
-    }
-    const spare = had.slice(laid.length).map((r) => r.Work_Day_ID);
-    if (spare.length) {
-      await db.from("Call_Off_Work_Day").delete().in("Work_Day_ID", spare);
     }
 
     return json({
-      Assignment_ID: Number(id),
-      Start_Date: start,
-      End_Date: end,
+      ...main,
       startShift,
       endShift,
-      movedDays,
-      /* Reported rather than thrown: the assignment has already moved,
-         and failing here would leave the caller believing nothing
-         happened when the larger half of it did. */
-      partial: movedDays !== laid.length,
+      halves: startShift,
+      followed,
+      /* Named rather than thrown. The booking that was dragged has
+         moved; saying the whole thing failed would send somebody
+         looking for a move that plainly happened. */
+      failed,
+      partial: main.partial || failed.length > 0,
     });
   } catch (e) {
     return fail(e, 400);

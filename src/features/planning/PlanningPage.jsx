@@ -7,6 +7,7 @@ import {
 } from "./timeline.js";
 import { resizeByHalves, teamMayTake } from "../calloffs/assignments.js";
 import { openCallOff } from "../../lib/callOffIntent.js";
+import { dependentAssignments } from "./dependencies.js";
 import AssignmentModal from "./AssignmentModal.jsx";
 import PmColoursModal from "./PmColoursModal.jsx";
 import WeekendDropModal from "./WeekendDropModal.jsx";
@@ -279,11 +280,39 @@ export default function PlanningPage() {
       setError("Something went wrong moving that booking — nothing has changed.");
       return;
     }
-    const { assignmentId, startShift = 0, endShift = 0, weekend, item, toTeam } = op;
+    const {
+      assignmentId, startShift = 0, endShift = 0, weekend, item, toTeam,
+      follows = [],
+    } = op;
     const before = dataRef.current;
-    setData((cur) => shiftInPlace(cur, assignmentId, startShift, endShift, weekend, toTeam));
+    setData((cur) => {
+      /* The booking and everything that follows it, in one update. The
+         same weekend answer applies to all of them: it was one question
+         about one weekend. */
+      let next = shiftInPlace(cur, assignmentId, startShift, endShift, weekend, toTeam);
+      for (const f of follows) {
+        next = shiftInPlace(next, f.assignmentId, f.startShift, f.endShift, weekend, null);
+      }
+      return next;
+    });
     try {
-      await moveAssignment(assignmentId, { startShift, endShift, weekend, teamId: toTeam });
+      const result = await moveAssignment(assignmentId, {
+        startShift, endShift, weekend, teamId: toTeam,
+        also: follows.map((f) => ({
+          assignmentId: f.assignmentId,
+          startShift: f.startShift,
+          endShift: f.endShift,
+          weekend,
+        })),
+      });
+      /* A follower that could not be moved is named. The rest of the
+         schedule did move, so putting everything back would undo work
+         that succeeded — the honest thing is to say which one is now
+         out of step and let somebody look at it. */
+      if (result?.failed?.length) {
+        setError(`Moved, but ${result.failed.length} dependent booking(s) `
+          + "could not follow. Refresh the board to see where things stand.");
+      }
 
       const much = (h) => {
         const n = Math.abs(Number(h)) / 2;
@@ -391,6 +420,19 @@ export default function PlanningPage() {
      window, so this is the window's start plus however many days. */
   const dayAt = (half) => toISO(rangeStart + Math.floor(half / 2) * DAY_MS);
 
+  /* An assignment's day rows in the shape the laying functions want.
+     The same normalising timeline.js does for the bars — done again
+     here because a follower may be off the edge of the window and so
+     have no bar to read it from. */
+  const partsOf = (assignment) => (dataRef.current?.workDays || [])
+    .filter((w) => Number(w.Assignment_ID) === Number(assignment.Assignment_ID))
+    .map((w) => ({
+      date: String(w.Work_Date).slice(0, 10),
+      part: w.Part || "Full",
+      offSite: !!w.Off_Site,
+    }))
+    .sort((a, b) => a.date.localeCompare(b.date));
+
   const laneUnder = (x, y) => {
     const el = document.elementFromPoint(x, y);
     const lane = el?.closest?.("[data-team-id]");
@@ -483,6 +525,32 @@ export default function PlanningPage() {
         }
       }
 
+      /* ── What travels with it ──
+
+         Everything downstream of this booking on the same call-off,
+         shifted by the same amount so the arrangement somebody already
+         made is kept: jointing set to start the day after the dig still
+         starts the day after when the dig moves.
+
+         Only when the whole booking moves. Stretching the far end of a
+         dig does not push the jointing that follows it — the dig
+         finishes later, which may well break the rule, and saying so is
+         a different job from silently shoving the rest of the programme
+         along. Dragging the *start* does move everything, because that
+         is the whole thing travelling. */
+      const follows = (startShift && startShift === endShift)
+        ? dependentAssignments(item.raw, {
+          assignments: dataRef.current?.assignments || [],
+          dependencies: dataRef.current?.dependencies || [],
+          submissions: dataRef.current?.submissions || [],
+        }).map((a) => ({
+          assignmentId: Number(a.Assignment_ID),
+          startShift, endShift: startShift,
+          parts: partsOf(a),
+          raw: a,
+        }))
+        : [];
+
       /* Nothing left of it. A handle dragged past the other end would
          delete the booking, and deleting is what the right-click menu
          is for — said, so the drag does not look like it failed. */
@@ -498,15 +566,26 @@ export default function PlanningPage() {
          Nothing is written until somebody answers. The bar stays where
          it was, which is the honest state — the move has not happened
          yet. */
-      if (touchesWeekend(item.parts || [], startShift, endShift)) {
+      /* The weekend question covers the whole move, followers
+         included. One weekend, one decision about working it — asking
+         separately for each booking would put three dialogs in a row in
+         front of somebody who has made one decision.
+
+         Asked if *any* of them reaches a weekend, including a follower
+         that does when the booking dragged does not. */
+      const reaches = touchesWeekend(item.parts || [], startShift, endShift)
+        || follows.some((f) => touchesWeekend(f.parts, f.startShift, f.endShift));
+
+      if (reaches) {
         setWeekendAsk({
-          kind: "move", item, startShift, endShift, toTeam, days: item.parts || [],
+          kind: "move", item, startShift, endShift, toTeam,
+          days: item.parts || [], follows,
         });
         return;
       }
       await commitMove({
         assignmentId: d.assignmentId, startShift, endShift,
-        weekend: null, item, toTeam,
+        weekend: null, item, toTeam, follows,
       });
       return;
     };
@@ -1006,6 +1085,7 @@ export default function PlanningPage() {
               assignmentId: ask.item.assignmentId,
               startShift: ask.startShift, endShift: ask.endShift,
               weekend, item: ask.item, toTeam: ask.toTeam,
+              follows: ask.follows || [],
             });
           }}
         />

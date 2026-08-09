@@ -114,6 +114,30 @@ export const ADMIN_TABLES = [
   /* The phases a job is done in. Craft_ID says which teams may work
      each — a phase with none is open to anybody, which is what an
      unconfigured phase looks like. */
+  { key: "Dependency_Type", label: "Dependency Types", pk: "Dependency_Type_ID", fields: [
+      { col: "Dependency_Type", label: "Name", type: "text", required: true },
+      /* The value code behind the name. Editable because a scheme may
+         need a kind nobody has thought of, but it is checked by the
+         database against the two it knows — anything else is refused
+         rather than silently ignored by the code that reads it. */
+      { col: "Kind", label: "Kind", type: "text", required: true },
+      { col: "Lag_Halves", label: "Head start (half-days)", type: "number" },
+      { col: "Sort_Order", label: "Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
+  { key: "Task_Dependency", label: "Phase Dependencies", pk: "Task_Dependency_ID", fields: [
+      { col: "Predecessor_Task_Type_ID", label: "Must happen first", type: "lookup",
+        table: "Task_Type", value: "Task_Type_ID", text: "Task_Type_Name" },
+      { col: "Successor_Task_Type_ID", label: "Then this may start", type: "lookup",
+        table: "Task_Type", value: "Task_Type_ID", text: "Task_Type_Name" },
+      { col: "Dependency_Type_ID", label: "Relationship", type: "lookup",
+        table: "Dependency_Type", value: "Dependency_Type_ID", text: "Dependency_Type" },
+      /* Left empty, it applies to every work type — which is what
+         "jointing follows the dig" means. */
+      { col: "Work_Type_ID", label: "Only for work type", type: "lookup",
+        table: "Work_Type", value: "Work_Type_ID", text: "Work_Type_Name" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "Task_Type", label: "Work Phases", pk: "Task_Type_ID", fields: [
       { col: "Task_Type_Name", label: "Phase", type: "text", required: true },
       /* type "lookup" with table/value/text, which is the shape the

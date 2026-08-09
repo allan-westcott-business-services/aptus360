@@ -27,6 +27,42 @@ export const STATUSES = [
   "Complete", "Withdrawn (Customer)", "Withdrawn (Aptus)",
 ];
 
+/* Today, as the pickers want it. Local rather than UTC: west of
+   Greenwich in the evening, toISOString has already moved on to
+   tomorrow, and a picker that will not accept today is the sort of
+   thing nobody reproduces. */
+export function todayISO() {
+  const d = new Date();
+  const p = (n) => String(n).padStart(2, "0");
+  return `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`;
+}
+
+/* The end date after the start has been dragged somewhere else.
+
+   The same length, kept. Measured in calendar days between the two
+   dates as they stand, which is the length somebody sees in the
+   pickers — the working days it lays onto are worked out afterwards by
+   the weekend rule, and it is that rule's job, not this one's.
+
+   Falls back to the new start where the old pair made no sense: a
+   booking with no end, or an end before its start, has no length to
+   preserve, and a single day is the honest answer. */
+export function slideEnd(oldStart, oldEnd, newStart) {
+  const ms = (d) => {
+    const [y, m, dd] = String(d || "").slice(0, 10).split("-").map(Number);
+    return (y && m && dd) ? new Date(y, m - 1, dd, 12).getTime() : NaN;
+  };
+  const a = ms(oldStart);
+  const b = ms(oldEnd);
+  const c = ms(newStart);
+  if (!Number.isFinite(c)) return oldEnd;
+  if (!Number.isFinite(a) || !Number.isFinite(b) || b < a) return newStart;
+
+  const out = new Date(c + (b - a));
+  const p = (n) => String(n).padStart(2, "0");
+  return `${out.getFullYear()}-${p(out.getMonth() + 1)}-${p(out.getDate())}`;
+}
+
 /* Whether a booking runs across a Saturday or a Sunday.
 
    The weekend controls appear only when it does — see the comment where
@@ -1201,12 +1237,37 @@ function Assignments({ row }) {
                       </option>
                     ))}
                   </select>
+                  {/* ── Moving the start moves the end ──
+
+                      A booking has a length, and changing when it
+                      begins does not change how long it takes. Somebody
+                      pushing the start back a week means the whole
+                      thing a week later, not a booking that has
+                      silently grown by a week — which is what happens
+                      when only one of the two dates is touched, and it
+                      is the kind of error that is only found when a
+                      gang is still on site on the Friday.
+
+                      The end can still be set on its own; that is what
+                      changes the length. */}
                   <input className="asg-date" type="date" value={draft.Start_Date}
                     aria-label="Start date"
-                    onChange={(e) => setDraft((d) => ({ ...d, Start_Date: e.target.value }))} />
+                    /* Nothing in the past. A booking cannot be made for
+                       a day that has gone, and a picker that offers one
+                       is a picker that will be used. */
+                    min={todayISO()}
+                    onChange={(e) => setDraft((d) => ({
+                      ...d,
+                      Start_Date: e.target.value,
+                      End_Date: slideEnd(d.Start_Date, d.End_Date, e.target.value),
+                    }))} />
                   <span className="asg-to">to</span>
                   <input className="asg-date" type="date" value={draft.End_Date}
                     aria-label="End date"
+                    /* Never before it starts. Disabling the earlier days
+                       says so in the picker, where somebody is looking,
+                       rather than in a message after they have chosen. */
+                    min={draft.Start_Date || todayISO()}
                     onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
 
                 </div>

@@ -1,6 +1,7 @@
 import { isEnw, isNged, isNpg, isMua } from "./matching.js";
 import { buildEnwDocument } from "./enw.js";
 import { buildNgedDocument, NGED_OFFICES } from "./nged.js";
+import { buildNpgDocument } from "./npg.js";
 
 /* One row per operator form.
 
@@ -21,7 +22,7 @@ export const FORMS = [
   },
   {
     type: "NPG", label: "NPg form", title: "Northern Powergrid",
-    matches: isNpg, build: null, ready: false,
+    matches: isNpg, build: buildNpgDocument, ready: true,
   },
   /* Keyed on the adopting IDNO rather than the distributor. */
   {

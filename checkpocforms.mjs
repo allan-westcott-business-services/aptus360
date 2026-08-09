@@ -9,6 +9,9 @@ import { FORMS, formsFor } from "./src/features/poc/forms/registry.js";
 import { isEnw, isNged, isNpg, isMua, OPERATOR_IDS } from "./src/features/poc/forms/matching.js";
 import { buildEnwDocument, ENW_SUBMIT_EMAIL } from "./src/features/poc/forms/enw.js";
 import { buildNgedDocument, NGED_OFFICES } from "./src/features/poc/forms/nged.js";
+import {
+  buildNpgDocument, NPG_SUBMIT_EMAIL, NPG_PRINTED_EMAIL,
+} from "./src/features/poc/forms/npg.js";
 import { esc, field } from "./src/features/poc/forms/shell.js";
 
 let bad = 0;
@@ -268,6 +271,67 @@ const lookups = {
     fail("NGED tick boxes are not real inputs");
   const nasty = buildNgedDocument({ ...d, siteName: '<img onerror=x>' }).html;
   if (nasty.includes("<img onerror")) fail("an unescaped value reached the NGED document");
+}
+
+// ── The built Northern Powergrid document ───────────────────────
+{
+  const d = {
+    pocId: 11, projectRef: "2607.001",
+    siteName: "Walton Gardens, Liverpool Lane, Hutton",
+    siteAddress: "Walton Gardens, Liverpool Lane, Hutton", postcode: "",
+    applicantCompany: "Aptus Utilities", applicantName: "Allan Murrell",
+    applicantAddress: "Aptus House, Wingates Industrial Estate, 20 Barrs Fold Road, "
+      + "Westhoughton, Bolton",
+    applicantPostcode: "BL5 3XP", applicantPhone: "01942 233 000", applicantMobile: "",
+    applicantEmail: "allan.murrell@aptusutilities.co.uk",
+    idnoName: "MUA Electricity", connectionDate: "09/02/2027",
+    domesticCount: 159, domesticKva: 535, commercialCount: 2, commercialKva: 0,
+    totalKva: 535, totalConnections: 161, heatPumpCount: "", notes: "", nrs: [],
+  };
+  const out = buildNpgDocument(d);
+  const html = out.html;
+
+  eq((html.match(/class="pg"/g) || []).length, 10, "NPg page count");
+
+  const secs = [...html.matchAll(/<div class="sec"[^>]*>Section (\d)/g)].map((m) => m[1]);
+  eq(secs, ["1", "2", "3", "4", "5", "6", "7", "8"], "NPg sections");
+
+  // Their form prints the operator's email with the letters transposed.
+  // The page has to match the artwork; the covering email must not, or
+  // it bounces. This is the one place the two deliberately differ.
+  if (!html.includes(NPG_PRINTED_EMAIL))
+    fail("the printed page does not carry the address as their form prints it");
+  eq(out.submit.to, NPG_SUBMIT_EMAIL, "covering email address");
+  if (NPG_SUBMIT_EMAIL === NPG_PRINTED_EMAIL)
+    fail("the corrected address is the same as the printed one \u2014 check the spelling");
+  if (out.submit.to.includes("powergird"))
+    fail("the covering email would be sent to the transposed domain");
+
+  // Their two field tints mean something: pink is required, grey optional.
+  if (!/class="f req/.test(html)) fail("no required (pink) fields on the NPg form");
+  if (!/class="f opt/.test(html)) fail("no optional (grey) fields on the NPg form");
+
+  // The date is split into month and year, as section 2c asks.
+  const mAt = html.indexOf("Month");
+  if (!html.slice(mAt, mAt + 400).includes(">02<")) fail("connection month not split out");
+  if (!html.slice(mAt, mAt + 600).includes(">2027<")) fail("connection year not split out");
+
+  // Thirteen MPAN boxes, which is what an MPAN has.
+  eq((html.match(/class="mp"/g) || []).length, 13, "MPAN boxes");
+
+  // An adopting IDNO drives the link box question in section 6.
+  const before = (needle, n = 200) =>
+    html.slice(Math.max(0, html.indexOf(needle) - n), html.indexOf(needle));
+  if (!before("IDNO/ICP requires a link box").includes("checked"))
+    fail("an adopting IDNO did not tick the link box option");
+  if (before("Not applicable").includes("checked"))
+    fail("Not applicable is ticked as well as the link box option");
+
+  if (/<script/i.test(html)) fail("the NPg document contains a script");
+  if ((html.match(/type="checkbox"/g) || []).length < 40)
+    fail("NPg tick boxes are not real inputs");
+  const nasty = buildNpgDocument({ ...d, siteName: "<img onerror=x>" }).html;
+  if (nasty.includes("<img onerror")) fail("an unescaped value reached the NPg document");
 }
 
 console.log(bad ? `\n${bad} problem(s)` : `Operator forms behave (${FORMS.length} registered, `

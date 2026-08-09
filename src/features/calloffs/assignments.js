@@ -77,6 +77,59 @@ export function serialisePlots(plots = []) {
    phase with no craft is open to anybody, which is what an unconfigured
    phase looks like and is worth seeing rather than silently excluding
    everybody. */
+/* Whether one team may take one piece of work, and if not, why.
+
+   eligibleTeams below answers "which teams can do this", which is the
+   question a dropdown asks. Dragging a booking onto a lane asks the
+   other one: this team, this work — yes or no, and if no, something to
+   put on screen.
+
+   Same two rules, deliberately in the same file. A board that let a
+   booking be dropped where the call-off page would refuse it is two
+   answers to one question, and the one the planner sees would be the
+   wrong one.
+
+   Returns null where it is allowed, and a sentence where it is not.
+   Region is named first because it is the one that stops most drops:
+   a gang covers the patch it covers. */
+export function teamMayTake(team, opts = {}) {
+  const {
+    teamCrafts = [], teamRegions = [],
+    craftId = null, regionId = null,
+    regionName = null, craftName = null,
+  } = opts;
+
+  if (!team) return "That lane has no team on it.";
+  if (team.Active === false) {
+    return `${team.Team_Name} is not active.`;
+  }
+
+  /* Only where the call-off has a region. A project with none should
+     not make every team ineligible — the same allowance eligibleTeams
+     makes, for the same reason. */
+  if (regionId != null) {
+    const covers = teamRegions.some((x) =>
+      Number(x.Team_ID) === Number(team.Team_ID)
+      && Number(x.Region_ID) === Number(regionId));
+    if (!covers) {
+      return `${team.Team_Name} is not set up to work in `
+        + `${regionName ? `the ${regionName} region` : "that region"}.`;
+    }
+  }
+
+  if (craftId != null) {
+    const holds = teamCrafts.some((x) =>
+      Number(x.Team_ID) === Number(team.Team_ID)
+      && Number(x.Craft_ID) === Number(craftId));
+    if (!holds) {
+      return `${team.Team_Name} does not hold the `
+        + `${craftName ? `${craftName} ` : ""}craft this phase needs.`;
+    }
+  }
+
+  return null;
+}
+
 export function eligibleTeams(teams = [], opts = {}) {
   const { teamCrafts = [], teamRegions = [], craftId = null, regionId = null } = opts;
 

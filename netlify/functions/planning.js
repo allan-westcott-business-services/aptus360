@@ -60,7 +60,8 @@ export default async function handler(req) {
   try {
     if (req.method !== "GET") return json({ error: "Not found" }, 404);
 
-    const [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes, projRes] =
+    const [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes, projRes,
+      teamRegionRes, teamCraftRes, craftRes] =
       await Promise.all([
         db.from("Mains_Call_Off_Submission").select(SUB_COLS)
           .not("Status", "in", `(${CLOSED.map((s) => `"${s}"`).join(",")})`)
@@ -75,6 +76,14 @@ export default async function handler(req) {
         db.from("Region").select("Region_ID,Region").order("Sort_Order"),
         db.from("Project")
           .select("Project_ID,Project_Ref,Display_Ref,Site_Name,Region_ID,Project_Manager_ID"),
+        /* What each team is set up for. Sent with the board because
+           dropping a booking on another lane has to be answered the
+           moment it is dropped — fetching it then would mean a bar
+           hanging under the cursor waiting for a round trip. Both
+           tables are small: a row per team per region and per craft. */
+        db.from("Team_Region").select("Team_ID,Region_ID"),
+        db.from("Team_Craft").select("Team_ID,Craft_ID"),
+        db.from("Craft").select("Craft_ID,Craft_Name").order("Sort_Order"),
       ]);
 
     for (const r of [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes, projRes]) {
@@ -153,6 +162,14 @@ export default async function handler(req) {
       teams: teamRes.data || [],
       regions: regionRes.data || [],
       projects: projRes.data || [],
+      /* Tolerated missing, like the rest: 0114 may not have been run,
+         and a board that cannot say which teams cover which regions is
+         still a board. Cross-lane drops are refused rather than
+         allowed when it is absent — see the drop handler. */
+      teamRegions: teamRegionRes.error ? [] : (teamRegionRes.data || []),
+      teamCrafts: teamCraftRes.error ? [] : (teamCraftRes.data || []),
+      crafts: craftRes.error ? [] : (craftRes.data || []),
+      teamRulesKnown: !teamRegionRes.error,
       people,
       peopleHaveColours,
       statuses: statuses || [],

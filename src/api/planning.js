@@ -17,14 +17,18 @@ export async function getPlanning() {
    schedule records — a booking can start after lunch. Signed: negative
    is earlier. The assignment's work days are re-laid to match, over
    whatever weekend halves it works. */
-export async function moveAssignment(assignmentId, halves, weekend) {
+export async function moveAssignment(assignmentId, halves, weekend, teamId) {
   if (USE_MOCKS) { await delay(180); return { Assignment_ID: assignmentId, halves }; }
   /* `weekend` only where the move ran into one and somebody answered
-     for it. Sent as part of the move rather than saved separately, so a
-     booking cannot end up claiming to work Saturdays with its days
-     still laid on weekdays — the two are one decision. */
-  return http.patch(`/planning/assignments/${assignmentId}/move`,
-    weekend ? { halves, weekend } : { halves });
+     for it; `teamId` only where it was dropped on another gang's lane.
+     Both go with the move rather than being saved separately: a booking
+     cannot end up claiming to work Saturdays with its days still on
+     weekdays, or belonging to a gang on days it never moved to. */
+  return http.patch(`/planning/assignments/${assignmentId}/move`, {
+    halves,
+    ...(weekend ? { weekend } : {}),
+    ...(teamId ? { teamId } : {}),
+  });
 }
 
 /* Removing a booking, and the days under it.

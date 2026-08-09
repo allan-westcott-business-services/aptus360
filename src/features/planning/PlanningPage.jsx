@@ -5,7 +5,7 @@ import {
   DAY_MS, buildRows, packLanes, daysInRange, isWeekend, todayMs, toISO,
   phaseColours, activeDays, nextActiveDay, prevActiveDay,
 } from "./timeline.js";
-import { shiftByHalves } from "../calloffs/assignments.js";
+import { shiftByHalves, teamMayTake } from "../calloffs/assignments.js";
 import { openCallOff } from "../../lib/callOffIntent.js";
 import AssignmentModal from "./AssignmentModal.jsx";
 import PmColoursModal from "./PmColoursModal.jsx";
@@ -74,6 +74,11 @@ export default function PlanningPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [note, setNote] = useState("");
+  /* A refusal, which is not an error. Nothing went wrong when a gang
+     does not cover a region — the answer to the question was no — so it
+     is said differently and does not sit in the red bar reserved for
+     things that broke. */
+  const [notice, setNotice] = useState("");
 
   const [pivot, setPivot] = useState(() => recall("planPivot", "team"));
   const [rangeDays, setRangeDays] = useState(() => Number(recall("planRange", 14)) || 14);
@@ -220,15 +225,57 @@ export default function PlanningPage() {
      undone by shifting back — a shift is not always reversible once the
      weekend has absorbed a half, and putting the old state back is the
      only way to be sure the board shows what the database holds. */
-  const commitMove = useCallback(async (assignmentId, halves, weekend, item) => {
+  /* Why this gang cannot take this work, or null if it can.
+
+     The rule lives in calloffs/assignments.js and is applied here with
+     what the board already has. Everything it needs is in the payload,
+     so the answer appears the instant a bar is dropped rather than
+     after a round trip — which matters, because the answer is often no
+     and a bar that hangs for half a second before refusing feels like a
+     bar that failed to move. */
+  const whyNot = useCallback((teamId, item) => {
+    const d = dataRef.current;
+    if (!d) return "The board is still loading.";
+    if (!d.teamRulesKnown) {
+      return "Which regions each team covers is not set up, so work cannot be "
+        + "moved between gangs here. Set it on the team, or move it on the call-off.";
+    }
+    const team = (d.teams || []).find((t) => Number(t.Team_ID) === Number(teamId));
+    const project = (d.projects || [])
+      .find((p) => Number(p.Project_ID) === Number(item?.sub?.Project_ID));
+    const task = (d.taskTypes || [])
+      .find((t) => Number(t.Task_Type_ID) === Number(item?.taskTypeId));
+    const region = (d.regions || [])
+      .find((r) => Number(r.Region_ID) === Number(project?.Region_ID));
+    const craft = (d.crafts || [])
+      .find((c) => Number(c.Craft_ID) === Number(task?.Craft_ID));
+
+    return teamMayTake(team, {
+      teamRegions: d.teamRegions || [],
+      teamCrafts: d.teamCrafts || [],
+      regionId: project?.Region_ID ?? null,
+      craftId: task?.Craft_ID ?? null,
+      regionName: region?.Region || null,
+      craftName: craft?.Craft_Name || null,
+    });
+  }, []);
+
+  const commitMove = useCallback(async (assignmentId, halves, weekend, item, toTeam) => {
     const before = dataRef.current;
-    setData((cur) => shiftInPlace(cur, assignmentId, halves, weekend));
+    setData((cur) => shiftInPlace(cur, assignmentId, halves, weekend, toTeam));
     try {
-      await moveAssignment(assignmentId, halves, weekend);
+      await moveAssignment(assignmentId, halves, weekend, toTeam);
       const n = Math.abs(halves) / 2;
       const much = n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`;
-      say(`${item?.ref ? `${item.ref} \u00b7 ` : ""}moved ${much} `
-        + `${halves > 0 ? "later" : "earlier"}.`);
+      const team = toTeam
+        ? (dataRef.current?.teams || [])
+          .find((t) => Number(t.Team_ID) === Number(toTeam))?.Team_Name
+        : null;
+      const what = [
+        halves ? `moved ${much} ${halves > 0 ? "later" : "earlier"}` : null,
+        team ? `given to ${team}` : null,
+      ].filter(Boolean).join(", ");
+      say(`${item?.ref ? `${item.ref} \u00b7 ` : ""}${what || "unchanged"}.`);
     } catch (err) {
       setData(before);
       setError(`Could not move it: ${err.message}`);
@@ -246,11 +293,35 @@ export default function PlanningPage() {
     const dayPx = track.getBoundingClientRect().width / rangeDays;
     if (!Number.isFinite(dayPx) || dayPx <= 0) return;
     e.preventDefault();
-    try { e.currentTarget.setPointerCapture(e.pointerId); } catch { /* not fatal */ }
+    /* Not captured to the bar. A pointer capture keeps every event on
+       the element it started on, which is exactly wrong here: the whole
+       point of dragging upward is to find out what is underneath, and a
+       captured pointer makes elementFromPoint answer with the bar every
+       time. The listeners are on the window instead. */
     setDrag({
       id: item.id, assignmentId: item.assignmentId,
-      dayPx, startX: e.clientX, offsetPx: 0, halves: 0, moved: false,
+      fromTeam: Number(item.raw?.Team_ID) || null,
+      dayPx, startX: e.clientX, startY: e.clientY,
+      offsetPx: 0, offsetY: 0, halves: 0, overTeam: null, moved: false,
     });
+  };
+
+  /* Which lane the pointer is over.
+
+     Read off the DOM rather than from stored row rectangles: rows grow
+     and shrink as lanes are packed, the board scrolls, and a table of
+     bounds captured at drag start would be wrong by the time it was
+     used. The lane's team is on a data attribute, so what comes back is
+     the answer and not something to look up.
+
+     The bar under the cursor is invisible to this — pointer-events are
+     off while dragging — so what is found is the lane. */
+  const laneUnder = (x, y) => {
+    const el = document.elementFromPoint(x, y);
+    const lane = el?.closest?.("[data-team-id]");
+    if (!lane) return null;
+    const id = Number(lane.getAttribute("data-team-id"));
+    return Number.isFinite(id) && id ? id : null;
   };
 
   useEffect(() => {
@@ -269,8 +340,20 @@ export default function PlanningPage() {
          what gets written. */
       const halfPx = d.dayPx / 2;
       const halves = Math.round(dx / halfPx);
-      setDrag((cur) => (cur && (cur.halves !== halves || !cur.moved)
-        ? { ...cur, halves, offsetPx: halves * halfPx, moved: cur.moved || Math.abs(dx) > 3 }
+      /* The lane under the cursor, and how far the bar has been lifted
+         towards it. The vertical offset is the raw pointer movement
+         rather than a snap: there is nothing to snap to until the drop,
+         and a bar that jumped between lanes while being dragged would
+         make it hard to aim at the one below. */
+      const overTeam = laneUnder(e.clientX, e.clientY);
+      const dy = e.clientY - d.startY;
+      setDrag((cur) => (cur
+        && (cur.halves !== halves || cur.overTeam !== overTeam || !cur.moved)
+        ? {
+          ...cur, halves, overTeam, offsetY: dy,
+          offsetPx: halves * halfPx,
+          moved: cur.moved || Math.abs(dx) > 3 || Math.abs(dy) > 6,
+        }
         : cur));
     };
     const up = async () => {
@@ -278,8 +361,31 @@ export default function PlanningPage() {
       setDrag(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
-      if (!d || !d.moved || !d.halves) return;
-      const item = itemsById.current.get(d.id);
+      const item = d ? itemsById.current.get(d.id) : null;
+      /* Where it was dropped, if that is a different gang's lane. */
+      const toTeam = d && d.overTeam && d.overTeam !== d.fromTeam ? d.overTeam : null;
+      if (!d || !d.moved || (!d.halves && !toTeam)) return;
+
+      /* ── Can that gang take it? ──
+
+         Answered before anything moves, with the same rule the call-off
+         page applies when it lists the teams for a phase. A board that
+         let a booking be dropped where that page would refuse it is two
+         answers to one question.
+
+         Refused rather than allowed where the rules are unknown: if
+         Team_Region did not come back, the honest position is that
+         nobody can say this gang covers the patch, and quietly moving
+         the work would be worse than not moving it. */
+      if (toTeam) {
+        const why = whyNot(toTeam, item);
+        if (why) {
+          setNotice(why);
+          return;
+        }
+      }
+      await commitMove(d.assignmentId, d.halves, null, item, toTeam);
+      return;
 
       /* Does this land on a weekend? Asked of the move itself rather
          than of where the cursor was: a booking can be dropped on a
@@ -289,11 +395,12 @@ export default function PlanningPage() {
          Where it does, nothing is written until somebody answers. The
          bar stays where it was, which is the honest state — the move
          has not happened yet. */
-      if (item && landsOnWeekend(item.parts || [], d.halves, weekendOf(item))) {
-        setWeekendAsk({ item, halves: d.halves, days: item.parts || [] });
+      if (item && d.halves
+        && landsOnWeekend(item.parts || [], d.halves, weekendOf(item))) {
+        setWeekendAsk({ item, halves: d.halves, days: item.parts || [], toTeam });
         return;
       }
-      await commitMove(d.assignmentId, d.halves, null, item);
+      await commitMove(d.assignmentId, d.halves, null, item, toTeam);
       return;
     };
     window.addEventListener("pointermove", move);
@@ -429,6 +536,13 @@ export default function PlanningPage() {
       </div>
 
       {error && <p className="pln-err">{error}</p>}
+      {notice && (
+        <p className="pln-refuse" role="status">
+          {notice}
+          <button className="pln-refuse-x" onClick={() => setNotice("")}
+            aria-label="Dismiss">&times;</button>
+        </p>
+      )}
       {note && <p className="pln-note">{note}</p>}
 
       {loading && !data && <p className="hint">Loading the schedule&hellip;</p>}
@@ -504,7 +618,9 @@ export default function PlanningPage() {
 
               return (
                 <div key={row.key}
-                  className={`pln-row${row.isUnassigned ? " unassigned" : ""}`}
+                  className={`pln-row${row.isUnassigned ? " unassigned" : ""}`
+                    + `${drag?.overTeam && row.teamId === drag.overTeam ? " drop-here" : ""}`
+                    + `${drag && row.teamId === drag.fromTeam ? " drop-from" : ""}`}
                   style={{ minHeight: height }}>
                   <div className="pln-label"
                     style={row.groupColour
@@ -515,7 +631,12 @@ export default function PlanningPage() {
                       <span className="pln-count">{row.items.length}</span>
                     )}
                   </div>
-                  <div className="pln-track">
+                  <div className="pln-track"
+                    /* What a drop lands on. Only lanes that are a team
+                       carry it, so a drop in the region or work-type
+                       pivot finds nothing and is treated as a move in
+                       time alone. */
+                    data-team-id={row.teamId ?? undefined}>
                     {days.map((d, i) => (
                       <div key={d}
                         className={`pln-col${isWeekend(d) ? " wknd" : ""}`}
@@ -536,7 +657,14 @@ export default function PlanningPage() {
                       if (to <= from) return null;
                       const clipL = item.startHalf < 0;
                       const clipR = item.startHalf + item.lengthHalves > maxHalf;
-                      const utils = utilitiesByProject.get(Number(item.projectId)) || [];
+                      /* The project's utilities, narrowed to the ones
+                         this phase is actually about — jointing is
+                         electric, so a jointing bar carries one dot and
+                         not three. */
+                      const utils = (utilitiesByProject.get(Number(item.projectId)) || [])
+                        .filter((u) => !item.utilityNames
+                          || item.utilityNames.includes(
+                            String(u.Utility || "").toLowerCase().trim()));
                       const moving = drag?.id === item.id;
                       return (
                         <div key={item.id}
@@ -549,7 +677,9 @@ export default function PlanningPage() {
                             top: item.lane * LANE_H + 4,
                             height: LANE_H - 8,
                             background: item.colour,
-                            transform: moving ? `translateX(${drag.offsetPx}px)` : undefined,
+                            transform: moving
+                              ? `translate(${drag.offsetPx}px, ${drag.offsetY}px)`
+                              : undefined,
                           }}
                           title={`${item.label}\n${item.startDate} \u2192 ${item.endDate}`}
                           onPointerDown={(e) => onBarPointerDown(e, item)}
@@ -640,9 +770,10 @@ export default function PlanningPage() {
 
           <p className="pln-help">
             Drag a booking sideways to move it &mdash; its work days move with it, half
-            a day at a time. Right-click one to edit or delete it. Hold the middle
-            mouse button to pan. Moving work to a different team is done on the
-            call-off, where the teams qualified for the phase are shown.
+            a day at a time &mdash; or onto another gang&rsquo;s lane to hand it over.
+            A gang that does not cover the region, or hold the craft the phase needs,
+            will say so rather than take it. Right-click a booking to edit or delete
+            it. Hold the middle mouse button to pan.
           </p>
         </>
       )}
@@ -723,7 +854,7 @@ export default function PlanningPage() {
           onConfirm={(weekend) => {
             const ask = weekendAsk;
             setWeekendAsk(null);
-            commitMove(ask.item.assignmentId, ask.halves, weekend, ask.item);
+            commitMove(ask.item.assignmentId, ask.halves, weekend, ask.item, ask.toTeam);
           }}
         />
       )}
@@ -817,13 +948,27 @@ export function landsOnWeekend(days, halves, weekend) {
    change the dates in the panel and leave the bar where it was.
 
    Exported so the move can be checked without a browser. */
-export function shiftInPlace(data, assignmentId, halves, weekendOverride) {
+export function shiftInPlace(data, assignmentId, halves, weekendOverride, toTeam) {
   if (!data) return data;
   const id = Number(assignmentId);
 
   const asgn = (data.assignments || [])
     .find((a) => Number(a.Assignment_ID) === id);
   if (!asgn) return data;
+
+  /* A lane change with no move in time still has to be applied — a
+     booking handed to another gang on the same days is an ordinary
+     thing to do, and there is nothing to re-lay. */
+  const withTeam = (a) => (toTeam ? { ...a, Team_ID: Number(toTeam) } : a);
+  if (!halves) {
+    return toTeam
+      ? {
+        ...data,
+        assignments: data.assignments.map((a) =>
+          (Number(a.Assignment_ID) === id ? withTeam(a) : a)),
+      }
+      : data;
+  }
 
   const mine = (data.workDays || [])
     .filter((w) => Number(w.Assignment_ID) === id)
@@ -844,7 +989,8 @@ export function shiftInPlace(data, assignmentId, halves, weekendOverride) {
     return {
       ...data,
       assignments: data.assignments.map((a) => (Number(a.Assignment_ID) === id
-        ? { ...a, Start_Date: move(a.Start_Date), End_Date: move(a.End_Date) } : a)),
+        ? withTeam({ ...a, Start_Date: move(a.Start_Date), End_Date: move(a.End_Date) })
+        : a)),
     };
   }
 
@@ -861,7 +1007,10 @@ export function shiftInPlace(data, assignmentId, halves, weekendOverride) {
   return {
     ...data,
     assignments: data.assignments.map((a) => (Number(a.Assignment_ID) === id
-      ? { ...a, Start_Date: laid.days[0].date, End_Date: laid.end, ...(weekendOverride || {}) }
+      ? withTeam({
+        ...a, Start_Date: laid.days[0].date, End_Date: laid.end,
+        ...(weekendOverride || {}),
+      })
       : a)),
     workDays: [
       ...(data.workDays || []).filter((w) => Number(w.Assignment_ID) !== id),
@@ -986,6 +1135,21 @@ const CSS = `
 .pln-key-waiting { border: 2px dashed #94a3b8; background: rgba(148,163,184,.3); }
 .pln-key-now { width: 2px !important; height: 13px; background: #ef4444; border-radius: 0; }
 .pln-help { font-size: 11.5px; color: var(--muted); margin: 0; }
+
+/* The lane a bar is being held over. Deliberately quiet: a full
+   highlight on a row that is about to be refused would be a promise. */
+.pln-row.drop-here { background: #eff6ff; }
+.pln-row.drop-here .pln-label { background: #dbeafe; }
+.pln-row.drop-from .pln-label { opacity: .6; }
+/* Nothing under the cursor may catch the pointer while a bar is being
+   dragged, or the lane below can never be found. */
+.pln-bar-item.moving { pointer-events: none; }
+
+.pln-refuse { display: flex; align-items: flex-start; gap: 8px; font-size: 12.5px;
+  color: #92400e; background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px;
+  padding: 7px 10px; margin: 0; }
+.pln-refuse-x { border: 0; background: transparent; color: inherit; cursor: pointer;
+  font-size: 15px; line-height: 1; margin-left: auto; padding: 0 2px; }
 
 .pln-menu-veil { position: fixed; inset: 0; z-index: 40; }
 .pln-menu { position: fixed; z-index: 41; background: var(--white);

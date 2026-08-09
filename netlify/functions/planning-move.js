@@ -157,6 +157,11 @@ export default async function handler(req, context) {
 
        Only the four keys, and only as booleans. Whatever else is in the
        body is not a weekend rule. */
+    /* Handed to another gang. Checked below rather than trusted: the
+       board asks the same question before it lets the bar go, but a
+       rule the browser enforces is not a rule. */
+    const toTeam = Number(body.teamId) || null;
+
     const asked = body.weekend && typeof body.weekend === "object"
       ? {
         Sat_AM: !!body.weekend.Sat_AM, Sat_PM: !!body.weekend.Sat_PM,
@@ -169,11 +174,12 @@ export default async function handler(req, context) {
     /* A drag that lands where it started is not an error and not a
        write. Answered rather than rejected, so the board can call this
        without first working out whether it needs to. */
-    if (shift === 0) return json({ moved: 0, halves: 0 });
+    if (shift === 0 && !toTeam) return json({ moved: 0, halves: 0 });
 
     const { data: asgn, error: readErr } = await db
       .from("Call_Off_Assignment")
-      .select("Assignment_ID,Start_Date,End_Date,Sat_AM,Sat_PM,Sun_AM,Sun_PM")
+      .select("Assignment_ID,Submission_ID,Task_Type_ID,Team_ID,"
+        + "Start_Date,End_Date,Sat_AM,Sat_PM,Sun_AM,Sun_PM")
       .eq("Assignment_ID", id)
       .single();
     if (readErr) throw readErr;
@@ -181,6 +187,61 @@ export default async function handler(req, context) {
     /* What the days are laid over: the answer just given, or what the
        booking already claimed. */
     const rule = asked || asgn;
+
+    /* ── May that gang take this work? ──
+
+       The same two rules the browser applied, applied again here. Not
+       because the board is untrusted so much as because this endpoint
+       is reachable without it, and a booking given to a gang that does
+       not cover the region is a gang sent to the wrong county.
+
+       Region first, and only where the project has one — a project with
+       no region should not make every team ineligible, which is the
+       allowance the shared rule makes for the same reason. */
+    if (toTeam) {
+      const { data: sub } = await db.from("Mains_Call_Off_Submission")
+        .select("Submission_ID,Project_ID,Work_Type_ID")
+        .eq("Submission_ID", asgn.Submission_ID).single();
+      const { data: project } = sub?.Project_ID
+        ? await db.from("Project").select("Project_ID,Region_ID")
+          .eq("Project_ID", sub.Project_ID).single()
+        : { data: null };
+      const { data: team } = await db.from("Team")
+        .select("Team_ID,Team_Name,Active").eq("Team_ID", toTeam).single();
+
+      if (!team) return json({ error: "That team does not exist." }, 400);
+      if (team.Active === false) {
+        return json({ error: `${team.Team_Name} is not active.` }, 400);
+      }
+
+      if (project?.Region_ID != null) {
+        const { data: covers } = await db.from("Team_Region")
+          .select("Team_ID").eq("Team_ID", toTeam)
+          .eq("Region_ID", project.Region_ID);
+        if (!covers?.length) {
+          const { data: region } = await db.from("Region")
+            .select("Region").eq("Region_ID", project.Region_ID).single();
+          return json({
+            error: `${team.Team_Name} is not set up to work in `
+              + `${region?.Region ? `the ${region.Region} region` : "that region"}.`,
+          }, 400);
+        }
+      }
+
+      const { data: task } = await db.from("Task_Type")
+        .select("Task_Type_ID,Task_Type_Name,Craft_ID")
+        .eq("Task_Type_ID", asgn.Task_Type_ID).single();
+      if (task?.Craft_ID != null) {
+        const { data: holds } = await db.from("Team_Craft")
+          .select("Team_ID").eq("Team_ID", toTeam).eq("Craft_ID", task.Craft_ID);
+        if (!holds?.length) {
+          return json({
+            error: `${team.Team_Name} does not hold the craft `
+              + `${task.Task_Type_Name || "this phase"} needs.`,
+          }, 400);
+        }
+      }
+    }
 
     const { data: existing } = await db
       .from("Call_Off_Work_Day")
@@ -194,6 +255,26 @@ export default async function handler(req, context) {
     /* No day rows — a booking made before that table existed. There is
        nothing to lay, so it moves in whole days, rounded away from zero
        so half a day still moves it somewhere. */
+    /* Handed to another gang on the same days. Nothing to re-lay — the
+       dates and the halves are unchanged and only the team moves. Taken
+       before the laying below, which assumes there is a shift to apply
+       and would otherwise walk the booking to where it already is. */
+    if (shift === 0) {
+      const { error } = await db.from("Call_Off_Assignment")
+        .update({ Team_ID: toTeam, ...(asked || {}) })
+        .eq("Assignment_ID", id);
+      if (error) throw error;
+      return json({
+        Assignment_ID: Number(id),
+        Start_Date: asgn.Start_Date,
+        End_Date: asgn.End_Date,
+        Team_ID: toTeam,
+        halves: 0,
+        movedDays: 0,
+        partial: false,
+      });
+    }
+
     if (!had.length) {
       const by = shift > 0 ? Math.ceil(shift / 2) : Math.floor(shift / 2);
       const s = shiftDay(asgn.Start_Date, by);
@@ -202,7 +283,10 @@ export default async function handler(req, context) {
         return json({ error: "This assignment has no usable start and end date." }, 400);
       }
       const { error } = await db.from("Call_Off_Assignment")
-        .update({ Start_Date: s, End_Date: e, ...(asked || {}) })
+        .update({
+          Start_Date: s, End_Date: e,
+          ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}),
+        })
         .eq("Assignment_ID", id);
       if (error) throw error;
       return json({
@@ -245,7 +329,10 @@ export default async function handler(req, context) {
 
     const { error: updErr } = await db
       .from("Call_Off_Assignment")
-      .update({ Start_Date: start, End_Date: end, ...(asked || {}) })
+      .update({
+        Start_Date: start, End_Date: end,
+        ...(asked || {}), ...(toTeam ? { Team_ID: toTeam } : {}),
+      })
       .eq("Assignment_ID", id);
     if (updErr) throw updErr;
 

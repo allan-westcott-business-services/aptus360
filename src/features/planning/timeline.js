@@ -217,6 +217,38 @@ export function phaseColours(taskTypes = []) {
   return out;
 }
 
+/* ── Which utilities a phase is about ──
+
+   A bar carries a dot per utility on the project, and for most phases
+   that is right: a gang digging a trench digs it for everything going
+   into it, and reinstating one reinstates all of them.
+
+   Jointing is not like that. It is cable jointing, an electric
+   activity, and three dots on a jointing bar say three utilities are
+   involved in work that concerns one.
+
+   ── Recognised by name, which is a convention and not a fact ──
+
+   There is no Task_Type."Utility_ID" to read, so this matches on the
+   phase's name — exactly as phaseColours above matches on it to decide
+   that jointing is amber. Same convention and the same weakness:
+   rename the phase to something that does not start "joint" and it goes
+   back to showing every utility.
+
+   Worth stating rather than hiding. Making it a fact would mean a
+   Utility_ID on Task_Type and somewhere in admin to set it, at which
+   point this reads that and the name stops mattering. Until then, one
+   place to change beats the same guess made in three.
+
+   Null means "whatever the project has", which is not the same as an
+   empty list: a phase nobody has a rule for shows all of them, and a
+   phase whose utility is not on the project shows none. */
+export function phaseUtilityNames(phaseName) {
+  const n = String(phaseName || "").toLowerCase().trim();
+  if (n.startsWith("joint")) return ["electric"];
+  return null;
+}
+
 /* ── Excavation and laying are one phase ──
 
    They are dug and laid by the same gang in the same visit, and the
@@ -339,6 +371,10 @@ export function buildRows(data, opts = {}) {
         + `${task?.Task_Type_Name || `Phase ${a.Task_Type_ID}`}`
         + (a.Plot_Range ? ` \u00b7 Plots ${a.Plot_Range}` : ""),
       colour: colours.get(Number(a.Task_Type_ID)) || "#6b7280",
+      /* Which of the project's utilities this phase concerns, or null
+         for all of them. Decided here rather than at the dot, so the
+         bar and the panel behind it cannot differ. */
+      utilityNames: phaseUtilityNames(task?.Task_Type_Name),
       /* Any day off site marks the whole booking. It is a warning that
          the gang leaves the development, and it applies to the visit
          rather than to the Tuesday of it. */
@@ -427,6 +463,7 @@ export function buildRows(data, opts = {}) {
           phase: name,
           label: `${refOf(sub)} \u00b7 ${name}`,
           colour: colours.get(Number(tid)) || "#6b7280",
+          utilityNames: phaseUtilityNames(name),
           offSite: false,
           projectId: sub.Project_ID ?? null,
           sub,
@@ -449,6 +486,11 @@ export function buildRows(data, opts = {}) {
       if (activeTeamsOnly && !items.length) continue;
       rows.push({
         key: `team-${team.Team_ID}`,
+        /* The team this lane belongs to. Only rows that carry one can
+           be dropped onto — in the region and work-type pivots a lane
+           is not a team, and dropping a bar there would have to guess
+           which team was meant. */
+        teamId: Number(team.Team_ID),
         label: team.Team_Name + (team.Active === false ? " (inactive)" : ""),
         items,
       });
@@ -590,6 +632,9 @@ export function buildRows(data, opts = {}) {
         .sort((a, b) => teamName(a).localeCompare(teamName(b)))) {
         rows.push({
           key: `pm-${pm}-team-${teamId}`,
+          /* A team lane here too, so a booking can be dropped on
+             another gang without leaving this grouping. */
+          teamId: Number(teamId) || null,
           label: teamName(teamId),
           groupColour: colour,
           items: teamsMap.get(teamId),

@@ -270,10 +270,10 @@ export function planningMock() {
       { Work_Type_ID: 2, Work_Type_Name: "Service Call Off", Display_Order: 20 },
     ],
     taskTypes: [
-      { Task_Type_ID: 1, Task_Type_Name: "Excavation", Display_Order: 10 },
+      { Task_Type_ID: 1, Task_Type_Name: "Excavation", Craft_ID: 1, Display_Order: 10 },
       { Task_Type_ID: 2, Task_Type_Name: "Laying", Display_Order: 20 },
-      { Task_Type_ID: 3, Task_Type_Name: "Jointing", Display_Order: 30 },
-      { Task_Type_ID: 4, Task_Type_Name: "Reinstatement", Display_Order: 40 },
+      { Task_Type_ID: 3, Task_Type_Name: "Jointing", Craft_ID: 4, Display_Order: 30 },
+      { Task_Type_ID: 4, Task_Type_Name: "Reinstatement", Craft_ID: 5, Display_Order: 40 },
     ],
     workTypeTasks: [
       { Work_Type_ID: 1, Task_Type_ID: 1, Display_Order: 10 },
@@ -305,6 +305,25 @@ export function planningMock() {
       { Person_ID: 3, Person_Name: "J. Farrell", Planner_Colour: null },
     ],
     peopleHaveColours: true,
+    /* Who covers what. Gang 1 works the North only, so dropping a
+       Kestrel Rise booking (Midlands) on it is refused — the case worth
+       being able to try without a database. */
+    teamRegions: [
+      { Team_ID: 1, Region_ID: 1 },
+      { Team_ID: 2, Region_ID: 1 }, { Team_ID: 2, Region_ID: 2 },
+      { Team_ID: 3, Region_ID: 1 }, { Team_ID: 3, Region_ID: 2 },
+      { Team_ID: 4, Region_ID: 1 }, { Team_ID: 4, Region_ID: 2 },
+    ],
+    teamCrafts: [
+      { Team_ID: 1, Craft_ID: 1 }, { Team_ID: 4, Craft_ID: 1 },
+      { Team_ID: 2, Craft_ID: 4 }, { Team_ID: 3, Craft_ID: 5 },
+    ],
+    crafts: [
+      { Craft_ID: 1, Craft_Name: "Multi Utility 1" },
+      { Craft_ID: 4, Craft_Name: "Jointing" },
+      { Craft_ID: 5, Craft_Name: "Reinstatement" },
+    ],
+    teamRulesKnown: true,
     statuses: [
       { Call_Off_Status_ID: 1, Status: "Scheduled", Colour: "#3b82f6", Display_Order: 10, Is_Active: true },
       { Call_Off_Status_ID: 2, Status: "In Progress", Colour: "#f59e0b", Display_Order: 20, Is_Active: true },

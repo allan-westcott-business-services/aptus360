@@ -121,7 +121,10 @@ export const ADMIN_TABLES = [
          database against the two it knows — anything else is refused
          rather than silently ignored by the code that reads it. */
       { col: "Kind", label: "Kind", type: "text", required: true },
-      { col: "Lag_Halves", label: "Head start (half-days)", type: "number" },
+      /* The default for rules that do not set their own. Kept on the
+         kind so an existing "after a delay" type still means something
+         on its own; the number that matters is the one on each rule. */
+      { col: "Lag_Halves", label: "Default delay (half-days)", type: "number" },
       { col: "Sort_Order", label: "Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
@@ -132,6 +135,17 @@ export const ADMIN_TABLES = [
         table: "Task_Type", value: "Task_Type_ID", text: "Task_Type_Name" },
       { col: "Dependency_Type_ID", label: "Relationship", type: "lookup",
         table: "Dependency_Type", value: "Dependency_Type_ID", text: "Dependency_Type" },
+      /* How long the second waits, on this rule rather than on the kind
+         — jointing half a day after the dig starts and reinstatement
+         three days after it are the same relationship with different
+         numbers. Left empty it falls back to the relationship's own,
+         which is what everything made before 0135 does.
+
+         Half-days, because that is what the schedule is counted in: 1
+         is half a day, 2 is a day, 4 is two days. Only does anything on
+         a start-to-start; a finish-to-start already waits for the
+         finish. */
+      { col: "Lag_Halves", label: "Delay (half-days)", type: "number" },
       /* Left empty, it applies to every work type — which is what
          "jointing follows the dig" means. */
       { col: "Work_Type_ID", label: "Only for work type", type: "lookup",

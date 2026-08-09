@@ -150,7 +150,7 @@ export default async function handler(req) {
        dependency rules is a board where nothing cascades. */
     const { data: dependencies } = await db.from("Task_Dependency")
       .select("Task_Dependency_ID,Predecessor_Task_Type_ID,Successor_Task_Type_ID,"
-        + "Dependency_Type_ID,Work_Type_ID,Is_Active");
+        + "Dependency_Type_ID,Work_Type_ID,Lag_Halves,Is_Active");
     const { data: dependencyTypes } = await db.from("Dependency_Type")
       .select("Dependency_Type_ID,Dependency_Type,Kind,Lag_Halves,Sort_Order,Is_Active")
       .order("Sort_Order");

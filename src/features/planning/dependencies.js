@@ -104,6 +104,40 @@ export function dependentAssignments(assignment, opts = {}) {
 
    Returns a list of complaints, in the words a planner would use.
    Empty is fine. */
+/* How long the second waits, in half-days.
+
+   The rule's own delay where it has one, its type's where it has not.
+   Nullish rather than falsy, because zero is an answer: a rule set to
+   no delay at all should stay at none rather than inheriting its type's
+   half day. That distinction is the reason the column is nullable.
+
+   Exported because the board shows it and the check below applies it,
+   and one of those getting it wrong while the other gets it right would
+   be a schedule that disagrees with its own warning. */
+export function lagHalves(dep, type) {
+  const own = dep?.Lag_Halves;
+  if (own != null && Number.isFinite(Number(own))) return Math.max(0, Number(own));
+  const fallback = type?.Lag_Halves;
+  if (fallback != null && Number.isFinite(Number(fallback))) {
+    return Math.max(0, Number(fallback));
+  }
+  return 0;
+}
+
+/* Half-slots from a fixed epoch, so two bookings can be compared at the
+   granularity the delay is expressed in.
+
+   Days alone are not enough once the delay is configurable. A half-day
+   delay is satisfied by a successor starting on the afternoon of the
+   day the predecessor started, and refused by one starting that
+   morning — a comparison in whole days cannot tell those apart, and
+   would either wave both through or refuse both. */
+const halfSlot = (date, part) => {
+  const ms = dayMs(date);
+  if (!Number.isFinite(ms)) return NaN;
+  return Math.round(ms / DAY) * 2 + (part === "PM" ? 1 : 0);
+};
+
 const dayMs = (d) => {
   const [y, m, dd] = String(d || "").slice(0, 10).split("-").map(Number);
   if (!y || !m || !dd) return NaN;
@@ -112,10 +146,28 @@ const dayMs = (d) => {
 
 const DAY = 86400000;
 
+/* A delay in the words somebody would say it in. Half-days is the unit
+   it is stored in and not the unit anybody speaks. */
+export function describeLag(halves) {
+  const n = Number(halves) || 0;
+  if (!n) return "at all";
+  if (n === 1) return "half a day";
+  const days = n / 2;
+  return days === Math.floor(days)
+    ? `${days} day${days === 1 ? "" : "s"}`
+    : `${Math.floor(days)} and a half days`;
+}
+
 export function dependencyProblems(assignments = [], opts = {}) {
   const {
     dependencies = [], dependencyTypes = [], taskTypes = [], submissions = [],
+    workDays = [],
   } = opts;
+
+  /* Which half of a given day a booking works, from its day rows. */
+  const partOn = (assignment, date) => workDays.find((w) =>
+    Number(w.Assignment_ID) === Number(assignment.Assignment_ID)
+    && String(w.Work_Date).slice(0, 10) === String(date).slice(0, 10))?.Part || "Full";
 
   const typeById = new Map(dependencyTypes
     .map((t) => [Number(t.Dependency_Type_ID), t]));
@@ -150,17 +202,23 @@ export function dependencyProblems(assignments = [], opts = {}) {
               + `${taskName(before.Task_Type_ID)} has finished.`);
           }
         } else {
-          /* Start to start, with however much of a head start the type
-             asks for. Half-days rounded up to whole ones, because the
-             dates are days — a lag of one half means "not before the
-             same day", and of two means "not before the next". */
-          const begins = dayMs(before.Start_Date);
-          const lagDays = Math.floor((Number(kind.Lag_Halves) || 0) / 2);
-          if (Number.isFinite(startsAfter) && Number.isFinite(begins)
-            && startsAfter < begins + lagDays * DAY) {
+          /* Start to start, with however much of a head start this rule
+             asks for. Compared in half-days, which is what the delay is
+             measured in — see halfSlot above for why days will not do.
+
+             Which half each begins on comes from the day rows where
+             they were given, and is assumed to be the morning where
+             they were not: a booking with no day breakdown starts when
+             its start date says, and treating that as an afternoon
+             would refuse arrangements that are fine. */
+          const lag = lagHalves(dep, kind);
+          const beganAt = halfSlot(before.Start_Date, partOn(before, before.Start_Date));
+          const startsAt = halfSlot(after.Start_Date, partOn(after, after.Start_Date));
+          if (Number.isFinite(beganAt) && Number.isFinite(startsAt)
+            && startsAt < beganAt + lag) {
             out.push(`${taskName(after.Task_Type_ID)} starts before `
               + `${taskName(before.Task_Type_ID)} has been going `
-              + `${lagDays ? `${lagDays} day${lagDays === 1 ? "" : "s"}` : "at all"}.`);
+              + `${describeLag(lag)}.`);
           }
         }
       }

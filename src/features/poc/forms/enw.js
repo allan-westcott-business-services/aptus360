@@ -1,4 +1,5 @@
 import { esc, field, wrapDocument, submitPayload } from "./shell.js";
+import { ENW_LOGO } from "./enwLogo.js";
 
 /* Electricity North West — "Application for electricity connection
    (5 or more connections or single connection over 60kVA)".
@@ -18,11 +19,10 @@ import { esc, field, wrapDocument, submitPayload } from "./shell.js";
 
    ── The ENW logo ──
 
-   Not reproduced: it is their trade mark and no asset for it ships with
-   this application. The navy header block it sits in is drawn, with
-   their strapline set in text, so the page balances and prints without
-   a hole in the corner. If somebody wants the exact mark, drop the
-   artwork in and it can be embedded. */
+   Their actual mark, embedded in enwLogo.js. It was set in text at
+   first, which was close enough to read and nothing like close enough
+   to look right \u2014 the mark has its own letterforms and no font
+   substitutes for it. */
 
 export const ENW_SUBMIT_EMAIL = "connections@enwl.co.uk";
 
@@ -45,11 +45,13 @@ body { margin: 0; background: #e5e7eb; color: #00245d;
 .hd h1 { margin: 0; font-size: 25pt; font-weight: 400; line-height: 1.08;
   color: #00245d; letter-spacing: -.3pt; }
 .hd .sub { margin: 2mm 0 0; font-size: 9pt; color: #00245d; }
-.logo { width: 52mm; height: 26mm; background: #00245d; border-radius: 0 0 0 26mm;
-  color: #fff; display: flex; flex-direction: column; align-items: center;
-  justify-content: center; text-align: center; flex: none; }
-.logo .nm { font-size: 12pt; font-weight: 700; line-height: 1.05; letter-spacing: -.2pt; }
-.logo .tag { font-size: 6.5pt; margin-top: 1.5mm; opacity: .95; }
+/* The navy block is the same #00245d the artwork sits on, so the two
+   meet with no seam. The curve at the lower left matches the shape the
+   mark is printed in on their own form. */
+.logo { width: 56mm; height: 27mm; background: #00245d; border-radius: 0 0 0 27mm;
+  display: flex; align-items: center; justify-content: center; flex: none;
+  overflow: hidden; }
+.logo img { width: 40mm; display: block; }
 
 /* ── Bars ── */
 .navy { background: #00245d; color: #fff; font-size: 9.5pt; padding: 1.4mm 3mm;
@@ -134,8 +136,7 @@ function page1(d) {
         <p class="sub">(5 or more connections or single connection over 60kVA)</p>
       </div>
       <div class="logo">
-        <span class="nm">electricity<br>north west</span>
-        <span class="tag">Bringing energy to your door</span>
+        <img src="${ENW_LOGO}" alt="Electricity North West">
       </div>
     </div>
 

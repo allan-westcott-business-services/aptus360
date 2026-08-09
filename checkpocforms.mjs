@@ -141,6 +141,14 @@ const lookups = {
   for (const r of ["Commercial", "Domestic", "TOTAL"]) {
     if (!html.includes(`>${r}</td>`)) fail(`load table has no ${r} row`);
   }
+  // Their actual mark, embedded rather than set in text. A linked image
+  // would have to survive the iframe sandbox and the print path, and a
+  // logo that silently fails to load is only noticed after sending.
+  if (!html.includes("data:image/png;base64,"))
+    fail("the ENW logo is not embedded in the document");
+  if (/<img[^>]+src="https?:/i.test(html))
+    fail("the form links to an image instead of embedding it");
+
   // ENW green and navy, sampled from the artwork.
   for (const c of ["#7ac043", "#00245d", "#e2efd5"]) {
     if (!html.includes(c)) fail(`the ENW palette is missing ${c}`);

@@ -5,11 +5,13 @@ import {
 import { remember, recall } from "../../lib/session.js";
 import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
-import { getProject } from "../../api/projects.js";
+import { getProject, listProjects } from "../../api/projects.js";
+import { openProject } from "../../lib/projectIntent.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter } from "./rules.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
+import { useDragHandle } from "../../lib/useDragHandle.js";
 import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots,
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
@@ -126,6 +128,7 @@ export default function CallOffsPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(() => recall("callOffStatus", "open"));
+  const [picking, setPicking] = useState(false);
   const [openId, setOpenId] = useState(null);
 
   /* Arrived here from the planning board, which asked for one call-off
@@ -283,7 +286,29 @@ export default function CallOffsPage() {
             Clear
           </button>
         )}
+        <span className="co-spacer" />
+        {/* ── Raising one from here ──
+
+            A call-off belongs to a project, and everything it needs —
+            the plots, the work type, the site — comes from one. So this
+            asks which project and then goes there, to the form that
+            already exists on its Call-offs tab.
+
+            Not a form of its own. A second place to raise a call-off is
+            a second place for the plot list, the work type rules and
+            the service-plot penalty to be got slightly wrong, and the
+            two would drift the first time either changed. */}
+        <button className="btn accent sm" onClick={() => setPicking(true)}>
+          + New call-off
+        </button>
       </div>
+
+      {picking && (
+        <ProjectPicker
+          onCancel={() => setPicking(false)}
+          onPick={(project) => openProject(project, "calloffs")}
+        />
+      )}
 
       {error && <p className="co-err">{error}</p>}
       {loading && <p className="hint">Loading…</p>}
@@ -292,7 +317,7 @@ export default function CallOffsPage() {
         <p className="hint co-none">
           {rows.length
             ? "Nothing matches that."
-            : "No call-offs yet. They are raised from a project's Call-offs tab."}
+            : "No call-offs yet. Use New call-off to pick a project and raise one."}
         </p>
       )}
 
@@ -381,6 +406,100 @@ export default function CallOffsPage() {
    three. It copies whatever is in the first row at the moment it is
    ticked, including blanks — "the same as plot 1" has to mean the same,
    or it would quietly leave old dates behind on the plots below. */
+/* Which project the new call-off is for.
+
+   ── Why this asks instead of guessing ──
+
+   A call-off belongs to exactly one project and there is no sensible
+   default: the last one somebody looked at is a guess, and a guess that
+   raises work against the wrong site is expensive to unpick.
+
+   ── Only contracted projects ──
+
+   Call-offs are a contract-stage thing — the tab does not exist on a
+   tender — so offering a tender project would send somebody to a page
+   with no form on it. Filtered here rather than at the endpoint because
+   the same list serves other callers.
+
+   Search rather than paging: a planner knows the reference or the site
+   and would rather type three characters than scroll. */
+export function ProjectPicker({ onCancel, onPick }) {
+  const drag = useDragHandle();
+  const [rows, setRows] = useState([]);
+  const [q, setQ] = useState("");
+  const [loading, setLoading] = useState(true);
+  const [error, setError] = useState("");
+
+  useEffect(() => {
+    let alive = true;
+    listProjects({ pageSize: 500 })
+      .then((r) => { if (alive) setRows(r.rows || []); })
+      .catch((e) => { if (alive) setError(e.message); })
+      .finally(() => { if (alive) setLoading(false); });
+    return () => { alive = false; };
+  }, []);
+
+  const shown = useMemo(() => {
+    const contracted = rows.filter((r) =>
+      String(r.Stage || "").toLowerCase() !== "tender");
+    const needle = q.trim().toLowerCase();
+    if (!needle) return contracted.slice(0, 60);
+    return contracted.filter((r) => [
+      r.Display_Ref, r.Project_Ref, r.Site_Name, r.Customer_Name,
+    ].some((v) => String(v || "").toLowerCase().includes(needle))).slice(0, 60);
+  }, [rows, q]);
+
+  return (
+    <div className="fe-backdrop" onClick={() => { if (!drag.justDragged()) onCancel(); }}>
+      <div className="pp" onClick={(e) => e.stopPropagation()} style={drag.panelStyle}
+        role="dialog" aria-label="Choose a project">
+        <div className="pp-head" {...drag.handleProps}>
+          <div>
+            <h3>New call-off</h3>
+            <p className="pp-sub">
+              Which project is it for? You will land on its Call-offs tab.
+            </p>
+          </div>
+          <button className="fe-x" onClick={onCancel} aria-label="Close">&times;</button>
+        </div>
+
+        <div className="pp-body">
+          <input className="pp-search" autoFocus value={q}
+            placeholder={"Search reference, site, customer\u2026"}
+            onChange={(e) => setQ(e.target.value)} />
+
+          {error && <p className="pp-err">{error}</p>}
+          {loading && <p className="hint">Loading projects&hellip;</p>}
+          {!loading && !shown.length && (
+            <p className="hint">
+              {rows.length
+                ? "No contracted project matches that."
+                : "No projects found."}
+            </p>
+          )}
+
+          <ul className="pp-list">
+            {shown.map((p) => (
+              <li key={p.Project_ID}>
+                <button onClick={() => onPick(p)}>
+                  <strong>{p.Display_Ref || p.Project_Ref || `#${p.Project_ID}`}</strong>
+                  <span>{p.Site_Name || ""}</span>
+                  <em>{p.Customer_Name || ""}</em>
+                </button>
+              </li>
+            ))}
+          </ul>
+        </div>
+
+        <div className="fe-foot">
+          <span className="fe-spacer" />
+          <button className="btn ghost" onClick={onCancel}>Cancel</button>
+        </div>
+      </div>
+    </div>
+  );
+}
+
 export function EnergisationGrid({ heading, plots, utilities, floor, onSaved }) {
   const earliest = floor ? dayAfter(floor.date) : "";
 
@@ -2021,6 +2140,29 @@ const CSS = `
   font: 600 11.5px inherit; color: #b45309; }
 
 .co-page { padding: 18px 22px 40px; }
+.co-spacer { flex: 1; }
+.pp { background: var(--white); border-radius: 12px; width: min(520px, 94vw);
+  max-height: 80vh; display: flex; flex-direction: column;
+  box-shadow: 0 24px 60px rgba(15,23,42,.28); }
+.pp-head { display: flex; align-items: flex-start; gap: 10px; padding: 15px 18px 12px;
+  border-bottom: 1px solid var(--border); }
+.pp-head > div { flex: 1; }
+.pp-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
+.pp-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
+.pp-body { padding: 12px 18px; overflow-y: auto; flex: 1; }
+.pp-search { width: 100%; margin-bottom: 9px; }
+.pp-err { font-size: 12px; color: #991b1b; margin: 0 0 8px; }
+.pp-list { list-style: none; margin: 0; padding: 0; }
+.pp-list li { border-bottom: 1px solid var(--border); }
+.pp-list li:last-child { border-bottom: 0; }
+.pp-list button { display: flex; align-items: baseline; gap: 10px; width: 100%;
+  text-align: left; border: 0; background: transparent; cursor: pointer;
+  padding: 7px 6px; font: inherit; border-radius: 6px; }
+.pp-list button:hover { background: #f1f5f9; }
+.pp-list strong { font-size: 12.5px; min-width: 76px; }
+.pp-list span { font-size: 12.5px; flex: 1; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
+.pp-list em { font-size: 11px; color: var(--muted); font-style: normal; }
 /* Wrapping is the last resort rather than the first.
 
    A flex item shrinks by default, and the title was the one part not

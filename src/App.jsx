@@ -2,6 +2,7 @@ import { useState, useEffect, lazy, Suspense } from "react";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import { onOpenGis } from "./lib/gisIntent.js";
 import { onOpenCallOff } from "./lib/callOffIntent.js";
+import { onOpenProject } from "./lib/projectIntent.js";
 import { remember, recallOneOf } from "./lib/session.js";
 import LoginPage from "./features/auth/LoginPage.jsx";
 import AccountMenu from "./features/auth/AccountMenu.jsx";
@@ -99,6 +100,11 @@ function Shell() {
      says where it wants to go, the shell switches, and the call-offs
      page collects the payload when it mounts. */
   useEffect(() => onOpenCallOff(() => setView("call-offs")), []);
+
+  /* The call-offs list sending somebody to a project to raise a new
+     one. The project and tab are already in the session by the time
+     this fires; all the shell does is put the page on screen. */
+  useEffect(() => onOpenProject(() => setView("projects")), []);
   const [collapsed, setCollapsed] = useState(false);
 
   let content;

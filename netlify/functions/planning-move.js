@@ -192,13 +192,24 @@ async function applyMove(db, id, { startShift, endShift, asked, toTeam }) {
     else parts.push({ offSite: !!r.Off_Site });
   }
 
-  if (startShift > 0) parts = parts.slice(startShift);
-  else if (startShift < 0) {
-    parts = [...Array(-startShift).fill(null).map(() => ({ offSite: false })), ...parts];
+  /* Only the difference between the shifts changes the length; a move
+     is equal shifts and changes nothing about the list. Trimming the
+     front by startShift and padding the back by endShift is the right
+     arithmetic in the wrong order — a two-day booking moved four days
+     came out four days long, because slicing eight halves off a list of
+     four leaves nothing for the padding to put back.
+
+     The mirror of resizeByHalves in features/calloffs/assignments.js,
+     checked against it by test. */
+  const grow = endShift - startShift;
+  const fresh = (n) => Array(n).fill(null).map(() => ({ offSite: false }));
+  if (grow > 0) {
+    parts = startShift === 0 ? [...parts, ...fresh(grow)] : [...fresh(grow), ...parts];
+  } else if (grow < 0) {
+    parts = startShift === 0
+      ? parts.slice(0, parts.length + grow)
+      : parts.slice(-grow);
   }
-  if (endShift > 0) {
-    parts = [...parts, ...Array(endShift).fill(null).map(() => ({ offSite: false }))];
-  } else if (endShift < 0) parts = parts.slice(0, parts.length + endShift);
 
   if (!parts.length) throw new Error("A booking cannot be shorter than half a day.");
 

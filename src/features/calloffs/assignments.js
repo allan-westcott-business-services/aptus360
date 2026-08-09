@@ -676,12 +676,32 @@ export function resizeByHalves(days = [], startShift = 0, endShift = 0, weekend 
   const sS = Math.round(startShift);
   const eS = Math.round(endShift);
 
-  /* Trimmed or padded at each end. Order matters only in that the
-     start is done first, so the counts below refer to the same list. */
-  if (sS > 0) parts = parts.slice(sS);
-  else if (sS < 0) parts = [...Array(-sS).fill(null).map(() => ({ offSite: false })), ...parts];
-  if (eS > 0) parts = [...parts, ...Array(eS).fill(null).map(() => ({ offSite: false }))];
-  else if (eS < 0) parts = parts.slice(0, parts.length + eS);
+  /* ── How the length changes, and at which end ──
+
+     Only the *difference* between the two shifts changes the length. An
+     earlier version trimmed `sS` halves off the front and padded `eS`
+     onto the back, which is the right arithmetic and the wrong order: a
+     two-day booking moved four days is sS = eS = 8, and slicing 8
+     halves off a list of 4 leaves nothing to pad back, so 8 fresh ones
+     were added and a two-day booking arrived as a four-day one. The
+     symptom only appears once the move is longer than the booking,
+     which is why every short move looked right.
+
+     So a move — equal shifts — changes nothing about the list. The
+     halves travel with it, off site and all.
+
+     A stretch changes it at the end that was dragged, so the halves at
+     the other end keep their dates: pulling the left handle earlier
+     prepends, pushing the right handle later appends. `sS === 0` is the
+     right handle, since the drop handler zeroes whichever end was not
+     grabbed; anything else is treated as the left. */
+  const grow = eS - sS;
+  const fresh = (n) => Array(n).fill(null).map(() => ({ offSite: false }));
+  if (grow > 0) {
+    parts = sS === 0 ? [...parts, ...fresh(grow)] : [...fresh(grow), ...parts];
+  } else if (grow < 0) {
+    parts = sS === 0 ? parts.slice(0, parts.length + grow) : parts.slice(-grow);
+  }
 
   if (!parts.length) return null;
 

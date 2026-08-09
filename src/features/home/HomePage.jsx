@@ -1,4 +1,4 @@
-import { AREAS, areaBuiltCount, firstViewOf } from "../../lib/navigation.js";
+import { AREAS, firstViewOf } from "../../lib/navigation.js";
 import { areaVars } from "../../lib/colour.js";
 
 /* The landing page: one square per area of the business.
@@ -8,22 +8,14 @@ import { areaVars } from "../../lib/colour.js";
    looking at it. Choosing an area here scopes the menu to that area, so
    the planner sees eight operations screens rather than seventy.
 
-   Each square previews the screens behind it and says how many are
-   live. That number is the honest one — it counts `built` items, the
-   same flag the sidebar and People & Roles read — so the page keeps
-   working as a migration board rather than promising eight screens and
-   delivering three. */
+   Each square carries its section's name and nothing else. It listed
+   the screens behind it and a count of how many were live, which made
+   the page useful as a migration board while most sections were empty;
+   now that they are mostly built, that detail is noise in front of a
+   choice between eight things. The colour and the name are enough to
+   pick by. */
 
-/* Five names fit a square at the narrowest column width before the list
-   starts to wrap past its space. Beyond that, count the rest. */
-const PREVIEW = 5;
 
-function previewOf(area) {
-  const names = area.items.map((i) => i.label);
-  if (names.length <= PREVIEW) return names.join(" \u00B7 ");
-  const rest = names.length - PREVIEW;
-  return `${names.slice(0, PREVIEW).join(" \u00B7 ")} \u00B7 +${rest} more`;
-}
 
 export default function HomePage({ onOpen }) {
   return (
@@ -38,10 +30,7 @@ export default function HomePage({ onOpen }) {
       </header>
 
       <div className="home-grid">
-        {AREAS.map((area) => {
-          const live = areaBuiltCount(area);
-          const total = area.items.length;
-          return (
+        {AREAS.map((area) => (
             <button
               key={area.id}
               type="button"
@@ -51,24 +40,9 @@ export default function HomePage({ onOpen }) {
               style={areaVars(area.colour)}
               onClick={() => onOpen(firstViewOf(area))}
             >
-              <span className="area-glyph" aria-hidden="true">{area.icon}</span>
-
               <span className="area-name">{area.label}</span>
-              <span className="area-blurb">{area.blurb}</span>
-
-              <span className="area-list">{previewOf(area)}</span>
-
-              <span className="area-foot">
-                <span className="area-count">
-                  {live === total
-                    ? `${total} ${total === 1 ? "screen" : "screens"}`
-                    : `${live} of ${total} live`}
-                </span>
-                <span className="area-go" aria-hidden="true">&rarr;</span>
-              </span>
             </button>
-          );
-        })}
+          ))}
       </div>
     </div>
   );
@@ -95,10 +69,10 @@ const CSS = `
    in full colour rather than a hairline that would read as a generic
    card border. */
 .area-sq {
-  position: relative; aspect-ratio: 1; min-height: 232px;
-  display: flex; flex-direction: column; align-items: flex-start;
-  gap: 0; text-align: left;
-  padding: 20px 20px 17px;
+  position: relative; aspect-ratio: 1; min-height: 150px;
+  display: flex; align-items: center; justify-content: center;
+  text-align: center;
+  padding: 18px;
   background: var(--white);
   border: 2px solid var(--sq);
   border-radius: 14px;
@@ -117,56 +91,20 @@ const CSS = `
   outline-offset: 3px;
 }
 
-.area-glyph {
-  width: 42px; height: 42px; flex: none; margin-bottom: 14px;
-  display: flex; align-items: center; justify-content: center;
-  border-radius: 10px; font-size: 20px; line-height: 1;
-  background: var(--sq-tint);
-}
-
 .area-name {
-  font-size: 16.5px; font-weight: 700; line-height: 1.25;
-  letter-spacing: -0.01em; margin-bottom: 5px;
+  font-size: 18px; font-weight: 700; line-height: 1.3;
+  letter-spacing: -0.01em; text-wrap: balance;
 }
-.area-blurb {
-  font-size: 12px; line-height: 1.5; color: var(--muted);
-}
-
-/* Pushed to the bottom so the names sit above the footer whatever the
-   blurb's length, and every square's rule lines up across the row. */
-.area-list {
-  margin-top: auto; padding-top: 12px;
-  font-size: 11px; line-height: 1.5; color: var(--muted);
-  display: -webkit-box; -webkit-line-clamp: 3; -webkit-box-orient: vertical;
-  overflow: hidden;
-}
-
-.area-foot {
-  width: 100%; margin-top: 11px; padding-top: 10px;
-  border-top: 1px solid var(--border);
-  display: flex; align-items: center; justify-content: space-between; gap: 8px;
-}
-.area-count {
-  font-size: 10px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.07em; color: var(--sq);
-}
-.area-go {
-  font-size: 15px; line-height: 1; color: var(--sq);
-  transition: transform .16s ease;
-}
-.area-sq:hover .area-go { transform: translateX(3px); }
 
 @media (max-width: 560px) {
   .home-grid { grid-template-columns: 1fr; }
-  /* A full-width square is a very tall box on a phone, and the preview
-     list is what it can afford to lose. */
-  .area-sq { aspect-ratio: auto; min-height: 0; }
-  .area-list { display: none; }
+  /* A full-width square is a very tall box on a phone, so one row of
+     name-height is enough there. */
+  .area-sq { aspect-ratio: auto; min-height: 0; padding: 22px 18px; }
 }
 
 @media (prefers-reduced-motion: reduce) {
-  .area-sq, .area-go { transition: none; }
+  .area-sq { transition: none; }
   .area-sq:hover { transform: none; }
-  .area-sq:hover .area-go { transform: none; }
 }
 `;

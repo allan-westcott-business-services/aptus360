@@ -8,6 +8,7 @@
 import { FORMS, formsFor } from "./src/features/poc/forms/registry.js";
 import { isEnw, isNged, isNpg, isMua, OPERATOR_IDS } from "./src/features/poc/forms/matching.js";
 import { buildEnwDocument, ENW_SUBMIT_EMAIL } from "./src/features/poc/forms/enw.js";
+import { buildNgedDocument, NGED_OFFICES } from "./src/features/poc/forms/nged.js";
 import { esc, field } from "./src/features/poc/forms/shell.js";
 
 let bad = 0;
@@ -208,6 +209,65 @@ const lookups = {
   // Nothing user-supplied may reach the page as markup.
   const nasty = buildEnwDocument({ ...d, siteName: '</script><img onerror=x>' }).html;
   if (nasty.includes("<img onerror")) fail("an unescaped value reached the document");
+}
+
+// ── The built NGED document ─────────────────────────────────────
+{
+  const d = {
+    pocId: 9, projectRef: "2607.001",
+    siteName: "Walton Gardens, Liverpool Lane, Hutton",
+    siteAddress: "Walton Gardens, Liverpool Lane, Hutton", postcode: "",
+    applicantCompany: "Aptus Utilities", applicantName: "Allan Murrell",
+    applicantAddress: "Aptus House, 20 Barrs Fold Road, Wingates Industrial Estate, "
+      + "Westhoughton, Bolton",
+    applicantPostcode: "BL5 3XP", applicantPhone: "01942 233 000", applicantMobile: "",
+    applicantEmail: "allan.murrell@aptusutilities.co.uk",
+    idnoName: "MUA Electricity", connectionDate: "09/02/2027",
+    domesticCount: 159, domesticKva: 535, commercialCount: 2, commercialKva: 0,
+    totalKva: 535, totalConnections: 161, notes: "", nrs: [],
+  };
+  const out = buildNgedDocument(d);
+  const html = out.html;
+
+  eq((html.match(/class="pg"/g) || []).length, 6, "NGED page count");
+
+  // Sections A to L, in order. The form is long enough that a missing
+  // section is easy to overlook by eye.
+  const secs = [...html.matchAll(/<div class="sec">Section ([A-L])/g)].map((m) => m[1]);
+  eq(secs, ["A", "B", "C", "D", "E", "F", "G", "H", "I", "J", "K", "L"], "NGED sections");
+
+  // Per-property load: the form asks for it, we hold only the total.
+  // 535 over 159 plots is 3.36, which is what their own form carries.
+  if (!html.includes("3.36")) fail("per-property kVA was not derived (expected 3.36)");
+
+  // An adopting IDNO makes this an embedded network, not one NGED adopts.
+  const before = (needle, n = 160) =>
+    html.slice(Math.max(0, html.indexOf(needle) - n), html.indexOf(needle));
+  if (!before("Connection of an embedded").includes("checked"))
+    fail("an adopting IDNO did not tick the embedded network box");
+  if (before("Installation of connections for adoption").includes("checked"))
+    fail("both connection-type boxes are ticked");
+
+  // The address is split into the parts NGED asks for.
+  for (const v of ["Westhoughton", "Bolton", "BL5 3XP"]) {
+    if (!html.includes(v)) fail(`NGED form is missing "${v}" from the split address`);
+  }
+
+  // All three regional offices are printed, and the email defaults to one
+  // of them rather than to something invented.
+  for (const [name, o] of Object.entries(NGED_OFFICES)) {
+    if (!html.includes(name)) fail(`office ${name} is missing from the form`);
+    if (!html.includes(o.email)) fail(`office ${name} has no email on the form`);
+  }
+  if (!Object.values(NGED_OFFICES).some((o) => o.email === out.submit.to))
+    fail("the covering email is not addressed to a real regional office");
+
+  // Same rules as every other form.
+  if (/<script/i.test(html)) fail("the NGED document contains a script");
+  if ((html.match(/type="checkbox"/g) || []).length < 30)
+    fail("NGED tick boxes are not real inputs");
+  const nasty = buildNgedDocument({ ...d, siteName: '<img onerror=x>' }).html;
+  if (nasty.includes("<img onerror")) fail("an unescaped value reached the NGED document");
 }
 
 console.log(bad ? `\n${bad} problem(s)` : `Operator forms behave (${FORMS.length} registered, `

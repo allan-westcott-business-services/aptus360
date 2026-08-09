@@ -1,5 +1,6 @@
 import { isEnw, isNged, isNpg, isMua } from "./matching.js";
 import { buildEnwDocument } from "./enw.js";
+import { buildNgedDocument, NGED_OFFICES } from "./nged.js";
 
 /* One row per operator form.
 
@@ -12,9 +13,11 @@ export const FORMS = [
     type: "ENW", label: "ENW form", title: "Electricity North West",
     matches: isEnw, build: buildEnwDocument, ready: true,
   },
+  /* Three regional offices, so the preview offers a picker and the
+     covering email goes to the right one. */
   {
     type: "NGED", label: "NGED form", title: "National Grid Electricity Distribution",
-    matches: isNged, build: null, ready: false,
+    matches: isNged, build: buildNgedDocument, ready: true, offices: NGED_OFFICES,
   },
   {
     type: "NPG", label: "NPg form", title: "Northern Powergrid",

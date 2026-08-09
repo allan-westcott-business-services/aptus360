@@ -5,6 +5,8 @@ import {
 import { remember, recall } from "../../lib/session.js";
 import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
+import { setPlotEnergisation } from "../../api/calloffs.js";
+import { energisationFloor, dayAfter } from "./rules.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import {
@@ -226,6 +228,10 @@ export default function CallOffsPage() {
     return (
       <CallOffDetail row={open} onBack={() => setOpenId(null)} onMove={move}
         onSave={(id, patch) => saveEdit(id, open.Project_ID, patch)}
+        /* Energisation dates are written by their own endpoint, so the
+           list has to be re-read to show them — the panel is drawn from
+           this row and does not hold its own copy. */
+        onReload={load}
         onDelete={(id) => remove(id, open.Project_ID)} />
     );
   }
@@ -327,7 +333,100 @@ export default function CallOffsPage() {
 }
 
 /* One call-off: what was asked for, and where it has got to. */
-function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
+/* The energisation dates for one plot, one column per utility.
+
+   Held as a draft while somebody types and written on Save, rather than
+   on every keystroke: three utilities on eight plots is twenty-four
+   cells, and a request per cell would be twenty-four chances for half
+   of it to land.
+
+   The floor is applied to the picker as well as to the save. A picker
+   that offers a date the endpoint will refuse wastes somebody's time
+   twice — once choosing it and once reading why not. */
+export function EnergisationCell({ plot, utilities, floor, onSaved }) {
+  const earliest = floor ? dayAfter(floor.date) : "";
+  const asSaved = () => Object.fromEntries(
+    (plot.Utilities || []).map((u) => [Number(u.Utility_ID), u.Energisation_Date || ""]));
+
+  const [draft, setDraft] = useState(asSaved);
+  const [open, setOpen] = useState(false);
+  const [busy, setBusy] = useState(false);
+  const [error, setError] = useState("");
+
+  const dirty = utilities.some((u) =>
+    (draft[Number(u.Utility_ID)] || "") !== (asSaved()[Number(u.Utility_ID)] || ""));
+
+  async function save() {
+    setBusy(true);
+    setError("");
+    try {
+      await setPlotEnergisation(plot.Service_Plot_ID, utilities.map((u) => ({
+        Utility_ID: u.Utility_ID,
+        Energisation_Date: draft[Number(u.Utility_ID)] || "",
+      })));
+      setOpen(false);
+      onSaved?.();
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy(false);
+    }
+  }
+
+  const set = (id) => (v) => setDraft((d) => ({ ...d, [Number(id)]: v }));
+
+  if (!open) {
+    return (
+      <button className="co-eng-open" onClick={() => { setDraft(asSaved()); setOpen(true); }}>
+        {(plot.Utilities || []).length
+          ? (plot.Utilities || []).map((u) => (
+            <span key={u.Utility_ID} className="co-eng">
+              {utilities.find((x) => Number(x.Utility_ID) === Number(u.Utility_ID))?.Utility
+                || `#${u.Utility_ID}`}
+              {" "}{u.Energisation_Date}
+            </span>
+          ))
+          /* The plot's own date where 0136 has not been used on this
+             call-off, and an invitation where there is nothing at all —
+             a blank cell gives nobody a reason to click it. */
+          : <span className="co-eng dim">{plot.Energisation_Date || "Set dates\u2026"}</span>}
+      </button>
+    );
+  }
+
+  return (
+    <div className="co-eng-edit">
+      {utilities.map((u) => (
+        <label key={u.Utility_ID} className="co-eng-row">
+          <span className="co-eng-dot" style={{ background: u.Colour || "#94a3b8" }} />
+          <span className="co-eng-name">{u.Utility}</span>
+          <input type="date" value={draft[Number(u.Utility_ID)] || ""}
+            min={earliest || undefined}
+            aria-label={`${u.Utility} energisation date`}
+            onChange={(e) => set(u.Utility_ID)(e.target.value)} />
+          {!!draft[Number(u.Utility_ID)] && (
+            <button className="co-eng-clear" title="Clear"
+              onClick={() => set(u.Utility_ID)("")}>&times;</button>
+          )}
+        </label>
+      ))}
+      {floor && (
+        <p className="co-eng-floor">
+          Nothing before {earliest} &mdash; the day after {floor.why}.
+        </p>
+      )}
+      {error && <p className="co-eng-err">{error}</p>}
+      <div className="co-eng-foot">
+        <button className="btn accent sm" disabled={busy || !dirty} onClick={save}>
+          {busy ? "Saving\u2026" : "Save"}
+        </button>
+        <button className="btn ghost sm" onClick={() => setOpen(false)}>Cancel</button>
+      </div>
+    </div>
+  );
+}
+
+function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
   /* Utility names for the energisation column. Loaded here rather than
      threaded down: this is the only place in the panel that needs them,
      and the lookups are cached. Falls back to the id, which is ugly and
@@ -342,6 +441,30 @@ function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
   }, []);
   const utilityName = (id) => utils
     .find((u) => Number(u.Utility_ID) === Number(id))?.Utility || `#${id}`;
+
+  /* The earliest anything on this call-off may be asked to go live.
+
+     Unlike the form the call-off was raised on, this screen knows what
+     has actually been booked, so the floor here is the real one: the
+     day the excavation and lay finishes. */
+  const [digAssignments, setDigAssignments] = useState([]);
+  const [digPhases, setDigPhases] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    Promise.all([adminList("Call_Off_Assignment"), adminList("Task_Type")])
+      .then(([a, t]) => {
+        if (!alive) return;
+        setDigAssignments((a.rows || [])
+          .filter((x) => Number(x.Submission_ID) === Number(row.Submission_ID)));
+        setDigPhases(t.rows || []);
+      })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [row.Submission_ID]);
+
+  const energFloor = energisationFloor(row, {
+    assignments: digAssignments, taskTypes: digPhases,
+  });
 
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
@@ -534,14 +657,35 @@ function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
                       are rather than one standing in for the other: a
                       call-off asking for three different days should
                       not be summarised into one. */}
+                  {/* ── Set here, per utility ──
+
+                      This is the screen somebody works in once a
+                      call-off exists, so this is where the dates are
+                      set. The form the call-off was raised on has the
+                      same grid, but by the time the dig is planned it
+                      is behind them and the dates are not yet known.
+
+                      Editable only for plots, because that is what 0136
+                      covers: a span still carries one date and a
+                      lighting column only ever has electric. Those show
+                      what they have. */}
                   <td>
-                    {(it.Utilities || []).length
-                      ? (it.Utilities || []).map((u) => (
-                        <span key={u.Utility_ID} className="co-eng">
-                          {utilityName(u.Utility_ID)} {fmt(u.Energisation_Date)}
-                        </span>
-                      ))
-                      : fmt(it.Energisation_Date)}
+                    {mode === "PlotList" && it.Service_Plot_ID ? (
+                      <EnergisationCell
+                        plot={it}
+                        utilities={utils}
+                        floor={energFloor}
+                        onSaved={onReload}
+                      />
+                    ) : (
+                      (it.Utilities || []).length
+                        ? (it.Utilities || []).map((u) => (
+                          <span key={u.Utility_ID} className="co-eng">
+                            {utilityName(u.Utility_ID)} {fmt(u.Energisation_Date)}
+                          </span>
+                        ))
+                        : fmt(it.Energisation_Date)
+                    )}
                   </td>
                 </tr>
               ))}
@@ -1648,6 +1792,21 @@ const CSS = `
   font: 700 10.5px inherit; color: var(--muted); flex: 0 0 auto; }
 .asg-craft { font-size: 11px; color: var(--muted); margin-right: auto; }
 .co-eng { display: block; white-space: nowrap; font-size: 11.5px; }
+.co-eng.dim { color: var(--muted); }
+.co-eng-open { border: 1px dashed transparent; background: transparent; cursor: pointer;
+  font: inherit; text-align: left; padding: 2px 5px; border-radius: 5px; color: inherit; }
+.co-eng-open:hover { border-color: var(--border); background: #f8fafc; }
+.co-eng-edit { border: 1px solid var(--border); border-radius: 7px; padding: 8px 9px;
+  background: #f8fafc; min-width: 232px; }
+.co-eng-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
+.co-eng-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
+.co-eng-name { font-size: 11.5px; font-weight: 600; width: 58px; flex: none; }
+.co-eng-row input { flex: 1; font-size: 11.5px; }
+.co-eng-clear { border: 0; background: transparent; cursor: pointer; color: var(--muted);
+  font-size: 14px; line-height: 1; padding: 0 3px; }
+.co-eng-floor { margin: 5px 0 0; font-size: 10.5px; color: #92400e; }
+.co-eng-err { margin: 5px 0 0; font-size: 10.5px; color: #991b1b; }
+.co-eng-foot { display: flex; gap: 6px; margin-top: 7px; }
 .asg-floor { margin: 7px 0 0; font: 600 11px inherit; color: #92400e; }
 .asg-none { margin: 8px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
 .asg-none.warn { color: #b45309; font-style: normal; font-weight: 600; }

@@ -62,3 +62,16 @@ export async function setCallOffStatus(id, Status) {
   }
   return http.patch(`/calloffs/${id}/status`, { Status });
 }
+
+/* When each utility on a plot is wanted live.
+
+   The whole set for one plot at a time — see
+   netlify/functions/calloff-energisation.js for why it is not a call
+   per cell. A utility left blank is dropped rather than stored empty. */
+export async function setPlotEnergisation(servicePlotId, utilities) {
+  if (USE_MOCKS) {
+    await delay(150);
+    return { Service_Plot_ID: servicePlotId, Utilities: utilities };
+  }
+  return http.put(`/calloffs/plots/${servicePlotId}/energisation`, { utilities });
+}

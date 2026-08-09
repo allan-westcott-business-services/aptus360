@@ -146,6 +146,88 @@ const dayMs = (d) => {
 
 const DAY = 86400000;
 
+/* ── The earliest a phase may start, by the rules ──
+
+   What the dependencies actually require, given what is already booked
+   on this call-off. The successor's floor is:
+
+     finish to start — the day after the predecessor finishes,
+     start to start — the predecessor's start, plus its delay.
+
+   The latest of those where a phase follows more than one, because
+   every rule has to hold and the strictest is the binding one.
+
+   ── Why this and not the phase order ──
+
+   earliestStart in assignments.js does something adjacent and older: it
+   takes the *start* of any earlier phase in the work type's list. That
+   is a reasonable guess in the absence of rules, and it is wrong in the
+   presence of them — it says jointing may begin the day the dig begins,
+   when a finish-to-start says it may not begin until the dig is done.
+   Where there are rules, they are the answer.
+
+   Null where nothing constrains this phase: no rules, or none of its
+   predecessors booked yet. The caller then falls back. */
+export function dependencyFloor(taskTypeId, opts = {}) {
+  const {
+    assignments = [], dependencies = [], dependencyTypes = [],
+    taskTypes = [], workTypeId = null,
+  } = opts;
+
+  const typeById = new Map(dependencyTypes
+    .map((t) => [Number(t.Dependency_Type_ID), t]));
+  const taskName = (id) => taskTypes
+    .find((t) => Number(t.Task_Type_ID) === Number(id))?.Task_Type_Name
+    || `phase ${id}`;
+
+  let best = null;
+
+  for (const dep of dependencies) {
+    if (dep.Is_Active === false) continue;
+    if (Number(dep.Successor_Task_Type_ID) !== Number(taskTypeId)) continue;
+    if (dep.Work_Type_ID != null && workTypeId != null
+      && Number(dep.Work_Type_ID) !== Number(workTypeId)) continue;
+
+    const kind = typeById.get(Number(dep.Dependency_Type_ID));
+    if (!kind) continue;
+
+    for (const before of assignments) {
+      if (Number(before.Task_Type_ID) !== Number(dep.Predecessor_Task_Type_ID)) continue;
+
+      let fromMs;
+      let why;
+      if (kind.Kind === "finish_to_start") {
+        fromMs = dayMs(before.End_Date);
+        if (!Number.isFinite(fromMs)) continue;
+        fromMs += DAY;
+        why = `${taskName(before.Task_Type_ID)} finishes on ${before.End_Date}`;
+      } else {
+        fromMs = dayMs(before.Start_Date);
+        if (!Number.isFinite(fromMs)) continue;
+        /* Half-days rounded up to whole ones, because a start date is a
+           day. A delay of one half means the same day — the afternoon
+           of it, which the day rows decide — so it adds nothing here;
+           two means the next day. */
+        fromMs += Math.floor(lagHalves(dep, kind) / 2) * DAY;
+        why = `${taskName(before.Task_Type_ID)} starts on ${before.Start_Date}`;
+      }
+
+      if (!best || fromMs > best.ms) {
+        best = { ms: fromMs, phase: taskName(before.Task_Type_ID), why };
+      }
+    }
+  }
+
+  if (!best) return null;
+  const d = new Date(best.ms);
+  const p = (n) => String(n).padStart(2, "0");
+  return {
+    date: `${d.getFullYear()}-${p(d.getMonth() + 1)}-${p(d.getDate())}`,
+    phase: best.phase,
+    why: best.why,
+  };
+}
+
 /* A delay in the words somebody would say it in. Half-days is the unit
    it is stored in and not the unit anybody speaks. */
 export function describeLag(halves) {

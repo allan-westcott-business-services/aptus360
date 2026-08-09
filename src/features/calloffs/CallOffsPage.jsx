@@ -12,7 +12,7 @@ import {
   bookedParts, partIsFree,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
 } from "./assignments.js";
-import { dependencyProblems } from "../planning/dependencies.js";
+import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
 /* Call-offs across the business.
 
@@ -27,6 +27,15 @@ export const STATUSES = [
   "Pending Review", "Reviewed", "Scheduled", "In Progress",
   "Complete", "Withdrawn (Customer)", "Withdrawn (Aptus)",
 ];
+
+/* The later of two dates, either of which may be missing. Used where
+   two floors apply at once — today and a dependency — and the binding
+   one is whichever is later. */
+export const maxDate = (a, b) => {
+  if (!a) return b || "";
+  if (!b) return a;
+  return a > b ? a : b;
+};
 
 /* Today, as the pickers want it. Local rather than UTC: west of
    Greenwich in the evening, toISOString has already moved on to
@@ -571,6 +580,29 @@ function Assignments({ row }) {
   const [dependencies, setDependencies] = useState([]);
   const [dependencyTypes, setDependencyTypes] = useState([]);
 
+  /* The earliest a phase may start on this call-off.
+
+     The dependency rules first, since they are what somebody has
+     actually stated about the work; the phase-order guess only where
+     there are none. Those two disagree by design — the order-based one
+     lets a phase begin the day an earlier phase begins, which a
+     finish-to-start forbids — so asking them in the wrong order would
+     default jointing to the day the dig starts and then refuse to save
+     it.
+
+     Written once and used for all three of: the date a new assignment
+     opens on, the earliest the picker will accept, and the sentence
+     that says why. Three places reading the same answer, rather than
+     three chances to compute it differently. */
+  const floorFor = (taskTypeId, mine, plotUniverse, spanId = null) =>
+    dependencyFloor(taskTypeId, {
+      assignments: mine,
+      dependencies, dependencyTypes,
+      taskTypes: phases,
+      workTypeId: row.Work_Type_ID,
+    })
+    || earliestStart(phases, mine, taskTypeId, plotUniverse, spanId);
+
   async function load() {
     try {
       const [tt, map, tm, tc, tr, cr, asg] = await Promise.all([
@@ -753,7 +785,7 @@ function Assignments({ row }) {
   }
 
   function openFor(phase) {
-    const floor = earliestStart(phases, mine, phase.Task_Type_ID, plotUniverse);
+    const floor = floorFor(phase.Task_Type_ID, mine, plotUniverse);
     setDraft({
       Task_Type_ID: phase.Task_Type_ID,
       Team_ID: "",
@@ -860,6 +892,15 @@ function Assignments({ row }) {
     : [];
 
   const allProblems = [...problems, ...orderProblems];
+
+  /* The floor for the phase currently open in the editor, so the start
+     picker can refuse anything earlier. The same answer the phase
+     header shows above it. */
+  const openFloor = openPhase != null
+    ? floorFor(openPhase,
+      all.filter((a) => Number(a.Submission_ID) === Number(row.Submission_ID)),
+      plotUniverse)
+    : null;
 
   async function save() {
     if (allProblems.length) {
@@ -1035,8 +1076,7 @@ function Assignments({ row }) {
           craftId: ph.Craft_ID,
           regionId: row.Region_ID ?? null,
         });
-    const floor = earliestStart(phases, mine, ph.Task_Type_ID, plotUniverse,
-          null);
+        const floor = floorFor(ph.Task_Type_ID, mine, plotUniverse, null);
 
         return (
           <div className="asg-phase" key={ph.Task_Type_ID}>
@@ -1073,7 +1113,16 @@ function Assignments({ row }) {
             {/* Why a phase cannot start yet, before somebody tries. */}
             {floor && (
               <p className="asg-floor">
-                {`Cannot start before ${fmt(floor.date)} \u2014 ${floor.phase} begins then.`}
+                {/* The reason where the rules gave one — "Excavation
+                    and Lay finishes on 18-Aug" — and the older
+                    order-based wording where they did not. The two say
+                    different things and should not be made to sound
+                    alike: one is a rule somebody stated, the other is a
+                    guess from the order phases are listed in. */}
+                {floor.why
+                  ? `Cannot start before ${fmt(floor.date)} \u2014 ${floor.why
+                    .replace(/(\d{4}-\d{2}-\d{2})/, (m) => fmt(m))}.`
+                  : `Cannot start before ${fmt(floor.date)} \u2014 ${floor.phase} begins then.`}
               </p>
             )}
 
@@ -1312,7 +1361,12 @@ function Assignments({ row }) {
                     /* Nothing in the past. A booking cannot be made for
                        a day that has gone, and a picker that offers one
                        is a picker that will be used. */
-                    min={todayISO()}
+                    /* Nothing in the past, and nothing before the phase
+                       this one depends on allows. Both are floors and
+                       the later of the two applies — a picker that
+                       offers a date the form will refuse is a picker
+                       that wastes somebody's time twice. */
+                    min={maxDate(todayISO(), openFloor?.date)}
                     onChange={(e) => setDraft((d) => ({
                       ...d,
                       Start_Date: e.target.value,

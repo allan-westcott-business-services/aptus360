@@ -195,9 +195,31 @@ export default function CallOffsPage() {
       /* The project id passed in rather than read from a `row` that does
          not exist here — the page holds `rows`, and the singular was a
          reference to nothing that would only have failed on save. */
-      await updateCallOff(projectId, id, patch);
-      setRows((rs) => rs.map((r) =>
-        Number(r.Submission_ID) === Number(id) ? { ...r, ...patch } : r));
+      const saved = await updateCallOff(projectId, id, patch);
+
+      /* ── Dates the new visit dates overtook ──
+
+         The endpoint removes energisation dates that fall on or before
+         the preferred or alternative date, because a date that cannot
+         happen is not a date. It says how many, and that has to be said
+         out loud: they were somebody's promise to a customer, and
+         silently emptying the fields would leave the next person to
+         notice the blanks and wonder whether anyone ever filled them.
+
+         Re-read rather than patched into place, since the rows the
+         panel draws from carry those dates. */
+      const cleared = Number(saved?.clearedDates) || 0;
+      if (cleared) {
+        await load();
+        window.alert(
+          `${cleared} energisation date${cleared === 1 ? " was" : "s were"} removed.\n\n`
+          + "They fell on or before the new visit dates, so they can no longer "
+          + "happen. Set new target energisation dates on the plots below.",
+        );
+      } else {
+        setRows((rs) => rs.map((r) =>
+          Number(r.Submission_ID) === Number(id) ? { ...r, ...patch } : r));
+      }
       setError("");
       return true;
     } catch (e) { setError(e.message); return false; }
@@ -359,7 +381,7 @@ export default function CallOffsPage() {
    three. It copies whatever is in the first row at the moment it is
    ticked, including blanks — "the same as plot 1" has to mean the same,
    or it would quietly leave old dates behind on the plots below. */
-export function EnergisationGrid({ plots, utilities, floor, onSaved }) {
+export function EnergisationGrid({ heading, plots, utilities, floor, onSaved }) {
   const earliest = floor ? dayAfter(floor.date) : "";
 
   /* Keyed plot then utility. Seeded from what is saved, so opening the
@@ -434,6 +456,11 @@ export function EnergisationGrid({ plots, utilities, floor, onSaved }) {
 
   return (
     <div className="eg">
+      {/* Named for what these dates are: a target, not a commitment.
+          The column header said "energisation date" and the table now
+          holds one per utility, so the singular had stopped being
+          true. */}
+      {heading && <h4 className="eg-head">{heading}</h4>}
       <table className="eg-tbl">
         <thead>
           <tr>
@@ -731,6 +758,7 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
           /* Plots get the grid: one row each, one column per utility the
              project has a design for. */
           <EnergisationGrid
+            heading="Target energisation dates"
             plots={row.items.filter((it) => it.Service_Plot_ID)}
             utilities={designUtilities}
             floor={energFloor}
@@ -1882,6 +1910,7 @@ const CSS = `
 
    No backticks in here — this whole block lives inside a template
    literal, and one would end it. */
+.eg-head { margin: 0 0 8px; font-size: 13px; font-weight: 700; }
 .eg-tbl { border-collapse: collapse; font-size: 12.5px; }
 .eg-tbl th, .eg-tbl td { padding: 5px 10px; border-bottom: 1px solid var(--border);
   text-align: left; white-space: nowrap; }

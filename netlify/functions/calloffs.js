@@ -198,9 +198,10 @@ export default async function handler(req, context) {
       return json(created);
     }
 
-    /* ── PATCH: the submission only ── */
+    /* ── PATCH: the submission, and what its dates invalidate ── */
     if (req.method === "PATCH" && id) {
       const body = await req.json();
+
       const { data, error } = await db
         .from("Mains_Call_Off_Submission")
         .update(pick(body))
@@ -208,7 +209,89 @@ export default async function handler(req, context) {
         .select(SUB_COLS)
         .single();
       if (error) throw error;
-      return json(data);
+
+      /* ── Energisation dates the new visit dates have overtaken ──
+
+         Nothing can go live before the work that makes it live. Move a
+         call-off from July to October and a September energisation date
+         is no longer a request, it is a leftover — and a leftover on a
+         date field is worse than a blank one, because it still looks
+         like somebody meant it.
+
+         So they are removed rather than flagged. A date that cannot
+         happen is not a date, and leaving it on screen with a warning
+         beside it invites everyone after to assume somebody else has
+         looked at it.
+
+         ── On or before, and both dates ──
+
+         Both, because either could be the day the gang arrives, and a
+         date that is impossible under one of them is not a date anybody
+         can rely on. The later of the two is therefore the floor.
+
+         On the day counts as too early: the trench is being dug that
+         day, not energised.
+
+         ── Only when the dates actually moved ──
+
+         A patch that sets a status or a contact name should not touch
+         anything. Checked against what was there rather than against
+         what was sent, so re-saving the same date changes nothing. */
+      let clearedDates = 0;
+      const touched = ["Preferred_Date", "Alternative_Date"]
+        .some((k) => k in body);
+
+      if (touched) {
+        const floor = [data.Preferred_Date, data.Alternative_Date]
+          .filter(Boolean)
+          .sort()
+          .pop() || null;
+
+        if (floor) {
+          const { data: plots } = await db
+            .from("Service_Call_Off_Plot")
+            .select("Service_Plot_ID")
+            .eq("Submission_ID", id);
+          const plotIds = (plots || []).map((p) => p.Service_Plot_ID);
+
+          if (plotIds.length) {
+            /* Counted before they go, so the panel can say how many and
+               for which plots rather than "some dates were removed". */
+            const { data: doomed } = await db
+              .from("Service_Call_Off_Plot_Utility")
+              .select("Service_Plot_Utility_ID")
+              .in("Service_Plot_ID", plotIds)
+              .lte("Energisation_Date", floor);
+            clearedDates = (doomed || []).length;
+
+            if (clearedDates) {
+              await db.from("Service_Call_Off_Plot_Utility")
+                .delete()
+                .in("Service_Plot_ID", plotIds)
+                .lte("Energisation_Date", floor);
+            }
+          }
+
+          /* The plot-level fallback from before 0136 goes the same way.
+             It is the same promise on a coarser grain, and leaving it
+             while clearing the per-utility rows would have a call-off
+             saying two different things. */
+          const { data: stale } = await db
+            .from("Service_Call_Off_Plot")
+            .select("Service_Plot_ID")
+            .eq("Submission_ID", id)
+            .lte("Energisation_Date", floor);
+          if ((stale || []).length) {
+            clearedDates += stale.length;
+            await db.from("Service_Call_Off_Plot")
+              .update({ Energisation_Date: null })
+              .eq("Submission_ID", id)
+              .lte("Energisation_Date", floor);
+          }
+        }
+      }
+
+      return json({ ...data, clearedDates });
     }
 
     /* ── DELETE: the submission, and its rows with it ── */

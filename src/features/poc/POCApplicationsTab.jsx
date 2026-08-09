@@ -19,8 +19,8 @@ import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components
 import OptionsPanel from "./OptionsPanel.jsx";
 import EntityNotes from "../../components/EntityNotes.jsx";
 import { formsFor } from "./forms/registry.js";
-import { openForm } from "./forms/openForm.js";
-import { listenForSubmissions } from "./forms/submissions.js";
+import { prepareForm } from "./forms/prepareForm.js";
+import FormPreview from "./forms/FormPreview.jsx";
 
 /* POC applications, following the original app.
 
@@ -101,20 +101,16 @@ export default function POCApplicationsTab({ projectId }) {
   const layout = useTableLayout("poc", COLS);
   const [lookups, setLookups] = useState(null);
   const [formError, setFormError] = useState("");
-
-  /* A form window telling us it has been sent. Mounted for as long as
-     the tab is open, because the form is a separate window and may be
-     submitted long after it was opened. */
-  useEffect(() => listenForSubmissions({
-    projectId,
-    onUpdated: (pocId, date) => setRows((rs) => rs.map((x) =>
-      (x.POC_Application_ID === pocId ? { ...x, Submitted_Date: date } : x))),
-  }), [projectId]);
+  const [preview, setPreview] = useState(null);   // { form, prepared, poc }
+  const [preparing, setPreparing] = useState(null);
 
   async function openOperatorForm(form, row) {
     setFormError("");
-    const r = await openForm({ form, poc: row, projectId, lookups });
-    if (!r.ok) setFormError(r.reason);
+    setPreparing(`${row.POC_Application_ID}:${form.type}`);
+    const r = await prepareForm({ form, poc: row, projectId, lookups });
+    setPreparing(null);
+    if (!r.ok) { setFormError(r.reason); return; }
+    setPreview({ form, prepared: r, poc: row });
   }
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
@@ -629,6 +625,9 @@ export default function POCApplicationsTab({ projectId }) {
       {/* Popup blockers and missing data both surface here rather than in
           an alert: the form opens in another window, so an alert can end
           up behind it where nobody sees it. */}
+      {/* Shown at the top and again beside the table, because this page
+          is long: an error only at the top is invisible to somebody
+          scrolled down to the row they just clicked. */}
       {formError && <Banner kind="warn">{formError}</Banner>}
 
       {showForm && (
@@ -1173,7 +1172,8 @@ export default function POCApplicationsTab({ projectId }) {
                                     ? `Open the ${f.title} application form`
                                     : `The ${f.title} form is not built yet`}
                                   onClick={() => openOperatorForm(f, r)}>
-                                  {f.label}
+                                  {preparing === `${r.POC_Application_ID}:${f.type}`
+                                    ? "Opening\u2026" : f.label}
                                 </button>
                               ))}
                               <button className="btn edit sm" onClick={() => editRow(r)}>Edit</button>
@@ -1208,6 +1208,24 @@ export default function POCApplicationsTab({ projectId }) {
             </div>
           );
         })
+      )}
+
+      {/* The error again, at the foot of the table. This page is long,
+          and a message only at the top is invisible to somebody scrolled
+          down to the row whose button they just pressed \u2014 which is
+          how a blocked form first looked like a button that did nothing. */}
+      {formError && <Banner kind="warn">{formError}</Banner>}
+
+      {preview && (
+        <FormPreview
+          form={preview.form}
+          prepared={preview.prepared}
+          poc={preview.poc}
+          projectId={projectId}
+          onClose={() => setPreview(null)}
+          onSubmitted={(pocId, date) => setRows((rs) => rs.map((x) =>
+            (x.POC_Application_ID === pocId ? { ...x, Submitted_Date: date } : x)))}
+        />
       )}
     </div>
   );

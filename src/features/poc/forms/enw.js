@@ -239,11 +239,13 @@ function page4(d) {
 
 export function buildEnwDocument(d) {
   const ref = [d.projectRef, d.siteName].filter(Boolean).join(" \u2014 ");
-  return wrapDocument({
-    title: "ENW Application for electricity connections" + (ref ? " \u2014 " + ref : ""),
-    heading: "Electricity North West &mdash; Application for electricity connections",
+  return {
+    html: wrapDocument({
+      title: "ENW Application for electricity connections" + (ref ? " \u2014 " + ref : ""),
+      css: ENW_CSS,
+      pages: page1(d) + page2(d) + page3(d) + page4(d),
+    }),
     ref,
-    css: ENW_CSS,
     provider: "ENW",
     providerTitle: "Electricity North West",
     submit: submitPayload(d, {
@@ -251,6 +253,5 @@ export function buildEnwDocument(d) {
       title: "Application for electricity connections",
       form: "ENW",
     }),
-    pages: page1(d) + page2(d) + page3(d) + page4(d),
-  });
+  };
 }

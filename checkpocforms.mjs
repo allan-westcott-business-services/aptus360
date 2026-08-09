@@ -8,7 +8,7 @@
 import { FORMS, formsFor } from "./src/features/poc/forms/registry.js";
 import { isEnw, isNged, isNpg, isMua, OPERATOR_IDS } from "./src/features/poc/forms/matching.js";
 import { buildEnwDocument, ENW_SUBMIT_EMAIL } from "./src/features/poc/forms/enw.js";
-import { esc, field, submitPayload } from "./src/features/poc/forms/shell.js";
+import { esc, field } from "./src/features/poc/forms/shell.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -105,7 +105,17 @@ const lookups = {
     nrs: [{ Description: "Community centre", Load_kVA: 30 },
       { Description: "Pumping station", Load_kVA: 15 }],
   };
-  const html = buildEnwDocument(d);
+  const out = buildEnwDocument(d);
+  const html = out.html;
+
+  // The builder hands back a document plus what the chrome needs. It must
+  // not do the showing itself: a builder that opened a window could only
+  // be exercised by running the application.
+  for (const k of ["html", "ref", "provider", "providerTitle", "submit"]) {
+    if (!(k in out)) fail(`build result is missing "${k}"`);
+  }
+  if (/window\.open|document\.write/.test(String(buildEnwDocument)))
+    fail("the builder opens or writes a window itself");
 
   if (!html.startsWith("<!DOCTYPE html>")) fail("document has no doctype");
   // Four pages, as the artwork has.
@@ -128,22 +138,19 @@ const lookups = {
     fail(`connection counts ${conns} do not total ${d.totalConnections}`);
 
   // The submit payload has to carry the id back, or nothing gets stamped.
-  const sub = submitPayload(d, { to: ENW_SUBMIT_EMAIL, title: "T", form: "ENW" });
+  const sub = out.submit;
   eq(sub.pocId, 7, "submit payload carries the POC id");
   eq(sub.to, ENW_SUBMIT_EMAIL, "submit payload is addressed to the operator");
   if (!sub.subject.includes("2607.001")) fail("subject does not identify the project");
 
-  // The script block must be closed exactly once, at the end. More than
-  // one closing tag means something inside it terminated the block early
-  // — which is how a site name ends up executing as markup.
-  const scriptBody = html.slice(html.indexOf("<script>"));
-  const closes = (scriptBody.match(/<\/script>/g) || []).length;
-  eq(closes, 1, "closing script tags inside the script block");
-  if (!scriptBody.trimEnd().endsWith("</body></html>"))
-    fail("the document does not end cleanly after the script");
+  // The document is inert: it is rendered in an iframe, so any script in
+  // it would be running attacker-controlled markup with no reason to.
+  if (/<script/i.test(html)) fail("the printable document contains a script");
+  if (/\son\w+\s*=/i.test(html)) fail("the printable document has an inline handler");
+  if (!html.trimEnd().endsWith("</body></html>")) fail("document does not end cleanly");
 
-  // Nothing user-supplied may reach the page unescaped.
-  const nasty = buildEnwDocument({ ...d, siteName: '</script><img onerror=x>' });
+  // Nothing user-supplied may reach the page as markup.
+  const nasty = buildEnwDocument({ ...d, siteName: '</script><img onerror=x>' }).html;
   if (nasty.includes("<img onerror")) fail("an unescaped value reached the document");
 }
 

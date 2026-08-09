@@ -4,7 +4,6 @@ import Section from "../../components/Section.jsx";
 import Select from "../../components/Select.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import Banner from "../../components/Banner.jsx";
-import StagePill from "../../components/StagePill.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { getProject, updateProject } from "../../api/projects.js";
 import { statusOptions as workflowOptions } from "../../lib/statusWorkflow.js";
@@ -170,6 +169,12 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
   return (
     <div>
       <style>{SITE_CSS}</style>
+      {/* No stage badge here. The Tender / Contract toggle at the top of
+          the page already says which stage is being shown, and a second
+          indicator beside it contradicted the first: the toggle reflects
+          the tab you have chosen, while the badge reflected the record's
+          own stage, so viewing the Contract tab of a project still at
+          Tender showed "Contract" and "TENDER STAGE" side by side. */}
       <div className="page-head">
         <div>
           <h2>Project details</h2>
@@ -178,7 +183,6 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
             project is Secured.
           </p>
         </div>
-        <StagePill stage={stage} />
       </div>
 
       {flash && <Banner kind="ok">{flash}</Banner>}

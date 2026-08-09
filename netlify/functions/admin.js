@@ -30,7 +30,17 @@ const TABLES = {
   /* Phases, which work type involves which, and who is doing them. */
   Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
   Dependency_Type:     { pk: "Dependency_Type_ID",     order: "Sort_Order" },
-  Task_Dependency:     { pk: "Task_Dependency_ID",     order: "Task_Dependency_ID" },
+  Task_Dependency:     { pk: "Task_Dependency_ID",     order: "Task_Dependency_ID",
+    /* One relationship per pair of phases per work type, which is what
+       the unique index enforces. Saying "that entry already exists" is
+       true and useless: the row somebody is adding is not the row that
+       exists — it is the same pair with a different relationship, and
+       what they need to know is that the pair is spoken for and the
+       answer is to edit it. */
+    conflict: "Those two phases already have a relationship. "
+      + "Edit the existing rule rather than adding a second one \u2014 "
+      + "a pair with two relationships has no single answer to how long "
+      + "the second waits." },
   Work_Type_Task_Type: { pk: "Work_Type_Task_Type_ID", order: "Display_Order" },
   Call_Off_Assignment: { pk: "Assignment_ID",          order: "Start_Date" },
   /* The days under an assignment. Missing from this list, every write
@@ -153,7 +163,7 @@ export default async function handler(req, context) {
       const { data, error } = await db.from(table)
         .insert(nullEmpty(withoutKey(body))).select().single();
       if (error && error.code === "23505") {
-        return json({ error: "That entry already exists." }, 409);
+        return json({ error: meta.conflict || "That entry already exists." }, 409);
       }
       if (error) throw error;
       return json(data, 201);
@@ -162,8 +172,15 @@ export default async function handler(req, context) {
     if (req.method === "PATCH") {
       if (!id) return json({ error: "id required" }, 400);
       const body = await req.json();
+      /* Editing a row into a duplicate hits the same index as inserting
+         one, and used to come back as a raw Postgres error — the same
+         situation with a worse explanation, because only the insert
+         path had been thought about. */
       const { data, error } = await db
         .from(table).update(nullEmpty(withoutKey(body))).eq(meta.pk, id).select().single();
+      if (error && error.code === "23505") {
+        return json({ error: meta.conflict || "That entry already exists." }, 409);
+      }
       if (error) throw error;
       return json(data);
     }

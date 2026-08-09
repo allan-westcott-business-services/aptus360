@@ -12,6 +12,7 @@ import {
   bookedParts, partIsFree,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
 } from "./assignments.js";
+import { dependencyProblems } from "../planning/dependencies.js";
 
 /* Call-offs across the business.
 
@@ -563,6 +564,12 @@ function Assignments({ row }) {
      table rather than a list in this file, so adding "On Hold" is an
      admin job and not a deploy. */
   const [statuses, setStatuses] = useState([]);
+  /* What follows what — 0134 and 0135. Held here so the editor refuses
+     the same arrangements the planning board refuses: two screens that
+     disagree about whether jointing may precede the dig would let
+     somebody get the answer they wanted by choosing the other one. */
+  const [dependencies, setDependencies] = useState([]);
+  const [dependencyTypes, setDependencyTypes] = useState([]);
 
   async function load() {
     try {
@@ -577,6 +584,17 @@ function Assignments({ row }) {
          status cannot be read is still an assignment worth showing, and
          a panel that renders nothing because a lookup table is absent is
          worse than one with grey pills on it. */
+      /* Tolerated missing in the same way: a database where 0134 has
+         not been run has no dependency rules, and an editor that
+         refused to open because of that would be worse than one that
+         simply enforces nothing. */
+      const [dep, depT] = await Promise.all([
+        adminList("Task_Dependency").catch(() => ({ rows: [] })),
+        adminList("Dependency_Type").catch(() => ({ rows: [] })),
+      ]);
+      setDependencies((dep.rows || []).filter((d) => d.Is_Active !== false));
+      setDependencyTypes(depT.rows || []);
+
       const st = await adminList("Call_Off_Status").catch(() => ({ rows: [] }));
       setStatuses((st.rows || [])
         .filter((x) => x.Is_Active !== false)
@@ -804,11 +822,50 @@ function Assignments({ row }) {
     })
     : [];
 
+  /* ── Out of order ──
+
+     The same check the planning board applies, on the same rules, so
+     the two screens refuse the same arrangements. Jointing cannot be
+     saved to start before the dig on its own call-off has finished, and
+     it does not matter which screen somebody reaches for.
+
+     Run against the call-off's assignments with the draft standing in
+     for the one being edited — the question is about the schedule that
+     would exist once this is saved, not the one on screen now. A new
+     assignment is appended rather than replacing anything.
+
+     Empty where 0134 has not been run and there are no rules, which is
+     the honest answer: nothing has been said about what follows what. */
+  const orderProblems = openPhase != null && dependencies.length
+    ? dependencyProblems(
+      [
+        ...all.filter((a) => Number(a.Submission_ID) === Number(row.Submission_ID)
+          && Number(a.Assignment_ID) !== Number(editing)),
+        {
+          Assignment_ID: editing ?? -1,
+          Submission_ID: row.Submission_ID,
+          Task_Type_ID: openPhase,
+          Start_Date: draft.Start_Date,
+          End_Date: schedule.end || draft.End_Date,
+        },
+      ],
+      {
+        dependencies,
+        dependencyTypes,
+        taskTypes: phases,
+        submissions: [row],
+        workDays,
+      },
+    )
+    : [];
+
+  const allProblems = [...problems, ...orderProblems];
+
   async function save() {
-    if (problems.length) {
+    if (allProblems.length) {
       /* Said out loud. Returning quietly is what made a disabled button
          and an ignored click indistinguishable. */
-      setError(problems[0]);
+      setError(allProblems[0]);
       return;
     }
     setSaidSaved("");
@@ -1483,9 +1540,9 @@ function Assignments({ row }) {
 
                 {/* Everything wrong at once, so three problems are not
                     found across three attempts to save. */}
-                {problems.length > 0 && (
+                {allProblems.length > 0 && (
                   <ul className="asg-problems">
-                    {problems.map((t, k) => <li key={k}>{t}</li>)}
+                    {allProblems.map((t, k) => <li key={k}>{t}</li>)}
                   </ul>
                 )}
                 {saidSaved && <p className="asg-saved">{saidSaved}</p>}

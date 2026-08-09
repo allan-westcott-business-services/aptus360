@@ -7,7 +7,7 @@ import {
 } from "./timeline.js";
 import { resizeByHalves, teamMayTake } from "../calloffs/assignments.js";
 import { openCallOff } from "../../lib/callOffIntent.js";
-import { dependentAssignments } from "./dependencies.js";
+import { dependentAssignments, dependencyProblems } from "./dependencies.js";
 import AssignmentModal from "./AssignmentModal.jsx";
 import PmColoursModal from "./PmColoursModal.jsx";
 import WeekendDropModal from "./WeekendDropModal.jsx";
@@ -261,6 +261,33 @@ export default function PlanningPage() {
       /* The phase as the board labels it, so the refusal names the
          thing on the bar rather than the craft behind it. */
       taskName: task?.Task_Type_Name || item?.phase || null,
+    });
+  }, []);
+
+  /* ── Would this leave the programme out of order? ──
+
+     Checked against where things end up, not against how far they
+     moved. Jointing dragged to before its dig has finished breaks a
+     finish-to-start whether it was nudged half a day or a fortnight,
+     and the rule is about the arrangement rather than the gesture.
+
+     Applied to a *copy* of the board with the move already in it, so
+     what is tested is the schedule that would exist — including the
+     dependants travelling with it, which is what makes moving a dig
+     forward legal when moving its jointing back alone is not.
+
+     Returns the complaints, or an empty list. */
+  const wouldBreak = useCallback((apply) => {
+    const cur = dataRef.current;
+    if (!cur?.dependencies?.length) return [];
+    const next = apply(cur);
+    if (!next) return [];
+    return dependencyProblems(next.assignments || [], {
+      dependencies: next.dependencies || [],
+      dependencyTypes: next.dependencyTypes || [],
+      taskTypes: next.taskTypes || [],
+      submissions: next.submissions || [],
+      workDays: next.workDays || [],
     });
   }, []);
 
@@ -566,6 +593,27 @@ export default function PlanningPage() {
          Nothing is written until somebody answers. The bar stays where
          it was, which is the honest state — the move has not happened
          yet. */
+      /* ── Out of order ──
+
+         Refused before anything is written, and refused rather than
+         warned: the rules say what the work needs, and a board that
+         lets somebody schedule jointing before the cable is in the
+         ground has not helped them.
+
+         Tested with the followers included, since they move too. */
+      const breaks = wouldBreak((cur) => {
+        let next = shiftInPlace(cur, d.assignmentId, startShift, endShift, null, toTeam);
+        for (const f of follows) {
+          next = shiftInPlace(next, f.assignmentId, f.startShift, f.endShift, null, null);
+        }
+        return next;
+      });
+      if (breaks.length) {
+        setNotice(breaks[0]
+          + (breaks.length > 1 ? ` (and ${breaks.length - 1} more)` : ""));
+        return;
+      }
+
       /* The weekend question covers the whole move, followers
          included. One weekend, one decision about working it — asking
          separately for each booking would put three dialogs in a row in

@@ -77,17 +77,31 @@ body { margin: 0; background: #e5e7eb; color: #00245d;
 .bul li { margin-bottom: .8mm; }
 
 /* ── Tick boxes ── */
-/* Centred with flex rather than nudged with offsets: a tick that sits
-   proud of its box is the first thing that looks wrong on a printed
-   form, and hand-tuned offsets drift the moment the size changes. */
-.bx { display: inline-flex; align-items: center; justify-content: center;
-  width: 3mm; height: 3mm; border: .8pt solid #00245d; margin-right: 1.5mm;
-  vertical-align: -.5mm; font-size: 7pt; font-weight: 700; line-height: 1;
-  color: #00245d; }
-.bx.on::after { content: "\\2713"; }
+/* Real checkboxes, so they can be ticked and unticked on screen before
+   printing. The application only ever guesses at these \u2014 it knows
+   the connection is new and the asset is going to an IDNO, and nothing
+   about temporary supplies or budget quotes \u2014 so whoever completes
+   the form has to be able to correct them.
+
+   Native inputs rather than a script: the document is rendered inside
+   an iframe and printed from there, and a form that needs JavaScript to
+   be filled in is one more thing that can fail silently between here
+   and the printer. The browser's own control is stripped off
+   so the box matches the artwork.
+
+   The tick is centred with flex rather than nudged with offsets: a tick
+   sitting proud of its box is the first thing that looks wrong on a
+   printed form, and hand-tuned offsets drift the moment sizes change. */
+.bx { appearance: none; -webkit-appearance: none; margin: 0 1.5mm 0 0;
+  display: inline-flex; align-items: center; justify-content: center;
+  width: 3mm; height: 3mm; border: .8pt solid #00245d; background: #fff;
+  vertical-align: -.5mm; font: 700 7pt/1 Arial, Helvetica, sans-serif;
+  color: #00245d; cursor: pointer; flex: none; }
+.bx:checked::after { content: "\\2713"; }
+.bx:focus-visible { outline: 1.5pt solid #7ac043; outline-offset: .5pt; }
 /* On the navy bar the boxes would otherwise be navy on navy. */
-.navy .bx { border-color: #fff; color: #fff; }
-.opt { display: flex; align-items: baseline; }
+.navy .bx { border-color: #fff; background: transparent; color: #fff; }
+.opt { display: flex; align-items: baseline; cursor: pointer; }
 .opts { display: grid; grid-template-columns: 1fr 1fr; }
 .opts > div { border-bottom: .6pt dotted #aeb4bf; padding: 1.1mm 3mm; font-size: 9.5pt; }
 
@@ -103,6 +117,15 @@ table.gr th, table.gr td { border: .6pt solid #aeb4bf; padding: 1.2mm 2mm;
   text-align: left; }
 table.gr th { background: #e2efd5; font-weight: 400; font-size: 7.5pt; line-height: 1.2; }
 table.gr td { height: 6mm; font-weight: 700; }
+
+@media print {
+  /* Without this the browser drops the box outline and the tick, and
+     the form prints with every option apparently unanswered. */
+  .bx { -webkit-print-color-adjust: exact; print-color-adjust: exact;
+    border-color: #00245d !important; }
+  .navy .bx { border-color: #fff !important; }
+  .bx:focus-visible { outline: 0; }
+}
 `;
 
 /* An entry: a label, then the answer on the same rule. */
@@ -118,8 +141,11 @@ const split = (l1, v1, l2, v2) =>
   + `<div><span class="l">${esc(l2)}</span>`
   + `<span class="v">${field(v2)}</span></div></div>`;
 
+/* A label wrapping its input, so the words are clickable too — the
+   boxes are 3mm and several of these labels run to two lines. */
 const box = (on, label) =>
-  `<span class="opt"><span class="bx${on ? " on" : ""}"></span>${label}</span>`;
+  `<label class="opt"><input type="checkbox" class="bx"${on ? " checked" : ""}>`
+  + `<span>${label}</span></label>`;
 
 /* ── Page 1 ─────────────────────────────────────────────────────── */
 function page1(d) {

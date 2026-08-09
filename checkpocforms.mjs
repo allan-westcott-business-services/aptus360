@@ -166,12 +166,23 @@ const lookups = {
 
   // The adopting IDNO ticks a box rather than being printed: the form
   // asks whose asset it will be, not who they are.
-  const idnoLine = html.slice(html.indexOf("IDNO Point of connection") - 120,
-    html.indexOf("IDNO Point of connection"));
-  if (!idnoLine.includes("bx on")) fail("an adopting IDNO did not tick the IDNO box");
-  const dnoAt = html.indexOf("ICP Point of connection");
-  if (html.slice(dnoAt - 120, dnoAt).includes("bx on"))
+  const before = (needle, n = 140) =>
+    html.slice(Math.max(0, html.indexOf(needle) - n), html.indexOf(needle));
+  if (!before("IDNO Point of connection").includes("checked"))
+    fail("an adopting IDNO did not tick the IDNO box");
+  if (before("ICP Point of connection").includes("checked"))
     fail("the DNO box is ticked as well as the IDNO one");
+
+  // The boxes must be real inputs. The application guesses at most of
+  // them and is wrong often enough that whoever completes the form has
+  // to be able to change them — a printed span cannot be unticked.
+  const boxes = (html.match(/type="checkbox"/g) || []).length;
+  if (boxes < 15) fail(`only ${boxes} checkboxes are real inputs`);
+  if (/class="bx[^"]*on[^"]*"/.test(html))
+    fail("a tick is still baked into a class rather than a checkbox state");
+  // And they must be reachable without a script, since the document has none.
+  if (!/<label class="opt"><input type="checkbox"/.test(html))
+    fail("checkbox labels are not clickable");
 
   // The load table must add up to what was applied for, or the operator
   // queries it — this is the check a reader cannot do by eye.

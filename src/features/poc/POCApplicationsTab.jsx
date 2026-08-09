@@ -18,6 +18,9 @@ import { useTableLayout } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 import OptionsPanel from "./OptionsPanel.jsx";
 import EntityNotes from "../../components/EntityNotes.jsx";
+import { formsFor } from "./forms/registry.js";
+import { openForm } from "./forms/openForm.js";
+import { listenForSubmissions } from "./forms/submissions.js";
 
 /* POC applications, following the original app.
 
@@ -97,6 +100,22 @@ const money = (n) => (n == null || n === "" ? "\u2014" : `£${Number(n).toLocale
 export default function POCApplicationsTab({ projectId }) {
   const layout = useTableLayout("poc", COLS);
   const [lookups, setLookups] = useState(null);
+  const [formError, setFormError] = useState("");
+
+  /* A form window telling us it has been sent. Mounted for as long as
+     the tab is open, because the form is a separate window and may be
+     submitted long after it was opened. */
+  useEffect(() => listenForSubmissions({
+    projectId,
+    onUpdated: (pocId, date) => setRows((rs) => rs.map((x) =>
+      (x.POC_Application_ID === pocId ? { ...x, Submitted_Date: date } : x))),
+  }), [projectId]);
+
+  async function openOperatorForm(form, row) {
+    setFormError("");
+    const r = await openForm({ form, poc: row, projectId, lookups });
+    if (!r.ok) setFormError(r.reason);
+  }
   const [rows, setRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -607,6 +626,10 @@ export default function POCApplicationsTab({ projectId }) {
 
       {flash && <Banner kind="ok">{flash}</Banner>}
       {error && <Banner kind="error">{error}</Banner>}
+      {/* Popup blockers and missing data both surface here rather than in
+          an alert: the form opens in another window, so an alert can end
+          up behind it where nobody sees it. */}
+      {formError && <Banner kind="warn">{formError}</Banner>}
 
       {showForm && (
         <div className="poc-form">
@@ -1140,6 +1163,19 @@ export default function POCApplicationsTab({ projectId }) {
                                 title="Options and quotations">
                                 {expanded === r.POC_Application_ID ? "\u25BE" : "\u25B8"} Options
                               </button>
+                              {/* One button per form this operator needs. A POC
+                                  naming a DNO and an adopting IDNO gets two. */}
+                              {formsFor(r, lookups).map((f) => (
+                                <button key={f.type}
+                                  className={f.ready ? "btn sm poc-form" : "btn sm poc-form off"}
+                                  disabled={!f.ready}
+                                  title={f.ready
+                                    ? `Open the ${f.title} application form`
+                                    : `The ${f.title} form is not built yet`}
+                                  onClick={() => openOperatorForm(f, r)}>
+                                  {f.label}
+                                </button>
+                              ))}
                               <button className="btn edit sm" onClick={() => editRow(r)}>Edit</button>
                               <button className="btn delete sm" onClick={() => remove(r)}>Delete</button>
                             </>)

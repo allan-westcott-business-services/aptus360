@@ -45,8 +45,6 @@ export default function ProjectDetail({
       .catch(() => { if (live) setTabRows([]); });
     return () => { live = false; };
   }, []);
-  const shownTabs = useMemo(
-    () => visibleTabs(stage, areaKey, tabRows), [stage, areaKey, tabRows]);
   /* The project as it now stands, not as it was handed over.
 
      The header shows the site name and the reference, and the details
@@ -73,6 +71,14 @@ export default function ProjectDetail({
   useEffect(() => {
     remember(stageKey(project?.Project_ID), stage);
   }, [stage, project?.Project_ID]);
+
+  /* Which tabs to offer: the stage rule, then whatever this section
+     hides. Declared after `stage` rather than beside the fetch above,
+     because a useMemo runs its factory during render — reading `stage`
+     from above its own `const` is a temporal dead zone, and it takes
+     the whole page down rather than the tab strip. */
+  const shownTabs = useMemo(
+    () => visibleTabs(stage, areaKey, tabRows), [stage, areaKey, tabRows]);
 
   /* Switching stage can leave the open tab behind — POC Applications
      does not exist on a contract. Falls back to Details, which is in

@@ -40,6 +40,16 @@ const TABLES = {
   /* Which project tabs each section of the app shows (0138). Only the
      exceptions are stored, so an absent row means the tab is shown. */
   Project_Tab_Visibility: { pk: "Project_Tab_Visibility_ID", order: "Area_Key" },
+  /* Non-compliance reports and what hangs off them (0139). Deleting a
+     report cascades to its actions and comments in the database, so
+     this list never has to delete them itself. */
+  NCR:         { pk: "NCR_ID",         order: "Date_Received",
+    conflict: "That NCR reference already exists." },
+  NCR_Status:  { pk: "NCR_Status_ID",  order: "Sort_Order" },
+  NCR_Action:  { pk: "NCR_Action_ID",  order: "Due_Date" },
+  NCR_Comment: { pk: "NCR_Comment_ID", order: "Created_At" },
+  /* Business_Unit is deliberately absent: the table arrives with the HR
+     section, and the screens tolerate its absence until it does. */
   /* Phases, which work type involves which, and who is doing them. */
   Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
   Dependency_Type:     { pk: "Dependency_Type_ID",     order: "Sort_Order" },

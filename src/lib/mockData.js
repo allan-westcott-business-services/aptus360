@@ -166,6 +166,58 @@ export const mockList = [
 
 /* Mutable store backing the admin screens when running on sample data. */
 export const adminMock = {
+  /* Non-compliance reports. Dates are relative to build time so the
+     dashboard's aging bar shows all four buckets without anyone having
+     to edit them. */
+  NCR_Status: [
+    { NCR_Status_ID: 1, NCR_Status: "Open", Sort_Order: 10, Is_Active: true },
+    { NCR_Status_ID: 2, NCR_Status: "On Hold", Sort_Order: 20, Is_Active: true },
+    { NCR_Status_ID: 3, NCR_Status: "Closed", Sort_Order: 30, Is_Active: true },
+  ],
+  NCR: [
+    { NCR_ID: 1, NCR_Reference: "NCR00001", Description: "Excavation left unfenced overnight on plot 14.",
+      Date_Received: "2026-07-31", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_DNO_ID: null,
+      Auditor_IDNO_ID: null, Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 1 },
+    { NCR_ID: 2, NCR_Reference: "NCR00002", Description: "Incorrect backfill material used on the service trench.",
+      Date_Received: "2026-06-26", Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: "DNO", Auditor_DNO_ID: 1,
+      Auditor_IDNO_ID: null, Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 1 },
+    { NCR_ID: 3, NCR_Reference: "NCR00003", Description: "Gas purge record not returned with the pack.",
+      Date_Received: "2026-05-26", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "IDNO", Auditor_DNO_ID: null,
+      Auditor_IDNO_ID: 1, Owner_Person_ID: 1, Utility: "Gas", NCR_Status_ID: 1 },
+    { NCR_ID: 4, NCR_Reference: "NCR00004", Description: "Signage missing at the site entrance.",
+      Date_Received: "2026-03-22", Close_Date: null, Region_ID: 2, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: null, Auditor_DNO_ID: null,
+      Auditor_IDNO_ID: null, Owner_Person_ID: null, Utility: "Not Applicable", NCR_Status_ID: 1 },
+    { NCR_ID: 5, NCR_Reference: "NCR00005", Description: "Meter box fitted below the minimum height.",
+      Date_Received: "2026-07-10", Close_Date: null, Region_ID: 1, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_DNO_ID: null,
+      Auditor_IDNO_ID: null, Owner_Person_ID: 2, Utility: "Gas", NCR_Status_ID: 2 },
+    { NCR_ID: 6, NCR_Reference: "NCR00006", Description: "Spoil heap encroaching the footpath.",
+      Date_Received: "2026-04-11", Close_Date: "2026-05-05", Region_ID: 1, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 1, Auditor_Type: null, Auditor_DNO_ID: null,
+      Auditor_IDNO_ID: null, Owner_Person_ID: 1, Utility: "Water", NCR_Status_ID: 3 },
+    { NCR_ID: 7, NCR_Reference: "NCR00007", Description: "Jointing bay left without a cover plate.",
+      Date_Received: "2026-01-21", Close_Date: "2026-02-10", Region_ID: 2, Sub_Region_ID: null,
+      Business_Unit_ID: null, Project_ID: 2, Auditor_Type: "DNO", Auditor_DNO_ID: 1,
+      Auditor_IDNO_ID: null, Owner_Person_ID: 2, Utility: "Electric", NCR_Status_ID: 3 },
+  ],
+  NCR_Action: [
+    { NCR_Action_ID: 1, NCR_ID: 1, Action: "Fence the excavation and photograph it.",
+      Owner_Person_ID: 1, Due_Date: "2026-08-07", Closed_Date: null, Notes: null },
+    { NCR_Action_ID: 2, NCR_ID: 1, Action: "Toolbox talk on overnight make-safe.",
+      Owner_Person_ID: 2, Due_Date: "2026-08-14", Closed_Date: null, Notes: null },
+    { NCR_Action_ID: 3, NCR_ID: 6, Action: "Clear the footpath and reinstate.",
+      Owner_Person_ID: 1, Due_Date: "2026-05-01", Closed_Date: "2026-05-05", Notes: null },
+  ],
+  NCR_Comment: [
+    { NCR_Comment_ID: 1, NCR_ID: 1, Comment: "Site agent notified the same afternoon.",
+      Author: "A. Westcott", Created_At: "2026-07-31T14:20:00Z" },
+    { NCR_Comment_ID: 2, NCR_ID: 2, Comment: "Awaiting the DNO's photographs before closing.",
+      Author: "A. Westcott", Created_At: "2026-06-30T09:05:00Z" },
+  ],
   /* Which project tabs each section shows. Only the exceptions are
      stored: an absent row means the tab is shown. Mirrors the seed in
      0138 so mock mode and a fresh database look the same. */

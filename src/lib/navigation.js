@@ -134,8 +134,8 @@ export const AREAS = [
     colour: "#f87171",
     blurb: "Health, safety, quality and environment: audits, incidents, RAMS.",
     items: [
-      { view: "hsqe-dashboard", label: "HSQE Dashboard" },
-      { view: "ncr-list", label: "Non Compliance Reports" },
+      { view: "hsqe-dashboard", label: "HSQE Dashboard", built: true },
+      { view: "ncr-list", label: "Non Compliance Reports", built: true },
       { view: "audits", label: "Audits & Inspections", soon: true },
       { view: "incident-log", label: "Incident Log", soon: true },
       { view: "training-records", label: "Training Records", soon: true },

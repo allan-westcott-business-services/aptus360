@@ -27,6 +27,8 @@ const CustomerProjectsPage = lazyPage("CustomerProjectsPage", () => import("./fe
 const CallOffsPage = lazyPage("CallOffsPage", () => import("./features/calloffs/CallOffsPage.jsx"));
 const VehiclesPage = lazyPage("VehiclesPage", () => import("./features/vehicles/VehiclesPage.jsx"));
 const VynTrackerPage = lazyPage("VynTrackerPage", () => import("./features/vyn/VynTrackerPage.jsx"));
+const NcrListPage = lazyPage("NcrListPage", () => import("./features/hsqe/NcrListPage.jsx"));
+const HsqeDashboardPage = lazyPage("HsqeDashboardPage", () => import("./features/hsqe/HsqeDashboardPage.jsx"));
 const PlanningPage = lazyPage("PlanningPage", () => import("./features/planning/PlanningPage.jsx"));
 /* Human Resources is the largest single screen in the app — sixteen
    modules, plus Chart.js and an icon set nothing else uses. Lazy for the
@@ -145,6 +147,8 @@ function Shell() {
   else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
   else if (view === "vehicles") content = <div className="card"><VehiclesPage /></div>;
   else if (view === "vyn-tracker") content = <div className="card"><VynTrackerPage /></div>;
+  else if (view === "ncr-list") content = <div className="card"><NcrListPage /></div>;
+  else if (view === "hsqe-dashboard") content = <div className="card"><HsqeDashboardPage /></div>;
   /* No card wrapper: the page has its own header bar and switches between
      a list and a detail view, both of which own their padding. */
   else if (view === "call-offs") content = <CallOffsPage />;

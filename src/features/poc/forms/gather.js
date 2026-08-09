@@ -70,7 +70,11 @@ export async function gatherFormData({ poc, projectId, lookups }) {
 
     applicantName: applicant.Person_Name ?? "",
     applicantEmail: applicant.Email ?? "",
-    applicantPhone: applicant.Mobile ?? applicant.Phone ?? "",
+    /* The form asks for landline and mobile separately, so they are kept
+       apart rather than collapsed into one "phone". */
+    applicantPhone: applicant.Phone ?? applicant.Landline ?? "",
+    applicantMobile: applicant.Mobile ?? "",
+    applicantPostcode: "",
     applicantCompany: poc.Applicant_Company ?? "Aptus Utilities Ltd",
     applicantAddress: poc.Applicant_Company_Address ?? poc.Business_Address ?? "",
 
@@ -84,6 +88,21 @@ export async function gatherFormData({ poc, projectId, lookups }) {
     totalKva,
     totalConnections:
       (Number(domesticCount) || 0) + (Number(commercialCount) || 0) || "",
+
+    /* Fields the form wants and this database has nowhere to keep. Left
+       blank deliberately: the form is editable, and a blank line somebody
+       fills in is better than a plausible guess nobody checks.
+
+       The exception is the contact name, which is seeded with the
+       applicant. That block is for the builder or site manager, and this
+       application does not record one \u2014 but a completed ENW form with
+       nobody named on it comes straight back, and the applicant is who
+       they would ring. */
+    siteContactName: applicant.Person_Name ?? "",
+    siteContactPhone: "",
+    siteContactEmail: "",
+    connectionDate: "",
+    heatPumpCount: "",
 
     connectionType: poc.Connection_Type ?? "",
     applicationDate: poc.Application_Date ?? "",

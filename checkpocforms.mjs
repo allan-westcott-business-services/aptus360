@@ -97,6 +97,9 @@ const lookups = {
     easting: "412345", northing: "523456",
     applicantName: "A. Westcott", applicantEmail: "a@x.com", applicantPhone: "07700 900000",
     applicantCompany: "Aptus Utilities Ltd", applicantAddress: "Bolton",
+    applicantMobile: "07700 900001", applicantPostcode: "BL5 3XP",
+    siteContactName: "A. Westcott", siteContactPhone: "", siteContactEmail: "",
+    connectionDate: "2027-02-09", heatPumpCount: "",
     dnoName: "Electricity North West", idnoName: "MUA Electricity",
     domesticCount: 72, domesticKva: 180, commercialCount: 2, commercialKva: 45,
     totalKva: 225, totalConnections: 74,
@@ -119,14 +122,48 @@ const lookups = {
 
   if (!html.startsWith("<!DOCTYPE html>")) fail("document has no doctype");
   // Four pages, as the artwork has.
-  eq((html.match(/class="pg"/g) || []).length, 4, "page count");
-  if (!/Page 4 of 4/.test(html)) fail("page footers are wrong");
+  // Three pages, as the operator's own form has.
+  eq((html.match(/class="pg"/g) || []).length, 3, "page count");
+
+  // The section bars, in the operator's wording and order. Getting these
+  // wrong is what made the first attempt unrecognisable, and it is not
+  // something the other assertions would notice.
+  const bars = [...html.matchAll(/<div class="grn">([^<]*)/g)].map((m) => m[1].trim());
+  eq(bars, [
+    "Applicant Details", "Site Details",
+    "Type of supply (please indicate the type of supply required)",
+    "Quotation required (see guidance note for description)",
+    "Load Details (please state maximum power required in kVA)",
+    "Heating type", "Motors", "Electric Vehicle Chargers", "Generation",
+  ], "section bars");
+
+  // The load table is the part an engineer reads first.
+  for (const r of ["Commercial", "Domestic", "TOTAL"]) {
+    if (!html.includes(`>${r}</td>`)) fail(`load table has no ${r} row`);
+  }
+  // ENW green and navy, sampled from the artwork.
+  for (const c of ["#7ac043", "#00245d", "#e2efd5"]) {
+    if (!html.includes(c)) fail(`the ENW palette is missing ${c}`);
+  }
 
   // The facts that matter must actually reach the page.
-  for (const v of ["2607.001", "Winston Road", "DL2 3LG", "A. Westcott",
-    "Community centre", "MUA Electricity"]) {
+  for (const v of ["Winston Road", "DL2 3LG", "A. Westcott", "Aptus Utilities Ltd"]) {
     if (!html.includes(v)) fail(`"${v}" is missing from the form`);
   }
+
+  // The operator's form has no breakdown of individual supplies — only a
+  // commercial count and load — so listing them would be inventing a
+  // section that is not on the form.
+  if (html.includes("Community centre")) fail("a supply breakdown reached the form");
+
+  // The adopting IDNO ticks a box rather than being printed: the form
+  // asks whose asset it will be, not who they are.
+  const idnoLine = html.slice(html.indexOf("IDNO Point of connection") - 120,
+    html.indexOf("IDNO Point of connection"));
+  if (!idnoLine.includes("bx on")) fail("an adopting IDNO did not tick the IDNO box");
+  const dnoAt = html.indexOf("ICP Point of connection");
+  if (html.slice(dnoAt - 120, dnoAt).includes("bx on"))
+    fail("the DNO box is ticked as well as the IDNO one");
 
   // The load table must add up to what was applied for, or the operator
   // queries it — this is the check a reader cannot do by eye.

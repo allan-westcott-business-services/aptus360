@@ -38,6 +38,18 @@ export const CHILD = {
     table: "Service_Call_Off_Plot",
     key: "Service_Plot_ID",
     cols: ["Plot", "Energisation_Date", "Sort_Order"],
+    /* A plot's utilities and when each is wanted live — 0136. Gas,
+       water and electric on one plot go live on different days, so the
+       date belongs here and not on the plot. The plot's own date stays
+       as the fallback for a utility with no row.
+
+       Written after its parent, since the rows need the plot's id. */
+    grandchild: {
+      table: "Service_Call_Off_Plot_Utility",
+      parentKey: "Service_Plot_ID",
+      from: "Utilities",
+      cols: ["Utility_ID", "Energisation_Date"],
+    },
   },
   ColumnList: {
     table: "Street_Light_Call_Off",
@@ -75,6 +87,30 @@ export default async function handler(req, context) {
             .in("Submission_ID", ids)
             .order("Sort_Order");
           kids[mode] = data || [];
+
+          /* The per-utility dates hanging off those rows, in one query
+             for the whole page rather than one per plot.
+
+             Tolerated missing: 0136 may not have been run, and a
+             call-off list that fails to load because a table is absent
+             is worse than one showing the plot-level dates it has
+             always shown. */
+          const gspec = spec.grandchild;
+          if (gspec && kids[mode].length) {
+            const { data: gkids } = await db
+              .from(gspec.table)
+              .select(`${gspec.parentKey},${gspec.cols.join(",")}`)
+              .in(gspec.parentKey, kids[mode].map((k) => k[spec.key]));
+            const byParent = new Map();
+            for (const g of gkids || []) {
+              const k = g[gspec.parentKey];
+              if (!byParent.has(k)) byParent.set(k, []);
+              byParent.get(k).push(g);
+            }
+            kids[mode] = kids[mode].map((k) => ({
+              ...k, [gspec.from]: byParent.get(k[spec.key]) || [],
+            }));
+          }
         }
       }
 
@@ -113,12 +149,49 @@ export default async function handler(req, context) {
           for (const c of spec.cols) if (c !== "Sort_Order") out[c] = r[c] ?? null;
           return out;
         });
-        const { error: kidErr } = await db.from(spec.table).insert(payload);
+        const { data: kids, error: kidErr } = await db
+          .from(spec.table).insert(payload).select();
         if (kidErr) {
           return json({
             ...created,
             warning: `Saved as #${created.Submission_ID}, but the rows failed: ${kidErr.message}`,
           });
+        }
+
+        /* The per-utility dates under each row.
+
+           Matched back to their parent by position, which is safe
+           because insert returns what it inserted in the order it was
+           given — and the alternative, matching on the plot's text, is
+           exactly the sort of join that breaks on a plot called "12a".
+
+           Reported rather than thrown, like the rows above: a call-off
+           saved without its per-utility dates is recoverable by
+           editing, and losing the whole submission over one of them is
+           not. */
+        const gspec = spec.grandchild;
+        if (gspec && kids?.length) {
+          const rows = [];
+          items.forEach((r, i) => {
+            const parent = kids[i];
+            if (!parent) return;
+            for (const u of r[gspec.from] || []) {
+              if (u?.Utility_ID == null) continue;
+              const out = { [gspec.parentKey]: parent[spec.key] };
+              for (const c of gspec.cols) out[c] = u[c] ?? null;
+              rows.push(out);
+            }
+          });
+          if (rows.length) {
+            const { error: gErr } = await db.from(gspec.table).insert(rows);
+            if (gErr) {
+              return json({
+                ...created,
+                warning: `Saved as #${created.Submission_ID}, but the per-utility `
+                  + `energisation dates failed: ${gErr.message}`,
+              });
+            }
+          }
         }
       }
 

@@ -4,6 +4,7 @@ import {
 } from "../../api/calloffs.js";
 import { remember, recall } from "../../lib/session.js";
 import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
+import { getLookups } from "../../api/lookups.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import {
@@ -327,6 +328,21 @@ export default function CallOffsPage() {
 
 /* One call-off: what was asked for, and where it has got to. */
 function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
+  /* Utility names for the energisation column. Loaded here rather than
+     threaded down: this is the only place in the panel that needs them,
+     and the lookups are cached. Falls back to the id, which is ugly and
+     true — better than a blank where a utility used to be. */
+  const [utils, setUtils] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    getLookups()
+      .then((lk) => { if (alive) setUtils(lk?.utilities || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, []);
+  const utilityName = (id) => utils
+    .find((u) => Number(u.Utility_ID) === Number(id))?.Utility || `#${id}`;
+
   const [editing, setEditing] = useState(false);
   const [draft, setDraft] = useState({});
   const [saving, setSaving] = useState(false);
@@ -513,7 +529,20 @@ function CallOffDetail({ row, onBack, onMove, onSave, onDelete }) {
                       <td>{it.Estimated_Length_m ? `${it.Estimated_Length_m} m` : "\u2014"}</td>
                     </>
                   )}
-                  <td>{fmt(it.Energisation_Date)}</td>
+                  {/* Per utility where 0136 has been used, the plot's
+                      own date where it has not. Both are shown as they
+                      are rather than one standing in for the other: a
+                      call-off asking for three different days should
+                      not be summarised into one. */}
+                  <td>
+                    {(it.Utilities || []).length
+                      ? (it.Utilities || []).map((u) => (
+                        <span key={u.Utility_ID} className="co-eng">
+                          {utilityName(u.Utility_ID)} {fmt(u.Energisation_Date)}
+                        </span>
+                      ))
+                      : fmt(it.Energisation_Date)}
+                  </td>
                 </tr>
               ))}
             </tbody>
@@ -1618,6 +1647,7 @@ const CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   font: 700 10.5px inherit; color: var(--muted); flex: 0 0 auto; }
 .asg-craft { font-size: 11px; color: var(--muted); margin-right: auto; }
+.co-eng { display: block; white-space: nowrap; font-size: 11.5px; }
 .asg-floor { margin: 7px 0 0; font: 600 11px inherit; color: #92400e; }
 .asg-none { margin: 8px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
 .asg-none.warn { color: #b45309; font-style: normal; font-weight: 600; }

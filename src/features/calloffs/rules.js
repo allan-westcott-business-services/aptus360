@@ -30,7 +30,65 @@ export function servicePenalty(plotCount, {
 
    All of it rather than the first: someone filling in eight rows should
    be told about all eight problems, not made to save eight times. */
-export function validate(form, items, mode) {
+/* ── The earliest anything can be asked to go live ──
+
+   Nothing is energised before the trench it runs in is closed. So the
+   floor is the day the excavation and lay finishes, and the date
+   offered is the day after that.
+
+   ── Which date, and when there isn't one ──
+
+   The dig's end date, where a booking for it exists. That is the real
+   answer and it only exists once somebody has planned the work.
+
+   A call-off being raised has no bookings at all — the whole point of
+   raising it is to ask for them — so there the preferred date stands in.
+   It is what the customer asked for and the earliest anything on this
+   call-off could begin, which makes it the right floor for a form that
+   cannot know better yet.
+
+   The two are named apart in the message, because "before the dig
+   finishes" and "before the visit" are different objections and a
+   planner reading the second should not think the first was checked. */
+export function energisationFloor(form = {}, opts = {}) {
+  const { assignments = [], taskTypes = [] } = opts;
+
+  const digIds = new Set(taskTypes
+    .filter((t) => {
+      const n = String(t.Task_Type_Name || "").toLowerCase().trim();
+      return n.startsWith("excav") || n.startsWith("lay");
+    })
+    .map((t) => Number(t.Task_Type_ID)));
+
+  let ends = null;
+  for (const a of assignments) {
+    if (!digIds.has(Number(a.Task_Type_ID))) continue;
+    if (form.Submission_ID != null
+      && Number(a.Submission_ID) !== Number(form.Submission_ID)) continue;
+    /* The latest, where the dig is split across teams: the trench is
+       not closed until the last of them has finished. */
+    if (!ends || a.End_Date > ends) ends = a.End_Date;
+  }
+
+  if (ends) return { date: ends, why: "excavation and lay finishes", kind: "dig" };
+  if (form.Preferred_Date) {
+    return { date: form.Preferred_Date, why: "the visit is booked for", kind: "preferred" };
+  }
+  return null;
+}
+
+/* The day after a date. Nothing may go live *on* the day the trench
+   closes, so the date offered is the next one. */
+export function dayAfter(date) {
+  const [y, m, d] = String(date || "").slice(0, 10).split("-").map(Number);
+  if (!y || !m || !d) return "";
+  const x = new Date(y, m - 1, d, 12);
+  x.setDate(x.getDate() + 1);
+  const p = (n) => String(n).padStart(2, "0");
+  return `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+}
+
+export function validate(form, items, mode, opts = {}) {
   const out = [];
   const say = (row, text) => out.push({ row, text });
 
@@ -46,12 +104,27 @@ export function validate(form, items, mode) {
     return out;
   }
 
-  /* An energisation date before the visit is a request to switch
-     something on before it exists. */
+  /* ── Energisation dates ──
+
+     Nothing may be switched on before the trench it runs in is closed:
+     an energisation date on or before the floor is a request to
+     energise a cable that is not in the ground.
+
+     Checked per utility as well as per row, because a plot's gas and
+     its electric can be asked for on different days and only one of
+     them may be wrong. */
+  const floor = energisationFloor(form, opts);
   items.forEach((r, i) => {
-    if (r.Energisation_Date && form.Preferred_Date
-      && r.Energisation_Date < form.Preferred_Date) {
-      say(i + 1, "Energisation date is before the preferred date.");
+    const tooEarly = (date) => floor && date && date <= floor.date;
+    if (tooEarly(r.Energisation_Date)) {
+      say(i + 1, `Energisation date is on or before the day `
+        + `${floor.why} (${floor.date}).`);
+    }
+    for (const u of r.Utilities || []) {
+      if (tooEarly(u.Energisation_Date)) {
+        say(i + 1, `${u.Utility || "A utility"} is asked to go live on or before `
+          + `the day ${floor.why} (${floor.date}).`);
+      }
     }
   });
 

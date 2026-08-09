@@ -4,7 +4,7 @@ import { getLookups } from "../../api/lookups.js";
 import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
-import { validate, toItems, servicePenalty, SERVICE_MIN_PLOTS } from "./rules.js";
+import { validate, energisationFloor, dayAfter, toItems, servicePenalty, SERVICE_MIN_PLOTS } from "./rules.js";
 import PlotPicker from "../shared/PlotPicker.jsx";
 import { parseIds } from "../poc/interimPlots.js";
 
@@ -53,6 +53,11 @@ export default function CallOffsTab({ projectId }) {
      in; the rows are derived from it so a plot cannot be selected in the
      grid and missing from what is saved. */
   const [plotIds, setPlotIds] = useState("");
+  /* Energisation dates, keyed plot then utility — 0136.
+
+     Gas, water and electric on one plot go live on different days, so a
+     single date per plot cannot say what is being asked for. The shape
+     is `{ [plotId]: { [utilityId]: "2026-08-21" } }`. */
   const [plotDates, setPlotDates] = useState({});
 
   async function load() {
@@ -98,24 +103,65 @@ export default function CallOffsTab({ projectId }) {
   /* The chosen plots as rows, in the order they appear on the project
      rather than the order they were clicked — a call-off reads better
      as a list somebody can check off than as a record of the picking. */
+  /* The utilities a call-off can ask about.
+
+     Every utility the system knows, rather than only those already on
+     the plot: a call-off is a request for work that has not happened
+     yet, and a plot with no gas row today is exactly the plot somebody
+     may be asking for gas on. Lighting is left out — a column has its
+     own call-off mode and its own date. */
+  const utilities = useMemo(
+    () => (lookups?.utilities || []).filter((u) => !u.Is_Lighting),
+    [lookups],
+  );
+
   const plotRows = useMemo(() => {
     const chosen = new Set(parseIds(plotIds));
     return plots
       .filter((p) => chosen.has(plotIdOf(p)))
-      .map((p) => ({
-        Plot: plotLabelOf(p),
-        Energisation_Date: plotDates[plotIdOf(p)] ?? "",
-      }));
+      .map((p) => {
+        const mine = plotDates[plotIdOf(p)] || {};
+        return {
+          Plot: plotLabelOf(p),
+          /* The plot-level date is no longer set here. It stays in the
+             schema as the fallback for call-offs raised before 0136,
+             and writing it as well would give a plot two answers. */
+          Energisation_Date: "",
+          Utilities: utilities
+            .filter((u) => mine[u.Utility_ID])
+            .map((u) => ({
+              Utility_ID: u.Utility_ID,
+              Utility: u.Utility,
+              Energisation_Date: mine[u.Utility_ID],
+            })),
+        };
+      });
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [plotIds, plots, plotDates]);
+  }, [plotIds, plots, plotDates, utilities]);
 
   /* Whichever the mode collects. */
   const rowsForMode = mode === "PlotList" ? plotRows : items;
 
   const problems = useMemo(
-    () => (open ? validate({ ...f, Project_ID: projectId }, rowsForMode, mode) : []),
+    () => (open
+      ? validate({ ...f, Project_ID: projectId }, rowsForMode, mode,
+        /* No bookings exist yet on a call-off being raised, so the
+           floor falls back to the preferred date — see
+           energisationFloor. Passed all the same, so this call site
+           does not have to know that. */
+        { assignments: [], taskTypes: [] })
+      : []),
     [open, f, rowsForMode, mode, projectId],
   );
+
+  /* The earliest anything here may be asked to go live, and the date
+     offered — the day after. One answer, used by the grid below for
+     both its `min` and the value it fills in. */
+  const energFloor = useMemo(
+    () => energisationFloor({ ...f, Project_ID: projectId }, {}),
+    [f, projectId],
+  );
+  const energDefault = energFloor ? dayAfter(energFloor.date) : "";
 
   function openForm() {
     setF({
@@ -272,19 +318,78 @@ export default function CallOffsTab({ projectId }) {
               {plotRows.length > 0 && (
                 <details className="co-dates">
                   <summary>Energisation dates &mdash; optional</summary>
-                  <div className="co-date-grid">
-                    {plots
-                      .filter((p) => parseIds(plotIds).includes(plotIdOf(p)))
-                      .map((p) => (
-                        <label key={plotIdOf(p)} className="co-date">
-                          <span>{plotLabelOf(p)}</span>
-                          <input type="date" value={plotDates[plotIdOf(p)] ?? ""}
-                            onChange={(e) => setPlotDates((d) => ({
-                              ...d, [plotIdOf(p)]: e.target.value,
-                            }))} />
-                        </label>
-                      ))}
-                  </div>
+                  {/* A date per utility per plot, because they do not go
+                      live together: the electric weeks ahead so the site
+                      has power, the gas when the meter is fitted.
+
+                      Left blank means no date is being asked for, which
+                      is what most call-offs want — the row only exists
+                      once somebody types one. */}
+                  <p className="co-date-note">
+                    Gas, water and electric can go live on different days.
+                    {energFloor && (
+                      <> Nothing before {energDefault}, the day after{" "}
+                        {energFloor.why}.</>
+                    )}
+                  </p>
+                  <table className="co-date-table">
+                    <thead>
+                      <tr>
+                        <th>Plot</th>
+                        {utilities.map((u) => (
+                          <th key={u.Utility_ID}>
+                            <span className="co-date-dot"
+                              style={{ background: u.Colour || "#94a3b8" }} />
+                            {u.Utility}
+                          </th>
+                        ))}
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {plots
+                        .filter((p) => parseIds(plotIds).includes(plotIdOf(p)))
+                        .map((p) => (
+                          <tr key={plotIdOf(p)}>
+                            <th scope="row">{plotLabelOf(p)}</th>
+                            {utilities.map((u) => (
+                              <td key={u.Utility_ID}>
+                                <input type="date"
+                                  aria-label={`${plotLabelOf(p)} ${u.Utility} energisation`}
+                                  /* Nothing on or before the day the
+                                     trench closes. The picker says so
+                                     rather than the form saying it
+                                     afterwards. */
+                                  min={energDefault || undefined}
+                                  value={plotDates[plotIdOf(p)]?.[u.Utility_ID] ?? ""}
+                                  onFocus={(e) => {
+                                    /* Filled in on first use rather
+                                       than up front: a grid that opens
+                                       with a date in every cell is a
+                                       grid that says every utility has
+                                       been asked for, when nobody has
+                                       asked for any of them yet. */
+                                    if (e.target.value || !energDefault) return;
+                                    setPlotDates((d) => ({
+                                      ...d,
+                                      [plotIdOf(p)]: {
+                                        ...(d[plotIdOf(p)] || {}),
+                                        [u.Utility_ID]: energDefault,
+                                      },
+                                    }));
+                                  }}
+                                  onChange={(e) => setPlotDates((d) => ({
+                                    ...d,
+                                    [plotIdOf(p)]: {
+                                      ...(d[plotIdOf(p)] || {}),
+                                      [u.Utility_ID]: e.target.value,
+                                    },
+                                  }))} />
+                              </td>
+                            ))}
+                          </tr>
+                        ))}
+                    </tbody>
+                  </table>
                 </details>
               )}
             </>
@@ -497,6 +602,17 @@ const CSS = `
 .co-penalty p { margin: 5px 0 10px; font-size: 12px; color: #92400e; }
 .co-dates { margin: 0 0 12px; }
 .co-dates summary { cursor: pointer; font: 600 12px inherit; color: var(--accent); }
+.co-date-note { margin: 4px 0 8px; font-size: 11px; color: var(--muted); }
+.co-date-table { width: 100%; border-collapse: collapse; font-size: 11.5px; }
+.co-date-table th { text-align: left; font-weight: 700; padding: 4px 8px 4px 0;
+  white-space: nowrap; }
+.co-date-table thead th { font-size: 10px; text-transform: uppercase;
+  letter-spacing: .05em; color: var(--muted); border-bottom: 1px solid var(--border); }
+.co-date-table tbody th { font-weight: 600; }
+.co-date-table td { padding: 3px 8px 3px 0; }
+.co-date-table input { width: 100%; min-width: 128px; }
+.co-date-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 5px; vertical-align: middle; }
 .co-date-grid { display: grid; grid-template-columns: repeat(auto-fill, minmax(150px, 1fr));
   gap: 7px; margin-top: 9px; }
 .co-date { display: flex; align-items: center; gap: 7px; font: 600 11.5px inherit; }

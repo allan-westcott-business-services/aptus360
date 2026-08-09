@@ -2,6 +2,7 @@ import { isEnw, isNged, isNpg, isMua } from "./matching.js";
 import { buildEnwDocument } from "./enw.js";
 import { buildNgedDocument, NGED_OFFICES } from "./nged.js";
 import { buildNpgDocument } from "./npg.js";
+import { buildMuaDocument } from "./mua.js";
 
 /* One row per operator form.
 
@@ -27,7 +28,7 @@ export const FORMS = [
   /* Keyed on the adopting IDNO rather than the distributor. */
   {
     type: "MUA", label: "MUA form", title: "MUA Group",
-    matches: isMua, build: null, ready: false,
+    matches: isMua, build: buildMuaDocument, ready: true,
   },
 ];
 

@@ -12,6 +12,7 @@ import { buildNgedDocument, NGED_OFFICES } from "./src/features/poc/forms/nged.j
 import {
   buildNpgDocument, NPG_SUBMIT_EMAIL, NPG_PRINTED_EMAIL,
 } from "./src/features/poc/forms/npg.js";
+import { buildMuaDocument, MUA_SUBMIT_EMAIL } from "./src/features/poc/forms/mua.js";
 import { esc, field } from "./src/features/poc/forms/shell.js";
 
 let bad = 0;
@@ -332,6 +333,60 @@ const lookups = {
     fail("NPg tick boxes are not real inputs");
   const nasty = buildNpgDocument({ ...d, siteName: "<img onerror=x>" }).html;
   if (nasty.includes("<img onerror")) fail("an unescaped value reached the NPg document");
+}
+
+// ── The built MUA document ──────────────────────────────────────
+{
+  const d = {
+    pocId: 13, projectRef: "2607.001",
+    siteName: "Walton Gardens, Liverpool Lane, Hutton",
+    siteAddress: "Walton Gardens, Liverpool Lane, Hutton", postcode: "",
+    applicantCompany: "Aptus Utilities", applicantName: "Allan Murrell",
+    applicantAddress: "Unit 19-20, Barrs Fold Rd, Bolton", applicantPostcode: "BL5 3XP",
+    applicantPhone: "01204 325 000", applicantMobile: "",
+    applicantEmail: "allan.murrell@aptusutilities.co.uk",
+    idnoName: "MUA Electricity Limited", connectionDate: "09/02/2027",
+    domesticCount: 159, domesticKva: 535, commercialCount: 2, commercialKva: 0,
+    totalKva: 535, totalConnections: 161, notes: "",
+    nrs: [{ Description: "Commercial 1" }, { Description: "Commercial 2" }],
+  };
+  const out = buildMuaDocument(d);
+  const html = out.html;
+
+  eq((html.match(/class="pg"/g) || []).length, 3, "MUA page count");
+  eq(out.submit.to, MUA_SUBMIT_EMAIL, "MUA covering email");
+
+  // The five table headings, in their wording.
+  const heads = [...html.matchAll(/class="hd"[^>]*>([^<]*)/g)].map((m) => m[1].replace(/\s+/g, " ").trim());   // source wrapping is not content
+  eq(heads, ["Applicants Details:", "Company Details", "Site Address:",
+    "Number and Type of Domestic Electricity Connections",
+    "Number and Type of Commercial Electricity Connections including Landlord Supply",
+    "Number and Type of Electric Vehicle Chargers",
+    "Motors or other Disturbing Loads"], "MUA table headings");
+
+  // Page numbering runs to three, including the letterhead-only last
+  // page — a pack that says "Page 2 of 3" and stops looks like a
+  // printing failure.
+  for (const n of [1, 2, 3]) {
+    if (!html.includes(`Page ${n} of 3`)) fail(`MUA form has no page ${n} footer`);
+  }
+
+  // One row per supply, not a single summed line as the DNO forms take.
+  for (const n of d.nrs) {
+    if (!html.includes(n.Description)) fail(`supply "${n.Description}" is not listed`);
+  }
+
+  // This is the IDNO's own form, so the adopting operator is named on it
+  // rather than ticking a box.
+  if (!html.includes("asset to be adopted by: MUA Electricity Limited"))
+    fail("the adopting IDNO is not named on the form");
+
+  // Per-plot load to one decimal, as their form carries it.
+  if (!html.includes("3.4")) fail("per-plot load was not derived (expected 3.4)");
+
+  if (/<script/i.test(html)) fail("the MUA document contains a script");
+  const nasty = buildMuaDocument({ ...d, siteName: "<img onerror=x>" }).html;
+  if (nasty.includes("<img onerror")) fail("an unescaped value reached the MUA document");
 }
 
 console.log(bad ? `\n${bad} problem(s)` : `Operator forms behave (${FORMS.length} registered, `

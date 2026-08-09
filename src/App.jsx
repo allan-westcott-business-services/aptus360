@@ -1,4 +1,5 @@
-import { useState, useEffect, lazy, Suspense } from "react";
+import { useState, useEffect, Suspense } from "react";
+import { lazyPage } from "./lib/lazyPage.js";
 import { AuthProvider, useAuth } from "./lib/AuthContext.jsx";
 import { onOpenGis } from "./lib/gisIntent.js";
 import { onOpenCallOff } from "./lib/callOffIntent.js";
@@ -10,25 +11,26 @@ import ErrorBoundary from "./components/ErrorBoundary.jsx";
 import Sidebar from "./components/Sidebar.jsx";
 /* Loaded on demand. Admin and Plot Connections are large and most
    sessions never open them, so they shouldn't be in the first download. */
-const ProjectsPage = lazy(() => import("./features/projects/ProjectsPage.jsx"));
-const AdminPage = lazy(() => import("./features/admin/AdminPage.jsx"));
-const PlotConnectionsPage = lazy(() => import("./features/connections/PlotConnectionsPage.jsx"));
-const GISCanvasPage = lazy(() => import("./features/gis/GISCanvasPage.jsx"));
-const GenerateAvInvoices = lazy(() => import("./features/av/GenerateAvInvoices.jsx"));
-const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
+const ProjectsPage = lazyPage("ProjectsPage", () => import("./features/projects/ProjectsPage.jsx"));
+const AdminPage = lazyPage("AdminPage", () => import("./features/admin/AdminPage.jsx"));
+const PlotConnectionsPage = lazyPage("PlotConnectionsPage", () => import("./features/connections/PlotConnectionsPage.jsx"));
+const GISCanvasPage = lazyPage("GISCanvasPage", () => import("./features/gis/GISCanvasPage.jsx"));
+const GenerateAvInvoices = lazyPage("GenerateAvInvoices", () => import("./features/av/GenerateAvInvoices.jsx"));
+const AvInvoicesPage = lazyPage("AvInvoicesPage", () => import("./features/av/AvInvoicesPage.jsx"));
 /* The same screen the Admin suite uses. One implementation: a second
    would drift, and the difference between the two would be invisible
    until someone edited a branch in the wrong one. */
-const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmin.jsx"));
-const CustomerProjectsPage = lazy(() => import("./features/customers/CustomerProjectsPage.jsx"));
-const CallOffsPage = lazy(() => import("./features/calloffs/CallOffsPage.jsx"));
-const VehiclesPage = lazy(() => import("./features/vehicles/VehiclesPage.jsx"));
-const PlanningPage = lazy(() => import("./features/planning/PlanningPage.jsx"));
+const OrganisationsAdmin = lazyPage("OrganisationsAdmin", () => import("./features/admin/OrganisationsAdmin.jsx"));
+const CustomerProjectsPage = lazyPage("CustomerProjectsPage", () => import("./features/customers/CustomerProjectsPage.jsx"));
+const CallOffsPage = lazyPage("CallOffsPage", () => import("./features/calloffs/CallOffsPage.jsx"));
+const VehiclesPage = lazyPage("VehiclesPage", () => import("./features/vehicles/VehiclesPage.jsx"));
+const VynTrackerPage = lazyPage("VynTrackerPage", () => import("./features/vyn/VynTrackerPage.jsx"));
+const PlanningPage = lazyPage("PlanningPage", () => import("./features/planning/PlanningPage.jsx"));
 /* Human Resources is the largest single screen in the app — sixteen
    modules, plus Chart.js and an icon set nothing else uses. Lazy for the
    same reason as Admin, only more so: most sessions never open it, and
    nobody should download it to look at a project. */
-const HumanResourcesPage = lazy(() => import("./features/hr/HumanResourcesPage.jsx"));
+const HumanResourcesPage = lazyPage("HumanResourcesPage", () => import("./features/hr/HumanResourcesPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
 /* Not lazy: it is the first thing most sessions see, and a spinner in
    front of eight buttons would be slower than the buttons. */
@@ -135,6 +137,7 @@ function Shell() {
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
   else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
   else if (view === "vehicles") content = <div className="card"><VehiclesPage /></div>;
+  else if (view === "vyn-tracker") content = <div className="card"><VynTrackerPage /></div>;
   /* No card wrapper: the page has its own header bar and switches between
      a list and a detail view, both of which own their padding. */
   else if (view === "call-offs") content = <CallOffsPage />;

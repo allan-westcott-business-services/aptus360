@@ -65,7 +65,7 @@ export const AREAS = [
          of plant that goes out and comes back like any other, so it
          belongs with whatever tracks the rest of the plant. */
       { view: "equipment", label: "Equipment", note: "Includes generator hire." },
-      { view: "vyn-tracker", label: "VYN Tracker" },
+      { view: "vyn-tracker", label: "VYN Tracker", built: true },
     ],
   },
   {

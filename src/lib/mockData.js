@@ -166,6 +166,38 @@ export const mockList = [
 
 /* Mutable store backing the admin screens when running on sample data. */
 export const adminMock = {
+  /* Which project tabs each section shows. Only the exceptions are
+     stored: an absent row means the tab is shown. Mirrors the seed in
+     0138 so mock mode and a fresh database look the same. */
+  Project_Tab_Visibility: [
+    { Project_Tab_Visibility_ID: 1, Area_Key: "operations", Tab_Key: "stakeholder", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 2, Area_Key: "operations", Tab_Key: "nrs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 3, Area_Key: "operations", Tab_Key: "poc", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 4, Area_Key: "operations", Tab_Key: "designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 5, Area_Key: "operations", Tab_Key: "av", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 6, Area_Key: "operations", Tab_Key: "contract-designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 7, Area_Key: "operations", Tab_Key: "invoices", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 8, Area_Key: "commercial", Tab_Key: "stakeholder", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 9, Area_Key: "commercial", Tab_Key: "nrs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 10, Area_Key: "commercial", Tab_Key: "poc", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 11, Area_Key: "commercial", Tab_Key: "designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 12, Area_Key: "commercial", Tab_Key: "contract-designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 13, Area_Key: "commercial", Tab_Key: "calloffs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 14, Area_Key: "bd", Tab_Key: "nrs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 15, Area_Key: "bd", Tab_Key: "poc", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 16, Area_Key: "bd", Tab_Key: "designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 17, Area_Key: "bd", Tab_Key: "contract-designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 18, Area_Key: "bd", Tab_Key: "calloffs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 19, Area_Key: "bd", Tab_Key: "av", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 20, Area_Key: "bd", Tab_Key: "invoices", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 21, Area_Key: "finance", Tab_Key: "stakeholder", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 22, Area_Key: "finance", Tab_Key: "nrs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 23, Area_Key: "finance", Tab_Key: "poc", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 24, Area_Key: "finance", Tab_Key: "designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 25, Area_Key: "finance", Tab_Key: "contract-designs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 26, Area_Key: "finance", Tab_Key: "calloffs", Is_Visible: false },
+    { Project_Tab_Visibility_ID: 27, Area_Key: "finance", Tab_Key: "plots", Is_Visible: false },
+  ],
   /* The fleet. Dates are relative to build time so the expiry badges
      show all three states without anyone having to edit them: one
      lapsed, one inside the thirty-day warning, one comfortable. */

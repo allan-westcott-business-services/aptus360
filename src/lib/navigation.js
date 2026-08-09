@@ -29,6 +29,7 @@ export const AREAS = [
     blurb: "Customers, the companies behind them, and work not yet won.",
     items: [
       { view: "customer-projects", label: "Customers & Projects", built: true },
+      { view: "bd-projects", label: "Projects", built: true },
       /* The company register. It sits here rather than in Admin because
          it is the record a bid is raised against, not reference data
          somebody maintains once a quarter. */
@@ -57,6 +58,14 @@ export const AREAS = [
     items: [
       { view: "call-offs", label: "Call-offs", built: true },
       { view: "planning", label: "Planning", built: true },
+      /* The same projects screen the other sections open, with its own
+         view key so the sidebar can tell which section it belongs to.
+         Which tabs it shows is configured under Admin → Project Tabs.
+
+         Placed after Call-offs and Planning rather than first, because
+         the area opens on its first built screen and Operations should
+         still land on the call-offs board. */
+      { view: "ops-projects", label: "Projects", built: true },
       /* The same screen the Admin suite shows under Teams. One
          implementation mounted in two places, as Organisations is:
          a second would drift, and the difference between the two
@@ -82,6 +91,7 @@ export const AREAS = [
     items: [
       { view: "av-invoices", label: "Asset Value", built: true },
       { view: "generate-av-invoices", label: "Generate AV Invoices", built: true },
+      { view: "commercial-projects", label: "Projects", built: true },
     ],
   },
   /* Human Resources.
@@ -139,6 +149,7 @@ export const AREAS = [
     colour: "#f472b6",
     blurb: "Invoices out, money in, and chasing what has not arrived.",
     items: [
+      { view: "finance-projects", label: "Projects", built: true },
       { view: "invoice-log", label: "Invoice Log" },
       { view: "crc-dashboard", label: "Credit Control Dashboard" },
       { view: "crc-overdue", label: "Overdue Invoices" },
@@ -191,6 +202,29 @@ export const findArea = (view) =>
    built still opens somewhere and explains itself. */
 export const firstViewOf = (area) =>
   (area.items.find((i) => i.built) ?? area.items[0]).view;
+
+/* Every view that opens the projects screen, and the area each belongs
+   to. The screen reads the area to decide which tabs to show.
+
+   Five keys for one screen rather than one key in five areas, because
+   the sidebar scopes itself by looking up which area a view belongs to
+   — a key in five areas makes that lookup ambiguous, and checknav.mjs
+   refuses it for exactly that reason. */
+export const PROJECT_VIEWS = {
+  "projects": "design",
+  "bd-projects": "bd",
+  "ops-projects": "operations",
+  "commercial-projects": "commercial",
+  "finance-projects": "finance",
+};
+
+export const isProjectView = (view) => Object.hasOwn(PROJECT_VIEWS, view);
+
+/* The projects view for an area, used when one screen sends somebody to
+   a project — the call-offs list does — so they stay in the section
+   they were already in rather than being moved to another one. */
+export const projectsViewFor = (areaKey) =>
+  Object.keys(PROJECT_VIEWS).find((v) => PROJECT_VIEWS[v] === areaKey) ?? "projects";
 
 export const findNavItem = (view) => {
   for (const area of AREAS) {

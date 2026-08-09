@@ -7,7 +7,7 @@ import { remember, recall } from "../../lib/session.js";
 /* Single entry point for everything project-shaped. The table is the
    home screen; creating and editing happen inside it rather than as
    separate sidebar destinations. */
-export default function ProjectsPage() {
+export default function ProjectsPage({ areaKey = null }) {
   /* Which project was open, and on which tab, across a reload.
 
      The shell remembers the page; this remembers the place within it.
@@ -40,6 +40,7 @@ export default function ProjectsPage() {
 
   if (mode === "edit") return (
     <ProjectDetail project={selected} initialTab={initialTab} onBack={backToList}
+      areaKey={areaKey}
       onTabChange={setInitialTab}
       /* Kept in step so the remembered position holds the current name
          rather than the one the project was opened with. */

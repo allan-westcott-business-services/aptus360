@@ -40,7 +40,7 @@ import HomePage from "./features/home/HomePage.jsx";
 import {
   findNavItem, builtCount, totalCount,
   isHrView, hrModuleFor, hrViewFor,
-  HOME_VIEW, ALL_VIEWS, findArea,
+  HOME_VIEW, ALL_VIEWS, findArea, isProjectView, PROJECT_VIEWS, projectsViewFor,
 } from "./lib/navigation.js";
 
 /* Placeholder for views not yet migrated. Keeping these visible rather than
@@ -123,14 +123,18 @@ function Shell() {
   /* The call-offs list sending somebody to a project to raise a new
      one. The project and tab are already in the session by the time
      this fires; all the shell does is put the page on screen. */
-  useEffect(() => onOpenProject(() => setView("projects")), []);
+  useEffect(() => onOpenProject(() => setView((v) => projectsViewFor(findArea(v)?.id))), []);
   const [collapsed, setCollapsed] = useState(false);
 
   let content;
   /* No card wrapper: the landing page is the whole screen, and a white
      panel behind eight white squares would put a border round nothing. */
   if (view === HOME_VIEW) content = <HomePage onOpen={setView} />;
-  else if (view === "projects") content = <div className="card"><ProjectsPage /></div>;
+  /* One screen, opened from five sections. The area it was opened from
+     decides which project tabs are offered — see Admin → Project Tabs. */
+  else if (isProjectView(view)) {
+    content = <div className="card"><ProjectsPage areaKey={PROJECT_VIEWS[view]} /></div>;
+  }
   else if (view === "admin") content = <div className="card"><AdminPage /></div>;
   else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage /></div>;
   else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;

@@ -106,6 +106,11 @@ export const ADMIN_TABLES = [
      maintained together — somebody joining the company is added here
      next. */
   { key: "Team", label: "Teams", special: "teams" },
+  /* Which project tabs each section of the app shows. Sits with the
+     other screens that shape the application rather than describe the
+     work, and behaves the way Menu Layout does: the list is code, the
+     preferences are data. */
+  { key: "Project_Tab_Visibility", label: "Project Tabs", special: "projecttabs" },
   /* What a team is qualified to do, and what a work phase requires.
 
      Next to Teams, because the two are only ever maintained together —

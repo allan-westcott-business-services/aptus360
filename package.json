@@ -8,8 +8,8 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "netlify dev",
-    "test": "node checklazy.mjs && node checknav.mjs && node checkhome.mjs && node checkteams.mjs && node checkvehicles.mjs && node checklazy.mjs && node checkvyn.mjs && node checkhr.mjs",
-    "check": "npm run test && for f in check*.py; do echo \"── $f\"; python3 \"$f\"; done"
+    "test": "node checkimports.mjs && node checknav.mjs && node checkprojecttabs.mjs && node checkhome.mjs && node checkteams.mjs && node checkvehicles.mjs && node checklazy.mjs && node checkvyn.mjs && node checkhr.mjs",
+    "check": "npm run test && for f in check*.py; do echo \"\u2500\u2500 $f\"; python3 \"$f\"; done"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.0.0",

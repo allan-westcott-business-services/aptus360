@@ -1,7 +1,9 @@
-import { useState, useEffect, useCallback } from "react";
+import { useState, useEffect, useCallback, useMemo } from "react";
 import { listOptions, addOptions, removeOption } from "../../api/projectOptions.js";
 import { remember, recall } from "../../lib/session.js";
 import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
+import { STAGES, visibleTabs } from "../../lib/projectTabs.js";
+import { adminList } from "../../api/admin.js";
 import StakeholderTab from "../stakeholders/StakeholderTab.jsx";
 import CallOffsTab from "../calloffs/CallOffsTab.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
@@ -16,44 +18,10 @@ import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 /* An existing project, opened from the table. Tabs mirror the tender
    detail panel in the original app — Details and Plots for now, with
    Scopes, Designs and History slotting in as they're migrated. */
-/* The tabs, and which stage each belongs to.
-
-   A project is worked on twice: once to win it, once to build it. The
-   two need different things in front of them — an outline design and a
-   POC application belong to the tender, call-offs and detailed designs
-   to the contract — and showing all of it at once means eleven tabs of
-   which several are always wrong for what somebody is doing.
-
-   Most tabs are in both, and they are the same page in both: details,
-   plots and the rest do not change because the project has been won.
-   Only the stage-specific ones move.
-
-   `stages` rather than a single flag, so a tab that belongs to both says
-   so once instead of being listed twice and drifting apart. */
-const TABS = [
-  { id: "details", label: "Details", stages: ["tender", "contract"] },
-  { id: "stakeholder", label: "Stakeholders", stages: ["tender", "contract"] },
-  { id: "plots", label: "Plots", stages: ["tender", "contract"] },
-  { id: "nrs", label: "Non-Res Supplies", stages: ["tender", "contract"] },
-  { id: "poc", label: "POC Applications", stages: ["tender"] },
-  { id: "designs", label: "Outline Designs", stages: ["tender"] },
-  { id: "av", label: "Asset Value", stages: ["tender", "contract"] },
-  { id: "contract-designs", label: "Detailed Designs", stages: ["contract"] },
-  { id: "calloffs", label: "Call-offs", stages: ["contract"] },
-  /* Invoices sits next to the designs it bills for, rather than at the
-     far end after History and Comments. */
-  { id: "invoices", label: "Invoices", stages: ["tender", "contract"] },
-  { id: "history", label: "History", stages: ["tender", "contract"] },
-  { id: "comments", label: "Comments", stages: ["tender", "contract"] },
-];
-
-export const STAGES = [
-  { id: "tender", label: "Tender" },
-  { id: "contract", label: "Contract" },
-];
-
-export const tabsForStage = (stage) =>
-  TABS.filter((t) => t.stages.includes(stage));
+/* The tab list, the stage rule and the per-section visibility rule all
+   live in src/lib/projectTabs.js, because the admin screen that
+   configures visibility needs the same list. Re-exported here so the
+   pages that already import STAGES from this module keep working. */
 
 /* Where a project is being worked on. Held per project id, so two
    projects open in turn do not fight over one setting. */
@@ -61,8 +29,24 @@ const stageKey = (id) => `projectStage:${id}`;
 
 export default function ProjectDetail({
   project: incoming, initialTab = "details", onBack, onOpenOption, onTabChange,
-  onProjectChange,
+  onProjectChange, areaKey = null,
 }) {
+  /* Which tabs this section hides. Fetched rather than passed down:
+     every route into this page would otherwise have to know to carry
+     it, and one of them forgetting shows as the setting being ignored
+     on that route only. Failure is tolerated — an unreachable table
+     means no rows, which means every tab, which is what the page did
+     before the setting existed. */
+  const [tabRows, setTabRows] = useState([]);
+  useEffect(() => {
+    let live = true;
+    adminList("Project_Tab_Visibility")
+      .then(({ rows = [] }) => { if (live) setTabRows(rows); })
+      .catch(() => { if (live) setTabRows([]); });
+    return () => { live = false; };
+  }, []);
+  const shownTabs = useMemo(
+    () => visibleTabs(stage, areaKey, tabRows), [stage, areaKey, tabRows]);
   /* The project as it now stands, not as it was handed over.
 
      The header shows the site name and the reference, and the details
@@ -94,9 +78,9 @@ export default function ProjectDetail({
      does not exist on a contract. Falls back to Details, which is in
      both and is where somebody would look first anyway. */
   useEffect(() => {
-    if (!tabsForStage(stage).some((t) => t.id === tab)) setTab("details");
+    if (!shownTabs.some((t) => t.id === tab)) setTab("details");
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [stage]);
+  }, [stage, shownTabs]);
   useEffect(() => { setProject(incoming); }, [incoming]);
   /* The other versions of this enquiry: 2607.004(A), (B) and so on.
      Fetched rather than passed in, because a project can be opened from
@@ -202,7 +186,7 @@ export default function ProjectDetail({
       </div>
 
       <div className="detail-tabs" role="tablist">
-        {tabsForStage(stage).map((t) => (
+        {shownTabs.map((t) => (
           <button
             key={t.id}
             role="tab"
@@ -286,3 +270,5 @@ const CSS = `
 .detail-tab:hover { color: var(--text); }
 .detail-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
 `;
+
+export { STAGES };

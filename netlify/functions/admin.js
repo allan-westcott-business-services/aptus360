@@ -37,6 +37,9 @@ const TABLES = {
   Vehicle_Service:     { pk: "Service_ID",             order: "Service_ID" },
   Vehicle_Maintenance: { pk: "Maintenance_ID",         order: "Maintenance_ID" },
   Vehicle_Mileage_Log: { pk: "Log_ID",                 order: "Log_ID" },
+  /* Which project tabs each section of the app shows (0138). Only the
+     exceptions are stored, so an absent row means the tab is shown. */
+  Project_Tab_Visibility: { pk: "Project_Tab_Visibility_ID", order: "Area_Key" },
   /* Phases, which work type involves which, and who is doing them. */
   Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
   Dependency_Type:     { pk: "Dependency_Type_ID",     order: "Sort_Order" },

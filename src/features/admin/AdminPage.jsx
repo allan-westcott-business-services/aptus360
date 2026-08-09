@@ -5,6 +5,7 @@ import GenericTable from "./GenericTable.jsx";
 import PropertyConfigAdmin from "./PropertyConfigAdmin.jsx";
 import PeopleRolesAdmin from "./PeopleRolesAdmin.jsx";
 import TeamsAdmin from "./TeamsAdmin.jsx";
+import ProjectTabsAdmin from "./ProjectTabsAdmin.jsx";
 import SubRegionAdmin from "./SubRegionAdmin.jsx";
 import StatusWorkflowAdmin from "./StatusWorkflowAdmin.jsx";
 import ElectricSpecsAdmin from "./ElectricSpecsAdmin.jsx";
@@ -139,6 +140,8 @@ export default function AdminPage() {
           <PeopleRolesAdmin />
         ) : table?.special === "teams" ? (
           <TeamsAdmin />
+        ) : table?.special === "projecttabs" ? (
+          <ProjectTabsAdmin />
         ) : table?.special === "subregions" ? (
           <SubRegionAdmin />
         ) : table?.special === "workflow" ? (

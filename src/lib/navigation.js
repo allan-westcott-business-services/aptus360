@@ -1,53 +1,50 @@
-/* Navigation structure, carried over from the single-file app.
+/* Navigation, organised as areas rather than one long list.
+
+   The app opens on a landing page of one square per area. Choosing one
+   sets the area, and the sidebar then shows that area's screens and
+   nothing else — so somebody planning a week of work is not scrolling
+   past street lighting and fire hydrants to reach the board.
+
+   This file is the single source of truth for three things that used to
+   drift apart: what the landing page offers, what the sidebar shows, and
+   which menu items People & Roles can grant. Adding a screen here adds
+   it to all three.
 
    `view` is the route key. `built: true` means the React version exists;
-   everything else renders a placeholder, so the sidebar doubles as a
-   migration checklist — you can see at a glance what's left.
+   everything else renders a placeholder, so an area square can honestly
+   report how much of itself is live. `soon: true` marks items that were
+   already "coming soon" in the original app.
 
-   `soon: true` marks items that were already "coming soon" in the old app. */
+   Colours are the ones the old sidebar sections used, so the squares and
+   the menu headers agree about what colour Operations is. */
 
-export const NAV_SECTIONS = [
+export const HOME_VIEW = "home";
+
+export const AREAS = [
   {
-    id: "orgs",
-    label: "Organisations",
-    icon: "\u{1F3E2}",
+    id: "bd",
+    label: "Business Development",
+    icon: "\u{1F91D}",
     colour: "#a78bfa",
+    blurb: "Customers, the companies behind them, and work not yet won.",
     items: [
-      /* First in the section, because it is the one record the others are
-         becoming. Customers, DNOs, IDNOs and Fire Authorities are the
-         five parallel tables Organisations replaces — they stay until the
-         pickers have moved across, but new work belongs here. */
-      { view: "organisations", label: "Organisations", built: true },
-      { view: "customers", label: "Customers" },
       { view: "customer-projects", label: "Customers & Projects", built: true },
+      /* The company register. It sits here rather than in Admin because
+         it is the record a bid is raised against, not reference data
+         somebody maintains once a quarter. */
+      { view: "organisations", label: "Organisations", built: true },
       { view: "customer-feedback", label: "Customer Feedback" },
-      { view: "dnos", label: "DNOs" },
-      { view: "idnos", label: "IDNOs" },
-      { view: "fire-authorities", label: "Fire Authorities" },
-      { view: "suppliers", label: "Suppliers" },
-      { view: "materials", label: "Materials" },
-      { view: "sc-compliance", label: "SC Compliance" },
+      { view: "enquiries", label: "Enquiries", soon: true },
     ],
   },
   {
-    id: "commercial",
-    label: "Commercial",
-    icon: "\u{1F4BC}",
-    colour: "#60a5fa",
+    id: "design",
+    label: "Tendering & Design",
+    icon: "\u{1F4D0}",
+    colour: "#f59e0b",
+    blurb: "Projects from enquiry through to a drawn and costed design.",
     items: [
-      { view: "commercial-dashboard", label: "Commercial Dashboard" },
-      { view: "tender-dashboard", label: "Tender Dashboard" },
-      { view: "enquiries", label: "Enquiries", soon: true },
       { view: "projects", label: "Projects", built: true },
-      { view: "invoice-log", label: "Invoice Log" },
-      { view: "asset-value-invoices", label: "Asset Value" },
-      { view: "asset-value-dashboard", label: "Asset Value Dashboard" },
-      { view: "av-meter-recon", label: "Meter Date Reconciliation" },
-      { view: "generate-av-invoices", label: "Generate AV Invoices", built: true },
-      { view: "av-invoices", label: "AV Invoices", built: true },
-      { view: "invoice-plot-extractor", label: "Import Audacia Invoice Data" },
-      { view: "mains-install-tracking", label: "Mains Install Tracking" },
-      { view: "update-av-asset-values", label: "Update AV Asset Values" },
       { view: "gis-canvas", label: "GIS Canvas", built: true },
     ],
   },
@@ -56,72 +53,46 @@ export const NAV_SECTIONS = [
     label: "Operations",
     icon: "\u2699\uFE0F",
     colour: "#34d399",
+    blurb: "Getting the work called off, planned, crewed and connected.",
     items: [
-      { view: "operations-dashboard", label: "Operations Dashboard", soon: true },
       { view: "call-offs", label: "Call-offs", built: true },
       { view: "planning", label: "Planning", built: true },
-      { view: "field-team-work", label: "Field Team Work" },
+      { view: "teams", label: "Teams" },
       { view: "plot-connections", label: "Plot Connections", built: true },
       { view: "sc-log", label: "Service Card Log" },
-      { view: "teams", label: "Teams" },
       { view: "vehicles", label: "Vehicles" },
-      { view: "equipment", label: "Equipment" },
+      /* Generator hire was its own screen under Electric. It is a piece
+         of plant that goes out and comes back like any other, so it
+         belongs with whatever tracks the rest of the plant. */
+      { view: "equipment", label: "Equipment", note: "Includes generator hire." },
       { view: "vyn-tracker", label: "VYN Tracker" },
     ],
   },
   {
-    id: "electric",
-    label: "Electric",
-    icon: "\u26A1",
-    colour: "#fbbf24",
+    id: "commercial",
+    label: "Commercial",
+    icon: "\u{1F4BC}",
+    colour: "#60a5fa",
+    blurb: "Asset value: what the connected plots are worth, and billing it.",
     items: [
-      { view: "electric-outline-design", label: "Electric Outline Design", soon: true },
-      { view: "electric-contract-design", label: "Electric Detailed Design", soon: true },
-      { view: "generator-hire", label: "Generator Hire" },
-      { view: "street-lighting", label: "Street Lighting" },
-      { view: "feeder-pillar", label: "Feeder Pillars" },
-      { view: "landlord-supply", label: "Landlord Supply", soon: true },
-      { view: "temp-building-supply", label: "Temporary Building Supply", soon: true },
-    ],
-  },
-  {
-    id: "gas",
-    label: "Gas",
-    icon: "\u{1F525}",
-    colour: "#fb923c",
-    items: [
-      { view: "gas-outline-design", label: "Gas Outline Design", soon: true },
-      { view: "gas-contract-design", label: "Gas Detailed Design", soon: true },
-    ],
-  },
-  {
-    id: "water",
-    label: "Water",
-    icon: "\u{1F4A7}",
-    colour: "#22d3ee",
-    items: [
-      { view: "water-outline-design", label: "Water Outline Design", soon: true },
-      { view: "water-contract-design", label: "Water Detailed Design", soon: true },
-      { view: "fire-hydrants", label: "Fire Hydrants" },
+      { view: "av-invoices", label: "Asset Value", built: true },
+      { view: "generate-av-invoices", label: "Generate AV Invoices", built: true },
     ],
   },
   /* Human Resources.
 
-     Every view here is one screen of the HR portal, which is not a React
-     page but a self-contained app mounted into the shell — see
+     Every view is one screen of the HR portal, which is not a React page
+     but a self-contained app mounted into the shell — see
      features/hr/hrPortal.js. The `hr-` prefix is what App.jsx routes on
      and what it strips to get the portal's own module id, so the two
-     halves of each name have to stay in step: `hr-people` is the portal's
-     `people` module and nothing else.
-
-     They are all marked built because they are: the whole section works
-     today. What it does not yet do is share the rest of the app's
-     database or its sign-in. */
+     halves of each name have to stay in step: `hr-people` is the
+     portal's `people` module and nothing else. */
   {
     id: "hr",
     label: "Human Resources",
     icon: "\u{1F465}",
     colour: "#818cf8",
+    blurb: "People, pay, leave, performance and everything that follows.",
     items: [
       { view: "hr-dashboard", label: "HR Dashboard", built: true },
       { view: "hr-people", label: "People", built: true },
@@ -146,6 +117,7 @@ export const NAV_SECTIONS = [
     label: "HSQE",
     icon: "\u{1F6E1}\uFE0F",
     colour: "#f87171",
+    blurb: "Health, safety, quality and environment: audits, incidents, RAMS.",
     items: [
       { view: "hsqe-dashboard", label: "HSQE Dashboard" },
       { view: "ncr-list", label: "Non Compliance Reports" },
@@ -156,49 +128,37 @@ export const NAV_SECTIONS = [
     ],
   },
   {
-    id: "crc",
-    label: "Credit Control",
+    id: "finance",
+    label: "Finance",
     icon: "\u{1F4B3}",
     colour: "#f472b6",
+    blurb: "Invoices out, money in, and chasing what has not arrived.",
     items: [
-      { view: "crc-dashboard", label: "Dashboard" },
+      { view: "invoice-log", label: "Invoice Log" },
+      { view: "crc-dashboard", label: "Credit Control Dashboard" },
       { view: "crc-overdue", label: "Overdue Invoices" },
       { view: "crc-letters", label: "Letters" },
       { view: "crc-chase-log", label: "Chase Log" },
     ],
   },
   {
-    id: "logs",
-    label: "Logs",
-    icon: "\u{1F4CB}",
-    colour: "#94a3b8",
+    id: "admin",
+    label: "Admin",
+    icon: "\u{1F5C4}\uFE0F",
+    colour: "#64748b",
+    blurb: "Reference data the rest of the app reads: statuses, specs, teams.",
     items: [
-      { view: "poc-log", label: "POC Applications Log" },
-      { view: "outline-design-log", label: "Outline Design Log" },
-      { view: "contract-design-log", label: "Detailed Design Log" },
+      { view: "admin", label: "Admin", built: true },
     ],
   },
 ];
 
-/* Admin is one screen, so its section header is the link.
+/* Kept under the old name as well, because People & Roles grants menu
+   access by section and reads the same definition the sidebar renders
+   from. The two cannot disagree about what pages exist while they are
+   literally the same array. */
+export const NAV_SECTIONS = AREAS;
 
-   It used to expand to a single item called "Reference Data" — a click
-   to open a list of one, and a name for the admin suite that stopped
-   being true once it held teams, styles and pipe sizes. `direct` says
-   the header navigates instead of toggling; the item stays so that
-   findNavItem still resolves the view to a section. */
-NAV_SECTIONS.push({
-  id: "admin",
-  label: "Admin",
-  colour: "#64748b",
-  direct: "admin",
-  items: [{ view: "admin", label: "Admin", built: true }],
-});
-
-/* The Human Resources section maps one-to-one onto the HR portal's own
-   modules: strip the prefix from the view and you have the module id it
-   should show. Kept here, beside the section that defines it, so the
-   prefix is written down once rather than assumed in the shell. */
 export const HR_PREFIX = "hr-";
 
 export const isHrView = (view) => String(view).startsWith(HR_PREFIX);
@@ -207,18 +167,40 @@ export const hrModuleFor = (view) => String(view).slice(HR_PREFIX.length);
 
 export const hrViewFor = (moduleId) => HR_PREFIX + moduleId;
 
-export const HR_VIEWS = NAV_SECTIONS.find((s) => s.id === "hr").items.map((i) => i.view);
+export const HR_VIEWS = AREAS.find((a) => a.id === "hr").items.map((i) => i.view);
+
+/* Every view any area offers, plus the landing page. What a remembered
+   view is checked against: a name from an older build would otherwise
+   leave the shell rendering nothing with no way back. */
+export const ALL_VIEWS = [HOME_VIEW, ...AREAS.flatMap((a) => a.items.map((i) => i.view))];
+
+/* The area a view belongs to, which is what the sidebar scopes itself
+   to. Null for the landing page, which belongs to no area — that is the
+   signal to hide the menu entirely rather than show an empty one. */
+export const findArea = (view) =>
+  AREAS.find((a) => a.items.some((i) => i.view === view)) ?? null;
+
+/* The first screen an area opens on. Its first built item where there is
+   one, so choosing Operations lands on call-offs rather than a
+   placeholder, and the first item otherwise so an area with nothing
+   built still opens somewhere and explains itself. */
+export const firstViewOf = (area) =>
+  (area.items.find((i) => i.built) ?? area.items[0]).view;
 
 export const findNavItem = (view) => {
-  for (const section of NAV_SECTIONS) {
-    const item = section.items.find((i) => i.view === view);
-    if (item) return { ...item, section };
+  for (const area of AREAS) {
+    const item = area.items.find((i) => i.view === view);
+    /* `section` rather than `area`, because the placeholder screen and
+       People & Roles both already read that key. */
+    if (item) return { ...item, section: area, area };
   }
   return null;
 };
 
 export const builtCount = () =>
-  NAV_SECTIONS.reduce((n, s) => n + s.items.filter((i) => i.built).length, 0);
+  AREAS.reduce((n, a) => n + a.items.filter((i) => i.built).length, 0);
 
 export const totalCount = () =>
-  NAV_SECTIONS.reduce((n, s) => n + s.items.length, 0);
+  AREAS.reduce((n, a) => n + a.items.length, 0);
+
+export const areaBuiltCount = (area) => area.items.filter((i) => i.built).length;

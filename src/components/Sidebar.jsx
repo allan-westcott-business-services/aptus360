@@ -1,14 +1,20 @@
-import { useState } from "react";
-import { NAV_SECTIONS } from "../lib/navigation.js";
+import { findArea } from "../lib/navigation.js";
+import { alpha } from "../lib/colour.js";
 
-/* Styles live in this file rather than styles.css so the sidebar is a single
-   self-contained drop-in. Move them to styles.css later if you prefer. */
+/* The menu for one area.
+
+   It used to render every section in the app with the current one
+   expanded, which meant seventy items behind ten lids and a scroll to
+   reach the bottom of them. Now the landing page picks the area and this
+   shows that area's screens flat — no chevrons, nothing to expand,
+   because there is only ever one section in view.
+
+   Styles live in this file rather than styles.css so the sidebar stays a
+   self-contained drop-in. Anything the rest of the app depends on has
+   moved to styles.css, since this component is not on every screen: the
+   landing page has no menu at all. */
 const SIDEBAR_CSS = `
-.shell { display: flex; min-height: 100vh; }
-.main { flex: 1; min-width: 0; padding: 20px 24px; overflow-x: auto; }
-
-/* ═══ SIDEBAR ═══════════════════════════════════════════════════
-   Dark slate palette carried over from the single-file app, so the
+/* Dark slate palette carried over from the single-file app, so the
    React screens sit alongside the legacy ones without a visual jump. */
 :root {
   --sb-bg:          #0f172a;
@@ -31,48 +37,54 @@ const SIDEBAR_CSS = `
 #app-sidebar.collapsed { margin-left: -240px; }
 
 .sidebar-brand { padding: 14px 12px 10px; }
+/* A button, because the logo is the way back to the landing page. It
+   was already the most clicked-looking thing in the sidebar; now it
+   does something. */
 .brand-plate {
-  background: #fff; border-radius: 8px; padding: 10px 12px;
+  width: 100%; background: #fff; border: 1px solid transparent;
+  border-radius: 8px; padding: 10px 12px; cursor: pointer;
   display: flex; align-items: center; justify-content: center;
 }
+.brand-plate:hover { border-color: var(--sb-text-hover); }
+.brand-plate:focus-visible { outline: 2px solid var(--sb-text-active); outline-offset: 2px; }
 /* Scales to the sidebar rather than a fixed size, so it still fits when
    the sidebar is narrowed. */
 .brand-logo { width: 100%; max-width: 190px; height: auto; display: block; }
-.brand-mark {
-  width: 34px; height: 34px; flex: none; border-radius: 7px;
-  background: var(--accent); color: #fff; font-size: 11px; font-weight: 700;
-  letter-spacing: 0.02em; display: flex; align-items: center; justify-content: center;
+
+/* ═══ AREA HEADER ═══════════════════════════════════════════════
+   Says which area's menu this is, in that area's colour, so the square
+   somebody pressed on the landing page and the menu they land in are
+   recognisably the same thing. */
+.sb-area {
+  margin: 4px 12px 8px; padding: 9px 11px;
+  border-radius: 7px; border-left: 4px solid var(--sb-accent);
+  background: var(--sb-accent-tint);
+  display: flex; align-items: center; gap: 8px;
 }
-.brand-text { display: flex; flex-direction: column; line-height: 1.2; min-width: 0; }
-.brand-text strong { font-size: 14px; font-weight: 700; color: var(--text); }
-.brand-text em {
-  font-style: normal; font-size: 10px; color: var(--muted);
-  white-space: nowrap; overflow: hidden; text-overflow: ellipsis;
+.sb-area-icon { font-size: 14px; line-height: 1; flex: none; }
+.sb-area-label {
+  font-size: 11.5px; font-weight: 700; text-transform: uppercase;
+  letter-spacing: 0.06em; color: var(--sb-accent); line-height: 1.3;
 }
 
-.sidebar-nav { flex: 1; overflow-y: auto; padding: 6px 0 10px; }
+.sb-back {
+  width: calc(100% - 24px); margin: 0 12px 8px; padding: 6px 10px;
+  background: none; border: 1px solid var(--sb-border); border-radius: 6px;
+  cursor: pointer; font-family: inherit; font-size: 11.5px;
+  color: var(--sb-text-muted); text-align: left;
+  display: flex; align-items: center; gap: 7px;
+}
+.sb-back:hover { background: var(--sb-bg-hover); color: var(--sb-text-hover); }
+.sb-back:focus-visible { outline: 2px solid var(--sb-text-active); outline-offset: 1px; }
+
+.sidebar-nav { flex: 1; overflow-y: auto; padding: 2px 8px 10px; }
 .sidebar-nav::-webkit-scrollbar { width: 6px; }
 .sidebar-nav::-webkit-scrollbar-thumb { background: #334155; border-radius: 3px; }
 .sidebar-nav::-webkit-scrollbar-thumb:hover { background: #475569; }
 
-.nav-section { margin-bottom: 2px; }
-.nav-section-header {
-  width: 100%; padding: 9px 12px 9px 10px; background: none; border: none;
-  cursor: pointer; display: flex; align-items: center; justify-content: space-between;
-  font-family: inherit; font-size: 11.5px; font-weight: 700;
-  text-transform: uppercase; letter-spacing: 0.06em; text-align: left;
-}
-.nav-section-header:hover { filter: brightness(1.25); }
-.chevron { font-size: 10px; transition: transform 0.18s; display: inline-block; }
-.chevron.down { transform: rotate(90deg); }
-
-.nav-section-items { padding: 3px 8px 6px; }
-/* A header that is a link rather than a lid. Marked when it is the
-   screen you are on, since it has no items below it to carry that. */
-.nav-section-header.direct.on { font-weight: 700; }
 .nav-item {
   width: 100%; text-align: left; background: none; border: 1px solid transparent;
-  border-radius: 6px; padding: 6px 10px; margin-bottom: 1px; cursor: pointer;
+  border-radius: 6px; padding: 7px 10px; margin-bottom: 1px; cursor: pointer;
   font-family: inherit; font-size: 12.5px; color: var(--sb-text);
   display: flex; align-items: center; justify-content: space-between; gap: 6px;
 }
@@ -104,149 +116,66 @@ const SIDEBAR_CSS = `
 .sidebar-toggle-btn:hover { color: var(--accent); }
 #app-sidebar.collapsed + .sidebar-toggle-btn { left: 0; }
 
-
-/* styles.css applies appearance:none to every input, which strips the
-   native checkbox rendering — checked and unchecked look identical.
-   Draw them explicitly. Sidebar is always mounted, so this applies
-   app-wide. */
-/* Checkboxes and radios live in src/styles.css — see the note there
-   on why they can't be styled from a component <style> block. */
-
-/* Radios lose their native rendering to the same appearance:none rule.
-   Draw a ring with a filled centre so checked is unmistakable, and keep
-   them circular so they read as "pick one" against the square checkboxes. */
-input[type="radio"] {
-  appearance: none; -webkit-appearance: none;
-  width: 17px; height: 17px; flex: none; padding: 0; position: relative;
-  border: 1.5px solid #cbd5e1; border-radius: 50%;
-  background: #fff; cursor: pointer; vertical-align: middle;
-  transition: border-color .12s;
-}
-input[type="radio"]:hover { border-color: var(--accent); }
-input[type="radio"]:checked { border-color: var(--accent); }
-input[type="radio"]:checked::after {
-  content: ""; position: absolute; inset: 3px;
-  border-radius: 50%; background: var(--accent);
-}
-input[type="radio"]:focus-visible { outline: 2px solid var(--accent); outline-offset: 1px; }
-input[type="radio"]:disabled { opacity: .5; cursor: not-allowed; }
-
-/* Metric-adjusted fallback: the swap from system font to DM Sans then
-   happens without reflowing text, which is what the CLS was. */
-@font-face {
-  font-family: "DM Sans Fallback";
-  src: local("Helvetica Neue"), local("Arial"), local("Segoe UI");
-  size-adjust: 96%;
-  ascent-override: 96%;
-  descent-override: 24%;
-  line-gap-override: 0%;
-}
-
-.lazy-wait { padding: 60px; text-align: center; color: var(--muted); font-size: 13px; }
-.topbar { display: flex; justify-content: flex-end; margin-bottom: 10px; }
-.boot { display: flex; align-items: center; justify-content: center; min-height: 100vh;
-  color: var(--muted); font-size: 13px; }
-
-/* ═══ PLACEHOLDER (unmigrated views) ════════════════════════════ */
-.placeholder { text-align: center; padding: 60px 24px; }
-.placeholder-badge {
-  display: inline-block; font-size: 11px; font-weight: 700; text-transform: uppercase;
-  letter-spacing: 0.07em; padding: 4px 11px; border-radius: 20px; margin-bottom: 14px;
-}
-.placeholder h2 { margin: 0 0 8px; font-size: 20px; }
-.placeholder p { margin: 0 0 6px; font-size: 13px; color: var(--muted); max-width: 46ch;
-  margin-left: auto; margin-right: auto; }
-.placeholder-progress {
-  margin-top: 18px !important; font-size: 11px !important; text-transform: uppercase;
-  letter-spacing: 0.07em; font-weight: 700; opacity: 0.55;
-}
-
 @media (max-width: 820px) {
   #app-sidebar { position: fixed; z-index: 30; height: 100vh; }
   #app-sidebar.collapsed { margin-left: -240px; }
-  .main { padding: 16px 14px; }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  #app-sidebar, .sidebar-toggle-btn { transition: none; }
 }
 `;
 
-export default function Sidebar({ view, onNavigate, collapsed, onToggle }) {
-  // Open the section containing the current view; collapse the rest.
-  const [open, setOpen] = useState(() => {
-    const initial = {};
-    NAV_SECTIONS.forEach((s) => {
-      initial[s.id] = s.items.some((i) => i.view === view);
-    });
-    return initial;
-  });
+export default function Sidebar({ view, onNavigate, onHome, collapsed, onToggle }) {
+  const area = findArea(view);
 
-  const toggleSection = (id) => setOpen((p) => ({ ...p, [id]: !p[id] }));
+  /* No area means the landing page, which has no menu. The shell does
+     not mount the sidebar there, so this is belt and braces against a
+     remembered view from an older build resolving to nothing. */
+  if (!area) return null;
 
   return (
     <>
       <style>{SIDEBAR_CSS}</style>
       <aside id="app-sidebar" className={collapsed ? "collapsed" : ""}>
         <div className="sidebar-brand">
-          <div className="brand-plate">
-            {/* The logo already carries the name and the strapline, so the
+          <button className="brand-plate" onClick={onHome} title="All sections">
+            {/* The logo already carries the name and the strapline, so
                 text beside it would be saying everything twice. */}
             <img className="brand-logo" src="/aptus360-logo.png"
               alt="Aptus360 — End-to-End MU Management" />
-          </div>
+          </button>
         </div>
 
-        <nav className="sidebar-nav">
-          {NAV_SECTIONS.map((section) => (
-            <div className="nav-section" key={section.id}>
-              {/* A section with `direct` set is one screen, so its header
-                  is the link to it — no chevron, nothing to expand, and
-                  the active state on the header itself. Expanding to a
-                  list of one is a click that only ever leads one place. */}
-              <button
-                className={section.direct && view === section.direct
-                  ? "nav-section-header direct on" : "nav-section-header"}
-                onClick={() => (section.direct
-                  ? onNavigate(section.direct)
-                  : toggleSection(section.id))}
-                aria-expanded={section.direct ? undefined : !!open[section.id]}
-                style={{
-                  color: section.colour,
-                  borderLeft: `4px solid ${section.colour}`,
-                  background: `${section.colour}1a`,
-                }}
-              >
-                <span>{section.label}</span>
-                {!section.direct && (
-                  <span className={open[section.id] ? "chevron down" : "chevron"}
-                    style={{ color: section.colour }}>
-                    &#9656;
-                  </span>
-                )}
-              </button>
+        <button className="sb-back" onClick={onHome}>
+          <span aria-hidden="true">&larr;</span>
+          <span>All sections</span>
+        </button>
 
-              {!section.direct && open[section.id] && (
-                <div className="nav-section-items">
-                  {section.items.map((item) => {
-                    const cls = [
-                      "nav-item",
-                      view === item.view ? "active" : "",
-                      item.soon ? "coming-soon" : "",
-                    ]
-                      .filter(Boolean)
-                      .join(" ");
-                    return (
-                      <button
-                        key={item.view}
-                        className={cls}
-                        onClick={() => onNavigate(item.view)}
-                      >
-                        {item.label}
-                        {item.built && <span className="nav-badge">live</span>}
-                      </button>
-                    );
-                  })}
-                </div>
-              )}
-            </div>
-          ))}
+        <div className="sb-area" style={{ "--sb-accent": area.colour, "--sb-accent-tint": alpha(area.colour, 16) }}>
+          <span className="sb-area-icon" aria-hidden="true">{area.icon}</span>
+          <span className="sb-area-label">{area.label}</span>
+        </div>
+
+        <nav className="sidebar-nav" aria-label={`${area.label} screens`}>
+          {area.items.map((item) => {
+            const cls = [
+              "nav-item",
+              view === item.view ? "active" : "",
+              item.soon ? "coming-soon" : "",
+            ].filter(Boolean).join(" ");
+            return (
+              <button
+                key={item.view}
+                className={cls}
+                aria-current={view === item.view ? "page" : undefined}
+                onClick={() => onNavigate(item.view)}
+              >
+                {item.label}
+                {item.built && <span className="nav-badge">live</span>}
+              </button>
+            );
+          })}
         </nav>
 
         <div className="sidebar-footer">

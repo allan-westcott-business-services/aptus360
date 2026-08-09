@@ -1,9 +1,16 @@
 # Aptus360 — handover notes
 
-Written at the end of the session that built migrations 0001–0048.
-Accurate as of that point — check `supabase/migrations/` for anything later.
-Upload this alongside a zip of `src`, `netlify`, `supabase`, `package.json`,
-`vite.config.js` and `netlify.toml`.
+Rewritten at the end of the session that added the landing page and
+area-scoped navigation. Migrations run to **0136**.
+
+The previous version of this file was written at migration 0048 and had
+gone badly out of date: it listed GIS undo/redo, trenching and the
+Project Invoices tab as unbuilt when all three had shipped. If you are
+reading this more than a few sessions later, check
+`supabase/migrations/` and `git log` before trusting the "open work"
+list at the foot. **Update this file when the picture changes** — a
+handover that lies costs more than no handover, because work gets
+planned against it.
 
 ## How the project is worked on
 
@@ -12,8 +19,6 @@ GitHub Desktop; Netlify builds automatically. SQL migrations are run by
 hand in the Supabase SQL editor — **there is no automatic migration
 runner**, so a schema change only exists once it's been pasted and run.
 
-Migrations live in `supabase/migrations/`. Highest run: **0048**.
-
 ## Architecture
 
 - React + Vite, deployed to Netlify
@@ -21,11 +26,66 @@ Migrations live in `supabase/migrations/`. Highest run: **0048**.
 - Supabase (Postgres) with the service-role key in the functions only
 - `src/api/*` wraps every endpoint; components never call `fetch` directly
 - `VITE_USE_MOCKS` switches the API layer to in-memory fixtures
+- No router. `App.jsx` switches on a `view` string held in state and
+  remembered in session storage
 
 **Calculations live in the database**, deliberately. Points, plot refs,
 invoice totals, status promotion, network tracing and line lengths are
 triggers or functions, so they hold however the data is changed —
 including by hand in the SQL editor.
+
+## Navigation
+
+The app opens on a landing page of eight squares, one per area of the
+business. Choosing one scopes the sidebar to that area's screens and
+nothing else.
+
+`src/lib/navigation.js` is the single source of truth for three things
+that previously drifted apart: what the landing page offers, what the
+sidebar shows, and which menu items People & Roles can grant. Adding a
+screen there adds it to all three. `AREAS` is also exported as
+`NAV_SECTIONS`, because People & Roles reads that name.
+
+Two consequences worth knowing before you edit it:
+
+- **`ALL_VIEWS` is derived, not listed.** It used to be a hand-kept array
+  in `App.jsx`, which was a second place to remember a screen — one added
+  to the sidebar but missed there was a page you could navigate to but
+  not reload back into.
+- **The sidebar is not on every screen.** The landing page has no menu.
+  Anything app-wide must live in `src/styles.css`, not in the sidebar's
+  own `<style>` block. See fault 11.
+
+About **thirty unbuilt placeholders came off the menu** in the same
+change — the Electric, Gas and Water design sections, the Logs section
+and most of the dashboards. Every *built* screen is still reachable, and
+`checknav.mjs` fails if that stops being true. If one of those sections
+becomes live work, it needs an area in `navigation.js` first.
+
+## Testing
+
+Run these after touching the relevant area. They exist because each one
+caught a fault that had already shipped at least once.
+
+| Script | What it checks |
+|---|---|
+| `node checknav.mjs` | Every rendered view sits in an area; no view in two areas; area colours distinct; areas open on a built screen |
+| `node checkhome.mjs` | Mounts the shell in jsdom and drives it — landing page, per-area menus, back navigation, reload restore |
+| `node checkhr.mjs` | Mounts all sixteen HR modules; icons, modals, sidebar bridge |
+| `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
+| `python3 checkcols.py` | Explicit column lists against the schema |
+| `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
+| `python3 checkescapes.py` | `\uXXXX` in JSX attribute strings |
+| `python3 checkmodals.py` | Modals rendered inside the clipped canvas wrapper |
+| `python3 checklocks.py` | Geometry writes behind a lock check |
+| `python3 checkadmin.py` | Table names the admin endpoint will accept |
+| `python3 checkbuttons.py` | Button classes against the house set |
+| `python3 checkdead.py` | Unreachable statements |
+
+`checkorder.py` currently reports two hits, `rollback` and
+`zoomToPoints`. Both are false positives: each is referenced inside a
+`function` body that only runs on user action, by which time the `const`
+is initialised. Don't "fix" them.
 
 ## Recurring faults — all of these bit more than once
 
@@ -49,8 +109,7 @@ including by hand in the SQL editor.
 
 4. **Explicit column lists drift from the schema.** Every function
    selects a named list; a column added to the database but not the list
-   is neither saved nor returned. Hit three times. `checkcols.py` at the
-   repo root compares the two.
+   is neither saved nor returned. Hit three times.
 
 5. **`upsert` replaces whole rows.** Supabase's upsert is
    `ON CONFLICT DO UPDATE` with exactly the fields supplied — everything
@@ -74,6 +133,18 @@ including by hand in the SQL editor.
    column to a `RETURNS TABLE` needs `DROP FUNCTION` first.
 
 10. **Reserved words as plpgsql variables** — `by` fails to parse.
+
+11. **App-wide CSS inside a component's `<style>` block.** The sidebar
+    carried the `@font-face` fallback, `.lazy-wait`, `.topbar` and
+    `.boot` — fine while the sidebar was on every screen, silently gone
+    on the first screen without one. If a rule is not about the
+    component, it belongs in `src/styles.css`.
+
+12. **New CSS features that fail closed.** `color-mix()` was used for the
+    area tints and backed out: it appears nowhere else in the app, and a
+    browser that doesn't know it drops the whole declaration, taking the
+    tile background with it. The house idiom is eight-digit hex alpha
+    built in JS — see `src/lib/colour.js`.
 
 ## Decisions worth knowing
 
@@ -121,77 +192,88 @@ has at least one branch.
 
 ## What's built
 
-**Projects list** — burger menu (Edit, Revision, Plots, Non-Res, POC,
-Outline Designs, Asset Value, Stakeholders, History, Comments, Progress
-Report [disabled], Priority, Delete, Resurrect), column sort/filter/
-resize, Priority and Show Hidden toggles, utility filter chips, points
-column.
+26 screens across 8 areas.
 
-**Project tabs** — Details, Stakeholders, Plots, Non-Res Supplies, POC
-Applications, Outline Designs, Asset Value, Contract Designs
-[placeholder], History, Comments, Invoices [placeholder].
+**Business Development** — Customers & Projects, Organisations.
 
-**Revisions** — Tender stage only, per-design carry-forward choice, the
-previous revision superseded, and Resurrect to unlock one.
+**Tendering & Design** — Projects list (burger menu, column
+sort/filter/resize, priority and hidden toggles, utility chips, points)
+and project tabs: Details, Stakeholders, Plots, Non-Res Supplies, POC
+Applications, Outline Designs, Asset Value, History, Comments, Invoices.
+Revisions at Tender stage with per-design carry-forward and Resurrect.
+Plus the **GIS Canvas**: basemap import and calibration, drawing with
+snapping, vertex editing, plot seeds with per-plot meters, joints,
+network tracing, undo/redo, trenching and routing, auto-service, feeder
+cables, gas and water networks, span nodes, volt drop, BOM, circuit
+report, bulk edit and delete.
+
+**Operations** — Call-offs (phases, team assignment, work days,
+energisation per utility), Planning (timeline, dependencies, lag,
+weekend working, PM colours, cross-team moves), Plot Connections.
+
+**Commercial** — Asset Value register and Generate AV Invoices
+(source-mapping driven, preview with per-row status, numbering, bulk
+XLSX upload).
+
+**Human Resources** — all sixteen modules. See the README: it is the
+former standalone portal mounted into the shell, still vanilla JS, still
+pointed at its own Supabase project, and **still has no sign-in**.
 
 **Admin** — Organisations, Customers & Branches, People & Roles, Sub
-Region, Status Workflow, Points Configuration, Electric Specs (8 tabs),
-Property Config, IDNO Source Mapping, plus generic table editors.
-
-**Plot Connections** — standalone cross-project page under Operations,
-with inline editing, bulk date setting and a New Schedule modal.
-
-**GIS Canvas** — under Commercial. Basemap import (PDF or image),
-calibration with a zoomable loupe, grid reference tie point, drawing
-tools with snapping, vertex editing, plot seeds placed individually with
-per-plot meters, joints, network tracing, meter assignment, right-click
-feature editor.
-
-**Generate AV Invoices** — under Commercial. Source-mapping driven,
-preview with per-row status, invoice numbering, bulk upload XLSX.
+Region, Status Workflow, Points Configuration, Electric Specs, Property
+Config, IDNO Source Mapping, Teams, GIS Styles, pipe sizes, admin menu,
+plus generic table editors.
 
 ## Open work, roughly in priority order
 
-1. **Move the pickers to `Organisation_ID`.** Columns and views exist
+1. **Human Resources has no authentication.** The portal bypassed its
+   own login and uses the anon key as the bearer token, against a second
+   Supabase project, direct from the browser. Anyone who can open
+   Aptus360 can open payroll and sickness records. This is the only item
+   on this list that is a disclosure risk rather than a missing feature.
+
+2. **Move the pickers to `Organisation_ID`.** Columns and views exist
    (`0048`), lookups are served (`orgIdnos`, `orgDnos`,
    `orgFireAuthorities`, `orgSubcontractors`, `orgSuppliers`,
-   `customerBranches`). Each screen swaps its lookup key and the column
-   it writes: Outline Designs operator, POC applications, AV invoices,
-   Non-Res supplies, Plot connections, Stakeholders fire authority, the
-   developer picker. Then retire the Customer / IDNO / DNO / Fire
-   Service admin screens and run the drop statements at the foot of 0048.
+   `customerBranches`) — and are currently referenced by **nothing** in
+   `src/features/`. Seven screens still read `lookups.idnos`,
+   `lookups.dnos` or `lookups.customers`: Outline Designs
+   (`DesignEditModal`), Non-Res supplies, POC applications, AV invoices
+   (`GenerateAvInvoices`, `AssetValueTab`) and Customers & Projects.
+   Each swaps its lookup key and the column it writes. Then retire the
+   Customer / IDNO / DNO / Fire Service admin screens and run the drop
+   statements at the foot of `0048`.
 
-2. **GIS undo/redo — missing entirely.** The original has six functions
-   for it. A drawing tool without undo means every misplaced click is a
-   delete-and-redraw. The largest usability gap in the app.
+3. **Four navigation decisions left open** by the landing-page change,
+   all one-line edits in `navigation.js`:
+   - **Organisations** sits under Business Development. It isn't in the
+     original brief for that area; it went there rather than be
+     orphaned. Admin is the alternative.
+   - **"Asset Value"** maps to `av-invoices`, the built register. An
+     unbuilt `asset-value-invoices` carried the same label in the old
+     nav — confirm which one is meant.
+   - **Finance** was invented: Invoice Log plus the four Credit Control
+     screens. Nothing in it is built.
+   - **Equipment absorbed Generator Hire.** Says so on the placeholder.
 
-3. **GIS trenching.** ~50 functions in the original: auto-generating the
-   trench carrying a set of cables, lane allocation, quantities. This is
-   where the commercial value sits, since trench metres drive cost.
+4. **`GISCanvasPage.jsx` is 12,169 lines** and 806 kB built — the
+   largest chunk in the app by a wide margin, and where most new work
+   lands. Not a bug, but it is now the biggest structural risk in the
+   repo. The extracted modules beside it (`feeder.js`, `gasNetwork.js`,
+   `routing.js`) are the pattern to keep pulling on.
 
-4. **Contract Designs tab** is a placeholder pending a modelling
+5. **Contract Designs tab** is still a placeholder pending a modelling
    decision: `CD_*` columns on `Project_Scope` versus a separate
-   `Contract_Design` table.
-
-5. **Project Invoices tab** is a placeholder — needs `Invoice_Line` and
-   an Audacia CVR import matching column B against `Contract_Number`,
-   done as a Postgres RPC rather than a Netlify function.
+   `Detailed_Design` table. The tab itself sets out both options and
+   when each is right. Needs an answer from whoever runs design, not a
+   developer.
 
 6. **AV invoicing: PDF generation and email drafts** were deliberately
-   not built. The original uses jsPDF and a `mailto:` draft.
+   not built. The original uses jsPDF and a `mailto:` draft; no PDF
+   library is in `package.json`.
 
 7. `Carried_Forward` on designs means "copied from the previous revision
    rather than redrawn" — set by the revision flow, read by nothing.
    Decide whether it should affect points.
 
 8. `Manual_Total_Points` exists; nothing writes to it.
-
-## Scale of the GIS gap
-
-The original has **485 GIS functions**; roughly 25 equivalents are
-built — about 5%. What exists: basemap import with calibration and
-georeferencing, pan/zoom/select, layers, drawing with snapping, vertex
-editing, plot seeds with per-plot meters, joints, network tracing, meter
-assignment, a feature editor. What doesn't: undo/redo, trenching, lane
-allocation, auto-service-trench, the audit view, and most of the
-electrical symbol work.

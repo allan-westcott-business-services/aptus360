@@ -7,7 +7,9 @@
     "dev": "vite",
     "build": "vite build",
     "preview": "vite preview",
-    "start": "netlify dev"
+    "start": "netlify dev",
+    "test": "node checknav.mjs && node checkhome.mjs && node checkhr.mjs",
+    "check": "npm run test && for f in check*.py; do echo \"── $f\"; python3 \"$f\"; done"
   },
   "dependencies": {
     "@fontsource-variable/dm-sans": "^5.0.0",

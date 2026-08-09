@@ -28,23 +28,59 @@ netlify dev
 ```
 src/
   api/          fetch wrappers — the only place that talks to /api/*
-  components/   Field, Section, Select, Toggle, Banner, StagePill
+  components/   Field, Section, Select, Toggle, Banner, StagePill, Sidebar
   features/
-    projects/   AddProjectForm, EditContractForm, ScopePicker
-  lib/          utilities, statuses, sample data
+    home/       the landing page
+    projects/   projects list, tabs, revisions
+    gis/        the drawing canvas
+    ...
+  lib/          navigation, utilities, statuses, sample data
 netlify/
   functions/    the API layer — service-role key lives here only
 supabase/
   migrations/   versioned schema
 ```
 
-Two screens are implemented:
+## Navigation
 
-- **Add project** — creates a project at Tender stage, with scope selection
-  replacing the old two-step utility flow.
-- **Edit contract** — the same record at Contract stage. Scopes carry their own
-  commercial status, adopting operator and reference, so a street lighting
-  scope can be lost while the residential work proceeds.
+The app opens on a landing page of eight squares, one per area of the
+business: Business Development, Tendering & Design, Operations,
+Commercial, Human Resources, HSQE, Finance and Admin. Choosing one scopes
+the sidebar to that area's screens and nothing else, so a planner sees
+eight operations screens rather than the whole app.
+
+`src/lib/navigation.js` is the single source of truth for what the
+landing page offers, what the sidebar shows, and which menu items People
+& Roles can grant. Add a screen there and it appears in all three.
+
+```js
+{ view: "vehicles", label: "Vehicles" }              // placeholder
+{ view: "planning", label: "Planning", built: true } // real screen
+```
+
+`built: true` means the React version exists. Everything else renders a
+placeholder, which is why each square can honestly report `3 of 8 live`
+rather than promising eight screens and delivering three.
+
+Two rules that are easy to trip over:
+
+- **The sidebar is not on every screen** — the landing page has none. Any
+  CSS the whole app depends on belongs in `src/styles.css`, not in the
+  sidebar's own `<style>` block.
+- **Don't list views anywhere else.** `ALL_VIEWS` is derived. A
+  hand-kept copy is a second place to remember a screen, and the two
+  drifting means a page you can navigate to but not reload back into.
+
+## Checks
+
+```bash
+npm test          # navigation model, shell, HR modules
+npm run check     # the above plus the Python source checks
+```
+
+These aren't decoration: each one caught a fault that had already
+shipped. `HANDOVER.md` lists what each covers and which two
+`checkorder.py` hits are known false positives.
 
 ## Going live against real data
 
@@ -128,15 +164,18 @@ in `src/features/hr/`.
 - **Functions time out at 10 seconds.** Heavy operations — bulk plot scans, the
   Audacia invoice import — belong in Postgres functions called via RPC, not
   here.
-- **No router yet.** `App.jsx` switches between the two forms with local state.
-  Add `react-router-dom` when a third screen appears.
+- **No router.** `App.jsx` switches on a `view` string held in state and
+  remembered in session storage, so a reload returns you to the screen
+  you were on. Add `react-router-dom` when the URL needs to be
+  shareable — deep links and the back button are what you're trading away.
 - **JavaScript, not TypeScript.** Deliberate, to keep the ramp gentle. When you
   do switch, `supabase gen types typescript --linked` generates types from the
   schema, which is what stops the phantom-column problem recurring.
 
 ## Next steps
 
-- Project list view with filters and column preferences
-- Status transitions as endpoints, with the guard logic moved server-side
-- Points calculation moved out of the browser (see open item 1 in the model doc)
-- Plots and designs screens
+See the open work list at the foot of `HANDOVER.md`, which is kept
+current. In short: HR has no sign-in and that's the one item that's a
+disclosure risk rather than a missing feature; the pickers still need
+moving to `Organisation_ID`; and `GISCanvasPage.jsx` has reached 12,000
+lines and wants breaking up.

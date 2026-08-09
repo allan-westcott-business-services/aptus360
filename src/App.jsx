@@ -29,9 +29,13 @@ const PlanningPage = lazy(() => import("./features/planning/PlanningPage.jsx"));
    nobody should download it to look at a project. */
 const HumanResourcesPage = lazy(() => import("./features/hr/HumanResourcesPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
+/* Not lazy: it is the first thing most sessions see, and a spinner in
+   front of eight buttons would be slower than the buttons. */
+import HomePage from "./features/home/HomePage.jsx";
 import {
   findNavItem, builtCount, totalCount,
-  isHrView, hrModuleFor, hrViewFor, HR_VIEWS,
+  isHrView, hrModuleFor, hrViewFor,
+  HOME_VIEW, ALL_VIEWS, findArea,
 } from "./lib/navigation.js";
 
 /* Placeholder for views not yet migrated. Keeping these visible rather than
@@ -53,6 +57,9 @@ function NotBuilt({ view }) {
             ? "This was flagged as coming soon in the original app and hasn't been built yet."
             : "Not migrated to React yet. It still exists in the original app."}
         </p>
+        {/* Where a screen absorbed another one, say so here rather than
+            leaving somebody hunting the old menu for generator hire. */}
+        {item?.note && <p>{item.note}</p>}
         <p className="placeholder-progress">
           {builtCount()} of {totalCount()} screens migrated
         </p>
@@ -80,25 +87,20 @@ function useBlockPageZoom() {
   }, []);
 }
 
-/* Every page the shell knows how to render. Also what a remembered view
-   is checked against: a name from an older build would otherwise leave
-   the shell rendering nothing with no way back. */
-const VIEWS = [
-  "projects", "admin", "plot-connections", "gis-canvas",
-  "generate-av-invoices", "av-invoices", "organisations", "customer-projects",
-  "call-offs", "planning",
-  /* Spread rather than listed, so adding an HR module to the sidebar
-     does not also need adding here — the two lists drifting would mean a
-     screen you can navigate to but cannot reload back into. */
-  ...HR_VIEWS,
-];
+/* Every view the shell will restore into, which is now derived from the
+   areas rather than listed again here. The hand-kept copy of this list
+   was a second place to remember a screen: a page added to the sidebar
+   but missed here was one you could navigate to and not reload back
+   into. Unbuilt views are included deliberately — they render the
+   placeholder, which is a real screen and a legitimate place to be. */
+const VIEWS = ALL_VIEWS;
 
 function Shell() {
   useBlockPageZoom();
   /* Where the user was. A reload took everyone to the projects list
      whatever they had open, which on a page that is slow to get back to
      is the whole navigation done again for the sake of pressing F5. */
-  const [view, setView] = useState(() => recallOneOf("view", VIEWS, "projects"));
+  const [view, setView] = useState(() => recallOneOf("view", VIEWS, HOME_VIEW));
   useEffect(() => remember("view", view), [view]);
 
   /* Somewhere else in the app has asked for the canvas — the outline
@@ -120,7 +122,10 @@ function Shell() {
   const [collapsed, setCollapsed] = useState(false);
 
   let content;
-  if (view === "projects") content = <div className="card"><ProjectsPage /></div>;
+  /* No card wrapper: the landing page is the whole screen, and a white
+     panel behind eight white squares would put a border round nothing. */
+  if (view === HOME_VIEW) content = <HomePage onOpen={setView} />;
+  else if (view === "projects") content = <div className="card"><ProjectsPage /></div>;
   else if (view === "admin") content = <div className="card"><AdminPage /></div>;
   else if (view === "plot-connections") content = <div className="card"><PlotConnectionsPage /></div>;
   else if (view === "gis-canvas") content = <div className="card"><GISCanvasPage /></div>;
@@ -156,14 +161,22 @@ function Shell() {
   }
   else content = <NotBuilt view={view} />;
 
+  /* The landing page is the menu, so it does not also get one beside
+     it. Everywhere else the sidebar is scoped to the area the current
+     view belongs to. */
+  const showSidebar = view !== HOME_VIEW && !!findArea(view);
+
   return (
     <div className="shell">
-      <Sidebar
-        view={view}
-        onNavigate={setView}
-        collapsed={collapsed}
-        onToggle={() => setCollapsed((c) => !c)}
-      />
+      {showSidebar && (
+        <Sidebar
+          view={view}
+          onNavigate={setView}
+          onHome={() => setView(HOME_VIEW)}
+          collapsed={collapsed}
+          onToggle={() => setCollapsed((c) => !c)}
+        />
+      )}
       <main className="main">
         <div className="topbar">
           <AccountMenu />

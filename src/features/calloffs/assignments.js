@@ -96,7 +96,7 @@ export function teamMayTake(team, opts = {}) {
   const {
     teamCrafts = [], teamRegions = [],
     craftId = null, regionId = null,
-    regionName = null, craftName = null,
+    regionName = null, craftName = null, taskName = null,
   } = opts;
 
   if (!team) return "That lane has no team on it.";
@@ -122,8 +122,12 @@ export function teamMayTake(team, opts = {}) {
       Number(x.Team_ID) === Number(team.Team_ID)
       && Number(x.Craft_ID) === Number(craftId));
     if (!holds) {
-      return `${team.Team_Name} does not hold the `
-        + `${craftName ? `${craftName} ` : ""}craft this phase needs.`;
+      /* Named by the phase rather than by the craft behind it. "Not set
+         up to perform Jointing" is the sentence a planner can act on;
+         "does not hold the Jointing craft" is the same fact stated in
+         the schema's words, and sends them looking for the wrong screen. */
+      return `${team.Team_Name} is not set up to perform `
+        + `${taskName || craftName || "this phase"}.`;
     }
   }
 
@@ -637,6 +641,30 @@ export function resolveStartHalf(date, pm, weekend = {}, dir = 1) {
    layHalves steps over it — so dragging onto a Sunday puts the work on
    the Monday rather than on a day nobody is there. */
 export function shiftByHalves(days = [], halfShift = 0, weekend = {}) {
+  return resizeByHalves(days, halfShift, halfShift, weekend);
+}
+
+/* ── Moving and stretching are the same operation ──
+
+   A booking has two ends. Move it and both travel together; take hold
+   of one end and only that one moves, and the length changes by the
+   difference. So there is one function with a shift for each end, and
+   moving is the case where the two shifts are equal.
+
+   Written that way rather than as a move plus a separate resize because
+   the hard parts — stepping over weekend halves, keeping whole days
+   whole, carrying off site along — are identical, and two copies of
+   them would drift.
+
+   Growing adds plain half-days: a booking stretched by an afternoon
+   gains an afternoon that is on site, because nobody has said
+   otherwise. Shrinking drops halves from whichever end was pulled, and
+   what they carried goes with them.
+
+   Null where there would be nothing left. Half a day is the smallest
+   booking there is, and a drag that would take away the last of it is a
+   drag that should do nothing rather than delete the work. */
+export function resizeByHalves(days = [], startShift = 0, endShift = 0, weekend = {}) {
   if (!days.length) return { days: [], end: null };
 
   const sorted = [...days].sort((a, b) =>
@@ -644,11 +672,24 @@ export function shiftByHalves(days = [], halfShift = 0, weekend = {}) {
   const firstDate = String(sorted[0].date || sorted[0].Work_Date).slice(0, 10);
   const firstPart = sorted[0].part || sorted[0].Part || "Full";
 
+  let parts = explodeHalves(sorted);
+  const sS = Math.round(startShift);
+  const eS = Math.round(endShift);
+
+  /* Trimmed or padded at each end. Order matters only in that the
+     start is done first, so the counts below refer to the same list. */
+  if (sS > 0) parts = parts.slice(sS);
+  else if (sS < 0) parts = [...Array(-sS).fill(null).map(() => ({ offSite: false })), ...parts];
+  if (eS > 0) parts = [...parts, ...Array(eS).fill(null).map(() => ({ offSite: false }))];
+  else if (eS < 0) parts = parts.slice(0, parts.length + eS);
+
+  if (!parts.length) return null;
+
   /* Where it starts now, as a half-slot from midnight on its first day,
      and where that lands after the shift. Floor rather than truncate,
      so moving earlier across a day boundary goes to the afternoon of
      the day before rather than back to its morning. */
-  const pos = (firstPart === "PM" ? 1 : 0) + Math.round(halfShift);
+  const pos = (firstPart === "PM" ? 1 : 0) + sS;
   const dayDelta = Math.floor(pos / 2);
   const startPM = ((pos % 2) + 2) % 2 === 1;
 
@@ -656,11 +697,10 @@ export function shiftByHalves(days = [], halfShift = 0, weekend = {}) {
   if (!dt) return { days: [], end: null };
   dt.setDate(dt.getDate() + dayDelta);
 
-  const start = resolveStartHalf(iso(dt), startPM, weekend,
-    Math.round(halfShift) < 0 ? -1 : 1);
+  const start = resolveStartHalf(iso(dt), startPM, weekend, sS < 0 ? -1 : 1);
   if (!start) return { days: [], end: null };
 
-  return layHalves(start.date, start.pm, explodeHalves(sorted), weekend);
+  return layHalves(start.date, start.pm, parts, weekend);
 }
 
 /* The days an assignment covers, as rows to be marked up.

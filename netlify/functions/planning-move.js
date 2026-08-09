@@ -144,9 +144,19 @@ export default async function handler(req, context) {
        records. `days` is still accepted so an older client — a tab left
        open across a deploy — moves by the right amount rather than by
        half of it. */
-    const shift = Number.isFinite(Number(body.halves))
-      ? Math.round(Number(body.halves))
-      : Math.round(Number(body.days) * 2);
+    /* A shift for each end. Equal shifts slide the booking; different
+       ones change its length, which is what a handle does. `halves` and
+       `days` are still read so a tab left open across a deploy moves by
+       the right amount rather than not at all. */
+    const startShift = Number.isFinite(Number(body.startShift))
+      ? Math.round(Number(body.startShift))
+      : (Number.isFinite(Number(body.halves))
+        ? Math.round(Number(body.halves))
+        : Math.round(Number(body.days) * 2));
+    const endShift = Number.isFinite(Number(body.endShift))
+      ? Math.round(Number(body.endShift))
+      : startShift;
+    const shift = startShift;
 
     /* An answer to "which weekend halves does this work", given because
        the move ran into a weekend and the board asked. Saved with the
@@ -168,13 +178,13 @@ export default async function handler(req, context) {
         Sun_AM: !!body.weekend.Sun_AM, Sun_PM: !!body.weekend.Sun_PM,
       }
       : null;
-    if (!Number.isInteger(shift)) {
-      return json({ error: "halves must be a whole number of half-days." }, 400);
+    if (!Number.isInteger(startShift) || !Number.isInteger(endShift)) {
+      return json({ error: "The shifts must be whole numbers of half-days." }, 400);
     }
     /* A drag that lands where it started is not an error and not a
        write. Answered rather than rejected, so the board can call this
        without first working out whether it needs to. */
-    if (shift === 0 && !toTeam) return json({ moved: 0, halves: 0 });
+    if (!startShift && !endShift && !toTeam) return json({ moved: 0, halves: 0 });
 
     const { data: asgn, error: readErr } = await db
       .from("Call_Off_Assignment")
@@ -259,7 +269,7 @@ export default async function handler(req, context) {
        dates and the halves are unchanged and only the team moves. Taken
        before the laying below, which assumes there is a shift to apply
        and would otherwise walk the booking to where it already is. */
-    if (shift === 0) {
+    if (!startShift && !endShift) {
       const { error } = await db.from("Call_Off_Assignment")
         .update({ Team_ID: toTeam, ...(asked || {}) })
         .eq("Assignment_ID", id);
@@ -299,11 +309,30 @@ export default async function handler(req, context) {
        travels with it. Shifting the sequence and recomposing is what
        lets a move of half a day turn two whole days into an afternoon,
        a day and a morning — the same work, differently cut. */
-    const parts = [];
+    let parts = [];
     for (const r of had) {
       const p = r.Part || "Full";
       if (p === "Full") parts.push({ offSite: !!r.Off_Site }, { offSite: !!r.Off_Site });
       else parts.push({ offSite: !!r.Off_Site });
+    }
+
+    /* Trimmed or padded at whichever end was dragged. A booking grown
+       gains plain half-days — on site, because nobody has said
+       otherwise — and one shrunk loses whatever the dropped halves
+       carried. The mirror of resizeByHalves in
+       features/calloffs/assignments.js, checked against it by test. */
+    if (startShift > 0) parts = parts.slice(startShift);
+    else if (startShift < 0) {
+      parts = [...Array(-startShift).fill(null).map(() => ({ offSite: false })), ...parts];
+    }
+    if (endShift > 0) {
+      parts = [...parts, ...Array(endShift).fill(null).map(() => ({ offSite: false }))];
+    } else if (endShift < 0) parts = parts.slice(0, parts.length + endShift);
+
+    if (!parts.length) {
+      return json({
+        error: "A booking cannot be shorter than half a day.",
+      }, 400);
     }
 
     const firstPM = (had[0].Part || "Full") === "PM";
@@ -373,7 +402,8 @@ export default async function handler(req, context) {
       Assignment_ID: Number(id),
       Start_Date: start,
       End_Date: end,
-      halves: shift,
+      startShift,
+      endShift,
       movedDays,
       /* Reported rather than thrown: the assignment has already moved,
          and failing here would leave the caller believing nothing

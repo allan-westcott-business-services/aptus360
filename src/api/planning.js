@@ -17,17 +17,44 @@ export async function getPlanning() {
    schedule records — a booking can start after lunch. Signed: negative
    is earlier. The assignment's work days are re-laid to match, over
    whatever weekend halves it works. */
-export async function moveAssignment(assignmentId, halves, weekend, teamId) {
-  if (USE_MOCKS) { await delay(180); return { Assignment_ID: assignmentId, halves }; }
-  /* `weekend` only where the move ran into one and somebody answered
-     for it; `teamId` only where it was dropped on another gang's lane.
-     Both go with the move rather than being saved separately: a booking
+export async function moveAssignment(assignmentId, op = {}) {
+  const { startShift = 0, endShift = 0, weekend, teamId } = op;
+  if (USE_MOCKS) {
+    await delay(180);
+    return { Assignment_ID: assignmentId, startShift, endShift };
+  }
+  /* A shift for each end, because moving and stretching are the same
+     operation: equal shifts slide the booking, different ones change
+     its length.
+
+     `weekend` only where it ran into one and somebody answered for it;
+     `teamId` only where it was dropped on another gang's lane. Both go
+     with the move rather than being saved separately, so a booking
      cannot end up claiming to work Saturdays with its days still on
      weekdays, or belonging to a gang on days it never moved to. */
   return http.patch(`/planning/assignments/${assignmentId}/move`, {
-    halves,
+    startShift,
+    endShift,
     ...(weekend ? { weekend } : {}),
     ...(teamId ? { teamId } : {}),
+  });
+}
+
+/* Giving an unassigned phase to a gang.
+
+   A booking of one day at the day it was dropped on. The endpoint
+   checks the gang may take it before creating anything — the board asks
+   the same question first, but a rule the browser enforces is not a
+   rule. */
+export async function assignPhase(op = {}) {
+  const { submissionId, taskTypeId, teamId, date, weekend } = op;
+  if (USE_MOCKS) {
+    await delay(200);
+    return { Assignment_ID: Math.floor(Math.random() * 1e6), Start_Date: date };
+  }
+  return http.post("/planning/assignments", {
+    submissionId, taskTypeId, teamId, date,
+    ...(weekend ? { weekend } : {}),
   });
 }
 

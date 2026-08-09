@@ -1,11 +1,11 @@
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
-import { getPlanning, moveAssignment, deleteAssignment } from "../../api/planning.js";
+import { getPlanning, moveAssignment, deleteAssignment, assignPhase } from "../../api/planning.js";
 import { remember, recall } from "../../lib/session.js";
 import {
   DAY_MS, buildRows, packLanes, daysInRange, isWeekend, todayMs, toISO,
   phaseColours, activeDays, nextActiveDay, prevActiveDay,
 } from "./timeline.js";
-import { shiftByHalves, teamMayTake } from "../calloffs/assignments.js";
+import { resizeByHalves, teamMayTake } from "../calloffs/assignments.js";
 import { openCallOff } from "../../lib/callOffIntent.js";
 import AssignmentModal from "./AssignmentModal.jsx";
 import PmColoursModal from "./PmColoursModal.jsx";
@@ -257,28 +257,75 @@ export default function PlanningPage() {
       craftId: task?.Craft_ID ?? null,
       regionName: region?.Region || null,
       craftName: craft?.Craft_Name || null,
+      /* The phase as the board labels it, so the refusal names the
+         thing on the bar rather than the craft behind it. */
+      taskName: task?.Task_Type_Name || item?.phase || null,
     });
   }, []);
 
-  const commitMove = useCallback(async (assignmentId, halves, weekend, item, toTeam) => {
+  const commitMove = useCallback(async (op) => {
+    const { assignmentId, startShift, endShift, weekend, item, toTeam } = op;
     const before = dataRef.current;
-    setData((cur) => shiftInPlace(cur, assignmentId, halves, weekend, toTeam));
+    setData((cur) => shiftInPlace(cur, assignmentId, startShift, endShift, weekend, toTeam));
     try {
-      await moveAssignment(assignmentId, halves, weekend, toTeam);
-      const n = Math.abs(halves) / 2;
-      const much = n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`;
+      await moveAssignment(assignmentId, { startShift, endShift, weekend, teamId: toTeam });
+
+      const much = (h) => {
+        const n = Math.abs(h) / 2;
+        return n === 0.5 ? "half a day" : `${n} day${n === 1 ? "" : "s"}`;
+      };
       const team = toTeam
         ? (dataRef.current?.teams || [])
           .find((t) => Number(t.Team_ID) === Number(toTeam))?.Team_Name
         : null;
+      /* Said as what happened rather than as two numbers. A stretch and
+         a move are different things to have done and the sentence
+         should not make somebody work out which it was. */
+      const grew = endShift - startShift;
       const what = [
-        halves ? `moved ${much} ${halves > 0 ? "later" : "earlier"}` : null,
+        (startShift && startShift === endShift)
+          ? `moved ${much(startShift)} ${startShift > 0 ? "later" : "earlier"}` : null,
+        (grew !== 0)
+          ? `${grew > 0 ? "extended" : "shortened"} by ${much(grew)}` : null,
         team ? `given to ${team}` : null,
       ].filter(Boolean).join(", ");
       say(`${item?.ref ? `${item.ref} \u00b7 ` : ""}${what || "unchanged"}.`);
     } catch (err) {
       setData(before);
-      setError(`Could not move it: ${err.message}`);
+      setError(`Could not do that: ${err.message}`);
+    }
+  }, [say]);
+
+  /* Taking a phase off the Unassigned lane and giving it to a gang.
+
+     There is no booking yet, so this creates one: a single day at the
+     day it was dropped on, which the planner then stretches or moves.
+     One day rather than a guess at how long the work takes — the board
+     does not know, and a booking of an invented length is a number
+     somebody has to notice is wrong before they correct it. */
+  const commitAssign = useCallback(async (op) => {
+    const { item, teamId, date, weekend } = op;
+    const before = dataRef.current;
+    try {
+      const made = await assignPhase({
+        submissionId: item.submissionId,
+        taskTypeId: item.taskTypeId,
+        teamId,
+        date,
+        weekend,
+      });
+      const team = (dataRef.current?.teams || [])
+        .find((t) => Number(t.Team_ID) === Number(teamId))?.Team_Name;
+      /* Reloaded rather than stitched in by hand. A new booking brings
+         an id, its days bring theirs, and the phase has to leave the
+         unassigned lane — three things to keep in step against one
+         request that is already in flight. */
+      setData(await getPlanning());
+      say(`${item.ref} \u00b7 ${item.phase} given to ${team || "the team"}`
+        + `${made?.Start_Date ? ` on ${made.Start_Date}` : ""}.`);
+    } catch (err) {
+      setData(before);
+      setError(`Could not assign it: ${err.message}`);
     }
   }, [say]);
 
@@ -286,20 +333,27 @@ export default function PlanningPage() {
   const dragRef = useRef(null);
   dragRef.current = drag;
 
-  const onBarPointerDown = (e, item) => {
-    if (item.kind !== "assignment") return;
+  const onBarPointerDown = (e, item, mode = "move") => {
     if (e.button !== 0) return;
-    const track = e.currentTarget.parentElement;
+    /* An unassigned chip can be picked up, but only to be given to a
+       gang — there is no booking to move in time or to stretch, so the
+       handles are not on it and a sideways drag does nothing. */
+    if (item.kind !== "assignment" && mode !== "move") return;
+    const track = e.currentTarget.closest(".pln-track");
+    if (!track) return;
     const dayPx = track.getBoundingClientRect().width / rangeDays;
     if (!Number.isFinite(dayPx) || dayPx <= 0) return;
     e.preventDefault();
+    e.stopPropagation();
     /* Not captured to the bar. A pointer capture keeps every event on
        the element it started on, which is exactly wrong here: the whole
        point of dragging upward is to find out what is underneath, and a
        captured pointer makes elementFromPoint answer with the bar every
        time. The listeners are on the window instead. */
     setDrag({
-      id: item.id, assignmentId: item.assignmentId,
+      id: item.id, mode,
+      kind: item.kind,
+      assignmentId: item.assignmentId ?? null,
       fromTeam: Number(item.raw?.Team_ID) || null,
       dayPx, startX: e.clientX, startY: e.clientY,
       offsetPx: 0, offsetY: 0, halves: 0, overTeam: null, moved: false,
@@ -316,6 +370,11 @@ export default function PlanningPage() {
 
      The bar under the cursor is invisible to this — pointer-events are
      off while dragging — so what is found is the lane. */
+  /* The date a half-slot falls on, for a chip dropped from the
+     unassigned lane. Half-slots are counted from the left edge of the
+     window, so this is the window's start plus however many days. */
+  const dayAt = (half) => toISO(rangeStart + Math.floor(half / 2) * DAY_MS);
+
   const laneUnder = (x, y) => {
     const el = document.elementFromPoint(x, y);
     const lane = el?.closest?.("[data-team-id]");
@@ -364,7 +423,30 @@ export default function PlanningPage() {
       const item = d ? itemsById.current.get(d.id) : null;
       /* Where it was dropped, if that is a different gang's lane. */
       const toTeam = d && d.overTeam && d.overTeam !== d.fromTeam ? d.overTeam : null;
-      if (!d || !d.moved || (!d.halves && !toTeam)) return;
+      if (!d || !d.moved || !item) return;
+
+      /* ── A phase given to a gang ──
+
+         Dropped from the Unassigned lane onto a team. There is nothing
+         to move — the booking does not exist yet — so a drop that is
+         not on a lane does nothing at all. */
+      if (d.kind === "unassigned") {
+        if (!toTeam) return;
+        const why = whyNot(toTeam, item);
+        if (why) { setNotice(why); return; }
+        const on = dayAt(item.startHalf + d.halves);
+        if (isWeekendISO(on)) {
+          setWeekendAsk({ kind: "assign", item, toTeam, date: on });
+          return;
+        }
+        await commitAssign({ item, teamId: toTeam, date: on, weekend: null });
+        return;
+      }
+
+      /* A move drags both ends together; a handle drags one. */
+      const startShift = d.mode === "right" ? 0 : d.halves;
+      const endShift = d.mode === "left" ? 0 : d.halves;
+      if (!startShift && !endShift && !toTeam) return;
 
       /* ── Can that gang take it? ──
 
@@ -384,6 +466,15 @@ export default function PlanningPage() {
           return;
         }
       }
+
+      /* Nothing left of it. A handle dragged past the other end would
+         delete the booking, and deleting is what the right-click menu
+         is for — said, so the drag does not look like it failed. */
+      if (!resizeByHalves(item.parts || [], startShift, endShift, weekendOf(item))) {
+        setNotice("A booking cannot be shorter than half a day. "
+          + "Use right-click \u2192 Delete to remove it.");
+        return;
+      }
       await commitMove(d.assignmentId, d.halves, null, item, toTeam);
       return;
 
@@ -395,12 +486,16 @@ export default function PlanningPage() {
          Where it does, nothing is written until somebody answers. The
          bar stays where it was, which is the honest state — the move
          has not happened yet. */
-      if (item && d.halves
-        && landsOnWeekend(item.parts || [], d.halves, weekendOf(item))) {
-        setWeekendAsk({ item, halves: d.halves, days: item.parts || [], toTeam });
+      if (touchesWeekend(item.parts || [], startShift, endShift)) {
+        setWeekendAsk({
+          kind: "move", item, startShift, endShift, toTeam, days: item.parts || [],
+        });
         return;
       }
-      await commitMove(d.assignmentId, d.halves, null, item, toTeam);
+      await commitMove({
+        assignmentId: d.assignmentId, startShift, endShift,
+        weekend: null, item, toTeam,
+      });
       return;
     };
     window.addEventListener("pointermove", move);
@@ -673,13 +768,25 @@ export default function PlanningPage() {
                             + `${moving ? " moving" : ""}`}
                           style={{
                             left: `${from * halfPct}%`,
-                            width: `calc(${(to - from) * halfPct}% - 3px)`,
+                            width: moving && drag.mode !== "move"
+                              ? `calc(${(to - from) * halfPct}% - 3px + `
+                                + `${drag.mode === "right" ? drag.offsetPx : -drag.offsetPx}px)`
+                              : `calc(${(to - from) * halfPct}% - 3px)`,
                             top: item.lane * LANE_H + 4,
                             height: LANE_H - 8,
                             background: item.colour,
-                            transform: moving
+                            /* A move slides the whole bar; a handle
+                               moves one edge and leaves the other where
+                               it is, so the preview is a width change
+                               rather than a translation. */
+                            transform: moving && drag.mode === "move"
                               ? `translate(${drag.offsetPx}px, ${drag.offsetY}px)`
                               : undefined,
+                            marginLeft: moving && drag.mode === "left"
+                              ? drag.offsetPx : undefined,
+                            marginRight: moving && drag.mode === "left"
+                              ? -drag.offsetPx : undefined,
+                            paddingRight: undefined,
                           }}
                           title={`${item.label}\n${item.startDate} \u2192 ${item.endDate}`}
                           onPointerDown={(e) => onBarPointerDown(e, item)}
@@ -730,6 +837,24 @@ export default function PlanningPage() {
                                 }} />
                             );
                           })}
+                          {/* ── The two ends ──
+
+                              Grabbing one stretches the booking from
+                              that end; the middle moves the whole
+                              thing. Wide enough to hit without being
+                              wide enough to make a short bar unmovable,
+                              and only on real bookings — an unassigned
+                              chip has no length to change. */}
+                          {item.kind === "assignment" && (
+                            <>
+                              <span className="pln-grip l"
+                                title="Drag to change when it starts"
+                                onPointerDown={(e) => onBarPointerDown(e, item, "left")} />
+                              <span className="pln-grip r"
+                                title="Drag to change when it finishes"
+                                onPointerDown={(e) => onBarPointerDown(e, item, "right")} />
+                            </>
+                          )}
                           {item.offSite && <span className="pln-off" title="Off site">!</span>}
                           <span className="pln-ref">{item.ref}</span>
                           <span className="pln-phase">{item.phase}</span>
@@ -769,8 +894,10 @@ export default function PlanningPage() {
           </div>
 
           <p className="pln-help">
-            Drag a booking sideways to move it &mdash; its work days move with it, half
-            a day at a time &mdash; or onto another gang&rsquo;s lane to hand it over.
+            Drag a booking sideways to move it, or by either end to change how long
+            it runs &mdash; half a day at a time. Drag an unassigned phase onto a
+            gang&rsquo;s lane to give it to them, or a booking onto another lane to
+            hand it over.
             A gang that does not cover the region, or hold the craft the phase needs,
             will say so rather than take it. Right-click a booking to edit or delete
             it. Hold the middle mouse button to pan.
@@ -846,15 +973,28 @@ export default function PlanningPage() {
           weekend rule they were laid over, together. */}
       {weekendAsk && (
         <WeekendDropModal
+          kind={weekendAsk.kind}
           item={weekendAsk.item}
           days={weekendAsk.days}
-          halves={weekendAsk.halves}
+          startShift={weekendAsk.startShift}
+          endShift={weekendAsk.endShift}
+          date={weekendAsk.date}
           weekend={weekendOf(weekendAsk.item)}
           onCancel={() => setWeekendAsk(null)}
           onConfirm={(weekend) => {
             const ask = weekendAsk;
             setWeekendAsk(null);
-            commitMove(ask.item.assignmentId, ask.halves, weekend, ask.item, ask.toTeam);
+            if (ask.kind === "assign") {
+              commitAssign({
+                item: ask.item, teamId: ask.toTeam, date: ask.date, weekend,
+              });
+              return;
+            }
+            commitMove({
+              assignmentId: ask.item.assignmentId,
+              startShift: ask.startShift, endShift: ask.endShift,
+              weekend, item: ask.item, toTeam: ask.toTeam,
+            });
           }}
         />
       )}
@@ -919,20 +1059,37 @@ export const weekendOf = (item) => ({
    booking can be dropped on a Thursday and still spill into Saturday. */
 const ALL_WEEKEND = { Sat_AM: true, Sat_PM: true, Sun_AM: true, Sun_PM: true };
 
-export function landsOnWeekend(days, halves, weekend) {
+export const isWeekendISO = (iso) => {
+  const [y, m, d] = String(iso).slice(0, 10).split("-").map(Number);
+  if (!y) return false;
+  const w = new Date(y, m - 1, d, 12).getDay();
+  return w === 0 || w === 6;
+};
+
+/* Does this move or stretch run into a Saturday or a Sunday?
+
+   Laid out as if every weekend half were worked, and asked whether any
+   of it lands on one. That is the question — does the work reach the
+   weekend — and it is asked of the work, not of the rule: a booking
+   whose rule says "no weekend" would otherwise never be seen to reach
+   one, because its rule quietly steps over it.
+
+   ── Asked every time, even when it was asked yesterday ──
+
+   An earlier version compared this against the booking's own weekend
+   rule and stayed quiet when the two agreed — a gang that worked
+   Saturday mornings, moved onto a Saturday morning, was not asked
+   again. That is a guess about a decision somebody else made about a
+   different set of dates, and it is not one to make on their behalf:
+   the gang that worked last Saturday because the programme was tight
+   has not agreed to work this one.
+
+   So the weekend is a question every time work reaches it, and the
+   answer is taken fresh. */
+export function touchesWeekend(days, startShift, endShift) {
   if (!days?.length) return false;
-
-  const naive = shiftByHalves(days, halves, ALL_WEEKEND);
-  const onWeekend = naive.days.some((d) => {
-    const [y, m, dd] = String(d.date).slice(0, 10).split("-").map(Number);
-    const w = new Date(y, m - 1, dd, 12).getDay();
-    return w === 0 || w === 6;
-  });
-  if (!onWeekend) return false;
-
-  const asIs = shiftByHalves(days, halves, weekend || {});
-  const key = (r) => r.days.map((d) => `${d.date}:${d.part}`).join("|");
-  return key(asIs) !== key(naive);
+  const naive = resizeByHalves(days, startShift, endShift, ALL_WEEKEND);
+  return !!naive?.days?.some((d) => isWeekendISO(d.date));
 }
 
 /* Moving a booking in the copy the board is drawing from.
@@ -948,7 +1105,7 @@ export function landsOnWeekend(days, halves, weekend) {
    change the dates in the panel and leave the bar where it was.
 
    Exported so the move can be checked without a browser. */
-export function shiftInPlace(data, assignmentId, halves, weekendOverride, toTeam) {
+export function shiftInPlace(data, assignmentId, startShift, endShift, weekendOverride, toTeam) {
   if (!data) return data;
   const id = Number(assignmentId);
 
@@ -960,7 +1117,7 @@ export function shiftInPlace(data, assignmentId, halves, weekendOverride, toTeam
      booking handed to another gang on the same days is an ordinary
      thing to do, and there is nothing to re-lay. */
   const withTeam = (a) => (toTeam ? { ...a, Team_ID: Number(toTeam) } : a);
-  if (!halves) {
+  if (!startShift && !endShift) {
     return toTeam
       ? {
         ...data,
@@ -979,6 +1136,9 @@ export function shiftInPlace(data, assignmentId, halves, weekendOverride, toTeam
      nothing to lay. Shifted whole days so a drag still does something
      visible, rounded away from zero so half a day still moves it. */
   if (!mine.length) {
+    /* No day rows to lay, so only a whole-day move is meaningful and a
+       stretch cannot be applied at all. */
+    const halves = startShift;
     const by = halves > 0 ? Math.ceil(halves / 2) : Math.floor(halves / 2);
     const move = (d) => {
       if (!d) return d;
@@ -1001,8 +1161,11 @@ export function shiftInPlace(data, assignmentId, halves, weekendOverride, toTeam
     Sat_AM: !!asgn.Sat_AM, Sat_PM: !!asgn.Sat_PM,
     Sun_AM: !!asgn.Sun_AM, Sun_PM: !!asgn.Sun_PM,
   };
-  const laid = shiftByHalves(mine, halves, weekend);
-  if (!laid.days.length) return data;
+  const laid = resizeByHalves(mine, startShift, endShift, weekend);
+  /* Null when the stretch would leave nothing, and empty when there was
+     nowhere to put it — either way the board is left as it was, and the
+     write is not attempted. */
+  if (!laid?.days?.length) return data;
 
   return {
     ...data,
@@ -1119,6 +1282,16 @@ const CSS = `
     rgba(255,255,255,.55) 0 3px, rgba(255,255,255,0) 3px 7px);
   border-left: 1px solid rgba(255,255,255,.5);
   border-right: 1px solid rgba(255,255,255,.5); }
+/* The grab handles. Transparent until the bar is hovered, so a board
+   full of bookings is not a board full of furniture. */
+.pln-grip { position: absolute; top: 0; bottom: 0; width: 7px; cursor: ew-resize;
+  background: rgba(255,255,255,0); border-radius: 5px; }
+.pln-grip.l { left: 0; }
+.pln-grip.r { right: 0; }
+.pln-bar-item:hover .pln-grip { background: rgba(255,255,255,.45); }
+.pln-grip:hover { background: rgba(255,255,255,.8) !important; }
+.pln-bar-item.waiting .pln-grip { display: none; }
+
 .pln-off { position: absolute; top: -7px; left: -7px; width: 16px; height: 16px;
   border-radius: 50%; background: #dc2626; color: #fff; border: 2px solid #fff;
   display: flex; align-items: center; justify-content: center; font-size: 10px;

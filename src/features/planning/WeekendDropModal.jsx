@@ -1,6 +1,6 @@
 import { useState, useMemo } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
-import { WEEKEND_PARTS, shiftByHalves } from "../calloffs/assignments.js";
+import { WEEKEND_PARTS, resizeByHalves, availablePart } from "../calloffs/assignments.js";
 
 /* Where the weekend halves go.
 
@@ -48,19 +48,55 @@ const isWeekendISO = (iso) => {
   return w === 0 || w === 6;
 };
 
+/* The first day at or after `from` that the ticked halves allow. */
+function nextWorked(from, weekend) {
+  let d = from;
+  for (let i = 0; i < 8; i++) {
+    const part = availablePart(d, weekend);
+    if (part) return { date: d, part, offSite: false };
+    const [y, m, dd] = String(d).slice(0, 10).split("-").map(Number);
+    const x = new Date(y, m - 1, dd, 12);
+    x.setDate(x.getDate() + 1);
+    const p = (n) => String(n).padStart(2, "0");
+    d = `${x.getFullYear()}-${p(x.getMonth() + 1)}-${p(x.getDate())}`;
+  }
+  return null;
+}
+
 export default function WeekendDropModal({
-  item, days, halves, weekend, onCancel, onConfirm,
+  kind = "move", item, days = [], startShift = 0, endShift = 0, date,
+  weekend, onCancel, onConfirm,
 }) {
   const drag = useDragHandle();
 
-  /* Starts from whatever the booking already claims. Reopening this on
-     a gang that works Saturday mornings should not make somebody tick
-     it again every time they nudge a bar. */
+  /* ── Starts empty, deliberately ──
+
+     Not from what the booking already claims. That an assignment worked
+     last Saturday is a decision somebody made about a particular set of
+     dates under whatever pressure the programme was under then, and it
+     says nothing about this one. Pre-ticking it would turn a question
+     into a default, and a default that puts a gang on site at the
+     weekend is the wrong thing to get silently.
+
+     What it claimed is shown below instead, as something to read and
+     copy in one click if it still holds. */
   const [draft, setDraft] = useState(() =>
+    Object.fromEntries(WEEKEND_PARTS.map((w) => [w.key, false])));
+
+  const previous = WEEKEND_PARTS.filter((w) => weekend?.[w.key]);
+  const asBefore = () => setDraft(
     Object.fromEntries(WEEKEND_PARTS.map((w) => [w.key, !!weekend?.[w.key]])));
 
-  const laid = useMemo(() => shiftByHalves(days, halves, draft),
-    [days, halves, draft]);
+  /* For a phase being given to a gang there is no booking yet — one day
+     at the day it was dropped on — so the preview is that day under
+     whatever is ticked. */
+  const laid = useMemo(() => {
+    if (kind === "assign") {
+      const on = nextWorked(date, draft);
+      return { days: on ? [on] : [], end: on?.date || null };
+    }
+    return resizeByHalves(days, startShift, endShift, draft) || { days: [], end: null };
+  }, [kind, date, days, startShift, endShift, draft]);
 
   const onWeekend = laid.days.filter((d) => isWeekendISO(d.date));
   const changed = WEEKEND_PARTS.some((w) => !!draft[w.key] !== !!weekend?.[w.key]);
@@ -75,8 +111,8 @@ export default function WeekendDropModal({
           <div>
             <h3>This lands on the weekend</h3>
             <p className="wkd-sub">
-              {item.ref} &middot; {item.phase}. Tick the halves this gang works.
-              Anything left untaken carries on to the next weekday.
+              {item.ref} &middot; {item.phase}. Tick the halves this gang is working
+              this weekend. Anything left untaken carries on to the next weekday.
             </p>
           </div>
           <button className="fe-x" onClick={onCancel} aria-label="Close">&times;</button>
@@ -100,9 +136,18 @@ export default function WeekendDropModal({
             <button type="button" className="wkd-pick none"
               onClick={() => setDraft(Object.fromEntries(
                 WEEKEND_PARTS.map((w) => [w.key, false])))}>
-              None &mdash; Monday
+              None &mdash; next weekday
             </button>
           </div>
+
+          {/* What it was last set to. Offered rather than applied: it is
+              a fair guess and a bad default. */}
+          {!!previous.length && (
+            <p className="wkd-prev">
+              Last time this booking worked {previous.map((w) => w.label).join(", ")}.
+              <button type="button" onClick={asBefore}>Use that again</button>
+            </p>
+          )}
 
           <div className="wkd-preview">
             <p className="wkd-preview-t">
@@ -136,10 +181,12 @@ export default function WeekendDropModal({
             {changed ? "This booking's weekend working will be updated." : ""}
           </span>
           <span className="fe-spacer" />
-          <button className="btn ghost" onClick={onCancel}>Cancel the move</button>
+          <button className="btn ghost" onClick={onCancel}>
+            {kind === "assign" ? "Cancel" : "Cancel the move"}
+          </button>
           <button className="btn accent" disabled={!laid.days.length}
             onClick={() => onConfirm(draft)}>
-            Move it
+            {kind === "assign" ? "Assign it" : "Move it"}
           </button>
         </div>
       </div>
@@ -176,4 +223,7 @@ const CSS = `
   background: #fef2f2; border: 1px solid #fca5a5; border-radius: 20px; padding: 0 7px; }
 .wkd-empty { margin: 8px 0 0; font-size: 12px; color: #991b1b; }
 .wkd-note { font-size: 11px; color: var(--muted); }
+.wkd-prev { margin: 9px 0 0; font-size: 11.5px; color: var(--muted); }
+.wkd-prev button { border: 0; background: transparent; color: #39467B; cursor: pointer;
+  font: 700 11.5px inherit; padding: 0 0 0 6px; text-decoration: underline; }
 `;

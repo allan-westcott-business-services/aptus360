@@ -105,6 +105,42 @@ export const NAV_SECTIONS = [
       { view: "fire-hydrants", label: "Fire Hydrants" },
     ],
   },
+  /* Human Resources.
+
+     Every view here is one screen of the HR portal, which is not a React
+     page but a self-contained app mounted into the shell — see
+     features/hr/hrPortal.js. The `hr-` prefix is what App.jsx routes on
+     and what it strips to get the portal's own module id, so the two
+     halves of each name have to stay in step: `hr-people` is the portal's
+     `people` module and nothing else.
+
+     They are all marked built because they are: the whole section works
+     today. What it does not yet do is share the rest of the app's
+     database or its sign-in. */
+  {
+    id: "hr",
+    label: "Human Resources",
+    icon: "\u{1F465}",
+    colour: "#818cf8",
+    items: [
+      { view: "hr-dashboard", label: "HR Dashboard", built: true },
+      { view: "hr-people", label: "People", built: true },
+      { view: "hr-roles", label: "Roles & Structure", built: true },
+      { view: "hr-pay", label: "Pay", built: true },
+      { view: "hr-leave", label: "Leave", built: true },
+      { view: "hr-benefits", label: "Benefits", built: true },
+      { view: "hr-performance", label: "Performance", built: true },
+      { view: "hr-skills", label: "Skills & Training", built: true },
+      { view: "hr-recruitment", label: "Recruitment", built: true },
+      { view: "hr-onboarding", label: "Onboarding", built: true },
+      { view: "hr-interactions", label: "Interactions", built: true },
+      { view: "hr-compliance", label: "Compliance", built: true },
+      { view: "hr-contractors", label: "Contractors & Temps", built: true },
+      { view: "hr-leavers", label: "Leavers", built: true },
+      { view: "hr-reports", label: "HR Reports", built: true },
+      { view: "hr-admin", label: "HR Admin", built: true },
+    ],
+  },
   {
     id: "hsqe",
     label: "HSQE",
@@ -158,6 +194,20 @@ NAV_SECTIONS.push({
   direct: "admin",
   items: [{ view: "admin", label: "Admin", built: true }],
 });
+
+/* The Human Resources section maps one-to-one onto the HR portal's own
+   modules: strip the prefix from the view and you have the module id it
+   should show. Kept here, beside the section that defines it, so the
+   prefix is written down once rather than assumed in the shell. */
+export const HR_PREFIX = "hr-";
+
+export const isHrView = (view) => String(view).startsWith(HR_PREFIX);
+
+export const hrModuleFor = (view) => String(view).slice(HR_PREFIX.length);
+
+export const hrViewFor = (moduleId) => HR_PREFIX + moduleId;
+
+export const HR_VIEWS = NAV_SECTIONS.find((s) => s.id === "hr").items.map((i) => i.view);
 
 export const findNavItem = (view) => {
   for (const section of NAV_SECTIONS) {

@@ -70,6 +70,15 @@ Two screens are implemented:
    variables are bundled into the browser; unprefixed ones stay server-side.
    The service role key must never gain a prefix.
 
+   Human Resources reads two more, because it points at its own Supabase
+   project rather than this one — see **Human Resources** below:
+   ```
+   VITE_HR_SUPABASE_URL=https://<hr project>.supabase.co
+   VITE_HR_SUPABASE_ANON_KEY=<hr anon key>
+   ```
+   Both fall back to the values the standalone portal shipped with, so the
+   section works before either is set.
+
 3. **Run `netlify dev`** and check the forms load real lookups.
 
 4. **Migrate the data** — see `aptus360-project-model.md` §5 for the ordered
@@ -83,6 +92,33 @@ environment variables under **Site configuration → Environment variables**.
 
 After that, pushing to `main` deploys to production, and every pull request
 gets its own preview URL.
+
+## Human Resources
+
+The **Human Resources** section is the former standalone HR Portal, mounted
+inside the shell rather than rewritten. It is still vanilla JS: React gives it
+a pane and it draws into it. `src/features/hr/hrPortal.js` explains the port in
+full; the short version is that rewriting sixteen modules as components would
+have been weeks of work and a regression in each, and any one module can be
+converted later without touching the other fifteen.
+
+Two things about it differ from the rest of the app, and both are inherited
+from the standalone portal rather than introduced by the port:
+
+- **It talks to a different Supabase project, directly from the browser**, with
+  the anon key, not through `/api/*`. So the note below about RLS and the anon
+  key does not hold for these screens: their access is governed entirely by
+  that project's own policies. Bringing HR onto this database is a migration
+  with about forty endpoints behind it, not a refactor.
+- **There is no sign-in on it.** The portal bypassed its own login and used the
+  anon key as the bearer token. Anyone who can open Aptus360 can open payroll
+  and sickness records. Worth closing before this reaches people who should not
+  see them.
+
+`node checkhr.mjs` mounts all sixteen modules in a simulated DOM with `fetch`
+stubbed and checks each one renders, icons draw, modals open in the right root,
+and the sidebar bridge does not double-render. Run it after touching anything
+in `src/features/hr/`.
 
 ## Notes
 

@@ -23,8 +23,16 @@ const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmi
 const CustomerProjectsPage = lazy(() => import("./features/customers/CustomerProjectsPage.jsx"));
 const CallOffsPage = lazy(() => import("./features/calloffs/CallOffsPage.jsx"));
 const PlanningPage = lazy(() => import("./features/planning/PlanningPage.jsx"));
+/* Human Resources is the largest single screen in the app — sixteen
+   modules, plus Chart.js and an icon set nothing else uses. Lazy for the
+   same reason as Admin, only more so: most sessions never open it, and
+   nobody should download it to look at a project. */
+const HumanResourcesPage = lazy(() => import("./features/hr/HumanResourcesPage.jsx"));
 import { USE_MOCKS } from "./api/client.js";
-import { findNavItem, builtCount, totalCount } from "./lib/navigation.js";
+import {
+  findNavItem, builtCount, totalCount,
+  isHrView, hrModuleFor, hrViewFor, HR_VIEWS,
+} from "./lib/navigation.js";
 
 /* Placeholder for views not yet migrated. Keeping these visible rather than
    hiding them means the sidebar doubles as a progress board. */
@@ -79,6 +87,10 @@ const VIEWS = [
   "projects", "admin", "plot-connections", "gis-canvas",
   "generate-av-invoices", "av-invoices", "organisations", "customer-projects",
   "call-offs", "planning",
+  /* Spread rather than listed, so adding an HR module to the sidebar
+     does not also need adding here — the two lists drifting would mean a
+     screen you can navigate to but cannot reload back into. */
+  ...HR_VIEWS,
 ];
 
 function Shell() {
@@ -123,6 +135,25 @@ function Shell() {
      own padding, and a card around a board that fills the width would
      put a border a few pixels inside another one. */
   else if (view === "planning") content = <PlanningPage />;
+  /* One component for all sixteen HR screens: which one it shows is a
+     prop, not a route, because the portal keeps its own loaded data and
+     switching modules inside it is much cheaper than remounting.
+
+     No card wrapper — the HR screens draw their own cards, and the
+     dashboard is a grid of them.
+
+     onNavigate is what lets the portal move the sidebar: a dashboard
+     tile or an org-chart node navigates internally, tells us the module
+     it went to, and the selection follows. Without it the sidebar would
+     keep pointing at a screen the user had already left. */
+  else if (isHrView(view)) {
+    content = (
+      <HumanResourcesPage
+        page={hrModuleFor(view)}
+        onNavigate={(moduleId) => setView(hrViewFor(moduleId))}
+      />
+    );
+  }
   else content = <NotBuilt view={view} />;
 
   return (

@@ -518,3 +518,14 @@ body.resizing { cursor: col-resize; user-select: none; }
   display: flex; align-items: center; justify-content: center;
   min-height: 100vh; color: var(--muted); font-size: 13px;
 }
+
+/* Modal backdrop. Shared, because more than one feature opens a modal:
+   the GIS feature editor defined it, and RaiseInvoiceModal on the
+   project invoices tab used the same class — where the canvas is never
+   mounted, so the rule did not exist and the dialog rendered inline
+   with no dimming. Same fault as the sidebar CSS above: a rule the
+   whole app relies on cannot live in one feature's style block. */
+.fe-backdrop {
+  position: fixed; inset: 0; background: rgba(15, 23, 42, .34); z-index: 1000;
+  display: flex; align-items: center; justify-content: center; padding: 24px;
+}

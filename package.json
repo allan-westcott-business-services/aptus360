@@ -8,7 +8,7 @@
     "build": "vite build",
     "preview": "vite preview",
     "start": "netlify dev",
-    "test": "node checknav.mjs && node checkhome.mjs && node checkteams.mjs && node checkhr.mjs",
+    "test": "node checknav.mjs && node checkhome.mjs && node checkteams.mjs && node checkvehicles.mjs && node checkhr.mjs",
     "check": "npm run test && for f in check*.py; do echo \"── $f\"; python3 \"$f\"; done"
   },
   "dependencies": {

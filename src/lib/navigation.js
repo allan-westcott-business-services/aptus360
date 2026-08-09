@@ -60,7 +60,7 @@ export const AREAS = [
       { view: "teams", label: "Teams" },
       { view: "plot-connections", label: "Plot Connections", built: true },
       { view: "sc-log", label: "Service Card Log" },
-      { view: "vehicles", label: "Vehicles" },
+      { view: "vehicles", label: "Vehicles", built: true },
       /* Generator hire was its own screen under Electric. It is a piece
          of plant that goes out and comes back like any other, so it
          belongs with whatever tracks the rest of the plant. */

@@ -27,6 +27,16 @@ const TABLES = {
   Team_Member:     { pk: "Team_Member_ID",     order: "Team_Member_ID" },
   Team_Craft:      { pk: "Team_Craft_ID",      order: "Team_Craft_ID" },
   Team_Region:     { pk: "Team_Region_ID",     order: "Team_Region_ID" },
+  /* The fleet, and the five histories that hang off a vehicle. Deleting
+     a vehicle cascades to all five in the database (0137), so this list
+     never has to delete them itself. */
+  Vehicle:             { pk: "Vehicle_ID",             order: "Registration",
+    conflict: "A vehicle with that registration already exists." },
+  Vehicle_Insurance:   { pk: "Insurance_ID",           order: "Insurance_ID" },
+  Vehicle_MOT:         { pk: "MOT_ID",                 order: "MOT_ID" },
+  Vehicle_Service:     { pk: "Service_ID",             order: "Service_ID" },
+  Vehicle_Maintenance: { pk: "Maintenance_ID",         order: "Maintenance_ID" },
+  Vehicle_Mileage_Log: { pk: "Log_ID",                 order: "Log_ID" },
   /* Phases, which work type involves which, and who is doing them. */
   Task_Type:           { pk: "Task_Type_ID",           order: "Display_Order" },
   Dependency_Type:     { pk: "Dependency_Type_ID",     order: "Sort_Order" },

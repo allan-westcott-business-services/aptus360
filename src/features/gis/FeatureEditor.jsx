@@ -1440,8 +1440,9 @@ export default function FeatureEditor({
 }
 
 const CSS = `
-.fe-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.34); z-index: 1000;
-  display: flex; align-items: center; justify-content: center; padding: 24px; }
+/* .fe-backdrop lives in src/styles.css. RaiseInvoiceModal uses it
+   too, and a class defined here only exists while the canvas is
+   mounted — which on the invoices tab it never is. */
 /* Half again as wide, so three controls in a row have room for their
    longest option rather than truncating it. */
 .fe.fe-wide { width: min(630px, 94vw); }

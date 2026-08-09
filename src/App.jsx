@@ -22,6 +22,7 @@ const AvInvoicesPage = lazy(() => import("./features/av/AvInvoicesPage.jsx"));
 const OrganisationsAdmin = lazy(() => import("./features/admin/OrganisationsAdmin.jsx"));
 const CustomerProjectsPage = lazy(() => import("./features/customers/CustomerProjectsPage.jsx"));
 const CallOffsPage = lazy(() => import("./features/calloffs/CallOffsPage.jsx"));
+const VehiclesPage = lazy(() => import("./features/vehicles/VehiclesPage.jsx"));
 const PlanningPage = lazy(() => import("./features/planning/PlanningPage.jsx"));
 /* Human Resources is the largest single screen in the app — sixteen
    modules, plus Chart.js and an icon set nothing else uses. Lazy for the
@@ -133,6 +134,7 @@ function Shell() {
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
   else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
+  else if (view === "vehicles") content = <div className="card"><VehiclesPage /></div>;
   /* No card wrapper: the page has its own header bar and switches between
      a list and a detail view, both of which own their padding. */
   else if (view === "call-offs") content = <CallOffsPage />;

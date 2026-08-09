@@ -13,7 +13,7 @@ export async function adminList(table) {
   return http.get(`/admin/${table}`);
 }
 
-export async function adminCreate(table, row) {
+export async function adminCreate(table, row, pk) {
   /* Admin edits the tables the lookups are built from, so a write has to
      drop the cache or the rest of the session carries on reading what
      was true when the page loaded. Done here rather than in each screen:
@@ -22,7 +22,14 @@ export async function adminCreate(table, row) {
   clearLookupCache();
   if (USE_MOCKS) {
     await delay(250);
-    const created = { ...row, [`${table}_ID`]: ++nextId };
+    /* `pk` for the tables whose key is not `<table>_ID`, the same
+       argument adminDelete already takes and for the same reason.
+       Vehicle_Mileage_Log's key is Log_ID, so the guess produced a row
+       carrying Vehicle_Mileage_Log_ID and no key the screen could use —
+       it rendered without one and could not then be edited or deleted.
+       Only mock mode was ever affected: the real endpoint returns the
+       row Postgres wrote, key included. */
+    const created = { ...row, [pk || `${table}_ID`]: ++nextId };
     adminMock[table] = [...(adminMock[table] || []), created];
     return created;
   }

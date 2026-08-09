@@ -197,7 +197,7 @@ export default function PropertyConfigAdmin() {
 }
 
 const CSS = `
-.admin-title { margin: 0 0 18px; font-size: 18px; font-weight: 700; }
+/* .admin-title lives in src/styles.css — other screens use it too. */
 .panel-label {
   font-size: 11px; font-weight: 700; text-transform: uppercase;
   letter-spacing: .06em; color: var(--accent); margin: 0 0 12px;

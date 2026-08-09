@@ -57,7 +57,12 @@ export const AREAS = [
     items: [
       { view: "call-offs", label: "Call-offs", built: true },
       { view: "planning", label: "Planning", built: true },
-      { view: "teams", label: "Teams" },
+      /* The same screen the Admin suite shows under Teams. One
+         implementation mounted in two places, as Organisations is:
+         a second would drift, and the difference between the two
+         would be invisible until somebody edited a gang in the
+         wrong one. */
+      { view: "teams", label: "Teams", built: true },
       { view: "plot-connections", label: "Plot Connections", built: true },
       { view: "sc-log", label: "Service Card Log" },
       { view: "vehicles", label: "Vehicles", built: true },

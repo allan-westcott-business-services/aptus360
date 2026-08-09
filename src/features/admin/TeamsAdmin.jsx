@@ -232,11 +232,35 @@ export default function TeamsAdmin() {
     finally { setBusy(null); }
   }
 
+  /* Renaming, in one place because two screens offer it.
+
+     Returns whether the name was accepted, so a caller showing an input
+     knows whether to close it or stay open with the bad value still
+     there to correct. */
+  async function renameTeam(raw) {
+    const next = String(raw ?? "").trim();
+    const saved = current?.Team_Name ?? "";
+    if (!current) return false;
+    if (next === saved) return true;      // nothing changed; no pointless write
+    /* Team_Name is NOT NULL, and the endpoint turns an empty string into
+       null on the way past — so an empty box would arrive as a database
+       error about a constraint rather than as anything a person could
+       act on. Caught here, where the answer is obvious. */
+    if (!next) { setError("A team needs a name."); return false; }
+    setError("");
+    await saveDetails({ Team_Name: next });
+    return true;
+  }
+
   if (loading) return <p className="hint">Loading teams…</p>;
 
   return (
     <div className="tm">
       <style>{CSS}</style>
+      {/* Named here rather than relying on the Admin menu to label it:
+          this screen is also reached from Operations, where there is no
+          menu beside it saying what you are looking at. */}
+      <h2 className="admin-title">Teams</h2>
       {error && <Banner kind="error">{error}</Banner>}
 
       <div className="tm-split">
@@ -284,7 +308,12 @@ export default function TeamsAdmin() {
           ) : (
             <>
               <div className="tm-detail-head">
-                <h3>{current.Team_Name}</h3>
+                <TeamHeading
+                  key={current.Team_ID}
+                  team={current}
+                  busy={busy === "details"}
+                  onRename={renameTeam}
+                />
                 <p className="tm-sub">
                   {current.Supplier_ID
                     ? `Supplier team \u00b7 supplier ${current.Supplier_ID}`
@@ -401,6 +430,7 @@ export default function TeamsAdmin() {
                   teams={teams}
                   busy={busy === "details"}
                   onSave={saveDetails}
+                  onRename={renameTeam}
                   onError={setError}
                 />
               )}
@@ -419,6 +449,63 @@ export default function TeamsAdmin() {
   );
 }
 
+/* The team's name, with a way to change it.
+
+   On the heading because that is where the name is, and it is the first
+   place anyone looks to rename the thing they are looking at. The button
+   is visible rather than the heading being quietly clickable: a control
+   nobody can see is one nobody uses.
+
+   The same field also appears on the Details tab, beside the team's
+   other attributes. Both call one `onRename`, so there is a single
+   answer to what an empty name does. */
+function TeamHeading({ team, busy, onRename }) {
+  const [editing, setEditing] = useState(false);
+  const [draft, setDraft] = useState(team.Team_Name ?? "");
+
+  async function commit() {
+    const ok = await onRename(draft);
+    /* Stays open when refused, with the offending text still there. The
+       alternative — closing and reverting — throws away what was typed
+       and leaves an error message about a box that is no longer on
+       screen. */
+    if (ok) setEditing(false);
+  }
+
+  function cancel() {
+    setDraft(team.Team_Name ?? "");
+    setEditing(false);
+  }
+
+  if (!editing) {
+    return (
+      <div className="tm-name-row">
+        <h3>{team.Team_Name}</h3>
+        <button className="btn edit sm"
+          onClick={() => { setDraft(team.Team_Name ?? ""); setEditing(true); }}>
+          Rename
+        </button>
+      </div>
+    );
+  }
+
+  return (
+    <div className="tm-name-row">
+      <input className="tm-name-input" autoFocus value={draft} disabled={busy}
+        aria-label="Team name"
+        onChange={(e) => setDraft(e.target.value)}
+        onKeyDown={(e) => {
+          if (e.key === "Enter") { e.preventDefault(); commit(); }
+          if (e.key === "Escape") cancel();
+        }} />
+      <button className="btn edit sm" disabled={busy} onClick={commit}>
+        {busy ? "Saving\u2026" : "Save"}
+      </button>
+      <button className="btn sm" disabled={busy} onClick={cancel}>Cancel</button>
+    </div>
+  );
+}
+
 /* A team's own attributes, including its name.
 
    Renaming happens here rather than on the heading above, because a
@@ -431,7 +518,7 @@ export default function TeamsAdmin() {
    team, which is only ever correct at mount; it looked right solely
    because opening another team resets the tab to Members and unmounted
    this. That was a coincidence holding a bug shut. */
-function TeamDetails({ team, teams, busy, onSave, onError }) {
+function TeamDetails({ team, teams, busy, onSave, onRename, onError }) {
   const [name, setName] = useState(team.Team_Name ?? "");
   const [rate, setRate] = useState(team.Rate ?? "");
   const [unit, setUnit] = useState(team.Rate_Unit ?? "");
@@ -446,20 +533,11 @@ function TeamDetails({ team, teams, busy, onSave, onError }) {
     Number(t.Team_ID) !== Number(team.Team_ID)
     && String(t.Team_Name ?? "").trim().toLowerCase() === name.trim().toLowerCase());
 
-  function commitName() {
-    const next = name.trim();
-    if (next === saved) return;          // nothing changed; no pointless write
-    /* Team_Name is NOT NULL, and the endpoint turns an empty string into
-       null on the way past — so an empty box would arrive as a database
-       error about a constraint rather than as anything a person could
-       act on. Caught here, where the answer is obvious. */
-    if (!next) {
-      onError("A team needs a name.");
-      setName(saved);
-      return;
-    }
-    onError("");
-    onSave({ Team_Name: next });
+  async function commitName() {
+    const ok = await onRename(name);
+    /* Refused means empty. Put the saved name back, since an empty box
+       left on screen looks like a name that has been cleared. */
+    if (!ok) setName(saved);
   }
 
   function onNameKey(e) {
@@ -629,6 +707,11 @@ const CSS = `
 .tm-detail-head { padding-bottom: 12px; border-bottom: 1px solid var(--border);
   margin-bottom: 0; }
 .tm-detail-head h3 { margin: 0; font-size: 16px; }
+.tm-name-row { display: flex; align-items: center; gap: 9px; flex-wrap: wrap; }
+/* Sized to the heading it replaces, so committing a rename doesn't make
+   the panel jump. */
+.tm-name-input { font: 700 16px inherit; padding: 3px 8px; min-width: 220px;
+  border: 1px solid var(--accent); border-radius: 6px; }
 .tm-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
 .tm-contact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
   margin: 6px 0 0; font-size: 12px; }

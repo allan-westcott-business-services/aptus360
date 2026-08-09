@@ -529,3 +529,10 @@ body.resizing { cursor: col-resize; user-select: none; }
   position: fixed; inset: 0; background: rgba(15, 23, 42, .34); z-index: 1000;
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
+
+/* Admin screen heading. Shared: Organisations, Teams and the generic
+   editors all use it, and two of those can be opened from outside the
+   Admin suite. It was defined inside PropertyConfigAdmin's style block,
+   so it only applied once somebody had visited House Types — the same
+   fault as the sidebar and modal-backdrop rules above. */
+.admin-title { margin: 0 0 18px; font-size: 18px; font-weight: 700; }

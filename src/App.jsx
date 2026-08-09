@@ -21,6 +21,8 @@ const AvInvoicesPage = lazyPage("AvInvoicesPage", () => import("./features/av/Av
    would drift, and the difference between the two would be invisible
    until someone edited a branch in the wrong one. */
 const OrganisationsAdmin = lazyPage("OrganisationsAdmin", () => import("./features/admin/OrganisationsAdmin.jsx"));
+/* Also reached from Operations — see the note in navigation.js. */
+const TeamsAdmin = lazyPage("TeamsAdmin", () => import("./features/admin/TeamsAdmin.jsx"));
 const CustomerProjectsPage = lazyPage("CustomerProjectsPage", () => import("./features/customers/CustomerProjectsPage.jsx"));
 const CallOffsPage = lazyPage("CallOffsPage", () => import("./features/calloffs/CallOffsPage.jsx"));
 const VehiclesPage = lazyPage("VehiclesPage", () => import("./features/vehicles/VehiclesPage.jsx"));
@@ -135,6 +137,7 @@ function Shell() {
   else if (view === "generate-av-invoices") content = <div className="card"><GenerateAvInvoices /></div>;
   else if (view === "av-invoices") content = <div className="card"><AvInvoicesPage /></div>;
   else if (view === "organisations") content = <div className="card"><OrganisationsAdmin /></div>;
+  else if (view === "teams") content = <div className="card"><TeamsAdmin /></div>;
   else if (view === "customer-projects") content = <div className="card"><CustomerProjectsPage /></div>;
   else if (view === "vehicles") content = <div className="card"><VehiclesPage /></div>;
   else if (view === "vyn-tracker") content = <div className="card"><VynTrackerPage /></div>;

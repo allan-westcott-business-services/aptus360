@@ -5,6 +5,7 @@ import {
 import { remember, recall } from "../../lib/session.js";
 import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
+import { getProject } from "../../api/projects.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter } from "./rules.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
@@ -333,38 +334,87 @@ export default function CallOffsPage() {
 }
 
 /* One call-off: what was asked for, and where it has got to. */
-/* The energisation dates for one plot, one column per utility.
+/* ── Energisation dates: plots down, utilities across ──
 
-   Held as a draft while somebody types and written on Save, rather than
-   on every keystroke: three utilities on eight plots is twenty-four
-   cells, and a request per cell would be twenty-four chances for half
-   of it to land.
+   One table, one date picker per cell. The first version put a
+   collapsed editor inside each row's cell, which meant the utility
+   labels were repeated four times, wrapped in a column sized for a
+   date, and sat a long way from the plot they belonged to. A grid says
+   the same thing once along the top.
 
-   The floor is applied to the picker as well as to the save. A picker
-   that offers a date the endpoint will refuse wastes somebody's time
-   twice — once choosing it and once reading why not. */
-export function EnergisationCell({ plot, utilities, floor, onSaved }) {
+   ── Only the utilities on the project ──
+
+   The ones with an outline design. A project designed for electric and
+   water has no gas to energise, and offering a gas date invites
+   somebody to fill it in for work nobody is doing. Scopes are what an
+   outline design is — one per utility — so the columns are the scopes.
+
+   Empty where a project has no designs yet, and the table says so
+   rather than drawing a header with nothing under it.
+
+   ── Apply to all plots ──
+
+   A phased handover is the exception; most call-offs energise together.
+   So the top row can be copied down, which turns twelve pickers into
+   three. It copies whatever is in the first row at the moment it is
+   ticked, including blanks — "the same as plot 1" has to mean the same,
+   or it would quietly leave old dates behind on the plots below. */
+export function EnergisationGrid({ plots, utilities, floor, onSaved }) {
   const earliest = floor ? dayAfter(floor.date) : "";
-  const asSaved = () => Object.fromEntries(
-    (plot.Utilities || []).map((u) => [Number(u.Utility_ID), u.Energisation_Date || ""]));
 
-  const [draft, setDraft] = useState(asSaved);
-  const [open, setOpen] = useState(false);
+  /* Keyed plot then utility. Seeded from what is saved, so opening the
+     panel and saving without touching anything changes nothing. */
+  const saved = () => Object.fromEntries(plots.map((p) => [
+    p.Service_Plot_ID,
+    Object.fromEntries((p.Utilities || [])
+      .map((u) => [Number(u.Utility_ID), u.Energisation_Date || ""])),
+  ]));
+
+  const [draft, setDraft] = useState(saved);
+  const [applyAll, setApplyAll] = useState(false);
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
-  const dirty = utilities.some((u) =>
-    (draft[Number(u.Utility_ID)] || "") !== (asSaved()[Number(u.Utility_ID)] || ""));
+  const first = plots[0];
+  const dirty = JSON.stringify(draft) !== JSON.stringify(saved());
+
+  const set = (plotId, utilityId, value) => setDraft((d) => {
+    const next = { ...d, [plotId]: { ...(d[plotId] || {}), [Number(utilityId)]: value } };
+    /* Still ticked, so the rest of the column follows the top row as it
+       is typed rather than only when the box was clicked. */
+    if (applyAll && first && Number(plotId) === Number(first.Service_Plot_ID)) {
+      for (const p of plots) {
+        next[p.Service_Plot_ID] = {
+          ...(next[p.Service_Plot_ID] || {}), [Number(utilityId)]: value,
+        };
+      }
+    }
+    return next;
+  });
+
+  const copyDown = (on) => {
+    setApplyAll(on);
+    if (!on || !first) return;
+    setDraft((d) => {
+      const top = d[first.Service_Plot_ID] || {};
+      const next = { ...d };
+      for (const p of plots) next[p.Service_Plot_ID] = { ...top };
+      return next;
+    });
+  };
 
   async function save() {
     setBusy(true);
     setError("");
     try {
-      await setPlotEnergisation(plot.Service_Plot_ID, utilities.map((u) => ({
-        Utility_ID: u.Utility_ID,
-        Energisation_Date: draft[Number(u.Utility_ID)] || "",
-      })));
-      setOpen(false);
+      /* One request per plot, in order, so a failure names the plot it
+         failed on rather than leaving the whole table in doubt. */
+      for (const p of plots) {
+        await setPlotEnergisation(p.Service_Plot_ID, utilities.map((u) => ({
+          Utility_ID: u.Utility_ID,
+          Energisation_Date: draft[p.Service_Plot_ID]?.[Number(u.Utility_ID)] || "",
+        })));
+      }
       onSaved?.();
     } catch (e) {
       setError(e.message);
@@ -373,54 +423,77 @@ export function EnergisationCell({ plot, utilities, floor, onSaved }) {
     }
   }
 
-  const set = (id) => (v) => setDraft((d) => ({ ...d, [Number(id)]: v }));
-
-  if (!open) {
+  if (!utilities.length) {
     return (
-      <button className="co-eng-open" onClick={() => { setDraft(asSaved()); setOpen(true); }}>
-        {(plot.Utilities || []).length
-          ? (plot.Utilities || []).map((u) => (
-            <span key={u.Utility_ID} className="co-eng">
-              {utilities.find((x) => Number(x.Utility_ID) === Number(u.Utility_ID))?.Utility
-                || `#${u.Utility_ID}`}
-              {" "}{u.Energisation_Date}
-            </span>
-          ))
-          /* The plot's own date where 0136 has not been used on this
-             call-off, and an invitation where there is nothing at all —
-             a blank cell gives nobody a reason to click it. */
-          : <span className="co-eng dim">{plot.Energisation_Date || "Set dates\u2026"}</span>}
-      </button>
+      <p className="hint">
+        No outline designs on this project, so there are no utilities to energise.
+        Add a design on the project&rsquo;s Outline Designs tab.
+      </p>
     );
   }
 
   return (
-    <div className="co-eng-edit">
-      {utilities.map((u) => (
-        <label key={u.Utility_ID} className="co-eng-row">
-          <span className="co-eng-dot" style={{ background: u.Colour || "#94a3b8" }} />
-          <span className="co-eng-name">{u.Utility}</span>
-          <input type="date" value={draft[Number(u.Utility_ID)] || ""}
-            min={earliest || undefined}
-            aria-label={`${u.Utility} energisation date`}
-            onChange={(e) => set(u.Utility_ID)(e.target.value)} />
-          {!!draft[Number(u.Utility_ID)] && (
-            <button className="co-eng-clear" title="Clear"
-              onClick={() => set(u.Utility_ID)("")}>&times;</button>
-          )}
-        </label>
-      ))}
+    <div className="eg">
+      <table className="eg-tbl">
+        <thead>
+          <tr>
+            <th className="eg-plot">Plot</th>
+            {utilities.map((u) => (
+              <th key={u.Utility_ID}>
+                <span className="eg-dot" style={{ background: u.Colour || "#94a3b8" }} />
+                {u.Utility}
+              </th>
+            ))}
+            <th className="eg-all" />
+          </tr>
+        </thead>
+        <tbody>
+          {plots.map((p, i) => (
+            <tr key={p.Service_Plot_ID}>
+              <th scope="row" className="eg-plot">{p.Plot}</th>
+              {utilities.map((u) => (
+                <td key={u.Utility_ID}>
+                  <input type="date" className="eg-date"
+                    aria-label={`Plot ${p.Plot} ${u.Utility} energisation date`}
+                    min={earliest || undefined}
+                    /* Every row below the first follows it while the box
+                       is ticked, so they are shown as the read-only
+                       consequence they are rather than as fields that
+                       look editable and then spring back. */
+                    disabled={applyAll && i > 0}
+                    value={draft[p.Service_Plot_ID]?.[Number(u.Utility_ID)] || ""}
+                    onChange={(e) => set(p.Service_Plot_ID, u.Utility_ID, e.target.value)} />
+                </td>
+              ))}
+              <td className="eg-all">
+                {i === 0 && (
+                  <label className="eg-applyall">
+                    <input type="checkbox" checked={applyAll}
+                      onChange={(e) => copyDown(e.target.checked)} />
+                    Apply to all plots
+                  </label>
+                )}
+              </td>
+            </tr>
+          ))}
+        </tbody>
+      </table>
+
       {floor && (
-        <p className="co-eng-floor">
+        <p className="eg-floor">
           Nothing before {earliest} &mdash; the day after {floor.why}.
         </p>
       )}
-      {error && <p className="co-eng-err">{error}</p>}
-      <div className="co-eng-foot">
+      {error && <p className="eg-err">{error}</p>}
+      <div className="eg-foot">
         <button className="btn accent sm" disabled={busy || !dirty} onClick={save}>
-          {busy ? "Saving\u2026" : "Save"}
+          {busy ? "Saving\u2026" : "Save energisation dates"}
         </button>
-        <button className="btn ghost sm" onClick={() => setOpen(false)}>Cancel</button>
+        {dirty && !busy && (
+          <button className="btn ghost sm" onClick={() => { setDraft(saved()); setApplyAll(false); }}>
+            Reset
+          </button>
+        )}
       </div>
     </div>
   );
@@ -441,6 +514,33 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
   }, []);
   const utilityName = (id) => utils
     .find((u) => Number(u.Utility_ID) === Number(id))?.Utility || `#${id}`;
+
+  /* ── The utilities this project actually has ──
+
+     The ones with an outline design, which in this schema is a scope:
+     one per utility on the project. A project designed for electric and
+     water has no gas to energise, and a gas column would invite
+     somebody to fill in a date for work nobody is doing.
+
+     Scopes come back with the project, so this is one request and not a
+     table of its own. Ordered the way the utilities are ordered
+     everywhere else rather than the order the designs were added — a
+     column that moves between call-offs is a column somebody mis-reads
+     once. */
+  const [scopes, setScopes] = useState([]);
+  useEffect(() => {
+    let alive = true;
+    if (!row.Project_ID) return undefined;
+    getProject(row.Project_ID)
+      .then((p) => { if (alive) setScopes(p?.scopes || []); })
+      .catch(() => {});
+    return () => { alive = false; };
+  }, [row.Project_ID]);
+
+  const designUtilities = useMemo(() => {
+    const wanted = new Set(scopes.map((sc) => Number(sc.Utility_ID)));
+    return utils.filter((u) => wanted.has(Number(u.Utility_ID)));
+  }, [utils, scopes]);
 
   /* The earliest anything on this call-off may be asked to go live.
 
@@ -627,11 +727,20 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
         <h3>{heading} <span className="co-dim">&middot; {row.items?.length ?? 0}</span></h3>
         {!row.items?.length ? (
           <p className="hint">Nothing listed on this call-off.</p>
+        ) : mode === "PlotList" ? (
+          /* Plots get the grid: one row each, one column per utility the
+             project has a design for. */
+          <EnergisationGrid
+            plots={row.items.filter((it) => it.Service_Plot_ID)}
+            utilities={designUtilities}
+            floor={energFloor}
+            onSaved={onReload}
+          />
         ) : (
           <table className="co-tbl flat">
             <thead>
               <tr>
-                <th>{mode === "ColumnList" ? "Column" : mode === "Span" ? "Section" : "Plot"}</th>
+                <th>{mode === "ColumnList" ? "Column" : "Section"}</th>
                 {mode === "Span" && <><th>D/P</th><th>Length</th></>}
                 <th>Energisation date</th>
               </tr>
@@ -641,9 +750,7 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
                 <tr key={i}>
                   <td>
                     <strong>
-                      {mode === "PlotList" ? it.Plot
-                        : mode === "ColumnList" ? it.Street_Light_ID
-                          : it.Plots}
+                      {mode === "ColumnList" ? it.Street_Light_ID : it.Plots}
                     </strong>
                   </td>
                   {mode === "Span" && (
@@ -652,41 +759,11 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
                       <td>{it.Estimated_Length_m ? `${it.Estimated_Length_m} m` : "\u2014"}</td>
                     </>
                   )}
-                  {/* Per utility where 0136 has been used, the plot's
-                      own date where it has not. Both are shown as they
-                      are rather than one standing in for the other: a
-                      call-off asking for three different days should
-                      not be summarised into one. */}
-                  {/* ── Set here, per utility ──
-
-                      This is the screen somebody works in once a
-                      call-off exists, so this is where the dates are
-                      set. The form the call-off was raised on has the
-                      same grid, but by the time the dig is planned it
-                      is behind them and the dates are not yet known.
-
-                      Editable only for plots, because that is what 0136
-                      covers: a span still carries one date and a
-                      lighting column only ever has electric. Those show
-                      what they have. */}
-                  <td>
-                    {mode === "PlotList" && it.Service_Plot_ID ? (
-                      <EnergisationCell
-                        plot={it}
-                        utilities={utils}
-                        floor={energFloor}
-                        onSaved={onReload}
-                      />
-                    ) : (
-                      (it.Utilities || []).length
-                        ? (it.Utilities || []).map((u) => (
-                          <span key={u.Utility_ID} className="co-eng">
-                            {utilityName(u.Utility_ID)} {fmt(u.Energisation_Date)}
-                          </span>
-                        ))
-                        : fmt(it.Energisation_Date)
-                    )}
-                  </td>
+                  {/* A span still carries one date and a lighting column
+                      only ever has electric, so both show what they
+                      have. 0136 covers plots; the same shape would fit
+                      spans if a mains call-off ever needs it. */}
+                  <td>{fmt(it.Energisation_Date)}</td>
                 </tr>
               ))}
             </tbody>
@@ -1791,22 +1868,40 @@ const CSS = `
   display: inline-flex; align-items: center; justify-content: center;
   font: 700 10.5px inherit; color: var(--muted); flex: 0 0 auto; }
 .asg-craft { font-size: 11px; color: var(--muted); margin-right: auto; }
-.co-eng { display: block; white-space: nowrap; font-size: 11.5px; }
-.co-eng.dim { color: var(--muted); }
-.co-eng-open { border: 1px dashed transparent; background: transparent; cursor: pointer;
-  font: inherit; text-align: left; padding: 2px 5px; border-radius: 5px; color: inherit; }
-.co-eng-open:hover { border-color: var(--border); background: #f8fafc; }
-.co-eng-edit { border: 1px solid var(--border); border-radius: 7px; padding: 8px 9px;
-  background: #f8fafc; min-width: 232px; }
-.co-eng-row { display: flex; align-items: center; gap: 6px; margin-bottom: 4px; }
-.co-eng-dot { width: 8px; height: 8px; border-radius: 50%; flex: none; }
-.co-eng-name { font-size: 11.5px; font-weight: 600; width: 58px; flex: none; }
-.co-eng-row input { flex: 1; font-size: 11.5px; }
-.co-eng-clear { border: 0; background: transparent; cursor: pointer; color: var(--muted);
-  font-size: 14px; line-height: 1; padding: 0 3px; }
-.co-eng-floor { margin: 5px 0 0; font-size: 10.5px; color: #92400e; }
-.co-eng-err { margin: 5px 0 0; font-size: 10.5px; color: #991b1b; }
-.co-eng-foot { display: flex; gap: 6px; margin-top: 7px; }
+/* ── The energisation grid ──
+
+   Sized to what each column holds. The plot number is a couple of
+   characters, a utility name is a word, and a date input needs about
+   130px — anything wider is empty space that pushes the next column
+   away from the plot it belongs to.
+
+   A width of 1px with nowrap on the narrow columns is the old trick for
+   "as narrow as the content": the browser treats it as a minimum and
+   the content sets the real width, which beats guessing a pixel value
+   that a longer utility name would then wrap inside.
+
+   No backticks in here — this whole block lives inside a template
+   literal, and one would end it. */
+.eg-tbl { border-collapse: collapse; font-size: 12.5px; }
+.eg-tbl th, .eg-tbl td { padding: 5px 10px; border-bottom: 1px solid var(--border);
+  text-align: left; white-space: nowrap; }
+.eg-tbl thead th { background: #39467B; color: #fff; font-size: 10.5px;
+  text-transform: uppercase; letter-spacing: .05em; font-weight: 700;
+  border-bottom: 0; }
+.eg-tbl thead th:first-child { border-top-left-radius: 7px; }
+.eg-tbl thead th:last-child { border-top-right-radius: 7px; }
+.eg-plot { width: 1px; font-weight: 700; text-align: center !important; }
+.eg-dot { display: inline-block; width: 7px; height: 7px; border-radius: 50%;
+  margin-right: 6px; vertical-align: middle; }
+.eg-date { width: 138px; font-size: 12px; }
+.eg-date:disabled { background: #f8fafc; color: var(--muted); }
+.eg-all { width: 1px; }
+.eg-applyall { display: inline-flex; align-items: center; gap: 6px; font-size: 11.5px;
+  font-weight: 600; cursor: pointer; white-space: nowrap; }
+.eg-applyall input { width: auto; }
+.eg-floor { margin: 7px 0 0; font-size: 11px; color: #92400e; }
+.eg-err { margin: 6px 0 0; font-size: 11px; color: #991b1b; }
+.eg-foot { display: flex; gap: 7px; margin-top: 10px; }
 .asg-floor { margin: 7px 0 0; font: 600 11px inherit; color: #92400e; }
 .asg-none { margin: 8px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
 .asg-none.warn { color: #b45309; font-style: normal; font-weight: 600; }

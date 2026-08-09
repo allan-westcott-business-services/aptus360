@@ -391,30 +391,18 @@ export default function TeamsAdmin() {
               )}
 
               {tab === "details" && (
-                <div className="tm-details">
-                  <label className="tm-fld">
-                    <span>Rate</span>
-                    <input type="number" defaultValue={current.Rate ?? ""}
-                      onBlur={(e) => saveDetails({
-                        Rate: e.target.value === "" ? null : Number(e.target.value),
-                      })} />
-                  </label>
-                  <label className="tm-fld">
-                    <span>Rate unit</span>
-                    <input defaultValue={current.Rate_Unit ?? ""}
-                      placeholder="day"
-                      onBlur={(e) => saveDetails({ Rate_Unit: e.target.value || null })} />
-                  </label>
-                  <label className="tm-fld tm-check">
-                    <input type="checkbox" checked={!!current.Active}
-                      onChange={(e) => saveDetails({ Active: e.target.checked })} />
-                    <span>Active</span>
-                  </label>
-                  <p className="hint">
-                    An inactive team stays on past work but is not offered
-                    for new assignments.
-                  </p>
-                </div>
+                /* Keyed on the team so it remounts when another is
+                   opened. The fields hold their own draft state, and a
+                   draft belonging to the previous team would otherwise
+                   sit in the boxes looking like this one's. */
+                <TeamDetails
+                  key={current.Team_ID}
+                  team={current}
+                  teams={teams}
+                  busy={busy === "details"}
+                  onSave={saveDetails}
+                  onError={setError}
+                />
               )}
 
               {tab !== "details" && !count("crafts", current.Team_ID)
@@ -427,6 +415,123 @@ export default function TeamsAdmin() {
           )}
         </div>
       </div>
+    </div>
+  );
+}
+
+/* A team's own attributes, including its name.
+
+   Renaming happens here rather than on the heading above, because a
+   heading that is secretly an input is a thing people find by accident
+   or not at all — and this is where the team's other attributes already
+   live.
+
+   Mounted with `key={team.Team_ID}`, so each team gets a fresh set of
+   drafts. The previous arrangement read `defaultValue` off the current
+   team, which is only ever correct at mount; it looked right solely
+   because opening another team resets the tab to Members and unmounted
+   this. That was a coincidence holding a bug shut. */
+function TeamDetails({ team, teams, busy, onSave, onError }) {
+  const [name, setName] = useState(team.Team_Name ?? "");
+  const [rate, setRate] = useState(team.Rate ?? "");
+  const [unit, setUnit] = useState(team.Rate_Unit ?? "");
+
+  const saved = team.Team_Name ?? "";
+
+  /* Nothing stops two teams sharing a name in the schema, and there are
+     legitimate reasons to allow it, so this warns rather than refuses.
+     It is worth saying: the planning board shows the name and not the
+     id, so two Gang 4s there are indistinguishable. */
+  const clash = name.trim() && teams.some((t) =>
+    Number(t.Team_ID) !== Number(team.Team_ID)
+    && String(t.Team_Name ?? "").trim().toLowerCase() === name.trim().toLowerCase());
+
+  function commitName() {
+    const next = name.trim();
+    if (next === saved) return;          // nothing changed; no pointless write
+    /* Team_Name is NOT NULL, and the endpoint turns an empty string into
+       null on the way past — so an empty box would arrive as a database
+       error about a constraint rather than as anything a person could
+       act on. Caught here, where the answer is obvious. */
+    if (!next) {
+      onError("A team needs a name.");
+      setName(saved);
+      return;
+    }
+    onError("");
+    onSave({ Team_Name: next });
+  }
+
+  function onNameKey(e) {
+    if (e.key === "Enter") { e.preventDefault(); e.currentTarget.blur(); }
+    /* Escape abandons the edit. Without it the only way out of a
+       half-typed name is to retype the old one from memory. */
+    if (e.key === "Escape") { setName(saved); e.currentTarget.blur(); }
+  }
+
+  function commitRate() {
+    const next = rate === "" ? null : Number(rate);
+    if (next != null && !Number.isFinite(next)) {
+      onError("Rate has to be a number.");
+      setRate(team.Rate ?? "");
+      return;
+    }
+    if (next === (team.Rate ?? null)) return;
+    onError("");
+    onSave({ Rate: next });
+  }
+
+  function commitUnit() {
+    const next = unit.trim() || null;
+    if (next === (team.Rate_Unit ?? null)) return;
+    onError("");
+    onSave({ Rate_Unit: next });
+  }
+
+  return (
+    <div className="tm-details">
+      <div className="tm-details-row">
+        <label className="tm-fld tm-fld-name">
+          <span>Team name</span>
+          <input value={name} disabled={busy}
+            onChange={(e) => setName(e.target.value)}
+            onBlur={commitName}
+            onKeyDown={onNameKey} />
+        </label>
+
+        <label className="tm-fld">
+          <span>Rate</span>
+          <input type="number" value={rate} disabled={busy}
+            onChange={(e) => setRate(e.target.value)}
+            onBlur={commitRate} />
+        </label>
+
+        <label className="tm-fld">
+          <span>Rate unit</span>
+          <input value={unit} placeholder="day" disabled={busy}
+            onChange={(e) => setUnit(e.target.value)}
+            onBlur={commitUnit} />
+        </label>
+
+        <label className="tm-fld tm-check">
+          <input type="checkbox" checked={!!team.Active} disabled={busy}
+            onChange={(e) => onSave({ Active: e.target.checked })} />
+          <span>Active</span>
+        </label>
+      </div>
+
+      {clash && (
+        <p className="hint tm-clash">
+          Another team is already called that. Allowed, but the planning
+          board shows names rather than numbers, so the two will look
+          identical there.
+        </p>
+      )}
+
+      <p className="hint">
+        An inactive team stays on past work but is not offered
+        for new assignments.
+      </p>
     </div>
   );
 }
@@ -561,7 +666,13 @@ const CSS = `
   font: 500 12.5px inherit; padding: 6px 9px; text-align: left; }
 .tm-link:hover { background: var(--bg); }
 .tm-link.on { background: #eff6ff; border-color: #bfdbfe; }
-.tm-details { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+.tm-details { display: flex; flex-direction: column; gap: 10px; }
+.tm-details-row { display: flex; flex-wrap: wrap; gap: 14px; align-items: flex-end; }
+/* The name is the widest thing here and the one most often retyped in
+   full, so it gets room rather than sharing a rate-sized box. */
+.tm-fld-name { flex: 1 1 240px; }
+.tm-fld-name input { width: 100%; }
+.tm-clash { color: var(--warn-text); }
 .tm-fld { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .tm-fld > span { font: 700 10.5px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }

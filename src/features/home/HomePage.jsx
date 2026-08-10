@@ -49,30 +49,34 @@ export default function HomePage({ onOpen }) {
 }
 
 const CSS = `
-.home { max-width: 1180px; margin: 0 auto; padding: 26px 4px 56px; }
+/* Narrower than the rest of the app on purpose. The grid is four across
+   and eight areas make two rows; capping the width is what keeps the
+   squares at a size where both rows and the heading fit a laptop screen
+   without scrolling. Left as a max, so a small window still reflows. */
+.home { max-width: 836px; margin: 0 auto; padding: 20px 4px 40px; }
 
-.home-head { text-align: center; margin-bottom: 30px; }
+.home-head { text-align: center; margin-bottom: 22px; }
 .home-logo {
-  width: 190px; height: auto; display: block; margin: 0 auto 20px;
+  width: 150px; height: auto; display: block; margin: 0 auto 14px;
 }
 .home-head h1 {
-  margin: 0 0 5px; font-size: 25px; font-weight: 700; letter-spacing: -0.015em;
+  margin: 0 0 4px; font-size: 21px; font-weight: 700; letter-spacing: -0.015em;
 }
-.home-head p { margin: 0; font-size: 13.5px; color: var(--muted); }
+.home-head p { margin: 0; font-size: 12.5px; color: var(--muted); }
 
 .home-grid {
-  display: grid; gap: 16px;
-  grid-template-columns: repeat(auto-fit, minmax(232px, 1fr));
+  display: grid; gap: 14px;
+  grid-template-columns: repeat(auto-fit, minmax(180px, 1fr));
 }
 
 /* The square. The outline is the identity of the area, so it is 2px and
    in full colour rather than a hairline that would read as a generic
    card border. */
 .area-sq {
-  position: relative; aspect-ratio: 1; min-height: 150px;
+  position: relative; aspect-ratio: 1; min-height: 110px;
   display: flex; align-items: center; justify-content: center;
   text-align: center;
-  padding: 18px;
+  padding: 14px;
   background: var(--white);
   border: 2px solid var(--sq);
   border-radius: 14px;
@@ -92,7 +96,7 @@ const CSS = `
 }
 
 .area-name {
-  font-size: 18px; font-weight: 700; line-height: 1.3;
+  font-size: 15.5px; font-weight: 700; line-height: 1.3;
   letter-spacing: -0.01em; text-wrap: balance;
 }
 

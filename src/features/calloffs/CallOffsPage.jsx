@@ -1133,6 +1133,55 @@ function Assignments({ row }) {
     return m;
   }, [assignmentUtilRows]);
 
+  /* Plots another team holds for this phase, against what this booking
+     covers. Written once because five places ask it, and five copies is
+     five chances for one to forget the utilities and disable plots that
+     are free. */
+  /* What a booking says, in the terms somebody planning the week needs:
+     which utilities, on which day, to which plots.
+
+     The row above it gives a range and one plot list, which is right
+     while a booking is one team doing the same plots throughout. Once
+     the days differ or the phase is split, that summary is true and
+     useless \u2014 "10 to 12 Aug, plots 1-6" does not say that the gas and
+     water are on the Monday and the electric on the Wednesday.
+
+     Only where there is something to say. A booking with the same plots
+     every day and no split repeats the line above it, and a line that
+     repeats the one above is one more thing to read. */
+  const breakdownOf = (a) => {
+    const days = workDays
+      .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
+      .filter((d) => d.Plot_Range)
+      .sort((x, y) => String(x.Work_Date).localeCompare(String(y.Work_Date)));
+    if (!days.length) return [];
+
+    const ids = assignmentUtils.get(Number(a.Assignment_ID)) || [];
+    /* Named the way the split names them \u2014 "Gas / Water" \u2014 so the
+       summary and the control that produced it read alike. */
+    const what = ids.length
+      ? utils.filter((u) => ids.includes(Number(u.Utility_ID)))
+        .map((u) => u.Utility).join(" / ")
+      : null;
+
+    return days.map((d) => ({
+      key: `${a.Assignment_ID}-${d.Work_Date}`,
+      what,
+      when: fmt(d.Work_Date),
+      part: d.Part && d.Part !== "Full" ? d.Part : null,
+      plots: serialisePlots(parsePlots(d.Plot_Range)),
+    }));
+  };
+
+  const takenFor = (taskTypeId, exceptId = null, named = false) => takenPlots(
+    mine, taskTypeId, exceptId,
+    named ? ((id) => teamName(id)) : (() => null),
+    {
+      utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
+      mine: draft.byUtility ? (draft.utility_ids || []) : [],
+    },
+  );
+
   const plotUniverse = (row.items || [])
     .map((it) => it.Plot ?? it.Plots ?? String(it.Street_Light_ID ?? ""))
     .filter(Boolean);
@@ -1307,7 +1356,7 @@ function Assignments({ row }) {
          assignment with the remaining three already chosen, rather than
          with all six and two of them refused. */
       plots: plotUniverse.filter((pl) =>
-        !takenPlots(mine, phase.Task_Type_ID).has(pl)),
+        !takenFor(phase.Task_Type_ID).has(pl)),
       /* No weekend working unless somebody ticks it. The common case,
          and the safe default: a booking that quietly put a gang on a
          Sunday would be found by the gang. */
@@ -1352,6 +1401,10 @@ function Assignments({ row }) {
         ? "n/a" : serialisePlots(bookingPlots),
     }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
+      /* So a booking for the electric is not refused the plots the gas
+         and water booking holds. */
+      utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
+      utilities: draft.byUtility ? (draft.utility_ids || []) : [],
       /* So a Sunday nobody is on site for is not tested for clashes. */
       exceptId: editing,
       /* So a clash is checked half-day by half-day: a gang doing one
@@ -1718,7 +1771,8 @@ function Assignments({ row }) {
             )}
 
             {rows.map((a) => (
-              <div className="asg-row" key={a.Assignment_ID}>
+              <div className="asg-wrap" key={a.Assignment_ID}>
+              <div className="asg-row">
                 <span className="asg-team">{teamName(a.Team_ID)}</span>
                 <span className="asg-when">
                   {fmt(a.Start_Date)} to {fmt(a.End_Date)}
@@ -1851,6 +1905,21 @@ function Assignments({ row }) {
                 <button className="btn delete sm"
                   disabled={busy === `d:${a.Assignment_ID}`}
                   onClick={() => remove(a.Assignment_ID)}>Delete</button>
+              </div>
+
+              {/* What it comes to, day by day. */}
+              {breakdownOf(a).map((b) => (
+                <div className="asg-break" key={b.key}>
+                  {b.what && <span className="asg-break-what">{b.what}</span>}
+                  <span className="asg-break-when">
+                    {b.when}{b.part ? ` (${b.part})` : ""}
+                  </span>
+                  <span className="asg-break-plots">
+                    {`Plot${b.plots.includes("-") || b.plots.includes(",") ? "s" : ""} `}
+                    {b.plots}
+                  </span>
+                </div>
+              ))}
               </div>
             ))}
 
@@ -2071,15 +2140,16 @@ function Assignments({ row }) {
                             return (
                               <button key={g.key} type="button"
                                 className={`asg-pill${on ? " on" : ""}`}
-                                onClick={() => setDraft((d) => {
-                                  const cur = d.utility_ids || [];
-                                  return {
-                                    ...d,
-                                    utility_ids: on
-                                      ? cur.filter((x) => !g.ids.includes(x))
-                                      : [...new Set([...cur, ...g.ids])],
-                                  };
-                                })}>
+                                /* One or the other, not both. A booking
+                                   covering everything is what leaving
+                                   the tick off already means, and two
+                                   groups selected would be a split that
+                                   does not split anything. Clicking the
+                                   chosen one again clears it. */
+                                onClick={() => setDraft((d) => ({
+                                  ...d,
+                                  utility_ids: on ? [] : g.ids,
+                                }))}>
                                 {/* Named for what is present, so a site
                                     with no water reads "Gas" rather than
                                     offering water that is not there. */}
@@ -2172,11 +2242,34 @@ function Assignments({ row }) {
                           {draft.byDay && row.Selection_Mode !== "Span"
                             && plotUniverse.length > 0 && (
                             <div className="asg-day-plots">
-                              {(draft.plots || []).map((pl) => {
+                              {plotUniverse
+                                .filter((pl) =>
+                                  !takenFor(ph.Task_Type_ID, editing).has(pl))
+                                .map((pl) => {
                                 const on = (draft.dayPlots?.[d] || []).includes(pl);
+                                /* Taken by another day of this booking.
+
+                                   One team lays a plot once, so a plot
+                                   already down for the Tuesday cannot
+                                   also be done on the Wednesday. Shown
+                                   red and disabled rather than left
+                                   clickable and refused on save \u2014 the
+                                   grid is where the mistake is made, so
+                                   it is where it should be visible. */
+                                const otherDay = on ? null
+                                  : Object.entries(draft.dayPlots || {})
+                                    .find(([date, plots]) =>
+                                      date !== d && (plots || []).includes(pl))?.[0];
                                 return (
                                   <button key={pl} type="button"
-                                    className={`asg-pill sm${on ? " on" : ""}`}
+                                    className={[
+                                      "asg-pill", "sm", on ? "on" : "", otherDay ? "off" : "",
+                                    ].filter(Boolean).join(" ")}
+                                    disabled={!!otherDay}
+                                    aria-pressed={on}
+                                    title={otherDay
+                                      ? `Already on ${otherDay}`
+                                      : `Plot ${pl}`}
                                     onClick={() => setDraft((dd) => {
                                       const cur = dd.dayPlots?.[d] || [];
                                       return {
@@ -2195,7 +2288,7 @@ function Assignments({ row }) {
                               })}
                               {!(draft.dayPlots?.[d] || []).length && (
                                 <span className="asg-day-all">
-                                  nothing chosen &mdash; all of them
+                                  none on this day
                                 </span>
                               )}
                             </div>
@@ -2220,7 +2313,7 @@ function Assignments({ row }) {
                              all that exist — offering plots another team
                              holds would only be refused on save. */
                           const free = plotUniverse.filter((pl) =>
-                            !takenPlots(mine, ph.Task_Type_ID, editing).has(pl));
+                            !takenFor(ph.Task_Type_ID, editing).has(pl));
                           return {
                             ...d,
                             plots: (d.plots || []).length >= free.length ? [] : free,
@@ -2228,7 +2321,7 @@ function Assignments({ row }) {
                         })}>
                         {(draft.plots || []).length
                           >= plotUniverse.filter((pl) =>
-                            !takenPlots(mine, ph.Task_Type_ID, editing).has(pl)).length
+                            !takenFor(ph.Task_Type_ID, editing).has(pl)).length
                           ? "Clear" : "All free"}
                       </button>
                     </div>
@@ -2238,8 +2331,7 @@ function Assignments({ row }) {
                            Disabled rather than hidden: a plot missing
                            from the grid looks like a plot missing from
                            the call-off. */
-                        const taken = takenPlots(mine, ph.Task_Type_ID, editing,
-                          (id) => teamName(id));
+                        const taken = takenFor(ph.Task_Type_ID, editing, true);
                         return plotUniverse.map((pl) => {
                           const on = (draft.plots || []).includes(pl);
                           const by = !on ? taken.get(pl) : null;
@@ -2350,6 +2442,16 @@ const CSS = `
 .asg-floor { margin: 7px 0 0; font: 600 11px inherit; color: #92400e; }
 .asg-none { margin: 8px 0 0; font-size: 12px; color: var(--muted); font-style: italic; }
 .asg-none.warn { color: #b45309; font-style: normal; font-weight: 600; }
+.asg-wrap { margin-top: 8px; }
+.asg-wrap .asg-row { margin-top: 0; }
+/* Indented under the booking it explains, and lighter than it: the row
+   is the booking, these are what it amounts to. */
+.asg-break { display: flex; align-items: baseline; gap: 8px; font-size: 12px;
+  color: var(--muted); padding: 3px 0 0 14px; }
+.asg-break-what { font-weight: 700; color: var(--accent); min-width: 84px; }
+.asg-break-when { font-weight: 600; color: var(--text); min-width: 96px; }
+.asg-break-plots { font-weight: 600; }
+
 .asg-row { display: flex; align-items: center; gap: 12px; margin-top: 8px;
   padding: 6px 9px; background: var(--bg); border-radius: 6px; font-size: 12.5px; }
 .asg-team { font-weight: 700; }

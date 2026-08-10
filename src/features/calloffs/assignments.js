@@ -263,21 +263,50 @@ export function clashesFor(teamId, start, end, assignments = [], exceptId = null
 
    A call-off of six plots can be split three and three, which is the
    point of allowing several assignments per phase — but two teams
-   cannot both have plot four. Whoever turns up second finds the work
-   done, or worse, both dig.
+   cannot both have plot four for the same work. Whoever turns up second
+   finds it done, or worse, both dig.
 
    Per phase, not per call-off: the same plot is excavated, jointed and
    reinstated, by different gangs at different times. Only a clash
    within one phase is a clash.
 
+   ── And per utility, where the phase has been split ──
+
+   Laying the gas and water on all six plots does not take those plots
+   for the electric. That is a different trench, a different gang and
+   often a different week, and it is exactly what splitting a phase by
+   utility is for. So a booking only takes a plot from another booking
+   they have a utility in common.
+
+   A booking with no utilities recorded covers whatever the call-off
+   does — which is every booking made before the split existed — so it
+   clashes with everything, which is the safe reading and the one that
+   preserves how this behaved before.
+
+   `utilitiesOf` maps an assignment to its utility ids. Absent, the
+   check is by phase alone and behaves as it always did.
+
    Returns plot to the team holding it, so the panel can say which
    rather than only that the plot is unavailable. */
 export function takenPlots(assignments = [], taskTypeId, exceptId = null,
-  teamName = () => null) {
+  teamName = () => null, opts = {}) {
+  const { utilitiesOf = null, mine = null } = opts;
+
+  /* Two bookings share work if either covers everything, or they name a
+     utility in common. */
+  const overlaps = (a) => {
+    if (!utilitiesOf) return true;
+    const theirs = utilitiesOf(a) || [];
+    const ours = mine || [];
+    if (!theirs.length || !ours.length) return true;
+    return theirs.some((u) => ours.includes(Number(u)));
+  };
+
   const out = new Map();
   for (const a of assignments) {
     if (Number(a.Task_Type_ID) !== Number(taskTypeId)) continue;
     if (exceptId != null && Number(a.Assignment_ID) === Number(exceptId)) continue;
+    if (!overlaps(a)) continue;
     for (const p of parsePlots(a.Plot_Range)) {
       if (!out.has(p)) out.set(p, teamName(a.Team_ID) ?? `team ${a.Team_ID}`);
     }
@@ -287,7 +316,13 @@ export function takenPlots(assignments = [], taskTypeId, exceptId = null,
 
 /* Everything wrong with a proposed assignment, as a list. */
 export function validate(draft, opts = {}) {
-  const { phases = [], assignments = [], today = null, exceptId = null } = opts;
+  const {
+    phases = [], assignments = [], today = null, exceptId = null,
+    /* How to read a booking's utilities, and what this one covers. Only
+       bookings sharing a utility can take a plot from each other \u2014 see
+       takenPlots. Absent, the check is by phase alone, as it was. */
+    utilitiesOf = null, utilities = [],
+  } = opts;
   const out = [];
 
   if (!draft.Team_ID) out.push("Choose a team.");
@@ -328,11 +363,13 @@ export function validate(draft, opts = {}) {
      Checked here as well as disabled in the panel: a disabled pill is a
      hint, and a selection made before another assignment was saved would
      otherwise go through. */
-  const taken = takenPlots(assignments, draft.Task_Type_ID, exceptId);
+  const taken = takenPlots(assignments, draft.Task_Type_ID, exceptId,
+    () => null, { utilitiesOf, mine: utilities });
   const doubled = plots.filter((p) => taken.has(p));
   if (doubled.length) {
     out.push(`Plot${doubled.length === 1 ? "" : "s"} ${doubled.join(", ")} `
-      + `already assigned on this phase.`);
+      + "already assigned on this phase"
+      + (utilities.length ? " for the same utilities." : "."));
   }
 
   if (!plots.length) out.push("Choose at least one plot.");

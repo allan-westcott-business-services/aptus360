@@ -71,6 +71,9 @@ import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
+import {
+  isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
+} from "./easement.js";
 import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -2210,6 +2213,41 @@ export default function GISCanvasPage() {
       (typeKey) => isTrenchType(typeKey, lineTypes),
     );
 
+    /* ── Easements ──────────────────────────────────────────────────
+
+       The strip of land a trench has a right to cross, hatched under
+       everything else.
+
+       Its own pass, over every feature rather than the visible ones.
+       The flag is on the trench, so drawing it inside the trench's own
+       draw call meant isolating gas hid the trench and took the
+       easement with it \u2014 but the easement is what the gas is laid in,
+       and it does not stop being there because the layer filter is on.
+       Span nodes are exempted from the filter for the same reason and
+       in the same way.
+
+       The trench line itself still follows the filter. What survives is
+       the ground, not the dig. */
+    for (const f of features) {
+      if (f.Feature_Type !== "line" || !isEasement(f)) continue;
+      const band = easementBand((f.Geometry || []).map(toPx),
+        EASEMENT_WIDTH_M * view.scale);
+      if (band.length < 3) continue;
+      ctx.save();
+      ctx.beginPath();
+      band.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fillStyle = hatchPattern(ctx, EASEMENT_COLOUR);
+      ctx.fill();
+      /* An edge as well as the hatch: zoomed out the mesh is too fine
+         to read, and the boundary is the part that matters on site. */
+      ctx.strokeStyle = EASEMENT_COLOUR;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
     drawOrder.forEach((f) => {
       const colour = layerOf(f.Layer_Key).Colour;
       const on = selected.includes(f.Feature_ID);
@@ -2389,6 +2427,7 @@ export default function GISCanvasPage() {
            exactly as it did. */
         const fp = feederPlan.get(Number(f.Feature_ID));
         const line = fp?.offsetPx ? offsetPolyline(pts, fp.offsetPx) : pts;
+
         ctx.beginPath();
         line.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
         if (f.Feature_Type === "polygon") ctx.closePath();

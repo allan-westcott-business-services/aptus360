@@ -12,6 +12,7 @@
      rather than lines. That happened, and only a rendered picture
      showed it \u2014 which is why the tile is checked here for the shape
      it should have, and why it was also looked at in a browser. */
+import { readFileSync } from "node:fs";
 import { isTrenchFeature } from "./src/features/gis/snapping.js";
 import {
   easementBand, isEasement, hatchPattern,
@@ -118,6 +119,37 @@ if (!/^#[0-9a-f]{6}$/i.test(EASEMENT_COLOUR)) fail("the easement colour is not a
     fail("an electric service counts as a trench");
   }
   if (t(null)) fail("null counts as a trench");
+}
+
+// 9. The band is drawn on its own, not inside the trench's draw call.
+//
+//    The flag is on the trench, so painting the band where the trench
+//    is painted means isolating gas hides the trench and takes the
+//    easement with it \u2014 which is what happened. The easement is what
+//    the gas is laid in; it does not stop being there because the layer
+//    filter is on.
+{
+  const page = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = page.indexOf('!isEasement(f)) continue;');
+  if (at < 0) fail("no easement pass in the canvas");
+  else {
+    const start = page.lastIndexOf("for (const f of features) {", at);
+    const end = page.indexOf("drawOrder.forEach((f) => {", at);
+    if (start < 0 || end < 0) fail("the easement pass is not where it should be");
+    else {
+      const code = page.slice(start, end).replace(/\/\*[\s\S]*?\*\//g, "");
+      /* It must read every feature, and consult nothing that filters. */
+      for (const forbidden of ["visible", "hidden", "styleFor"]) {
+        if (code.includes(forbidden)) {
+          fail(`the easement pass consults ${forbidden}; it would vanish `
+            + "when a layer is isolated");
+        }
+      }
+      if (end > page.indexOf("drawOrder.forEach((f) => {")) {
+        fail("the easement is drawn after the features, not under them");
+      }
+    }
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

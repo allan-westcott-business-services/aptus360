@@ -147,6 +147,9 @@ const TABLES = {
       + "the second waits." },
   Work_Type_Task_Type: { pk: "Work_Type_Task_Type_ID", order: "Display_Order" },
   Call_Off_Utility: { pk: "Call_Off_Utility_ID", order: "Call_Off_Utility_ID" },
+  Call_Off_Assignment_Utility: {
+    pk: "Assignment_Utility_ID", order: "Assignment_Utility_ID",
+  },
   Call_Off_Assignment: { pk: "Assignment_ID",          order: "Start_Date" },
   /* The days under an assignment. Missing from this list, every write
      to it returned 404 — and because saving an edit deletes the old days

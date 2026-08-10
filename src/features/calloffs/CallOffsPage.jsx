@@ -734,6 +734,10 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
       Ground_Unmade: row.Ground_Unmade ?? "",
       Line_Level_Required: row.Line_Level_Required ?? "",
       Notes: row.Notes ?? "",
+      /* Which utilities this call-off covers (0146). Editable here
+         rather than on the project's call-off tab: that tab is a list,
+         and one place to edit a call-off is better than two. */
+      utility_ids: [...(row.utility_ids || [])],
     });
     setEditing(true);
   };
@@ -778,6 +782,27 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
       {editing && (
         <div className="co-card">
           <h3>Edit call-off</h3>
+
+          <div className="co-ed-utils">
+            <span className="co-ed-utils-label">Utilities in this call-off</span>
+            {utils.filter((u) => !u.Is_Lighting).map((u) => (
+              <label className="co-ed-util" key={u.Utility_ID}>
+                <input type="checkbox"
+                  checked={(draft.utility_ids || []).includes(Number(u.Utility_ID))}
+                  onChange={(e) => setDraft((d) => {
+                    const cur = d.utility_ids || [];
+                    return {
+                      ...d,
+                      utility_ids: e.target.checked
+                        ? [...cur, Number(u.Utility_ID)]
+                        : cur.filter((x) => x !== Number(u.Utility_ID)),
+                    };
+                  })} />
+                {u.Utility}
+              </label>
+            ))}
+          </div>
+
           <div className="co-edit">
             {[
               ["Preferred_Date", "Preferred date", "date"],
@@ -2262,6 +2287,13 @@ const CSS = `
   background: currentColor; margin-right: 6px; vertical-align: middle; }
 .co-edit { display: grid; grid-template-columns: repeat(auto-fill, minmax(180px, 1fr));
   gap: 11px 14px; }
+.co-ed-utils { display: flex; flex-wrap: wrap; align-items: center; gap: 8px 16px;
+  padding: 0 0 14px; margin-bottom: 14px; border-bottom: 1px solid var(--border); }
+.co-ed-utils-label { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.co-ed-util { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  cursor: pointer; }
+
 .co-ed { display: flex; flex-direction: column; gap: 3px; font-size: 12px; }
 .co-ed.wide { grid-column: 1 / -1; }
 .co-ed > span { font: 700 10.5px inherit; color: var(--muted);

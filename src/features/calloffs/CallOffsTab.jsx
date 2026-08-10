@@ -1,7 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
-import {
-  listCallOffs, createCallOff, updateCallOff, deleteCallOff,
-} from "../../api/calloffs.js";
+import { listCallOffs, createCallOff, deleteCallOff } from "../../api/calloffs.js";
+import { openCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
@@ -63,10 +62,6 @@ export default function CallOffsTab({ projectId }) {
 
   const [f, setF] = useState({});
   const [items, setItems] = useState([]);
-  /* The call-off being edited, or null when raising a new one. The form
-     is the same either way \u2014 a second one would be a second place for
-     the rules to be written down. */
-  const [editingId, setEditingId] = useState(null);
 
   /* Plots are chosen from a grid rather than a dropdown per row.
 
@@ -205,34 +200,7 @@ export default function CallOffsTab({ projectId }) {
   );
   const energDefault = energFloor ? dayAfter(energFloor.date) : "";
 
-  /* Open an existing call-off.
-
-     The rows are shown but not editable here: changing which sections
-     or plots a call-off covers is a different act from correcting its
-     details, and PATCH updates the submission only. Offering boxes that
-     silently discard what is typed in them would be worse than not
-     offering them. */
-  function openEdit(row) {
-    setEditingId(row.Submission_ID);
-    setF({
-      Work_Type_ID: row.Work_Type_ID ?? "",
-      utility_ids: [...(row.utility_ids || [])],
-      Contact_Name: row.Contact_Name ?? "",
-      Contact_Company: row.Contact_Company ?? "",
-      Preferred_Date: row.Preferred_Date ?? "",
-      Alternative_Date: row.Alternative_Date ?? "",
-      Obstruction_Free: row.Obstruction_Free ?? "",
-      Ground_Unmade: row.Ground_Unmade ?? "",
-      Line_Level_Required: row.Line_Level_Required ?? "",
-      Notes: row.Notes ?? "",
-    });
-    setItems(row.items || []);
-    setPenalty(null);
-    setOpen(true);
-  }
-
   function openForm() {
-    setEditingId(null);
     setF({
       Work_Type_ID: workTypes[0]?.Work_Type_ID ?? "",
       /* Which utilities are in this call-off. Blank rather than every
@@ -271,35 +239,13 @@ export default function CallOffsTab({ projectId }) {
        as one for four. The charge is shown and accepted rather than
        applied quietly. Only when raising one: the visit has already
        been charged for by the time somebody is correcting the notes. */
-    if (!editingId && mode === "PlotList" && !acceptedCharge) {
+    if (mode === "PlotList" && !acceptedCharge) {
       const p = servicePenalty(plotRows.length);
       if (p.applies) { setPenalty(p); return; }
     }
 
     setBusy(true);
     try {
-      if (editingId) {
-        /* The submission and its utilities. Not the rows: PATCH updates
-           the submission only, and the form says as much. */
-        const res = await updateCallOff(projectId, editingId, {
-          Work_Type_ID: f.Work_Type_ID,
-          utility_ids: f.utility_ids,
-          Contact_Name: f.Contact_Name,
-          Contact_Company: branchName || null,
-          Preferred_Date: f.Preferred_Date,
-          Alternative_Date: f.Alternative_Date || null,
-          Obstruction_Free: f.Obstruction_Free,
-          Ground_Unmade: f.Ground_Unmade,
-          Line_Level_Required: f.Line_Level_Required,
-          Notes: f.Notes,
-        });
-        setOpen(false);
-        setEditingId(null);
-        await load();
-        setError(res?.warning || "");
-        return;
-      }
-
       const res = await createCallOff(projectId, {
         ...f,
         Project_ID: projectId,
@@ -352,14 +298,6 @@ export default function CallOffsTab({ projectId }) {
 
       {open && (
         <div className="co-form">
-          {editingId && (
-            <p className="co-editing">
-              {`Editing call-off #${editingId}. `}
-              {/* Said before somebody types into a row and wonders why
-                  it did not save. */}
-              Its sections and plots are shown below but are not changed here.
-            </p>
-          )}
           <div className="co-grid">
             <div className="fld">
               <label htmlFor="co-wt">Work type</label>
@@ -601,7 +539,8 @@ export default function CallOffsTab({ projectId }) {
           {/* The row opens the call-off. A button rather than a div with
               a click on it, so it is reachable by keyboard and reads as
               something that can be opened. */}
-          <button className="co-row-main" onClick={() => openEdit(r)}
+          <button className="co-row-main"
+            onClick={() => openCallOff({ submissionId: r.Submission_ID })}
             title={`Open call-off #${r.Submission_ID}`}>
             <strong>#{r.Submission_ID}</strong>
             <span className="co-wt">{r.Work_Type?.Work_Type_Name ?? "\u2014"}</span>
@@ -638,7 +577,13 @@ export default function CallOffsTab({ projectId }) {
           </button>
 
           <div className="co-row-acts">
-            <button className="btn ghost sm" onClick={() => openEdit(r)}>Edit</button>
+            {/* To the call-off page, not to a form here. That page has
+                the team assignments, the trench table and the status
+                trail on it \u2014 this tab is a list. */}
+            <button className="btn ghost sm"
+              onClick={() => openCallOff({ submissionId: r.Submission_ID })}>
+              Open
+            </button>
             <button className="btn delete sm" onClick={() => remove(r.Submission_ID)}>
               Delete
             </button>

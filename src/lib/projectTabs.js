@@ -25,6 +25,11 @@ export const TABS = [
   { id: "plots", label: "Plots", stages: ["tender", "contract"] },
   { id: "nrs", label: "Non-Res Supplies", stages: ["tender", "contract"] },
   { id: "poc", label: "POC Applications", stages: ["tender"] },
+  /* Tender stage only, and sits beside POC Applications because the
+     legal work is what the application waits on — wayleaves, easements
+     and land agreements are the usual reason a point of connection
+     stalls. */
+  { id: "legal", label: "Legal", stages: ["tender"] },
   { id: "designs", label: "Outline Designs", stages: ["tender"] },
   { id: "av", label: "Asset Value", stages: ["tender", "contract"] },
   { id: "contract-designs", label: "Detailed Designs", stages: ["contract"] },
@@ -50,6 +55,35 @@ export const STAGES = [
 export const PINNED_TAB = "details";
 
 export const tabsForStage = (stage) => TABS.filter((t) => t.stages.includes(stage));
+
+/* Which stages a section offers.
+
+   Same rule as the tabs: a stage with no row is shown, so a section
+   nobody has configured behaves as it always did.
+
+   A section that has hidden every stage gets all of them back. Unlike
+   the tabs there is no pinned stage to fall back on, and a project page
+   with no stage has nothing to render at all — so the setting refuses
+   to apply rather than producing a dead end. */
+export function visibleStages(areaKey, rows) {
+  if (!areaKey) return STAGES;
+  const shown = STAGES.filter((sg) => {
+    const row = (rows || []).find((r) =>
+      r.Area_Key === areaKey && r.Stage_Key === sg.id);
+    return !row || row.Is_Visible !== false;
+  });
+  return shown.length ? shown : STAGES;
+}
+
+/* The stage to actually show. Honours what was remembered for this
+   project where the section allows it, and otherwise falls back to the
+   section's first stage — somebody who last looked at a project in
+   Tendering & Design must not land on a Tender view in Operations,
+   where Tender does not exist. */
+export function resolveStage(preferred, areaKey, rows) {
+  const allowed = visibleStages(areaKey, rows);
+  return allowed.some((sg) => sg.id === preferred) ? preferred : allowed[0].id;
+}
 
 /* Hidden means a row exists saying so. A tab with no row is shown, so a
    tab added by a later release turns up everywhere rather than nowhere,

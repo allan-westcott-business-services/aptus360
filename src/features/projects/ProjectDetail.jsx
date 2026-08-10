@@ -2,12 +2,13 @@ import { useState, useEffect, useCallback, useMemo } from "react";
 import { listOptions, addOptions, removeOption } from "../../api/projectOptions.js";
 import { remember, recall } from "../../lib/session.js";
 import ProjectDetailsForm from "./ProjectDetailsForm.jsx";
-import { STAGES, visibleTabs } from "../../lib/projectTabs.js";
+import { visibleTabs, visibleStages, resolveStage } from "../../lib/projectTabs.js";
 import { adminList } from "../../api/admin.js";
 import StakeholderTab from "../stakeholders/StakeholderTab.jsx";
 import CallOffsTab from "../calloffs/CallOffsTab.jsx";
 import ActivityTab from "../activity/ActivityTab.jsx";
 import ContractDesignsTab from "../designs/ContractDesignsTab.jsx";
+import LegalTab from "./LegalTab.jsx";
 import AssetValueTab from "../av/AssetValueTab.jsx";
 import POCApplicationsTab from "../poc/POCApplicationsTab.jsx";
 import NonResidentialTab from "../nrs/NonResidentialTab.jsx";
@@ -18,10 +19,9 @@ import OutlineDesignsTab from "../designs/OutlineDesignsTab.jsx";
 /* An existing project, opened from the table. Tabs mirror the tender
    detail panel in the original app — Details and Plots for now, with
    Scopes, Designs and History slotting in as they're migrated. */
-/* The tab list, the stage rule and the per-section visibility rule all
+/* The tab list, the stage rule and the per-section visibility rules all
    live in src/lib/projectTabs.js, because the admin screen that
-   configures visibility needs the same list. Re-exported here so the
-   pages that already import STAGES from this module keep working. */
+   configures them needs the same lists. */
 
 /* Where a project is being worked on. Held per project id, so two
    projects open in turn do not fight over one setting. */
@@ -38,11 +38,16 @@ export default function ProjectDetail({
      means no rows, which means every tab, which is what the page did
      before the setting existed. */
   const [tabRows, setTabRows] = useState([]);
+  const [stageRows, setStageRows] = useState([]);
   useEffect(() => {
     let live = true;
-    adminList("Project_Tab_Visibility")
-      .then(({ rows = [] }) => { if (live) setTabRows(rows); })
-      .catch(() => { if (live) setTabRows([]); });
+    const soft = (t) => adminList(t).catch(() => ({ rows: [] }));
+    Promise.all([soft("Project_Tab_Visibility"), soft("Project_Stage_Visibility")])
+      .then(([tabs, stages]) => {
+        if (!live) return;
+        setTabRows(tabs.rows || []);
+        setStageRows(stages.rows || []);
+      });
     return () => { live = false; };
   }, []);
   /* The project as it now stands, not as it was handed over.
@@ -72,13 +77,25 @@ export default function ProjectDetail({
     remember(stageKey(project?.Project_ID), stage);
   }, [stage, project?.Project_ID]);
 
-  /* Which tabs to offer: the stage rule, then whatever this section
-     hides. Declared after `stage` rather than beside the fetch above,
-     because a useMemo runs its factory during render — reading `stage`
-     from above its own `const` is a temporal dead zone, and it takes
-     the whole page down rather than the tab strip. */
+  /* Everything below reads `stage`, so it is declared after it rather
+     than beside the fetch above: a useMemo runs its factory during
+     render, and reading a const from above its own declaration is a
+     temporal dead zone that takes the whole page down. */
+  const stages = useMemo(
+    () => visibleStages(areaKey, stageRows), [areaKey, stageRows]);
+
+  /* A stage this section does not offer is corrected rather than shown.
+     Somebody who last looked at this project in Tendering & Design has
+     "tender" remembered for it, and must not land on a Tender view in
+     Operations where Tender does not exist. */
+  const shownStage = useMemo(
+    () => resolveStage(stage, areaKey, stageRows), [stage, areaKey, stageRows]);
+  useEffect(() => {
+    if (shownStage !== stage) setStage(shownStage);
+  }, [shownStage, stage]);
+
   const shownTabs = useMemo(
-    () => visibleTabs(stage, areaKey, tabRows), [stage, areaKey, tabRows]);
+    () => visibleTabs(shownStage, areaKey, tabRows), [shownStage, areaKey, tabRows]);
 
   /* Switching stage can leave the open tab behind — POC Applications
      does not exist on a contract. Falls back to Details, which is in
@@ -178,18 +195,23 @@ export default function ProjectDetail({
           does not land on the tender tabs every time they come back to
           it. A view rather than a status: switching does not change the
           project, only what is in front of you. */}
-      <div className="stage-bar">
-        <div className="stage-switch" role="tablist" aria-label="Stage">
-          {STAGES.map((sg) => (
-            <button key={sg.id} role="tab"
-              aria-selected={stage === sg.id}
-              className={stage === sg.id ? "stage-btn on" : "stage-btn"}
-              onClick={() => setStage(sg.id)}>
-              {sg.label}
-            </button>
-          ))}
+      {/* Only where there is something to switch between. A section
+          left with one stage gets no control: one option is furniture,
+          and it invites a click that does nothing. */}
+      {stages.length > 1 && (
+        <div className="stage-bar">
+          <div className="stage-switch" role="tablist" aria-label="Stage">
+            {stages.map((sg) => (
+              <button key={sg.id} role="tab"
+                aria-selected={shownStage === sg.id}
+                className={shownStage === sg.id ? "stage-btn on" : "stage-btn"}
+                onClick={() => setStage(sg.id)}>
+                {sg.label}
+              </button>
+            ))}
+          </div>
         </div>
-      </div>
+      )}
 
       <div className="detail-tabs" role="tablist">
         {shownTabs.map((t) => (
@@ -222,6 +244,7 @@ export default function ProjectDetail({
         {tab === "comments" && <ActivityTab projectId={project.Project_ID} view="comments" />}
         {tab === "nrs" && <NonResidentialTab projectId={project.Project_ID} />}
         {tab === "poc" && <POCApplicationsTab projectId={project.Project_ID} />}
+        {tab === "legal" && <LegalTab />}
         {tab === "av" && <AssetValueTab projectId={project.Project_ID} />}
         {tab === "contract-designs" && <ContractDesignsTab projectRef={project.Project_Ref} />}
         {tab === "calloffs" && <CallOffsTab projectId={project.Project_ID} />}
@@ -277,4 +300,3 @@ const CSS = `
 .detail-tab.on { color: var(--accent); border-bottom-color: var(--accent); }
 `;
 
-export { STAGES };

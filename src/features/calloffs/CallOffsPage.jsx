@@ -988,11 +988,12 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
    always \u2014 and a booking that can only ever say "gas and water
    together" cannot record the day the water was laid on its own.
 
-   One at a time, as the picker below enforces. A team laying gas and
-   water on the same visit is two bookings on the same dates and plots,
-   which the clash check allows because the utilities differ \u2014 and
-   which is what makes the day the water actually went in recordable at
-   all. */
+   One or two of them, not three. Gas and water often go in together on
+   one visit, and the electric follows with another gang on another day
+   \u2014 so a booking needs to be able to say "gas and water". All three
+   selected is not a split at all: it is the same as leaving the tick
+   off, and offering it as a third state to reach the same place only
+   invites the question of which one meant what. */
 const UTILITY_GROUPS = [
   { key: "gas", names: ["Gas"] },
   { key: "water", names: ["Water"] },
@@ -1788,41 +1789,38 @@ function Assignments({ row }) {
               <div className="asg-wrap" key={a.Assignment_ID}>
               <div className="asg-row">
                 <span className="asg-team">{teamName(a.Team_ID)}</span>
+                {/* Each day, with how much of it.
+
+                    A range and a separate "10 AM, 11 PM" said the same
+                    thing twice and neither said it plainly: the range
+                    gave dates without parts, the tag gave parts against
+                    day numbers with no month on them. One list of dates
+                    carrying their own part reads as the sentence it is.
+
+                    A range where every day is the same and there are
+                    more than two of them \u2014 five full days is a range,
+                    not a list somebody wants to read across. */}
                 <span className="asg-when">
-                  {fmt(a.Start_Date)} to {fmt(a.End_Date)}
+                  {(() => {
+                    const mineDays = workDays
+                      .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
+                      .sort((x, y) => String(x.Work_Date).localeCompare(y.Work_Date));
+                    if (!mineDays.length) {
+                      return `${fmt(a.Start_Date)} to ${fmt(a.End_Date)}`;
+                    }
+
+                    const parts = [...new Set(mineDays.map((d) => d.Part || "Full"))];
+                    const allFull = parts.length === 1 && parts[0] === "Full";
+                    if (allFull && mineDays.length > 2) {
+                      return `${fmt(a.Start_Date)} to ${fmt(a.End_Date)}`;
+                    }
+
+                    return mineDays
+                      .map((d) => `${fmt(d.Work_Date)}`
+                        + (d.Part && d.Part !== "Full" ? ` (${d.Part})` : ""))
+                      .join(", ");
+                  })()}
                 </span>
-
-                {/* How much of each day, from the day rows.
-
-                    The dates alone say a gang is there on the sixth and
-                    nothing about whether that is a morning, an
-                    afternoon or the whole day — which is the difference
-                    between one team doing two spans and two teams doing
-                    one each.
-
-                    Where every day is the same it is said once; where
-                    they differ each is named, because "AM" against a
-                    week that is only a morning on the Friday would be
-                    wrong. */}
-                {(() => {
-                  const mineDays = workDays
-                    .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
-                    .sort((x, y) => String(x.Work_Date).localeCompare(y.Work_Date));
-                  if (!mineDays.length) return null;
-
-                  const parts = [...new Set(mineDays.map((d) => d.Part || "Full"))];
-                  const label = (p) => (p === "Full" ? "Full day" : p);
-
-                  return (
-                    <span className="asg-part-tag">
-                      {parts.length === 1
-                        ? label(parts[0])
-                        : mineDays.map((d) =>
-                          `${String(d.Work_Date).slice(8)} ${label(d.Part)}`).join(", ")}
-                    </span>
-                  );
-                })()}
-
 
                 {/* What is being done, beside when it is being done.
 
@@ -2163,21 +2161,37 @@ function Assignments({ row }) {
                           }))
                           .filter((g) => g.ids.length)
                           .map((g) => {
-                            const on = g.ids.every((id) =>
-                              (draft.utility_ids || []).includes(id));
+                            const chosen = draft.utility_ids || [];
+                            const on = g.ids.every((id) => chosen.includes(id));
+                            /* Two is the most a split can name. The
+                               third is disabled rather than left
+                               clickable and refused, the same as a plot
+                               another team holds. */
+                            const full = !on && chosen.length >= 2;
                             return (
                               <button key={g.key} type="button"
-                                className={`asg-pill${on ? " on" : ""}`}
+                                disabled={full}
+                                title={full
+                                  ? "A split names one or two utilities, not all three"
+                                  : undefined}
+                                className={[
+                                  "asg-pill", on ? "on" : "", full ? "off" : "",
+                                ].filter(Boolean).join(" ")}
                                 /* One or the other, not both. A booking
                                    covering everything is what leaving
                                    the tick off already means, and two
                                    groups selected would be a split that
                                    does not split anything. Clicking the
                                    chosen one again clears it. */
-                                onClick={() => setDraft((d) => ({
-                                  ...d,
-                                  utility_ids: on ? [] : g.ids,
-                                }))}>
+                                onClick={() => setDraft((d) => {
+                                  const cur = d.utility_ids || [];
+                                  return {
+                                    ...d,
+                                    utility_ids: on
+                                      ? cur.filter((x) => !g.ids.includes(x))
+                                      : [...new Set([...cur, ...g.ids])],
+                                  };
+                                })}>
                                 {/* Named for what is present, so a site
                                     with no water reads "Gas" rather than
                                     offering water that is not there. */}

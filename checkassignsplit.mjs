@@ -77,6 +77,23 @@ if ([...takenPlots(existing, 1)].length !== 6) {
   fail("takenPlots with no utility information stopped clashing");
 }
 
+// 7. A booking naming two utilities takes plots from either of them,
+//    and from a booking naming just one of them. Gas and water laid
+//    together still leaves the electric free.
+{
+  const both = [...takenPlots(
+    [{ Assignment_ID: 3, Task_Type_ID: 1, Plot_Range: "1-6" }], 1, null, () => null,
+    { utilitiesOf: () => [...GAS, ...WATER], mine: WATER },
+  )].length;
+  if (both !== 6) fail("a gas+water booking did not clash with a water one");
+
+  const clear = [...takenPlots(
+    [{ Assignment_ID: 3, Task_Type_ID: 1, Plot_Range: "1-6" }], 1, null, () => null,
+    { utilitiesOf: () => [...GAS, ...WATER], mine: ELECTRIC },
+  )].length;
+  if (clear !== 0) fail("a gas+water booking blocked the electric");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility split behaves (each utility takes plots only from its own).");
 process.exit(bad ? 1 : 0);

@@ -64,6 +64,28 @@ for (const [what, pattern] of [
   if (n === 0) fail(`the ${what} tick is missing`);
 }
 
+// 6. The per-day tick is not offered on a one-day booking, and the
+//    flag it sets is derived rather than read raw.
+//
+//    Both halves matter. Without the first, the form asks whether the
+//    plots differ between days when there is one day. Without the
+//    second, narrowing a three-day booking to one leaves the flag set
+//    with the tick gone, and plots save against days no longer in it.
+{
+  const tick = src.indexOf('className="asg-byday"');
+  const before = src.slice(Math.max(0, tick - 400), tick);
+  if (!/schedule\.days\.length > 1/.test(before)) {
+    fail("the per-day tick is shown on a one-day booking");
+  }
+  if (!/const splitByDay = !!draft\.byDay && schedule\.days\.length > 1/.test(src)) {
+    fail("splitByDay is not derived from the number of days");
+  }
+  /* And nothing reads the raw flag except the tick and that derivation,
+     or the two views come apart again. */
+  const raw = (src.match(/draft\.byDay/g) || []).length;
+  if (raw > 2) fail(`draft.byDay is read raw in ${raw} places; use splitByDay`);
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assign form behaves (dates before team, any-day availability, full days named).");
 process.exit(bad ? 1 : 0);

@@ -2077,7 +2077,12 @@ function Assignments({ row }) {
                         do the same plots throughout, and a grid of
                         pills against every day would be four questions
                         where there was one. */}
-                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
+                    {/* Nothing to divide on a one-day booking, so the
+                        tick is not offered: it would be a choice between
+                        the same plots every day and different plots each
+                        day when there is only one day. */}
+                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0
+                      && schedule.days.length > 1 && (
                       <label className="asg-byday">
                         <input type="checkbox" checked={!!draft.byDay}
                           onChange={(e) => setDraft((dd) => ({

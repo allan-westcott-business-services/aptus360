@@ -1317,6 +1317,19 @@ function Assignments({ row }) {
     setError("");
   }
 
+  /* What the booking as a whole covers.
+
+     Where the days carry their own plots, it is everything they cover
+     between them — the bottom picker is hidden then, so nothing else
+     is saying it. Falls back to that picker otherwise.
+
+     One definition, read by the save and by the validation below, so
+     they cannot disagree about whether a booking has any plots on it. */
+  const bookingPlots = draft.byDay
+    ? [...new Set(Object.values(draft.dayPlots || {}).flat())]
+      .sort((a, b) => Number(a) - Number(b))
+    : (draft.plots || []);
+
   /* A mains call-off divides spans, not plots, so the plot rule does not
      apply to it — requiring at least one plot would make every mains
      assignment impossible to save. */
@@ -1324,7 +1337,7 @@ function Assignments({ row }) {
     ? checkAssignment({
       ...draft,
       Plot_Range: row.Selection_Mode === "Span"
-        ? "n/a" : serialisePlots(draft.plots || []),
+        ? "n/a" : serialisePlots(bookingPlots),
     }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
       /* So a Sunday nobody is on site for is not tested for clashes. */
@@ -1413,7 +1426,7 @@ function Assignments({ row }) {
         /* A mains assignment covers the spans the call-off names, so
            there is nothing to record here. */
         Plot_Range: row.Selection_Mode === "Span"
-          ? null : (serialisePlots(draft.plots) || null),
+          ? null : (serialisePlots(bookingPlots) || null),
       };
 
       let saved;
@@ -2143,7 +2156,13 @@ function Assignments({ row }) {
                     sense in which one team takes some of its plots and
                     another the rest, because the plots are not what is
                     being divided. */}
-                {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
+                {/* Not while the days carry their own. It would be the
+                    same question asked twice, and the answer here is
+                    the one that does nothing \u2014 which is worse than
+                    not asking. The booking's range is then whatever the
+                    days between them cover. */}
+                {row.Selection_Mode !== "Span" && plotUniverse.length > 0
+                  && !draft.byDay && (
                   <div className="asg-plots-pick">
                     <div className="asg-days-head">
                       <strong>Plots</strong>
@@ -2339,8 +2358,10 @@ const CSS = `
 /* Wide enough for dd/mm/yyyy and the picker button, and no wider. */
 .asg-date { width: 140px; }
 .asg-to { font-size: 11.5px; color: var(--muted); }
+/* "Off site" on one line. Two words wrapping inside a tick box label
+   read as two separate options. */
 .asg-off { display: inline-flex; align-items: center; gap: 6px; margin-left: 4px;
-  font: 600 11.5px inherit; cursor: pointer; }
+  font: 600 11.5px inherit; cursor: pointer; white-space: nowrap; }
 .asg-off input { width: auto; }
 
 .asg-wknd { display: flex; flex-wrap: wrap; align-items: center; gap: 6px;
@@ -2352,12 +2373,12 @@ const CSS = `
   padding: 6px 9px; }
 .asg-split { padding: 10px 0 0; }
 .asg-split-tick, .asg-byday { display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12.5px; cursor: pointer; color: var(--muted); }
-.asg-byday { margin-left: auto; font-weight: 500; }
+  font-size: 12.5px; cursor: pointer; color: var(--muted); white-space: nowrap; }
+.asg-byday { margin-left: auto; font-weight: 500; white-space: nowrap; }
 .asg-split-utils { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .asg-split-hint { font-size: 12px; color: var(--warn-text); margin: 6px 0 0; }
-.asg-day-plots { display: flex; flex-wrap: wrap; gap: 4px; align-items: center;
-  flex-basis: 100%; padding: 6px 0 2px; }
+.asg-day-plots { display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
+  flex-basis: 100%; padding: 4px 0 2px; margin-left: 103px; }
 .asg-pill.sm { font-size: 11px; padding: 1px 7px; }
 .asg-day-all { font-size: 11.5px; color: var(--muted); }
 
@@ -2368,9 +2389,14 @@ const CSS = `
 .asg-days-tot { font-size: 11px; color: var(--muted); margin-right: auto; }
 .asg-all { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10px inherit; padding: 2px 9px; color: var(--accent); }
-.asg-day { display: flex; align-items: center; gap: 5px; margin-bottom: 4px; }
-.asg-day-d { width: 110px; font: 600 11.5px inherit; }
-.asg-part { background: var(--white); border: 1px solid var(--border);
+.asg-day { display: flex; align-items: center; gap: 7px; margin-bottom: 5px;
+  flex-wrap: wrap; }
+/* Wide enough for "10-Aug-2026" in one piece. It was 110px and the year
+   dropped to a second line, which made a four-day booking eight rows
+   tall and every control below it shuffle. */
+.asg-day-d { flex: 0 0 auto; min-width: 96px; font: 600 11.5px inherit;
+  white-space: nowrap; }
+.asg-part { white-space: nowrap; background: var(--white); border: 1px solid var(--border);
   border-radius: 5px; cursor: pointer; font: 600 10.5px inherit; padding: 3px 10px;
   color: var(--muted); }
 .asg-part:hover { border-color: var(--accent); }

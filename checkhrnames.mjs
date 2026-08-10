@@ -69,7 +69,8 @@ if (columnName("person_id", "x").includes("_Id"))
 //    it is called in the database.
 const row = rowIn({ Person_ID: 7, First_Name: "Ada", NI_Number: "AB12", DOB: "1990-01-01" },
   "people");
-eq(row, { id: 7, first_name: "Ada", ni_number: "AB12", dob: "1990-01-01" }, "row in");
+// The id is a string on purpose — see rowIn, and check 6 below.
+eq(row, { id: "7", first_name: "Ada", ni_number: "AB12", dob: "1990-01-01" }, "row in");
 
 const out = rowOut({ first_name: "Ada", ni_number: "", person_id: 7 }, "employee_pay");
 eq(out, { First_Name: "Ada", NI_Number: null, Person_ID: 7 }, "row out");
@@ -92,6 +93,23 @@ const rows = [{ person_id: 5, status: "Active" }, { person_id: 6, status: null }
 eq(rows.filter((r) => matchesFilters(r, parseFilter("person_id=eq.5"))).length, 1, "eq");
 eq(rows.filter((r) => matchesFilters(r, parseFilter("status=is.null"))).length, 1, "is null");
 eq(rows.filter((r) => matchesFilters(r, parseFilter("person_id=in.(5,6)"))).length, 2, "in");
+
+// 6. Ids come back as strings. The module compares them with === against
+//    dataset values and object keys, both of which are always strings,
+//    so a numeric id turns every edit and delete button into a no-op
+//    that throws nothing.
+{
+  const r = rowIn({ Person_ID: 5, Department_ID: 12, First_Name: "Ada" }, "people");
+  if (typeof r.id !== "string") fail("the primary key came back as a number");
+  if (typeof r.department_id !== "string") fail("a foreign key came back as a number");
+  if (r.id !== "5") fail("an id does not compare equal to its dataset form");
+  // A null id must stay null rather than becoming the string "null".
+  const n = rowIn({ Person_ID: 5, Department_ID: null }, "people");
+  if (n.department_id !== null) fail("a null id was turned into a string");
+  // Non-id values are left alone.
+  if (rowIn({ Person_ID: 1, Height_CM: 180 }, "people").height_cm !== 180)
+    fail("a non-id number was stringified");
+}
 
 console.log(bad ? `\n${bad} problem(s)`
   : `HR name translation behaves (${ASKED.length} tables the module asks for).`);

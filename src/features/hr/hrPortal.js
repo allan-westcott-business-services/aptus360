@@ -312,6 +312,17 @@ const api = {
 };
 
 // ── 6. UTILITY FUNCTIONS ──────────────────────────────────────────────
+
+/* Find a record by id, comparing loosely.
+
+   Ids used to be uuids and are now bigints, while anything read back
+   out of a `data-` attribute is a string. `5 === "5"` is false, so
+   every edit and delete button quietly stopped finding its row — the
+   button worked, the lookup returned undefined, and nothing happened.
+   Nothing threw, which is why it looked like a dead button. */
+const byId = (rows, id) =>
+  (rows || []).find((r) => String(r.id) === String(id));
+
 const $ = id => document.getElementById(id);
 // Escape HTML to prevent XSS when inserting user data into innerHTML
 const x = s => String(s ?? '').replace(/&/g,'&amp;').replace(/</g,'&lt;').replace(/>/g,'&gt;').replace(/"/g,'&quot;');
@@ -729,7 +740,7 @@ async function pagePeople() {
 
   // If navigated here from an employee list, open that person's modal
   if (S.pendingOpenPerson) {
-    const person = S.people.find(p => p.id === S.pendingOpenPerson);
+    const person = byId(S.people, S.pendingOpenPerson);
     S.pendingOpenPerson = null;
     if (person) {
       // Small delay so the page finishes rendering first
@@ -792,7 +803,7 @@ function filterPeople() {
     icons(); // render Lucide pencil + trash icons in the new rows
     tbody.querySelectorAll('[data-edit]').forEach(btn => {
       btn.addEventListener('click', () => {
-        const p = S.people.find(r => r.id === btn.dataset.edit);
+        const p = byId(S.people, btn.dataset.edit);
         if (p) openPersonModal(p);
       });
     });
@@ -877,7 +888,7 @@ function renderPeople() {
 
   hrAll('[data-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const p = S.people.find(r => r.id === btn.dataset.edit);
+      const p = byId(S.people, btn.dataset.edit);
       if (p) openPersonModal(p);
     });
   });
@@ -1152,7 +1163,7 @@ function renderAdmin() {
   // Edit
   hrAll('[data-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const row = records.find(r => r.id === btn.dataset.edit);
+      const row = byId(records, btn.dataset.edit);
       if (row) openAdminModal(tConfig, row);
     });
   });
@@ -1301,7 +1312,7 @@ function mkOpts(arr, valKey, labelFn) {
 // ── Resolve an ID to a display name using a cached array ─────────────
 function resolve(cacheKey, id, labelFn) {
   if (!id) return '—';
-  const rec = (S.cache[cacheKey]||[]).find(r => r.id === id);
+  const rec = byId(S.cache[cacheKey], id);
   if (!rec) return `<span style="color:#cbd5e1;font-family:monospace;font-size:11px">${x(String(id).slice(0,8))}…</span>`;
   return x(typeof labelFn === 'function' ? labelFn(rec) : (rec[labelFn]||'—'));
 }
@@ -1390,7 +1401,7 @@ function bindCRUD(config, records, onReload) {
   document.getElementById('crud-add')?.addEventListener('click', () => openGenericModal(config, null, onReload));
   hrAll('[data-edit]').forEach(btn => {
     btn.addEventListener('click', () => {
-      const row = records.find(r => r.id === btn.dataset.edit);
+      const row = byId(records, btn.dataset.edit);
       if (row) openGenericModal(config, row, onReload);
     });
   });
@@ -2279,7 +2290,7 @@ function renderRecruitment() {
 
   // Wire applicant attachment buttons
   hrAll('[data-action="attachments"]').forEach(btn => {
-    const row = records.find(r => r.id === btn.dataset.actionId);
+    const row = byId(records, btn.dataset.actionId);
     if (row) btn.addEventListener('click', () => openAttachmentsModal(row, loadRecruitTab));
   });
 
@@ -2314,7 +2325,7 @@ function renderRecruitment() {
     });
     // "Add Applicant" shortcut — pre-wires vacancy + channel from the advert row
     hrAll('[data-action="add-applicant"]').forEach(btn => {
-      const advert = records.find(r => r.id === btn.dataset.actionId);
+      const advert = byId(records, btn.dataset.actionId);
       if (advert) btn.addEventListener('click', () => openApplicantFromAdvertModal(advert, loadRecruitTab));
     });
   } else {
@@ -5492,10 +5503,10 @@ function renderReports() {
     function layoutNode(id, x, y, visited) {
       if (visited.has(id)) return;
       visited.add(id);
-      const p = people.find(q => q.id === id); if (!p) return;
+      const p = byId(people, id); if (!p) return;
       const rId  = currentRoleMap[id];
-      const role = (S.cache.roles||[]).find(r=>r.id===rId);
-      const jt   = (S.cache.job_titles||[]).find(j=>j.id===role?.job_title_id);
+      const role = byId(S.cache.roles, rId);
+      const jt   = byId(S.cache.job_titles, role?.job_title_id);
       const ch   = byManager[id] || [];
       nodes.push({id, x, y,
         name:  `${p.first_name||''} ${p.last_name||''}`.trim(),

@@ -82,13 +82,33 @@ export function toSnake(mixed) {
 }
 
 /* A row as the module expects it: snake_case keys, and the primary key
-   presented as `id` whatever it is called here. */
+   presented as `id` whatever it is called here.
+
+   ── Ids come back as strings, deliberately ──
+
+   They used to be uuids, so every id in this module was a string, and
+   the code compares them with === in something like fifty places —
+   against `dataset` values, against keys of objects, against each
+   other. Both of those sources are always strings.
+
+   Bigint ids arrive as numbers, and `5 === "5"` is false. That turned
+   every edit and delete button into a no-op: the click fired, the row
+   lookup returned undefined, and nothing happened. Nothing threw, so
+   there was nothing to see.
+
+   Converting here rather than fixing fifty comparisons keeps the module
+   working the way it was written, and means the fifty-first cannot be
+   wrong either. Postgres accepts a numeric string for a bigint, so they
+   go back out unchanged. */
+const isId = (key) => key === "id" || key.endsWith("_ID");
+
 export function rowIn(row, table) {
   if (!row) return row;
   const pk = `${tableName(table)}_ID`;
   const out = {};
   for (const [k, v] of Object.entries(row)) {
-    out[k === pk ? "id" : toSnake(k)] = v;
+    const key = k === pk ? "id" : toSnake(k);
+    out[key] = isId(k) && v != null ? String(v) : v;
   }
   return out;
 }

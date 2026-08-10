@@ -982,15 +982,20 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
    Loads its own data rather than taking it from the page: the page lists
    call-offs and has no reason to carry teams and crafts for the one that
    happens to be open. */
-/* The groups a phase is split between when two teams share it.
+/* What a phase can be split between when teams share it.
 
-   Gas and water go in the same trench and are laid on the same visit —
-   either may be absent, but they are not split from each other. The
-   electric service routinely is: a different gang, often a different
-   day. So the choice is between these two, not between three utilities
-   that could be combined any way at all. */
+   One utility each. Gas and water are usually the same visit, but not
+   always \u2014 and a booking that can only ever say "gas and water
+   together" cannot record the day the water was laid on its own.
+
+   One at a time, as the picker below enforces. A team laying gas and
+   water on the same visit is two bookings on the same dates and plots,
+   which the clash check allows because the utilities differ \u2014 and
+   which is what makes the day the water actually went in recordable at
+   all. */
 const UTILITY_GROUPS = [
-  { key: "wet", names: ["Gas", "Water"] },
+  { key: "gas", names: ["Gas"] },
+  { key: "water", names: ["Water"] },
   { key: "electric", names: ["Electric"] },
 ];
 
@@ -1149,6 +1154,15 @@ function Assignments({ row }) {
      Only where there is something to say. A booking with the same plots
      every day and no split repeats the line above it, and a line that
      repeats the one above is one more thing to read. */
+  /* What a booking covers, named the way the split control names it.
+     Null where it was never split, which is most of them. */
+  const utilityLabel = (a) => {
+    const ids = assignmentUtils.get(Number(a.Assignment_ID)) || [];
+    if (!ids.length) return null;
+    return utils.filter((u) => ids.includes(Number(u.Utility_ID)))
+      .map((u) => u.Utility).join(" / ");
+  };
+
   const breakdownOf = (a) => {
     const days = workDays
       .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
@@ -1156,17 +1170,8 @@ function Assignments({ row }) {
       .sort((x, y) => String(x.Work_Date).localeCompare(String(y.Work_Date)));
     if (!days.length) return [];
 
-    const ids = assignmentUtils.get(Number(a.Assignment_ID)) || [];
-    /* Named the way the split names them \u2014 "Gas / Water" \u2014 so the
-       summary and the control that produced it read alike. */
-    const what = ids.length
-      ? utils.filter((u) => ids.includes(Number(u.Utility_ID)))
-        .map((u) => u.Utility).join(" / ")
-      : null;
-
     return days.map((d) => ({
       key: `${a.Assignment_ID}-${d.Work_Date}`,
-      what,
       when: fmt(d.Work_Date),
       part: d.Part && d.Part !== "Full" ? d.Part : null,
       plots: serialisePlots(parsePlots(d.Plot_Range)),
@@ -1248,6 +1253,15 @@ function Assignments({ row }) {
       : daysBetween(draft.Start_Date, draft.End_Date).length;
     return { ...laySchedule(draft.Start_Date, length, weekend), weekend };
   }, [draft.Start_Date, draft.End_Date, draft.weekend, editing]);
+
+  /* Different plots each day, and there is more than one day.
+
+     The tick is hidden on a one-day booking, but the flag survives from
+     when the dates were wider \u2014 narrow a three-day booking to one and
+     it would still save plots against days that are no longer in it.
+     Derived once rather than read from the draft, so the form, the
+     validation and the save all take the same view. */
+  const splitByDay = !!draft.byDay && schedule.days.length > 1;
 
   /* Moving one assignment along.
 
@@ -1386,7 +1400,7 @@ function Assignments({ row }) {
 
      One definition, read by the save and by the validation below, so
      they cannot disagree about whether a booking has any plots on it. */
-  const bookingPlots = draft.byDay
+  const bookingPlots = splitByDay
     ? [...new Set(Object.values(draft.dayPlots || {}).flat())]
       .sort((a, b) => Number(a) - Number(b))
     : (draft.plots || []);
@@ -1432,7 +1446,7 @@ function Assignments({ row }) {
      plot and the same utility is a different fault, and the clash check
      above already refuses it. */
   const dayClashes = (() => {
-    if (!draft.byDay) return [];
+    if (!splitByDay) return [];
     const seen = new Map();
     for (const [date, plots] of Object.entries(draft.dayPlots || {})) {
       for (const plot of plots) {
@@ -1560,7 +1574,7 @@ function Assignments({ row }) {
                Null otherwise, which means the booking's whole range \u2014
                writing the same list against every day would turn one
                fact into five that can fall out of step. */
-            Plot_Range: draft.byDay
+            Plot_Range: splitByDay
               ? ((draft.dayPlots?.[d.date] || []).join(", ") || null)
               : null,
           }));
@@ -1825,6 +1839,16 @@ function Assignments({ row }) {
                     : (a.Plot_Range || "all plots")}
                 </span>
 
+                {/* Which utilities this booking is for.
+
+                    On the row rather than only on the day lines below:
+                    a booking that lays the electric on a single day has
+                    no day lines \u2014 there is nothing to break down \u2014 and
+                    was showing nothing at all about what it was for. */}
+                {utilityLabel(a) && (
+                  <span className="asg-util-tag">{utilityLabel(a)}</span>
+                )}
+
                 {/* How much of it there is.
 
                     Whole metres. The drawing measures to a tenth, which
@@ -1910,7 +1934,6 @@ function Assignments({ row }) {
               {/* What it comes to, day by day. */}
               {breakdownOf(a).map((b) => (
                 <div className="asg-break" key={b.key}>
-                  {b.what && <span className="asg-break-what">{b.what}</span>}
                   <span className="asg-break-when">
                     {b.when}{b.part ? ` (${b.part})` : ""}
                   </span>
@@ -2090,7 +2113,12 @@ function Assignments({ row }) {
                         do the same plots throughout, and a grid of
                         pills against every day would be four questions
                         where there was one. */}
-                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
+                    {/* Nothing to divide on a one-day booking. The tick
+                        offered a choice between the same plots every day
+                        and different plots each day when there is only
+                        one day, which is the same thing said twice. */}
+                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0
+                      && schedule.days.length > 1 && (
                       <label className="asg-byday">
                         <input type="checkbox" checked={!!draft.byDay}
                           onChange={(e) => setDraft((dd) => ({
@@ -2239,7 +2267,7 @@ function Assignments({ row }) {
                               differ \u2014 otherwise every row would carry
                               the same list and the grid would say five
                               times what the booking says once. */}
-                          {draft.byDay && row.Selection_Mode !== "Span"
+                          {splitByDay && row.Selection_Mode !== "Span"
                             && plotUniverse.length > 0 && (
                             <div className="asg-day-plots">
                               {plotUniverse
@@ -2300,7 +2328,7 @@ function Assignments({ row }) {
                 )}
 
                 {row.Selection_Mode !== "Span" && plotUniverse.length > 0
-                  && !draft.byDay && (
+                  && !splitByDay && (
                   <div className="asg-plots-pick">
                     <div className="asg-days-head">
                       <strong>Plots</strong>
@@ -2448,7 +2476,8 @@ const CSS = `
    is the booking, these are what it amounts to. */
 .asg-break { display: flex; align-items: baseline; gap: 8px; font-size: 12px;
   color: var(--muted); padding: 3px 0 0 14px; }
-.asg-break-what { font-weight: 700; color: var(--accent); min-width: 84px; }
+.asg-util-tag { font: 700 11px inherit; color: var(--accent);
+  background: var(--accent-light); padding: 2px 8px; border-radius: 20px; }
 .asg-break-when { font-weight: 600; color: var(--text); min-width: 96px; }
 .asg-break-plots { font-weight: 600; }
 

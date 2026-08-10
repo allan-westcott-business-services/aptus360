@@ -17,15 +17,15 @@
 
 export const HR_CSS = `
 /* ═══ BASE ══════════════════════════════════════════════════════
-   Was a bare `*` reset. Confined to the pane: stripping margin and
+   Was a bare \`*\` reset. Confined to the pane: stripping margin and
    padding from every element in the document would flatten the rest
    of Aptus360, which is written against browser defaults. */
 .hr-root, .hr-root *, .hr-root *::before, .hr-root *::after {
-  box-sizing: border-box; font-family: 'Inter Variable', 'Inter', sans-serif;
+  box-sizing: border-box; font-family: "DM Sans Variable", "DM Sans", "DM Sans Fallback", system-ui, sans-serif;
   margin: 0; padding: 0;
 }
 .hr-root {
-  background: #f8fafc; color: #0f172a;
+  background: var(--bg); color: var(--text);
   /* The pane owns the space the app shell gives it, and scrolls its
      own overflow — the standalone version sized itself to the
      viewport, which here would put a second scrollbar inside one. */
@@ -40,7 +40,7 @@ export const HR_CSS = `
 .hr-root .hr-page { padding: 12px 16px 40px; }
 .hr-root #hr-page-content { max-width: 1152px; margin: 0 auto; }
 .hr-root .hr-boot { display: flex; align-items: center; justify-content: center;
-  height: 200px; color: #94a3b8; font-size: 13px; }
+  height: 200px; color: var(--muted); font-size: 13px; }
 
 /* ═══ SCROLLBARS ════════════════════════════════════════════════ */
 .hr-root ::-webkit-scrollbar { width: 5px; height: 5px; }
@@ -53,24 +53,24 @@ export const HR_CSS = `
 .hr-root .btn {
   display: inline-flex; align-items: center; gap: 6px;
   font-weight: 600; border-radius: 8px; cursor: pointer; border: none;
-  font-family: 'Inter Variable', 'Inter', sans-serif; transition: all 0.15s;
+  font-family: "DM Sans Variable", "DM Sans", "DM Sans Fallback", system-ui, sans-serif; transition: all 0.15s;
 }
-.hr-root .btn-primary { background: #4f46e5; color: #fff; padding: 9px 16px; font-size: 14px; }
-.hr-root .btn-primary:hover:not(:disabled) { background: #4338ca; }
+.hr-root .btn-primary { background: var(--accent); color: #fff; padding: 9px 16px; font-size: 14px; }
+.hr-root .btn-primary:hover:not(:disabled) { background: var(--accent-dark); }
 .hr-root .btn-primary:disabled { opacity: 0.5; cursor: not-allowed; }
 .hr-root .btn-secondary {
-  background: #fff; color: #374151; padding: 9px 16px; font-size: 14px;
+  background: #fff; color: var(--text); padding: 9px 16px; font-size: 14px;
   border: 1px solid #e5e7eb; box-shadow: 0 1px 2px rgba(0,0,0,0.05);
 }
-.hr-root .btn-secondary:hover { background: #f9fafb; }
+.hr-root .btn-secondary:hover { background: var(--bg); }
 .hr-root .btn-icon {
   padding: 6px; border-radius: 6px; background: none;
-  color: #94a3b8; cursor: pointer; border: none;
+  color: var(--muted); cursor: pointer; border: none;
   display: inline-flex; align-items: center; justify-content: center;
   transition: all 0.15s;
 }
-.hr-root .btn-icon.edit:hover { color: #4f46e5; background: #eef2ff; }
-.hr-root .btn-icon.del:hover  { color: #ef4444; background: #fef2f2; }
+.hr-root .btn-icon.edit:hover { color: var(--accent); background: var(--accent-light); }
+.hr-root .btn-icon.del:hover  { color: #ef4444; background: var(--err-bg); }
 
 /* ═══ BADGE / PILL ══════════════════════════════════════════════ */
 .hr-root .badge {
@@ -80,7 +80,7 @@ export const HR_CSS = `
 }
 
 /* ═══ CARD ══════════════════════════════════════════════════════ */
-.hr-root .card { background: #fff; border-radius: 12px; border: 1px solid #e2e8f0; overflow: hidden; }
+.hr-root .card { background: #fff; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
 
 /* ═══ ICON TILE ═════════════════════════════════════════════════ */
 .hr-root .icon-tile {
@@ -90,14 +90,14 @@ export const HR_CSS = `
 
 /* ═══ STAT CARD ═════════════════════════════════════════════════ */
 .hr-root .stat-card {
-  background: #fff; border-radius: 12px; border: 1px solid #e2e8f0;
+  background: #fff; border-radius: 12px; border: 1px solid var(--border);
   padding: 20px; transition: box-shadow 0.2s;
 }
 .hr-root .stat-card:hover { box-shadow: 0 4px 16px rgba(0,0,0,0.08); }
 
 /* ═══ MODULE CARD (dashboard grid) ══════════════════════════════ */
 .hr-root .mod-card {
-  background: #fff; border-radius: 12px; border: 1px solid #e2e8f0;
+  background: #fff; border-radius: 12px; border: 1px solid var(--border);
   padding: 20px; display: flex; align-items: center; gap: 14px;
   transition: box-shadow 0.2s;
 }
@@ -105,17 +105,17 @@ export const HR_CSS = `
 
 /* ═══ FORM FIELDS ═══════════════════════════════════════════════ */
 .hr-root .field-label {
-  display: block; font-size: 11px; font-weight: 700; color: #64748b;
+  display: block; font-size: 11px; font-weight: 700; color: var(--muted);
   text-transform: uppercase; letter-spacing: 0.06em; margin-bottom: 6px;
 }
 .hr-root .field-input {
-  width: 100%; border: 1px solid #e2e8f0; border-radius: 8px;
-  padding: 10px 14px; font-size: 14px; color: #1e293b; background: #fff;
+  width: 100%; border: 1px solid var(--border); border-radius: 8px;
+  padding: 10px 14px; font-size: 14px; color: var(--text); background: #fff;
   outline: none; transition: border-color 0.15s, box-shadow 0.15s;
-  font-family: 'Inter Variable', 'Inter', sans-serif;
+  font-family: "DM Sans Variable", "DM Sans", "DM Sans Fallback", system-ui, sans-serif;
 }
-.hr-root .field-input:focus { border-color: #6366f1; box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
-.hr-root .field-hint { font-size: 11px; color: #94a3b8; margin-top: 4px; }
+.hr-root .field-input:focus { border-color: var(--accent); box-shadow: 0 0 0 3px rgba(99,102,241,0.12); }
+.hr-root .field-hint { font-size: 11px; color: var(--muted); margin-top: 4px; }
 .hr-root .two-col { display: grid; grid-template-columns: 1fr 1fr; gap: 16px; }
 
 /* src/styles.css sets appearance:none on every select in the app so it
@@ -141,9 +141,9 @@ export const HR_CSS = `
 
 /* ═══ TABLE ═════════════════════════════════════════════════════ */
 .hr-root .tbl { width: 100%; border-collapse: collapse; }
-.hr-root .th { background: #f8fafc; font-size: 11px; font-weight: 700; color: #94a3b8; text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 20px; border-bottom: 1px solid #f1f5f9; text-align: left; }
-.hr-root .td { padding: 14px 20px; font-size: 14px; color: #334155; border-bottom: 1px solid #f8fafc; }
-.hr-root .tr:hover .td { background: #f8fbff; }
+.hr-root .th { background: var(--bg); font-size: 11px; font-weight: 700; color: var(--muted); text-transform: uppercase; letter-spacing: 0.08em; padding: 12px 20px; border-bottom: 1px solid var(--bg); text-align: left; }
+.hr-root .td { padding: 14px 20px; font-size: 14px; color: var(--text); border-bottom: 1px solid var(--bg); }
+.hr-root .tr:hover .td { background: var(--bg); }
 .hr-root .tr:last-child .td { border-bottom: none; }
 
 /* ═══ AVATAR ════════════════════════════════════════════════════ */
@@ -172,30 +172,30 @@ export const HR_CSS = `
 /* ═══ MODAL TAB BAR ═════════════════════════════════════════════ */
 .hr-root .modal-tab {
   padding: 12px 18px; font-size: 12px; font-weight: 600; background: none;
-  border: none; border-bottom: 2px solid transparent; color: #94a3b8;
-  cursor: pointer; font-family: 'Inter Variable', 'Inter', sans-serif; transition: all 0.15s;
+  border: none; border-bottom: 2px solid transparent; color: var(--muted);
+  cursor: pointer; font-family: "DM Sans Variable", "DM Sans", "DM Sans Fallback", system-ui, sans-serif; transition: all 0.15s;
 }
-.hr-root .modal-tab.active { color: #4f46e5; border-bottom-color: #4f46e5; }
+.hr-root .modal-tab.active { color: var(--accent); border-bottom-color: var(--accent); }
 
 /* ═══ SECTION TAB BUTTONS ═══════════════════════════════════════ */
 .hr-root .admin-tab {
   display: flex; align-items: center; gap: 8px; padding: 10px 14px;
   border-radius: 10px; font-size: 12px; font-weight: 600; cursor: pointer;
-  border: 1px solid #e2e8f0; background: #fff; color: #64748b;
-  transition: all 0.15s; font-family: 'Inter Variable', 'Inter', sans-serif; text-align: left;
+  border: 1px solid var(--border); background: #fff; color: var(--muted);
+  transition: all 0.15s; font-family: "DM Sans Variable", "DM Sans", "DM Sans Fallback", system-ui, sans-serif; text-align: left;
 }
-.hr-root .admin-tab:hover { border-color: #c7d2fe; color: #4f46e5; }
-.hr-root .admin-tab.active { background: #4f46e5; color: #fff; border-color: #4f46e5; box-shadow: 0 4px 12px rgba(79,70,229,0.3); }
+.hr-root .admin-tab:hover { border-color: #c7d2fe; color: var(--accent); }
+.hr-root .admin-tab.active { background: var(--accent); color: #fff; border-color: var(--accent); box-shadow: 0 4px 12px rgba(79,70,229,0.3); }
 
 /* ═══ ALERTS ════════════════════════════════════════════════════ */
 .hr-root .alert { display: flex; align-items: center; gap: 10px; border-radius: 8px; padding: 12px 16px; font-size: 13px; font-weight: 500; border: 1px solid; }
-.hr-root .alert-info  { background: #eff6ff; border-color: #bfdbfe; color: #1d4ed8; }
-.hr-root .alert-error { background: #fef2f2; border-color: #fecaca; color: #dc2626; }
+.hr-root .alert-info  { background: var(--accent-light); border-color: #bfdbfe; color: #1d4ed8; }
+.hr-root .alert-error { background: var(--err-bg); border-color: var(--err-border); color: #dc2626; }
 
 /* ═══ SEARCH BAR ════════════════════════════════════════════════ */
 .hr-root .search-wrap { position: relative; margin-bottom: 24px; }
 .hr-root .search-wrap .field-input { padding-left: 40px; }
-.hr-root .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: #94a3b8; pointer-events: none; }
+.hr-root .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
 
 /* ═══ EMPTY STATE ═══════════════════════════════════════════════ */
 .hr-root .empty { padding: 80px 20px; text-align: center; }
@@ -207,5 +207,5 @@ export const HR_CSS = `
 #hr-toast [data-lucide], #hr-toast svg { display: inline-block; vertical-align: middle; }
 
 /* ═══ TOAST ═════════════════════════════════════════════════════ */
-#hr-toast { font-family: 'Inter Variable', 'Inter', sans-serif; }
+#hr-toast { font-family: "DM Sans Variable", "DM Sans", "DM Sans Fallback", system-ui, sans-serif; }
 `;

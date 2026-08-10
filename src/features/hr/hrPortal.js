@@ -98,7 +98,7 @@ const SUPABASE_KEY = import.meta.env.VITE_HR_SUPABASE_ANON_KEY || 'eyJhbGciOiJIU
 //  icon   = lucide icon name  |  accent = hex colour
 // ──────────────────────────────────────────────────────────────────────
 const MODULES = [
-  { id: 'dashboard',    label: 'Dashboard',         icon: 'layout-dashboard', accent: '#6366f1' },
+  { id: 'dashboard',    label: 'Dashboard',         icon: 'layout-dashboard', accent: 'var(--accent)' },
   { id: 'people',       label: 'People',            icon: 'users',            accent: '#3b82f6' },
   { id: 'roles',        label: 'Roles & Structure', icon: 'building-2',       accent: '#8b5cf6' },
   { id: 'pay',          label: 'Pay',               icon: 'wallet',           accent: '#10b981' },
@@ -113,7 +113,7 @@ const MODULES = [
   { id: 'compliance',   label: 'Compliance',         icon: 'shield-check',     accent: '#f59e0b' },
   { id: 'benefits',     label: 'Benefits',           icon: 'gift',             accent: '#ec4899' },
   { id: 'reports',      label: 'Reports',            icon: 'bar-chart-2',      accent: '#8b5cf6' },
-  { id: 'admin',        label: 'Admin',             icon: 'settings',         accent: '#6366f1' },
+  { id: 'admin',        label: 'Admin',             icon: 'settings',         accent: 'var(--accent)' },
 ];
 
 // ── 3. ADMIN / LOOKUP TABLE DEFINITIONS ──────────────────────────────
@@ -424,7 +424,7 @@ const ALL_DASH_CARDS = [
   { key:'applicants',   table:'applicants',         filter:'',                    icon:'user-2',         color:'#8b5cf6', label:'Applicants',           nav:'recruitment'  },
   { key:'training',     table:'employee_training',  filter:'',                    icon:'book-open',      color:'#f97316', label:'Training Records',     nav:'skills'       },
   { key:'contractors',  table:'contingent_workers', filter:'',                    icon:'user-cog',       color:'#0891b2', label:'Contractors & Temps',  nav:'contractors'  },
-  { key:'timesheets',   table:'timesheets',         filter:'status=eq.Submitted', icon:'clock',          color:'#6366f1', label:'Timesheets Pending',   nav:'contractors'  },
+  { key:'timesheets',   table:'timesheets',         filter:'status=eq.Submitted', icon:'clock',          color:'var(--accent)', label:'Timesheets Pending',   nav:'contractors'  },
   { key:'certificates', table:'employee_certificates', filter:'',                 icon:'award',          color:'#f59e0b', label:'Certificates',         nav:'skills'       },
 ];
 
@@ -466,12 +466,12 @@ async function pageDashboard() {
   pc.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
       <div>
-        <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Dashboard</h1>
-        <p style="color:#64748b;font-size:14px">Live overview of your HR data</p>
+        <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Dashboard</h1>
+        <p style="color:var(--muted);font-size:14px">Live overview of your HR data</p>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:20px;margin-bottom:36px">
-      ${[...Array(6)].map(()=>`<div class="stat-card" style="min-height:110px;background:linear-gradient(90deg,#f1f5f9 25%,#e2e8f0 50%,#f1f5f9 75%);background-size:200% 100%;animation:shimmer 1.5s infinite"></div>`).join('')}
+      ${[...Array(6)].map(()=>`<div class="stat-card" style="min-height:110px;background:linear-gradient(90deg,var(--bg) 25%,var(--border) 50%,var(--bg) 75%);background-size:200% 100%;animation:shimmer 1.5s infinite"></div>`).join('')}
     </div>`;
 
   // Fetch counts for all cards in parallel
@@ -519,10 +519,10 @@ function renderDashboard(counts, chartData) {
   pc.innerHTML = `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:28px">
       <div>
-        <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Dashboard</h1>
-        <p style="color:#64748b;font-size:14px">Click any card to open that section</p>
+        <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Dashboard</h1>
+        <p style="color:var(--muted);font-size:14px">Click any card to open that section</p>
       </div>
-      <button id="dash-config-btn" style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:${configuring?'#4f46e5':'#f1f5f9'};color:${configuring?'#fff':'#475569'};border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;transition:all 0.15s">
+      <button id="dash-config-btn" style="display:flex;align-items:center;gap:6px;padding:8px 14px;background:${configuring?'var(--accent)':'var(--bg)'};color:${configuring?'#fff':'#475569'};border:none;border-radius:8px;cursor:pointer;font-size:13px;font-weight:600;font-family:'Inter',sans-serif;transition:all 0.15s">
         ${ic('settings',14)} ${configuring ? 'Done' : 'Customise'}
       </button>
     </div>
@@ -535,40 +535,40 @@ function renderDashboard(counts, chartData) {
              onmouseleave="this.style.transform='';this.style.boxShadow=''">
           <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:16px">
             <div class="icon-tile" style="background:${r.color}18">${ic(r.icon,20,r.color)}</div>
-            <span class="badge" style="background:#f8fafc;color:#64748b;border:1px solid #e2e8f0;display:flex;align-items:center;gap:4px">${ic('arrow-right',11)} go</span>
+            <span class="badge" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);display:flex;align-items:center;gap:4px">${ic('arrow-right',11)} go</span>
           </div>
-          <div class="font-display" style="font-size:36px;font-weight:800;color:#0f172a;margin-bottom:4px">${counts[r.key] ?? '—'}</div>
-          <div style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em">${r.label}</div>
-        </div>`).join('') : `<div style="grid-column:1/-1;text-align:center;padding:40px;color:#94a3b8">No cards selected — click Customise to add some</div>`}
+          <div class="font-display" style="font-size:36px;font-weight:800;color:var(--text);margin-bottom:4px">${counts[r.key] ?? '—'}</div>
+          <div style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em">${r.label}</div>
+        </div>`).join('') : `<div style="grid-column:1/-1;text-align:center;padding:40px;color:var(--muted)">No cards selected — click Customise to add some</div>`}
     </div>
 
     ${configuring ? `
     <!-- Configuration panel -->
-    <div style="background:#fff;border:1px solid #e2e8f0;border-radius:16px;padding:24px;margin-bottom:28px">
+    <div style="background:#fff;border:1px solid var(--border);border-radius:16px;padding:24px;margin-bottom:28px">
       <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:6px">
-        <h2 class="font-display" style="font-size:16px;font-weight:700;color:#0f172a">${ic('settings',15)} Customise Dashboard Cards</h2>
-        <span style="font-size:12px;color:#94a3b8">Saved automatically · per browser</span>
+        <h2 class="font-display" style="font-size:16px;font-weight:700;color:var(--text)">${ic('settings',15)} Customise Dashboard Cards</h2>
+        <span style="font-size:12px;color:var(--muted)">Saved automatically · per browser</span>
       </div>
-      <p style="font-size:13px;color:#64748b;margin-bottom:20px">Toggle cards on or off and reorder with the arrows. Changes apply live above.</p>
+      <p style="font-size:13px;color:var(--muted);margin-bottom:20px">Toggle cards on or off and reorder with the arrows. Changes apply live above.</p>
       <div style="display:flex;flex-direction:column;gap:8px" id="dash-cfg-list">
         ${ordered.map((c, idx) => {
           const on = prefs.visible.includes(c.key);
           return `
-          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:${on?'#f8fafc':'#fff'};border:1px solid ${on?'#e2e8f0':'#f1f5f9'};border-radius:10px;transition:all 0.1s">
+          <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:${on?'var(--bg)':'#fff'};border:1px solid ${on?'var(--border)':'var(--bg)'};border-radius:10px;transition:all 0.1s">
             <div style="display:flex;flex-direction:column;gap:2px">
-              <button data-cfg-up="${c.key}" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:0;line-height:1;font-size:14px" ${idx===0?'disabled':''}>▲</button>
-              <button data-cfg-dn="${c.key}" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:0;line-height:1;font-size:14px" ${idx===ordered.length-1?'disabled':''}>▼</button>
+              <button data-cfg-up="${c.key}" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:0;line-height:1;font-size:14px" ${idx===0?'disabled':''}>▲</button>
+              <button data-cfg-dn="${c.key}" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:0;line-height:1;font-size:14px" ${idx===ordered.length-1?'disabled':''}>▼</button>
             </div>
             <div class="icon-tile" style="background:${c.color}15;width:32px;height:32px;flex-shrink:0">${ic(c.icon,15,c.color)}</div>
             <div style="flex:1">
-              <p style="font-size:13px;font-weight:600;color:#1e293b;margin-bottom:1px">${x(c.label)}</p>
-              <p style="font-size:11px;color:#94a3b8">${counts[c.key]??'—'} record${counts[c.key]===1?'':'s'}</p>
+              <p style="font-size:13px;font-weight:600;color:var(--text);margin-bottom:1px">${x(c.label)}</p>
+              <p style="font-size:11px;color:var(--muted)">${counts[c.key]??'—'} record${counts[c.key]===1?'':'s'}</p>
             </div>
             <label style="display:flex;align-items:center;gap:8px;cursor:pointer;user-select:none">
-              <span style="font-size:12px;color:${on?'#10b981':'#94a3b8'};font-weight:600">${on?'Shown':'Hidden'}</span>
+              <span style="font-size:12px;color:${on?'#10b981':'var(--muted)'};font-weight:600">${on?'Shown':'Hidden'}</span>
               <div style="position:relative;width:40px;height:22px;flex-shrink:0">
                 <input type="checkbox" data-cfg-toggle="${c.key}" ${on?'checked':''} style="position:absolute;opacity:0;width:0;height:0">
-                <div style="position:absolute;inset:0;background:${on?'#10b981':'#e2e8f0'};border-radius:11px;transition:background 0.2s;pointer-events:none"></div>
+                <div style="position:absolute;inset:0;background:${on?'#10b981':'var(--border)'};border-radius:11px;transition:background 0.2s;pointer-events:none"></div>
                 <div style="position:absolute;top:3px;left:${on?'21':'3'}px;width:16px;height:16px;background:#fff;border-radius:50%;transition:left 0.2s;box-shadow:0 1px 3px rgba(0,0,0,0.2);pointer-events:none"></div>
               </div>
             </label>
@@ -591,26 +591,26 @@ function renderDashboard(counts, chartData) {
       });
       if (!alerts.length) return '';
       return `<div style="margin-bottom:24px">
-        <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">${ic('alert-triangle',12)} Compliance Alerts</p>
+        <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:10px">${ic('alert-triangle',12)} Compliance Alerts</p>
         <div style="display:flex;flex-direction:column;gap:6px">
-          ${alerts.slice(0,8).map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${a.type==='error'?'#fee2e2':'#fef3c7'};border:1px solid ${a.type==='error'?'#fecaca':'#fde68a'};border-radius:8px">
-            <span style="font-size:12px;font-weight:600;color:${a.type==='error'?'#dc2626':'#92400e'}">${a.name}</span>
+          ${alerts.slice(0,8).map(a=>`<div style="display:flex;align-items:center;gap:10px;padding:10px 14px;background:${a.type==='error'?'var(--err-bg)':'var(--warn-bg)'};border:1px solid ${a.type==='error'?'var(--err-border)':'var(--warn-border)'};border-radius:8px">
+            <span style="font-size:12px;font-weight:600;color:${a.type==='error'?'#dc2626':'var(--warn-text)'}">${a.name}</span>
             <span style="font-size:12px;color:${a.type==='error'?'#ef4444':'#f59e0b'}">${a.msg}</span>
           </div>`).join('')}
-          ${alerts.length>8?`<p style="font-size:12px;color:#94a3b8;text-align:center">+${alerts.length-8} more alerts</p>`:''}
+          ${alerts.length>8?`<p style="font-size:12px;color:var(--muted);text-align:center">+${alerts.length-8} more alerts</p>`:''}
         </div>
       </div>`;
     })()}
     <!-- Configurable Analytics Chart -->
     ${!configuring ? `
     <div style="margin-bottom:32px">
-      <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px">${ic('pie-chart',12)} People Analytics</p>
+      <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px">${ic('pie-chart',12)} People Analytics</p>
       <div style="display:grid;grid-template-columns:1fr 210px;gap:16px;align-items:start">
         <!-- Chart + table -->
         <div>
           <div id="an-crumb" style="min-height:24px;display:flex;align-items:center;gap:5px;flex-wrap:wrap;font-size:13px;margin-bottom:10px"></div>
           <div class="card" style="padding:18px;margin-bottom:12px">
-            <div id="an-hdr" style="font-size:13px;color:#64748b;margin-bottom:10px"></div>
+            <div id="an-hdr" style="font-size:13px;color:var(--muted);margin-bottom:10px"></div>
             <div style="height:300px;position:relative">
               <canvas id="an-canvas"></canvas>
             </div>
@@ -621,28 +621,28 @@ function renderDashboard(counts, chartData) {
         <!-- Config dropdowns (right) -->
         <div style="position:sticky;top:24px;display:flex;flex-direction:column;gap:10px">
           <div class="card" style="padding:14px">
-            <p style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Drill-Down Levels</p>
+            <p style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:10px">Drill-Down Levels</p>
             ${[0,1,2,3].map(i=>`
             <div style="margin-bottom:9px">
-              <label style="font-size:10px;font-weight:700;color:#64748b;display:block;margin-bottom:2px">
-                Level ${i+1} ${i===0?'<span style="color:#f87171">★</span>':'<span style="color:#cbd5e1">(opt)</span>'}
+              <label style="font-size:10px;font-weight:700;color:var(--muted);display:block;margin-bottom:2px">
+                Level ${i+1} ${i===0?'<span style="color:#f87171">★</span>':'<span style="color:var(--border)">(opt)</span>'}
               </label>
-              <select id="an-lv${i}" style="width:100%;padding:5px 7px;border:1px solid #e2e8f0;border-radius:6px;font-size:11px;color:#374151;background:#fff;font-family:'Inter',sans-serif">
+              <select id="an-lv${i}" style="width:100%;padding:5px 7px;border:1px solid var(--border);border-radius:6px;font-size:11px;color:var(--text);background:#fff;font-family:'Inter',sans-serif">
                 ${i>0?'<option value="">-- none --</option>':''}
                 ${AN_DIMS.map(d=>'<option value="'+d.key+'"'+((S._an&&(S._an.levels[i]||'')=== d.key)?' selected':'')+'>'+d.label+'</option>').join('')}
               </select>
             </div>`).join('')}
           </div>
           <div class="card" style="padding:14px">
-            <p style="font-size:10px;font-weight:700;color:#64748b;letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Chart Type</p>
+            <p style="font-size:10px;font-weight:700;color:var(--muted);letter-spacing:.06em;text-transform:uppercase;margin-bottom:8px">Chart Type</p>
             ${[['doughnut','Doughnut'],['pie','Pie'],['bar','Bar']].map(([t,lbl])=>`
-            <button id="an-ct-${t}" style="width:100%;padding:6px 8px;margin-bottom:4px;text-align:left;border:1px solid ${S._an&&S._an.type===t?'#4f46e5':'#e2e8f0'};border-radius:6px;background:${S._an&&S._an.type===t?'#eff6ff':'#fff'};color:${S._an&&S._an.type===t?'#4f46e5':'#64748b'};font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:6px">
+            <button id="an-ct-${t}" style="width:100%;padding:6px 8px;margin-bottom:4px;text-align:left;border:1px solid ${S._an&&S._an.type===t?'var(--accent)':'var(--border)'};border-radius:6px;background:${S._an&&S._an.type===t?'var(--accent-light)':'#fff'};color:${S._an&&S._an.type===t?'var(--accent)':'var(--muted)'};font-size:11px;font-weight:600;cursor:pointer;font-family:'Inter',sans-serif;display:flex;align-items:center;gap:6px">
               ${ic(t==='bar'?'bar-chart-2':'pie-chart',11)} ${lbl}
             </button>`).join('')}
           </div>
           <div class="card" style="padding:14px" id="an-stats">
-            <p style="font-size:10px;color:#94a3b8;margin-bottom:2px">Showing</p>
-            <p class="font-display" style="font-size:22px;font-weight:800;color:#0f172a;line-height:1">—</p>
+            <p style="font-size:10px;color:var(--muted);margin-bottom:2px">Showing</p>
+            <p class="font-display" style="font-size:22px;font-weight:800;color:var(--text);line-height:1">—</p>
           </div>
         </div>
       </div>
@@ -650,7 +650,7 @@ function renderDashboard(counts, chartData) {
 
     <!-- Module grid -->
     ${!configuring ? `
-    <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px">All Modules</p>
+    <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px">All Modules</p>
     <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:12px">
       ${MODULES.filter(m => m.id !== 'dashboard').map(m => `
         <div class="mod-card" data-nav="${m.id}" style="cursor:pointer;transition:transform 0.15s,box-shadow 0.15s"
@@ -658,7 +658,7 @@ function renderDashboard(counts, chartData) {
              onmouseleave="this.style.transform='';this.style.boxShadow=''">
           <div class="icon-tile" style="background:${m.accent}18">${ic(m.icon,18,m.accent)}</div>
           <div style="flex:1">
-            <p style="font-size:14px;font-weight:600;color:#334155;margin-bottom:4px">${x(m.label)}</p>
+            <p style="font-size:14px;font-weight:600;color:var(--text);margin-bottom:4px">${x(m.label)}</p>
             <span class="badge" style="background:${m.accent}15;color:${m.accent};display:flex;align-items:center;gap:3px;width:fit-content">${ic('arrow-right',10)} open</span>
           </div>
         </div>`).join('')}
@@ -751,33 +751,33 @@ async function pagePeople() {
 
 function peopleRowHtml(p) {
   const statusBadge = s => {
-    const colours = { Active:'#10b981', 'On Leave':'#f59e0b', Suspended:'#ef4444', Leaver:'#64748b' };
+    const colours = { Active:'#10b981', 'On Leave':'#f59e0b', Suspended:'#ef4444', Leaver:'var(--muted)' };
     const c = colours[s] || '#10b981';
     return `<span class="badge" style="background:${c}15;color:${c};border:1px solid ${c}30">${x(s||'Active')}</span>`;
   };
   return `<tr class="tr">
     <td class="td">
       ${p.employee_number
-        ? `<span style="font-family:monospace;font-size:12px;background:#f1f5f9;color:#475569;padding:2px 8px;border-radius:4px">${x(p.employee_number)}</span>`
-        : `<span style="color:#cbd5e1">—</span>`}
+        ? `<span style="font-family:monospace;font-size:12px;background:var(--bg);color:#475569;padding:2px 8px;border-radius:4px">${x(p.employee_number)}</span>`
+        : `<span style="color:var(--border)">—</span>`}
     </td>
     <td class="td">
       <div style="display:flex;align-items:center;gap:10px">
         ${p.photo_url
-          ? `<img src="${p.photo_url}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid #e2e8f0">`
-          : `<div class="avatar" style="background:#e0e7ff;color:#4f46e5">${(p.first_name||'?')[0]}${(p.last_name||'?')[0]}</div>`}
-        <span style="font-weight:500;color:#1e293b">${x(p.first_name||'')} ${x(p.last_name||'')}</span>
+          ? `<img src="${p.photo_url}" style="width:36px;height:36px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border)">`
+          : `<div class="avatar" style="background:#e0e7ff;color:var(--accent)">${(p.first_name||'?')[0]}${(p.last_name||'?')[0]}</div>`}
+        <span style="font-weight:500;color:var(--text)">${x(p.first_name||'')} ${x(p.last_name||'')}</span>
       </div>
     </td>
-    <td class="td">${p.department_id ? resolve('departments',p.department_id,'name') : '<span style="color:#cbd5e1">—</span>'}</td>
-    <td class="td">${p.office_location_id ? resolve('office_locations',p.office_location_id, r => r.city ? r.name+' ('+r.city+')' : r.name) + ((() => { const o=(S.cache.office_locations||[]).find(xx=>xx.id===p.office_location_id); return o?.location_type ? ` <span class="badge" style="background:#f1f5f9;color:#64748b;font-size:10px">${o.location_type}</span>` : ''; })()) : '<span style="color:#cbd5e1">—</span>'}</td>
+    <td class="td">${p.department_id ? resolve('departments',p.department_id,'name') : '<span style="color:var(--border)">—</span>'}</td>
+    <td class="td">${p.office_location_id ? resolve('office_locations',p.office_location_id, r => r.city ? r.name+' ('+r.city+')' : r.name) + ((() => { const o=(S.cache.office_locations||[]).find(xx=>xx.id===p.office_location_id); return o?.location_type ? ` <span class="badge" style="background:var(--bg);color:var(--muted);font-size:10px">${o.location_type}</span>` : ''; })()) : '<span style="color:var(--border)">—</span>'}</td>
     <td class="td">
       ${p.work_email
-        ? `<a href="mailto:${x(p.work_email)}" style="color:#4f46e5;text-decoration:none;font-size:13px">${x(p.work_email)}</a>`
-        : `<span style="color:#cbd5e1">—</span>`}
+        ? `<a href="mailto:${x(p.work_email)}" style="color:var(--accent);text-decoration:none;font-size:13px">${x(p.work_email)}</a>`
+        : `<span style="color:var(--border)">—</span>`}
     </td>
     <td class="td">${statusBadge(p.status)}</td>
-    <td class="td">${p.nationality ? x(p.nationality) : '<span style="color:#cbd5e1">—</span>'}</td>
+    <td class="td">${p.nationality ? x(p.nationality) : '<span style="color:var(--border)">—</span>'}</td>
     <td class="td" style="text-align:right;white-space:nowrap">
       <button class="btn-icon edit" data-edit="${x(p.id)}" title="Edit">${ic('pencil',14)}</button>
       <button class="btn-icon del"  data-del="${x(p.id)}"  title="Delete">${ic('trash-2',14)}</button>
@@ -831,10 +831,10 @@ function renderPeople() {
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
       <div>
         <div style="display:flex;align-items:center;gap:10px;margin-bottom:4px">
-          <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a">People</h1>
-          <span id="people-count-badge" class="badge" style="background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe">${S.people.length} shown</span>
+          <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text)">People</h1>
+          <span id="people-count-badge" class="badge" style="background:var(--accent-light);color:#3b82f6;border:1px solid #bfdbfe">${S.people.length} shown</span>
         </div>
-        <p style="color:#64748b;font-size:14px">${S.people.length} employee record${S.people.length !== 1 ? 's' : ''}</p>
+        <p style="color:var(--muted);font-size:14px">${S.people.length} employee record${S.people.length !== 1 ? 's' : ''}</p>
       </div>
       <button class="btn btn-primary" id="add-person">${ic('plus',14)} Add Employee</button>
     </div>
@@ -848,9 +848,9 @@ function renderPeople() {
 
     <div id="people-empty" class="card" style="display:none">
       <div class="empty">
-        <div style="width:56px;height:56px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#94a3b8">${ic('clipboard-list',22)}</div>
-        <p style="font-weight:600;color:#64748b;margin-bottom:4px">No employees found</p>
-        <p style="font-size:13px;color:#94a3b8">Try a different search or add your first employee</p>
+        <div style="width:56px;height:56px;background:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--muted)">${ic('clipboard-list',22)}</div>
+        <p style="font-weight:600;color:var(--muted);margin-bottom:4px">No employees found</p>
+        <p style="font-size:13px;color:var(--muted)">Try a different search or add your first employee</p>
       </div>
     </div>
 
@@ -919,16 +919,16 @@ function drawPersonModal() {
   const tabContent = () => {
     if (m.tab === 'personal') return `
       <!-- Photo upload -->
-      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid #f1f5f9">
+      <div style="display:flex;flex-direction:column;align-items:center;margin-bottom:24px;padding-bottom:20px;border-bottom:1px solid var(--bg)">
         <div id="photo-wrap" style="position:relative;cursor:pointer;margin-bottom:8px" onclick="document.getElementById('photo-input').click()">
           ${m.form.photo_url
-            ? `<img src="${m.form.photo_url}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #e2e8f0;display:block">`
-            : `<div style="width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;border:3px solid #e2e8f0">${(f('first_name')||'?')[0]}${(f('last_name')||'?')[0]}</div>`}
-          <div style="position:absolute;bottom:2px;right:2px;width:24px;height:24px;background:#4f46e5;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff">
+            ? `<img src="${m.form.photo_url}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--border);display:block">`
+            : `<div style="width:88px;height:88px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:26px;font-weight:700;color:#fff;border:3px solid var(--border)">${(f('first_name')||'?')[0]}${(f('last_name')||'?')[0]}</div>`}
+          <div style="position:absolute;bottom:2px;right:2px;width:24px;height:24px;background:var(--accent);border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff">
             ${ic('camera',11,'#fff')}
           </div>
         </div>
-        <p style="font-size:11px;color:#94a3b8">Click photo to upload · Max 500KB · Cropped to circle</p>
+        <p style="font-size:11px;color:var(--muted)">Click photo to upload · Max 500KB · Cropped to circle</p>
         <input type="file" id="photo-input" accept="image/*" style="display:none">
       </div>
       <div class="two-col">
@@ -981,17 +981,17 @@ function drawPersonModal() {
         <!-- Header -->
         <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:24px 28px 0;flex-shrink:0">
           <div>
-            <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a;margin-bottom:2px">
+            <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text);margin-bottom:2px">
               ${m.editId ? x(`${m.form.first_name||''} ${m.form.last_name||''}`.trim() || 'Edit Employee') : 'New Employee'}
             </h3>
-            <p style="font-size:13px;color:#94a3b8">${m.editId ? `Employee #${x(m.form.employee_number||'—')}` : 'Add a new employee record'}</p>
+            <p style="font-size:13px;color:var(--muted)">${m.editId ? `Employee #${x(m.form.employee_number||'—')}` : 'Add a new employee record'}</p>
           </div>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;border-radius:6px;display:flex">
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex">
             ${ic('x',16)}
           </button>
         </div>
         <!-- Tab bar -->
-        <div style="display:flex;border-bottom:1px solid #f1f5f9;padding:0 28px;margin-top:16px;flex-shrink:0">
+        <div style="display:flex;border-bottom:1px solid var(--bg);padding:0 28px;margin-top:16px;flex-shrink:0">
           ${['personal','employment','equality'].map(t =>
             `<button class="modal-tab ${m.tab===t?'active':''}" data-tab="${t}">
               ${{ personal:'Personal', employment:'Employment', equality:'Equality & D&I' }[t]}
@@ -1000,7 +1000,7 @@ function drawPersonModal() {
         <!-- Scrollable body -->
         <div id="hr-modal-body" style="overflow-y:auto;padding:24px 28px;flex:1">${tabContent()}</div>
         <!-- Footer -->
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Cancel</button>
           <button class="btn btn-primary"   id="m-save" ${m.saving?'disabled':''}>
             ${ic('save',14)} ${m.saving?'Saving…':'Save changes'}
@@ -1025,7 +1025,7 @@ function drawPersonModal() {
         ctx.drawImage(img, (img.width-size)/2, (img.height-size)/2, size, size, 0, 0, size, size);
         m.form.photo_url = canvas.toDataURL('image/jpeg', 0.75);
         const wrap = document.getElementById('photo-wrap');
-        if (wrap) wrap.innerHTML = `<img src="${m.form.photo_url}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid #e2e8f0;display:block"><div style="position:absolute;bottom:2px;right:2px;width:24px;height:24px;background:#10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff">✓</div>`;
+        if (wrap) wrap.innerHTML = `<img src="${m.form.photo_url}" style="width:88px;height:88px;border-radius:50%;object-fit:cover;border:3px solid var(--border);display:block"><div style="position:absolute;bottom:2px;right:2px;width:24px;height:24px;background:#10b981;border-radius:50%;display:flex;align-items:center;justify-content:center;border:2px solid #fff">✓</div>`;
       };
       img.src = ev.target.result;
     };
@@ -1084,8 +1084,8 @@ function renderAdmin() {
     <!-- Header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:32px">
       <div>
-        <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Admin</h1>
-        <p style="color:#64748b;font-size:14px">Manage all reference and lookup data</p>
+        <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Admin</h1>
+        <p style="color:var(--muted);font-size:14px">Manage all reference and lookup data</p>
       </div>
     </div>
 
@@ -1100,8 +1100,8 @@ function renderAdmin() {
     <!-- Selected table header -->
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <div>
-        <h2 class="font-display" style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:2px">${x(tConfig.label)}</h2>
-        <p style="font-size:13px;color:#94a3b8">${records.length} entr${records.length!==1?'ies':'y'}</p>
+        <h2 class="font-display" style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">${x(tConfig.label)}</h2>
+        <p style="font-size:13px;color:var(--muted)">${records.length} entr${records.length!==1?'ies':'y'}</p>
       </div>
       <button class="btn btn-primary" id="admin-add">${ic('plus',14)} Add ${x(tConfig.label)}</button>
     </div>
@@ -1117,9 +1117,9 @@ function renderAdmin() {
     <div class="card">
       ${filtered.length === 0 ? `
         <div class="empty">
-          <div style="width:56px;height:56px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:#94a3b8">${ic('clipboard-list',22)}</div>
-          <p style="font-weight:600;color:#64748b;margin-bottom:4px">No ${x(tConfig.label.toLowerCase())} entries yet</p>
-          <p style="font-size:13px;color:#94a3b8">Add your first entry using the button above</p>
+          <div style="width:56px;height:56px;background:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 14px;color:var(--muted)">${ic('clipboard-list',22)}</div>
+          <p style="font-weight:600;color:var(--muted);margin-bottom:4px">No ${x(tConfig.label.toLowerCase())} entries yet</p>
+          <p style="font-size:13px;color:var(--muted)">Add your first entry using the button above</p>
         </div>` : `
       <table class="tbl">
         <thead>
@@ -1134,8 +1134,8 @@ function renderAdmin() {
               ${tConfig.fields.map((f, i) => `
                 <td class="td">
                   ${i === 0 && row[f.key]
-                    ? `<span class="badge" style="background:#f1f5f9;color:#374151">${x(row[f.key])}</span>`
-                    : `<span style="color:${row[f.key]?'inherit':'#cbd5e1'}">${x(row[f.key]||'—')}</span>`}
+                    ? `<span class="badge" style="background:var(--bg);color:var(--text)">${x(row[f.key])}</span>`
+                    : `<span style="color:${row[f.key]?'inherit':'var(--border)'}">${x(row[f.key]||'—')}</span>`}
                 </td>`).join('')}
               <td class="td" style="text-align:right;white-space:nowrap">
                 <button class="btn-icon edit" data-edit="${x(row.id)}" title="Edit">${ic('pencil',14)}</button>
@@ -1192,16 +1192,16 @@ function drawAdminModal() {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal modal-sm">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 28px 20px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
-          <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 28px 20px;border-bottom:1px solid var(--bg);flex-shrink:0">
+          <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">
             ${m.editId ? `Edit ${x(tConfig.label)}` : `New ${x(tConfig.label)}`}
           </h3>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;border-radius:6px;display:flex">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex">${ic('x',16)}</button>
         </div>
         <div id="hr-modal-body" style="overflow-y:auto;padding:24px 28px;flex:1">
           ${tConfig.fields.map(f => field(f, m.form[f.key] || '')).join('')}
         </div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Cancel</button>
           <button class="btn btn-primary" id="m-save" ${m.saving?'disabled':''}>
             ${ic('save',14)} ${m.saving?'Saving…':'Save changes'}
@@ -1253,23 +1253,23 @@ function pageComingSoon() {
 
   pc.innerHTML = `
     <div style="margin-bottom:32px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">${x(m.label)}</h1>
-      <p style="color:#64748b;font-size:14px">Module UI in development</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">${x(m.label)}</h1>
+      <p style="color:var(--muted);font-size:14px">Module UI in development</p>
     </div>
     <div class="card">
       <div style="padding:80px 40px;display:flex;flex-direction:column;align-items:center;text-align:center">
         <div class="icon-tile" style="width:64px;height:64px;border-radius:16px;background:${m.accent}18;margin-bottom:24px">
           ${ic(m.icon,28,m.accent)}
         </div>
-        <span class="badge" style="background:#f1f5f9;color:#64748b;border:1px solid #e2e8f0;margin-bottom:16px;padding:5px 12px">
+        <span class="badge" style="background:var(--bg);color:var(--muted);border:1px solid var(--border);margin-bottom:16px;padding:5px 12px">
           Schema ready · UI coming soon
         </span>
-        <p style="font-size:14px;color:#64748b;max-width:340px;line-height:1.75;margin-bottom:32px">
+        <p style="font-size:14px;color:var(--muted);max-width:340px;line-height:1.75;margin-bottom:32px">
           All database tables for this module are set up in Supabase. The interface is being built.
         </p>
         ${items.length ? `
-        <div style="background:#f8fafc;border-radius:12px;padding:24px;text-align:left;width:100%;max-width:380px;border:1px solid #f1f5f9">
-          <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px">What's included</p>
+        <div style="background:var(--bg);border-radius:12px;padding:24px;text-align:left;width:100%;max-width:380px;border:1px solid var(--bg)">
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.08em;margin-bottom:14px">What's included</p>
           <ul style="list-style:none;display:flex;flex-direction:column;gap:10px">
             ${items.map(item =>
               `<li style="display:flex;align-items:center;gap:10px;font-size:13px;color:#475569">
@@ -1313,7 +1313,7 @@ function mkOpts(arr, valKey, labelFn) {
 function resolve(cacheKey, id, labelFn) {
   if (!id) return '—';
   const rec = byId(S.cache[cacheKey], id);
-  if (!rec) return `<span style="color:#cbd5e1;font-family:monospace;font-size:11px">${x(String(id).slice(0,8))}…</span>`;
+  if (!rec) return `<span style="color:var(--border);font-family:monospace;font-size:11px">${x(String(id).slice(0,8))}…</span>`;
   return x(typeof labelFn === 'function' ? labelFn(rec) : (rec[labelFn]||'—'));
 }
 
@@ -1324,14 +1324,14 @@ const personOpts = () => mkOpts(S.cache.people||[], 'id',
 
 // ── Sub-tab bar: pill group navigation used by multi-section pages ────
 function subTabBar(tabs, activeId, stateKey) {
-  return `<div style="display:flex;gap:3px;background:#f1f5f9;border-radius:10px;padding:4px;margin-bottom:28px;flex-wrap:wrap">
+  return `<div style="display:flex;gap:3px;background:var(--bg);border-radius:10px;padding:4px;margin-bottom:28px;flex-wrap:wrap">
     ${tabs.map(t => `
       <button data-subtab="${t.id}" data-sk="${stateKey}"
         style="padding:7px 14px;border-radius:7px;font-size:12px;font-weight:600;border:none;cursor:pointer;
                display:flex;align-items:center;gap:5px;transition:all 0.15s;font-family:'Inter',sans-serif;
                ${activeId===t.id
-                 ? 'background:#fff;color:#4f46e5;box-shadow:0 1px 4px rgba(0,0,0,0.12)'
-                 : 'background:transparent;color:#64748b'}">
+                 ? 'background:#fff;color:var(--accent);box-shadow:0 1px 4px rgba(0,0,0,0.12)'
+                 : 'background:transparent;color:var(--muted)'}">
         ${ic(t.icon||'circle', 12)} ${x(t.label)}
       </button>`).join('')}
   </div>`;
@@ -1357,8 +1357,8 @@ function renderCRUD(config, records) {
   return `
     <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
       <div>
-        <h2 class="font-display" style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:2px">${x(config.title)}</h2>
-        ${config.subtitle ? `<p style="font-size:13px;color:#94a3b8">${x(config.subtitle)}</p>` : ''}
+        <h2 class="font-display" style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">${x(config.title)}</h2>
+        ${config.subtitle ? `<p style="font-size:13px;color:var(--muted)">${x(config.subtitle)}</p>` : ''}
       </div>
       <button class="btn btn-primary" id="crud-add">${ic('plus',14)} ${x(config.addLabel||'Add Record')}</button>
     </div>
@@ -1369,9 +1369,9 @@ function renderCRUD(config, records) {
     <div class="card">
       ${filtered.length === 0 ? `
         <div class="empty">
-          <div style="width:48px;height:48px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:#94a3b8">${ic('inbox',20)}</div>
-          <p style="font-weight:600;color:#64748b;font-size:14px;margin-bottom:4px">No records yet</p>
-          <p style="font-size:13px;color:#94a3b8">Use the button above to add the first one</p>
+          <div style="width:48px;height:48px;background:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;margin:0 auto 12px;color:var(--muted)">${ic('inbox',20)}</div>
+          <p style="font-weight:600;color:var(--muted);font-size:14px;margin-bottom:4px">No records yet</p>
+          <p style="font-size:13px;color:var(--muted)">Use the button above to add the first one</p>
         </div>` : `
       <table class="tbl">
         <thead><tr>
@@ -1383,7 +1383,7 @@ function renderCRUD(config, records) {
             <tr class="tr">
               ${config.columns.map(c=>`<td class="td">${c.render ? c.render(row) : x(row[c.key]||'—')}</td>`).join('')}
               <td class="td" style="text-align:right;white-space:nowrap">
-                ${(config.rowActions||[]).map(a=>`<button class="btn-icon" data-action="${x(a.key)}" data-action-id="${x(row.id)}" title="${x(a.label)}" style="color:${a.colour||'#64748b'}">${ic(a.icon,14)}</button>`).join('')}
+                ${(config.rowActions||[]).map(a=>`<button class="btn-icon" data-action="${x(a.key)}" data-action-id="${x(row.id)}" title="${x(a.label)}" style="color:${a.colour||'var(--muted)'}">${ic(a.icon,14)}</button>`).join('')}
                 <button class="btn-icon edit" data-edit="${x(row.id)}" title="Edit">${ic('pencil',14)}</button>
                 <button class="btn-icon del"  data-del="${x(row.id)}"  title="Delete">${ic('trash-2',14)}</button>
               </td>
@@ -1451,14 +1451,14 @@ function drawGenericModal(onReload) {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal ${config.wide ? 'modal-md' : 'modal-sm'}">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 28px 20px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
-          <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:24px 28px 20px;border-bottom:1px solid var(--bg);flex-shrink:0">
+          <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">
             ${m.editId ? `Edit ${x(config.title)}` : `New ${x(config.title)}`}
           </h3>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;border-radius:6px;display:flex">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex">${ic('x',16)}</button>
         </div>
         <div id="hr-modal-body" style="overflow-y:auto;padding:24px 28px;flex:1">${fieldsHtml}</div>
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Cancel</button>
           <button class="btn btn-primary" id="m-save" ${m.saving?'disabled':''}>
             ${ic('save',14)} ${m.saving?'Saving…':'Save changes'}
@@ -1554,13 +1554,13 @@ function drawGenericModal(onReload) {
 
 // ── Status badge helper ───────────────────────────────────────────────
 function statusBadge(val, colourMap) {
-  const c = colourMap[val] || '#64748b';
+  const c = colourMap[val] || 'var(--muted)';
   return val ? `<span class="badge" style="background:${c}18;color:${c};border:1px solid ${c}28">${x(val)}</span>` : '—';
 }
 
 // ── Date display helper (highlights overdue in red, due-soon in amber) ─
 function dateCell(dateStr, warnDays) {
-  if (!dateStr) return '<span style="color:#cbd5e1">—</span>';
+  if (!dateStr) return '<span style="color:var(--border)">—</span>';
   const d = new Date(dateStr);
   const now = new Date();
   if (warnDays) {
@@ -1624,8 +1624,8 @@ function renderRoles() {
           { label:'Job Title',  render: r => { const ro = (S.cache.roles||[]).find(ro=>ro.id===r.role_id); return jt(ro?.job_title_id); }},
           { label:'Department', render: r => { const ro = (S.cache.roles||[]).find(ro=>ro.id===r.role_id); return dep(ro?.department_id); }},
           { label:'Start Date', render: r => dateCell(r.start_date) },
-          { label:'End Date',   render: r => r.end_date ? dateCell(r.end_date) : '<span class="badge" style="background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0">Current</span>' },
-          { label:'Notes',      render: r => r.notes ? `<span style="font-size:12px;color:#64748b">${x(r.notes.slice(0,40))}${r.notes.length>40?'…':''}</span>` : '—' },
+          { label:'End Date',   render: r => r.end_date ? dateCell(r.end_date) : '<span class="badge" style="background:var(--ok-bg);color:#16a34a;border:1px solid var(--ok-border)">Current</span>' },
+          { label:'Notes',      render: r => r.notes ? `<span style="font-size:12px;color:var(--muted)">${x(r.notes.slice(0,40))}${r.notes.length>40?'…':''}</span>` : '—' },
         ],
         fields:[
           { key:'person_id',  label:'Employee',   required:true, type:'select', options: personOpts() },
@@ -1646,7 +1646,7 @@ function renderRoles() {
           { label:'Job Title',   render: r => jt(r.job_title_id) },
           { label:'Department',  render: r => dep(r.department_id) },
           { label:'Salary Band', render: r => resolve('salary_bands', r.salary_band_id, ro => `${ro.band_name||''} ${ro.grade?'('+ro.grade+')':''}`.trim()) },
-          { label:'FTE',         render: r => r.fte ? `<span class="badge" style="background:#f1f5f9;color:#374151">${x(String(r.fte))}</span>` : '<span style="color:#94a3b8">1.0</span>' },
+          { label:'FTE',         render: r => r.fte ? `<span class="badge" style="background:var(--bg);color:var(--text)">${x(String(r.fte))}</span>` : '<span style="color:var(--muted)">1.0</span>' },
         ],
         fields:[
           { key:'job_title_id',   label:'Job Title',   required:true, type:'select', options: mkOpts(S.cache.job_titles||[], 'id', 'title') },
@@ -1666,7 +1666,7 @@ function renderRoles() {
         { label:'Employee',       render: r => personName(r.person_id)  },
         { label:'Reports To',     render: r => personName(r.manager_id) },
         { label:'Effective From', render: r => dateCell(r.effective_from) },
-        { label:'Effective To',   render: r => r.effective_to ? dateCell(r.effective_to) : '<span class="badge" style="background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0">Current</span>' },
+        { label:'Effective To',   render: r => r.effective_to ? dateCell(r.effective_to) : '<span class="badge" style="background:var(--ok-bg);color:#16a34a;border:1px solid var(--ok-border)">Current</span>' },
       ],
       fields:[
         // Pass personOpts as a *function* (not called yet) so the dropdown
@@ -1682,8 +1682,8 @@ function renderRoles() {
   const { config, records } = getConfig();
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Roles & Structure</h1>
-      <p style="color:#64748b;font-size:14px">Role history, definitions and reporting lines</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Roles & Structure</h1>
+      <p style="color:var(--muted);font-size:14px">Role history, definitions and reporting lines</p>
     </div>
     ${subTabBar(ROLES_TABS, S.rolesTab, 'rolesTab')}
     ${renderCRUD(config, records)}`;
@@ -1717,11 +1717,11 @@ function renderPay() {
     addLabel:'Add Pay Record', wide:true,
     columns:[
       { label:'Employee',  render: r => personName(r.person_id) },
-      { label:'Salary',    render: r => r.salary ? `<span style="font-weight:700;color:#0f172a">£${Number(r.salary).toLocaleString('en-GB')}</span>` : '—' },
+      { label:'Salary',    render: r => r.salary ? `<span style="font-weight:700;color:var(--text)">£${Number(r.salary).toLocaleString('en-GB')}</span>` : '—' },
       { label:'Frequency', render: r => r.pay_frequency ? statusBadge(r.pay_frequency, {Monthly:'#10b981',Weekly:'#3b82f6','4-Weekly':'#8b5cf6',Annual:'#f97316'}) : '—' },
       { label:'Band',      render: r => sbName(r.salary_band_id) },
       { label:'Effective', render: r => dateCell(r.effective_date) },
-      { label:'Notes',     render: r => r.notes ? `<span style="font-size:12px;color:#64748b">${x(r.notes.slice(0,45))}${r.notes.length>45?'…':''}</span>` : '—' },
+      { label:'Notes',     render: r => r.notes ? `<span style="font-size:12px;color:var(--muted)">${x(r.notes.slice(0,45))}${r.notes.length>45?'…':''}</span>` : '—' },
     ],
     fields:[
       { key:'person_id',      label:'Employee',       required:true, type:'select', options: personOpts() },
@@ -1735,8 +1735,8 @@ function renderPay() {
 
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Pay</h1>
-      <p style="color:#64748b;font-size:14px">Salary history and pay band positioning — every change preserved</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Pay</h1>
+      <p style="color:var(--muted);font-size:14px">Salary history and pay band positioning — every change preserved</p>
     </div>
     ${renderCRUD(config, records)}`;
   icons();
@@ -1776,7 +1776,7 @@ async function loadSkillsTab() {
 function renderSkills() {
   const pc = $('hr-page-content'); if (!pc) return;
   const proLevel = v => {
-    const m = { Expert:'#7c3aed', Advanced:'#2563eb', Intermediate:'#0891b2', Beginner:'#64748b' };
+    const m = { Expert:'#7c3aed', Advanced:'#2563eb', Intermediate:'#0891b2', Beginner:'var(--muted)' };
     return v ? statusBadge(v, m) : '—';
   };
 
@@ -1812,9 +1812,9 @@ function renderSkills() {
           { label:'Course',   render: r => resolve('training_courses', r.course_id, 'name') },
           { label:'Date',     render: r => dateCell(r.date_attended) },
           { label:'Outcome',  render: r => {
-            if (r.passed==='true'||r.passed===true) return '<span class="badge" style="background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0">Passed</span>';
-            if (r.passed==='false'||r.passed===false) return '<span class="badge" style="background:#fee2e2;color:#dc2626;border:1px solid #fecaca">Not Passed</span>';
-            return '<span style="color:#cbd5e1">—</span>';
+            if (r.passed==='true'||r.passed===true) return '<span class="badge" style="background:var(--ok-bg);color:#16a34a;border:1px solid var(--ok-border)">Passed</span>';
+            if (r.passed==='false'||r.passed===false) return '<span class="badge" style="background:var(--err-bg);color:#dc2626;border:1px solid var(--err-border)">Not Passed</span>';
+            return '<span style="color:var(--border)">—</span>';
           }},
           { label:'Score',    render: r => r.score ? `<span style="font-weight:600">${x(String(r.score))}%</span>` : '—' },
           { label:'Renewal',  render: r => dateCell(r.renewal_due, 30) },
@@ -1841,7 +1841,7 @@ function renderSkills() {
           { label:'Certificate',  render: r => resolve('certificate_types', r.certificate_type_id, 'name') },
           { label:'Cert. No.',    render: r => r.certificate_number ? `<span style="font-family:monospace;font-size:12px">${x(r.certificate_number)}</span>` : '—' },
           { label:'Issued',       render: r => dateCell(r.issue_date) },
-          { label:'Expires',      render: r => r.expiry_date ? dateCell(r.expiry_date, 60) : '<span class="badge" style="background:#f1f5f9;color:#64748b">No Expiry</span>' },
+          { label:'Expires',      render: r => r.expiry_date ? dateCell(r.expiry_date, 60) : '<span class="badge" style="background:var(--bg);color:var(--muted)">No Expiry</span>' },
         ],
         fields:[
           { key:'person_id',           label:'Employee',    required:true, type:'select', options: personOpts() },
@@ -1878,8 +1878,8 @@ function renderSkills() {
   const { config, records } = getConfig();
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Skills & Training</h1>
-      <p style="color:#64748b;font-size:14px">Skills matrix, training records, certificates and accreditations</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Skills & Training</h1>
+      <p style="color:var(--muted);font-size:14px">Skills matrix, training records, certificates and accreditations</p>
     </div>
     ${subTabBar(SKILLS_TABS, S.skillsTab, 'skillsTab')}
     ${renderCRUD(config, records)}`;
@@ -1981,9 +1981,9 @@ function renderRecruitment() {
   };
 
   const VAC_SC    = { Open:'#10b981', 'On Hold':'#f59e0b', Filled:'#3b82f6', Cancelled:'#ef4444' };
-  const ADV_SC    = { Draft:'#64748b', Live:'#10b981', Closed:'#ef4444' };
+  const ADV_SC    = { Draft:'var(--muted)', Live:'#10b981', Closed:'#ef4444' };
   const APP_SC    = {
-    'New':                    '#64748b',
+    'New':                    'var(--muted)',
     'Under Review':           '#3b82f6',
     'Shortlisted':            '#8b5cf6',
     'On Hold':                '#f59e0b',
@@ -1993,15 +1993,15 @@ function renderRecruitment() {
     'Hired':                  '#10b981',
     'Not Successful':         '#ef4444',
     'Offer Declined':         '#dc2626',
-    'Withdrawn — Applicant':  '#94a3b8',
-    'Withdrawn — Employer':   '#64748b',
+    'Withdrawn — Applicant':  'var(--muted)',
+    'Withdrawn — Employer':   'var(--muted)',
   };
   const INT_SC    = { 'Make Offer':'#10b981', 'Not Successful':'#ef4444',
                       'Further Interview Needed':'#f97316', 'Suggest Role Creation':'#8b5cf6',
-                      'Suggest for Other Vacancy':'#3b82f6', Pending:'#94a3b8' };
+                      'Suggest for Other Vacancy':'#3b82f6', Pending:'var(--muted)' };
   const OFFER_SC  = { Pending:'#f59e0b', Accepted:'#10b981', 'Accepted in Principle':'#3b82f6',
-                      Declined:'#ef4444', Withdrawn:'#94a3b8' };
-  const INVITE_SC = { Accepted:'#10b981', Declined:'#ef4444', 'No Response':'#94a3b8' };
+                      Declined:'#ef4444', Withdrawn:'var(--muted)' };
+  const INVITE_SC = { Accepted:'#10b981', Declined:'#ef4444', 'No Response':'var(--muted)' };
 
   const depOpts  = () => mkOpts(S.cache.departments||[], 'id','name');
   const jtOpts   = () => mkOpts(S.cache.job_titles||[],  'id','title');
@@ -2026,13 +2026,13 @@ function renderRecruitment() {
           { label:'Department',    render: r => resolve('departments', r.department_id, 'name') },
           { label:'Salary Range',  render: r => r.salary_from||r.salary_to
               ? `<span style="font-size:12px">£${r.salary_from?Number(r.salary_from).toLocaleString('en-GB'):'?'} – £${r.salary_to?Number(r.salary_to).toLocaleString('en-GB'):'?'}</span>` : '—' },
-          { label:'FTE',           render: r => r.fte ? `<span class="badge" style="background:#f1f5f9;color:#374151">${r.fte}</span>` : '—' },
+          { label:'FTE',           render: r => r.fte ? `<span class="badge" style="background:var(--bg);color:var(--text)">${r.fte}</span>` : '—' },
           { label:'Opened',        render: r => dateCell(r.opened_date) },
           { label:'Target Fill',   render: r => dateCell(r.target_fill_date, 14) },
-          { label:'Office',        render: r => r.office_location_id ? resolve('office_locations', r.office_location_id, ro => ro.city ? ro.name+' ('+ro.city+')' : ro.name) + ((() => { const o=(S.cache.office_locations||[]).find(x=>x.id===r.office_location_id); return o?.location_type ? ` <span class="badge" style="background:#f1f5f9;color:#64748b;font-size:10px">${o.location_type}</span>` : ''; })()) : '<span style="color:#cbd5e1">—</span>' },
+          { label:'Office',        render: r => r.office_location_id ? resolve('office_locations', r.office_location_id, ro => ro.city ? ro.name+' ('+ro.city+')' : ro.name) + ((() => { const o=(S.cache.office_locations||[]).find(x=>x.id===r.office_location_id); return o?.location_type ? ` <span class="badge" style="background:var(--bg);color:var(--muted);font-size:10px">${o.location_type}</span>` : ''; })()) : '<span style="color:var(--border)">—</span>' },
           { label:'Headcount',     render: r => r.headcount_approved
-              ? '<span class="badge" style="background:#dcfce7;color:#16a34a">Approved</span>'
-              : '<span class="badge" style="background:#fef3c7;color:#92400e">Pending</span>' },
+              ? '<span class="badge" style="background:var(--ok-bg);color:#16a34a">Approved</span>'
+              : '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Pending</span>' },
         ],
         fields:[
           { key:'title',              label:'Vacancy Title',        required:true },
@@ -2067,7 +2067,7 @@ function renderRecruitment() {
         columns:[
           { label:'Vacancy',    render: r => vacTitle(r.vacancy_id) },
           { label:'Platform',   render: r => {
-            const c = { Internal:'#6366f1', LinkedIn:'#0077b5', 'Company Website':'#10b981', 'Job Site':'#f97316', 'Sector Magazine':'#8b5cf6', Other:'#64748b' }[r.platform]||'#64748b';
+            const c = { Internal:'var(--accent)', LinkedIn:'#0077b5', 'Company Website':'#10b981', 'Job Site':'#f97316', 'Sector Magazine':'#8b5cf6', Other:'var(--muted)' }[r.platform]||'var(--muted)';
             return r.platform ? `<span class="badge" style="background:${c}18;color:${c};border:1px solid ${c}28">${x(r.platform)}${r.platform_name?' — '+x(r.platform_name):''}</span>` : '—';
           }},
           { label:'Status',     render: r => statusBadge(r.status||'Draft', ADV_SC) },
@@ -2100,16 +2100,16 @@ function renderRecruitment() {
         table:'applicants', title:'Applicants',
         subtitle:'All applicants — marked as Talent Pool if we want to keep them on record for future roles',
         addLabel:'Add Applicant', wide:false,
-        rowActions:[{ key:'attachments', icon:'paperclip', label:'Manage Attachments (CV, cover letter etc.)', colour:'#4f46e5' }],
+        rowActions:[{ key:'attachments', icon:'paperclip', label:'Manage Attachments (CV, cover letter etc.)', colour:'var(--accent)' }],
         columns:[
-          { label:'Name',         render: r => `<div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="background:#e0e7ff;color:#4f46e5;font-size:10px">${(r.first_name||'?')[0]}${(r.last_name||'?')[0]}</div><span style="font-weight:500">${x(r.first_name||'')} ${x(r.last_name||'')}</span></div>` },
-          { label:'Email',        render: r => r.email ? `<a href="mailto:${x(r.email)}" style="color:#4f46e5;font-size:13px;text-decoration:none">${x(r.email)}</a>` : '—' },
+          { label:'Name',         render: r => `<div style="display:flex;align-items:center;gap:8px"><div class="avatar" style="background:#e0e7ff;color:var(--accent);font-size:10px">${(r.first_name||'?')[0]}${(r.last_name||'?')[0]}</div><span style="font-weight:500">${x(r.first_name||'')} ${x(r.last_name||'')}</span></div>` },
+          { label:'Email',        render: r => r.email ? `<a href="mailto:${x(r.email)}" style="color:var(--accent);font-size:13px;text-decoration:none">${x(r.email)}</a>` : '—' },
           { label:'Phone',        key:'phone' },
           { label:'Talent Pool',  render: r => (r.in_talent_pool==='true'||r.in_talent_pool===true)
               ? '<span class="badge" style="background:#ede9fe;color:#7c3aed;border:1px solid #ddd6fe">★ Talent Pool</span>' : '—' },
           { label:'GDPR',         render: r => (r.gdpr_consent==='true'||r.gdpr_consent===true)
-              ? '<span class="badge" style="background:#dcfce7;color:#16a34a">Consent given</span>'
-              : '<span class="badge" style="background:#fef3c7;color:#92400e">Pending</span>' },
+              ? '<span class="badge" style="background:var(--ok-bg);color:#16a34a">Consent given</span>'
+              : '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Pending</span>' },
         ],
         fields:[
           { key:'first_name',        label:'First Name',  required:true },
@@ -2138,8 +2138,8 @@ function renderRecruitment() {
           { label:'Vacancy',     render: r => vacTitle(r.vacancy_id) },
           { label:'Via',         render: r => r.advert_id ? (() => {
               const ad = (S.cache.job_adverts||[]).find(a=>a.id===r.advert_id);
-              return ad ? `<span class="badge" style="background:#f1f5f9;color:#374151">${x(ad.platform||'?')}</span>` : '—';
-            })() : '<span style="color:#cbd5e1">Direct</span>' },
+              return ad ? `<span class="badge" style="background:var(--bg);color:var(--text)">${x(ad.platform||'?')}</span>` : '—';
+            })() : '<span style="color:var(--border)">Direct</span>' },
           { label:'Applied',     render: r => dateCell(r.application_date) },
           { label:'Status',      render: r => {
             const s = r.status||'New';
@@ -2149,7 +2149,7 @@ function renderRecruitment() {
           }},
           { label:'Int. Invite', render: r => r.interview_response
               ? statusBadge(r.interview_response, INVITE_SC)
-              : r.interview_invite_sent ? '<span class="badge" style="background:#fef3c7;color:#92400e">Sent — awaiting</span>' : '—' },
+              : r.interview_invite_sent ? '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Sent — awaiting</span>' : '—' },
           { label:'Talent Pool', render: r => (r.talent_pool==='true'||r.talent_pool===true)
               ? '<span class="badge" style="background:#ede9fe;color:#7c3aed">★ Pool</span>' : '—' },
 
@@ -2208,12 +2208,12 @@ function renderRecruitment() {
         addLabel:'Add Interview Stage', wide:true, _custom:'interview',
         columns:[
           { label:'Applicant',   render: r => { const a=(S.cache.applications||[]).find(ap=>ap.id===r.application_id); return a ? applLabel(a.applicant_id) : '—'; }},
-          { label:'Stage',       render: r => r.stage_number ? `<span class="badge" style="background:#f1f5f9;color:#374151">Stage ${r.stage_number}</span>` : '—' },
-          { label:'Date',        render: r => r.stage_date ? `${dateCell(r.stage_date)}${r.stage_time?' <span style="font-size:11px;color:#94a3b8">'+x(r.stage_time)+'</span>':''}` : '—' },
-          { label:'Method',      render: r => r.method ? `<span class="badge" style="background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe">${x(r.method)}</span>` : '—' },
-          { label:'Type(s)',     render: r => r.stage_types ? `<span style="font-size:12px;color:#64748b">${x(r.stage_types)}</span>` : '—' },
+          { label:'Stage',       render: r => r.stage_number ? `<span class="badge" style="background:var(--bg);color:var(--text)">Stage ${r.stage_number}</span>` : '—' },
+          { label:'Date',        render: r => r.stage_date ? `${dateCell(r.stage_date)}${r.stage_time?' <span style="font-size:11px;color:var(--muted)">'+x(r.stage_time)+'</span>':''}` : '—' },
+          { label:'Method',      render: r => r.method ? `<span class="badge" style="background:var(--accent-light);color:#3b82f6;border:1px solid #bfdbfe">${x(r.method)}</span>` : '—' },
+          { label:'Type(s)',     render: r => r.stage_types ? `<span style="font-size:12px;color:var(--muted)">${x(r.stage_types)}</span>` : '—' },
           { label:'Interviewer(s)',key:'interviewers', render: r => r.interviewers ? `<span style="font-size:12px">${x(r.interviewers)}</span>` : '—' },
-          { label:'Outcome',     render: r => r.outcome ? statusBadge(r.outcome, INT_SC) : '<span style="color:#cbd5e1">Pending</span>' },
+          { label:'Outcome',     render: r => r.outcome ? statusBadge(r.outcome, INT_SC) : '<span style="color:var(--border)">Pending</span>' },
         ],
         fields:[
           { key:'application_id',     label:'Application',   required:true, type:'select', options: appOpts },
@@ -2245,9 +2245,9 @@ function renderRecruitment() {
         { label:'Start Date',  render: r => dateCell(r.start_date) },
         { label:'Status',      render: r => statusBadge(r.status||'Pending', OFFER_SC) },
         { label:'Variation',   render: r => r.variation_requested
-            ? `<span class="badge" style="background:#fef3c7;color:#92400e">Variation: ${x(r.variation_requested.slice(0,30))}${r.variation_requested.length>30?'…':''}</span>` : '—' },
+            ? `<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Variation: ${x(r.variation_requested.slice(0,30))}${r.variation_requested.length>30?'…':''}</span>` : '—' },
         { label:'Escalated',   render: r => (r.escalated==='true'||r.escalated===true)
-            ? '<span class="badge" style="background:#fee2e2;color:#dc2626">Escalated</span>' : '—' },
+            ? '<span class="badge" style="background:var(--err-bg);color:#dc2626">Escalated</span>' : '—' },
       ],
       fields:[
         { key:'application_id',     label:'Application',     required:true, type:'select', options: appOpts },
@@ -2280,8 +2280,8 @@ function renderRecruitment() {
 
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Recruitment</h1>
-      <p style="color:#64748b;font-size:14px">Vacancies · adverts · applicants · interviews · offers</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Recruitment</h1>
+      <p style="color:var(--muted);font-size:14px">Vacancies · adverts · applicants · interviews · offers</p>
     </div>
     ${subTabBar(RECRUIT_TABS, S.recruitTab, 'recruitTab')}
     ${renderCRUD(config, records)}`;
@@ -2376,24 +2376,24 @@ function drawAdvertModal() {
     }
 
     if (!items.length) return `
-      <div style="background:#fef3c7;border:1px solid #fde68a;border-radius:8px;padding:12px 14px;font-size:13px;color:#92400e">
+      <div style="background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:8px;padding:12px 14px;font-size:13px;color:var(--warn-text)">
         ${ic('alert-triangle',13)} No ${f('platform')} options found. Add them in the <b>Admin</b> page first.
       </div>`;
 
     return `
-      <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-        <div style="background:#f8fafc;padding:10px 14px;border-bottom:1px solid #e2e8f0;font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">
+      <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+        <div style="background:var(--bg);padding:10px 14px;border-bottom:1px solid var(--border);font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
           ${ic('check-square',13)} Select ${x(f('platform'))} outlets <span style="color:#f87171">*</span>
-          <span style="font-weight:400;color:#94a3b8;margin-left:6px">Creates one advert record per outlet selected</span>
+          <span style="font-weight:400;color:var(--muted);margin-left:6px">Creates one advert record per outlet selected</span>
         </div>
         <div style="max-height:220px;overflow-y:auto;padding:8px 4px">
           ${items.map(it => `
             <label style="display:flex;align-items:center;gap:10px;padding:8px 12px;cursor:pointer;border-radius:6px;transition:background 0.1s"
-                   onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''">
+                   onmouseenter="this.style.background='var(--bg)'" onmouseleave="this.style.background=''">
               <input type="checkbox" data-outlet-id="${x(it.id)}" data-outlet-name="${x(it.label)}"
-                     style="width:15px;height:15px;accent-color:#4f46e5;cursor:pointer"
+                     style="width:15px;height:15px;accent-color:var(--accent);cursor:pointer"
                      ${(m.selectedOutlets||[]).some(o=>o.id===it.id)?'checked':''}>
-              <span style="font-size:13px;color:#374151">${x(it.label)}</span>
+              <span style="font-size:13px;color:var(--text)">${x(it.label)}</span>
             </label>`).join('')}
         </div>
       </div>`;
@@ -2404,16 +2404,16 @@ function drawAdvertModal() {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal modal-md" style="max-width:680px">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid var(--bg);flex-shrink:0">
           <div>
-            <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">
+            <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">
               ${isEdit ? 'Edit Advert Placement' : 'Place New Advert'}
             </h3>
-            <p style="font-size:12px;color:#94a3b8;margin-top:2px">
+            <p style="font-size:12px;color:var(--muted);margin-top:2px">
               ${isEdit ? 'Edit this single placement record' : 'Select one platform — multiple outlets create separate trackable records'}
             </p>
           </div>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;display:flex">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex">${ic('x',16)}</button>
         </div>
 
         <div id="hr-modal-body" style="overflow-y:auto;padding:22px 28px;flex:1;display:flex;flex-direction:column;gap:16px">
@@ -2443,7 +2443,7 @@ function drawAdvertModal() {
           ${field({key:'advert_text',  label:'Advert Text', type:'textarea'}, f('advert_text'))}
         </div>
 
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Cancel</button>
           <button class="btn btn-primary" id="m-save" ${m.saving?'disabled':''}>
             ${ic('save',14)} ${m.saving ? 'Saving…' : (isEdit ? 'Save changes' : 'Place advert')}
@@ -2555,25 +2555,25 @@ function drawApplicantFromAdvertModal() {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal modal-md" style="max-width:660px">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid var(--bg);flex-shrink:0">
           <div>
-            <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">Record Applicant</h3>
+            <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">Record Applicant</h3>
             <div style="display:flex;gap:8px;flex-wrap:wrap;margin-top:6px">
-              <span style="font-size:12px;background:#eff6ff;color:#3b82f6;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px">
+              <span style="font-size:12px;background:var(--accent-light);color:#3b82f6;border:1px solid #bfdbfe;border-radius:6px;padding:2px 8px">
                 ${ic('clipboard-list',11)} ${x(vacName)}
               </span>
-              <span style="font-size:12px;background:#f0fdf4;color:#16a34a;border:1px solid #bbf7d0;border-radius:6px;padding:2px 8px">
+              <span style="font-size:12px;background:#f0fdf4;color:#16a34a;border:1px solid var(--ok-border);border-radius:6px;padding:2px 8px">
                 ${ic('megaphone',11)} Via: ${x(channelStr)}
               </span>
             </div>
           </div>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;display:flex;flex-shrink:0">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;flex-shrink:0">${ic('x',16)}</button>
         </div>
 
         <div id="hr-modal-body" style="overflow-y:auto;padding:22px 28px;flex:1;display:flex;flex-direction:column;gap:0">
 
           <!-- Applicant details -->
-          <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${ic('user',11)} Applicant Details</p>
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${ic('user',11)} Applicant Details</p>
           <div class="two-col">
             ${field({key:'first_name', label:'First Name', required:true}, fv('first_name'))}
             ${field({key:'last_name',  label:'Last Name',  required:true}, fv('last_name'))}
@@ -2585,10 +2585,10 @@ function drawApplicantFromAdvertModal() {
           ${field({key:'gdpr_consent',  label:'GDPR Consent Given?', type:'select',
             options:[{value:'false',label:'No / Pending'},{value:'true',label:'Yes'}]}, fv('gdpr_consent'))}
 
-          <div style="height:1px;background:#f1f5f9;margin:16px 0"></div>
+          <div style="height:1px;background:var(--bg);margin:16px 0"></div>
 
           <!-- Application details -->
-          <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${ic('file-text',11)} Application Details</p>
+          <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:12px">${ic('file-text',11)} Application Details</p>
           <div class="two-col">
             ${field({key:'application_date', label:'Application Date', required:true, type:'date'}, fv('application_date'))}
             ${field({key:'status', label:'Initial Status', type:'select',
@@ -2597,7 +2597,7 @@ function drawApplicantFromAdvertModal() {
           ${field({key:'notes', label:'Notes', type:'textarea', hint:'Any initial observations about this applicant'}, fv('notes'))}
         </div>
 
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Cancel</button>
           <button class="btn btn-primary" id="m-save" ${m.saving?'disabled':''}>
             ${ic('user-plus',14)} ${m.saving ? 'Saving…' : 'Record Applicant'}
@@ -2711,14 +2711,14 @@ function drawInterviewModal() {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal" style="max-width:680px;width:95vw">
-        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid var(--bg);flex-shrink:0">
           <div>
-            <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">
+            <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">
               ${m.editId ? 'Edit Interview Stage' : 'Add Interview Stage'}
             </h3>
-            <p style="font-size:12px;color:#94a3b8;margin-top:2px">Set up the panel, format and send calendar invites</p>
+            <p style="font-size:12px;color:var(--muted);margin-top:2px">Set up the panel, format and send calendar invites</p>
           </div>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;display:flex;flex-shrink:0">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex;flex-shrink:0">${ic('x',16)}</button>
         </div>
 
         <div style="overflow-y:auto;padding:22px 28px;flex:1;display:flex;flex-direction:column;gap:16px">
@@ -2744,23 +2744,23 @@ function drawInterviewModal() {
           <!-- Format types (checkboxes from lookup) -->
           <div>
             <label class="field-label">Format / Type(s)</label>
-            <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-              <div style="background:#f8fafc;padding:8px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">
+            <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+              <div style="background:var(--bg);padding:8px 14px;border-bottom:1px solid var(--bg);display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
                   ${ic('clipboard-list',11)} Select all that apply
                 </span>
-                ${m.selectedTypes.length ? `<span class="badge" style="background:#4f46e5;color:#fff">${m.selectedTypes.length} selected</span>` : ''}
+                ${m.selectedTypes.length ? `<span class="badge" style="background:var(--accent);color:#fff">${m.selectedTypes.length} selected</span>` : ''}
               </div>
               <div style="display:grid;grid-template-columns:repeat(3,1fr);gap:0;padding:4px">
                 ${formatTypes.length ? formatTypes.map(t => `
                   <label style="display:flex;align-items:center;gap:8px;padding:7px 10px;cursor:pointer;border-radius:6px;transition:background 0.1s"
-                         onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''">
+                         onmouseenter="this.style.background='var(--bg)'" onmouseleave="this.style.background=''">
                     <input type="checkbox" class="int-type-cb" data-type="${x(t)}"
                       ${m.selectedTypes.includes(t) ? 'checked' : ''}
-                      style="width:14px;height:14px;accent-color:#4f46e5;flex-shrink:0;cursor:pointer">
-                    <span style="font-size:12px;color:#374151">${x(t)}</span>
+                      style="width:14px;height:14px;accent-color:var(--accent);flex-shrink:0;cursor:pointer">
+                    <span style="font-size:12px;color:var(--text)">${x(t)}</span>
                   </label>`).join('')
-                : `<p style="padding:12px;color:#94a3b8;font-size:13px;grid-column:1/-1">No format types configured. Add them in Admin → Interview Format Types.</p>`}
+                : `<p style="padding:12px;color:var(--muted);font-size:13px;grid-column:1/-1">No format types configured. Add them in Admin → Interview Format Types.</p>`}
               </div>
             </div>
           </div>
@@ -2768,9 +2768,9 @@ function drawInterviewModal() {
           <!-- Interview panel (checkboxes from People) -->
           <div>
             <label class="field-label">Interview Panel</label>
-            <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-              <div style="background:#f8fafc;padding:8px 14px;border-bottom:1px solid #f1f5f9;display:flex;align-items:center;justify-content:space-between">
-                <span style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em">
+            <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+              <div style="background:var(--bg);padding:8px 14px;border-bottom:1px solid var(--bg);display:flex;align-items:center;justify-content:space-between">
+                <span style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em">
                   ${ic('users',11)} Select panel members
                 </span>
                 ${m.selectedInterviewers.length ? `<span class="badge" style="background:#10b981;color:#fff">${m.selectedInterviewers.length} on panel</span>` : ''}
@@ -2784,21 +2784,21 @@ function drawInterviewModal() {
                   const applRow = appRow ? (S.cache.applicants||[]).find(a=>a.id===appRow.applicant_id) : null;
                   return `
                   <label style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;border-radius:6px;transition:background 0.1s"
-                         onmouseenter="this.style.background='#f8fafc'" onmouseleave="this.style.background=''">
+                         onmouseenter="this.style.background='var(--bg)'" onmouseleave="this.style.background=''">
                     <input type="checkbox" class="int-panel-cb" data-pid="${x(p.id)}"
                       data-name="${x(name)}" data-email="${x(p.work_email||p.personal_email||'')}"
                       ${isChecked ? 'checked' : ''}
-                      style="width:14px;height:14px;accent-color:#4f46e5;flex-shrink:0;cursor:pointer">
-                    <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0">
+                      style="width:14px;height:14px;accent-color:var(--accent);flex-shrink:0;cursor:pointer">
+                    <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0">
                       ${(p.first_name||'?')[0]}${(p.last_name||'?')[0]}
                     </div>
                     <div>
-                      <p style="font-size:12px;font-weight:500;color:#374151;margin:0">${x(name)}</p>
-                      ${p.work_email ? `<p style="font-size:10px;color:#94a3b8;margin:0">${x(p.work_email)}</p>` : ''}
+                      <p style="font-size:12px;font-weight:500;color:var(--text);margin:0">${x(name)}</p>
+                      ${p.work_email ? `<p style="font-size:10px;color:var(--muted);margin:0">${x(p.work_email)}</p>` : ''}
                     </div>
                   </label>`;
                 }).join('')
-                : `<p style="padding:12px;color:#94a3b8;font-size:13px">No people found. Add employees in the People module.</p>`}
+                : `<p style="padding:12px;color:var(--muted);font-size:13px">No people found. Add employees in the People module.</p>`}
               </div>
             </div>
           </div>
@@ -2811,7 +2811,7 @@ function drawInterviewModal() {
         </div>
 
         <!-- Footer -->
-        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0;flex-wrap:wrap">
+        <div style="display:flex;align-items:center;justify-content:space-between;gap:10px;padding:14px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0;flex-wrap:wrap">
           <button id="int-send-invites" class="btn btn-secondary" style="display:flex;align-items:center;gap:6px"
             title="Opens your email client with a pre-filled meeting invite to the panel and candidate">
             ${ic('mail',14)} Send Invites
@@ -2971,8 +2971,8 @@ function renderInteractions() {
     return i ? `${personName(i.person_id)} — ${typeName(i.interaction_type_id)} (${i.interaction_date||'no date'})` : (id?.slice(0,8)||'—');
   };
 
-  const DISC_SC = { Informal:'#64748b', Formal:'#f59e0b', 'First Written Warning':'#f97316', 'Final Written Warning':'#ef4444', Dismissal:'#7c3aed' };
-  const GRIEV_SC = { Pay:'#3b82f6', 'Working Conditions':'#f97316', Discrimination:'#ef4444', Management:'#8b5cf6', 'Bullying & Harassment':'#ec4899', Other:'#64748b' };
+  const DISC_SC = { Informal:'var(--muted)', Formal:'#f59e0b', 'First Written Warning':'#f97316', 'Final Written Warning':'#ef4444', Dismissal:'#7c3aed' };
+  const GRIEV_SC = { Pay:'#3b82f6', 'Working Conditions':'#f97316', Discrimination:'#ef4444', Management:'#8b5cf6', 'Bullying & Harassment':'#ec4899', Other:'var(--muted)' };
 
   const getConfig = () => {
     if (S.interactTab === 'all') {
@@ -2986,7 +2986,7 @@ function renderInteractions() {
             const n = typeName(r.interaction_type_id);
             const colours = { Sickness:'#ef4444', Disciplinary:'#f97316', Grievance:'#8b5cf6', '1:1':'#3b82f6', Welfare:'#10b981' };
             const c = Object.keys(colours).find(k => n.toLowerCase().includes(k.toLowerCase()));
-            return `<span class="badge" style="background:${(colours[c]||'#64748b')}18;color:${(colours[c]||'#64748b')};border:1px solid ${(colours[c]||'#64748b')}28">${n}</span>`;
+            return `<span class="badge" style="background:${(colours[c]||'var(--muted)')}18;color:${(colours[c]||'var(--muted)')};border:1px solid ${(colours[c]||'var(--muted)')}28">${n}</span>`;
           }},
           { label:'Date',        render: r => dateCell(r.interaction_date) },
           { label:'Conducted By', render: r => r.conducted_by ? personName(r.conducted_by) : '—' },
@@ -3018,8 +3018,8 @@ function renderInteractions() {
           { label:'Interaction',  render: r => `<span style="font-size:12px">${interLabel(r.interaction_id)}</span>` },
           { label:'Category',     render: r => resolve('sickness_categories', r.sickness_category_id, 'name') },
           { label:'Return Date',  render: r => r.return_to_work_date ? dateCell(r.return_to_work_date) : '<span style="color:#f59e0b;font-size:12px">Not yet returned</span>' },
-          { label:'Fit Note',     render: r => (r.fit_note_received==='true'||r.fit_note_received===true) ? '<span class="badge" style="background:#dcfce7;color:#16a34a">Received</span>' : '<span class="badge" style="background:#f1f5f9;color:#64748b">Not received</span>' },
-          { label:'Self-cert',    render: r => (r.self_cert==='true'||r.self_cert===true) ? '<span class="badge" style="background:#fef3c7;color:#92400e">Self-cert</span>' : '—' },
+          { label:'Fit Note',     render: r => (r.fit_note_received==='true'||r.fit_note_received===true) ? '<span class="badge" style="background:var(--ok-bg);color:#16a34a">Received</span>' : '<span class="badge" style="background:var(--bg);color:var(--muted)">Not received</span>' },
+          { label:'Self-cert',    render: r => (r.self_cert==='true'||r.self_cert===true) ? '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Self-cert</span>' : '—' },
         ],
         fields:[
           { key:'interaction_id',        label:'Interaction', required:true, type:'select', options: mkOpts(S.cache.interactions||[],'id', r=>interLabel(r.id)) },
@@ -3040,7 +3040,7 @@ function renderInteractions() {
           { label:'Stage',         render: r => statusBadge(r.stage, DISC_SC) },
           { label:'Misconduct',    render: r => r.alleged_misconduct ? `<span style="font-size:12px">${x(r.alleged_misconduct.slice(0,50))}${r.alleged_misconduct.length>50?'…':''}</span>` : '—' },
           { label:'Outcome',       key:'outcome' },
-          { label:'Appeal',        render: r => (r.appeal_lodged==='true'||r.appeal_lodged===true) ? '<span class="badge" style="background:#fef3c7;color:#92400e">Appeal lodged</span>' : '—' },
+          { label:'Appeal',        render: r => (r.appeal_lodged==='true'||r.appeal_lodged===true) ? '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Appeal lodged</span>' : '—' },
         ],
         fields:[
           { key:'interaction_id',    label:'Interaction', required:true, type:'select', options: mkOpts(S.cache.interactions||[],'id', r=>interLabel(r.id)) },
@@ -3062,7 +3062,7 @@ function renderInteractions() {
         { label:'Category',    render: r => statusBadge(r.category, GRIEV_SC) },
         { label:'Respondent',  key:'respondent' },
         { label:'Outcome',     key:'outcome' },
-        { label:'Appeal',      render: r => (r.appeal_lodged==='true'||r.appeal_lodged===true) ? '<span class="badge" style="background:#fef3c7;color:#92400e">Appeal lodged</span>' : '—' },
+        { label:'Appeal',      render: r => (r.appeal_lodged==='true'||r.appeal_lodged===true) ? '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Appeal lodged</span>' : '—' },
       ],
       fields:[
         { key:'interaction_id', label:'Interaction', required:true, type:'select', options: mkOpts(S.cache.interactions||[],'id', r=>interLabel(r.id)) },
@@ -3078,8 +3078,8 @@ function renderInteractions() {
   const { config, records } = getConfig();
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Interactions</h1>
-      <p style="color:#64748b;font-size:14px">Sickness · disciplinaries · grievances · 1:1s · welfare checks</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Interactions</h1>
+      <p style="color:var(--muted);font-size:14px">Sickness · disciplinaries · grievances · 1:1s · welfare checks</p>
     </div>
     ${subTabBar(INTERACT_TABS, S.interactTab, 'interactTab')}
     ${renderCRUD(config, records)}`;
@@ -3105,7 +3105,7 @@ async function pageLeavers() {
 function renderLeavers() {
   const pc = $('hr-page-content'); if (!pc) return;
   const records = S.cache.leavers||[];
-  const LEAVER_SC = { Resignation:'#3b82f6', Retirement:'#10b981', Dismissal:'#ef4444', Redundancy:'#f59e0b', 'Death in Service':'#64748b', 'End of Fixed Term Contract':'#8b5cf6', 'Mutual Agreement':'#14b8a6', 'TUPE Transfer':'#f97316' };
+  const LEAVER_SC = { Resignation:'#3b82f6', Retirement:'#10b981', Dismissal:'#ef4444', Redundancy:'#f59e0b', 'Death in Service':'var(--muted)', 'End of Fixed Term Contract':'#8b5cf6', 'Mutual Agreement':'#14b8a6', 'TUPE Transfer':'#f97316' };
 
   const config = {
     table:'leavers', title:'Leavers', subtitle:'All employee departures — resignations, retirements, dismissals and more',
@@ -3115,10 +3115,10 @@ function renderLeavers() {
       { label:'Reason',           render: r => { const n=resolve('leaver_types',r.leaver_type_id,'name'); return statusBadge(n.replace(/<[^>]*>/g,''), LEAVER_SC); }},
       { label:'Notice Given',     render: r => dateCell(r.notice_given_date) },
       { label:'Last Working Day', render: r => r.last_working_day ? `<span style="font-size:12px;font-weight:600">${x(r.last_working_day)}</span>` : '—' },
-      { label:'Exit Interview',   render: r => (r.exit_interview_done==='true'||r.exit_interview_done===true) ? '<span class="badge" style="background:#dcfce7;color:#16a34a">Done</span>' : '<span class="badge" style="background:#f1f5f9;color:#94a3b8">Not done</span>' },
+      { label:'Exit Interview',   render: r => (r.exit_interview_done==='true'||r.exit_interview_done===true) ? '<span class="badge" style="background:var(--ok-bg);color:#16a34a">Done</span>' : '<span class="badge" style="background:var(--bg);color:var(--muted)">Not done</span>' },
       { label:'Rehire?',          render: r => {
-        if (r.eligible_for_rehire==='true'||r.eligible_for_rehire===true)  return '<span class="badge" style="background:#dcfce7;color:#16a34a">Yes</span>';
-        if (r.eligible_for_rehire==='false'||r.eligible_for_rehire===false) return '<span class="badge" style="background:#fee2e2;color:#dc2626">No</span>';
+        if (r.eligible_for_rehire==='true'||r.eligible_for_rehire===true)  return '<span class="badge" style="background:var(--ok-bg);color:#16a34a">Yes</span>';
+        if (r.eligible_for_rehire==='false'||r.eligible_for_rehire===false) return '<span class="badge" style="background:var(--err-bg);color:#dc2626">No</span>';
         return '—';
       }},
     ],
@@ -3138,8 +3138,8 @@ function renderLeavers() {
 
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Leavers</h1>
-      <p style="color:#64748b;font-size:14px">All employee departures with reason, dates and exit details</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Leavers</h1>
+      <p style="color:var(--muted);font-size:14px">All employee departures with reason, dates and exit details</p>
     </div>
     ${renderCRUD(config, records)}`;
   icons();
@@ -3192,8 +3192,8 @@ function renderOnboarding() {
           { label:'Title',      render: r => `<span style="font-weight:500">${x(r.title||'—')}</span>` },
           { label:'Type',       render: r => statusBadge(r.content_type, TYPE_SC) },
           { label:'Version',    key:'version' },
-          { label:'Department', render: r => r.department_id ? resolve('departments',r.department_id,'name') : '<span class="badge" style="background:#f1f5f9;color:#64748b">All Departments</span>' },
-          { label:'URL / Path', render: r => r.url_or_path ? `<a href="${x(r.url_or_path)}" target="_blank" style="color:#4f46e5;font-size:12px;text-decoration:none">${x(r.url_or_path.slice(0,45))}${r.url_or_path.length>45?'…':''}</a>` : '—' },
+          { label:'Department', render: r => r.department_id ? resolve('departments',r.department_id,'name') : '<span class="badge" style="background:var(--bg);color:var(--muted)">All Departments</span>' },
+          { label:'URL / Path', render: r => r.url_or_path ? `<a href="${x(r.url_or_path)}" target="_blank" style="color:var(--accent);font-size:12px;text-decoration:none">${x(r.url_or_path.slice(0,45))}${r.url_or_path.length>45?'…':''}</a>` : '—' },
         ],
         fields:[
           { key:'title',         label:'Title',   required:true },
@@ -3212,8 +3212,8 @@ function renderOnboarding() {
         addLabel:'Add Task', wide:false,
         columns:[
           { label:'Task Name',   render: r => `<span style="font-weight:500">${x(r.task_name||'—')}</span>` },
-          { label:'Description', render: r => r.description ? `<span style="font-size:12px;color:#64748b">${x(r.description.slice(0,60))}${r.description.length>60?'…':''}</span>` : '—' },
-          { label:'Department',  render: r => r.department_id ? resolve('departments',r.department_id,'name') : '<span class="badge" style="background:#f1f5f9;color:#64748b">All</span>' },
+          { label:'Description', render: r => r.description ? `<span style="font-size:12px;color:var(--muted)">${x(r.description.slice(0,60))}${r.description.length>60?'…':''}</span>` : '—' },
+          { label:'Department',  render: r => r.department_id ? resolve('departments',r.department_id,'name') : '<span class="badge" style="background:var(--bg);color:var(--muted)">All</span>' },
         ],
         fields:[
           { key:'task_name',     label:'Task Name',    required:true, hint:'e.g. Sign contract, Complete induction, Set up IT access' },
@@ -3231,7 +3231,7 @@ function renderOnboarding() {
         columns:[
           { label:'Employee',  render: r => personName(r.person_id) },
           { label:'Content',   render: r => resolve('onboarding_content', r.content_id, 'title') },
-          { label:'Completed', render: r => r.completion_date ? `<span class="badge" style="background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0">${x(r.completion_date)}</span>` : '<span class="badge" style="background:#fef9c3;color:#92400e">Pending</span>' },
+          { label:'Completed', render: r => r.completion_date ? `<span class="badge" style="background:var(--ok-bg);color:#16a34a;border:1px solid var(--ok-border)">${x(r.completion_date)}</span>` : '<span class="badge" style="background:#fef9c3;color:var(--warn-text)">Pending</span>' },
           { label:'Score',     render: r => r.score ? `<span style="font-weight:600">${x(String(r.score))}%</span>` : '—' },
         ],
         fields:[
@@ -3251,7 +3251,7 @@ function renderOnboarding() {
       columns:[
         { label:'Employee',     render: r => personName(r.person_id) },
         { label:'Task',         render: r => resolve('onboarding_tasks', r.task_id, 'task_name') },
-        { label:'Completed',    render: r => r.completion_date ? `<span class="badge" style="background:#dcfce7;color:#16a34a;border:1px solid #bbf7d0">${x(r.completion_date)}</span>` : '<span class="badge" style="background:#fef9c3;color:#92400e">Pending</span>' },
+        { label:'Completed',    render: r => r.completion_date ? `<span class="badge" style="background:var(--ok-bg);color:#16a34a;border:1px solid var(--ok-border)">${x(r.completion_date)}</span>` : '<span class="badge" style="background:#fef9c3;color:var(--warn-text)">Pending</span>' },
         { label:'Completed By', key:'completed_by', render: r => r.completed_by ? x(r.completed_by) : '—' },
       ],
       fields:[
@@ -3266,8 +3266,8 @@ function renderOnboarding() {
   const { config, records } = getConfig();
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Onboarding</h1>
-      <p style="color:#64748b;font-size:14px">Content library · task checklists · employee completion tracking</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Onboarding</h1>
+      <p style="color:var(--muted);font-size:14px">Content library · task checklists · employee completion tracking</p>
     </div>
     ${subTabBar(ONBOARD_TABS, S.onboardTab, 'onboardTab')}
     ${renderCRUD(config, records)}`;
@@ -3303,34 +3303,34 @@ async function drawAttachmentsModal() {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal modal-md" style="max-width:580px">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid var(--bg);flex-shrink:0">
           <div>
-            <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">Attachments</h3>
-            <p style="font-size:12px;color:#94a3b8;margin-top:2px">${x(applicant.first_name)} ${x(applicant.last_name)} — CVs, cover letters, test results</p>
+            <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">Attachments</h3>
+            <p style="font-size:12px;color:var(--muted);margin-top:2px">${x(applicant.first_name)} ${x(applicant.last_name)} — CVs, cover letters, test results</p>
           </div>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;display:flex">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;display:flex">${ic('x',16)}</button>
         </div>
 
         <div style="overflow-y:auto;padding:22px 28px;flex:1">
           <!-- Upload area -->
-          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;border:2px dashed #e2e8f0;border-radius:12px;cursor:pointer;margin-bottom:20px;transition:border-color 0.15s"
-                 onmouseenter="this.style.borderColor='#4f46e5'" onmouseleave="this.style.borderColor='#e2e8f0'">
+          <label style="display:flex;flex-direction:column;align-items:center;justify-content:center;gap:8px;padding:24px;border:2px dashed var(--border);border-radius:12px;cursor:pointer;margin-bottom:20px;transition:border-color 0.15s"
+                 onmouseenter="this.style.borderColor='var(--accent)'" onmouseleave="this.style.borderColor='var(--border)'">
             <input type="file" id="attach-input" multiple accept=".pdf,.doc,.docx,.txt,.jpg,.jpeg,.png" style="display:none">
-            <div style="width:40px;height:40px;background:#f1f5f9;border-radius:50%;display:flex;align-items:center;justify-content:center;color:#94a3b8">${ic('upload-cloud',18)}</div>
-            <p style="font-size:13px;font-weight:600;color:#374151">Click to upload files</p>
-            <p style="font-size:12px;color:#94a3b8">PDF, Word, images · Multiple files allowed</p>
+            <div style="width:40px;height:40px;background:var(--bg);border-radius:50%;display:flex;align-items:center;justify-content:center;color:var(--muted)">${ic('upload-cloud',18)}</div>
+            <p style="font-size:13px;font-weight:600;color:var(--text)">Click to upload files</p>
+            <p style="font-size:12px;color:var(--muted)">PDF, Word, images · Multiple files allowed</p>
           </label>
 
           <!-- Existing attachments -->
           ${attachments.length === 0 ? `
-            <div style="text-align:center;padding:20px;color:#94a3b8;font-size:13px">No attachments yet</div>` : `
+            <div style="text-align:center;padding:20px;color:var(--muted);font-size:13px">No attachments yet</div>` : `
           <div style="display:flex;flex-direction:column;gap:8px">
             ${attachments.map(a => `
-              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:#f8fafc;border:1px solid #e2e8f0;border-radius:10px">
-                <div style="color:#4f46e5">${ic(typeIcon(a.file_type),18)}</div>
+              <div style="display:flex;align-items:center;gap:12px;padding:10px 14px;background:var(--bg);border:1px solid var(--border);border-radius:10px">
+                <div style="color:var(--accent)">${ic(typeIcon(a.file_type),18)}</div>
                 <div style="flex:1;min-width:0">
-                  <p style="font-size:13px;font-weight:500;color:#1e293b;overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(a.filename)}</p>
-                  <p style="font-size:11px;color:#94a3b8">${a.file_type||'Unknown type'} · ${a.file_size ? fmt(a.file_size) : '?'} · ${x(a.created_at?.slice(0,10)||'')}</p>
+                  <p style="font-size:13px;font-weight:500;color:var(--text);overflow:hidden;text-overflow:ellipsis;white-space:nowrap">${x(a.filename)}</p>
+                  <p style="font-size:11px;color:var(--muted)">${a.file_type||'Unknown type'} · ${a.file_size ? fmt(a.file_size) : '?'} · ${x(a.created_at?.slice(0,10)||'')}</p>
                 </div>
                 <button class="btn-icon" data-dl="${x(a.id)}" title="Download" style="color:#10b981">${ic('download',15)}</button>
                 <button class="btn-icon del" data-da="${x(a.id)}" title="Delete" style="color:#ef4444">${ic('trash-2',15)}</button>
@@ -3338,7 +3338,7 @@ async function drawAttachmentsModal() {
           </div>`}
         </div>
 
-        <div style="display:flex;justify-content:flex-end;padding:14px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;padding:14px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Close</button>
         </div>
       </div>
@@ -3409,7 +3409,7 @@ function destroyDashCharts() {
   if (_anPie) { try { _anPie.destroy(); } catch {} _anPie = null; }
 }
 
-const CHART_PAL = ['#4f46e5','#0891b2','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899','#14b8a6','#64748b','#84cc16','#06b6d4'];
+const CHART_PAL = ['var(--accent)','#0891b2','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899','#14b8a6','var(--muted)','#84cc16','#06b6d4'];
 
 // Compute all chart data from raw fetched records
 function buildChartData(people, cwRows, depts, offices, empRoles, roles, jts) {
@@ -3542,10 +3542,10 @@ function initDashboardCharts(cd, counts) {
   if (etCanvas) {
     const et = cd.byEmpType;
     const etLabels = Object.keys(et).filter(k => et[k] > 0);
-    const etColours = { Permanent:'#10b981', Temporary:'#f59e0b', Contractor:'#4f46e5', Other:'#94a3b8' };
+    const etColours = { Permanent:'#10b981', Temporary:'#f59e0b', Contractor:'var(--accent)', Other:'var(--muted)' };
     _dashCharts.emptype = new Chart(etCanvas, {
       type: 'doughnut',
-      data: { labels: etLabels, datasets: [{ data: etLabels.map(k => et[k]), backgroundColor: etLabels.map(k => etColours[k]||'#64748b'), borderWidth: 2, borderColor:'#fff', hoverOffset:8 }] },
+      data: { labels: etLabels, datasets: [{ data: etLabels.map(k => et[k]), backgroundColor: etLabels.map(k => etColours[k]||'var(--muted)'), borderWidth: 2, borderColor:'#fff', hoverOffset:8 }] },
       options: { responsive:true, maintainAspectRatio:false,
         plugins: { legend:{position:'right',labels:{font:{size:11},boxWidth:12}},
           tooltip:{callbacks:{label:c=>` ${c.label}: ${c.raw} (${Math.round(c.raw/c.dataset.data.reduce((a,b)=>a+b,0)*100)}%)`}} } }
@@ -3582,7 +3582,7 @@ function initLoSChart(cd) {
     _dashCharts.los = new Chart(losCanvas, {
       type:'bar',
       data:{ labels:buckets, datasets:[{ label:'Staff', data:buckets.map(b=>cd.byLoS[b]||0),
-        backgroundColor:'#4f46e5', borderRadius:6, borderSkipped:false }] },
+        backgroundColor:'var(--accent)', borderRadius:6, borderSkipped:false }] },
       options:{ responsive:true, maintainAspectRatio:false,
         plugins:{legend:{display:false}},
         scales:{y:{beginAtZero:true,ticks:{stepSize:1}},x:{grid:{display:false}}} }
@@ -3680,7 +3680,7 @@ function bindEmployeeList(container) {
 
 // ── Employee list renderer (shared by dashboard drill + analytics) ─────
 function renderEmployeeListHTML(people, cd) {
-  if (!people.length) return `<div style="text-align:center;padding:32px;color:#94a3b8">No employees found for this selection</div>`;
+  if (!people.length) return `<div style="text-align:center;padding:32px;color:var(--muted)">No employees found for this selection</div>`;
   const now = new Date();
   const los = p => {
     if (!p.start_date) return '—';
@@ -3689,7 +3689,7 @@ function renderEmployeeListHTML(people, cd) {
     return y + ' yrs';
   };
   const ET_COLOURS = { 'Full Time':'#10b981','Part Time':'#3b82f6','Fixed Term':'#f59e0b',
-    'Zero Hours':'#f97316','Contractor':'#4f46e5','Apprentice':'#8b5cf6','Other':'#64748b' };
+    'Zero Hours':'#f97316','Contractor':'var(--accent)','Apprentice':'#8b5cf6','Other':'var(--muted)' };
   return `
     <table class="tbl">
       <thead><tr>
@@ -3706,25 +3706,25 @@ function renderEmployeeListHTML(people, cd) {
           const title  = jtId ? (cd.jtMap?.[jtId]?.title||'—') : '—';
           const initials = `${(p.first_name||'?')[0]}${(p.last_name||'?')[0]}`;
           const et = p.employment_type || 'Other';
-          const ec = ET_COLOURS[et] || '#64748b';
+          const ec = ET_COLOURS[et] || 'var(--muted)';
           return `
           <tr class="tr" data-pid="${p.id}" style="cursor:pointer" title="Click to open employee record"
               onmouseenter="this.style.background='#f0f9ff'" onmouseleave="this.style.background=''">
             <td class="td">
               <div style="display:flex;align-items:center;gap:10px">
                 ${p.photo_url
-                  ? `<img src="${p.photo_url}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid #e2e8f0">`
-                  : `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,#4f46e5,#7c3aed);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0">${initials}</div>`}
+                  ? `<img src="${p.photo_url}" style="width:32px;height:32px;border-radius:50%;object-fit:cover;flex-shrink:0;border:2px solid var(--border)">`
+                  : `<div style="width:32px;height:32px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:11px;font-weight:700;color:#fff;flex-shrink:0">${initials}</div>`}
                 <div>
-                  <p style="font-size:13px;font-weight:600;color:#0f172a;line-height:1.2">${x(p.first_name||'')} ${x(p.last_name||'')}</p>
-                  ${p.employee_number ? `<p style="font-size:10px;color:#94a3b8">${x(p.employee_number)}</p>` : ''}
+                  <p style="font-size:13px;font-weight:600;color:var(--text);line-height:1.2">${x(p.first_name||'')} ${x(p.last_name||'')}</p>
+                  ${p.employee_number ? `<p style="font-size:10px;color:var(--muted)">${x(p.employee_number)}</p>` : ''}
                 </div>
               </div>
             </td>
-            <td class="td" style="font-size:13px;color:#374151">${x(title)}</td>
+            <td class="td" style="font-size:13px;color:var(--text)">${x(title)}</td>
             <td class="td"><span class="badge" style="background:${ec}18;color:${ec};border:1px solid ${ec}28;font-size:11px">${x(et)}</span></td>
-            <td class="td" style="font-size:12px;color:#64748b">${x(p.start_date||'—')}</td>
-            <td class="td" style="font-size:12px;font-weight:600;color:#374151">${los(p)}</td>
+            <td class="td" style="font-size:12px;color:var(--muted)">${x(p.start_date||'—')}</td>
+            <td class="td" style="font-size:12px;font-weight:600;color:var(--text)">${los(p)}</td>
           </tr>`;
         }).join('')}
       </tbody>
@@ -3752,17 +3752,17 @@ function renderDashChartSection(cd, counts) {
         <button id="drill-back" class="btn btn-secondary" style="display:flex;align-items:center;gap:6px">
           ${ic('arrow-left',13)} Back to ${x(drill.deptName)} roles
         </button>
-        <span style="font-size:11px;color:#94a3b8">Dashboard › ${x(drill.officeName||'')} › ${x(drill.deptName||'')} › ${x(drill.roleLabel||'')}</span>
+        <span style="font-size:11px;color:var(--muted)">Dashboard › ${x(drill.officeName||'')} › ${x(drill.deptName||'')} › ${x(drill.roleLabel||'')}</span>
       </div>
       <div class="card" style="padding:24px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:20px">
           <div>
-            <h3 class="font-display" style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:2px">
+            <h3 class="font-display" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:2px">
               ${x(drill.roleLabel)} — ${x(drill.deptName)}
             </h3>
-            <p style="font-size:12px;color:#94a3b8">${x(drill.officeName)} · ${people.length} employee${people.length!==1?'s':''}</p>
+            <p style="font-size:12px;color:var(--muted)">${x(drill.officeName)} · ${people.length} employee${people.length!==1?'s':''}</p>
           </div>
-          <span class="badge" style="background:#4f46e5;color:#fff;font-size:13px;padding:6px 12px">${people.length}</span>
+          <span class="badge" style="background:var(--accent);color:#fff;font-size:13px;padding:6px 12px">${people.length}</span>
         </div>
         ${renderEmployeeListHTML(people, cd)}
       </div>`;
@@ -3780,7 +3780,7 @@ function renderDashChartSection(cd, counts) {
 
   // If chart data hasn't loaded yet, show a subtle placeholder
   if (!cd) {
-    chartArea.innerHTML = `<div style="padding:20px 0 4px;color:#94a3b8;font-size:13px;display:flex;align-items:center;gap:8px">${ic('loader',14)} Loading people analytics…</div>`;
+    chartArea.innerHTML = `<div style="padding:20px 0 4px;color:var(--muted);font-size:13px;display:flex;align-items:center;gap:8px">${ic('loader',14)} Loading people analytics…</div>`;
     icons(); return;
   }
 
@@ -3797,14 +3797,14 @@ function renderDashChartSection(cd, counts) {
           ${ic('arrow-left',13)} ${isRoles ? 'Back to '+drill.officeName+' departments' : 'Back to all offices'}
         </button>
         <div>
-          <span style="font-size:11px;color:#94a3b8">Dashboard</span>
-          <span style="font-size:11px;color:#94a3b8"> › ${drill.officeName||''}</span>
-          ${isRoles ? `<span style="font-size:11px;color:#94a3b8"> › ${drill.deptName}</span>` : ''}
+          <span style="font-size:11px;color:var(--muted)">Dashboard</span>
+          <span style="font-size:11px;color:var(--muted)"> › ${drill.officeName||''}</span>
+          ${isRoles ? `<span style="font-size:11px;color:var(--muted)"> › ${drill.deptName}</span>` : ''}
         </div>
       </div>
       <div class="card" style="padding:24px">
-        <h3 class="font-display" style="font-size:16px;font-weight:700;color:#0f172a;margin-bottom:4px">${x(title)}</h3>
-        <p style="font-size:12px;color:#94a3b8;margin-bottom:20px">${x(subtitle)}</p>
+        <h3 class="font-display" style="font-size:16px;font-weight:700;color:var(--text);margin-bottom:4px">${x(title)}</h3>
+        <p style="font-size:12px;color:var(--muted);margin-bottom:20px">${x(subtitle)}</p>
         <div style="height:320px;position:relative">
           <canvas id="chart-drill"></canvas>
         </div>
@@ -3832,29 +3832,29 @@ function renderDashChartSection(cd, counts) {
 
   // Normal 4-chart grid
   chartArea.innerHTML = `
-    <p style="font-size:11px;font-weight:700;color:#94a3b8;text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">
+    <p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.06em;margin-bottom:14px">
       ${ic('bar-chart-2',12)} People Analytics <span style="font-weight:400;font-style:italic"> · Click office slice to drill down</span>
     </p>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:16px">
       <div class="card" style="padding:20px">
-        <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px">${ic('map-pin',12)} Staff by Office Location</h3>
+        <h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">${ic('map-pin',12)} Staff by Office Location</h3>
         <div style="height:210px;position:relative"><canvas id="chart-office"></canvas></div>
-        <p style="font-size:10px;color:#94a3b8;margin-top:8px;text-align:center">Click a slice to see department breakdown</p>
+        <p style="font-size:10px;color:var(--muted);margin-top:8px;text-align:center">Click a slice to see department breakdown</p>
       </div>
       <div class="card" style="padding:20px">
-        <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px">${ic('users',12)} Employment Type</h3>
+        <h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">${ic('users',12)} Employment Type</h3>
         <div style="height:210px;position:relative"><canvas id="chart-emptype"></canvas></div>
       </div>
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px;margin-bottom:36px">
       <div class="card" style="padding:20px">
-        <h3 style="font-size:13px;font-weight:700;color:#0f172a;margin-bottom:14px">${ic('calendar',12)} Age Distribution</h3>
+        <h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">${ic('calendar',12)} Age Distribution</h3>
         <div style="height:200px;position:relative"><canvas id="chart-age"></canvas></div>
       </div>
       <div class="card" style="padding:20px">
         <div style="display:flex;align-items:center;justify-content:space-between;margin-bottom:14px">
-          <h3 style="font-size:13px;font-weight:700;color:#0f172a">${ic('clock',12)} Length of Service</h3>
-          <select id="los-pivot" style="font-size:11px;padding:3px 6px;border:1px solid #e2e8f0;border-radius:6px;color:#475569;background:#f8fafc">
+          <h3 style="font-size:13px;font-weight:700;color:var(--text)">${ic('clock',12)} Length of Service</h3>
+          <select id="los-pivot" style="font-size:11px;padding:3px 6px;border:1px solid var(--border);border-radius:6px;color:#475569;background:var(--bg)">
             <option value="all" ${S.losPivot==='all'?'selected':''}>All Staff</option>
             <option value="office" ${S.losPivot==='office'?'selected':''}>By Office</option>
             <option value="dept" ${S.losPivot==='dept'?'selected':''}>By Department</option>
@@ -3918,9 +3918,9 @@ function renderContractors() {
 
   const agencyName = id => resolve('recruitment_agencies', id, 'name');
 
-  const WORKER_STATUS = { Active:'#10b981', Expired:'#ef4444', 'Upcoming':'#f59e0b', Extended:'#3b82f6', Terminated:'#64748b' };
-  const IR35 = { 'Inside IR35':'#ef4444', 'Outside IR35':'#10b981', 'N/A':'#64748b' };
-  const TS_STATUS = { Draft:'#64748b', Submitted:'#3b82f6', Approved:'#10b981', Rejected:'#ef4444' };
+  const WORKER_STATUS = { Active:'#10b981', Expired:'#ef4444', 'Upcoming':'#f59e0b', Extended:'#3b82f6', Terminated:'var(--muted)' };
+  const IR35 = { 'Inside IR35':'#ef4444', 'Outside IR35':'#10b981', 'N/A':'var(--muted)' };
+  const TS_STATUS = { Draft:'var(--muted)', Submitted:'#3b82f6', Approved:'#10b981', Rejected:'#ef4444' };
 
   const workerStatus = row => {
     if (!row.contract_end) return 'Active';
@@ -3942,9 +3942,9 @@ function renderContractors() {
         columns:[
           { label:'Name',          render: r => personName(r.person_id) },
           { label:'Type',          render: r => statusBadge(r.worker_type, { Contractor:'#0891b2', Temp:'#8b5cf6', 'Day Rate':'#f97316' }) },
-          { label:'Agency',        render: r => r.agency_id ? agencyName(r.agency_id) : '<span style="color:#cbd5e1">Direct</span>' },
+          { label:'Agency',        render: r => r.agency_id ? agencyName(r.agency_id) : '<span style="color:var(--border)">Direct</span>' },
           { label:'Contract Start',render: r => dateCell(r.contract_start) },
-          { label:'Contract End',  render: r => r.contract_end ? dateCell(r.contract_end, 30) : '<span class="badge" style="background:#f1f5f9;color:#64748b">Open-ended</span>' },
+          { label:'Contract End',  render: r => r.contract_end ? dateCell(r.contract_end, 30) : '<span class="badge" style="background:var(--bg);color:var(--muted)">Open-ended</span>' },
           { label:'Day Rate',      render: r => r.day_rate ? `<span style="font-weight:600">£${Number(r.day_rate).toLocaleString('en-GB')}</span>` : '—' },
           { label:'IR35',          render: r => r.ir35_status ? statusBadge(r.ir35_status, IR35) : '—' },
           { label:'Status',        render: r => statusBadge(workerStatus(r), WORKER_STATUS) },
@@ -3976,7 +3976,7 @@ function renderContractors() {
         columns:[
           { label:'Agency Name',     render: r => `<span style="font-weight:600">${x(r.name||'—')}</span>` },
           { label:'Contact',         key:'contact_name' },
-          { label:'Email',           render: r => r.email ? `<a href="mailto:${x(r.email)}" style="color:#4f46e5;font-size:13px;text-decoration:none">${x(r.email)}</a>` : '—' },
+          { label:'Email',           render: r => r.email ? `<a href="mailto:${x(r.email)}" style="color:var(--accent);font-size:13px;text-decoration:none">${x(r.email)}</a>` : '—' },
           { label:'Phone',           key:'phone' },
           { label:'Fee %',           render: r => r.fee_percentage ? `<span style="font-weight:600">${x(String(r.fee_percentage))}%</span>` : '—' },
           { label:'Terms Agreed',    render: r => dateCell(r.terms_agreed) },
@@ -4010,9 +4010,9 @@ function renderContractors() {
           { label:'Serial No.',       render: r => r.serial_number ? `<span style="font-family:monospace;font-size:12px">${x(r.serial_number)}</span>` : '—' },
           { label:'Issued',           render: r => dateCell(r.issued_date) },
           { label:'Returned',         render: r => r.returned_date
-              ? `<span class="badge" style="background:#dcfce7;color:#16a34a">${x(r.returned_date)}</span>`
-              : '<span class="badge" style="background:#fef3c7;color:#92400e">With employee</span>' },
-          { label:'Condition',        render: r => r.condition_issued ? `<span style="font-size:12px;color:#64748b">${x(r.condition_issued)}</span>` : '—' },
+              ? `<span class="badge" style="background:var(--ok-bg);color:#16a34a">${x(r.returned_date)}</span>`
+              : '<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">With employee</span>' },
+          { label:'Condition',        render: r => r.condition_issued ? `<span style="font-size:12px;color:var(--muted)">${x(r.condition_issued)}</span>` : '—' },
         ],
         fields:[
           { key:'person_id',          label:'Employee',          required:true, type:'select', options: personOpts },
@@ -4038,7 +4038,7 @@ function renderContractors() {
       columns:[
         { label:'Worker',         render: r => personName(r.person_id) },
         { label:'Week Commencing',render: r => r.week_start_date ? `<span style="font-size:12px;font-weight:500">${x(r.week_start_date)}</span>` : '—' },
-        { label:'Total Hours',    render: r => r.total_hours!=null ? `<span style="font-weight:700;color:#0f172a">${x(String(r.total_hours))} hrs</span>` : '—' },
+        { label:'Total Hours',    render: r => r.total_hours!=null ? `<span style="font-weight:700;color:var(--text)">${x(String(r.total_hours))} hrs</span>` : '—' },
         { label:'Status',         render: r => statusBadge(r.status||'Draft', TS_STATUS) },
         { label:'Submitted',      render: r => dateCell(r.submitted_date) },
         { label:'Approved By',    render: r => r.approved_by ? personName(r.approved_by) : '—' },
@@ -4052,8 +4052,8 @@ function renderContractors() {
 
   pc.innerHTML = `
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Contractors & Temps</h1>
-      <p style="color:#64748b;font-size:14px">Agencies · contractors · equipment · timesheets</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Contractors & Temps</h1>
+      <p style="color:var(--muted);font-size:14px">Agencies · contractors · equipment · timesheets</p>
     </div>
     ${subTabBar(CONTRACTOR_TABS, S.contractorsTab, 'contractorsTab')}
     ${renderCRUD(config, records)}`;
@@ -4117,7 +4117,7 @@ const TS_DAYS = ['Monday','Tuesday','Wednesday','Thursday','Friday','Saturday','
 
 function drawTimesheetModal() {
   const m = S.modal; if (!m || m.type !== 'timesheet') return;
-  const TS_STATUS_COLOURS = { Draft:'#64748b', Submitted:'#3b82f6', Approved:'#10b981', Rejected:'#ef4444' };
+  const TS_STATUS_COLOURS = { Draft:'var(--muted)', Submitted:'#3b82f6', Approved:'#10b981', Rejected:'#ef4444' };
 
   // Build per-day entry rows (pre-filled from m.entries for edits)
   const entryRow = (day, idx) => {
@@ -4128,19 +4128,19 @@ function drawTimesheetModal() {
       return e.work_date === base.toISOString().slice(0,10);
     });
     return `
-      <tr style="border-bottom:1px solid #f1f5f9">
-        <td style="padding:8px 12px;font-size:13px;font-weight:500;color:#374151;white-space:nowrap;width:110px">${day}</td>
+      <tr style="border-bottom:1px solid var(--bg)">
+        <td style="padding:8px 12px;font-size:13px;font-weight:500;color:var(--text);white-space:nowrap;width:110px">${day}</td>
         <td style="padding:4px 8px">
           <input type="number" min="0" max="24" step="0.5"
             data-ts-day="${idx}" data-ts-field="hours"
             value="${entry?.hours_worked!=null ? entry.hours_worked : ''}"
-            style="width:80px;padding:6px 8px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px;text-align:center"
+            style="width:80px;padding:6px 8px;border:1px solid var(--border);border-radius:6px;font-size:13px;text-align:center"
             placeholder="0">
         </td>
         <td style="padding:4px 8px;width:100%">
           <input type="text" data-ts-day="${idx}" data-ts-field="desc"
             value="${x(entry?.description||'')}"
-            style="width:100%;padding:6px 10px;border:1px solid #e2e8f0;border-radius:6px;font-size:13px"
+            style="width:100%;padding:6px 10px;border:1px solid var(--border);border-radius:6px;font-size:13px"
             placeholder="What did you work on? (optional)">
         </td>
       </tr>`;
@@ -4149,14 +4149,14 @@ function drawTimesheetModal() {
   $('hr-modal-root').innerHTML = `
     <div class="modal-overlay" id="mo">
       <div class="modal modal-md" style="max-width:700px">
-        <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid #f1f5f9;flex-shrink:0">
+        <div style="display:flex;align-items:center;justify-content:space-between;padding:22px 28px 18px;border-bottom:1px solid var(--bg);flex-shrink:0">
           <div>
-            <h3 class="font-display" style="font-size:17px;font-weight:800;color:#0f172a">
+            <h3 class="font-display" style="font-size:17px;font-weight:800;color:var(--text)">
               ${m.editId ? 'Edit Timesheet' : 'New Timesheet'}
             </h3>
-            <p style="font-size:12px;color:#94a3b8;margin-top:2px">Enter hours for each day of the week</p>
+            <p style="font-size:12px;color:var(--muted);margin-top:2px">Enter hours for each day of the week</p>
           </div>
-          <button id="mc" style="background:none;border:none;cursor:pointer;color:#94a3b8;padding:4px;border-radius:6px;display:flex">${ic('x',16)}</button>
+          <button id="mc" style="background:none;border:none;cursor:pointer;color:var(--muted);padding:4px;border-radius:6px;display:flex">${ic('x',16)}</button>
         </div>
 
         <div id="hr-modal-body" style="overflow-y:auto;padding:22px 28px;flex:1">
@@ -4191,17 +4191,17 @@ function drawTimesheetModal() {
           </div>
 
           <!-- Daily hours grid -->
-          <div style="border:1px solid #e2e8f0;border-radius:10px;overflow:hidden">
-            <div style="background:#f8fafc;padding:10px 12px;border-bottom:1px solid #e2e8f0;display:flex;align-items:center;justify-content:space-between">
-              <span style="font-size:12px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:0.06em">${ic('clock',13)} Daily Hours</span>
-              <span id="ts-total" style="font-size:13px;font-weight:700;color:#0f172a">Total: 0 hrs</span>
+          <div style="border:1px solid var(--border);border-radius:10px;overflow:hidden">
+            <div style="background:var(--bg);padding:10px 12px;border-bottom:1px solid var(--border);display:flex;align-items:center;justify-content:space-between">
+              <span style="font-size:12px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:0.06em">${ic('clock',13)} Daily Hours</span>
+              <span id="ts-total" style="font-size:13px;font-weight:700;color:var(--text)">Total: 0 hrs</span>
             </div>
             <table style="width:100%;border-collapse:collapse">
               <thead>
-                <tr style="background:#f8fafc;border-bottom:1px solid #e2e8f0">
-                  <th style="padding:8px 12px;font-size:11px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase">Day</th>
-                  <th style="padding:8px 12px;font-size:11px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase">Hours</th>
-                  <th style="padding:8px 12px;font-size:11px;font-weight:700;color:#94a3b8;text-align:left;text-transform:uppercase">Description / Project</th>
+                <tr style="background:var(--bg);border-bottom:1px solid var(--border)">
+                  <th style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--muted);text-align:left;text-transform:uppercase">Day</th>
+                  <th style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--muted);text-align:left;text-transform:uppercase">Hours</th>
+                  <th style="padding:8px 12px;font-size:11px;font-weight:700;color:var(--muted);text-align:left;text-transform:uppercase">Description / Project</th>
                 </tr>
               </thead>
               <tbody id="ts-grid">
@@ -4216,7 +4216,7 @@ function drawTimesheetModal() {
           </div>
         </div>
 
-        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 28px;border-top:1px solid #f1f5f9;background:#f8fafc;border-radius:0 0 20px 20px;flex-shrink:0">
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:14px 28px;border-top:1px solid var(--bg);background:var(--bg);border-radius:0 0 20px 20px;flex-shrink:0">
           <button class="btn btn-secondary" id="m-cancel">Cancel</button>
           <button class="btn btn-primary" id="m-save" ${m.saving?'disabled':''}>
             ${ic('save',14)} ${m.saving?'Saving…':'Save timesheet'}
@@ -4331,9 +4331,9 @@ function _anBindSection(st) {
       st.type = t;
       ['doughnut','pie','bar'].forEach(u => {
         const b = document.getElementById('an-ct-'+u); if (!b) return;
-        b.style.border     = `1px solid ${u===t?'#4f46e5':'#e2e8f0'}`;
-        b.style.background = u===t ? '#eff6ff' : '#fff';
-        b.style.color      = u===t ? '#4f46e5' : '#64748b';
+        b.style.border     = `1px solid ${u===t?'var(--accent)':'var(--border)'}`;
+        b.style.background = u===t ? 'var(--accent-light)' : '#fff';
+        b.style.color      = u===t ? 'var(--accent)' : 'var(--muted)';
       });
       _anDraw(st);
     });
@@ -4420,10 +4420,10 @@ function _anDraw(st) {
     const segs=['All Staff',...st.path.map(p=>p.val)];
     crumb.innerHTML=segs.map((s,i)=>
       '<span '+(i<segs.length-1
-        ?'class="an-c" data-d="'+i+'" style="color:#4f46e5;cursor:pointer;font-weight:500;text-decoration:underline"'
-        :'style="color:#1e293b;font-weight:700"')+'>'+x(s)+'</span>'
-      +(i<segs.length-1?'<span style="color:#cbd5e1;font-size:11px"> › </span>':'')
-    ).join('')+(dim?' <span style="color:#94a3b8;font-style:italic;font-size:12px">by '+dim.label+'</span>':'');
+        ?'class="an-c" data-d="'+i+'" style="color:var(--accent);cursor:pointer;font-weight:500;text-decoration:underline"'
+        :'style="color:var(--text);font-weight:700"')+'>'+x(s)+'</span>'
+      +(i<segs.length-1?'<span style="color:var(--border);font-size:11px"> › </span>':'')
+    ).join('')+(dim?' <span style="color:var(--muted);font-style:italic;font-size:12px">by '+dim.label+'</span>':'');
     crumb.querySelectorAll('.an-c').forEach(el=>
       el.addEventListener('click',()=>{ st.path=st.path.slice(0,parseInt(el.dataset.d)); _anDraw(st); })
     );
@@ -4432,9 +4432,9 @@ function _anDraw(st) {
   // Header
   const hdr=document.getElementById('an-hdr');
   if(hdr) hdr.innerHTML=dim?
-    '<span style="font-weight:700;color:#0f172a">'+dim.label+'</span>'
-    +' <span style="color:#94a3b8;font-size:12px">'+labels.length+' groups · '+total+' staff</span>'
-    +' <span style="color:'+(hasNext?'#4f46e5':'#10b981')+';font-size:11px;font-style:italic">'
+    '<span style="font-weight:700;color:var(--text)">'+dim.label+'</span>'
+    +' <span style="color:var(--muted);font-size:12px">'+labels.length+' groups · '+total+' staff</span>'
+    +' <span style="color:'+(hasNext?'var(--accent)':'#10b981')+';font-size:11px;font-style:italic">'
     +(hasNext?'click a slice to drill down':'click a slice to see employees')+'</span>':'';
 
   // Draw chart
@@ -4493,13 +4493,13 @@ function _anDraw(st) {
       +'</tr></thead><tbody>'
       +labels.map((l,i)=>
         '<tr class="tr an-row" data-v="'+x(l)+'" style="cursor:pointer" '
-        +'onmouseenter="this.style.background=\'#f8fafc\'" onmouseleave="this.style.background=\'\'">'
+        +'onmouseenter="this.style.background=\'var(--bg)\'" onmouseleave="this.style.background=\'\'">'
         +'<td class="td"><div style="display:flex;align-items:center;gap:8px">'
         +'<div style="width:10px;height:10px;border-radius:50%;background:'+CHART_PAL[i%CHART_PAL.length]+';flex-shrink:0"></div>'
         +'<span style="font-size:13px;font-weight:500">'+x(l)+'</span></div></td>'
-        +'<td class="td" style="text-align:right;font-weight:700;color:#0f172a">'+data[i]+'</td>'
-        +'<td class="td" style="text-align:right;color:#64748b">'+Math.round(data[i]/total*100)+'%</td>'
-        +'<td class="td"><div style="background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden">'
+        +'<td class="td" style="text-align:right;font-weight:700;color:var(--text)">'+data[i]+'</td>'
+        +'<td class="td" style="text-align:right;color:var(--muted)">'+Math.round(data[i]/total*100)+'%</td>'
+        +'<td class="td"><div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden">'
         +'<div style="background:'+CHART_PAL[i%CHART_PAL.length]+';height:100%;width:'+Math.round(data[i]/total*100)+'%;border-radius:4px"></div>'
         +'</div></td></tr>'
       ).join('')
@@ -4535,9 +4535,9 @@ function _anShowEmp(st,levels,cd){
     const segs=['All Staff',...st.path.map(p=>p.val)];
     crumb.innerHTML=segs.map((s,i)=>
       '<span '+(i<segs.length-1
-        ?'class="an-c" data-d="'+i+'" style="color:#4f46e5;cursor:pointer;font-weight:500;text-decoration:underline"'
-        :'style="color:#1e293b;font-weight:700"')+'>'+x(s)+'</span>'
-      +(i<segs.length-1?'<span style="color:#cbd5e1;font-size:11px"> › </span>':'')
+        ?'class="an-c" data-d="'+i+'" style="color:var(--accent);cursor:pointer;font-weight:500;text-decoration:underline"'
+        :'style="color:var(--text);font-weight:700"')+'>'+x(s)+'</span>'
+      +(i<segs.length-1?'<span style="color:var(--border);font-size:11px"> › </span>':'')
     ).join('');
     crumb.querySelectorAll('.an-c').forEach(el=>
       el.addEventListener('click',()=>{ st.path=st.path.slice(0,parseInt(el.dataset.d)); _anDraw(st); })
@@ -4549,21 +4549,21 @@ function _anShowEmp(st,levels,cd){
   if(hdr) hdr.innerHTML=
     '<div style="display:flex;align-items:center;justify-content:space-between;flex-wrap:wrap;gap:6px">'
     +'<div>'
-    +'<span style="font-weight:700;color:#0f172a">'+x(st.path[st.path.length-1]?.val||'Employees')+'</span>'
-    +' <span style="color:#94a3b8;font-size:12px;margin-left:6px">'+people.length+' employee'+(people.length!==1?'s':'')+'</span>'
+    +'<span style="font-weight:700;color:var(--text)">'+x(st.path[st.path.length-1]?.val||'Employees')+'</span>'
+    +' <span style="color:var(--muted);font-size:12px;margin-left:6px">'+people.length+' employee'+(people.length!==1?'s':'')+'</span>'
     +'</div>'
-    +' <button id="an-close-emp" style="background:none;border:none;cursor:pointer;color:#94a3b8;font-size:18px;line-height:1;padding:2px 6px;border-radius:4px" title="Close employee list">×</button>'
+    +' <button id="an-close-emp" style="background:none;border:none;cursor:pointer;color:var(--muted);font-size:18px;line-height:1;padding:2px 6px;border-radius:4px" title="Close employee list">×</button>'
     +'</div>';
   icons();
 
   // Employee list — shown below the chart, inside the same card
   if(empDiv){
     empDiv.style.display='block';
-    empDiv.style.borderTop='1px solid #f1f5f9';
+    empDiv.style.borderTop='1px solid var(--bg)';
     empDiv.style.marginTop='16px';
     empDiv.style.paddingTop='16px';
     empDiv.innerHTML=
-      '<p style="font-size:11px;font-weight:700;color:#64748b;text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">'
+      '<p style="font-size:11px;font-weight:700;color:var(--muted);text-transform:uppercase;letter-spacing:.05em;margin-bottom:10px">'
       +ic('users',11)+' Employees in this group</p>'
       +renderEmployeeListHTML(people,cd);
     bindEmployeeList(empDiv);
@@ -4578,17 +4578,17 @@ function _anShowEmp(st,levels,cd){
     const dimKey=levels[levels.length-1];
     const dim=AN_DIMS.find(d=>d.key===dimKey);
     if(hdr) hdr.innerHTML=dim?
-      '<span style="font-weight:700;color:#0f172a">'+dim.label+'</span>'
-      +' <span style="color:#94a3b8;font-size:12px">click a slice to see employees</span>':'';
+      '<span style="font-weight:700;color:var(--text)">'+dim.label+'</span>'
+      +' <span style="color:var(--muted);font-size:12px">click a slice to see employees</span>':'';
   });
 }
 
 function _anStats(st,total){
   const el=document.getElementById('an-stats'); if(!el) return;
   el.innerHTML=
-    '<p style="font-size:11px;color:#94a3b8;margin-bottom:3px">Showing</p>'
-    +'<p class="font-display" style="font-size:26px;font-weight:800;color:#0f172a;line-height:1">'+total+'</p>'
-    +'<p style="font-size:11px;color:#64748b;margin-top:3px;margin-bottom:'+(st.path.length?'12':'0')+'px">'
+    '<p style="font-size:11px;color:var(--muted);margin-bottom:3px">Showing</p>'
+    +'<p class="font-display" style="font-size:26px;font-weight:800;color:var(--text);line-height:1">'+total+'</p>'
+    +'<p style="font-size:11px;color:var(--muted);margin-top:3px;margin-bottom:'+(st.path.length?'12':'0')+'px">'
     +(st.path.length?st.path.map(p=>x(p.val)).join(' \u203a '):'all active employees')+'</p>'
     +(st.path.length?'<button id="an-reset" class="btn btn-secondary" style="width:100%;font-size:12px">Reset</button>':'');
   icons();
@@ -4625,9 +4625,9 @@ async function loadPerfTab() {
 function renderPerformance() {
   const pc=$('hr-page-content'); if(!pc) return;
   const RATING={1:'⭐ Unsatisfactory',2:'⭐⭐ Needs Improvement',3:'⭐⭐⭐ Meets Expectations',4:'⭐⭐⭐⭐ Exceeds Expectations',5:'⭐⭐⭐⭐⭐ Outstanding'};
-  const RATING_C={1:'#ef4444',2:'#f97316',3:'#f59e0b',4:'#10b981',5:'#6366f1'};
-  const OBJ_SC={'Not Started':'#64748b','In Progress':'#3b82f6','Complete':'#10b981','Overdue':'#ef4444','Cancelled':'#94a3b8'};
-  const PIP_SC={'Ongoing':'#f59e0b','Successful':'#10b981','Unsuccessful':'#ef4444','Resigned':'#64748b','Dismissed':'#7c3aed'};
+  const RATING_C={1:'#ef4444',2:'#f97316',3:'#f59e0b',4:'#10b981',5:'var(--accent)'};
+  const OBJ_SC={'Not Started':'var(--muted)','In Progress':'#3b82f6','Complete':'#10b981','Overdue':'#ef4444','Cancelled':'var(--muted)'};
+  const PIP_SC={'Ongoing':'#f59e0b','Successful':'#10b981','Unsuccessful':'#ef4444','Resigned':'var(--muted)','Dismissed':'#7c3aed'};
   const READ_SC={'Ready Now':'#10b981','Ready in 1-2 Years':'#3b82f6','Ready in 3-5 Years':'#f59e0b','Development Needed':'#ef4444'};
 
   const getConfig=()=>{
@@ -4638,7 +4638,7 @@ function renderPerformance() {
           {label:'Employee',render:r=>personName(r.person_id)},
           {label:'Conducted By',render:r=>r.conducted_by?personName(r.conducted_by):'—'},
           {label:'Date',render:r=>dateCell(r.review_date)},
-          {label:'Probation',render:r=>r.probation_review?'<span class="badge" style="background:#fef3c7;color:#92400e">Probation</span>':'—'},
+          {label:'Probation',render:r=>r.probation_review?'<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Probation</span>':'—'},
           {label:'Rating',render:r=>r.rating_score?`<span class="badge" style="background:${RATING_C[r.rating_score]}18;color:${RATING_C[r.rating_score]};border:1px solid ${RATING_C[r.rating_score]}28">${RATING[r.rating_score]}</span>`:'—'},
           {label:'Next Review',render:r=>dateCell(r.next_review_date,60)},
         ],
@@ -4682,7 +4682,7 @@ function renderPerformance() {
           {label:'Start',render:r=>dateCell(r.start_date)},
           {label:'Review Date',render:r=>dateCell(r.review_date,7)},
           {label:'End Date',render:r=>r.end_date?dateCell(r.end_date):'<span style="color:#f59e0b;font-size:12px">Ongoing</span>'},
-          {label:'Outcome',render:r=>r.outcome?statusBadge(r.outcome,PIP_SC):'<span style="color:#94a3b8">Pending</span>'},
+          {label:'Outcome',render:r=>r.outcome?statusBadge(r.outcome,PIP_SC):'<span style="color:var(--muted)">Pending</span>'},
           {label:'Conducted By',render:r=>r.conducted_by?personName(r.conducted_by):'—'},
         ],
         fields:[
@@ -4725,7 +4725,7 @@ function renderPerformance() {
       columns:[
         {label:'Mentor',render:r=>personName(r.mentor_id)},
         {label:'Mentee',render:r=>personName(r.mentee_id)},
-        {label:'Focus Areas',render:r=>r.focus_areas?`<span style="font-size:12px;color:#64748b">${x(r.focus_areas.slice(0,50))}${r.focus_areas.length>50?'…':''}</span>`:'—'},
+        {label:'Focus Areas',render:r=>r.focus_areas?`<span style="font-size:12px;color:var(--muted)">${x(r.focus_areas.slice(0,50))}${r.focus_areas.length>50?'…':''}</span>`:'—'},
         {label:'Frequency',key:'meeting_frequency'},
         {label:'Status',render:r=>statusBadge(r.status||'Active',MEN_SC)},
       ],
@@ -4745,8 +4745,8 @@ function renderPerformance() {
   const {config,records}=getConfig();
   pc.innerHTML=`
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Performance</h1>
-      <p style="color:#64748b;font-size:14px">Reviews · Objectives · PIPs · Succession Planning · Mentoring</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Performance</h1>
+      <p style="color:var(--muted);font-size:14px">Reviews · Objectives · PIPs · Succession Planning · Mentoring</p>
     </div>
     ${subTabBar(PERF_TABS,S.perfTab,'perfTab')}
     ${renderCRUD(config,records)}`;
@@ -4778,7 +4778,7 @@ async function loadLeaveTab() {
 }
 function renderLeave() {
   const pc=$('hr-page-content'); if(!pc) return;
-  const REQ_SC={Pending:'#f59e0b',Approved:'#10b981',Declined:'#ef4444',Cancelled:'#94a3b8'};
+  const REQ_SC={Pending:'#f59e0b',Approved:'#10b981',Declined:'#ef4444',Cancelled:'var(--muted)'};
   const ltName=id=>resolve('leave_types',id,'name');
   const ltColour=id=>{const lt=(S.cache.leave_types||[]).find(l=>l.id===id);return lt?.colour||'#3b82f6';};
 
@@ -4818,7 +4818,7 @@ function renderLeave() {
         {label:'Leave Type',render:r=>ltName(r.leave_type_id)},
         {label:'Year',key:'year'},
         {label:'Entitlement',render:r=>`<span style="font-weight:700">${r.days_entitlement} days</span>`},
-        {label:'Carried Over',render:r=>r.days_carried_over?`<span style="font-size:12px;color:#64748b">+${r.days_carried_over}</span>`:'—'},
+        {label:'Carried Over',render:r=>r.days_carried_over?`<span style="font-size:12px;color:var(--muted)">+${r.days_carried_over}</span>`:'—'},
         {label:'Adjustment',render:r=>r.days_adjustment?`<span style="font-size:12px;color:${r.days_adjustment>0?'#10b981':'#ef4444'}">${r.days_adjustment>0?'+':''}${r.days_adjustment} (${x(r.adjustment_reason||'')})</span>`:'—'},
       ],
       fields:[
@@ -4836,8 +4836,8 @@ function renderLeave() {
   const {config,records}=getConfig();
   pc.innerHTML=`
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Leave Management</h1>
-      <p style="color:#64748b;font-size:14px">Annual leave · sick leave · maternity · paternity · TOIL</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Leave Management</h1>
+      <p style="color:var(--muted);font-size:14px">Annual leave · sick leave · maternity · paternity · TOIL</p>
     </div>
     ${subTabBar(LEAVE_TABS,S.leaveTab,'leaveTab')}
     ${renderCRUD(config,records)}`;
@@ -4875,8 +4875,8 @@ async function loadCompTab() {
 }
 function renderCompliance() {
   const pc=$('hr-page-content'); if(!pc) return;
-  const DBS_SC={Pending:'#f59e0b',Clear:'#10b981','Issues Found':'#ef4444',Expired:'#64748b','Not Required':'#94a3b8'};
-  const DL_SC={Pass:'#10b981',Fail:'#ef4444','Issues Found':'#f97316','Not Checked':'#64748b'};
+  const DBS_SC={Pending:'#f59e0b',Clear:'#10b981','Issues Found':'#ef4444',Expired:'var(--muted)','Not Required':'var(--muted)'};
+  const DL_SC={Pass:'#10b981',Fail:'#ef4444','Issues Found':'#f97316','Not Checked':'var(--muted)'};
 
   if(S.compTab==='bradford') {
     // Calculate Bradford Factor: B = S² × D
@@ -4905,16 +4905,16 @@ function renderCompliance() {
 
     pc.innerHTML=`
       <div style="margin-bottom:28px">
-        <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Compliance</h1>
-        <p style="color:#64748b;font-size:14px">Bradford Factor · Documents · DBS · Driving · Occupational Health · RTW</p>
+        <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Compliance</h1>
+        <p style="color:var(--muted);font-size:14px">Bradford Factor · Documents · DBS · Driving · Occupational Health · RTW</p>
       </div>
       ${subTabBar(COMP_TABS,S.compTab,'compTab')}
-      <div style="margin-bottom:16px;background:#fffbeb;border:1px solid #fde68a;border-radius:10px;padding:14px 18px;font-size:13px;color:#92400e">
+      <div style="margin-bottom:16px;background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:10px;padding:14px 18px;font-size:13px;color:var(--warn-text)">
         ${ic('info',14)} Bradford Factor = S² × D (S = number of sickness spells, D = total days absent in last 12 months).
         Trigger thresholds: <strong>75+</strong> monitor · <strong>200+</strong> review · <strong>450+</strong> formal action
       </div>
       <div class="card">
-        ${bradfordData.length===0?`<div class="empty"><p style="color:#64748b">No sickness absence data in the last 12 months</p></div>`:`
+        ${bradfordData.length===0?`<div class="empty"><p style="color:var(--muted)">No sickness absence data in the last 12 months</p></div>`:`
         <table class="tbl"><thead><tr>
           <th class="th">Employee</th><th class="th" style="text-align:right">Spells (S)</th>
           <th class="th" style="text-align:right">Days (D)</th>
@@ -4941,11 +4941,11 @@ function renderCompliance() {
       return {config:{table:'person_documents',title:'Documents',subtitle:'Passports, visas, right to work and other personal documents — red = expired',addLabel:'Add Document',wide:true,
         columns:[
           {label:'Employee',render:r=>personName(r.person_id)},
-          {label:'Document Type',render:r=>`<span class="badge" style="background:#f1f5f9;color:#374151">${x(r.document_type||'—')}</span>`},
+          {label:'Document Type',render:r=>`<span class="badge" style="background:var(--bg);color:var(--text)">${x(r.document_type||'—')}</span>`},
           {label:'Reference',render:r=>r.reference_number?`<span style="font-family:monospace;font-size:12px">${x(r.reference_number)}</span>`:'—'},
           {label:'Issue Date',render:r=>dateCell(r.issue_date)},
-          {label:'Expiry',render:r=>r.expiry_date?dateCell(r.expiry_date,60):'<span class="badge" style="background:#f1f5f9;color:#64748b">No expiry</span>'},
-          {label:'Verified',render:r=>r.verified_date?`<span class="badge" style="background:#dcfce7;color:#16a34a">✓ ${x(r.verified_date)}</span>`:'<span style="color:#94a3b8">Not verified</span>'},
+          {label:'Expiry',render:r=>r.expiry_date?dateCell(r.expiry_date,60):'<span class="badge" style="background:var(--bg);color:var(--muted)">No expiry</span>'},
+          {label:'Verified',render:r=>r.verified_date?`<span class="badge" style="background:var(--ok-bg);color:#16a34a">✓ ${x(r.verified_date)}</span>`:'<span style="color:var(--muted)">Not verified</span>'},
         ],
         fields:[
           {key:'person_id',label:'Employee',required:true,type:'select',options:personOpts},
@@ -4965,10 +4965,10 @@ function renderCompliance() {
       return {config:{table:'dbs_checks',title:'DBS Checks',subtitle:'Disclosure and Barring Service checks — amber = expiring within 60 days',addLabel:'Add DBS Check',wide:true,
         columns:[
           {label:'Employee',render:r=>personName(r.person_id)},
-          {label:'Check Type',render:r=>`<span class="badge" style="background:#f1f5f9;color:#374151">${x(r.check_type||'—')}</span>`},
+          {label:'Check Type',render:r=>`<span class="badge" style="background:var(--bg);color:var(--text)">${x(r.check_type||'—')}</span>`},
           {label:'Certificate No.',render:r=>r.certificate_number?`<span style="font-family:monospace;font-size:12px">${x(r.certificate_number)}</span>`:'—'},
           {label:'Issue Date',render:r=>dateCell(r.issue_date)},
-          {label:'Expiry',render:r=>r.expiry_date?dateCell(r.expiry_date,60):'<span class="badge" style="background:#f1f5f9;color:#64748b">No expiry</span>'},
+          {label:'Expiry',render:r=>r.expiry_date?dateCell(r.expiry_date,60):'<span class="badge" style="background:var(--bg);color:var(--muted)">No expiry</span>'},
           {label:'Status',render:r=>statusBadge(r.status||'Pending',DBS_SC)},
         ],
         fields:[
@@ -5015,7 +5015,7 @@ function renderCompliance() {
         columns:[
           {label:'Employee',render:r=>personName(r.person_id)},
           {label:'Referral Date',render:r=>dateCell(r.referral_date)},
-          {label:'Reason',render:r=>r.reason?`<span style="font-size:12px;color:#64748b">${x(r.reason.slice(0,50))}${r.reason.length>50?'…':''}</span>`:'—'},
+          {label:'Reason',render:r=>r.reason?`<span style="font-size:12px;color:var(--muted)">${x(r.reason.slice(0,50))}${r.reason.length>50?'…':''}</span>`:'—'},
           {label:'Referred By',render:r=>r.referred_by?personName(r.referred_by):'—'},
           {label:'Appointment',render:r=>dateCell(r.appointment_date)},
           {label:'Follow Up',render:r=>dateCell(r.follow_up_date,7)},
@@ -5040,7 +5040,7 @@ function renderCompliance() {
         {label:'Employee',render:r=>personName(r.person_id)},
         {label:'Meeting Date',render:r=>dateCell(r.meeting_date)},
         {label:'Conducted By',render:r=>r.conducted_by?personName(r.conducted_by):'—'},
-        {label:'Phased Return',render:r=>(r.phased_return==='true'||r.phased_return===true)?'<span class="badge" style="background:#fef3c7;color:#92400e">Phased</span>':'—'},
+        {label:'Phased Return',render:r=>(r.phased_return==='true'||r.phased_return===true)?'<span class="badge" style="background:var(--warn-bg);color:var(--warn-text)">Phased</span>':'—'},
         {label:'Adjusted Duties',render:r=>(r.adjusted_duties==='true'||r.adjusted_duties===true)?'<span class="badge" style="background:#ede9fe;color:#7c3aed">Adjusted</span>':'—'},
         {label:'Next Review',render:r=>dateCell(r.next_review_date,7)},
       ],
@@ -5061,8 +5061,8 @@ function renderCompliance() {
   const {config,records}=getConfig();
   pc.innerHTML=`
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Compliance</h1>
-      <p style="color:#64748b;font-size:14px">Documents · DBS · Driving · Occupational Health · Return to Work · Bradford Factor</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Compliance</h1>
+      <p style="color:var(--muted);font-size:14px">Documents · DBS · Driving · Occupational Health · Return to Work · Bradford Factor</p>
     </div>
     ${subTabBar(COMP_TABS,S.compTab,'compTab')}
     ${renderCRUD(config,records)}`;
@@ -5104,9 +5104,9 @@ function renderBenefits() {
           {label:'Benefit',render:r=>resolve('benefit_types',r.benefit_type_id,'name')},
           {label:'Provider',key:'provider'},
           {label:'Start',render:r=>dateCell(r.start_date)},
-          {label:'End',render:r=>r.end_date?dateCell(r.end_date):'<span class="badge" style="background:#dcfce7;color:#16a34a">Active</span>'},
+          {label:'End',render:r=>r.end_date?dateCell(r.end_date):'<span class="badge" style="background:var(--ok-bg);color:#16a34a">Active</span>'},
           {label:'Employer £',render:r=>r.employer_contribution!=null?`<span style="font-weight:600">£${Number(r.employer_contribution).toFixed(2)}/mo</span>`:'—'},
-          {label:'Employee £',render:r=>r.employee_contribution!=null?`<span style="font-size:12px;color:#64748b">£${Number(r.employee_contribution).toFixed(2)}/mo</span>`:'—'},
+          {label:'Employee £',render:r=>r.employee_contribution!=null?`<span style="font-size:12px;color:var(--muted)">£${Number(r.employee_contribution).toFixed(2)}/mo</span>`:'—'},
         ],
         fields:[
           {key:'person_id',label:'Employee',required:true,type:'select',options:personOpts},
@@ -5152,7 +5152,7 @@ function renderBenefits() {
           {label:'Office Days',render:r=>r.office_days!=null?`<span style="font-size:12px">${r.office_days}d</span>`:'—'},
           {label:'Remote Days',render:r=>r.remote_days!=null?`<span style="font-size:12px">${r.remote_days}d</span>`:'—'},
           {label:'Effective From',render:r=>dateCell(r.effective_from)},
-          {label:'Effective To',render:r=>r.effective_to?dateCell(r.effective_to):'<span class="badge" style="background:#dcfce7;color:#16a34a">Current</span>'},
+          {label:'Effective To',render:r=>r.effective_to?dateCell(r.effective_to):'<span class="badge" style="background:var(--ok-bg);color:#16a34a">Current</span>'},
         ],
         fields:[
           {key:'person_id',label:'Employee',required:true,type:'select',options:personOpts},
@@ -5174,8 +5174,8 @@ function renderBenefits() {
         {label:'Name',render:r=>`<span style="font-weight:500">${x(r.name||'—')}</span>`},
         {label:'Relationship',key:'relationship'},
         {label:'Phone',key:'phone'},
-        {label:'Email',render:r=>r.email?`<a href="mailto:${x(r.email)}" style="color:#4f46e5;font-size:13px;text-decoration:none">${x(r.email)}</a>`:'—'},
-        {label:'Primary',render:r=>(r.is_primary==='true'||r.is_primary===true)?'<span class="badge" style="background:#dcfce7;color:#16a34a">Primary</span>':'—'},
+        {label:'Email',render:r=>r.email?`<a href="mailto:${x(r.email)}" style="color:var(--accent);font-size:13px;text-decoration:none">${x(r.email)}</a>`:'—'},
+        {label:'Primary',render:r=>(r.is_primary==='true'||r.is_primary===true)?'<span class="badge" style="background:var(--ok-bg);color:#16a34a">Primary</span>':'—'},
       ],
       fields:[
         {key:'person_id',label:'Employee',required:true,type:'select',options:personOpts},
@@ -5191,8 +5191,8 @@ function renderBenefits() {
   const {config,records}=getConfig();
   pc.innerHTML=`
     <div style="margin-bottom:28px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Benefits & Details</h1>
-      <p style="color:#64748b;font-size:14px">Benefits · Bank Details · Working Patterns · Next of Kin</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Benefits & Details</h1>
+      <p style="color:var(--muted);font-size:14px">Benefits · Bank Details · Working Patterns · Next of Kin</p>
     </div>
     ${subTabBar(BEN_TABS,S.benTab,'benTab')}
     ${renderCRUD(config,records)}`;
@@ -5233,18 +5233,18 @@ async function pageReports() {
 function renderReports() {
   const pc=$('hr-page-content'); if(!pc) return;
   const active=(S.cache.people||[]).filter(p=>p.status!=='Leaver');
-  const depName=id=>{ const d=(S.cache.departments||[]).find(r=>r.id===id); return d?x(d.name):'<span style="color:#94a3b8">No Department</span>'; };
-  const offName=id=>{ const o=(S.cache.office_locations||[]).find(r=>r.id===id); return o?x(o.name):'<span style="color:#94a3b8">No Office</span>'; };
+  const depName=id=>{ const d=(S.cache.departments||[]).find(r=>r.id===id); return d?x(d.name):'<span style="color:var(--muted)">No Department</span>'; };
+  const offName=id=>{ const o=(S.cache.office_locations||[]).find(r=>r.id===id); return o?x(o.name):'<span style="color:var(--muted)">No Office</span>'; };
 
   const sectionTitle=(title,subtitle)=>`
     <div style="margin-bottom:20px">
-      <h1 class="font-display" style="font-size:24px;font-weight:800;color:#0f172a;margin-bottom:4px">Reports</h1>
-      <p style="color:#64748b;font-size:14px">Workforce analytics and statutory reporting</p>
+      <h1 class="font-display" style="font-size:24px;font-weight:800;color:var(--text);margin-bottom:4px">Reports</h1>
+      <p style="color:var(--muted);font-size:14px">Workforce analytics and statutory reporting</p>
     </div>
     ${subTabBar(RPT_TABS,S.rptTab,'rptTab')}
     <div style="margin-bottom:20px">
-      <h2 class="font-display" style="font-size:18px;font-weight:700;color:#1e293b;margin-bottom:2px">${title}</h2>
-      <p style="font-size:13px;color:#94a3b8">${subtitle}</p>
+      <h2 class="font-display" style="font-size:18px;font-weight:700;color:var(--text);margin-bottom:2px">${title}</h2>
+      <p style="font-size:13px;color:var(--muted)">${subtitle}</p>
     </div>`;
 
   if(S.rptTab==='headcount') {
@@ -5256,25 +5256,25 @@ function renderReports() {
     });
     const row=(label,count,total)=>`
       <tr class="tr"><td class="td" style="font-weight:500">${label}</td>
-      <td class="td" style="text-align:right;font-weight:700;color:#0f172a">${count}</td>
-      <td class="td" style="text-align:right;color:#64748b">${Math.round(count/total*100)}%</td>
-      <td class="td"><div style="background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden"><div style="background:#4f46e5;height:100%;width:${Math.round(count/total*100)}%;border-radius:4px"></div></div></td>
+      <td class="td" style="text-align:right;font-weight:700;color:var(--text)">${count}</td>
+      <td class="td" style="text-align:right;color:var(--muted)">${Math.round(count/total*100)}%</td>
+      <td class="td"><div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden"><div style="background:var(--accent);height:100%;width:${Math.round(count/total*100)}%;border-radius:4px"></div></div></td>
       </tr>`;
     pc.innerHTML=sectionTitle('Headcount Report','Current active headcount by department, office and employment type')
     +`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px">
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px">By Department</h3>
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">By Department</h3>
         <table class="tbl"><thead><tr><th class="th">Department</th><th class="th" style="text-align:right">Staff</th><th class="th" style="text-align:right">%</th><th class="th"></th></tr></thead><tbody>
         ${Object.entries(byDept).sort((a,b)=>b[1]-a[1]).map(([id,n])=>row(depName(id)||'Unknown',n,active.length)).join('')}</tbody></table></div>
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px">By Office</h3>
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">By Office</h3>
         <table class="tbl"><thead><tr><th class="th">Office</th><th class="th" style="text-align:right">Staff</th><th class="th" style="text-align:right">%</th><th class="th"></th></tr></thead><tbody>
         ${Object.entries(byOffice).sort((a,b)=>b[1]-a[1]).map(([id,n])=>row(offName(id)||'Unknown',n,active.length)).join('')}</tbody></table></div>
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px">By Employment Type</h3>
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">By Employment Type</h3>
         <table class="tbl"><thead><tr><th class="th">Type</th><th class="th" style="text-align:right">Staff</th><th class="th" style="text-align:right">%</th><th class="th"></th></tr></thead><tbody>
         ${Object.entries(byType).sort((a,b)=>b[1]-a[1]).map(([t,n])=>row(t,n,active.length)).join('')}</tbody></table></div>
     </div>
     <div class="card" style="padding:20px;margin-top:16px;display:flex;gap:32px;flex-wrap:wrap">
-      ${[['Total Active',active.length,'#4f46e5'],['Full Time',(active.filter(p=>p.employment_type==='Full Time')).length,'#10b981'],['Part Time',(active.filter(p=>p.employment_type==='Part Time')).length,'#3b82f6'],['Contractors/Temps',(active.filter(p=>['Contractor','Fixed Term','Zero Hours'].includes(p.employment_type))).length,'#f59e0b']].map(([lbl,n,c])=>
-        `<div><p style="font-size:11px;color:#94a3b8;margin-bottom:2px">${lbl}</p><p style="font-size:28px;font-weight:800;color:${c}">${n}</p></div>`).join('')}
+      ${[['Total Active',active.length,'var(--accent)'],['Full Time',(active.filter(p=>p.employment_type==='Full Time')).length,'#10b981'],['Part Time',(active.filter(p=>p.employment_type==='Part Time')).length,'#3b82f6'],['Contractors/Temps',(active.filter(p=>['Contractor','Fixed Term','Zero Hours'].includes(p.employment_type))).length,'#f59e0b']].map(([lbl,n,c])=>
+        `<div><p style="font-size:11px;color:var(--muted);margin-bottom:2px">${lbl}</p><p style="font-size:28px;font-weight:800;color:${c}">${n}</p></div>`).join('')}
     </div>`;
     icons(); bindSubTabs(()=>{S.rptTab=$('hr-page-content').querySelector('[data-subtab].active')?.dataset.subtab||'headcount';renderReports();});
     pc.querySelectorAll('[data-subtab]').forEach(btn=>btn.addEventListener('click',()=>{S.rptTab=btn.dataset.subtab;renderReports();}));
@@ -5289,19 +5289,19 @@ function renderReports() {
     +`<div style="display:grid;grid-template-columns:repeat(3,1fr);gap:16px;margin-bottom:16px">
     ${yr.map(({year,leavers:lv})=>`
       <div class="card" style="padding:20px;text-align:center">
-        <p style="font-size:13px;font-weight:700;color:#64748b;margin-bottom:8px">${year}</p>
-        <p style="font-size:32px;font-weight:800;color:#0f172a">${lv.length}</p>
-        <p style="font-size:13px;color:#94a3b8;margin-top:4px">Leavers</p>
+        <p style="font-size:13px;font-weight:700;color:var(--muted);margin-bottom:8px">${year}</p>
+        <p style="font-size:32px;font-weight:800;color:var(--text)">${lv.length}</p>
+        <p style="font-size:13px;color:var(--muted);margin-top:4px">Leavers</p>
         <p style="font-size:16px;font-weight:700;color:${lv.length/Math.max(avgHead,1)>0.15?'#ef4444':'#10b981'};margin-top:8px">
           ${(lv.length/Math.max(avgHead,1)*100).toFixed(1)}% turnover
         </p>
       </div>`).join('')}
     </div>
     <div class="card" style="padding:20px">
-      <h3 style="font-size:14px;font-weight:700;color:#1e293b;margin-bottom:14px">Leavers This Year by Reason</h3>
+      <h3 style="font-size:14px;font-weight:700;color:var(--text);margin-bottom:14px">Leavers This Year by Reason</h3>
       <table class="tbl"><thead><tr><th class="th">Employee</th><th class="th">Last Day</th><th class="th">Exit Interview</th></tr></thead><tbody>
       ${yr[0].leavers.map(l=>`<tr class="tr"><td class="td">${personName(l.person_id)}</td><td class="td">${x(l.last_working_day||'—')}</td>
-        <td class="td">${(l.exit_interview_done==='true'||l.exit_interview_done===true)?'<span class="badge" style="background:#dcfce7;color:#16a34a">Done</span>':'<span class="badge" style="background:#f1f5f9;color:#94a3b8">Not done</span>'}</td></tr>`).join('')||'<tr><td class="td" colspan="3" style="text-align:center;color:#94a3b8">No leavers this year</td></tr>'}
+        <td class="td">${(l.exit_interview_done==='true'||l.exit_interview_done===true)?'<span class="badge" style="background:var(--ok-bg);color:#16a34a">Done</span>':'<span class="badge" style="background:var(--bg);color:var(--muted)">Not done</span>'}</td></tr>`).join('')||'<tr><td class="td" colspan="3" style="text-align:center;color:var(--muted)">No leavers this year</td></tr>'}
       </tbody></table>
     </div>`;
     icons(); pc.querySelectorAll('[data-subtab]').forEach(btn=>btn.addEventListener('click',()=>{S.rptTab=btn.dataset.subtab;renderReports();})); return;
@@ -5325,9 +5325,9 @@ function renderReports() {
       <td class="td" style="font-weight:500">${x(c.course.name)}</td>
       <td class="td" style="text-align:right">${c.done} / ${c.total}</td>
       <td class="td" style="text-align:right;font-weight:700;color:${c.pct<50?'#ef4444':c.pct<80?'#f59e0b':'#10b981'}">${c.pct}%</td>
-      <td class="td" style="min-width:120px"><div style="background:#f1f5f9;border-radius:4px;height:8px;overflow:hidden">
+      <td class="td" style="min-width:120px"><div style="background:var(--bg);border-radius:4px;height:8px;overflow:hidden">
         <div style="background:${c.pct<50?'#ef4444':c.pct<80?'#f59e0b':'#10b981'};height:100%;width:${c.pct}%;border-radius:4px;transition:width 0.5s"></div></div>
-        ${c.missing.length?`<p style="font-size:10px;color:#94a3b8;margin-top:2px">Outstanding: ${c.missing.slice(0,3).map(p=>`${p.first_name||''} ${p.last_name||''}`.trim()).join(', ')}${c.missing.length>3?' +'+( c.missing.length-3)+' more':''}</p>`:''}</td>
+        ${c.missing.length?`<p style="font-size:10px;color:var(--muted);margin-top:2px">Outstanding: ${c.missing.slice(0,3).map(p=>`${p.first_name||''} ${p.last_name||''}`.trim()).join(', ')}${c.missing.length>3?' +'+( c.missing.length-3)+' more':''}</p>`:''}</td>
     </tr>`).join('')}
     </tbody></table></div>`;
     icons(); pc.querySelectorAll('[data-subtab]').forEach(btn=>btn.addEventListener('click',()=>{S.rptTab=btn.dataset.subtab;renderReports();})); return;
@@ -5342,9 +5342,9 @@ function renderReports() {
     const median=arr=>{if(!arr.length)return 0;const s=[...arr].sort((a,b)=>Number(a.salary)-Number(b.salary));const m=Math.floor(s.length/2);return s.length%2?Number(s[m].salary):(Number(s[m-1].salary)+Number(s[m].salary))/2;};
     const mMean=mean(male);const fMean=mean(female);const mMed=median(male);const fMed=median(female);
     const gap=(m,f)=>m?((m-f)/m*100).toFixed(1):0;
-    const stat=(label,value,sub)=>`<div class="card" style="padding:20px;text-align:center"><p style="font-size:12px;color:#94a3b8;margin-bottom:4px">${label}</p><p style="font-size:24px;font-weight:800;color:#0f172a">${value}</p>${sub?`<p style="font-size:11px;color:#64748b;margin-top:2px">${sub}</p>`:''}</div>`;
+    const stat=(label,value,sub)=>`<div class="card" style="padding:20px;text-align:center"><p style="font-size:12px;color:var(--muted);margin-bottom:4px">${label}</p><p style="font-size:24px;font-weight:800;color:var(--text)">${value}</p>${sub?`<p style="font-size:11px;color:var(--muted);margin-top:2px">${sub}</p>`:''}</div>`;
     pc.innerHTML=sectionTitle('Gender Pay Gap Report','Based on current salaries for active employees with gender recorded')
-    +`<div style="background:#fef3c7;border:1px solid #fde68a;border-radius:10px;padding:12px 18px;margin-bottom:16px;font-size:13px;color:#92400e">${ic('info',13)} ${peopleWithPay.length} employees have salary and gender data · ${active.length-peopleWithPay.length} excluded (missing data)</div>
+    +`<div style="background:var(--warn-bg);border:1px solid var(--warn-border);border-radius:10px;padding:12px 18px;margin-bottom:16px;font-size:13px;color:var(--warn-text)">${ic('info',13)} ${peopleWithPay.length} employees have salary and gender data · ${active.length-peopleWithPay.length} excluded (missing data)</div>
     <div style="display:grid;grid-template-columns:repeat(4,1fr);gap:12px;margin-bottom:16px">
       ${stat('Mean Pay Gap',gap(mMean,fMean)+'%','Men vs Women')}
       ${stat('Median Pay Gap',gap(mMed,fMed)+'%','Men vs Women')}
@@ -5352,19 +5352,19 @@ function renderReports() {
       ${stat('Mean Female Salary','£'+Math.round(fMean).toLocaleString('en-GB'),female.length+' women')}
     </div>
     <div style="display:grid;grid-template-columns:1fr 1fr;gap:16px">
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">Pay Quartiles</h3>
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">Pay Quartiles</h3>
         ${['Upper','Upper Middle','Lower Middle','Lower'].map((q,qi)=>{
           const sorted=[...peopleWithPay].sort((a,b)=>Number(b.salary)-Number(a.salary));
           const size=Math.ceil(sorted.length/4);const slice=sorted.slice(qi*size,(qi+1)*size);
           const mPct=slice.length?Math.round(slice.filter(p=>p.gender==='Male').length/slice.length*100):0;
-          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:#64748b">${q} Quartile</span><span>${100-mPct}% F · ${mPct}% M</span></div>
-          <div style="height:8px;background:#e2e8f0;border-radius:4px;overflow:hidden;display:flex">
+          return `<div style="margin-bottom:10px"><div style="display:flex;justify-content:space-between;font-size:12px;margin-bottom:3px"><span style="color:var(--muted)">${q} Quartile</span><span>${100-mPct}% F · ${mPct}% M</span></div>
+          <div style="height:8px;background:var(--border);border-radius:4px;overflow:hidden;display:flex">
             <div style="background:#ec4899;height:100%;width:${100-mPct}%;border-radius:4px 0 0 4px;transition:width 0.5s"></div>
             <div style="background:#3b82f6;height:100%;width:${mPct}%;border-radius:0 4px 4px 0;transition:width 0.5s"></div>
           </div></div>`;}).join('')}
       </div>
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:12px">Bonus Pay Gap</h3>
-        <p style="font-size:13px;color:#94a3b8;padding:20px 0;text-align:center">Bonus data not yet recorded.<br>Add bonus payments via the Pay module.</p>
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:12px">Bonus Pay Gap</h3>
+        <p style="font-size:13px;color:var(--muted);padding:20px 0;text-align:center">Bonus data not yet recorded.<br>Add bonus payments via the Pay module.</p>
       </div>
     </div>`;
     icons(); pc.querySelectorAll('[data-subtab]').forEach(btn=>btn.addEventListener('click',()=>{S.rptTab=btn.dataset.subtab;renderReports();})); return;
@@ -5381,20 +5381,20 @@ function renderReports() {
     const total=active.length;
     pc.innerHTML=sectionTitle('Diversity & Inclusion Report','Ethnicity, disability and declaration rates for active employees')
     +`<div style="display:grid;grid-template-columns:1fr 300px;gap:16px">
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px">Ethnicity</h3>
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">Ethnicity</h3>
         <table class="tbl"><thead><tr><th class="th">Ethnicity</th><th class="th" style="text-align:right">Count</th><th class="th" style="text-align:right">%</th><th class="th"></th></tr></thead><tbody>
         ${Object.entries(ethnicityCount).sort((a,b)=>b[1]-a[1]).map(([e,n])=>`<tr class="tr">
           <td class="td" style="font-weight:500">${x(e)}</td><td class="td" style="text-align:right;font-weight:700">${n}</td>
-          <td class="td" style="text-align:right;color:#64748b">${Math.round(n/total*100)}%</td>
-          <td class="td"><div style="background:#f1f5f9;border-radius:4px;height:6px;overflow:hidden"><div style="background:#4f46e5;height:100%;width:${Math.round(n/total*100)}%;border-radius:4px"></div></div></td>
+          <td class="td" style="text-align:right;color:var(--muted)">${Math.round(n/total*100)}%</td>
+          <td class="td"><div style="background:var(--bg);border-radius:4px;height:6px;overflow:hidden"><div style="background:var(--accent);height:100%;width:${Math.round(n/total*100)}%;border-radius:4px"></div></div></td>
         </tr>`).join('')}
         </tbody></table>
-        <p style="font-size:11px;color:#94a3b8;margin-top:12px">${active.filter(p=>!p.ethnicity).length} employees have not stated their ethnicity (${Math.round(active.filter(p=>!p.ethnicity).length/total*100)}%)</p>
+        <p style="font-size:11px;color:var(--muted);margin-top:12px">${active.filter(p=>!p.ethnicity).length} employees have not stated their ethnicity (${Math.round(active.filter(p=>!p.ethnicity).length/total*100)}%)</p>
       </div>
-      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:#1e293b;margin-bottom:14px">Disability Declaration</h3>
-        ${[['Declared — Yes',disabilityCount.yes,'#ef4444'],['Declared — No',disabilityCount.no,'#10b981'],['Not Stated',disabilityCount.not_stated,'#94a3b8']].map(([lbl,n,c])=>`
-          <div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:500;color:#374151">${lbl}</span><span style="font-weight:700;color:${c}">${n} (${Math.round(n/total*100)}%)</span></div>
-          <div style="background:#f1f5f9;border-radius:4px;height:8px;overflow:hidden"><div style="background:${c};height:100%;width:${Math.round(n/total*100)}%;border-radius:4px"></div></div></div>`).join('')}
+      <div class="card" style="padding:20px"><h3 style="font-size:13px;font-weight:700;color:var(--text);margin-bottom:14px">Disability Declaration</h3>
+        ${[['Declared — Yes',disabilityCount.yes,'#ef4444'],['Declared — No',disabilityCount.no,'#10b981'],['Not Stated',disabilityCount.not_stated,'var(--muted)']].map(([lbl,n,c])=>`
+          <div style="margin-bottom:14px"><div style="display:flex;justify-content:space-between;margin-bottom:4px"><span style="font-size:13px;font-weight:500;color:var(--text)">${lbl}</span><span style="font-weight:700;color:${c}">${n} (${Math.round(n/total*100)}%)</span></div>
+          <div style="background:var(--bg);border-radius:4px;height:8px;overflow:hidden"><div style="background:${c};height:100%;width:${Math.round(n/total*100)}%;border-radius:4px"></div></div></div>`).join('')}
       </div>
     </div>`;
     icons(); pc.querySelectorAll('[data-subtab]').forEach(btn=>btn.addEventListener('click',()=>{S.rptTab=btn.dataset.subtab;renderReports();})); return;
@@ -5411,11 +5411,11 @@ function renderReports() {
         <button id="oc-expand-all"   class="btn btn-secondary" style="font-size:12px">${ic('chevrons-down',12)} Expand all</button>
         <button id="oc-collapse-all" class="btn btn-secondary" style="font-size:12px">${ic('chevrons-up',12)} Collapse all</button>
         <button id="oc-fit"          class="btn btn-secondary" style="font-size:12px">${ic('maximize-2',12)} Fit</button>
-        <span style="font-size:11px;color:#94a3b8;margin-left:auto">Drag to pan · scroll/pinch to zoom</span>
+        <span style="font-size:11px;color:var(--muted);margin-left:auto">Drag to pan · scroll/pinch to zoom</span>
        </div>
        <div class="card" style="padding:0;overflow:hidden;position:relative" id="oc-wrap">
          <canvas id="oc-canvas" style="display:block;width:100%;height:600px;cursor:grab"></canvas>
-         <div id="oc-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:#94a3b8;font-size:14px;flex-direction:column;gap:8px">
+         <div id="oc-empty" style="display:none;position:absolute;inset:0;align-items:center;justify-content:center;color:var(--muted);font-size:14px;flex-direction:column;gap:8px">
            ${ic('git-merge',28)} <span>No hierarchy data found.<br>Add reporting relationships in Roles &amp; Structure → Hierarchy.</span>
          </div>
        </div>`;
@@ -5487,8 +5487,8 @@ function renderReports() {
 
     // Department colours
     const deptIds = [...new Set(people.filter(p=>p.department_id).map(p=>p.department_id))].sort();
-    const DCOLS   = ['#4f46e5','#0891b2','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899','#14b8a6','#64748b'];
-    const deptCol = id => DCOLS[deptIds.indexOf(id) % DCOLS.length] || '#4f46e5';
+    const DCOLS   = ['var(--accent)','#0891b2','#10b981','#f59e0b','#ef4444','#8b5cf6','#f97316','#ec4899','#14b8a6','var(--muted)'];
+    const deptCol = id => DCOLS[deptIds.indexOf(id) % DCOLS.length] || 'var(--accent)';
 
     // ── Layout engine ─────────────────────────────────────────────────
     let nodes = [], edges = [];
@@ -5511,7 +5511,7 @@ function renderReports() {
       nodes.push({id, x, y,
         name:  `${p.first_name||''} ${p.last_name||''}`.trim(),
         title: jt?.title || '',
-        col:   p.department_id ? deptCol(p.department_id) : '#4f46e5',
+        col:   p.department_id ? deptCol(p.department_id) : 'var(--accent)',
         hasKids: ch.length > 0,
         isCollapsed: collapsed.has(id),
       });
@@ -5565,7 +5565,7 @@ function renderReports() {
       ctx.scale(zoom, zoom);
 
       // Connector lines
-      ctx.strokeStyle = '#e2e8f0';
+      ctx.strokeStyle = 'var(--border)';
       ctx.lineWidth   = 1.5 / zoom;
       edges.forEach(e => {
         ctx.beginPath();
@@ -5583,8 +5583,8 @@ function renderReports() {
         ctx.shadowBlur  = 10/zoom;
 
         // Card bg
-        ctx.fillStyle   = isHL ? '#fffbeb' : '#fff';
-        ctx.strokeStyle = isHL ? '#f59e0b' : '#e2e8f0';
+        ctx.fillStyle   = isHL ? 'var(--warn-bg)' : '#fff';
+        ctx.strokeStyle = isHL ? '#f59e0b' : 'var(--border)';
         ctx.lineWidth   = (isHL ? 2 : 1) / zoom;
         roundRect(n.x, n.y, CW, CH, 8);
         ctx.fill(); ctx.stroke();
@@ -5605,7 +5605,7 @@ function renderReports() {
         ctx.fillText(initials, n.x+22, n.y+CH/2);
 
         // Name
-        ctx.fillStyle    = '#0f172a';
+        ctx.fillStyle    = 'var(--text)';
         ctx.font         = `600 ${Math.max(9, 11/zoom)}px Inter,Arial,sans-serif`;
         ctx.textAlign    = 'left';
         ctx.textBaseline = 'middle';
@@ -5613,19 +5613,19 @@ function renderReports() {
         ctx.fillText(nameTxt, n.x+44, n.y + CH*0.37);
 
         // Title
-        ctx.fillStyle = '#94a3b8';
+        ctx.fillStyle = 'var(--muted)';
         ctx.font      = `${Math.max(8,10/zoom)}px Inter,Arial,sans-serif`;
         const titleTxt = (n.title||'No role').length > 24 ? (n.title||'').slice(0,22)+'…' : (n.title||'No role');
         ctx.fillText(titleTxt, n.x+44, n.y + CH*0.66);
 
         // Expand/collapse button (bottom-centre)
         if (n.hasKids) {
-          ctx.fillStyle   = n.isCollapsed ? n.col : '#e2e8f0';
+          ctx.fillStyle   = n.isCollapsed ? n.col : 'var(--border)';
           ctx.strokeStyle = '#fff';
           ctx.lineWidth   = 1.5/zoom;
           ctx.beginPath(); ctx.arc(n.x+CW/2, n.y+CH, 8/zoom, 0, Math.PI*2);
           ctx.fill(); ctx.stroke();
-          ctx.fillStyle    = n.isCollapsed ? '#fff' : '#64748b';
+          ctx.fillStyle    = n.isCollapsed ? '#fff' : 'var(--muted)';
           ctx.font         = `700 ${Math.max(9,10/zoom)}px Arial,sans-serif`;
           ctx.textAlign    = 'center';
           ctx.textBaseline = 'middle';

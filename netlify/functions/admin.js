@@ -40,6 +40,87 @@ const TABLES = {
   /* Which project tabs each section of the app shows (0138). Only the
      exceptions are stored, so an absent row means the tab is shown. */
   Project_Tab_Visibility: { pk: "Project_Tab_Visibility_ID", order: "Area_Key" },
+  /* And which stages (0140). A separate table because a stage is not a
+     tab: one column holding either kind of key would mean every read
+     has to remember which it is looking at. */
+  Project_Stage_Visibility: { pk: "Project_Stage_Visibility_ID", order: "Area_Key" },
+  /* ── Human Resources (0140–0142) ──────────────────────────────
+     65 of the 71 HR tables. Six are deliberately absent and stay that
+     way until HR has authentication:
+
+       Bank_Details, DBS_Check, Disciplinary, Grievance, OH_Referral,
+       PIP_Record
+
+     This list is the entire security model — a table in it is served
+     to any caller who names it — so those six are reachable only from
+     SQL until there is something to check who is asking. Adding each
+     back is one line. */
+  Accreditation_Type:                { pk: "Accreditation_Type_ID", order: "Name" },
+  Address:                           { pk: "Address_ID", order: "Created_At" },
+  Applicant:                         { pk: "Applicant_ID", order: "Created_At" },
+  Application:                       { pk: "Application_ID", order: "Created_At" },
+  Audit_Log:                         { pk: "Audit_Log_ID", order: "Audit_Log_ID" },
+  Benefit_Type:                      { pk: "Benefit_Type_ID", order: "Name" },
+  Candidate_Attachment:              { pk: "Candidate_Attachment_ID", order: "Created_At" },
+  Candidate:                         { pk: "Candidate_ID", order: "Created_At" },
+  Certificate_Type:                  { pk: "Certificate_Type_ID", order: "Name" },
+  Contingent_Worker:                 { pk: "Contingent_Worker_ID", order: "Created_At" },
+  Department:                        { pk: "Department_ID", order: "Name" },
+  Documents_Log:                     { pk: "Documents_Log_ID", order: "Created_At" },
+  Driving_Licence_Check:             { pk: "Driving_Licence_Check_ID", order: "Created_At" },
+  Employee_Accreditation:            { pk: "Employee_Accreditation_ID", order: "Created_At" },
+  Employee_Benefit:                  { pk: "Employee_Benefit_ID", order: "Start_Date" },
+  Employee_Certificate:              { pk: "Employee_Certificate_ID", order: "Created_At" },
+  Employee_Onboarding_Content:       { pk: "Employee_Onboarding_Content_ID", order: "Created_At" },
+  Employee_Onboarding_Task:          { pk: "Employee_Onboarding_Task_ID", order: "Created_At" },
+  Employee_Pay:                      { pk: "Employee_Pay_ID", order: "Effective_Date" },
+  Employee_Role:                     { pk: "Employee_Role_ID", order: "Start_Date" },
+  Employee_Skill:                    { pk: "Employee_Skill_ID", order: "Created_At" },
+  Employee_Training:                 { pk: "Employee_Training_ID", order: "Created_At" },
+  Employment:                        { pk: "Employment_ID", order: "Start_Date" },
+  Equipment_Assignment:              { pk: "Equipment_Assignment_ID", order: "Created_At" },
+  Equipment_Type:                    { pk: "Equipment_Type_ID", order: "Name" },
+  Headcount_Budget:                  { pk: "Headcount_Budget_ID", order: "Created_At" },
+  Hierarchy:                         { pk: "Hierarchy_ID", order: "Created_At" },
+  Interaction_Type:                  { pk: "Interaction_Type_ID", order: "Name" },
+  Interaction:                       { pk: "Interaction_ID", order: "Created_At" },
+  Interview_Format_Type:             { pk: "Interview_Format_Type_ID", order: "Name" },
+  Interview_Stage:                   { pk: "Interview_Stage_ID", order: "Created_At" },
+  Job_Advert:                        { pk: "Job_Advert_ID", order: "Title" },
+  Job_Site:                          { pk: "Job_Site_ID", order: "Name" },
+  Job_Title:                         { pk: "Job_Title_ID", order: "Title" },
+  Leave_Entitlement:                 { pk: "Leave_Entitlement_ID", order: "Created_At" },
+  Leave_Request:                     { pk: "Leave_Request_ID", order: "Start_Date" },
+  Leave_Type:                        { pk: "Leave_Type_ID", order: "Name" },
+  Leaver_Type:                       { pk: "Leaver_Type_ID", order: "Name" },
+  Leaver:                            { pk: "Leaver_ID", order: "Created_At" },
+  Mentoring_Relationship:            { pk: "Mentoring_Relationship_ID", order: "Start_Date" },
+  Next_Of_Kin:                       { pk: "Next_Of_Kin_ID", order: "Name" },
+  Objective:                         { pk: "Objective_ID", order: "Title" },
+  Offer:                             { pk: "Offer_ID", order: "Start_Date" },
+  Office_Location:                   { pk: "Office_Location_ID", order: "Name" },
+  Onboarding_Content:                { pk: "Onboarding_Content_ID", order: "Title" },
+  Onboarding_Content_Type:           { pk: "Onboarding_Content_Type_ID", order: "Name" },
+  Onboarding_Task:                   { pk: "Onboarding_Task_ID", order: "Created_At" },
+  Performance_Review:                { pk: "Performance_Review_ID", order: "Created_At" },
+  Person_Document:                   { pk: "Person_Document_ID", order: "Created_At" },
+  Recruitment_Agency:                { pk: "Recruitment_Agency_ID", order: "Name" },
+  Referee:                           { pk: "Referee_ID", order: "Name" },
+  Return_To_Work_Form:               { pk: "Return_To_Work_Form_ID", order: "Created_At" },
+  Job_Role:                          { pk: "Job_Role_ID", order: "Created_At" },
+  Salary_Band:                       { pk: "Salary_Band_ID", order: "Effective_Date" },
+  Sector_Magazine:                   { pk: "Sector_Magazine_ID", order: "Name" },
+  Sickness_Category:                 { pk: "Sickness_Category_ID", order: "Name" },
+  Sickness_Record:                   { pk: "Sickness_Record_ID", order: "Created_At" },
+  Skill_Category:                    { pk: "Skill_Category_ID", order: "Name" },
+  Skill:                             { pk: "Skill_ID", order: "Name" },
+  Succession_Plan:                   { pk: "Succession_Plan_ID", order: "Created_At" },
+  Timesheet_Entry:                   { pk: "Timesheet_Entry_ID", order: "Created_At" },
+  Timesheet:                         { pk: "Timesheet_ID", order: "Created_At" },
+  Training_Course:                   { pk: "Training_Course_ID", order: "Name" },
+  Vacancy:                           { pk: "Vacancy_ID", order: "Title" },
+  Working_Pattern:                   { pk: "Working_Pattern_ID", order: "Created_At" },
+
   /* Non-compliance reports and what hangs off them (0139). Deleting a
      report cascades to its actions and comments in the database, so
      this list never has to delete them itself. */

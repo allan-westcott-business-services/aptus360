@@ -25,6 +25,20 @@ await build({
   define: {
     "import.meta.env.VITE_HR_SUPABASE_URL": '"https://example.test"',
     "import.meta.env.VITE_HR_SUPABASE_ANON_KEY": '"test-key"',
+    /* The portal now goes through the application's own API layer,
+       which reads import.meta.env itself. Defining the whole object
+       rather than the two keys above, so anything it adds later is
+       covered without this file needing to know about it. */
+    "import.meta.env": JSON.stringify({
+      VITE_HR_SUPABASE_URL: "https://example.test",
+      VITE_HR_SUPABASE_ANON_KEY: "test-key",
+      /* Not mocks: the harness stubs fetch and returns empty tables, which
+         is what an empty database looks like. Mock mode would answer
+         from fixtures that have no HR tables in them at all. */
+      VITE_USE_MOCKS: "false",
+      MODE: "test",
+      DEV: false,
+    }),
   },
   logLevel: "error",
 });

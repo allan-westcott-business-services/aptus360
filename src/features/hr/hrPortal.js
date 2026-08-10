@@ -82,6 +82,14 @@ let onNavigate = () => {};
    The values below were literals in the single-file build. They are read
    from the environment now, with the shipped values as a fallback so an
    existing deploy keeps working before the variables are set. */
+import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
+import {
+  tableName as hrTable, rowIn as hrRowIn, rowOut as hrRowOut,
+  parseFilter as hrParseFilter, matchesFilters as hrMatches,
+} from "./hrNames.js";
+
+/* Left only so nothing that still reads them breaks. Nothing should:
+   the HR project is no longer contacted. */
 const SUPABASE_URL = import.meta.env.VITE_HR_SUPABASE_URL || 'https://gshnfyttitutnqshllal.supabase.co';
 const SUPABASE_KEY = import.meta.env.VITE_HR_SUPABASE_ANON_KEY || 'eyJhbGciOiJIUzI1NiIsInR5cCI6IkpXVCJ9.eyJpc3MiOiJzdXBhYmFzZSIsInJlZiI6ImdzaG5meXR0aXR1dG5xc2hsbGFsIiwicm9sZSI6ImFub24iLCJpYXQiOjE3Nzg2MTYyOTQsImV4cCI6MjA5NDE5MjI5NH0.-bKCVOBrPsohgLTxcok7TliNpxQFoFp-TO023BhKiL8';
 
@@ -227,83 +235,79 @@ function showToast(msg, type = 'error') {
   setTimeout(() => t?.remove(), type === 'error' ? 8000 : 4000);
 }
 
+/* The four query wrappers, now going through Aptus360's own endpoint
+   instead of the HR project's PostgREST.
+
+   Everything above these speaks the HR schema's names — `people`, `id`,
+   `person_id` — and carries on doing so. hrNames.js translates in both
+   directions, so the 5,700 lines of module code below were not touched.
+
+   ── Why not simply repoint the URL ──
+
+   The old wrappers talked to PostgREST with an anon key. Against this
+   database that returns nothing: row level security is on with no
+   policies, deliberately, and all access goes through the functions
+   with the service key. So the wrappers change, not the address.
+
+   ── Filtering happens here, for now ──
+
+   Eleven call sites pass a PostgREST filter. The admin endpoint returns
+   whole tables, so the filter is applied to the rows after they arrive.
+   That is fine for a Department and wrong for a year of timesheets;
+   when those tables have data in them, the filtering belongs in the
+   endpoint. Written down here so it is a known trade rather than a
+   surprise later. */
 const api = {
-  // Build request headers — uses anon key as bearer (login bypassed)
-  h() {
-    return {
-      'Content-Type':  'application/json',
-      'apikey':        SUPABASE_KEY,
-      'Authorization': `Bearer ${S.token || SUPABASE_KEY}`,
-      'Prefer':        'return=representation',
-    };
+  // Login is Aptus360's, not the HR project's. Kept so the module's own
+  // call site does not have to change; it is never reached.
+  async signIn() {
+    return { error: { message: "Sign in through Aptus360, not the HR portal." } };
   },
-  // Auth: exchange email/password for access token
-  async signIn(email, password) {
-    const r = await fetch(`${SUPABASE_URL}/auth/v1/token?grant_type=password`, {
-      method: 'POST',
-      headers: { 'Content-Type': 'application/json', 'apikey': SUPABASE_KEY },
-      body: JSON.stringify({ email, password }),
-    });
-    return r.json();
-  },
-  // SELECT — returns array or throws
+
   async select(table, cols = '*', filter = '') {
-    const url = `${SUPABASE_URL}/rest/v1/${table}?select=${cols}${filter ? '&' + filter : ''}`;
-    const r = await fetch(url, { headers: this.h() });
-    const data = await r.json();
-    if (!r.ok) {
-      const msg = data?.message || data?.error || JSON.stringify(data);
-      console.error(`SELECT ${table} failed (${r.status}):`, msg);
-      showToast(`Could not load <b>${table}</b>: ${msg}`, 'error');
+    try {
+      const { rows = [] } = await adminList(hrTable(table));
+      const out = rows.map((r) => hrRowIn(r, table));
+      const filters = hrParseFilter(filter);
+      return filters.length ? out.filter((r) => hrMatches(r, filters)) : out;
+    } catch (e) {
+      console.error(`SELECT ${table} failed:`, e.message);
+      showToast(`Could not load <b>${table}</b>: ${e.message}`, 'error');
       return [];
     }
-    return data;
   },
-  // INSERT — throws on failure so the modal can catch and stay open
+
   async insert(table, body) {
-    // Strip empty strings → null so NOT NULL columns don't get blank strings
-    const clean = Object.fromEntries(
-      Object.entries(body).map(([k,v]) => [k, v === '' ? null : v])
-    );
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}`, {
-      method: 'POST', headers: this.h(), body: JSON.stringify(clean),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      const msg = data?.message || data?.hint || data?.error || JSON.stringify(data);
-      showToast(`Save failed: ${msg}`, 'error');
-      throw new Error(msg);
+    const t = hrTable(table);
+    try {
+      const created = await adminCreate(t, hrRowOut(body, table), `${t}_ID`);
+      return [hrRowIn(created, table)];
+    } catch (e) {
+      showToast(`Save failed: ${e.message}`, 'error');
+      throw e;
     }
-    return data;
   },
-  // UPDATE — throws on failure
+
   async update(table, id, body) {
-    const clean = Object.fromEntries(
-      Object.entries(body).map(([k,v]) => [k, v === '' ? null : v])
-    );
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-      method: 'PATCH', headers: this.h(), body: JSON.stringify(clean),
-    });
-    const data = await r.json();
-    if (!r.ok) {
-      const msg = data?.message || data?.hint || data?.error || JSON.stringify(data);
-      showToast(`Update failed: ${msg}`, 'error');
-      throw new Error(msg);
+    const t = hrTable(table);
+    try {
+      const updated = await adminUpdate(t, id, hrRowOut(body, table));
+      return [hrRowIn(updated, table)];
+    } catch (e) {
+      showToast(`Update failed: ${e.message}`, 'error');
+      throw e;
     }
-    return data;
   },
-  // DELETE — throws on failure
+
   async del(table, id) {
-    const r = await fetch(`${SUPABASE_URL}/rest/v1/${table}?id=eq.${id}`, {
-      method: 'DELETE', headers: this.h(),
-    });
-    if (!r.ok) {
-      const data = await r.json().catch(() => ({}));
-      const msg = data?.message || data?.error || `HTTP ${r.status}`;
-      showToast(`Delete failed: ${msg}`, 'error');
-      throw new Error(msg);
+    const t = hrTable(table);
+    try {
+      await adminDelete(t, id, `${t}_ID`);
+      return true;
+    } catch (e) {
+      showToast(`Delete failed: ${e.message}`, 'error');
+      throw e;
     }
-    return true;
   },
 };
 

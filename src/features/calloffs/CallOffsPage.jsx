@@ -1698,17 +1698,25 @@ function Assignments({ row }) {
            and offering it means finding that out on save. Where the
            dates are not set yet nothing is dropped — there is no range
            to be busy across. */
+        /* Booked on any day this booking wants.
+
+           Any, not every: a team already out on the Tuesday cannot take
+           a Monday-to-Wednesday job, even though it is free on two of
+           the three. The old rule asked whether a team was busy for the
+           whole stretch, which let a half-available team be picked and
+           then refused on save.
+
+           The days the booking actually falls on, not every date
+           between: a weekend it does not work cannot make a team busy,
+           and counting it would drop teams for being unavailable on a
+           day nobody is asking them for. */
         const busyAcross = (t) => {
           if (!draft.Start_Date || !draft.End_Date) return false;
           const taken = bookedParts(t.Team_ID, all, workDays, editing);
-          /* The days the booking actually falls on. A weekend it does
-             not work cannot make a team busy, and counting it would
-             drop teams from the list for being unavailable on a day
-             nobody is asking them for. */
           const days = schedule.days.map((x) => x.date);
           if (!days.length) return false;
-          return days.every((d) => !partIsFree(taken.get(d), "AM")
-            && !partIsFree(taken.get(d), "PM"));
+          return days.some((d) => !partIsFree(taken.get(d), "AM")
+            || !partIsFree(taken.get(d), "PM"));
         };
 
         const can = eligibleTeams(teams, {
@@ -2006,17 +2014,6 @@ function Assignments({ row }) {
                       })()}
                     </select>
                   )}
-                  <select className="asg-team-sel" value={draft.Team_ID}
-                    aria-label="Team"
-                    onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
-                    <option value="">Team…</option>
-                      {can.map((t) => (
-                      <option key={t.Team_ID} value={t.Team_ID}
-                        disabled={busyAcross(t)}>
-                        {t.Team_Name}{busyAcross(t) ? " \u2014 booked" : ""}
-                      </option>
-                    ))}
-                  </select>
                   {/* ── Moving the start moves the end ──
 
                       A booking has a length, and changing when it
@@ -2054,6 +2051,36 @@ function Assignments({ row }) {
                        rather than in a message after they have chosen. */
                     min={draft.Start_Date || todayISO()}
                     onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
+
+                  {/* Who, after when.
+
+                      The dates decide which teams there are to choose
+                      from, so asking for a team first is asking a
+                      question whose answer changes as soon as the next
+                      one is answered. Disabled until both dates are in,
+                      and then listing only teams free on all of them. */}
+                  <select className="asg-team-sel" value={draft.Team_ID}
+                    aria-label="Team"
+                    disabled={!draft.Start_Date || !draft.End_Date}
+                    onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
+                    <option value="">
+                      {!draft.Start_Date || !draft.End_Date
+                        ? "Dates first\u2026" : "Team\u2026"}
+                    </option>
+                    {(() => {
+                      const free = can.filter((t) => !busyAcross(t));
+                      /* The team already on this booking stays listed
+                         while it is being edited, or reopening it would
+                         show an empty box where a team is. */
+                      const held = editing != null
+                        ? can.filter((t) => Number(t.Team_ID) === Number(draft.Team_ID)
+                          && !free.some((f) => Number(f.Team_ID) === Number(t.Team_ID)))
+                        : [];
+                      return [...held, ...free].map((t) => (
+                        <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
+                      ));
+                    })()}
+                  </select>
 
                 </div>
 

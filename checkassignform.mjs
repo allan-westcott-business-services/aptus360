@@ -48,6 +48,22 @@ if (/part: d\.Part && d\.Part !== "Full" \? d\.Part : null/.test(src)) {
 }
 if (!src.includes('"Full day"')) fail("the breakdown never says Full day");
 
+// 5. One tick per thing.
+//
+//    Restoring lost work put a second "split by utility" tick on the
+//    form while the first was still there, so the same checkbox
+//    appeared twice with different wording. Two controls setting one
+//    flag is not a cosmetic problem: whichever is nearer gets clicked,
+//    and the other is left looking wrong.
+for (const [what, pattern] of [
+  ["split by utility", /className="asg-split-tick"/g],
+  ["different plots each day", /className="asg-byday"/g],
+]) {
+  const n = (src.match(pattern) || []).length;
+  if (n > 1) fail(`the ${what} tick appears ${n} times`);
+  if (n === 0) fail(`the ${what} tick is missing`);
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assign form behaves (dates before team, any-day availability, full days named).");
 process.exit(bad ? 1 : 0);

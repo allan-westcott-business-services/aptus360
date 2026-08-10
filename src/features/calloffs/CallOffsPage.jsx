@@ -2209,26 +2209,11 @@ function Assignments({ row }) {
                   </div>
                 )}
 
-                {/* Splitting one phase between teams by utility.
-
-                    Off by default: one gang laying everything is the
-                    ordinary case, and a form that opens asking which
-                    utilities asks a question most bookings do not
-                    have. Ticked, this booking covers only the
-                    utilities named, and another booking on the same
-                    plots can cover the rest \u2014 which is how one team
-                    lays the gas and water on plots 1 and 2 while
-                    another lays the electric. */}
+                {/* The utilities this booking covers. The tick that
+                    turns this on sits with the per-day one above, beside
+                    the days it divides \u2014 not here, where it was a
+                    second copy of the same control. */}
                 <div className="asg-split">
-                  <label className="asg-split-tick">
-                    <input type="checkbox" checked={!!draft.byUtility}
-                      onChange={(e) => setDraft((d) => ({
-                        ...d,
-                        byUtility: e.target.checked,
-                        utility_ids: e.target.checked ? (d.utility_ids || []) : [],
-                      }))} />
-                    Split this phase by utility
-                  </label>
                   {draft.byUtility && (
                     <div className="asg-split-utils">
                       {utils

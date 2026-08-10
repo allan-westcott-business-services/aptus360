@@ -6,6 +6,9 @@ import { supabase, json, fail } from "./_supabase.js";
    legacy contract list. */
 const PROJECT_COLUMNS = [
   "Project_ID", "Project_Ref", "Revision", "Option_Letter", "Display_Ref", "Project_Status_ID",
+  /* The two references the project is known by elsewhere: the AP number
+     to the network operator, the tender reference to the client. */
+  "AP_Number", "Tender_Ref",
   "Customer_ID", "Branch_ID", "Region_ID", "Sub_Region_ID",
   "Site_Name", "Site_Address", "Postcode", "Eastings", "Northings",
   "Date_Received", "KPI_Date", "Date_Sent", "Secured_Date", "Status_Changed_Date",

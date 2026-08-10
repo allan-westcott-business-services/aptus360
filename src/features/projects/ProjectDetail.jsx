@@ -153,11 +153,16 @@ export default function ProjectDetail({
           &larr; All projects
         </button>
         <div className="detail-title">
+          {/* Site name on the same line as the reference rather than
+              beneath it. The two are read together — the reference
+              identifies the project and the name is how anybody actually
+              recognises it — and stacking them pushed the tab strip a
+              line further down every screen. */}
           <h2>
             <span className="mono ref">{project.Display_Ref ?? project.Project_Ref}</span>
             {project.Revision ? <span className="rev">r{project.Revision}</span> : null}
+            <span className="site">{project.Site_Name || "Unnamed site"}</span>
           </h2>
-          <p className="page-sub">{project.Site_Name || "Unnamed site"}</p>
         </div>
 
         {/* Shown only when there is more than one, so an ordinary project
@@ -286,6 +291,9 @@ const CSS = `
 .back-link:hover { text-decoration: underline; }
 .detail-title h2 { margin: 0; font-size: 19px; font-weight: 700; display: flex; align-items: baseline; gap: 8px; }
 .detail-title .ref { color: var(--accent); }
+/* Lighter than the reference beside it: the two are read together, and
+   equal weight makes neither of them the thing you find first. */
+.detail-title .site { font-weight: 500; font-size: 16px; color: var(--muted); }
 .detail-title .rev {
   font-size: 11px; font-weight: 700; color: var(--muted);
   background: var(--bg); border: 1px solid var(--border); border-radius: 4px; padding: 1px 6px;

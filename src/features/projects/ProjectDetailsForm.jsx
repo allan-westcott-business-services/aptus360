@@ -14,6 +14,13 @@ import {
 } from "../../lib/constants.js";
 
 const SITE_CSS = `
+.ref-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
+.ref-fld { display: flex; flex-direction: column; gap: 4px; min-width: 200px; }
+.ref-fld > span { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.ref-fld input { font: 600 13px inherit; padding: 7px 10px; border: 1px solid var(--border);
+  border-radius: 7px; background: var(--white); width: 100%; box-sizing: border-box; }
+
 .site-row { display: flex; gap: 12px; align-items: flex-start; margin-bottom: 12px; }
 .site-row .fld.grow { flex: 0.9; min-width: 120px; }
 .site-row .fld.grow-wide { flex: 1.2; min-width: 150px; }
@@ -175,14 +182,22 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
           the tab you have chosen, while the badge reflected the record's
           own stage, so viewing the Contract tab of a project still at
           Tender showed "Contract" and "TENDER STAGE" side by side. */}
-      <div className="page-head">
-        <div>
-          <h2>Project details</h2>
-          <p className="page-sub">
-            One record from first enquiry onward. Contract-stage fields unlock once the
-            project is Secured.
-          </p>
-        </div>
+      {/* The two references somebody needs at a glance, side by side at
+          the top rather than buried among thirty other fields. They sit
+          above the sections because they identify the project to other
+          people — the AP number to the operator, the tender reference
+          to the client — rather than describing the work. */}
+      <div className="ref-row">
+        <label className="ref-fld">
+          <span>AP Number</span>
+          <input value={f.AP_Number || ""}
+            onChange={(e) => set("AP_Number")(e.target.value)} />
+        </label>
+        <label className="ref-fld">
+          <span>Tender Ref</span>
+          <input value={f.Tender_Ref || ""}
+            onChange={(e) => set("Tender_Ref")(e.target.value)} />
+        </label>
       </div>
 
       {flash && <Banner kind="ok">{flash}</Banner>}

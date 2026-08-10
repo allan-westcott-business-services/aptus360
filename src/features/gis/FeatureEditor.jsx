@@ -3,7 +3,10 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { BUILD_STATUSES } from "./buildStatus.js";
 import { utilityById } from "../../lib/utilities.js";
-import { lineLength, isTrenchType, classLabel } from "./snapping.js";
+import {
+  lineLength, isTrenchType, isTrenchFeature, classLabel,
+} from "./snapping.js";
+import { EASEMENT_KEY } from "./easement.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
@@ -36,7 +39,10 @@ export default function FeatureEditor({
   const isLine = feature.Feature_Type === "line";
   /* Read from the draft, not the saved row, so switching a cable to a
      trench swaps the fields immediately rather than after a save. */
-  const isTrench = isTrenchType(f.Attributes?.Line_Type, lineTypes);
+  /* The layer, not just the line type: a trench drawn onto the trench
+     layer has no type until somebody picks one, and asking the type
+     alone hid every trench-only control on exactly those sections. */
+  const isTrench = isTrenchFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
   /* An electric line picks its cable from the catalogue. Judged by the
      layer its type belongs to rather than by the key's spelling, so a
      type added later lands in the right branch without a code change. */
@@ -939,6 +945,22 @@ export default function FeatureEditor({
                   </select>
                 </div>
               )}
+              {/* Whether this section crosses land the trench has a
+                  right over rather than highway.
+
+                  A fact about the ground, not about what is laid in it,
+                  so it sits with the surface rather than with the pipe
+                  \u2014 and so it shows on the electric, gas and water
+                  drawings alike. */}
+              {isTrench && (
+                <label className="fe-check">
+                  <input type="checkbox"
+                    checked={!!f.Attributes[EASEMENT_KEY]}
+                    onChange={(e) => setAttr(EASEMENT_KEY)(e.target.checked)} />
+                  Easement
+                </label>
+              )}
+
               <div className="fe-row">
                 {isTrench ? (
                   <>
@@ -1457,6 +1479,13 @@ const CSS = `
 .fe-x { border: none; background: none; font-size: 21px; cursor: pointer; color: var(--muted);
   line-height: 1; padding: 0 3px; }
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
+/* The one tick box in this editor, so it gets a rule of its own rather
+   than borrowing a field's. */
+.fe-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px;
+  font-weight: 600; color: var(--text); cursor: pointer; margin: 2px 0 10px; }
+.fe-check input { width: 15px; height: 15px; accent-color: var(--accent);
+  cursor: pointer; }
+
 .fe-row { display: flex; gap: 11px; }
 .fe-row .fld { flex: 1; min-width: 0; }
 .fe-derived { margin: 0; font-size: 11.5px; color: var(--muted); background: var(--bg);

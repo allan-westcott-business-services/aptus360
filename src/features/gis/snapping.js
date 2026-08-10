@@ -129,6 +129,25 @@ export function isTrenchType(typeKey, lineTypes = []) {
   return lineTypes.find((t) => t.Type_Key === typeKey)?.Layer_Key === "trench";
 }
 
+/* Whether a feature is a trench.
+
+   The layer settles it. Asking the line type alone \u2014 which is what
+   isTrenchType does \u2014 says no for a trench with no type set, and a
+   trench drawn straight onto the trench layer has none until somebody
+   picks one. That is how the easement tick came to be missing from
+   exactly the sections that most needed it.
+
+   Falling back to the type, and then to the name, for a trench drawn
+   before the layer existed or with a type added later. Same rule the
+   bulk delete uses; written here so the two cannot drift. */
+export function isTrenchFeature(f, lineTypes = []) {
+  if (!f) return false;
+  if (f.Layer_Key === "trench") return true;
+  const key = f.Attributes?.Line_Type ?? "";
+  const t = lineTypes.find((x) => x.Type_Key === key);
+  return t ? t.Layer_Key === "trench" : String(key).includes("trench");
+}
+
 export function classLabel(f, lineTypes = []) {
   if (!f) return "";
   if (f.Feature_Type === "point") return f.Feature_Role || f.Layer_Key;

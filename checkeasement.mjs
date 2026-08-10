@@ -12,6 +12,7 @@
      rather than lines. That happened, and only a rendered picture
      showed it \u2014 which is why the tile is checked here for the shape
      it should have, and why it was also looked at in a browser. */
+import { isTrenchFeature } from "./src/features/gis/snapping.js";
 import {
   easementBand, isEasement, hatchPattern,
   EASEMENT_WIDTH_M, EASEMENT_KEY, EASEMENT_COLOUR,
@@ -92,6 +93,31 @@ if (!/^#[0-9a-f]{6}$/i.test(EASEMENT_COLOUR)) fail("the easement colour is not a
   const w = strokes.find((x) => x.lineWidth)?.lineWidth ?? 0;
   if (w > 1.2) fail(`the hatch line is ${w}px; the mesh closes up above about 1.2`);
   delete globalThis.document;
+}
+
+// 8. A trench is a trench whether or not somebody has picked a line
+//    type for it.
+//
+//    The editor decides which controls to show from this. Asking the
+//    line type alone says no for a trench drawn straight onto the
+//    trench layer, so the easement tick was hidden on exactly the
+//    sections most likely to need it.
+{
+  const types = [
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+    { Type_Key: "elec_service", Layer_Key: "electric" },
+  ];
+  const t = (f) => isTrenchFeature(f, types);
+  if (!t({ Layer_Key: "trench", Attributes: {} })) {
+    fail("a trench with no line type does not count as a trench");
+  }
+  if (!t({ Layer_Key: "trench", Attributes: { Line_Type: "trench_main" } })) {
+    fail("a typed trench does not count as a trench");
+  }
+  if (t({ Layer_Key: "electric", Attributes: { Line_Type: "elec_service" } })) {
+    fail("an electric service counts as a trench");
+  }
+  if (t(null)) fail("null counts as a trench");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

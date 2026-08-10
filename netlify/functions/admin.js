@@ -185,7 +185,6 @@ const TABLES = {
      at the database, which is the right answer — an operator's
      utilities are edited in Organisations. */
   Operator_Utility: { pk: "Organisation_ID",       order: "Name" },
-  Utility:          { pk: "Utility_ID",            order: "Sort_Order" },
   /* The shape of the admin menu itself — see 0127. */
   Admin_Menu:       { pk: "Admin_Menu_ID",         order: "Display_Order" },
   Customer:        { pk: "Customer_ID",        order: "Customer_Name" },

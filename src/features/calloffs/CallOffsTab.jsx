@@ -1,5 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
-import { listCallOffs, createCallOff, deleteCallOff } from "../../api/calloffs.js";
+import {
+  listCallOffs, createCallOff, updateCallOff, deleteCallOff,
+} from "../../api/calloffs.js";
 import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
@@ -46,6 +48,10 @@ export default function CallOffsTab({ projectId }) {
 
   const [f, setF] = useState({});
   const [items, setItems] = useState([]);
+  /* The call-off being edited, or null when raising a new one. The form
+     is the same either way \u2014 a second one would be a second place for
+     the rules to be written down. */
+  const [editingId, setEditingId] = useState(null);
 
   /* Plots are chosen from a grid rather than a dropdown per row.
 
@@ -205,7 +211,34 @@ export default function CallOffsTab({ projectId }) {
   );
   const energDefault = energFloor ? dayAfter(energFloor.date) : "";
 
+  /* Open an existing call-off.
+
+     The rows are shown but not editable here: changing which sections
+     or plots a call-off covers is a different act from correcting its
+     details, and PATCH updates the submission only. Offering boxes that
+     silently discard what is typed in them would be worse than not
+     offering them. */
+  function openEdit(row) {
+    setEditingId(row.Submission_ID);
+    setF({
+      Work_Type_ID: row.Work_Type_ID ?? "",
+      utility_ids: [...(row.utility_ids || [])],
+      Contact_Name: row.Contact_Name ?? "",
+      Contact_Company: row.Contact_Company ?? "",
+      Preferred_Date: row.Preferred_Date ?? "",
+      Alternative_Date: row.Alternative_Date ?? "",
+      Obstruction_Free: row.Obstruction_Free ?? "",
+      Ground_Unmade: row.Ground_Unmade ?? "",
+      Line_Level_Required: row.Line_Level_Required ?? "",
+      Notes: row.Notes ?? "",
+    });
+    setItems(row.items || []);
+    setPenalty(null);
+    setOpen(true);
+  }
+
   function openForm() {
+    setEditingId(null);
     setF({
       Work_Type_ID: workTypes[0]?.Work_Type_ID ?? "",
       /* Which utilities are in this call-off. Blank rather than every
@@ -242,14 +275,37 @@ export default function CallOffsTab({ projectId }) {
 
     /* A service call-off for fewer than four plots costs the same visit
        as one for four. The charge is shown and accepted rather than
-       applied quietly. */
-    if (mode === "PlotList" && !acceptedCharge) {
+       applied quietly. Only when raising one: the visit has already
+       been charged for by the time somebody is correcting the notes. */
+    if (!editingId && mode === "PlotList" && !acceptedCharge) {
       const p = servicePenalty(plotRows.length);
       if (p.applies) { setPenalty(p); return; }
     }
 
     setBusy(true);
     try {
+      if (editingId) {
+        /* The submission and its utilities. Not the rows: PATCH updates
+           the submission only, and the form says as much. */
+        const res = await updateCallOff(projectId, editingId, {
+          Work_Type_ID: f.Work_Type_ID,
+          utility_ids: f.utility_ids,
+          Contact_Name: f.Contact_Name,
+          Contact_Company: branchName || null,
+          Preferred_Date: f.Preferred_Date,
+          Alternative_Date: f.Alternative_Date || null,
+          Obstruction_Free: f.Obstruction_Free,
+          Ground_Unmade: f.Ground_Unmade,
+          Line_Level_Required: f.Line_Level_Required,
+          Notes: f.Notes,
+        });
+        setOpen(false);
+        setEditingId(null);
+        await load();
+        setError(res?.warning || "");
+        return;
+      }
+
       const res = await createCallOff(projectId, {
         ...f,
         Project_ID: projectId,
@@ -302,6 +358,14 @@ export default function CallOffsTab({ projectId }) {
 
       {open && (
         <div className="co-form">
+          {editingId && (
+            <p className="co-editing">
+              {`Editing call-off #${editingId}. `}
+              {/* Said before somebody types into a row and wonders why
+                  it did not save. */}
+              Its sections and plots are shown below but are not changed here.
+            </p>
+          )}
           <div className="co-grid">
             <div className="fld">
               <label htmlFor="co-wt">Work type</label>
@@ -540,7 +604,11 @@ export default function CallOffsTab({ projectId }) {
 
       {rows.map((r) => (
         <div className="co-row" key={r.Submission_ID}>
-          <div className="co-row-main">
+          {/* The row opens the call-off. A button rather than a div with
+              a click on it, so it is reachable by keyboard and reads as
+              something that can be opened. */}
+          <button className="co-row-main" onClick={() => openEdit(r)}
+            title={`Open call-off #${r.Submission_ID}`}>
             <strong>#{r.Submission_ID}</strong>
             <span className="co-wt">{r.Work_Type?.Work_Type_Name ?? "\u2014"}</span>
             <span className={`co-status s-${String(r.Status || "").replace(/\W+/g, "").toLowerCase()}`}>
@@ -555,6 +623,28 @@ export default function CallOffsTab({ projectId }) {
                 r.Selection_Mode === "ColumnList" ? "column" : r.Selection_Mode === "Span" ? "section" : "plot"
               }${(r.items?.length ?? 0) === 1 ? "" : "s"}`}
             </span>
+            {/* What it covers, where somebody looking down the list
+                expects to see it. */}
+            <span className="co-utils-chips">
+              {(r.utility_ids || []).map((id) => {
+                const u = utilities.find((x) => Number(x.Utility_ID) === Number(id));
+                return u ? (
+                  <span className="co-uchip" key={id}>
+                    {/* A dot in the utility's colour rather than a pill
+                        filled with it. The utility colours are chosen to
+                        be told apart on a drawing, and at that strength
+                        they shout across a list \u2014 and white on the
+                        water green is barely readable. */}
+                    <i style={{ background: u.Colour || "var(--muted)" }} />
+                    {u.Utility}
+                  </span>
+                ) : null;
+              })}
+            </span>
+          </button>
+
+          <div className="co-row-acts">
+            <button className="btn ghost sm" onClick={() => openEdit(r)}>Edit</button>
             <button className="btn delete sm" onClick={() => remove(r.Submission_ID)}>
               Delete
             </button>
@@ -710,9 +800,28 @@ const CSS = `
 .co-date input { flex: 1; font: 500 11.5px inherit; padding: 4px 6px;
   border: 1px solid var(--border); border-radius: 5px; }
 .co-actions { display: flex; justify-content: flex-end; gap: 9px; }
-.co-row { border: 1px solid var(--border); border-radius: 9px; padding: 11px 14px;
+.co-editing { font-size: 12.5px; color: var(--accent); background: var(--accent-light);
+  border-radius: 8px; padding: 8px 10px; margin: 0 0 12px; }
+.co-row-acts { display: flex; gap: 6px; align-items: center; padding-right: 10px; }
+.co-utils-chips { display: inline-flex; gap: 4px; }
+.co-uchip { display: inline-flex; align-items: center; gap: 4px;
+  font: 600 11px inherit; color: var(--muted); }
+.co-uchip i { width: 7px; height: 7px; border-radius: 50%; display: inline-block; }
+
+.co-row { border: 1px solid var(--border); border-radius: 9px;
   margin-bottom: 9px; background: var(--white); }
-.co-row-main { display: flex; align-items: center; gap: 12px; font-size: 12.5px; }
+/* The row splits into the part that opens it and the part that acts on
+   it, so Delete is not inside the thing that opens the call-off. */
+.co-row > .co-row-main, .co-row > .co-row-acts { display: inline-flex; }
+.co-row { display: flex; align-items: flex-start; flex-wrap: wrap; }
+.co-row-main { flex: 1; min-width: 0; display: flex; align-items: center; gap: 12px;
+  font-size: 12.5px; text-align: left; padding: 11px 14px; border: 0;
+  background: none; font-family: inherit; color: inherit; cursor: pointer;
+  border-radius: 9px; }
+.co-row-main:hover { background: var(--bg); }
+.co-row-main:focus-visible { outline: 2px solid var(--accent); outline-offset: -2px; }
+.co-row-acts { align-self: center; }
+.co-items { flex-basis: 100%; padding: 0 14px 11px; }
 .co-wt { font-weight: 600; }
 .co-status { font: 700 10.5px inherit; padding: 2px 8px; border-radius: 20px;
   background: var(--bg); color: var(--muted); }

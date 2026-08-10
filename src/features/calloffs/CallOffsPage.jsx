@@ -982,6 +982,18 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
    Loads its own data rather than taking it from the page: the page lists
    call-offs and has no reason to carry teams and crafts for the one that
    happens to be open. */
+/* The groups a phase is split between when two teams share it.
+
+   Gas and water go in the same trench and are laid on the same visit —
+   either may be absent, but they are not split from each other. The
+   electric service routinely is: a different gang, often a different
+   day. So the choice is between these two, not between three utilities
+   that could be combined any way at all. */
+const UTILITY_GROUPS = [
+  { key: "wet", names: ["Gas", "Water"] },
+  { key: "electric", names: ["Electric"] },
+];
+
 function Assignments({ row }) {
   const [phases, setPhases] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -1353,6 +1365,36 @@ function Assignments({ row }) {
     })
     : [];
 
+  /* ── The same plot on two days of one booking ──
+
+     One team laying one phase does a plot once. Plot 3 on Monday and
+     again on Tuesday is not a plan, it is a slip of the finger on a
+     grid of pills, and it would send a gang back to a plot that is
+     already done.
+
+     Only within a booking. Across bookings the same plot on two days is
+     exactly right when the utilities differ \u2014 the gas and water go in
+     on Monday and the electric service on Wednesday \u2014 and that is
+     what splitting by utility is for. Two bookings covering the same
+     plot and the same utility is a different fault, and the clash check
+     above already refuses it. */
+  const dayClashes = (() => {
+    if (!draft.byDay) return [];
+    const seen = new Map();
+    for (const [date, plots] of Object.entries(draft.dayPlots || {})) {
+      for (const plot of plots) {
+        if (!seen.has(plot)) seen.set(plot, []);
+        seen.get(plot).push(date);
+      }
+    }
+    return [...seen]
+      .filter(([, dates]) => dates.length > 1)
+      .map(([plot, dates]) =>
+        `Plot ${plot} is on ${dates.length} days (${dates.join(", ")}). `
+        + "One team lays a plot once \u2014 to have another team do a "
+        + "different utility there, book that separately and split by utility.");
+  })();
+
   /* ── Out of order ──
 
      The same check the planning board applies, on the same rules, so
@@ -1390,7 +1432,7 @@ function Assignments({ row }) {
     )
     : [];
 
-  const allProblems = [...problems, ...orderProblems];
+  const allProblems = [...problems, ...orderProblems, ...dayClashes];
 
   /* The floor for the phase currently open in the editor, so the start
      picker can refuse anything earlier. The same answer the phase
@@ -1973,24 +2015,90 @@ function Assignments({ row }) {
 
                 {schedule.days.length > 0 && (
                   <div className="asg-days">
+                    <div className="asg-ticks">
+                    {/* Four plots over three days is not four plots on
+                        all three. Off by default because most bookings
+                        do the same plots throughout, and a grid of
+                        pills against every day would be four questions
+                        where there was one. */}
+                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
+                      <label className="asg-byday">
+                        <input type="checkbox" checked={!!draft.byDay}
+                          onChange={(e) => setDraft((dd) => ({
+                            ...dd,
+                            byDay: e.target.checked,
+                            dayPlots: e.target.checked ? (dd.dayPlots || {}) : {},
+                          }))} />
+                        Different plots each day
+                      </label>
+                    )}
+
+                    <label className="asg-split-tick">
+                      <input type="checkbox" checked={!!draft.byUtility}
+                        onChange={(e) => setDraft((d) => ({
+                          ...d,
+                          byUtility: e.target.checked,
+                          utility_ids: e.target.checked ? (d.utility_ids || []) : [],
+                        }))} />
+                      Split by utility
+                    </label>
+                    </div>
+
+                    {/* Splitting a phase between teams.
+
+                        Not one tick per utility. Gas and water go in the
+                        same trench and are laid together \u2014 one of them
+                        may be absent, but they are one visit \u2014 while
+                        the electric service is routinely a different
+                        gang on a different day. So the split offers the
+                        two groups that are actually split, and only the
+                        ones this call-off covers. */}
+                    {draft.byUtility && (
+                      <div className="asg-split-utils">
+                        {UTILITY_GROUPS
+                          .map((g) => ({
+                            ...g,
+                            ids: utils
+                              .filter((u) => g.names.includes(u.Utility))
+                              .map((u) => Number(u.Utility_ID))
+                              .filter((id) => !(row.utility_ids || []).length
+                                || (row.utility_ids || []).includes(id)),
+                          }))
+                          .filter((g) => g.ids.length)
+                          .map((g) => {
+                            const on = g.ids.every((id) =>
+                              (draft.utility_ids || []).includes(id));
+                            return (
+                              <button key={g.key} type="button"
+                                className={`asg-pill${on ? " on" : ""}`}
+                                onClick={() => setDraft((d) => {
+                                  const cur = d.utility_ids || [];
+                                  return {
+                                    ...d,
+                                    utility_ids: on
+                                      ? cur.filter((x) => !g.ids.includes(x))
+                                      : [...new Set([...cur, ...g.ids])],
+                                  };
+                                })}>
+                                {/* Named for what is present, so a site
+                                    with no water reads "Gas" rather than
+                                    offering water that is not there. */}
+                                {utils.filter((u) => g.ids.includes(Number(u.Utility_ID)))
+                                  .map((u) => u.Utility).join(" / ")}
+                              </button>
+                            );
+                          })}
+                      </div>
+                    )}
+
+                    {draft.byUtility && !(draft.utility_ids || []).length && (
+                      <p className="asg-split-hint">
+                        Nothing chosen &mdash; this booking would cover no utilities.
+                      </p>
+                    )}
+
                     <div className="asg-days-head">
                       <strong>Days</strong>
-                      {/* Four plots over three days is not four plots on
-                          all three. Off by default because most bookings
-                          do the same plots throughout, and a grid of
-                          pills against every day would be four questions
-                          where there was one. */}
-                      {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
-                        <label className="asg-byday">
-                          <input type="checkbox" checked={!!draft.byDay}
-                            onChange={(e) => setDraft((dd) => ({
-                              ...dd,
-                              byDay: e.target.checked,
-                              dayPlots: e.target.checked ? (dd.dayPlots || {}) : {},
-                            }))} />
-                          Different plots each day
-                        </label>
-                      )}
                       <span className="asg-days-tot">
                         {(() => {
                           const parts = Object.fromEntries(schedule.days
@@ -2098,69 +2206,6 @@ function Assignments({ row }) {
                   </div>
                 )}
 
-                {/* Splitting one phase between teams by utility.
-
-                    Off by default: one gang laying everything is the
-                    ordinary case, and a form that opens asking which
-                    utilities asks a question most bookings do not
-                    have. Ticked, this booking covers only the
-                    utilities named, and another booking on the same
-                    plots can cover the rest \u2014 which is how one team
-                    lays the gas and water on plots 1 and 2 while
-                    another lays the electric. */}
-                <div className="asg-split">
-                  <label className="asg-split-tick">
-                    <input type="checkbox" checked={!!draft.byUtility}
-                      onChange={(e) => setDraft((d) => ({
-                        ...d,
-                        byUtility: e.target.checked,
-                        utility_ids: e.target.checked ? (d.utility_ids || []) : [],
-                      }))} />
-                    Split this phase by utility
-                  </label>
-                  {draft.byUtility && (
-                    <div className="asg-split-utils">
-                      {utils.filter((u) => !u.Is_Lighting).map((u) => {
-                        const on = (draft.utility_ids || []).includes(Number(u.Utility_ID));
-                        return (
-                          <button key={u.Utility_ID} type="button"
-                            className={`asg-pill${on ? " on" : ""}`}
-                            onClick={() => setDraft((d) => {
-                              const cur = d.utility_ids || [];
-                              return {
-                                ...d,
-                                utility_ids: on
-                                ? cur.filter((x) => x !== Number(u.Utility_ID))
-                                : [...cur, Number(u.Utility_ID)],
-                              };
-                            })}>
-                            {u.Utility}
-                          </button>
-                        );
-                      })}
-                    </div>
-                  )}
-                  {draft.byUtility && !(draft.utility_ids || []).length && (
-                    <p className="asg-split-hint">
-                      Nothing chosen &mdash; this booking would cover no utilities.
-                    </p>
-                  )}
-                </div>
-
-                {/* Plots as pills, as they are chosen everywhere else on
-                    a call-off — clicking one off is quicker than editing
-                    a range by hand, and a pill cannot produce "1-4, 4".
-
-                    Not on a mains call-off. That names spans of trench —
-                    A1 to A5 — and the whole span is laid; there is no
-                    sense in which one team takes some of its plots and
-                    another the rest, because the plots are not what is
-                    being divided. */}
-                {/* Not while the days carry their own. It would be the
-                    same question asked twice, and the answer here is
-                    the one that does nothing \u2014 which is worse than
-                    not asking. The booking's range is then whatever the
-                    days between them cover. */}
                 {row.Selection_Mode !== "Span" && plotUniverse.length > 0
                   && !draft.byDay && (
                   <div className="asg-plots-pick">
@@ -2374,11 +2419,18 @@ const CSS = `
 .asg-split { padding: 10px 0 0; }
 .asg-split-tick, .asg-byday { display: inline-flex; align-items: center; gap: 6px;
   font-size: 12.5px; cursor: pointer; color: var(--muted); white-space: nowrap; }
-.asg-byday { margin-left: auto; font-weight: 500; white-space: nowrap; }
-.asg-split-utils { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
+.asg-byday { font-weight: 500; white-space: nowrap; }
+.asg-ticks { display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin-bottom: 6px; }
+.asg-split-utils { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
 .asg-split-hint { font-size: 12px; color: var(--warn-text); margin: 6px 0 0; }
+/* Beside the off-site tick, not under the row. They belong to the same
+   line as the rest of what the day is \u2014 which half of it, on site or
+   not, and which plots. The row wraps as a whole if it has to, so a
+   narrow window moves the pills down together rather than breaking one
+   of the controls in half. */
 .asg-day-plots { display: flex; flex-wrap: wrap; gap: 5px; align-items: center;
-  flex-basis: 100%; padding: 4px 0 2px; margin-left: 103px; }
+  margin-left: 2px; }
 .asg-pill.sm { font-size: 11px; padding: 1px 7px; }
 .asg-day-all { font-size: 11.5px; color: var(--muted); }
 
@@ -2386,6 +2438,7 @@ const CSS = `
   border-top: 1px dashed var(--border); }
 .asg-days-head { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
 .asg-days-head strong { font-size: 12px; }
+.asg-days-tot { margin-left: auto; }
 .asg-days-tot { font-size: 11px; color: var(--muted); margin-right: auto; }
 .asg-all { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10px inherit; padding: 2px 9px; color: var(--accent); }

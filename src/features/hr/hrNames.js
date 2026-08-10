@@ -108,19 +108,56 @@ export function rowIn(row, table) {
   const out = {};
   for (const [k, v] of Object.entries(row)) {
     const key = k === pk ? "id" : toSnake(k);
+    if (k !== pk) remember(table, k, key);
     out[key] = isId(k) && v != null ? String(v) : v;
   }
   return out;
 }
 
+/* What each table's columns are really called.
+
+   The naming rule derives a column name from the module's snake_case
+   one, and that is right for every table the migrations created. It is
+   not right for Person, which was made by hand in the dashboard long
+   before any of this and does not follow the convention throughout: a
+   column stored as `auth_uid` comes back through the rule as `Auth_Uid`
+   and the save fails on a column that does not exist.
+
+   So rather than deriving names on the way out, the names actually seen
+   on the way in are remembered and used. A read always precedes an edit
+   — you cannot edit a row you have not loaded — so by the time anything
+   is saved this knows what the columns are called. Where it does not,
+   it falls back to the rule, which is correct for everything the
+   migrations built. */
+const seenColumns = new Map();
+
+function remember(table, actual, snake) {
+  let map = seenColumns.get(table);
+  if (!map) seenColumns.set(table, (map = new Map()));
+  map.set(snake, actual);
+}
+
+/* Exposed for the tests, and for anybody debugging a save that names a
+   column nobody recognises. */
+export const columnsSeen = (table) =>
+  Object.fromEntries(seenColumns.get(table) ?? []);
+
 /* And a row on its way out. */
 export function rowOut(row, table) {
+  const known = seenColumns.get(table);
   const out = {};
   for (const [k, v] of Object.entries(row ?? {})) {
+    /* The primary key never goes in the payload. The module edits a copy
+       of the row it loaded, so `id` is sitting in the form object; on an
+       update the endpoint already knows which row from the URL, and on
+       an insert the column is GENERATED ALWAYS AS IDENTITY and refuses
+       to be written at all. */
+    if (k === "id") continue;
+    const column = known?.get(k) ?? columnName(k, table);
     /* Empty string to null, as the portal's own wrappers did: a blank
        string in a NOT NULL column is not a missing value, it is a value
        that happens to be empty, and the two behave differently. */
-    out[columnName(k, table)] = v === "" ? null : v;
+    out[column] = v === "" ? null : v;
   }
   return out;
 }

@@ -5,7 +5,7 @@
    wrong name does not throw — it returns an empty list or drops a
    field on save, which reads as the data being wrong. */
 import {
-  tableName, columnName, rowIn, rowOut, parseFilter, matchesFilters,
+  tableName, columnName, rowIn, rowOut, parseFilter, matchesFilters, columnsSeen,
 } from "./src/features/hr/hrNames.js";
 import { readFileSync } from "node:fs";
 
@@ -74,6 +74,33 @@ eq(row, { id: "7", first_name: "Ada", ni_number: "AB12", dob: "1990-01-01" }, "r
 
 const out = rowOut({ first_name: "Ada", ni_number: "", person_id: 7 }, "employee_pay");
 eq(out, { First_Name: "Ada", NI_Number: null, Person_ID: 7 }, "row out");
+
+// 4b. Columns that do not follow the naming rule.
+//
+//     Person was made by hand in the dashboard and does not follow the
+//     convention throughout. Deriving its column names on the way out
+//     turns `auth_uid` into `Auth_Uid`, and the save fails on a column
+//     that does not exist. The names seen on a read are used instead.
+{
+  rowIn({ Person_ID: 1, First_Name: "Ada", auth_uid: "abc-123" }, "people");
+  const seen = columnsSeen("people");
+  eq(seen.auth_uid, "auth_uid", "a hand-made column name is remembered as-is");
+  eq(seen.first_name, "First_Name", "a conventional column is remembered too");
+  const back = rowOut({ first_name: "Ada", auth_uid: "abc-123" }, "people");
+  eq(back, { First_Name: "Ada", auth_uid: "abc-123" }, "round trip keeps both");
+  // A column never read still falls back to the rule.
+  eq(rowOut({ last_name: "Lovelace" }, "people"), { Last_Name: "Lovelace" },
+    "an unseen column falls back to the naming rule");
+}
+
+// 4c. The primary key never goes in the payload: the module edits a copy
+//     of the loaded row, so `id` is in the form, and an identity column
+//     refuses to be written.
+{
+  const p = rowOut({ id: "7", first_name: "Ada" }, "people");
+  if ("Person_ID" in p) fail("the primary key was sent in the payload");
+  if ("id" in p) fail("a raw id was sent in the payload");
+}
 // Empty string becomes null: a blank in a NOT NULL column is not a
 // missing value, and the two behave differently.
 if (out.NI_Number !== null) fail("an empty string was not turned into null");

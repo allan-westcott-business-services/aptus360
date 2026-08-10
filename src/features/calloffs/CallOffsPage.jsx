@@ -982,24 +982,6 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
    Loads its own data rather than taking it from the page: the page lists
    call-offs and has no reason to carry teams and crafts for the one that
    happens to be open. */
-/* What a phase can be split between when teams share it.
-
-   One utility each. Gas and water are usually the same visit, but not
-   always \u2014 and a booking that can only ever say "gas and water
-   together" cannot record the day the water was laid on its own.
-
-   One or two of them, not three. Gas and water often go in together on
-   one visit, and the electric follows with another gang on another day
-   \u2014 so a booking needs to be able to say "gas and water". All three
-   selected is not a split at all: it is the same as leaving the tick
-   off, and offering it as a third state to reach the same place only
-   invites the question of which one meant what. */
-const UTILITY_GROUPS = [
-  { key: "gas", names: ["Gas"] },
-  { key: "water", names: ["Water"] },
-  { key: "electric", names: ["Electric"] },
-];
-
 function Assignments({ row }) {
   const [phases, setPhases] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -1139,55 +1121,6 @@ function Assignments({ row }) {
     return m;
   }, [assignmentUtilRows]);
 
-  /* Plots another team holds for this phase, against what this booking
-     covers. Written once because five places ask it, and five copies is
-     five chances for one to forget the utilities and disable plots that
-     are free. */
-  /* What a booking says, in the terms somebody planning the week needs:
-     which utilities, on which day, to which plots.
-
-     The row above it gives a range and one plot list, which is right
-     while a booking is one team doing the same plots throughout. Once
-     the days differ or the phase is split, that summary is true and
-     useless \u2014 "10 to 12 Aug, plots 1-6" does not say that the gas and
-     water are on the Monday and the electric on the Wednesday.
-
-     Only where there is something to say. A booking with the same plots
-     every day and no split repeats the line above it, and a line that
-     repeats the one above is one more thing to read. */
-  /* What a booking covers, named the way the split control names it.
-     Null where it was never split, which is most of them. */
-  const utilityLabel = (a) => {
-    const ids = assignmentUtils.get(Number(a.Assignment_ID)) || [];
-    if (!ids.length) return null;
-    return utils.filter((u) => ids.includes(Number(u.Utility_ID)))
-      .map((u) => u.Utility).join(" / ");
-  };
-
-  const breakdownOf = (a) => {
-    const days = workDays
-      .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
-      .filter((d) => d.Plot_Range)
-      .sort((x, y) => String(x.Work_Date).localeCompare(String(y.Work_Date)));
-    if (!days.length) return [];
-
-    return days.map((d) => ({
-      key: `${a.Assignment_ID}-${d.Work_Date}`,
-      when: fmt(d.Work_Date),
-      part: d.Part && d.Part !== "Full" ? d.Part : null,
-      plots: serialisePlots(parsePlots(d.Plot_Range)),
-    }));
-  };
-
-  const takenFor = (taskTypeId, exceptId = null, named = false) => takenPlots(
-    mine, taskTypeId, exceptId,
-    named ? ((id) => teamName(id)) : (() => null),
-    {
-      utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
-      mine: draft.byUtility ? (draft.utility_ids || []) : [],
-    },
-  );
-
   const plotUniverse = (row.items || [])
     .map((it) => it.Plot ?? it.Plots ?? String(it.Street_Light_ID ?? ""))
     .filter(Boolean);
@@ -1254,15 +1187,6 @@ function Assignments({ row }) {
       : daysBetween(draft.Start_Date, draft.End_Date).length;
     return { ...laySchedule(draft.Start_Date, length, weekend), weekend };
   }, [draft.Start_Date, draft.End_Date, draft.weekend, editing]);
-
-  /* Different plots each day, and there is more than one day.
-
-     The tick is hidden on a one-day booking, but the flag survives from
-     when the dates were wider \u2014 narrow a three-day booking to one and
-     it would still save plots against days that are no longer in it.
-     Derived once rather than read from the draft, so the form, the
-     validation and the save all take the same view. */
-  const splitByDay = !!draft.byDay && schedule.days.length > 1;
 
   /* Moving one assignment along.
 
@@ -1401,6 +1325,54 @@ function Assignments({ row }) {
 
      One definition, read by the save and by the validation below, so
      they cannot disagree about whether a booking has any plots on it. */
+  /* Plots another team holds for this phase, against a set of
+     utilities. Laying the gas does not take a plot for the electric.
+
+     `forUtilities` defaults to what the draft covers; the utility pills
+     pass their own, to ask "would anything be left if I picked this?"
+
+     One definition because six places ask, and six copies is six
+     chances for one to forget the utilities and disable plots that are
+     free. */
+  const takenFor = (taskTypeId, exceptId = null, opts = {}) => {
+    const { named = false, forUtilities = null } = opts;
+    return takenPlots(
+      mine, taskTypeId, exceptId,
+      named ? ((id) => teamName(id)) : (() => null),
+      {
+        utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
+        mine: forUtilities ?? (draft.byUtility ? (draft.utility_ids || []) : []),
+      },
+    );
+  };
+
+  /* Different plots each day, and there is more than one day. The tick
+     is hidden on a one-day booking, but the flag survives from when the
+     dates were wider. Derived once so the form, the validation and the
+     save take the same view. */
+  const splitByDay = !!draft.byDay && schedule.days.length > 1;
+
+  /* What a booking covers, named the way the split control names it. */
+  const utilityLabel = (a) => {
+    const ids = assignmentUtils.get(Number(a.Assignment_ID)) || [];
+    if (!ids.length) return null;
+    return utils.filter((u) => ids.includes(Number(u.Utility_ID)))
+      .map((u) => u.Utility).join(" / ");
+  };
+
+  /* What a booking comes to, day by day \u2014 only where the days differ,
+     or it would repeat the row above it. */
+  const breakdownOf = (a) => workDays
+    .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
+    .filter((d) => d.Plot_Range)
+    .sort((x, y) => String(x.Work_Date).localeCompare(String(y.Work_Date)))
+    .map((d) => ({
+      key: `${a.Assignment_ID}-${d.Work_Date}`,
+      when: fmt(d.Work_Date),
+      part: d.Part && d.Part !== "Full" ? d.Part : null,
+      plots: serialisePlots(parsePlots(d.Plot_Range)),
+    }));
+
   const bookingPlots = splitByDay
     ? [...new Set(Object.values(draft.dayPlots || {}).flat())]
       .sort((a, b) => Number(a) - Number(b))
@@ -1417,7 +1389,7 @@ function Assignments({ row }) {
     }, {
       phases, assignments: all, today: new Date().toISOString().slice(0, 10),
       /* So a booking for the electric is not refused the plots the gas
-         and water booking holds. */
+         booking holds. */
       utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
       utilities: draft.byUtility ? (draft.utility_ids || []) : [],
       /* So a Sunday nobody is on site for is not tested for clashes. */
@@ -1432,36 +1404,6 @@ function Assignments({ row }) {
         : null,
     })
     : [];
-
-  /* ── The same plot on two days of one booking ──
-
-     One team laying one phase does a plot once. Plot 3 on Monday and
-     again on Tuesday is not a plan, it is a slip of the finger on a
-     grid of pills, and it would send a gang back to a plot that is
-     already done.
-
-     Only within a booking. Across bookings the same plot on two days is
-     exactly right when the utilities differ \u2014 the gas and water go in
-     on Monday and the electric service on Wednesday \u2014 and that is
-     what splitting by utility is for. Two bookings covering the same
-     plot and the same utility is a different fault, and the clash check
-     above already refuses it. */
-  const dayClashes = (() => {
-    if (!splitByDay) return [];
-    const seen = new Map();
-    for (const [date, plots] of Object.entries(draft.dayPlots || {})) {
-      for (const plot of plots) {
-        if (!seen.has(plot)) seen.set(plot, []);
-        seen.get(plot).push(date);
-      }
-    }
-    return [...seen]
-      .filter(([, dates]) => dates.length > 1)
-      .map(([plot, dates]) =>
-        `Plot ${plot} is on ${dates.length} days (${dates.join(", ")}). `
-        + "One team lays a plot once \u2014 to have another team do a "
-        + "different utility there, book that separately and split by utility.");
-  })();
 
   /* ── Out of order ──
 
@@ -1500,7 +1442,7 @@ function Assignments({ row }) {
     )
     : [];
 
-  const allProblems = [...problems, ...orderProblems, ...dayClashes];
+  const allProblems = [...problems, ...orderProblems];
 
   /* The floor for the phase currently open in the editor, so the start
      picker can refuse anything earlier. The same answer the phase
@@ -1698,25 +1640,17 @@ function Assignments({ row }) {
            and offering it means finding that out on save. Where the
            dates are not set yet nothing is dropped — there is no range
            to be busy across. */
-        /* Booked on any day this booking wants.
-
-           Any, not every: a team already out on the Tuesday cannot take
-           a Monday-to-Wednesday job, even though it is free on two of
-           the three. The old rule asked whether a team was busy for the
-           whole stretch, which let a half-available team be picked and
-           then refused on save.
-
-           The days the booking actually falls on, not every date
-           between: a weekend it does not work cannot make a team busy,
-           and counting it would drop teams for being unavailable on a
-           day nobody is asking them for. */
         const busyAcross = (t) => {
           if (!draft.Start_Date || !draft.End_Date) return false;
           const taken = bookedParts(t.Team_ID, all, workDays, editing);
+          /* The days the booking actually falls on. A weekend it does
+             not work cannot make a team busy, and counting it would
+             drop teams from the list for being unavailable on a day
+             nobody is asking them for. */
           const days = schedule.days.map((x) => x.date);
           if (!days.length) return false;
-          return days.some((d) => !partIsFree(taken.get(d), "AM")
-            || !partIsFree(taken.get(d), "PM"));
+          return days.every((d) => !partIsFree(taken.get(d), "AM")
+            && !partIsFree(taken.get(d), "PM"));
         };
 
         const can = eligibleTeams(teams, {
@@ -1797,38 +1731,41 @@ function Assignments({ row }) {
               <div className="asg-wrap" key={a.Assignment_ID}>
               <div className="asg-row">
                 <span className="asg-team">{teamName(a.Team_ID)}</span>
-                {/* Each day, with how much of it.
-
-                    A range and a separate "10 AM, 11 PM" said the same
-                    thing twice and neither said it plainly: the range
-                    gave dates without parts, the tag gave parts against
-                    day numbers with no month on them. One list of dates
-                    carrying their own part reads as the sentence it is.
-
-                    A range where every day is the same and there are
-                    more than two of them \u2014 five full days is a range,
-                    not a list somebody wants to read across. */}
                 <span className="asg-when">
-                  {(() => {
-                    const mineDays = workDays
-                      .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
-                      .sort((x, y) => String(x.Work_Date).localeCompare(y.Work_Date));
-                    if (!mineDays.length) {
-                      return `${fmt(a.Start_Date)} to ${fmt(a.End_Date)}`;
-                    }
-
-                    const parts = [...new Set(mineDays.map((d) => d.Part || "Full"))];
-                    const allFull = parts.length === 1 && parts[0] === "Full";
-                    if (allFull && mineDays.length > 2) {
-                      return `${fmt(a.Start_Date)} to ${fmt(a.End_Date)}`;
-                    }
-
-                    return mineDays
-                      .map((d) => `${fmt(d.Work_Date)}`
-                        + (d.Part && d.Part !== "Full" ? ` (${d.Part})` : ""))
-                      .join(", ");
-                  })()}
+                  {fmt(a.Start_Date)} to {fmt(a.End_Date)}
                 </span>
+
+                {/* How much of each day, from the day rows.
+
+                    The dates alone say a gang is there on the sixth and
+                    nothing about whether that is a morning, an
+                    afternoon or the whole day — which is the difference
+                    between one team doing two spans and two teams doing
+                    one each.
+
+                    Where every day is the same it is said once; where
+                    they differ each is named, because "AM" against a
+                    week that is only a morning on the Friday would be
+                    wrong. */}
+                {(() => {
+                  const mineDays = workDays
+                    .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
+                    .sort((x, y) => String(x.Work_Date).localeCompare(y.Work_Date));
+                  if (!mineDays.length) return null;
+
+                  const parts = [...new Set(mineDays.map((d) => d.Part || "Full"))];
+                  const label = (p) => (p === "Full" ? "Full day" : p);
+
+                  return (
+                    <span className="asg-part-tag">
+                      {parts.length === 1
+                        ? label(parts[0])
+                        : mineDays.map((d) =>
+                          `${String(d.Work_Date).slice(8)} ${label(d.Part)}`).join(", ")}
+                    </span>
+                  );
+                })()}
+
 
                 {/* What is being done, beside when it is being done.
 
@@ -1845,12 +1782,9 @@ function Assignments({ row }) {
                     : (a.Plot_Range || "all plots")}
                 </span>
 
-                {/* Which utilities this booking is for.
-
-                    On the row rather than only on the day lines below:
-                    a booking that lays the electric on a single day has
-                    no day lines \u2014 there is nothing to break down \u2014 and
-                    was showing nothing at all about what it was for. */}
+                {/* Which utilities this booking is for. On the row
+                    because a one-day booking has no day lines to carry
+                    it and was saying nothing about what it was for. */}
                 {utilityLabel(a) && (
                   <span className="asg-util-tag">{utilityLabel(a)}</span>
                 )}
@@ -1943,10 +1877,7 @@ function Assignments({ row }) {
                   <span className="asg-break-when">
                     {b.when}{b.part ? ` (${b.part})` : ""}
                   </span>
-                  <span className="asg-break-plots">
-                    {`Plot${b.plots.includes("-") || b.plots.includes(",") ? "s" : ""} `}
-                    {b.plots}
-                  </span>
+                  <span className="asg-break-plots">Plots {b.plots}</span>
                 </div>
               ))}
               </div>
@@ -2014,6 +1945,17 @@ function Assignments({ row }) {
                       })()}
                     </select>
                   )}
+                  <select className="asg-team-sel" value={draft.Team_ID}
+                    aria-label="Team"
+                    onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
+                    <option value="">Team…</option>
+                      {can.map((t) => (
+                      <option key={t.Team_ID} value={t.Team_ID}
+                        disabled={busyAcross(t)}>
+                        {t.Team_Name}{busyAcross(t) ? " \u2014 booked" : ""}
+                      </option>
+                    ))}
+                  </select>
                   {/* ── Moving the start moves the end ──
 
                       A booking has a length, and changing when it
@@ -2051,36 +1993,6 @@ function Assignments({ row }) {
                        rather than in a message after they have chosen. */
                     min={draft.Start_Date || todayISO()}
                     onChange={(e) => setDraft((d) => ({ ...d, End_Date: e.target.value }))} />
-
-                  {/* Who, after when.
-
-                      The dates decide which teams there are to choose
-                      from, so asking for a team first is asking a
-                      question whose answer changes as soon as the next
-                      one is answered. Disabled until both dates are in,
-                      and then listing only teams free on all of them. */}
-                  <select className="asg-team-sel" value={draft.Team_ID}
-                    aria-label="Team"
-                    disabled={!draft.Start_Date || !draft.End_Date}
-                    onChange={(e) => setDraft((d) => ({ ...d, Team_ID: e.target.value }))}>
-                    <option value="">
-                      {!draft.Start_Date || !draft.End_Date
-                        ? "Dates first\u2026" : "Team\u2026"}
-                    </option>
-                    {(() => {
-                      const free = can.filter((t) => !busyAcross(t));
-                      /* The team already on this booking stays listed
-                         while it is being edited, or reopening it would
-                         show an empty box where a team is. */
-                      const held = editing != null
-                        ? can.filter((t) => Number(t.Team_ID) === Number(draft.Team_ID)
-                          && !free.some((f) => Number(f.Team_ID) === Number(t.Team_ID)))
-                        : [];
-                      return [...held, ...free].map((t) => (
-                        <option key={t.Team_ID} value={t.Team_ID}>{t.Team_Name}</option>
-                      ));
-                    })()}
-                  </select>
 
                 </div>
 
@@ -2138,12 +2050,7 @@ function Assignments({ row }) {
                         do the same plots throughout, and a grid of
                         pills against every day would be four questions
                         where there was one. */}
-                    {/* Nothing to divide on a one-day booking. The tick
-                        offered a choice between the same plots every day
-                        and different plots each day when there is only
-                        one day, which is the same thing said twice. */}
-                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0
-                      && schedule.days.length > 1 && (
+                    {row.Selection_Mode !== "Span" && plotUniverse.length > 0 && (
                       <label className="asg-byday">
                         <input type="checkbox" checked={!!draft.byDay}
                           onChange={(e) => setDraft((dd) => ({
@@ -2165,76 +2072,6 @@ function Assignments({ row }) {
                       Split by utility
                     </label>
                     </div>
-
-                    {/* Splitting a phase between teams.
-
-                        Not one tick per utility. Gas and water go in the
-                        same trench and are laid together \u2014 one of them
-                        may be absent, but they are one visit \u2014 while
-                        the electric service is routinely a different
-                        gang on a different day. So the split offers the
-                        two groups that are actually split, and only the
-                        ones this call-off covers. */}
-                    {draft.byUtility && (
-                      <div className="asg-split-utils">
-                        {UTILITY_GROUPS
-                          .map((g) => ({
-                            ...g,
-                            ids: utils
-                              .filter((u) => g.names.includes(u.Utility))
-                              .map((u) => Number(u.Utility_ID))
-                              .filter((id) => !(row.utility_ids || []).length
-                                || (row.utility_ids || []).includes(id)),
-                          }))
-                          .filter((g) => g.ids.length)
-                          .map((g) => {
-                            const chosen = draft.utility_ids || [];
-                            const on = g.ids.every((id) => chosen.includes(id));
-                            /* Two is the most a split can name. The
-                               third is disabled rather than left
-                               clickable and refused, the same as a plot
-                               another team holds. */
-                            const full = !on && chosen.length >= 2;
-                            return (
-                              <button key={g.key} type="button"
-                                disabled={full}
-                                title={full
-                                  ? "A split names one or two utilities, not all three"
-                                  : undefined}
-                                className={[
-                                  "asg-pill", on ? "on" : "", full ? "off" : "",
-                                ].filter(Boolean).join(" ")}
-                                /* One or the other, not both. A booking
-                                   covering everything is what leaving
-                                   the tick off already means, and two
-                                   groups selected would be a split that
-                                   does not split anything. Clicking the
-                                   chosen one again clears it. */
-                                onClick={() => setDraft((d) => {
-                                  const cur = d.utility_ids || [];
-                                  return {
-                                    ...d,
-                                    utility_ids: on
-                                      ? cur.filter((x) => !g.ids.includes(x))
-                                      : [...new Set([...cur, ...g.ids])],
-                                  };
-                                })}>
-                                {/* Named for what is present, so a site
-                                    with no water reads "Gas" rather than
-                                    offering water that is not there. */}
-                                {utils.filter((u) => g.ids.includes(Number(u.Utility_ID)))
-                                  .map((u) => u.Utility).join(" / ")}
-                              </button>
-                            );
-                          })}
-                      </div>
-                    )}
-
-                    {draft.byUtility && !(draft.utility_ids || []).length && (
-                      <p className="asg-split-hint">
-                        Nothing chosen &mdash; this booking would cover no utilities.
-                      </p>
-                    )}
 
                     <div className="asg-days-head">
                       <strong>Days</strong>
@@ -2311,34 +2148,11 @@ function Assignments({ row }) {
                           {splitByDay && row.Selection_Mode !== "Span"
                             && plotUniverse.length > 0 && (
                             <div className="asg-day-plots">
-                              {plotUniverse
-                                .filter((pl) =>
-                                  !takenFor(ph.Task_Type_ID, editing).has(pl))
-                                .map((pl) => {
+                              {(draft.plots || []).map((pl) => {
                                 const on = (draft.dayPlots?.[d] || []).includes(pl);
-                                /* Taken by another day of this booking.
-
-                                   One team lays a plot once, so a plot
-                                   already down for the Tuesday cannot
-                                   also be done on the Wednesday. Shown
-                                   red and disabled rather than left
-                                   clickable and refused on save \u2014 the
-                                   grid is where the mistake is made, so
-                                   it is where it should be visible. */
-                                const otherDay = on ? null
-                                  : Object.entries(draft.dayPlots || {})
-                                    .find(([date, plots]) =>
-                                      date !== d && (plots || []).includes(pl))?.[0];
                                 return (
                                   <button key={pl} type="button"
-                                    className={[
-                                      "asg-pill", "sm", on ? "on" : "", otherDay ? "off" : "",
-                                    ].filter(Boolean).join(" ")}
-                                    disabled={!!otherDay}
-                                    aria-pressed={on}
-                                    title={otherDay
-                                      ? `Already on ${otherDay}`
-                                      : `Plot ${pl}`}
+                                    className={`asg-pill sm${on ? " on" : ""}`}
                                     onClick={() => setDraft((dd) => {
                                       const cur = dd.dayPlots?.[d] || [];
                                       return {
@@ -2357,7 +2171,7 @@ function Assignments({ row }) {
                               })}
                               {!(draft.dayPlots?.[d] || []).length && (
                                 <span className="asg-day-all">
-                                  none on this day
+                                  nothing chosen &mdash; all of them
                                 </span>
                               )}
                             </div>
@@ -2368,6 +2182,102 @@ function Assignments({ row }) {
                   </div>
                 )}
 
+                {/* Splitting one phase between teams by utility.
+
+                    Off by default: one gang laying everything is the
+                    ordinary case, and a form that opens asking which
+                    utilities asks a question most bookings do not
+                    have. Ticked, this booking covers only the
+                    utilities named, and another booking on the same
+                    plots can cover the rest \u2014 which is how one team
+                    lays the gas and water on plots 1 and 2 while
+                    another lays the electric. */}
+                <div className="asg-split">
+                  <label className="asg-split-tick">
+                    <input type="checkbox" checked={!!draft.byUtility}
+                      onChange={(e) => setDraft((d) => ({
+                        ...d,
+                        byUtility: e.target.checked,
+                        utility_ids: e.target.checked ? (d.utility_ids || []) : [],
+                      }))} />
+                    Split this phase by utility
+                  </label>
+                  {draft.byUtility && (
+                    <div className="asg-split-utils">
+                      {utils
+                        /* Only the utilities this call-off covers. A
+                           gas-only call-off has no electric to split. */
+                        .filter((u) => !u.Is_Lighting)
+                        .filter((u) => !(row.utility_ids || []).length
+                          || (row.utility_ids || []).includes(Number(u.Utility_ID)))
+                        .map((u) => {
+                          const id = Number(u.Utility_ID);
+                          const chosen = draft.utility_ids || [];
+                          const on = chosen.includes(id);
+
+                          /* Two is the most a split can name. All three
+                             is the same as not splitting. */
+                          const full = !on && chosen.length >= 2;
+
+                          /* And nothing left to give it. Every plot on
+                             this phase already laid for this utility
+                             means picking it leaves an empty booking \u2014
+                             which is what the plots grid was already
+                             saying in red while this pill said nothing. */
+                          const nothingLeft = !on
+                            && row.Selection_Mode !== "Span"
+                            && plotUniverse.length > 0
+                            && plotUniverse.every((pl) =>
+                              takenFor(openPhase, editing, { forUtilities: [id] }).has(pl));
+
+                          const off = full || nothingLeft;
+                          return (
+                            <button key={u.Utility_ID} type="button"
+                              disabled={off}
+                              title={nothingLeft
+                                ? `Every plot is already assigned for ${u.Utility}`
+                                : full
+                                  ? "A split names one or two utilities, not all three"
+                                  : undefined}
+                              className={[
+                                "asg-pill", on ? "on" : "", off ? "off" : "",
+                              ].filter(Boolean).join(" ")}
+                              onClick={() => setDraft((d) => {
+                                const cur = d.utility_ids || [];
+                                return {
+                                  ...d,
+                                  utility_ids: on
+                                    ? cur.filter((x) => x !== id)
+                                    : [...cur, id],
+                                };
+                              })}>
+                              {u.Utility}
+                            </button>
+                          );
+                        })}
+                    </div>
+                  )}
+                  {draft.byUtility && !(draft.utility_ids || []).length && (
+                    <p className="asg-split-hint">
+                      Nothing chosen &mdash; this booking would cover no utilities.
+                    </p>
+                  )}
+                </div>
+
+                {/* Plots as pills, as they are chosen everywhere else on
+                    a call-off — clicking one off is quicker than editing
+                    a range by hand, and a pill cannot produce "1-4, 4".
+
+                    Not on a mains call-off. That names spans of trench —
+                    A1 to A5 — and the whole span is laid; there is no
+                    sense in which one team takes some of its plots and
+                    another the rest, because the plots are not what is
+                    being divided. */}
+                {/* Not while the days carry their own. It would be the
+                    same question asked twice, and the answer here is
+                    the one that does nothing \u2014 which is worse than
+                    not asking. The booking's range is then whatever the
+                    days between them cover. */}
                 {row.Selection_Mode !== "Span" && plotUniverse.length > 0
                   && !splitByDay && (
                   <div className="asg-plots-pick">
@@ -2400,7 +2310,7 @@ function Assignments({ row }) {
                            Disabled rather than hidden: a plot missing
                            from the grid looks like a plot missing from
                            the call-off. */
-                        const taken = takenFor(ph.Task_Type_ID, editing, true);
+                        const taken = takenFor(ph.Task_Type_ID, editing, { named: true });
                         return plotUniverse.map((pl) => {
                           const on = (draft.plots || []).includes(pl);
                           const by = !on ? taken.get(pl) : null;
@@ -2513,14 +2423,15 @@ const CSS = `
 .asg-none.warn { color: #b45309; font-style: normal; font-weight: 600; }
 .asg-wrap { margin-top: 8px; }
 .asg-wrap .asg-row { margin-top: 0; }
-/* Indented under the booking it explains, and lighter than it: the row
-   is the booking, these are what it amounts to. */
+.asg-ticks { display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
+  margin-bottom: 6px; }
+/* Indented under the booking it explains, and lighter than it. */
 .asg-break { display: flex; align-items: baseline; gap: 8px; font-size: 12px;
   color: var(--muted); padding: 3px 0 0 14px; }
+.asg-break-when { font-weight: 600; color: var(--text); min-width: 128px; }
+.asg-break-plots { font-weight: 600; }
 .asg-util-tag { font: 700 11px inherit; color: var(--accent);
   background: var(--accent-light); padding: 2px 8px; border-radius: 20px; }
-.asg-break-when { font-weight: 600; color: var(--text); min-width: 96px; }
-.asg-break-plots { font-weight: 600; }
 
 .asg-row { display: flex; align-items: center; gap: 12px; margin-top: 8px;
   padding: 6px 9px; background: var(--bg); border-radius: 6px; font-size: 12.5px; }
@@ -2592,9 +2503,7 @@ const CSS = `
 .asg-split-tick, .asg-byday { display: inline-flex; align-items: center; gap: 6px;
   font-size: 12.5px; cursor: pointer; color: var(--muted); white-space: nowrap; }
 .asg-byday { font-weight: 500; white-space: nowrap; }
-.asg-ticks { display: flex; align-items: center; gap: 18px; flex-wrap: wrap;
-  margin-bottom: 6px; }
-.asg-split-utils { display: flex; flex-wrap: wrap; gap: 6px; margin: 0 0 8px; }
+.asg-split-utils { display: flex; flex-wrap: wrap; gap: 6px; margin-top: 8px; }
 .asg-split-hint { font-size: 12px; color: var(--warn-text); margin: 6px 0 0; }
 /* Beside the off-site tick, not under the row. They belong to the same
    line as the rest of what the day is \u2014 which half of it, on site or

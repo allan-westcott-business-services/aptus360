@@ -1,3 +1,4 @@
+import { LEVELS, allowedNext, pruneHierarchy, describeHierarchy } from "./levels.js";
 import { useState, useEffect, useMemo, useRef, useCallback } from "react";
 import { getPlanning, moveAssignment, deleteAssignment, assignPhase } from "../../api/planning.js";
 import { remember, recall } from "../../lib/session.js";
@@ -48,13 +49,6 @@ const RANGES = [
   { days: 60, label: "2 months" },
 ];
 
-const PIVOTS = [
-  { key: "team", label: "Team" },
-  { key: "region", label: "Region" },
-  { key: "worktype", label: "Work type" },
-  { key: "ref", label: "Call-off" },
-  { key: "pm", label: "Project manager" },
-];
 
 const LANE_H = 46;
 const ROW_MIN_H = 54;
@@ -81,7 +75,19 @@ export default function PlanningPage() {
      things that broke. */
   const [notice, setNotice] = useState("");
 
-  const [pivot, setPivot] = useState(() => recall("planPivot", "team"));
+  /* An ordered list rather than one choice. The old single pivot is
+     the one-level case, and an existing saved pivot is read as exactly
+     that, so nobody's board changes shape on the day this ships. */
+  const [levels, setLevels] = useState(() => {
+    const saved = recall("planLevels", null);
+    if (Array.isArray(saved) && saved.length) return pruneHierarchy(saved);
+    return [recall("planPivot", "team")];
+  });
+  const pivot = levels[0];
+
+  /* Which crafts to show. Empty means all of them, which is what an
+     untouched filter should mean. */
+  const [craftIds, setCraftIds] = useState([]);
   const [rangeDays, setRangeDays] = useState(() => Number(recall("planRange", 14)) || 14);
   const [rangeStart, setRangeStart] = useState(todayMs);
   const [activeOnly, setActiveOnly] = useState(false);
@@ -96,7 +102,13 @@ export default function PlanningPage() {
   const [weekendAsk, setWeekendAsk] = useState(null);
   const [coloursOpen, setColoursOpen] = useState(false);
 
-  useEffect(() => remember("planPivot", pivot), [pivot]);
+  /* Both remembered: planLevels is what this page reads, planPivot so
+     anything still reading the old key sees the top level rather than
+     nothing. */
+  useEffect(() => {
+    remember("planLevels", levels);
+    remember("planPivot", levels[0]);
+  }, [levels]);
   useEffect(() => remember("planRange", rangeDays), [rangeDays]);
 
   async function load() {
@@ -145,10 +157,10 @@ export default function PlanningPage() {
 
   const rows = useMemo(() => (data
     ? buildRows(data, {
-      pivot, rangeStart, rangeDays,
+      levels, craftIds, rangeStart, rangeDays,
       activeTeamsOnly: activeOnly, collapsedGroups: collapsed,
     })
-    : []), [data, pivot, rangeStart, rangeDays, activeOnly, collapsed]);
+    : []), [data, levels, craftIds, rangeStart, rangeDays, activeOnly, collapsed]);
 
   const colours = useMemo(() => phaseColours(data?.taskTypes || []), [data]);
 
@@ -705,14 +717,49 @@ export default function PlanningPage() {
       <div className="pln-bar">
         <h2>Planning</h2>
 
-        <div className="pln-pivots" role="group" aria-label="Group the schedule by">
-          {PIVOTS.map((p) => (
-            <button key={p.key}
-              className={`pln-pivot${pivot === p.key ? " on" : ""}`}
-              onClick={() => setPivot(p.key)}>
-              {p.label}
-            </button>
+        {/* One picker per level, and one more offering whatever may
+            follow. Changing a level prunes the ones below it: choosing
+            Team at the top has to drop a Region beneath, because a team
+            works in one region and the level would say nothing. Pruning
+            rather than refusing, because the person has just said what
+            they want at the level they touched. */}
+        <div className="pln-levels" role="group" aria-label="Group the schedule by">
+          {levels.map((id, i) => (
+            <select key={i} className="pln-level" value={id}
+              aria-label={`Level ${i + 1}`}
+              onChange={(e) => {
+                const next = pruneHierarchy([
+                  ...levels.slice(0, i), e.target.value,
+                ]);
+                setLevels(next);
+              }}>
+              {[...allowedNext(levels.slice(0, i)),
+                LEVELS.find((l) => l.id === id)]
+                .filter(Boolean)
+                .filter((l, k, xs) => xs.findIndex((x) => x.id === l.id) === k)
+                .sort((a, b) => a.rank - b.rank)
+                .map((l) => <option key={l.id} value={l.id}>{l.label}</option>)}
+            </select>
           ))}
+
+          {!!allowedNext(levels).length && (
+            <select className="pln-level add" value=""
+              aria-label={`Add level ${levels.length + 1}`}
+              onChange={(e) => {
+                if (e.target.value) setLevels([...levels, e.target.value]);
+              }}>
+              <option value="">+ level</option>
+              {allowedNext(levels).map((l) => (
+                <option key={l.id} value={l.id}>{l.label}</option>
+              ))}
+            </select>
+          )}
+
+          {levels.length > 1 && (
+            <button className="pln-level-x"
+              title={`Remove ${describeHierarchy(levels.slice(-1))}`}
+              onClick={() => setLevels(levels.slice(0, -1))}>&times;</button>
+          )}
         </div>
 
         <div className="pln-nav">
@@ -757,6 +804,25 @@ export default function PlanningPage() {
           </label>
         )}
 
+        {/* Built from the crafts the database has rather than the three
+            that exist today, so a fourth appears here on its own. None
+            ticked shows everything. */}
+        {!!(data?.crafts || []).length && (
+          <span className="pln-crafts">
+            <span className="pln-crafts-label">View by craft</span>
+            {data.crafts.map((c) => (
+              <label className="pln-check" key={c.Craft_ID}>
+                <input type="checkbox"
+                  checked={craftIds.includes(Number(c.Craft_ID))}
+                  onChange={(e) => setCraftIds((cur) => (e.target.checked
+                    ? [...cur, Number(c.Craft_ID)]
+                    : cur.filter((x) => x !== Number(c.Craft_ID))))} />
+                {c.Craft_Name}
+              </label>
+            ))}
+          </span>
+        )}
+
         <span className="pln-spacer" />
 
         {pivot === "pm" && (
@@ -785,8 +851,11 @@ export default function PlanningPage() {
         <>
           <div className="pln-grid">
             <div className="pln-head">
-              <div className="pln-head-label">
-                {PIVOTS.find((p) => p.key === pivot)?.label}
+              <div className="pln-head-label" title={describeHierarchy(levels)}>
+                {/* The whole hierarchy, not just its top level: on a
+                    three-level board a corner reading "Region" describes
+                    a third of what is on screen. */}
+                {describeHierarchy(levels)}
               </div>
               <div className="pln-head-track" ref={trackRef}>
                 {days.map((d, i) => {
@@ -1336,6 +1405,19 @@ const CSS = `
 .pln-spacer { flex: 1; }
 .pln-pivots { display: inline-flex; border: 1px solid var(--border); border-radius: 8px;
   overflow: hidden; background: var(--white); }
+.pln-levels { display: flex; align-items: center; gap: 5px; }
+.pln-level { font: 600 12px inherit; padding: 5px 8px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--white); color: var(--text);
+  cursor: pointer; }
+.pln-level.add { color: var(--muted); font-weight: 500; }
+.pln-level-x { border: 1px solid transparent; background: none; cursor: pointer;
+  color: var(--muted); font-size: 15px; line-height: 1; padding: 3px 6px;
+  border-radius: 6px; }
+.pln-level-x:hover { background: var(--bg); color: var(--err-text); }
+.pln-crafts { display: inline-flex; align-items: center; gap: 10px; }
+.pln-crafts-label { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+
 .pln-pivot { border: 0; border-left: 1px solid var(--border); background: var(--white);
   padding: 6px 12px; font: 600 12px inherit; color: var(--text); cursor: pointer; }
 .pln-pivot:first-child { border-left: 0; }

@@ -166,6 +166,14 @@ export const mockList = [
 
 /* Mutable store backing the admin screens when running on sample data. */
 export const adminMock = {
+  /* Tender is for the Design & Tendering team, so the other sections
+     never see that stage. Mirrors the seed in 0140. */
+  Project_Stage_Visibility: [
+    { Project_Stage_Visibility_ID: 1, Area_Key: "bd", Stage_Key: "tender", Is_Visible: false },
+    { Project_Stage_Visibility_ID: 2, Area_Key: "operations", Stage_Key: "tender", Is_Visible: false },
+    { Project_Stage_Visibility_ID: 3, Area_Key: "commercial", Stage_Key: "tender", Is_Visible: false },
+    { Project_Stage_Visibility_ID: 4, Area_Key: "finance", Stage_Key: "tender", Is_Visible: false },
+  ],
   /* Non-compliance reports. Dates are relative to build time so the
      dashboard's aging bar shows all four buckets without anyone having
      to edit them. */
@@ -473,6 +481,11 @@ export function planningMock() {
       { Team_ID: 3, Region_ID: 1 }, { Team_ID: 3, Region_ID: 2 },
       { Team_ID: 4, Region_ID: 1 }, { Team_ID: 4, Region_ID: 2 },
     ],
+    /* The same sub regions the lookups serve, not a second set. Two
+       fixtures with the same ids and different names is how a screen
+       comes to show "Yorkshire" where another shows "Lancashire" for
+       the same row, and it is a puzzle nobody solves quickly. */
+    subRegions: lookups.subRegions,
     teamCrafts: [
       { Team_ID: 1, Craft_ID: 1 }, { Team_ID: 4, Craft_ID: 1 },
       { Team_ID: 2, Craft_ID: 4 }, { Team_ID: 3, Craft_ID: 5 },

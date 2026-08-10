@@ -60,7 +60,7 @@ export default async function handler(req) {
   try {
     if (req.method !== "GET") return json({ error: "Not found" }, 404);
 
-    const [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes, projRes,
+    const [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes, subRegionRes, projRes,
       teamRegionRes, teamCraftRes, craftRes] =
       await Promise.all([
         db.from("Mains_Call_Off_Submission").select(SUB_COLS)
@@ -74,8 +74,13 @@ export default async function handler(req) {
           .select("Work_Type_ID,Task_Type_ID,Display_Order").order("Display_Order"),
         db.from("Team").select("Team_ID,Team_Name,Active").order("Team_Name"),
         db.from("Region").select("Region_ID,Region").order("Sort_Order"),
+        db.from("Sub_Region").select("Sub_Region_ID,Sub_Region,Region_ID").order("Sub_Region"),
         db.from("Project")
-          .select("Project_ID,Project_Ref,Display_Ref,Site_Name,Region_ID,Project_Manager_ID"),
+          /* Sub_Region_ID is here for the sub region view level. A level
+             whose value is not in the payload groups every row under
+             "no sub region", which reads as the data being empty rather
+             than as the column never having been asked for. */
+          .select("Project_ID,Project_Ref,Display_Ref,Site_Name,Region_ID,Sub_Region_ID,Project_Manager_ID"),
         /* What each team is set up for. Sent with the board because
            dropping a booking on another lane has to be answered the
            moment it is dropped — fetching it then would mean a bar
@@ -86,7 +91,8 @@ export default async function handler(req) {
         db.from("Craft").select("Craft_ID,Craft_Name").order("Sort_Order"),
       ]);
 
-    for (const r of [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes, projRes]) {
+    for (const r of [subsRes, wtRes, ttRes, wttRes, teamRes, regionRes,
+      subRegionRes, projRes]) {
       if (r.error) throw r.error;
     }
 
@@ -173,6 +179,7 @@ export default async function handler(req) {
       workTypeTasks: wttRes.data || [],
       teams: teamRes.data || [],
       regions: regionRes.data || [],
+      subRegions: subRegionRes.data || [],
       projects: projRes.data || [],
       /* Tolerated missing, like the rest: 0114 may not have been run,
          and a board that cannot say which teams cover which regions is

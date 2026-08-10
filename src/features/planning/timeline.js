@@ -283,12 +283,24 @@ export function mergeExcavateAndLay(taskTypeIds = [], taskTypeById = new Map()) 
    builds once. */
 export function buildRows(data, opts = {}) {
   const {
-    pivot = "team",
+    pivot: pivotOpt = "team",
+    /* Two or more levels turns the board into a tree: group headers for
+       every level but the last, lanes at the bottom. One level keeps the
+       pivots below, which carry things a generic grouper has no way to
+       know \u2014 the Unassigned lane, the three separate reasons a
+       call-off has no region, the call-off view's revision handling. */
+    levels = null,
+    craftIds = null,
     rangeStart = todayMs(),
     rangeDays = 14,
     activeTeamsOnly = false,
     collapsedGroups = new Set(),
   } = opts;
+
+  /* A single level is the board as it always was, so it goes through
+     the pivot below rather than the generic grouper. Resolved once here
+     instead of at each comparison. */
+  const pivot = levels && levels.length === 1 ? levels[0] : pivotOpt;
 
   const rangeEnd = rangeStart + rangeDays * DAY_MS;
   const {
@@ -359,6 +371,11 @@ export function buildRows(data, opts = {}) {
       assignmentId: Number(a.Assignment_ID),
       submissionId: Number(a.Submission_ID),
       taskTypeId: Number(a.Task_Type_ID),
+      /* The craft this bar is, taken from its task type. The page works
+         the same thing out for the drag rules; putting it on the bar
+         means the craft filter and those rules cannot disagree about
+         what a bar is. */
+      craftId: task?.Craft_ID ?? null,
       ...span,
       ref: refOf(sub),
       /* The call-off's own reference, kept alongside rather than
@@ -419,9 +436,19 @@ export function buildRows(data, opts = {}) {
     && it.startHalf < maxHalf
     && it.startHalf + it.lengthHalves > 0;
 
+  /* Ticking no craft shows everything, which is what an untouched
+     filter should do; ticking some narrows to those. Applied here so
+     every view has it, rather than in each grouping where the one
+     somebody forgot would quietly ignore the tick boxes. */
+  const craftWanted = craftIds && craftIds.length
+    ? new Set(craftIds.map(Number))
+    : null;
+  const byCraftWanted = (it) => !craftWanted || craftWanted.has(Number(it.craftId));
+
   const liveAssignments = assignments
     .map(itemFor)
-    .filter(visible);
+    .filter(visible)
+    .filter(byCraftWanted);
 
   /* ── Phases nobody has taken ──
 
@@ -457,6 +484,11 @@ export function buildRows(data, opts = {}) {
           id: `u${sub.Submission_ID}-${tid}`,
           submissionId: Number(sub.Submission_ID),
           taskTypeId: Number(tid),
+          /* The same craft a booked bar carries. Without it the craft
+             filter hid every unassigned bar the moment anything was
+             ticked \u2014 the work waiting to be booked is exactly what
+             somebody filtering by craft is looking for. */
+          craftId: taskById.get(Number(tid))?.Craft_ID ?? null,
           ...span,
           ref: refOf(sub),
           apNumber: sub.AP_Number || null,
@@ -473,12 +505,50 @@ export function buildRows(data, opts = {}) {
     return out;
   };
 
+  if (levels && levels.length > 1) {
+    return buildLevelRows({
+      items: liveAssignments,
+      levels,
+      collapsedGroups,
+      names: {
+        region: (id) => (Number(id) === 0 ? "\u2014 No region \u2014"
+          : (regions.find((r) => Number(r.Region_ID) === Number(id))?.Region
+            || `Region #${id}`)),
+        subregion: (id) => (Number(id) === 0 ? "\u2014 No sub region \u2014"
+          : ((data.subRegions || [])
+            .find((r) => Number(r.Sub_Region_ID) === Number(id))?.Sub_Region
+            || `Sub region #${id}`)),
+        pm: (id) => (Number(id) === 0 ? "\u2014 No project manager \u2014"
+          : (personById.get(Number(id))?.Person_Name || `Manager #${id}`)),
+        team: (id) => (Number(id) === 0 ? "\u2014 No team \u2014"
+          : (teams.find((t) => Number(t.Team_ID) === Number(id))?.Team_Name
+            || `Team #${id}`)),
+        worktype: (id) => (Number(id) === 0 ? "\u2014 No work type \u2014"
+          : (workTypes.find((w) => Number(w.Work_Type_ID) === Number(id))
+            ?.Work_Type_Name || `Work type #${id}`)),
+        ref: (key) => String(key) || "\u2014",
+      },
+      keyOf: {
+        region: (it) => Number(projectOf(it.sub)?.Region_ID) || 0,
+        subregion: (it) => Number(projectOf(it.sub)?.Sub_Region_ID) || 0,
+        pm: (it) => Number(projectOf(it.sub)?.Project_Manager_ID) || 0,
+        team: (it) => Number(it.raw?.Team_ID) || 0,
+        worktype: (it) => Number(it.sub?.Work_Type_ID) || 0,
+        ref: (it) => it.ref || it.apNumber || `#${it.submissionId}`,
+      },
+      colourOf: {
+        pm: (id) => (Number(id) !== 0
+          && personById.get(Number(id))?.Planner_Colour) || "#64748b",
+      },
+    });
+  }
+
   if (pivot === "team") {
     const rows = [{
       key: "unassigned",
       label: "Unassigned",
       isUnassigned: true,
-      items: unassignedItems().filter(visible),
+      items: unassignedItems().filter(visible).filter(byCraftWanted),
     }];
     for (const team of teams) {
       const items = liveAssignments
@@ -557,7 +627,9 @@ export function buildRows(data, opts = {}) {
       groups.get(k).push(it);
     };
     for (const it of liveAssignments) push(it.submissionId, it);
-    for (const it of unassignedItems().filter(visible)) push(it.submissionId, it);
+    for (const it of unassignedItems().filter(visible).filter(byCraftWanted)) {
+      push(it.submissionId, it);
+    }
 
     return [...groups].map(([sid, items]) => {
       const sub = subById.get(Number(sid));
@@ -646,6 +718,91 @@ export function buildRows(data, opts = {}) {
 
   return [];
 }
+
+/* ── The board as a tree ──
+
+   Every level but the last becomes a collapsible header; the last
+   becomes the lanes that carry bars. That is the shape the renderer
+   already draws for the manager view, which is a two-level hierarchy
+   written out by hand \u2014 this is the same thing for any depth.
+
+   ── Why the group id carries the whole path ──
+
+   Collapsing is remembered by id. Two regions can both contain a sub
+   region called North, and if the id were just the sub region then
+   collapsing one would collapse the other. The id is the path from the
+   top, so each header collapses on its own.
+
+   ── Empty groups do not appear ──
+
+   Grouping is done from the bars rather than from the reference tables,
+   so a region with nothing booked in it is absent rather than present
+   and empty. A board padded with empty rows is one somebody has to
+   scroll past to find the work. */
+function buildLevelRows({ items, levels, collapsedGroups, names, keyOf, colourOf }) {
+  const rows = [];
+
+  const walk = (list, depth, path, inheritedColour) => {
+    const level = levels[depth];
+    const last = depth === levels.length - 1;
+    const key = keyOf[level];
+    const name = names[level] ?? String;
+
+    const groups = new Map();
+    for (const it of list) {
+      const k = key ? key(it) : 0;
+      if (!groups.has(k)) groups.set(k, []);
+      groups.get(k).push(it);
+    }
+
+    const sorted = [...groups.keys()]
+      .sort((a, b) => String(name(a)).localeCompare(String(name(b))));
+
+    for (const k of sorted) {
+      const mine = groups.get(k);
+      const id = [...path, `${level}:${k}`].join("/");
+      const colour = colourOf?.[level]?.(k) ?? inheritedColour;
+
+      if (last) {
+        rows.push({
+          key: `lvl-${id}`,
+          /* Only a team lane can be dropped onto: anywhere else the drop
+             would have to guess which gang was meant. */
+          teamId: level === "team" ? (Number(k) || null) : null,
+          label: name(k),
+          groupColour: colour,
+          items: mine,
+        });
+        continue;
+      }
+
+      const collapsed = collapsedGroups.has(id);
+      rows.push({
+        type: "group",
+        key: `lvl-${id}`,
+        groupId: id,
+        depth,
+        label: name(k),
+        colour: colour || GROUP_COLOURS[depth % GROUP_COLOURS.length],
+        count: mine.length,
+        collapsed,
+        items: [],
+      });
+      if (!collapsed) {
+        walk(mine, depth + 1, [...path, `${level}:${k}`],
+          colour || GROUP_COLOURS[depth % GROUP_COLOURS.length]);
+      }
+    }
+  };
+
+  walk(items, 0, [], null);
+  return rows;
+}
+
+/* Header tints by depth, so a three-level board reads as three levels
+   rather than as one long list of identical bands. Manager keeps its
+   own colour where one is set, which is why colourOf wins above. */
+const GROUP_COLOURS = ["#39467b", "#5b6798", "#8b93b8"];
 
 /* ── Days with something on them ──
 

@@ -86,6 +86,25 @@ for (const [what, pattern] of [
   if (raw > 2) fail(`draft.byDay is read raw in ${raw} places; use splitByDay`);
 }
 
+// 7. The summary lists its days; it never shows a range.
+//
+//    "10-Aug to 12-Aug" says a gang is on site continuously between two
+//    dates. A booking that is a Monday morning and a Wednesday
+//    afternoon is not that, and reads as three days of work when it is
+//    one. This has been asked for, built, and lost to a reset once
+//    already, which is why it is written down here.
+if (/\{fmt\(a\.Start_Date\)\} to \{fmt\(a\.End_Date\)\}/.test(src)) {
+  fail('the summary still shows "start to end" as a range');
+}
+if (!/const whenOf/.test(src)) fail("the day list helper is missing");
+if (/className="asg-part-tag"/.test(src)) {
+  fail("the separate part tag is back; parts belong on their dates");
+}
+// And the plots are named as plots.
+if (!/`Plots \$\{a\.Plot_Range\}`/.test(src)) {
+  fail("the summary does not label the plot range");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assign form behaves (dates before team, any-day availability, full days named).");
 process.exit(bad ? 1 : 0);

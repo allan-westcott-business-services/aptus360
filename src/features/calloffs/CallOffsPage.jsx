@@ -1352,6 +1352,49 @@ function Assignments({ row }) {
      save take the same view. */
   const splitByDay = !!draft.byDay && schedule.days.length > 1;
 
+  /* The days a booking works, each with how much of it.
+
+     Never "10 Aug to 12 Aug". A range says a gang is on site
+     continuously between two dates, and a booking that is a Monday
+     morning and a Wednesday afternoon is not that \u2014 it reads as three
+     days of work when it is one.
+
+     "(Full day)" only where the days differ. Beside an "(AM)" it is
+     needed, or the bare date reads as an omission; where every day is
+     the same it is noise on every one of them.
+
+     No day rows \u2014 a booking made before they existed \u2014 falls back to
+     the dates it spans, still listed rather than ranged. */
+  const daysOf = (a) => {
+    const rows = workDays
+      .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
+      .sort((x, y) => String(x.Work_Date).localeCompare(String(y.Work_Date)));
+
+    if (!rows.length) {
+      const out = [];
+      for (let t = new Date(a.Start_Date); t <= new Date(a.End_Date);
+        t.setDate(t.getDate() + 1)) {
+        out.push({ date: t.toISOString().slice(0, 10), part: null });
+      }
+      return out;
+    }
+
+    const parts = new Set(rows.map((d) => d.Part || "Full"));
+    const mixed = parts.size > 1;
+    return rows.map((d) => {
+      const part = d.Part === "AM" || d.Part === "PM" ? d.Part : "Full day";
+      return {
+        date: d.Work_Date,
+        part: mixed || part !== "Full day" ? part : null,
+        plots: d.Plot_Range || null,
+      };
+    });
+  };
+
+  const whenOf = (a) => daysOf(a)
+    .map((d) => fmt(d.date) + (d.part ? ` (${d.part})` : ""))
+    .join(", ");
+
   /* What a booking covers, named the way the split control names it. */
   const utilityLabel = (a) => {
     const ids = assignmentUtils.get(Number(a.Assignment_ID)) || [];
@@ -1372,7 +1415,7 @@ function Assignments({ row }) {
       /* Named, including the full ones. "11-Aug-2026" beside
          "10-Aug-2026 (AM)" reads as an omission rather than as a full
          day \u2014 the reader has to know the convention to see it. */
-      part: d.Part === "AM" || d.Part === "PM" ? d.Part : "Full day",
+      part: null,   /* set from daysOf below */
       plots: serialisePlots(parsePlots(d.Plot_Range)),
     }));
 
@@ -1739,41 +1782,7 @@ function Assignments({ row }) {
               <div className="asg-wrap" key={a.Assignment_ID}>
               <div className="asg-row">
                 <span className="asg-team">{teamName(a.Team_ID)}</span>
-                <span className="asg-when">
-                  {fmt(a.Start_Date)} to {fmt(a.End_Date)}
-                </span>
-
-                {/* How much of each day, from the day rows.
-
-                    The dates alone say a gang is there on the sixth and
-                    nothing about whether that is a morning, an
-                    afternoon or the whole day — which is the difference
-                    between one team doing two spans and two teams doing
-                    one each.
-
-                    Where every day is the same it is said once; where
-                    they differ each is named, because "AM" against a
-                    week that is only a morning on the Friday would be
-                    wrong. */}
-                {(() => {
-                  const mineDays = workDays
-                    .filter((d) => Number(d.Assignment_ID) === Number(a.Assignment_ID))
-                    .sort((x, y) => String(x.Work_Date).localeCompare(y.Work_Date));
-                  if (!mineDays.length) return null;
-
-                  const parts = [...new Set(mineDays.map((d) => d.Part || "Full"))];
-                  const label = (p) => (p === "Full" ? "Full day" : p);
-
-                  return (
-                    <span className="asg-part-tag">
-                      {parts.length === 1
-                        ? label(parts[0])
-                        : mineDays.map((d) =>
-                          `${String(d.Work_Date).slice(8)} ${label(d.Part)}`).join(", ")}
-                    </span>
-                  );
-                })()}
-
+                <span className="asg-when">{whenOf(a)}</span>
 
                 {/* What is being done, beside when it is being done.
 
@@ -1787,7 +1796,7 @@ function Assignments({ row }) {
                     ? (row.items || []).find((it) =>
                       Number(it.Span_ID) === Number(a.Span_ID))?.Plots
                       ?? "all spans"
-                    : (a.Plot_Range || "all plots")}
+                    : (a.Plot_Range ? `Plots ${a.Plot_Range}` : "all plots")}
                 </span>
 
                 {/* Which utilities this booking is for. On the row
@@ -1883,7 +1892,7 @@ function Assignments({ row }) {
               {breakdownOf(a).map((b) => (
                 <div className="asg-break" key={b.key}>
                   <span className="asg-break-when">
-                    {b.when}{b.part ? ` (${b.part})` : ""}
+                    {b.when}
                   </span>
                   <span className="asg-break-plots">Plots {b.plots}</span>
                 </div>

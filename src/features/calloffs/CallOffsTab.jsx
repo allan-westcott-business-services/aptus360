@@ -166,6 +166,11 @@ export default function CallOffsTab({ projectId }) {
   function openForm() {
     setF({
       Work_Type_ID: workTypes[0]?.Work_Type_ID ?? "",
+      /* Which utilities are in this call-off. Blank rather than every
+         one ticked: a gang told "electric, gas and water" when only the
+         gas is being laid has been told something wrong, and a form
+         that guesses is a form whose answer nobody checks. */
+      utility_ids: [],
       Contact_Name: user?.user_metadata?.full_name || user?.email?.split("@")[0] || "",
       Contact_Company: "",
       Preferred_Date: "",
@@ -263,6 +268,27 @@ export default function CallOffsTab({ projectId }) {
                 ))}
               </select>
             </div>
+            {/* More than one, because E/G in a single trench is the
+                ordinary case rather than the exception. */}
+            <div className="fld span2">
+              <label>Utilities in this call-off</label>
+              <div className="co-utils">
+                {utilities.map((u) => (
+                  <label className="co-util" key={u.Utility_ID}>
+                    <input type="checkbox"
+                      checked={f.utility_ids.includes(Number(u.Utility_ID))}
+                      onChange={(e) => set("utility_ids")(e.target.checked
+                        ? [...f.utility_ids, Number(u.Utility_ID)]
+                        : f.utility_ids.filter((x) => x !== Number(u.Utility_ID)))} />
+                    {u.Utility}
+                  </label>
+                ))}
+              </div>
+              {!f.utility_ids.length && (
+                <p className="hint">none chosen yet</p>
+              )}
+            </div>
+
             <div className="fld">
               <label htmlFor="co-pref">Preferred date</label>
               <input id="co-pref" type="date" value={f.Preferred_Date}
@@ -580,6 +606,11 @@ const CSS = `
 .co-none { margin: 20px 0; }
 .co-form { border: 1px solid var(--border); border-radius: 10px; padding: 16px;
   background: var(--white); margin-bottom: 18px; }
+.co-utils { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 4px 0 2px; }
+.co-util { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
+  cursor: pointer; }
+.co-util input { cursor: pointer; }
+
 .co-grid { display: grid; grid-template-columns: repeat(auto-fit, minmax(160px, 1fr));
   gap: 12px; margin-bottom: 12px; }
 .co-items-edit { border-top: 1px solid var(--border); padding-top: 12px;

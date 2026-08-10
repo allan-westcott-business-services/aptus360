@@ -442,13 +442,22 @@ export function planningMock() {
       { Task_Type_ID: 3, Task_Type_Name: "Jointing", Craft_ID: 4, Display_Order: 30 },
       { Task_Type_ID: 4, Task_Type_Name: "Reinstatement", Craft_ID: 5, Display_Order: 40 },
     ],
+    /* Which phases each kind of call-off is made of.
+
+       Jointing is on the service call-off and not the mains one. A
+       mains dig is excavated, laid and reinstated; the joints onto it
+       are service work and are called off separately. This mapping is
+       the only place that is decided \u2014 nothing in the code names a
+       phase \u2014 so the board, the call-off screen and the drag rules
+       all follow it together. */
     workTypeTasks: [
       { Work_Type_ID: 1, Task_Type_ID: 1, Display_Order: 10 },
       { Work_Type_ID: 1, Task_Type_ID: 2, Display_Order: 20 },
-      { Work_Type_ID: 1, Task_Type_ID: 3, Display_Order: 30 },
-      { Work_Type_ID: 1, Task_Type_ID: 4, Display_Order: 40 },
+      { Work_Type_ID: 1, Task_Type_ID: 4, Display_Order: 30 },
       { Work_Type_ID: 2, Task_Type_ID: 1, Display_Order: 10 },
-      { Work_Type_ID: 2, Task_Type_ID: 4, Display_Order: 20 },
+      { Work_Type_ID: 2, Task_Type_ID: 2, Display_Order: 20 },
+      { Work_Type_ID: 2, Task_Type_ID: 3, Display_Order: 30 },
+      { Work_Type_ID: 2, Task_Type_ID: 4, Display_Order: 40 },
     ],
     teams: [
       { Team_ID: 1, Team_Name: "MU Gang 1", Active: true },

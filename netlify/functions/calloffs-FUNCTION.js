@@ -77,12 +77,28 @@ export default async function handler(req, context) {
         }
       }
 
+      /* Which utilities each call-off covers. One query for the page
+         rather than one per call-off, the same as the rows above. */
+      let utils = [];
+      if (ids.length) {
+        const { data } = await db.from("Call_Off_Utility")
+          .select("Submission_ID,Utility_ID").in("Submission_ID", ids);
+        utils = data || [];
+      }
+
       const rows = (subs || []).map((s) => {
         const mode = s.Work_Type?.Selection_Mode ?? null;
         const mine = mode
           ? (kids[mode] || []).filter((k) => k.Submission_ID === s.Submission_ID)
           : [];
-        return { ...s, Selection_Mode: mode, items: mine };
+        return {
+          ...s,
+          Selection_Mode: mode,
+          items: mine,
+          utility_ids: utils
+            .filter((u) => u.Submission_ID === s.Submission_ID)
+            .map((u) => Number(u.Utility_ID)),
+        };
       });
 
       return json({ rows });
@@ -91,7 +107,7 @@ export default async function handler(req, context) {
     /* ── POST: a new call-off, with its rows ── */
     if (req.method === "POST") {
       const body = await req.json();
-      const { items = [], Selection_Mode: mode, ...sub } = body;
+      const { items = [], Selection_Mode: mode, utility_ids = [], ...sub } = body;
 
       const { data: created, error } = await db
         .from("Mains_Call_Off_Submission")
@@ -121,6 +137,22 @@ export default async function handler(req, context) {
         }
       }
 
+      /* The utilities. Written after the submission for the same
+         reason the rows are, and reported the same way if they fail:
+         losing a whole call-off because a tick box did not save would
+         be the wrong trade. */
+      if (utility_ids.length) {
+        const { error: uErr } = await db.from("Call_Off_Utility").insert(
+          [...new Set(utility_ids.map(Number))]
+            .map((Utility_ID) => ({ Submission_ID: created.Submission_ID, Utility_ID })));
+        if (uErr) {
+          return json({
+            ...created,
+            warning: `Saved as #${created.Submission_ID}, but the utilities failed: ${uErr.message}`,
+          });
+        }
+      }
+
       return json(created);
     }
 
@@ -134,6 +166,23 @@ export default async function handler(req, context) {
         .select(SUB_COLS)
         .single();
       if (error) throw error;
+
+      /* Utilities, when the caller sent them.
+
+         Absent means "not editing them" and leaves what is there;
+         an empty array means "none of them" and clears it. A PATCH that
+         treated the two the same would wipe the utilities every time
+         somebody changed the site name. */
+      if (Array.isArray(body.utility_ids)) {
+        const wanted = [...new Set(body.utility_ids.map(Number))];
+        await db.from("Call_Off_Utility").delete().eq("Submission_ID", id);
+        if (wanted.length) {
+          const { error: uErr } = await db.from("Call_Off_Utility")
+            .insert(wanted.map((Utility_ID) => ({ Submission_ID: Number(id), Utility_ID })));
+          if (uErr) return json({ ...data, warning: `Utilities failed: ${uErr.message}` });
+        }
+      }
+
       return json(data);
     }
 

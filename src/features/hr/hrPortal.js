@@ -772,8 +772,8 @@ function peopleRowHtml(p) {
     <td class="td">${p.department_id ? resolve('departments',p.department_id,'name') : '<span style="color:var(--border)">—</span>'}</td>
     <td class="td">${p.office_location_id ? resolve('office_locations',p.office_location_id, r => r.city ? r.name+' ('+r.city+')' : r.name) + ((() => { const o=(S.cache.office_locations||[]).find(xx=>xx.id===p.office_location_id); return o?.location_type ? ` <span class="badge" style="background:var(--bg);color:var(--muted);font-size:10px">${o.location_type}</span>` : ''; })()) : '<span style="color:var(--border)">—</span>'}</td>
     <td class="td">
-      ${p.work_email
-        ? `<a href="mailto:${x(p.work_email)}" style="color:var(--accent);text-decoration:none;font-size:13px">${x(p.work_email)}</a>`
+      ${p.email
+        ? `<a href="mailto:${x(p.email)}" style="color:var(--accent);text-decoration:none;font-size:13px">${x(p.email)}</a>`
         : `<span style="color:var(--border)">—</span>`}
     </td>
     <td class="td">${statusBadge(p.status)}</td>
@@ -790,7 +790,7 @@ function filterPeople() {
   const q = (S.peopleSearch || '').toLowerCase().trim();
   const list = q
     ? S.people.filter(p =>
-        `${p.first_name||''} ${p.last_name||''} ${p.employee_number||''} ${p.work_email||''} ${p.department_id?resolve('departments',p.department_id,'name'):''} `.toLowerCase().includes(q))
+        `${p.first_name||''} ${p.last_name||''} ${p.employee_number||''} ${p.email||''} ${p.department_id?resolve('departments',p.department_id,'name'):''} `.toLowerCase().includes(q))
     : S.people;
 
   const badge = document.getElementById('people-count-badge');
@@ -939,7 +939,7 @@ function drawPersonModal() {
         ${field({key:'dob',              label:'Date of Birth', type:'date'}, f('dob'))}
         ${field({key:'ni_number',        label:'NI Number', hint:'National Insurance'}, f('ni_number'))}
         ${field({key:'personal_email',   label:'Personal Email', type:'email'}, f('personal_email'))}
-        ${field({key:'work_email',       label:'Work Email',     type:'email'}, f('work_email'))}
+        ${field({key:'email',            label:'Work Email',     type:'email'}, f('email'))}
         ${field({key:'personal_phone',   label:'Personal Phone', type:'tel'},   f('personal_phone'))}
         ${field({key:'work_phone',       label:'Work Phone',     type:'tel'},   f('work_phone'))}
       </div>
@@ -2786,7 +2786,7 @@ function drawInterviewModal() {
                   <label style="display:flex;align-items:center;gap:10px;padding:7px 12px;cursor:pointer;border-radius:6px;transition:background 0.1s"
                          onmouseenter="this.style.background='var(--bg)'" onmouseleave="this.style.background=''">
                     <input type="checkbox" class="int-panel-cb" data-pid="${x(p.id)}"
-                      data-name="${x(name)}" data-email="${x(p.work_email||p.personal_email||'')}"
+                      data-name="${x(name)}" data-email="${x(p.email||p.personal_email||'')}"
                       ${isChecked ? 'checked' : ''}
                       style="width:14px;height:14px;accent-color:var(--accent);flex-shrink:0;cursor:pointer">
                     <div style="width:26px;height:26px;border-radius:50%;background:linear-gradient(135deg,var(--accent),#7c3aed);display:flex;align-items:center;justify-content:center;font-size:9px;font-weight:700;color:#fff;flex-shrink:0">
@@ -2794,7 +2794,7 @@ function drawInterviewModal() {
                     </div>
                     <div>
                       <p style="font-size:12px;font-weight:500;color:var(--text);margin:0">${x(name)}</p>
-                      ${p.work_email ? `<p style="font-size:10px;color:var(--muted);margin:0">${x(p.work_email)}</p>` : ''}
+                      ${p.email ? `<p style="font-size:10px;color:var(--muted);margin:0">${x(p.email)}</p>` : ''}
                     </div>
                   </label>`;
                 }).join('')

@@ -999,6 +999,14 @@ function Assignments({ row }) {
      Assignment_ID to a list; a booking with no entry covers whatever
      the call-off does, which is what most of them are. */
   const [assignmentUtilRows, setAssignmentUtilRows] = useState([]);
+  /* The utilities, for the split control.
+
+     Loaded here rather than passed down: this panel already reads its
+     own lookups \u2014 teams, crafts, task types \u2014 and the detail
+     component above holds a `utils` of its own for the energisation
+     grid. Two components needing the same table is not a reason to
+     thread it through props; it is a reason for each to ask. */
+  const [utils, setUtils] = useState([]);
   const [saidSaved, setSaidSaved] = useState("");
   /* The states a team's work can be in, with their colours. From the
      table rather than a list in this file, so adding "On Hold" is an
@@ -1036,11 +1044,15 @@ function Assignments({ row }) {
 
   async function load() {
     try {
-      const [tt, map, tm, tc, tr, cr, asg] = await Promise.all([
+      const [tt, map, tm, tc, tr, cr, asg, ut] = await Promise.all([
         adminList("Task_Type"), adminList("Work_Type_Task_Type"),
         adminList("Team"), adminList("Team_Craft"), adminList("Team_Region"),
         adminList("Craft"), adminList("Call_Off_Assignment"),
+        adminList("Utility"),
       ]);
+      /* Gas, water, electric \u2014 the same order the energisation
+         columns read in, so the two do not disagree. */
+      setUtils((ut.rows || []).slice().sort(byUtilityColumn));
       const wd = await adminList("Call_Off_Work_Day").catch(() => ({ rows: [] }));
       setWorkDays(wd.rows || []);
       /* Tolerated missing like the rest: a database where 0147 has not

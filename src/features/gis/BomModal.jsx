@@ -294,7 +294,12 @@ export default function BomModal({
 
   /* Whose bill is on screen. "" is the whole site — the same rows added
      up without the split, so the parts always reconcile against it. */
+  /* "" is the whole site, a developer id is that developer's bill, and
+     "compare" is every developer's totals side by side. One piece of
+     state rather than a tab and a filter, because they are one choice:
+     what the panel is showing. */
   const [whose, setWhose] = useState("");
+  const comparing = whose === "compare";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -328,9 +333,16 @@ export default function BomModal({
      developer and is kept in every developer's bill. A bill that
      silently omits the substation cannot be reconciled against the site
      total, and the whole point of splitting is that the parts add up. */
-  const shown = useMemo(() => mergeRows(whose
-    ? rows.filter((r) => String(r.developer_id ?? "") === whose || r.developer_id == null)
-    : rows), [rows, whose]);
+  const shown = useMemo(() => {
+    /* Comparing is not a filter \u2014 that view totals every developer
+       and does not read this. Left as the whole site so the row count
+       and the empty state behind it stay truthful; treating "compare"
+       as a developer id would match nothing and quietly reduce this to
+       the shared plant alone. */
+    if (!whose || whose === "compare") return mergeRows(rows);
+    return mergeRows(rows.filter((r) =>
+      String(r.developer_id ?? "") === whose || r.developer_id == null));
+  }, [rows, whose]);
 
   /* Grouped for reading: site, then utility. The database already
      returns them in this order, so this only has to break them up. */
@@ -351,6 +363,41 @@ export default function BomModal({
 
   const totalsFor = (items, unit) =>
     items.filter((r) => r.unit === unit).reduce((t, r) => t + Number(r.quantity), 0);
+
+  /* Every developer's bill, totalled, in one table.
+
+     The dropdown showed one at a time, which answers "what is this
+     developer's?" but not "how do they compare?" \u2014 and comparing by
+     switching between two views and remembering the figures is how a
+     wrong number reaches a tender.
+
+     Shared plant is in each developer's row and once in the site's, the
+     same rule the export uses: a developer's bill has to be readable on
+     its own without the substation missing, while the site total still
+     counts it once. So the developer rows do NOT add up to the site row
+     where shared plant exists, and the table says so rather than
+     leaving somebody to find it out with a calculator. */
+  const byDeveloper = useMemo(() => {
+    const shared = rows.filter((r) => r.developer_id == null);
+    const line = (name, mine, isSite) => {
+      const merged = mergeRows(mine);
+      return {
+        key: isSite ? "__site" : name,
+        name,
+        isSite,
+        metres: Number(totalsFor(merged, "m").toFixed(2)),
+        objects: totalsFor(merged, "no."),
+        lines: merged.length,
+      };
+    };
+    const out = developers.map((d) => line(
+      d.name,
+      rows.filter((r) => String(r.developer_id ?? "") === d.id).concat(shared),
+      false,
+    ));
+    out.push(line("The whole site", rows, true));
+    return { rows: out, sharedLines: mergeRows(shared).length };
+  }, [rows, developers]);
 
   /* ── No totals row ──
 
@@ -440,6 +487,15 @@ export default function BomModal({
     add("Bill of Materials", detailOf(whole));
     add("By Surface", bySurfaceOf(whole));
 
+    /* The same comparison the panel shows, so a workbook answers "how
+       do they compare" without the reader adding up three tabs. */
+    add("By Developer", byDeveloper.rows.map((d) => ({
+      Developer: d.name,
+      "Length (m)": d.metres,
+      "Objects (no.)": d.objects,
+      "Lines of detail": d.lines,
+    })));
+
     /* A tab each. Named for the developer, trimmed and made unique for
        Excel, which refuses a sheet name over 31 characters or holding
        any of : \\ / ? * [ ] — and refuses two the same. */
@@ -471,15 +527,22 @@ export default function BomModal({
                 site's are the same list, and offering the choice would
                 only invite the question of what the difference is. */}
             {developers.length > 1 && (
-              <div className="bom-who">
-                <label htmlFor="bom-dev">Show</label>
-                <select id="bom-dev" value={whose} onChange={(e) => setWhose(e.target.value)}>
-                  <option value="">The whole site</option>
-                  {developers.map((d) => (
-                    <option key={d.id} value={d.id}>{d.name}</option>
-                  ))}
-                </select>
-                {whose && (
+              <div className="bom-who" role="tablist" aria-label="Whose bill">
+                {/* Tabs rather than a dropdown: the choice is what the
+                    panel is, and a dropdown hides the other options
+                    behind a click when there are only a few. */}
+                <button role="tab" aria-selected={!whose}
+                  className={`bom-tab${!whose ? " on" : ""}`}
+                  onClick={() => setWhose("")}>The whole site</button>
+                {developers.map((d) => (
+                  <button key={d.id} role="tab" aria-selected={whose === d.id}
+                    className={`bom-tab${whose === d.id ? " on" : ""}`}
+                    onClick={() => setWhose(d.id)}>{d.name}</button>
+                ))}
+                <button role="tab" aria-selected={comparing}
+                  className={`bom-tab${comparing ? " on" : ""}`}
+                  onClick={() => setWhose("compare")}>By developer</button>
+                {whose && !comparing && (
                   <span className="bom-who-n">
                     with the shared substation, POC and incomer
                   </span>
@@ -511,7 +574,41 @@ export default function BomModal({
                 </p>
               )}
 
-              {groups.map((g) => {
+              {comparing && (
+                <div className="bom-cmp">
+                  <table className="bom-tbl">
+                    <thead>
+                      <tr>
+                        <th>Developer</th>
+                        <th className="num">Length (m)</th>
+                        <th className="num">Objects (no.)</th>
+                        <th className="num">Lines of detail</th>
+                      </tr>
+                    </thead>
+                    <tbody>
+                      {byDeveloper.rows.map((d) => (
+                        <tr key={d.key} className={d.isSite ? "site" : ""}>
+                          <td>{d.name}</td>
+                          <td className="num">{d.metres.toLocaleString()}</td>
+                          <td className="num">{d.objects.toLocaleString()}</td>
+                          <td className="num">{d.lines.toLocaleString()}</td>
+                        </tr>
+                      ))}
+                    </tbody>
+                  </table>
+                  {byDeveloper.sharedLines > 0 && (
+                    <p className="bom-cmp-note">
+                      {`Each developer's row includes the ${byDeveloper.sharedLines} `}
+                      {byDeveloper.sharedLines === 1 ? "line" : "lines"} of shared plant
+                      &mdash; the substation, POC and incomer &mdash; so a developer&rsquo;s
+                      bill can be read on its own. The site counts them once, so the
+                      developer rows add up to more than it.
+                    </p>
+                  )}
+                </div>
+              )}
+
+              {!comparing && groups.map((g) => {
                 /* Null for a section with no colour behind it, and the
                    class goes with it — so the tinted rules never apply
                    with the variables they read left undefined, which
@@ -599,7 +696,26 @@ const CSS = `
   border-bottom: 1px solid var(--border); }
 .bom-head > div { flex: 1; }
 .bom-head h3 { margin: 0; font-size: 17px; font-weight: 700; }
-.bom-who { display: flex; align-items: baseline; gap: 8px; margin-top: 9px; }
+.bom-who { display: flex; align-items: center; gap: 4px; margin-top: 10px;
+  flex-wrap: wrap; }
+.bom-tab { border: 1px solid var(--border); background: var(--white);
+  border-radius: 20px; padding: 4px 12px; font: 600 12px inherit;
+  color: var(--muted); cursor: pointer; }
+.bom-tab:hover { border-color: var(--accent); color: var(--text); }
+.bom-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+
+.bom-cmp { padding: 4px 0 2px; }
+.bom-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
+.bom-tbl th, .bom-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border);
+  text-align: left; }
+.bom-tbl th { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.bom-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+/* The site last and set apart: it is the total, not another developer. */
+.bom-tbl tr.site td { font-weight: 700; border-top: 2px solid var(--border);
+  border-bottom: 0; }
+.bom-cmp-note { font-size: 12px; color: var(--muted); line-height: 1.6;
+  margin: 10px 0 0; max-width: 78ch; }
 .bom-who label { font-size: 11px; color: var(--muted); }
 .bom-who select { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 9px; }

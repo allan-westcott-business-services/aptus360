@@ -68,23 +68,46 @@ for (const k of ["window", "document", "navigator", "HTMLElement", "Node",
 // render honest: everything around the chart still has to work.
 dom.window.HTMLCanvasElement.prototype.getContext = () => null;
 
-// ── 3. Every table comes back empty, so pages render their empty state ─
+/* ── 3. What the database returns ─────────────────────────────────────
+   Every table is empty except Person, so the pages still render their
+   empty states and the People page has rows to select. Two people is
+   enough: the selection rules are about one-versus-many, not about
+   volume. */
 const seen = new Set();
 let fetchCount = 0;
+const TABLE_ROWS = {
+  Person: [
+    { Person_ID: 1, First_Name: "Allan", Last_Name: "Murrell", Employee_Number: "EMP0001",
+      Email: "allan@example.test", Status: "Active" },
+    { Person_ID: 2, First_Name: "Sophie", Last_Name: "Wright", Employee_Number: "EMP0002",
+      Email: "sophie@example.test", Status: "On Leave" },
+  ],
+};
 globalThis.fetch = async (url) => {
   fetchCount++;
-  seen.add(String(url).split("?")[0].replace("https://example.test/rest/v1/", ""));
-  return {
-    ok: true, status: 200,
-    json: async () => [],
-    text: async () => "[]",
-  };
+  const u = String(url);
+  seen.add(u.split("?")[0].replace("https://example.test/rest/v1/", ""));
+  const table = u.match(/admin\/([A-Za-z_]+)/)?.[1];
+  const body = JSON.stringify({ rows: TABLE_ROWS[table] ?? [] });
+  return { ok: true, status: 200, json: async () => JSON.parse(body), text: async () => body };
 };
 
+/* Chart.js needs a real canvas and cannot have one here, so it reports
+   that it could not acquire a context as soon as there is data to plot.
+   That is the stub doing its job, not a fault in the page: everything
+   around the chart still has to render, which is what is being checked.
+   Filtered by exact message so any other chart failure still counts. */
+const EXPECTED = [/can't acquire context from the given item/];
+
 const errors = [];
-dom.window.addEventListener("error", (e) => errors.push(e.message));
+dom.window.addEventListener("error", (e) => {
+  if (!EXPECTED.some((re) => re.test(e.message))) errors.push(e.message);
+});
 const realError = console.error;
-console.error = (...a) => { errors.push(a.map(String).join(" ")); };
+console.error = (...a) => {
+  const msg = a.map(String).join(" ");
+  if (!EXPECTED.some((re) => re.test(msg))) errors.push(msg);
+};
 
 const hr = await import("/tmp/hrbundle.mjs");
 
@@ -128,6 +151,58 @@ for (const r of results) {
 }
 
 console.log(`\nTables queried: ${seen.size}`);
+
+// ── Bulk edit on the People page ─────────────────────────────────────
+// The selection is the risky part: a "select all" that reaches rows the
+// search has hidden changes people nobody looked at, and a payload that
+// carries fields left as "unchanged" overwrites them with blanks.
+{
+  hr.showPage("people");
+  await new Promise((r) => setTimeout(r, 400));
+  const picks = [...document.querySelectorAll("[data-pick]")];
+  const bar = document.getElementById("bulk-bar");
+  let problems = 0;
+  const say = (m) => { console.log("  FAIL " + m); problems++; };
+
+  if (!picks.length) say("no row checkboxes rendered");
+  if (bar && bar.style.display !== "none") say("the bulk bar shows with nothing selected");
+
+  picks[0].checked = true;
+  picks[0].dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  if (bar.style.display === "none") say("the bulk bar stayed hidden after a selection");
+  if (!/1 person selected/.test(document.getElementById("bulk-count").textContent)) {
+    say("the count does not read as one person");
+  }
+
+  // Select-all must only reach the rows on screen.
+  document.getElementById("bulk-all").checked = true;
+  document.getElementById("bulk-all").dispatchEvent(new dom.window.Event("change", { bubbles: true }));
+  const shown = document.querySelectorAll("[data-pick]").length;
+  if (!document.getElementById("bulk-count").textContent.startsWith(String(shown))) {
+    say("select all picked a different number of people than are shown");
+  }
+
+  document.getElementById("bulk-edit").dispatchEvent(
+    new dom.window.MouseEvent("click", { bubbles: true }));
+  await new Promise((r) => setTimeout(r, 200));
+  const fields = [...document.querySelectorAll("[data-bulk]")].map((s) => s.dataset.bulk);
+  const wanted = ["department_id","office_location_id","employment_type","status",
+    "is_active","role_id","manager_id"];
+  for (const w of wanted) if (!fields.includes(w)) say(`bulk modal has no ${w} field`);
+  // Nothing personal, however convenient it would look.
+  for (const banned of ["first_name","last_name","email","personal_phone","eye_colour","dob"]) {
+    if (fields.includes(banned)) say(`bulk modal offers ${banned}, which is individual data`);
+  }
+  // Every field defaults to leaving the value alone.
+  for (const sel of document.querySelectorAll("[data-bulk]")) {
+    if (sel.value !== "") say(`${sel.dataset.bulk} does not default to leave-unchanged`);
+  }
+  if (!document.getElementById("bulk-apply").disabled) {
+    say("apply is enabled with nothing chosen");
+  }
+  console.log(problems ? `\nBulk edit: ${problems} problem(s)` : "Bulk edit behaves.");
+  if (problems) bad++;
+}
 console.log(`Sidebar told about navigation: ${navigated.length ? navigated.join(", ") : "(none — expected, nothing navigated internally)"}`);
 
 // ── 6. The navigation bridge ─────────────────────────────────────────

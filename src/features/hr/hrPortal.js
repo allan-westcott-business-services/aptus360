@@ -756,6 +756,11 @@ function peopleRowHtml(p) {
     return `<span class="badge" style="background:${c}15;color:${c};border:1px solid ${c}30">${x(s||'Active')}</span>`;
   };
   return `<tr class="tr">
+    <td class="td" style="width:34px;padding-right:0">
+      <input type="checkbox" class="bulk-pick" data-pick="${x(p.id)}"
+        ${S.peoplePicked?.has(String(p.id)) ? 'checked' : ''}
+        aria-label="Select ${x(`${p.first_name||''} ${p.last_name||''}`.trim())}">
+    </td>
     <td class="td">
       ${p.employee_number
         ? `<span style="font-family:monospace;font-size:12px;background:var(--bg);color:#475569;padding:2px 8px;border-radius:4px">${x(p.employee_number)}</span>`
@@ -854,10 +859,22 @@ function renderPeople() {
       </div>
     </div>
 
+    <!-- Only once something is picked. A bar that is always there,
+         permanently saying "0 selected", is furniture. -->
+    <div id="bulk-bar" class="bulk-bar" style="display:none">
+      <span id="bulk-count"></span>
+      <span style="flex:1"></span>
+      <button class="btn btn-secondary" id="bulk-clear">Clear</button>
+      <button class="btn btn-primary" id="bulk-edit">Edit selected</button>
+    </div>
+
     <div class="card" id="people-table-wrap">
       <table class="tbl">
         <thead>
           <tr>
+            <th class="th" style="width:34px;padding-right:0">
+              <input type="checkbox" id="bulk-all" aria-label="Select all shown">
+            </th>
             <th class="th">Emp #</th>
             <th class="th">Name</th>
             <th class="th">Department</th>
@@ -893,6 +910,8 @@ function renderPeople() {
     });
   });
 
+  wireBulkSelection();
+
   hrAll('[data-del]').forEach(btn => {
     btn.addEventListener('click', async () => {
       if (!confirm('Permanently delete this employee record? This cannot be undone.')) return;
@@ -900,6 +919,215 @@ function renderPeople() {
       await pagePeople();
     });
   });
+}
+
+// ── 11b. BULK EDIT ────────────────────────────────────────────────────
+//  Setting the same thing on many people at once: the fields that are
+//  properties of a job rather than of a person. Names, emails and eye
+//  colour are deliberately not here — there is no such thing as forty
+//  people sharing a phone number, and offering it invites an accident.
+// ──────────────────────────────────────────────────────────────────────
+
+/* Which fields can be set in bulk, and where each one actually lives.
+
+   Five sit on Person and are a plain update. Two do not: a job role is
+   a row in Employee_Role and a manager is a row in Hierarchy, both
+   dated. Setting those is not an update — it closes the current record
+   and opens a new one, so the history stays readable afterwards. */
+const BULK_FIELDS = [
+  { key: 'department_id', label: 'Department', where: 'person',
+    options: () => mkOpts(S.cache.departments||[], 'id', 'name') },
+  { key: 'office_location_id', label: 'Office location', where: 'person',
+    options: () => mkOpts(S.cache.office_locations||[], 'id',
+      r => (r.city ? r.name+' ('+r.city+')' : r.name)) },
+  { key: 'employment_type', label: 'Employment type', where: 'person',
+    options: () => ['Full Time','Part Time','Fixed Term','Zero Hours','Contractor','Apprentice'] },
+  { key: 'status', label: 'Status', where: 'person',
+    options: () => ['Active','On Leave','Suspended','Leaver'] },
+  { key: 'is_active', label: 'Is active', where: 'person',
+    options: () => [{value:'true',label:'Yes'},{value:'false',label:'No'}] },
+  { key: 'role_id', label: 'Job role', where: 'employee_roles',
+    options: () => mkOpts(S.cache.roles||[], 'id', r => {
+      const jt = byId(S.cache.job_titles, r.job_title_id);
+      const d  = byId(S.cache.departments, r.department_id);
+      return `${jt?.title||'?'} (${d?.name||'?'})`;
+    }) },
+  { key: 'manager_id', label: 'Manager', where: 'hierarchy',
+    options: () => mkOpts(S.people||[], 'id',
+      r => `${r.first_name||''} ${r.last_name||''}`.trim() || '—') },
+];
+
+function wireBulkSelection() {
+  S.peoplePicked = S.peoplePicked || new Set();
+
+  hrAll('[data-pick]').forEach(cb => {
+    cb.addEventListener('change', () => {
+      if (cb.checked) S.peoplePicked.add(String(cb.dataset.pick));
+      else S.peoplePicked.delete(String(cb.dataset.pick));
+      drawBulkBar();
+    });
+  });
+
+  const all = $('bulk-all');
+  if (all) all.addEventListener('change', () => {
+    /* Everything currently shown, not everything there is: the tick sits
+       above a filtered list, and selecting rows the search has hidden is
+       how somebody changes a department they never saw. */
+    hrAll('[data-pick]').forEach(cb => {
+      cb.checked = all.checked;
+      if (all.checked) S.peoplePicked.add(String(cb.dataset.pick));
+      else S.peoplePicked.delete(String(cb.dataset.pick));
+    });
+    drawBulkBar();
+  });
+
+  $('bulk-clear')?.addEventListener('click', () => {
+    S.peoplePicked.clear();
+    hrAll('[data-pick]').forEach(cb => { cb.checked = false; });
+    const a = $('bulk-all'); if (a) a.checked = false;
+    drawBulkBar();
+  });
+
+  $('bulk-edit')?.addEventListener('click', openBulkModal);
+  drawBulkBar();
+}
+
+function drawBulkBar() {
+  const bar = $('bulk-bar');
+  if (!bar) return;
+  const n = S.peoplePicked?.size || 0;
+  bar.style.display = n ? 'flex' : 'none';
+  const count = $('bulk-count');
+  if (count) count.textContent = `${n} ${n === 1 ? 'person' : 'people'} selected`;
+}
+
+function openBulkModal() {
+  S.modal = { type: 'bulk', form: {}, saving: false, done: null };
+  drawBulkModal();
+}
+
+function drawBulkModal() {
+  const m = S.modal;
+  const n = S.peoplePicked.size;
+
+  const rows = BULK_FIELDS.map(f => {
+    const opts = f.options();
+    const list = opts.map(o => (typeof o === 'string'
+      ? { value: o, label: o }
+      : { value: o.value ?? o.id, label: o.label ?? o.name }));
+    return `<label class="field">
+      <span class="field-label">${x(f.label)}</span>
+      <select class="field-input" data-bulk="${x(f.key)}">
+        <option value="">${'\u2014'} Leave unchanged ${'\u2014'}</option>
+        ${list.map(o => `<option value="${x(o.value)}"
+          ${m.form[f.key] === String(o.value) ? 'selected' : ''}>${x(o.label)}</option>`).join('')}
+      </select>
+    </label>`;
+  }).join('');
+
+  const chosen = Object.entries(m.form).filter(([, v]) => v !== '' && v != null);
+
+  /* The module's own modal shell, not a helper of my own: there isn't
+     one, and a second way of drawing a modal is a second thing to keep
+     looking right. */
+  $('hr-modal-root').innerHTML = `
+    <div class="modal-overlay" id="mo">
+      <div class="modal modal-md">
+        <div style="display:flex;align-items:flex-start;justify-content:space-between;padding:24px 28px 0;flex-shrink:0">
+          <div>
+            <h3 style="font-size:18px;font-weight:700;color:var(--text)">
+              Edit ${n} ${n === 1 ? 'person' : 'people'}</h3>
+            <p style="font-size:13px;color:var(--muted);margin-top:4px;max-width:52ch;line-height:1.55">
+              Anything left as &ldquo;leave unchanged&rdquo; is not touched. Only fields
+              that belong to a job are here &mdash; names, contact details and personal
+              information stay on the individual record.
+            </p>
+          </div>
+          <button class="btn-icon" id="bulk-x">${ic('x',18)}</button>
+        </div>
+        <div style="padding:20px 28px;overflow-y:auto;flex:1">
+          <div class="two-col">${rows}</div>
+          ${m.error ? `<p style="margin-top:14px;font-size:13px;color:var(--err-text)">${x(m.error)}</p>` : ''}
+        </div>
+        <div style="display:flex;justify-content:flex-end;gap:10px;padding:16px 28px;border-top:1px solid var(--border);flex-shrink:0">
+          <button class="btn btn-secondary" id="bulk-cancel">Cancel</button>
+          <button class="btn btn-primary" id="bulk-apply" ${!chosen.length || m.saving ? 'disabled' : ''}>
+            ${m.saving ? 'Applying\u2026' : `Apply to ${n}`}
+          </button>
+        </div>
+      </div>
+    </div>`;
+
+  hrAll('[data-bulk]').forEach(sel => {
+    sel.addEventListener('change', () => {
+      S.modal.form[sel.dataset.bulk] = sel.value;
+      drawBulkModal();
+    });
+  });
+  $('bulk-apply')?.addEventListener('click', applyBulk);
+  $('bulk-x')?.addEventListener('click', closeModal);
+  $('bulk-cancel')?.addEventListener('click', closeModal);
+}
+
+async function applyBulk() {
+  const m = S.modal;
+  const ids = [...S.peoplePicked];
+  const chosen = BULK_FIELDS.filter(f => m.form[f.key] !== '' && m.form[f.key] != null);
+  if (!chosen.length) return;
+
+  m.saving = true; m.error = null; drawBulkModal();
+
+  const today = new Date().toISOString().slice(0, 10);
+  const personPatch = {};
+  for (const f of chosen) {
+    if (f.where !== 'person') continue;
+    personPatch[f.key] = f.key === 'is_active' ? m.form[f.key] === 'true' : m.form[f.key];
+  }
+
+  let done = 0;
+  const failures = [];
+  for (const id of ids) {
+    try {
+      if (Object.keys(personPatch).length) await api.update('people', id, personPatch);
+
+      /* The dated ones. Close whatever is open first, then open the new
+         record from today — an employee with two current managers is not
+         a thing, and leaving the old row open would produce one. */
+      for (const f of chosen) {
+        if (f.where === 'employee_roles') {
+          const open = (await api.select('employee_roles', '*', `person_id=eq.${id}`))
+            .filter(r => !r.end_date);
+          for (const r of open) await api.update('employee_roles', r.id, { end_date: today });
+          await api.insert('employee_roles',
+            { person_id: id, role_id: m.form.role_id, start_date: today });
+        }
+        if (f.where === 'hierarchy') {
+          const open = (await api.select('hierarchy', '*', `person_id=eq.${id}`))
+            .filter(r => !r.effective_to);
+          for (const r of open) await api.update('hierarchy', r.id, { effective_to: today });
+          await api.insert('hierarchy',
+            { person_id: id, manager_id: m.form.manager_id, effective_from: today });
+        }
+      }
+      done++;
+    } catch (e) {
+      failures.push(`${id}: ${e.message}`);
+    }
+  }
+
+  m.saving = false;
+  if (failures.length) {
+    /* Said plainly rather than rolled back. There is no transaction
+       across these calls, so some people are already changed; telling
+       somebody it all failed would be a lie they would act on. */
+    m.error = `${done} of ${ids.length} updated. ${failures.length} failed: ${failures[0]}`;
+    drawBulkModal();
+  } else {
+    closeModal();
+    S.peoplePicked.clear();
+    showToast(`Updated ${done} ${done === 1 ? 'person' : 'people'}.`, 'success');
+    await pagePeople();
+  }
 }
 
 // ── 12. PEOPLE MODAL ──────────────────────────────────────────────────

@@ -80,6 +80,19 @@ export const HR_CSS = `
 }
 
 /* ═══ CARD ══════════════════════════════════════════════════════ */
+/* The bulk bar. Appears between the search and the table only once
+   something is picked, so it reads as a consequence of selecting rather
+   than as a permanent strip saying nothing is selected. */
+.hr-root .bulk-bar {
+  display: flex; align-items: center; gap: 10px;
+  padding: 10px 16px; margin-bottom: 12px;
+  background: var(--accent-light); border: 1px solid var(--border);
+  border-radius: var(--radius); font-size: 13px; font-weight: 600;
+  color: var(--accent);
+}
+.hr-root input[type="checkbox"] { width: 15px; height: 15px; cursor: pointer;
+  accent-color: var(--accent); }
+
 .hr-root .card { background: #fff; border-radius: 12px; border: 1px solid var(--border); overflow: hidden; }
 
 /* ═══ ICON TILE ═════════════════════════════════════════════════ */

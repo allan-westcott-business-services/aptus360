@@ -7,7 +7,10 @@ import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
-import { validate, energisationFloor, dayAfter, toItems, servicePenalty, SERVICE_MIN_PLOTS } from "./rules.js";
+import {
+  validate, energisationFloor, dayAfter, toItems, servicePenalty,
+  SERVICE_MIN_PLOTS, byUtilityColumn,
+} from "./rules.js";
 import PlotPicker from "../shared/PlotPicker.jsx";
 import { parseIds } from "../poc/interimPlots.js";
 
@@ -146,30 +149,11 @@ export default function CallOffsTab({ projectId }) {
     return b?.Branch_Dropdown || b?.Branch_Name || "";
   }, [project, lookups]);
 
-  /* Gas, water, electric \u2014 the order the energisation columns are
-     read in, which is the order the connections are usually made in
-     rather than the order the utilities happen to be numbered.
-
-     Ordered here rather than by changing Sort_Order in Admin, because
-     that column orders utilities everywhere: the GIS layer list, the
-     pipe size screens, the POC forms. This is a statement about these
-     columns, not about utilities in general. Anything not named falls
-     to the end in its own order, so a fourth utility appears rather
-     than disappearing. */
-  const COLUMN_ORDER = ["Gas", "Water", "Electric"];
-
   const utilities = useMemo(
     () => (lookups?.utilities || [])
       .filter((u) => !u.Is_Lighting)
       .slice()
-      .sort((a, b) => {
-        const ia = COLUMN_ORDER.indexOf(a.Utility);
-        const ib = COLUMN_ORDER.indexOf(b.Utility);
-        if (ia !== -1 || ib !== -1) {
-          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
-        }
-        return (a.Sort_Order ?? 0) - (b.Sort_Order ?? 0);
-      }),
+      .sort(byUtilityColumn),
     [lookups],
   );
 

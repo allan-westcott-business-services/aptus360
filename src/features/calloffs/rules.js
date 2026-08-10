@@ -195,3 +195,30 @@ export function toItems(rows, mode) {
       ? null : Number(r.Estimated_Length_m),
   }));
 }
+
+/* ── The order the utility columns read in ──
+
+   Gas, water, electric: the order the connections are usually made in,
+   rather than the order the utilities happen to be numbered.
+
+   Here rather than by changing Sort_Order in Admin, because that column
+   orders utilities everywhere \u2014 the GIS layer list, the pipe size
+   screens, the POC forms. This is a statement about these columns.
+
+   And here rather than in a screen, because two screens draw this grid:
+   the call-off tab on a project and the call-off page itself. Written
+   once in each is how one of them gets changed and the other does not,
+   which is exactly what happened the first time.
+
+   Anything not named falls to the end in its own order, so a utility
+   added later appears rather than disappearing. */
+export const UTILITY_COLUMN_ORDER = ["Gas", "Water", "Electric"];
+
+export function byUtilityColumn(a, b) {
+  const ia = UTILITY_COLUMN_ORDER.indexOf(a.Utility);
+  const ib = UTILITY_COLUMN_ORDER.indexOf(b.Utility);
+  if (ia !== -1 || ib !== -1) {
+    return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+  }
+  return (a.Sort_Order ?? 0) - (b.Sort_Order ?? 0);
+}

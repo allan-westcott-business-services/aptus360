@@ -8,7 +8,7 @@ import { getLookups } from "../../api/lookups.js";
 import { getProject, listProjects } from "../../api/projects.js";
 import { openProject } from "../../lib/projectIntent.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
-import { energisationFloor, dayAfter } from "./rules.js";
+import { energisationFloor, dayAfter, byUtilityColumn } from "./rules.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
@@ -685,7 +685,12 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
 
   const designUtilities = useMemo(() => {
     const wanted = new Set(scopes.map((sc) => Number(sc.Utility_ID)));
-    return utils.filter((u) => wanted.has(Number(u.Utility_ID)));
+    /* Gas, water, electric \u2014 see byUtilityColumn. This screen and the
+       call-off tab draw the same grid, so they read the same order from
+       the same place. */
+    return utils.filter((u) => wanted.has(Number(u.Utility_ID)))
+      .slice()
+      .sort(byUtilityColumn);
   }, [utils, scopes]);
 
   /* The earliest anything on this call-off may be asked to go live.
@@ -1548,6 +1553,7 @@ function Assignments({ row }) {
                 <span className="asg-when">
                   {fmt(a.Start_Date)} to {fmt(a.End_Date)}
                 </span>
+
                 {/* How much of each day, from the day rows.
 
                     The dates alone say a gang is there on the sixth and
@@ -1578,6 +1584,47 @@ function Assignments({ row }) {
                     </span>
                   );
                 })()}
+
+
+                {/* What is being done, beside when it is being done.
+
+                    These belong together: the plots and the dates are
+                    one statement — these plots, on these days — and the
+                    status is a different one. With the plots after the
+                    status the row read as two halves of a sentence with
+                    somebody else's sentence in the middle. */}
+                <span className="asg-plots">
+                  {row.Selection_Mode === "Span"
+                    ? (row.items || []).find((it) =>
+                      Number(it.Span_ID) === Number(a.Span_ID))?.Plots
+                      ?? "all spans"
+                    : (a.Plot_Range || "all plots")}
+                </span>
+
+                {/* How much of it there is.
+
+                    Whole metres. The drawing measures to a tenth, which
+                    is precision a schedule cannot use — "123.4m" of
+                    trench to a team with a digger says nothing "123m"
+                    does not, and reads as though somebody measured it.
+
+                    Nothing at all where there is no length recorded,
+                    rather than "(0m)": a call-off item whose length was
+                    never filled in is not a zero-metre dig, and the
+                    items table above already shows the dash. */}
+                {(() => {
+                  const m = metresFor(a);
+                  if (!m) return null;
+                  return (
+                    <span className="asg-len"
+                      title={a.Span_ID != null
+                        ? "Length of this span"
+                        : "Total length of the spans on this call-off"}>
+                      ({Math.round(m)}m)
+                    </span>
+                  );
+                })()}
+
                 {/* Where this team's work has got to.
 
                     A select rather than a pill with a menu behind it:
@@ -1610,36 +1657,6 @@ function Assignments({ row }) {
                     </select>
                   </label>
                 )}
-                <span className="asg-plots">
-                  {row.Selection_Mode === "Span"
-                    ? (row.items || []).find((it) =>
-                      Number(it.Span_ID) === Number(a.Span_ID))?.Plots
-                      ?? "all spans"
-                    : (a.Plot_Range || "all plots")}
-                </span>
-                {/* How much of it there is.
-
-                    Whole metres. The drawing measures to a tenth, which
-                    is precision a schedule cannot use — "123.4m" of
-                    trench to a team with a digger says nothing "123m"
-                    does not, and reads as though somebody measured it.
-
-                    Nothing at all where there is no length recorded,
-                    rather than "(0m)": a call-off item whose length was
-                    never filled in is not a zero-metre dig, and the
-                    items table above already shows the dash. */}
-                {(() => {
-                  const m = metresFor(a);
-                  if (!m) return null;
-                  return (
-                    <span className="asg-len"
-                      title={a.Span_ID != null
-                        ? "Length of this span"
-                        : "Total length of the spans on this call-off"}>
-                      ({Math.round(m)}m)
-                    </span>
-                  );
-                })()}
                 {/* Off site, from the span this assignment covers.
 
                     A property of the trench, not of the day: a length
@@ -2062,6 +2079,7 @@ const CSS = `
 /* The pill. The select sits inside it with no chrome of its own, so it
    reads as a label and behaves as a control — the arrow and the border a
    browser would draw would make a row of these look like a form. */
+.asg-status { margin-left: auto; }
 .asg-status { display: inline-flex; align-items: center; border-radius: 999px;
   padding: 3px 12px; font-size: 11.5px; font-weight: 700; letter-spacing: .02em;
   cursor: pointer; }
@@ -2075,11 +2093,18 @@ const CSS = `
 .asg-status option { background: #fff; color: #1f2937; }
 .sr-only { position: absolute; width: 1px; height: 1px; overflow: hidden;
   clip: rect(0 0 0 0); white-space: nowrap; }
-.asg-plots { margin-left: auto; font-weight: 600; }
+/* No margin-left:auto any more. That pushed the plots to the far right
+   of the row, which is what put the status between them and the dates;
+   beside the dates they need to sit where they are written. */
+.asg-plots { font: 600 11.5px inherit; color: var(--accent);
+  background: var(--accent-light); padding: 2px 8px; border-radius: 20px; }
 /* Beside the span it measures, and lighter than it: the label is what
-   the row is, the length is a fact about it. Fixed width so the figures
-   line up down the panel and can be read as a column. */
-.asg-len { min-width: 62px; color: var(--muted); font-weight: 600;
+   the row is, the length is a fact about it.
+
+   No fixed width any more: it sat at the end of the row where the
+   figures lined up as a column, and beside the plots a 62px box leaves
+   a gap after "Plots 1-4" that reads as something missing. */
+.asg-len { color: var(--muted); font-weight: 600;
   font-variant-numeric: tabular-nums; }
 /* Each control the width of what goes in it.
 

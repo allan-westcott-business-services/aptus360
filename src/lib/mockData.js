@@ -13,6 +13,12 @@ export const lookups = {
     { Region_ID: 2, Region: "Midlands" },
     { Region_ID: 3, Region: "South" },
   ],
+  utilities: [
+    { Utility_ID: 1, Utility: "Electric", Colour: "#ffbb00", Is_Lighting: false, Sort_Order: 10 },
+    { Utility_ID: 2, Utility: "Gas", Colour: "#ff0000", Is_Lighting: false, Sort_Order: 20 },
+    { Utility_ID: 3, Utility: "Water", Colour: "#2ccc00", Is_Lighting: false, Sort_Order: 30 },
+    { Utility_ID: 4, Utility: "Street Lighting", Colour: "#f59e0b", Is_Lighting: true, Sort_Order: 40 },
+  ],
   subRegions: [
     { Sub_Region_ID: 1, Region_ID: 1, Sub_Region: "Yorkshire" },
     { Sub_Region_ID: 2, Region_ID: 1, Sub_Region: "North West" },

@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { listCallOffs, createCallOff, deleteCallOff } from "../../api/calloffs.js";
 import { getLookups } from "../../api/lookups.js";
+import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -33,6 +34,11 @@ export default function CallOffsTab({ projectId }) {
   const [lookups, setLookups] = useState(null);
   const [plots, setPlots] = useState([]);
   const [project, setProject] = useState(null);
+
+  /* Today, as the picker wants it. Computed per render rather than
+     held in state: a form left open overnight would otherwise still
+     refuse this morning. */
+  const todayISO = () => toISO(todayMs());
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(false);
   const [open, setOpen] = useState(false);
@@ -110,8 +116,44 @@ export default function CallOffsTab({ projectId }) {
      yet, and a plot with no gas row today is exactly the plot somebody
      may be asking for gas on. Lighting is left out — a column has its
      own call-off mode and its own date. */
+  /* The company a call-off is raised on behalf of: the customer branch
+     the project belongs to.
+
+     Read from the project rather than typed. It is not a fact about
+     this call-off — it is a fact about the project, and a box somebody
+     can type a different answer into is a box that will eventually
+     disagree with the project it was raised under. */
+  const branchName = useMemo(() => {
+    if (!project?.Branch_ID) return "";
+    const b = (lookups?.branches || [])
+      .find((x) => Number(x.Branch_ID) === Number(project.Branch_ID));
+    return b?.Branch_Dropdown || b?.Branch_Name || "";
+  }, [project, lookups]);
+
+  /* Gas, water, electric \u2014 the order the energisation columns are
+     read in, which is the order the connections are usually made in
+     rather than the order the utilities happen to be numbered.
+
+     Ordered here rather than by changing Sort_Order in Admin, because
+     that column orders utilities everywhere: the GIS layer list, the
+     pipe size screens, the POC forms. This is a statement about these
+     columns, not about utilities in general. Anything not named falls
+     to the end in its own order, so a fourth utility appears rather
+     than disappearing. */
+  const COLUMN_ORDER = ["Gas", "Water", "Electric"];
+
   const utilities = useMemo(
-    () => (lookups?.utilities || []).filter((u) => !u.Is_Lighting),
+    () => (lookups?.utilities || [])
+      .filter((u) => !u.Is_Lighting)
+      .slice()
+      .sort((a, b) => {
+        const ia = COLUMN_ORDER.indexOf(a.Utility);
+        const ib = COLUMN_ORDER.indexOf(b.Utility);
+        if (ia !== -1 || ib !== -1) {
+          return (ia === -1 ? 99 : ia) - (ib === -1 ? 99 : ib);
+        }
+        return (a.Sort_Order ?? 0) - (b.Sort_Order ?? 0);
+      }),
     [lookups],
   );
 
@@ -214,6 +256,10 @@ export default function CallOffsTab({ projectId }) {
         Selection_Mode: mode,
         Site_Name: project?.Site_Name ?? null,
         Site_Address: project?.Site_Address ?? null,
+        /* From the project, not the form: the box is read only
+           and sending f.Contact_Company would save the empty
+           string the blank form starts with. */
+        Contact_Company: branchName || null,
         Contact_Phone: f.Contact_Phone || "N/A",
         Created_By: user?.email ?? null,
         items: toItems(rowsForMode, mode),
@@ -291,12 +337,22 @@ export default function CallOffsTab({ projectId }) {
 
             <div className="fld">
               <label htmlFor="co-pref">Preferred date</label>
+              {/* Today at the earliest. A call-off is a request to come
+                  and do work; asking for last Tuesday is a typo rather
+                  than an intention, and the picker refusing it is
+                  cheaper than a planner noticing later.
+
+                  min rather than validating on save: the days are greyed
+                  out in the picker, so the rule is visible before it is
+                  broken. */}
               <input id="co-pref" type="date" value={f.Preferred_Date}
+                min={todayISO()}
                 onChange={(e) => set("Preferred_Date")(e.target.value)} />
             </div>
             <div className="fld">
               <label htmlFor="co-alt">Alternative date</label>
               <input id="co-alt" type="date" value={f.Alternative_Date}
+                min={f.Preferred_Date || todayISO()}
                 onChange={(e) => set("Alternative_Date")(e.target.value)} />
             </div>
             <div className="fld">
@@ -306,8 +362,11 @@ export default function CallOffsTab({ projectId }) {
             </div>
             <div className="fld">
               <label htmlFor="co-company">Company</label>
-              <input id="co-company" value={f.Contact_Company}
-                onChange={(e) => set("Contact_Company")(e.target.value)} />
+              <input id="co-company" value={branchName} readOnly
+                title="The customer branch this project belongs to" />
+              {!branchName && (
+                <p className="hint">no customer branch on this project</p>
+              )}
             </div>
           </div>
 

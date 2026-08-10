@@ -308,6 +308,11 @@ export default function GISCanvasPage() {
   }, [user, lookups?.people]);
 
   const [callOffOpen, setCallOffOpen] = useState(false);
+  /* Which utilities the call-off covers (0146). Raised from the drawing
+     the same as from the project screen: a gang sent to an E/G dig
+     needs to know it is electric and gas before they load the van, and
+     the drawing is where somebody knows that. */
+  const [callOffUtils, setCallOffUtils] = useState([]);
   const [pick, setPick] = useState(null);
   /* Whether to ask for another run. See where a range is added. */
   const [askAnother, setAskAnother] = useState(false);
@@ -6018,11 +6023,13 @@ export default function GISCanvasPage() {
         /* The ranges, not the spans — a row per run as it was asked
            for, named "Span Node A1 to A5". */
         items: toCallOffRows(callOff.ranges),
+        utility_ids: callOffUtils,
       });
 
       setRanges([]);
       setPick(null);
       setAskAnother(false);
+      setCallOffUtils([]);
       /* Straight into finishing it, rather than closing and leaving it
          to be found later. */
       setRaised({
@@ -10837,6 +10844,24 @@ export default function GISCanvasPage() {
                 )}
 
                 {callOff?.spans?.length > 0 && (
+                  <div className="gco-utils">
+                    <span className="gco-utils-label">Utilities</span>
+                    {(lookups?.utilities || [])
+                      .filter((u) => !u.Is_Lighting)
+                      .map((u) => (
+                        <label className="gco-util" key={u.Utility_ID}>
+                          <input type="checkbox"
+                            checked={callOffUtils.includes(Number(u.Utility_ID))}
+                            onChange={(e) => setCallOffUtils((cur) => (e.target.checked
+                              ? [...cur, Number(u.Utility_ID)]
+                              : cur.filter((x) => x !== Number(u.Utility_ID))))} />
+                          {u.Utility}
+                        </label>
+                      ))}
+                  </div>
+                )}
+
+                {callOff?.spans?.length > 0 && (
                   <div className="gco-foot">
                     <span className="gco-tot">
                       {`${callOff.ranges.length} run(s) \u00b7 `}
@@ -11962,6 +11987,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-p { flex: 1; color: var(--muted); }
 .gco-err { color: #b91c1c; font-weight: 600; font-size: 11px; margin: 4px 0; }
 .gco-warn { color: #b45309; font-weight: 600; font-size: 11px; margin: 4px 0; }
+.gco-utils { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
+  padding: 8px 0 2px; border-top: 1px solid var(--border); margin-top: 8px; }
+.gco-utils-label { font: 700 10px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.gco-util { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
+  cursor: pointer; }
+
 .gco-foot { display: flex; align-items: center; gap: 9px; margin-top: 9px;
   padding-top: 9px; border-top: 1px solid var(--border); }
 .gco-tot { flex: 1; font-weight: 700; }

@@ -30,6 +30,18 @@ const BLANK_ROW = {
    up on site. */
 const YN = [["", "\u2014"], ["Yes", "Yes"], ["No", "No"]];
 
+/* Which field is the id, and which is the number a person reads.
+
+   The plots endpoint returns Plot_ID and Plot_Number; the GIS features
+   use plot_id and plot_number for the same thing. Written once, at
+   module scope, because ItemRows reading the lower case spelling while
+   the picker above read both is exactly what emptied the trench section
+   dropdowns: every plot rendered as an option with an undefined key and
+   an empty label, so the list looked like a project with no plots. */
+const plotIdOf = (p) => Number(p.Plot_ID ?? p.plot_id);
+const plotLabelOf = (p) => String(p.Plot_Number ?? p.plot_number ?? plotIdOf(p));
+
+
 export default function CallOffsTab({ projectId }) {
   const { user } = useAuth();
   const [rows, setRows] = useState([]);
@@ -109,8 +121,6 @@ export default function CallOffsTab({ projectId }) {
 
      Both spellings because the plots endpoint and the GIS features use
      different cases for the same field. */
-  const plotIdOf = (p) => Number(p.Plot_ID ?? p.plot_id);
-  const plotLabelOf = (p) => String(p.Plot_Number ?? p.plot_number ?? plotIdOf(p));
 
   /* The chosen plots as rows, in the order they appear on the project
      rather than the order they were clicked — a call-off reads better
@@ -697,7 +707,7 @@ function ItemRows({ mode, items, plots, setRow, onAdd, onRemove }) {
             <select value={r.Plot} onChange={(e) => setRow(i, "Plot")(e.target.value)}>
               <option value="">Choose a plot…</option>
               {plots.map((p) => (
-                <option key={p.plot_id} value={p.plot_number}>{p.plot_number}</option>
+                <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
               ))}
             </select>
           )}
@@ -713,14 +723,14 @@ function ItemRows({ mode, items, plots, setRow, onAdd, onRemove }) {
                 onChange={(e) => setRow(i, "From_Plot")(e.target.value)}>
                 <option value="">From…</option>
                 {plots.map((p) => (
-                  <option key={p.plot_id} value={p.plot_number}>{p.plot_number}</option>
+                  <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
                 ))}
               </select>
               <select value={r.To_Plot}
                 onChange={(e) => setRow(i, "To_Plot")(e.target.value)}>
                 <option value="">To…</option>
                 {plots.map((p) => (
-                  <option key={p.plot_id} value={p.plot_number}>{p.plot_number}</option>
+                  <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
                 ))}
               </select>
               <select value={r.D_or_P} onChange={(e) => setRow(i, "D_or_P")(e.target.value)}>

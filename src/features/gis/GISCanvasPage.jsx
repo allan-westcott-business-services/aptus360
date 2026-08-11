@@ -10751,6 +10751,14 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
+          onInspectTrench={(f) => {
+            /* The editor closes as the answer opens. The panel sits
+               top-right and the editor is a centred modal over it, so
+               leaving both up would put the answer behind the thing
+               that asked for it. */
+            inspectTrench(f);
+            setEditing(null);
+          }}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}
@@ -11694,23 +11702,6 @@ export default function GISCanvasPage() {
                     ends off it at any zoom where the middle is
                     readable, and hunting for the one that will not snap
                     means panning blind. */}
-                {/* What is in this trench. On the right-click menu
-                    rather than a toolbar action, because the question is
-                    always about one particular length. */}
-                {ctx.feature.Feature_Type === "line"
-                  && isTrenchType(ctx.feature.Attributes?.Line_Type, lineTypes) && (
-                  <>
-                    <button className="gc-item" onClick={() => {
-                      /* Where they clicked, so the stretch is the one
-                         under the cursor rather than the whole run. */
-                      inspectTrench(ctx.feature, ctx.atM);
-                      setCtx(null);
-                    }}>
-                      What is in this trench
-                    </button>
-                    <div className="gc-sep" />
-                  </>
-                )}
                 {ctx.feature.Feature_Type === "line"
                   && (ctx.feature.Geometry || []).length >= 2 && (
                   <>

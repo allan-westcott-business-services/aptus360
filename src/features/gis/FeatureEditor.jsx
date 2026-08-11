@@ -27,6 +27,9 @@ export default function FeatureEditor({
   /* The whole drawing, so a meter can be offered the circuits that
      already exist on it. */
   allFeatures = [],
+  /* Ask the canvas what is routed along this trench. It owns the
+     panel that answers, and the line types it is worked out from. */
+  onInspectTrench,
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
   onIsolateCircuit, circuitIsolated,
 }) {
@@ -1622,6 +1625,26 @@ export default function FeatureEditor({
             </>
           )}
 
+          {/* What is routed along this length.
+
+              On the editor rather than the right-click menu: somebody
+              looking at a trench's surface and dimensions is asking the
+              same question, and having it in two places meant knowing
+              which one to reach for.
+
+              The whole run, not a stretch. The menu passed the point
+              clicked so it could answer for the length under the cursor;
+              there is no such point here, and the whole trench is the
+              honest reading of a button on the feature itself. */}
+          {isTrench && (
+            <div className="fld">
+              <button type="button" className="fe-inspect"
+                onClick={() => onInspectTrench?.(feature)}>
+                What is in this trench
+              </button>
+            </div>
+          )}
+
           <div className="fld">
             <label htmlFor="fe-notes">Notes</label>
             <textarea id="fe-notes" rows={2} value={f.Attributes.Notes ?? ""}
@@ -1668,6 +1691,11 @@ const CSS = `
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
 /* The one tick box in this editor, so it gets a rule of its own rather
    than borrowing a field's. */
+.fe-inspect { width: 100%; font: 600 12.5px inherit; padding: 8px 10px;
+  border-radius: 8px; border: 1px solid var(--border); background: var(--white);
+  color: var(--text); cursor: pointer; }
+.fe-inspect:hover { border-color: var(--accent); color: var(--accent); }
+
 .fe-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px;
   font-weight: 600; color: var(--text); cursor: pointer; margin: 2px 0 10px; }
 .fe-check input { width: 15px; height: 15px; accent-color: var(--accent);

@@ -517,6 +517,22 @@ export default function PlanningPage() {
       setDrag(null);
       window.removeEventListener("pointermove", move);
       window.removeEventListener("pointerup", up);
+
+      /* ── A click that never happens ──
+
+         The bar calls preventDefault on pointerdown so a drag does not
+         select text or start a native drag. That also stops the browser
+         synthesising a click, so the onClick that opened this panel was
+         never reached and clicking a bar did nothing at all.
+
+         Opened here instead, where the drag is already known to have
+         gone nowhere. Same test as before \u2014 a bar that moved was
+         rescheduled, not inspected \u2014 but from an event that arrives. */
+      if (d && !d.moved) {
+        const clicked = itemsById.current.get(d.id);
+        if (clicked?.kind === "assignment") { setOpenBar(clicked); return; }
+      }
+
       const item = d ? itemsById.current.get(d.id) : null;
       /* Where it was dropped, if that is a different gang's lane. */
       const toTeam = d && d.overTeam && d.overTeam !== d.fromTeam ? d.overTeam : null;
@@ -1019,14 +1035,9 @@ export default function PlanningPage() {
                               y: Math.min(e.clientY, window.innerHeight - 120),
                             });
                           }}
-                          onClick={() => {
-                            /* A drag ends with a click. Opening the
-                               panel every time somebody moved a bar
-                               would put a dialog over the board on
-                               every reschedule. */
-                            if (drag?.moved) return;
-                            if (item.kind === "assignment") setOpenBar(item);
-                          }}>
+                          /* No onClick: pointerdown calls preventDefault,
+                             so the browser never synthesises one. The
+                             panel opens from pointerup instead. */>
                           {/* Days inside the booking nobody is working
                               — a weekend it does not cover, or a day
                               the gang is off. Drawn through the bar

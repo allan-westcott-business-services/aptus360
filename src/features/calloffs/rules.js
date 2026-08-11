@@ -187,8 +187,23 @@ export function toItems(rows, mode) {
     /* What was written, or the two ends joined — the original stores a
        description rather than a pair of ids, because that is how the
        work is described on site. */
-    Plots: String(r.Plots ?? "").trim()
-      || [r.From_Plot, r.To_Plot].filter(Boolean).join(" \u2013 ") || null,
+    /* Each end named for what it is. "12 \u2013 A4" reads as two plots
+       until somebody notices the letter; "Plot 12 to Span Node A4" says
+       what was chosen, and a section can run either kind to either
+       kind. Plot-to-plot keeps the plain "12 \u2013 16" it has always had,
+       because that is how a run of plots is described on site. */
+    Plots: String(r.Plots ?? "").trim() || (() => {
+      const from = String(r.From_Plot ?? "").trim();
+      const to = String(r.To_Plot ?? "").trim();
+      if (!from && !to) return null;
+      const bothPlots = (r.From_Kind ?? "plot") === "plot"
+        && (r.To_Kind ?? "plot") === "plot";
+      if (bothPlots) return [from, to].filter(Boolean).join(" \u2013 ") || null;
+      const name = (v, kind) => (!v ? null
+        : `${kind === "node" ? "Span Node" : "Plot"} ${v}`);
+      return [name(from, r.From_Kind), name(to, r.To_Kind)]
+        .filter(Boolean).join(" to ") || null;
+    })(),
     D_or_P: clean(r.D_or_P),
     Energisation_Date: clean(r.Energisation_Date),
     Estimated_Length_m: r.Estimated_Length_m === "" || r.Estimated_Length_m == null

@@ -1,9 +1,12 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import { listCallOffs, createCallOff, deleteCallOff } from "../../api/calloffs.js";
 import { openCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
+import { listGis } from "../../api/gis.js";
+import { trenchGraph, routeBetween } from "../gis/mainsCallOff.js";
+import { isTrenchFeature } from "../gis/snapping.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 import {
@@ -22,7 +25,15 @@ import { parseIds } from "../poc/interimPlots.js";
    fill in the wrong one. */
 
 const BLANK_ROW = {
-  Span: { Plots: "", From_Plot: "", To_Plot: "", D_or_P: "", Energisation_Date: "", Estimated_Length_m: "" },
+  /* From_Kind and To_Kind say whether each end is a plot or a span
+     node. A trench section can run plot to plot, plot to node, node to
+     node or node to plot, and the value alone cannot say which — plot
+     "12" and node "A12" are different points that would otherwise look
+     alike in the saved text. */
+  Span: {
+    Plots: "", From_Plot: "", To_Plot: "", From_Kind: "plot", To_Kind: "plot",
+    D_or_P: "", Energisation_Date: "", Estimated_Length_m: "",
+  },
   PlotList: { Plot: "", Energisation_Date: "" },
   ColumnList: { Street_Light_ID: "", Energisation_Date: "" },
 };
@@ -49,6 +60,14 @@ export default function CallOffsTab({ projectId }) {
   const [rows, setRows] = useState([]);
   const [lookups, setLookups] = useState(null);
   const [plots, setPlots] = useState([]);
+  /* The span nodes on the drawing, so a trench section can be defined
+     between them as well as between plots. Read from the GIS features
+     rather than a table of their own: a span node is a point on the
+     drawing, and the drawing is where it is placed and named. */
+  const [spanNodes, setSpanNodes] = useState([]);
+  /* The drawing itself, kept so a trench section's length can be
+     measured along the dig rather than typed. */
+  const [gisFeatures, setGisFeatures] = useState([]);
   const [project, setProject] = useState(null);
 
   /* Today, as the picker wants it. Computed per render rather than
@@ -93,6 +112,21 @@ export default function CallOffsTab({ projectId }) {
       setRows(res.rows || []);
       setLookups(lk);
       setPlots(plotRes.rows || []);
+      /* Tolerated missing: a project with no drawing yet has no span
+         nodes, and a call-off form that refused to open because of that
+         would be worse than one offering plots alone. */
+      const gis = await listGis(projectId).catch(() => ({ features: [] }));
+      setGisFeatures(gis.features || []);
+      setSpanNodes((gis.features || [])
+        .filter((f) => f.Feature_Role === "spannode" || f.Attributes?.Span_Label)
+        .map((f) => ({
+          id: f.Feature_ID,
+          label: f.Attributes?.Span_Label || f.Label,
+          seq: Number(f.Attributes?.Span_Seq ?? 9999),
+        }))
+        .filter((n) => n.label)
+        .sort((a, b) => a.seq - b.seq
+          || String(a.label).localeCompare(String(b.label), undefined, { numeric: true })));
       setProject(proj);
       setError("");
     } catch (e) { setError(e.message); }
@@ -119,6 +153,71 @@ export default function CallOffsTab({ projectId }) {
 
      Both spellings because the plots endpoint and the GIS features use
      different cases for the same field. */
+
+  /* How far it is from one end of a section to the other, along the
+     trench.
+
+     Not the straight line between them. A trench that doglegs round a
+     corner is longer than the distance across the corner, and a length
+     that quietly understates the dig is a length somebody prices from.
+     So the route is found through the trench network \u2014 the same graph
+     the GIS uses to work out what a run covers \u2014 and its length
+     returned.
+
+     Null where it cannot be answered: no drawing, an end that is not on
+     the network, or no route between the two. A blank box is honest;
+     a zero would read as "no distance". */
+  const lengthBetween = useCallback((fromLabel, fromKind, toLabel, toKind) => {
+    if (!fromLabel || !toLabel) return null;
+    const trenches = gisFeatures.filter((f) => f.Feature_Type === "line"
+      && isTrenchFeature(f, lookups?.lineTypes || []));
+    if (!trenches.length) return null;
+
+    /* Where each end sits. A span node is a point on the drawing; a
+       plot is its seed. */
+    const pointFor = (label, kind) => {
+      if (kind === "node") {
+        const n = gisFeatures.find((f) => (f.Attributes?.Span_Label || f.Label) === label
+          && (f.Feature_Role === "spannode" || f.Attributes?.Span_Label));
+        return (n?.Geometry || [])[0] || null;
+      }
+      const plot = plots.find((x) => plotLabelOf(x) === label);
+      if (!plot) return null;
+      const seed = gisFeatures.find((f) => f.Feature_Role === "plot"
+        && Number(f.Plot_ID) === plotIdOf(plot));
+      return (seed?.Geometry || [])[0] || null;
+    };
+
+    const a = pointFor(fromLabel, fromKind);
+    const b = pointFor(toLabel, toKind);
+    if (!a || !b) return null;
+
+    const nodes = gisFeatures.filter((f) => f.Feature_Role === "spannode");
+    const graph = trenchGraph(trenches, nodes);
+    /* The graph node nearest each end, since a plot seed sits off the
+       trench rather than on it. */
+    const nearest = (pt) => {
+      let best = null;
+      graph.points.forEach((q, i) => {
+        const d = Math.hypot(q[0] - pt[0], q[1] - pt[1]);
+        if (!best || d < best.d) best = { i, d };
+      });
+      return best;
+    };
+    const from = nearest(a);
+    const to = nearest(b);
+    if (!from || !to || from.i === to.i) return null;
+
+    const route = routeBetween(graph, graph.idOf(from.i), graph.idOf(to.i));
+    if (!route || !route.length) return null;
+    let m = 0;
+    for (let i = 1; i < route.length; i++) {
+      const p1 = graph.points[route[i - 1]];
+      const p2 = graph.points[route[i]];
+      m += Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+    }
+    return Math.round(m * 10) / 10;
+  }, [gisFeatures, plots, lookups]);
 
   /* The chosen plots as rows, in the order they appear on the project
      rather than the order they were clicked — a call-off reads better
@@ -224,7 +323,25 @@ export default function CallOffsTab({ projectId }) {
 
   const set = (k) => (v) => setF((p) => ({ ...p, [k]: v }));
   const setRow = (i, k) => (v) =>
-    setItems((rs) => rs.map((r, j) => (j === i ? { ...r, [k]: v } : r)));
+    setItems((rs) => rs.map((r, j) => {
+      if (j !== i) return r;
+      const next = { ...r, [k]: v };
+
+      /* Measure the section as soon as both ends are known.
+
+         Filled rather than forced: the figure is overwritten when an
+         end changes, but somebody who types over it keeps their number
+         until they change an end again. A drawing is a good guide to a
+         length and not always the last word on it \u2014 a trench that has
+         to go round something the drawing does not show is longer than
+         the drawing says. */
+      if (["From_Plot", "To_Plot", "From_Kind", "To_Kind"].includes(k)) {
+        const m = lengthBetween(next.From_Plot, next.From_Kind,
+          next.To_Plot, next.To_Kind);
+        if (m != null) next.Estimated_Length_m = String(m);
+      }
+      return next;
+    }));
 
   /* Rows start blank for the mode in hand. Changing the work type clears
      them, because a plot row is not a trench row with different labels
@@ -475,7 +592,7 @@ export default function CallOffsTab({ projectId }) {
               )}
             </>
           ) : (
-            <ItemRows mode={mode} items={items} plots={plots}
+            <ItemRows mode={mode} items={items} plots={plots} spanNodes={spanNodes}
               setRow={setRow}
               onAdd={() => setItems((rs) => [...rs, { ...BLANK_ROW[mode] }])}
               onRemove={(i) => setItems((rs) => rs.filter((_, j) => j !== i))} />
@@ -611,7 +728,47 @@ export default function CallOffsTab({ projectId }) {
    Kept as one component with three shapes rather than three components:
    the add, remove and energisation-date behaviour is identical, and only
    the middle column differs. */
-function ItemRows({ mode, items, plots, setRow, onAdd, onRemove }) {
+/* One end of a trench section: what kind of point, and which one.
+
+   The kind sits above the picker rather than beside it, because it
+   decides what the picker contains \u2014 reading the other way round asks
+   somebody to choose from a list before knowing what the list is. */
+function SpanEnd({ side, row, index, setRow, plots, spanNodes }) {
+  const kindKey = `${side}_Kind`;
+  const valueKey = `${side}_Plot`;
+  const kind = row[kindKey] || "plot";
+  const nodes = spanNodes || [];
+
+  return (
+    <div className="co-end">
+      {/* A select rather than a pair of pills. Two pills did not fit
+          the width of the field beneath them and truncated to "P…" and
+          "SPAN …", which is worse than not labelling them at all. */}
+      <select className="co-end-kind" aria-label={`${side} is a`}
+        value={kind}
+        onChange={(e) => {
+          setRow(index, kindKey)(e.target.value);
+          setRow(index, valueKey)("");
+        }}>
+        <option value="plot">Plot</option>
+        <option value="node" disabled={!nodes.length}>
+          {nodes.length ? "Span node" : "Span node (none drawn)"}
+        </option>
+      </select>
+      <select value={row[valueKey]}
+        onChange={(e) => setRow(index, valueKey)(e.target.value)}>
+        <option value="">{side}&hellip;</option>
+        {kind === "node"
+          ? nodes.map((n) => <option key={n.id} value={n.label}>{n.label}</option>)
+          : plots.map((p) => (
+            <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
+          ))}
+      </select>
+    </div>
+  );
+}
+
+function ItemRows({ mode, items, plots, spanNodes = [], setRow, onAdd, onRemove }) {
   if (!mode) return null;
 
   const label = mode === "ColumnList" ? "Columns"
@@ -648,20 +805,18 @@ function ItemRows({ mode, items, plots, setRow, onAdd, onRemove }) {
 
           {mode === "Span" && (
             <>
-              <select value={r.From_Plot}
-                onChange={(e) => setRow(i, "From_Plot")(e.target.value)}>
-                <option value="">From…</option>
-                {plots.map((p) => (
-                  <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
-                ))}
-              </select>
-              <select value={r.To_Plot}
-                onChange={(e) => setRow(i, "To_Plot")(e.target.value)}>
-                <option value="">To…</option>
-                {plots.map((p) => (
-                  <option key={plotIdOf(p)} value={plotLabelOf(p)}>{plotLabelOf(p)}</option>
-                ))}
-              </select>
+              {/* Each end is a plot or a span node, chosen separately.
+
+                  A section can run plot to plot, plot to node, node to
+                  node or node to plot, so one switch for the row would
+                  not do. Changing the kind clears the value: plot 12 and
+                  node A12 are different points, and carrying a choice
+                  across would leave a section pointing at something
+                  nobody picked. */}
+              <SpanEnd side="From" row={r} index={i} setRow={setRow}
+                plots={plots} spanNodes={spanNodes} />
+              <SpanEnd side="To" row={r} index={i} setRow={setRow}
+                plots={plots} spanNodes={spanNodes} />
               <select value={r.D_or_P} onChange={(e) => setRow(i, "D_or_P")(e.target.value)}>
                 <option value="">D/P</option>
                 <option value="D">D</option>
@@ -694,6 +849,28 @@ const CSS = `
 .co-none { margin: 20px 0; }
 .co-form { border: 1px solid var(--border); border-radius: 10px; padding: 16px;
   background: var(--white); margin-bottom: 18px; }
+/* The select used to be a direct child of the row and took its width
+   from it. Wrapped, it collapses to nothing unless told to fill the
+   wrapper, which is why both ends appeared as a sliver. */
+.co-end { display: flex; flex-direction: column; gap: 3px; flex: 1 1 150px;
+  min-width: 120px; }
+.co-end > select { width: 100%; min-width: 0; }
+/* Contained, not overflowing. The pair is wider than the 120px cell
+   under it, so without this the two ends' switches ran into each other
+   and read as one row of four. */
+.co-end-kind { display: flex; gap: 2px; min-width: 0; overflow: hidden; }
+.co-end-kind button { flex: 0 1 auto; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; }
+/* One line each. "Span node" broke across two and made the switch
+   taller than the field under it. */
+.co-end-kind button { font: 600 9.5px inherit; text-transform: uppercase;
+  letter-spacing: .02em; padding: 2px 6px; border-radius: 20px; cursor: pointer;
+  white-space: nowrap; border: 1px solid var(--border);
+  background: var(--white); color: var(--muted); }
+.co-end-kind button.on { background: var(--accent); border-color: var(--accent);
+  color: #fff; }
+.co-end-kind button[disabled] { opacity: .45; cursor: not-allowed; }
+
 .co-utils { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 4px 0 2px; }
 .co-util { display: inline-flex; align-items: center; gap: 6px; font-size: 13px;
   cursor: pointer; }
@@ -705,7 +882,11 @@ const CSS = `
   margin: 6px 0 12px; }
 .co-items-head { display: flex; align-items: center; gap: 10px; margin-bottom: 8px; }
 .co-items-head strong { flex: 1; font-size: 12.5px; }
-.co-item-row { display: flex; align-items: center; gap: 7px; margin-bottom: 6px; }
+/* Ends aligned at the bottom, not the middle: the From and To cells are
+   two rows tall now that each carries a Plot / Span node switch, and
+   centring left every other control floating against them. */
+.co-item-row { display: flex; align-items: flex-end; gap: 7px; margin-bottom: 6px; }
+.co-item-row > .co-n { align-self: center; }
 .co-n { width: 20px; font: 700 11px inherit; color: var(--muted); }
 .co-item-row select, .co-item-row input { font: 500 12px inherit; padding: 5px 7px;
   border: 1px solid var(--border); border-radius: 6px; }

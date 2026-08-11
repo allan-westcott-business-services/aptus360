@@ -988,6 +988,9 @@ function Assignments({ row }) {
   const [teamCrafts, setTeamCrafts] = useState([]);
   const [teamRegions, setTeamRegions] = useState([]);
   const [crafts, setCrafts] = useState([]);
+  /* Which utilities each craft covers (0151). No rows against a craft
+     means any \u2014 a reinstatement gang follows whatever was dug. */
+  const [craftUtilities, setCraftUtilities] = useState([]);
   const [all, setAll] = useState([]);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
@@ -1062,6 +1065,11 @@ function Assignments({ row }) {
       const au = await adminList("Call_Off_Assignment_Utility")
         .catch(() => ({ rows: [] }));
       setAssignmentUtilRows(au.rows || []);
+      /* Tolerated missing like the rest: a database without 0151 has no
+         craft utilities, and the rule falls back to the older check
+         rather than refusing every team. */
+      const cu = await adminList("Craft_Utility").catch(() => ({ rows: [] }));
+      setCraftUtilities(cu.rows || []);
       /* Tolerated missing, like the work days above: an assignment whose
          status cannot be read is still an assignment worth showing, and
          a panel that renders nothing because a lookup table is absent is
@@ -1708,7 +1716,29 @@ function Assignments({ row }) {
           teamCrafts, teamRegions,
           craftId: ph.Craft_ID,
           regionId: row.Region_ID ?? null,
+          /* The three facts a craft is matched on (0151). Task_Type
+             could name only one craft, so "Excavation & Lay" matched
+             nothing and every team was offered. */
+          crafts, craftUtilities,
+          taskTypeId: ph.Task_Type_ID,
+          scope: /service/i.test(workTypeName || "") ? "service"
+            : /main/i.test(workTypeName || "") ? "mains" : null,
+          /* What this booking covers: the utilities chosen where the
+             phase is split, otherwise the call-off's own. An Electric
+             Only gang is refused the whole of an E/G call-off and
+             offered the electric half of it. */
+          utilityIds: draft.byUtility && (draft.utility_ids || []).length
+            ? draft.utility_ids
+            : (row.utility_ids || []),
         });
+        /* Mains or service, from the call-off's work type. It decides
+           which of the Excavation & Lay crafts applies.
+
+           Off the row, which already carries it \u2014 there is no
+           workTypes list in this component, and reaching for one that
+           does not exist would have thrown the moment a phase rendered. */
+        const workTypeName = row.Work_Type?.Work_Type_Name || "";
+
         const floor = floorFor(ph.Task_Type_ID, mine, plotUniverse, null);
 
         return (

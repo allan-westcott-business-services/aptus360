@@ -148,11 +148,65 @@ export function teamMayTake(team, opts = {}) {
   return null;
 }
 
+/* Which crafts can do a given piece of work.
+
+   A craft says three things: the phase it performs, whether it is mains
+   or service work, and which utilities it covers. Matching on all three
+   is what lets "Excavation & Lay" be done by three different crafts —
+   which is the case that broke the old model, where Task_Type could
+   name only one.
+
+   Scope null on a craft means either; utilities absent means any. Both
+   are "not restricted" rather than "not known", which is why they widen
+   the match rather than narrowing it: a reinstatement gang follows
+   whatever was dug.
+
+   The utilities asked for must be *covered*, not merely overlap. An
+   Electric Only gang offered a booking of gas and electric is being
+   asked to lay gas, and half a job is not a match. That is the rule
+   asked for: such a team takes the electric booking once the phase is
+   split by utility, and not the whole thing. */
+export function craftsForWork({
+  crafts = [], craftUtilities = [], taskTypeId = null,
+  scope = null, utilityIds = [],
+} = {}) {
+  const wanted = (utilityIds || []).map(Number).filter(Number.isFinite);
+  return crafts.filter((c) => {
+    if (c.Task_Type_ID == null) return false;
+    if (Number(c.Task_Type_ID) !== Number(taskTypeId)) return false;
+    if (c.Scope && scope && String(c.Scope) !== String(scope)) return false;
+
+    if (!wanted.length) return true;
+    const covers = craftUtilities
+      .filter((x) => Number(x.Craft_ID) === Number(c.Craft_ID))
+      .map((x) => Number(x.Utility_ID));
+    if (!covers.length) return true;          /* no rows means any */
+    return wanted.every((u) => covers.includes(u));
+  });
+}
+
+/* Does this team hold any craft that can do this work? */
+export function teamHoldsCraftFor(teamId, opts = {}) {
+  const { teamCrafts = [] } = opts;
+  const able = craftsForWork(opts).map((c) => Number(c.Craft_ID));
+  if (!able.length) return null;              /* nothing configured to match on */
+  return teamCrafts.some((x) => Number(x.Team_ID) === Number(teamId)
+    && able.includes(Number(x.Craft_ID)));
+}
+
 export function eligibleTeams(teams = [], opts = {}) {
   const { teamCrafts = [], teamRegions = [], craftId = null, regionId = null } = opts;
 
   return teams.filter((t) => {
     if (!t.Active) return false;
+
+    /* The craft rule, where there is enough to apply it: the phase, the
+       scope and the utilities. Null means nothing was configured to
+       match on, and the older single-craft check below is used instead
+       rather than refusing everybody. */
+    const holdsFor = teamHoldsCraftFor(t.Team_ID, opts);
+    if (holdsFor !== null) return holdsFor && coversRegion(t);
+
     if (craftId != null) {
       const holds = teamCrafts.some((x) =>
         Number(x.Team_ID) === Number(t.Team_ID)
@@ -161,14 +215,15 @@ export function eligibleTeams(teams = [], opts = {}) {
     }
     /* Region is only applied where the call-off has one. A project with
        no region should not leave every team ineligible. */
-    if (regionId != null) {
-      const covers = teamRegions.some((x) =>
-        Number(x.Team_ID) === Number(t.Team_ID)
-        && Number(x.Region_ID) === Number(regionId));
-      if (!covers) return false;
-    }
+    if (!coversRegion(t)) return false;
     return true;
   });
+
+  function coversRegion(t) {
+    if (regionId == null) return true;
+    return teamRegions.some((x) => Number(x.Team_ID) === Number(t.Team_ID)
+      && Number(x.Region_ID) === Number(regionId));
+  }
 }
 
 /* The earliest a phase may start.

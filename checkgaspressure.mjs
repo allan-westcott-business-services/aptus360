@@ -380,6 +380,51 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* The pipe size picker offers pipes, not sizing rules.
+
+   Gas_Pipe_Size holds one row per rule: 63mm appears once per capacity
+   band and again for each operator with its own ceiling. Listed as they
+   come, the picker showed "63mm PE" five times over with nothing to
+   tell the rows apart, which makes somebody wonder which is right.
+
+   The grouping lives in the editor, so this checks the rule it applies
+   rather than importing a component. */
+{
+  const rules = [
+    { Gas_Pipe_Size_ID: 1, Diameter_mm: 32, Max_kW: 40, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 2, Diameter_mm: 32, Max_kW: 55, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 3, Diameter_mm: 63, Max_kW: 90, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 4, Diameter_mm: 63, Max_kW: 120, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 5, Diameter_mm: 90, Max_kW: 340, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 6, Diameter_mm: 180, Max_kW: 2400, Pressure_Tier: "MP" },
+  ];
+  const byBore = new Map();
+  for (const x of rules) {
+    if ((x.Pressure_Tier ?? "LP") !== "LP") continue;
+    const bore = Number(x.Diameter_mm);
+    const held = byBore.get(bore);
+    if (!held || Number(x.Max_kW || 0) > Number(held.Max_kW || 0)) byBore.set(bore, x);
+  }
+  const offered = [...byBore.values()]
+    .sort((a, b) => Number(a.Diameter_mm) - Number(b.Diameter_mm));
+
+  if (offered.length !== 3) fail(`${offered.length} sizes offered from 6 rules, wanted 3`);
+  if (offered.some((x) => x.Pressure_Tier === "MP")) {
+    fail("a medium pressure size was offered on a low pressure scheme");
+  }
+  /* The highest ceiling for the bore, so the note under the field reads
+     as what the pipe carries rather than the tightest rule mentioning
+     it. */
+  if (offered.find((x) => x.Diameter_mm === 63)?.Max_kW !== 120) {
+    fail("63mm was offered at its tightest rule rather than its widest");
+  }
+  /* Smallest first, by bore. "125" sorts before "63" as text. */
+  const bores = offered.map((x) => Number(x.Diameter_mm));
+  if (bores.join() !== [...bores].sort((a, b) => a - b).join()) {
+    fail(`sizes came out in the order ${bores.join(", ")}`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

@@ -68,16 +68,40 @@ export default function FeatureEditor({
     return t ? t.Layer_Key === "gas" : feature.Layer_Key === "gas";
   })();
 
-  /* The sizes for this tier, smallest first.
+  /* The gas sizes, one row per actual pipe.
 
-     Low pressure only, which is the assumption the build makes too \u2014
-     nothing in the schema records a scheme's tier yet. Sorted by bore
-     rather than by label, because "125" sorts before "63" as text and a
-     size list out of order is one somebody picks the wrong row from. */
-  const gasPipeChoices = (lookups?.gasPipeSizes || [])
-    .filter((x) => (x.Pressure_Tier ?? "LP") === "LP")
-    .slice()
-    .sort((a, b) => Number(a.Diameter_mm) - Number(b.Diameter_mm));
+     Gas_Pipe_Size is a table of sizing rules, not a catalogue: 63mm
+     appears once per capacity band and again for each operator with its
+     own ceiling. Listed as they come, the picker showed "63mm PE" five
+     times over with nothing to tell the rows apart \u2014 five identical
+     choices is worse than one, because it makes somebody wonder which
+     is right.
+
+     Grouped by bore, which is what a pipe size is. The id kept is the
+     first rule for that bore; nothing outside this field reads it, and
+     the bore \u2014 which the levels check does read \u2014 is the same
+     whichever rule it came from.
+
+     Low pressure only, matching the assumption the build makes; nothing
+     in the schema records a scheme's tier yet. Sorted by bore rather
+     than by label, because "125" sorts before "63" as text. */
+  const gasPipeChoices = (() => {
+    const byBore = new Map();
+    for (const x of lookups?.gasPipeSizes || []) {
+      if ((x.Pressure_Tier ?? "LP") !== "LP") continue;
+      const bore = Number(x.Diameter_mm);
+      if (!(bore > 0)) continue;
+      const held = byBore.get(bore);
+      /* The largest ceiling for the bore, so the note under the field
+         reads as what the pipe can carry rather than the tightest rule
+         that happens to mention it. */
+      if (!held || Number(x.Max_kW || 0) > Number(held.Max_kW || 0)) {
+        byBore.set(bore, x);
+      }
+    }
+    return [...byBore.values()].sort((a, b) =>
+      Number(a.Diameter_mm) - Number(b.Diameter_mm));
+  })();
   const pipeChoices = (lookups?.waterPipeSizes || [])
     .filter((x) => (x.Pipe_Kind ?? "main") === (isServiceLine ? "service" : "main"));
 

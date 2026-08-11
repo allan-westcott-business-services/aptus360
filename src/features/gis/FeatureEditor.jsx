@@ -347,7 +347,6 @@ export default function FeatureEditor({
     (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
   const layer = layers.find((l) => l.Layer_Key === f.Layer_Key);
   const length = (isLine || isPoly) ? lineLength(feature.Geometry || []) : 0;
-  const vertices = (feature.Geometry || []).length;
 
   /* What this actually is, at the top of the panel.
 
@@ -474,11 +473,11 @@ export default function FeatureEditor({
           style={{ ...drag.handleProps.style, borderTopColor: layer?.Colour }}>
           <div>
             <h3>{kind}</h3>
-            <p className="fe-sub">
-              {vertices} point{vertices === 1 ? "" : "s"}
-              {length > 0 && <> &middot; {length.toFixed(1)} m</>}
-              {plot && <> &middot; plot {plot.plot_number}</>}
-            </p>
+            {/* No point count and no length. The count is a fact about
+                the geometry rather than about the dig, and the length
+                is a field of its own on a trench \u2014 said twice, it was
+                two places to read the same number from. */}
+            {plot && <p className="fe-sub">plot {plot.plot_number}</p>}
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
@@ -601,16 +600,10 @@ export default function FeatureEditor({
               Everything else keeps the stacked form, where there are
               fewer fields and the extra width buys nothing. */}
           {isTrench ? (
+            /* No layer: a trench is on the trench layer, and offering a
+               dropdown that only ever holds one right answer is a way to
+               get it wrong. */
             <div className="fe-row">
-              <div className="fld">
-                <label htmlFor="fe-layer">Layer</label>
-                <select id="fe-layer" value={f.Layer_Key}
-                  onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
-                  {layers.map((l) => (
-                    <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
-                  ))}
-                </select>
-              </div>
               <div className="fld">
                 <label htmlFor="fe-label">Label</label>
                 <input id="fe-label" value={f.Label}
@@ -625,6 +618,33 @@ export default function FeatureEditor({
                     <option key={t.Type_Key} value={t.Type_Key}>{t.Label}</option>
                   ))}
                 </select>
+              </div>
+
+              {/* On or off site, and whether it crosses an easement.
+
+                  A dropdown rather than a checkbox: "Off site" unticked
+                  reads as "not yet decided" as readily as "on site", and
+                  the two are a different rate and a different permit. */}
+              <div className="fld">
+                <label htmlFor="fe-offsite">On-site or Off-site</label>
+                <select id="fe-offsite"
+                  value={f.Attributes.Off_Site === true ? "off" : "on"}
+                  onChange={(e) => setAttr("Off_Site")(
+                    e.target.value === "off" ? true : null)}>
+                  <option value="on">On site</option>
+                  <option value="off">Off site</option>
+                </select>
+                <p className="hint">Off site carries a different rate and notice.</p>
+              </div>
+
+              <div className="fld">
+                <label className="fe-check">
+                  <input type="checkbox"
+                    checked={!!f.Attributes[EASEMENT_KEY]}
+                    onChange={(e) => setAttr(EASEMENT_KEY)(e.target.checked)} />
+                  Easement
+                </label>
+                <p className="hint">Land the trench has a right to cross.</p>
               </div>
             </div>
           ) : (
@@ -1063,22 +1083,6 @@ export default function FeatureEditor({
                   </select>
                 </div>
               )}
-              {/* Whether this section crosses land the trench has a
-                  right over rather than highway.
-
-                  A fact about the ground, not about what is laid in it,
-                  so it sits with the surface rather than with the pipe
-                  \u2014 and so it shows on the electric, gas and water
-                  drawings alike. */}
-              {isTrench && (
-                <label className="fe-check">
-                  <input type="checkbox"
-                    checked={!!f.Attributes[EASEMENT_KEY]}
-                    onChange={(e) => setAttr(EASEMENT_KEY)(e.target.checked)} />
-                  Easement
-                </label>
-              )}
-
               <div className="fe-row">
                 {isTrench ? (
                   <>
@@ -1094,8 +1098,16 @@ export default function FeatureEditor({
                     <p className="hint">What it is dug through. Drives reinstatement.</p>
                   </div>
 
-                  {/* Dug size, from what is routed in it. Read only:
-                      the drawing decides, not a typed number. */}
+                  {/* Dug size, from the drawing rather than typed: the
+                      length is measured off the line, and the width and
+                      depth follow from what is routed in it. */}
+                  <div className="fld">
+                    <label htmlFor="fe-tl">Length (m)</label>
+                    <input id="fe-tl" readOnly
+                      value={length > 0 ? length.toFixed(1) : ""} />
+                    <p className="hint">Measured along the line.</p>
+                  </div>
+
                   <div className="fld">
                     <label htmlFor="fe-tw">Width (m)</label>
                     <input id="fe-tw" readOnly
@@ -1143,24 +1155,6 @@ export default function FeatureEditor({
                     <p className="hint">Marking part of a run splits it on the canvas.</p>
                   </div>
 
-                  {/* On or off site.
-
-                      A dropdown rather than a checkbox: "Off site"
-                      unticked reads as "not yet decided" as readily as
-                      "on site", and the two are a different rate and a
-                      different permit. Naming both leaves nothing to
-                      infer. */}
-                  <div className="fld">
-                    <label htmlFor="fe-offsite">On-site or Off-site</label>
-                    <select id="fe-offsite"
-                      value={f.Attributes.Off_Site === true ? "off" : "on"}
-                      onChange={(e) => setAttr("Off_Site")(
-                        e.target.value === "off" ? true : null)}>
-                      <option value="on">On site</option>
-                      <option value="off">Off site</option>
-                    </select>
-                    <p className="hint">Off site carries a different rate and notice.</p>
-                  </div>
                   </>
                 ) : isElectric ? (
                   /* Electric lines pick from the catalogue rather than
@@ -1424,13 +1418,6 @@ export default function FeatureEditor({
                   </div>
                 )}
               </div>
-              {f.Attributes.Site && (
-                <p className="fe-derived">
-                  <strong>{f.Attributes.Site}</strong>
-                  <span> &mdash; from the site boundary when this was drawn.
-                    Redraw it to reclassify.</span>
-                </p>
-              )}
               {(f.Attributes.Way || f.Attributes.Circuit) && (
                 <p className="fe-derived">
                   Way <strong>{f.Attributes.Way ?? "\u2014"}</strong>,

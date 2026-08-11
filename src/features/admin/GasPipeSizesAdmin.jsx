@@ -294,17 +294,24 @@ export default function GasPipeSizesAdmin() {
                 onBlur={(e) => saveLimit("Amber_Pct", e.target.value)} />
               <em>how far toward the minimum before it is worth flagging</em>
             </label>
-            {/* Metres, because that is what a designer can check
-                against a job. It was a multiple of the bore, which
-                scales itself across sizes and is more exact \u2014 but
-                nobody measures a dig in diameters. */}
+            {/* A multiple of the pipe's own bore, so one figure covers
+                every size \u2014 a tee on a big main resists more than the
+                same tee on a small one. A flat metre figure was tried
+                and under-stated the larger pipes by up to 13%. */}
             <label className="gp-limit">
-              <span>Service tee allowance (m)</span>
-              <input type="number" step="0.1" min="0"
-                defaultValue={limit.Tee_Length_M ?? ""}
-                onBlur={(e) => saveLimit("Tee_Length_M", e.target.value)} />
+              <span>Service tee allowance</span>
+              <div className="gp-limit-unit">
+                <input type="number" step="1" min="0"
+                  defaultValue={limit.Tee_Diameters ?? ""}
+                  onBlur={(e) => saveLimit("Tee_Diameters", e.target.value)} />
+                <span>&times; bore</span>
+              </div>
               <em>
-                metres of main each service tee adds; about 3m on a 63mm main
+                {`A tee costs this many pipe-widths of extra length. `}
+                {`At ${Number(limit.Tee_Diameters ?? 60)}, that is `}
+                {`${((Number(limit.Tee_Diameters ?? 60) * 52) / 1000).toFixed(1)}m on a `}
+                {`63mm main and `}
+                {`${((Number(limit.Tee_Diameters ?? 60) * 169) / 1000).toFixed(1)}m on a 180mm.`}
               </em>
             </label>
             <label className="gp-limit">

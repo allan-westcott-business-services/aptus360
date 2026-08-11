@@ -23,7 +23,7 @@
 */
 import {
   pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees, gasLevels,
-  suggestPipeChanges,
+  suggestPipeChanges, teeAllowanceM,
 } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
@@ -439,16 +439,16 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
     metres: 200, services: 8, bore: 52, kw: 110,
   }];
   const base = { source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw) };
-  const drop = (teeMetres, opts) =>
-    gasLevels({ ...base, runs, teeMetres }, opts || {}).legs[0].drop;
+  const drop = (teeDiameters, opts) =>
+    gasLevels({ ...base, runs, teeDiameters }, opts || {}).legs[0].drop;
 
-  const normal = drop(3);
-  if (!(drop(10) > normal)) fail("a larger tee allowance did not increase the drop");
+  const normal = drop(60);
+  if (!(drop(200) > normal)) fail("a larger tee allowance did not increase the drop");
   if (!(drop(0) < normal)) fail("removing the tee allowance did not reduce the drop");
-  if (!(drop(3, { efficiency: 0.70 }) > normal)) {
+  if (!(drop(60, { efficiency: 0.70 }) > normal)) {
     fail("a lower pipe efficiency did not increase the drop");
   }
-  if (!(drop(3, { temperatureC: 30 }) < normal)) {
+  if (!(drop(60, { temperatureC: 30 }) < normal)) {
     fail("warmer gas did not reduce the drop");
   }
   /* And the suggestions honour them too, or advice would be worked out
@@ -460,10 +460,10 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
      is why the first version of this test failed against correct
      code. */
   const sizes = [{ bore: 52, label: "63mm" }, { bore: 79, label: "90mm" }];
-  const after = (teeMetres) => suggestPipeChanges(
-    { ...base, runs, minMBar: 22.5, sizes, teeMetres },
+  const after = (teeDiameters) => suggestPipeChanges(
+    { ...base, runs, minMBar: 22.5, sizes, teeDiameters },
   ).suggestions[0]?.lowestAfter;
-  if (!(after(10) < after(0))) {
+  if (!(after(200) < after(0))) {
     fail("the tee allowance did not reach the pipe size advice");
   }
 }
@@ -579,6 +579,63 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   /* An id that is no longer in the table falls back to the blank
      option, which is honest: nothing can be said about it. */
   if (shown(99) !== "") fail("an unknown pipe size resolved to something");
+}
+
+/* The report names pipes the way a pipe is named.
+
+   The bore is what the pressure is worked out from and is nobody's way
+   of naming a pipe: a 63mm main is 63mm on the drawing, on the schedule
+   and in the yard, whatever its wall thickness. The column shows the
+   outer diameter and the bore moves to the tooltip.
+
+   And each leg carries its geometry, so a row can be clicked and the
+   drawing zoomed to that length. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const runs = [{
+    id: "G1", fromNode: "P", endNode: "A1", metres: 100, services: 2,
+    bore: 52, kw: 110, pts: [[0, 0], [100, 0]],
+  }];
+  const leg = gasLevels({
+    runs, source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw),
+  }).legs[0];
+
+  if (!Array.isArray(leg.runPts) || leg.runPts.length < 2) {
+    fail("a leg carries no geometry, so its row cannot be zoomed to");
+  }
+  /* Bore plus two walls. The wall is 5.5mm on our sizes, so the outer
+     diameter is the bore plus 11 — the same relation the bore was
+     derived by, run backwards. */
+  for (const [bore, od] of [[52, 63], [79, 90], [114, 125], [169, 180]]) {
+    if (Math.round(bore + 11) !== od) {
+      fail(`a ${bore}mm bore reads as ${Math.round(bore + 11)}mm, wanted ${od}mm`);
+    }
+  }
+}
+
+/* The tee allowance scales with the pipe.
+
+   It was a flat three metres for a while, which is easier to enter and
+   under-states the larger pipes by up to 13% — always optimistically.
+   Back to a multiple of the bore, so a tee on a 180mm main costs more
+   than the same tee on a 63mm one, which is what actually happens. */
+{
+  const per = (bore) => teeAllowanceM(bore);
+  if (!(per(158.75) > per(50.9) * 2)) {
+    fail("the allowance no longer scales with the pipe");
+  }
+  /* 60 diameters: 3.05m on a 63mm main, 9.53m on a 180mm. */
+  if (Math.abs(per(50.9) - 3.05) > 0.05) {
+    fail(`a 63mm main allows ${per(50.9).toFixed(2)}m per tee, wanted about 3.05`);
+  }
+  if (Math.abs(per(158.75) - 9.53) > 0.05) {
+    fail(`a 180mm main allows ${per(158.75).toFixed(2)}m per tee, wanted about 9.53`);
+  }
+  /* And the setting is honoured rather than the constant. */
+  if (Math.abs(teeAllowanceM(50.9, 20) - 1.018) > 0.01) {
+    fail("the allowance ignores the configured number of diameters");
+  }
+  if (teeAllowanceM(50.9, 0) !== 0) fail("a zero allowance still added length");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

@@ -259,20 +259,36 @@ export function nodePressures({ segments = [], source, sourceMBar = 23 } = {}, o
    A number to be calibrated rather than trusted. With the drawing
    behind a modelled job, the allowance that reproduces its measured
    drop can be solved for directly, and this becomes that. */
-export const TEE_LENGTH_M = 3;
+/* What one service tee costs, as a multiple of the pipe's own bore.
 
-/* Metres, not diameters.
+   A fitting's resistance is conventionally given as a length of
+   straight pipe: this tee costs about as much pressure as N pipe-widths
+   of ordinary main would. Expressing it as a multiple rather than a
+   fixed length means one number covers every size, because a fitting on
+   a big pipe resists more than the same fitting on a small one.
 
-   It was a multiple of the bore, which scales itself across sizes and
-   is correct \u2014 but nobody measures a job in diameters, and checking
-   the figure against a real design meant converting it first. Three
-   metres is a number somebody can recognise and argue with.
+   ── Why not a flat metre figure ──
 
-   The cost is that a fixed length under-states the larger pipes, where
-   a tee disturbs more flow: on a leg with six tees it is 0% out at
-   63mm and 13% at 180mm. That lands where it matters least, because
-   services are teed off the small mains. */
-export const teeAllowanceM = (_boreMM, metres = TEE_LENGTH_M) => Number(metres) || 0;
+   It was three metres for a while, which is easier to enter and check.
+   But a fixed length under-states the larger pipes: on a leg with six
+   tees it is right at 63mm and 13% out at 180mm, always in the
+   optimistic direction.
+
+   ── Which number ──
+
+   60 is the textbook figure for gas taken *through the branch* — in the
+   top of the tee and out of the leg, a right-angle turn into a smaller
+   opening. That is the journey the service makes.
+
+   Gas continuing along the main does not make that turn; it goes
+   straight through the run, which is cheaper — nearer 20 diameters. The
+   levels check measures the main, so 60 is the conservative reading
+   rather than the exact one. It is a setting for that reason: the
+   figure our designers allow is the one that belongs here. */
+export const TEE_DIAMETERS = 60;
+
+export const teeAllowanceM = (boreMM, diameters = TEE_DIAMETERS) =>
+  (Number(boreMM) / 1000) * (Number(diameters) || 0);
 
 /* Pressure at every span node on a gas network.
 
@@ -287,7 +303,7 @@ export const teeAllowanceM = (_boreMM, metres = TEE_LENGTH_M) => Number(metres) 
    Returns the pressure at each node and the drop on each run, plus
    anything that stopped it being answerable. */
 export function gasLevels({
-  runs = [], source, sourceMBar, flowFor, teeMetres = TEE_LENGTH_M,
+  runs = [], source, sourceMBar, flowFor, teeDiameters = TEE_DIAMETERS,
 } = {}, opts = {}) {
   if (!(sourceMBar > 0)) {
     return { error: "No output pressure is set on the gas POC." };
@@ -302,7 +318,7 @@ export function gasLevels({
       boreMM: bore,
       lengthM: r.metres,
       /* One allowance per service teed off this length. */
-      fittingsM: (r.services || 0) * teeAllowanceM(bore, teeMetres),
+      fittingsM: (r.services || 0) * teeAllowanceM(bore, teeDiameters),
       flowM3h: flowFor ? flowFor(r) : 0,
       run: r,
     };
@@ -329,6 +345,10 @@ export function gasLevels({
 
   const legs = segments.map((s) => ({
     id: s.id,
+    /* Where this length of main is on the drawing, so a row in the
+       report can be clicked and found. The same points a suggestion
+       carries, so the two cannot disagree about which pipe is which. */
+    runPts: s.run.pts || null,
     /* Over its rated capacity, whatever the pressure says.
 
        A build that lays everything at the smallest pipe no longer
@@ -393,9 +413,9 @@ export function gasLevels({
    the one that clears the most nodes. */
 export function suggestPipeChanges({
   runs = [], source, sourceMBar, flowFor, minMBar,
-  sizes = [], teeMetres = TEE_LENGTH_M, maxSuggestions = 4,
+  sizes = [], teeDiameters = TEE_DIAMETERS, maxSuggestions = 4,
 } = {}, opts = {}) {
-  const base = gasLevels({ runs, source, sourceMBar, flowFor, teeMetres }, opts);
+  const base = gasLevels({ runs, source, sourceMBar, flowFor, teeDiameters }, opts);
   if (base.error) return { error: base.error };
 
   /* A node fails on pressure; a run fails on capacity. Both are the
@@ -479,7 +499,7 @@ export function suggestPipeChanges({
           ? { ...x, bore: bigger.bore, maxKw: bigger.maxKw ?? x.maxKw }
           : x));
         const after = gasLevels(
-          { runs: swapped, source, sourceMBar, flowFor, teeMetres }, opts);
+          { runs: swapped, source, sourceMBar, flowFor, teeDiameters }, opts);
         if (after.error) continue;
         const left = failing(after);
         if (left.length >= remaining.length) continue;

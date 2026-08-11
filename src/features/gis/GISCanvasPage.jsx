@@ -74,7 +74,7 @@ import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
 import {
-  gasLevels, serviceTees, suggestPipeChanges, TEE_LENGTH_M,
+  gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS,
 } from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
@@ -3822,9 +3822,22 @@ export default function GISCanvasPage() {
          Only ends, not middle vertices: a line passing near a point is
          not attached to it, and treating it as though it were would drag
          the network about whenever something was nudged. */
+      /* Span nodes are excluded.
+
+         A meter or a joint is *on* the network because something
+         reaches it, so dragging one has to bring that end along. A span
+         node is not: it is a marker placed on the trench to measure
+         from, and the trench is what defines where it sits rather than
+         the other way round.
+
+         Dragging one used to pull the trench end with it, and the
+         easement band \u2014 which is drawn from the trench's own geometry
+         \u2014 came too, so the hatching appeared tied to the node. Moving
+         the marker now moves the marker. */
       const movedPoints = next
         .map((id) => features.find((x) => x.Feature_ID === id))
-        .filter((f) => f && f.Feature_Type === "point" && (f.Geometry || []).length);
+        .filter((f) => f && f.Feature_Type === "point" && (f.Geometry || []).length)
+        .filter((f) => f.Feature_Role !== "spannode");
 
       for (const pt of movedPoints) {
         const at = pt.Geometry[0];
@@ -7455,7 +7468,7 @@ export default function GISCanvasPage() {
       const gs = lookups?.gasPressureSettings?.[0] || {};
       const minMBar = Number(gs.Min_Pressure_mBar ?? 19);
       const amberPct = Number(gs.Amber_Pct ?? 80);
-      const teeMetres = Number(gs.Tee_Length_M ?? TEE_LENGTH_M);
+      const teeDiameters = Number(gs.Tee_Diameters ?? TEE_DIAMETERS);
       const gasOpts = {
         ...(gs.Efficiency != null ? { efficiency: Number(gs.Efficiency) } : {}),
         ...(gs.Temperature_C != null ? { temperatureC: Number(gs.Temperature_C) } : {}),
@@ -7549,7 +7562,7 @@ export default function GISCanvasPage() {
            spine and its legs right. */
         flowFor: (r) => kwToM3h(r.kw ?? 0),
         /* The allowance per service tee, from Admin. */
-        teeMetres,
+        teeDiameters,
       }, gasOpts);
 
       if (result.error) { setError(result.error); return; }
@@ -7569,7 +7582,7 @@ export default function GISCanvasPage() {
         }));
       const advice = suggestPipeChanges({
         runs: result.runsUsed, source: (plan.runs || [])[0]?.fromNode, sourceMBar,
-        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes, teeMetres,
+        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes, teeDiameters,
       }, gasOpts);
 
       setGasLevelsResult({ ...result, minMBar, amberPct, advice });
@@ -11900,7 +11913,12 @@ export default function GISCanvasPage() {
                       length of gas main, not a node \u2014 the nodes are
                       G0 and the A-numbers. */}
                   <th>Main</th><th>From</th><th>To</th>
-                  <th className="num">Bore</th><th className="num">Length</th>
+                  {/* The size a pipe is called and ordered by, not its
+                      bore. The bore is what the pressure is worked out
+                      from and is nobody's way of naming a pipe: a 63mm
+                      main is 63mm on the drawing, on the schedule and in
+                      the yard, whatever its wall thickness. */}
+                  <th className="num">Pipe size</th><th className="num">Length</th>
                   <th className="num">Tees</th><th className="num">Flow</th>
                   <th className="num">Drop</th><th className="num">Pressure</th>
                 </tr>
@@ -11919,15 +11937,27 @@ export default function GISCanvasPage() {
                     : l.at < min + (sourceOf(gasLevelsResult) - min)
                       * (1 - (gasLevelsResult.amberPct ?? 80) / 100) ? "warn" : "";
                   return (
-                  <tr key={l.id} className={band}>
+                  <tr key={l.id} className={`${band} gl-row`}
+                    title={`Zoom to ${l.id}`}
+                    onClick={() => {
+                      /* The run's own polyline, which the leg carries so
+                         a suggestion can be applied to it. Same points,
+                         so the row and the drawing cannot disagree about
+                         which pipe is which. */
+                      const pts = l.runPts || [];
+                      if (pts.length) zoomToPoints(pts);
+                    }}>
                     <td>{l.id}</td>
                     <td>{l.from ?? "\u2014"}</td>
                     <td>{l.to ?? "\u2014"}</td>
-                    <td className="num" title={l.overCapacity
-                      ? `Carrying ${Number(l.kw).toFixed(0)} kW; this size is rated `
-                        + `to ${Number(l.maxKw).toFixed(0)} kW`
-                      : undefined}>
-                      {l.boreMM.toFixed(1)}
+                    <td className="num" title={[
+                      `${l.boreMM.toFixed(1)}mm bore`,
+                      l.overCapacity
+                        ? `carrying ${Number(l.kw).toFixed(0)} kW against a rating `
+                          + `of ${Number(l.maxKw).toFixed(0)} kW`
+                        : null,
+                    ].filter(Boolean).join(" \u00b7 ")}>
+                      {`${Math.round(l.boreMM + 11)}mm`}
                       {l.overCapacity ? " \u26a0" : ""}
                     </td>
                     <td className="num">
@@ -12678,6 +12708,9 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   letter-spacing: .04em; position: sticky; top: 0; background: var(--white); }
 .gl-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .gl-fit { color: var(--muted); }
+/* A row points at a pipe, so it behaves like something you can follow. */
+.gl-row { cursor: pointer; }
+.gl-row:hover td { background: var(--bg); }
 .gl-tbl tr.bad td { background: var(--err-bg); color: var(--err-text); font-weight: 700; }
 .gl-tbl tr.warn td { background: var(--warn-bg); color: var(--warn-text); }
 .gl-pass { font-size: 12px; color: var(--ok-text); background: var(--ok-bg);

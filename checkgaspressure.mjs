@@ -327,6 +327,59 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* A minimum-size build, and what the check has to say about it.
+
+   The build now lays everything at the smallest pipe and leaves the
+   sizing to this. That trade means capacity is no longer respected when
+   the pipe goes in, so the check has to report it — otherwise a main
+   carrying ten times its rating passes on pressure and nobody hears
+   about it. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const runs = [
+    { id: "G1", fromNode: "P", endNode: "A1", fromLabel: "G0", toLabel: "A1",
+      metres: 20, services: 0, bore: 52, kw: 900, maxKw: 120 },
+    { id: "G2", fromNode: "A1", endNode: "A5", fromLabel: "A1", toLabel: "A5",
+      metres: 150, services: 6, bore: 52, kw: 90, maxKw: 120 },
+  ];
+  const sizes = [
+    { bore: 52, label: "63mm", maxKw: 120 },
+    { bore: 79, label: "90mm", maxKw: 340 },
+    { bore: 169, label: "180mm", maxKw: 2400 },
+  ];
+  const common = { source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw) };
+
+  const base = gasLevels({ runs, ...common });
+  const over = base.legs.filter((l) => l.overCapacity);
+  if (over.length !== 1) fail(`${over.length} runs flagged over capacity, wanted 1`);
+  if (over[0]?.id !== "G1") fail("the wrong run was flagged over capacity");
+
+  const r = suggestPipeChanges({ runs, minMBar: 19, sizes, ...common });
+  /* One instruction per pipe: the cascade can reach a run twice, and
+     "upsize G1, then upsize G1 again" is two lines for one job. */
+  if (new Set(r.suggestions.map((x) => x.runId)).size !== r.suggestions.length) {
+    fail("a run was listed for upsizing more than once");
+  }
+  if (!r.clearsAll) fail("the cascade did not clear a network it could fix");
+
+  /* And the result must hold on both counts, checked rather than
+     trusted: a suggestion that clears the pressure and leaves the pipe
+     over capacity has not fixed anything. */
+  let after = runs;
+  for (const x of r.suggestions) {
+    const size = sizes.find((z) => z.bore === x.toBore);
+    after = after.map((y) => (y.id === x.runId
+      ? { ...y, bore: x.toBore, maxKw: size.maxKw } : y));
+  }
+  const proved = gasLevels({ runs: after, ...common });
+  if (proved.legs.some((l) => l.overCapacity)) {
+    fail("a run is still over capacity after every suggested change");
+  }
+  if (Math.min(...proved.pressures.values()) < 19) {
+    fail("a node is still below the limit after every suggested change");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

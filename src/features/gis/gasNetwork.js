@@ -243,6 +243,20 @@ export function gasSizeFor(table, kw, metres = 0) {
     && (s.maxLength == null || s.maxLength >= metres)) || null;
 }
 
+/* The smallest pipe there is.
+
+   A build can lay everything at the minimum and let the levels check
+   decide what has to grow. That is how a designer works \u2014 start small,
+   upsize where the pressure says \u2014 and it makes the check the single
+   arbiter rather than having two things size the same network by
+   different rules.
+
+   The trade is that capacity is no longer respected at build time: a
+   63mm pipe has a kW ceiling and laying it under 1200 kW ignores that.
+   The levels check reports it instead, which is the point \u2014 one place
+   that says what is wrong rather than a build that quietly avoids it. */
+export const smallestSize = (table) => table[0] ?? null;
+
 /* ── Diversity ──
 
    Resolved the same way as the sizes: the operator's rules win, naming
@@ -321,6 +335,10 @@ export function gasMainRuns(features = [], opts = {}) {
     eps = CONNECT_EPS,
     tol = SNAP_TOL,
     breakAtServices = false,
+    /* Lay everything at the smallest pipe and let the levels check say
+       what has to grow, rather than sizing each length to the load it
+       carries. */
+    minimumSize = false,
     /* Which utility this is. The gas POC and gas meters, because a site
        has electric ones too and they are nowhere near each other. */
     layerKey = "gas",
@@ -681,7 +699,8 @@ export function gasMainRuns(features = [], opts = {}) {
      v outward — the load it still has to carry. */
   const sizeAt = (v) => {
     const kw = loadAt(v);
-    return kw == null ? null : gasSizeFor(table, kw);
+    if (kw == null) return null;
+    return minimumSize ? smallestSize(table) : gasSizeFor(table, kw);
   };
   /* "over" and "unknown" are different answers and must not collapse
      into one break: a run past the top of the pipe table and a run past
@@ -845,7 +864,9 @@ export function gasMainRuns(features = [], opts = {}) {
          along the way has taken its share — and sizing on that would
          put the thinnest pipe of the run on the whole of it. */
       const carriesKw = loadAt(first);
-      const size = carriesKw == null ? null : gasSizeFor(table, carriesKw);
+      /* Minimum everywhere, or sized to the load it carries. */
+      const size = carriesKw == null ? null
+        : (minimumSize ? smallestSize(table) : gasSizeFor(table, carriesKw));
       const run = {
         pts,
         metres: Math.round(lengthOf(pts) * 10) / 10,

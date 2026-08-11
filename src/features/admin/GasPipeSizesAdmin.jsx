@@ -63,6 +63,7 @@ const blank = (kind = "main", tier = "LP") => ({
 
 export default function GasPipeSizesAdmin() {
   const [sizes, setSizes] = useState([]);
+  const [limits, setLimits] = useState([]);
   const [links, setLinks] = useState([]);
   const [operators, setOperators] = useState([]);
   const [utilities, setUtilities] = useState([]);
@@ -78,13 +79,21 @@ export default function GasPipeSizesAdmin() {
 
   async function load() {
     try {
-      const [g, o, ops, u] = await Promise.all([
+      /* Named in step with the list below it \u2014 this destructure is
+         positional, and a query added in the middle without a name here
+         shifts every result after it. */
+      const [g, lim, o, ops, u] = await Promise.all([
         adminList("Gas_Pipe_Size"),
+        /* Tolerated missing: a database without 0148 has no limits
+           table, and a sizes screen that refused to open because of
+           that would be worse than one without the panel. */
+        adminList("Gas_Pressure_Setting").catch(() => ({ rows: [] })),
         adminList("Gas_Pipe_Size_Operator").catch(() => ({ rows: [] })),
         adminList("Operator_Utility"),
         adminList("Utility"),
       ]);
       setSizes(g.rows || []);
+      setLimits(lim.rows || []);
       setLinks(o.rows || []);
       setOperators(ops.rows || []);
       setUtilities(u.rows || []);
@@ -238,10 +247,77 @@ export default function GasPipeSizesAdmin() {
 
   if (loading) return <p className="gp-empty">Loading&hellip;</p>;
 
+  /* The limits the levels check judges against.
+
+     Here rather than on a screen of their own: a designer changing what
+     a pipe may carry and a designer changing what pressure it must
+     hold are the same person doing the same job, and two screens is one
+     more place to look. Same reasoning as the electric specs screen,
+     which keeps its volt drop limits beside its cable sizes. */
+  const limit = limits[0] || null;
+
+  async function saveLimit(field, value) {
+    if (!limit) return;
+    try {
+      await adminUpdate("Gas_Pressure_Setting",
+        limit.Gas_Pressure_Setting_ID, { [field]: value === "" ? null : Number(value) });
+      await load();
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
   return (
     <div>
       <style>{CSS}</style>
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
+
+      {limit && (
+        <div className="gp-limits">
+          <h3>Pressure limits</h3>
+          <p className="gp-sub">
+            What the gas levels check judges a design against. A node below the
+            minimum is reported in red; one within the amber band passes but
+            has little left to give.
+          </p>
+          <div className="gp-limit-row">
+            <label className="gp-limit">
+              <span>Minimum pressure (mbar)</span>
+              <input type="number" step="0.1" min="0"
+                defaultValue={limit.Min_Pressure_mBar ?? ""}
+                onBlur={(e) => saveLimit("Min_Pressure_mBar", e.target.value)} />
+              <em>19 is the usual low-pressure floor at the meter</em>
+            </label>
+            <label className="gp-limit">
+              <span>Amber at (%)</span>
+              <input type="number" step="1" min="0" max="100"
+                defaultValue={limit.Amber_Pct ?? ""}
+                onBlur={(e) => saveLimit("Amber_Pct", e.target.value)} />
+              <em>how far toward the minimum before it is worth flagging</em>
+            </label>
+            <label className="gp-limit">
+              <span>Service tee allowance (diameters)</span>
+              <input type="number" step="1" min="0"
+                defaultValue={limit.Tee_Diameters ?? ""}
+                onBlur={(e) => saveLimit("Tee_Diameters", e.target.value)} />
+              <em>equivalent length per tee; 60 is the textbook figure</em>
+            </label>
+            <label className="gp-limit">
+              <span>Pipe efficiency</span>
+              <input type="number" step="0.01" min="0" max="1"
+                defaultValue={limit.Efficiency ?? ""}
+                onBlur={(e) => saveLimit("Efficiency", e.target.value)} />
+              <em>0.95 &mdash; worth about 10% of every drop</em>
+            </label>
+            <label className="gp-limit">
+              <span>Gas temperature (&deg;C)</span>
+              <input type="number" step="1"
+                defaultValue={limit.Temperature_C ?? ""}
+                onBlur={(e) => saveLimit("Temperature_C", e.target.value)} />
+              <em>5 &mdash; winter ground; worth under 2%</em>
+            </label>
+          </div>
+        </div>
+      )}
 
       <div className="gp-head">
         <h3>Gas Pipe Sizes</h3>
@@ -480,6 +556,21 @@ export default function GasPipeSizesAdmin() {
 }
 
 const CSS = `
+.gp-limits { border: 1px solid var(--border); border-radius: var(--radius);
+  background: var(--white); padding: 14px 16px; margin-bottom: 16px; }
+.gp-limits h3 { margin: 0 0 4px; }
+.gp-limit-row { display: flex; flex-wrap: wrap; gap: 14px; margin-top: 12px; }
+.gp-limit { display: flex; flex-direction: column; gap: 3px; min-width: 190px; }
+.gp-limit > span { font: 700 10.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .04em; }
+.gp-limit input { font: 600 13px inherit; padding: 7px 10px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--white); }
+/* Prose, not another label: the hint inherited the uppercase tracking
+   from the field name above it and shouted louder than the field. */
+.gp-limit em { font-style: normal; font: 400 11px inherit; color: var(--muted);
+  text-transform: none; letter-spacing: 0; }
+.gp-limit { flex: 1 1 190px; max-width: 260px; }
+
 .gp-head { margin-bottom: 14px; }
 .gp-head h3 { margin: 0; font-size: 16px; }
 .gp-sub { margin: 4px 0 0; font-size: 11.5px; color: var(--muted); max-width: 70ch; }

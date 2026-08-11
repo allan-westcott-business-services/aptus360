@@ -319,6 +319,16 @@ export function gasLevels({
 
   const legs = segments.map((s) => ({
     id: s.id,
+    /* Over its rated capacity, whatever the pressure says.
+
+       A build that lays everything at the smallest pipe no longer
+       respects the kW ceiling on a size \u2014 that was the trade for
+       letting the levels check drive the sizing. So the check has to
+       report it, or an undersized main passes on pressure and nobody
+       hears about the capacity at all. */
+    overCapacity: s.run.maxKw != null && Number(s.run.kw) > Number(s.run.maxKw),
+    maxKw: s.run.maxKw ?? null,
+    kw: s.run.kw ?? null,
     /* What the drawing calls each end, where it calls it anything. The
        graph indices behind them are of no use to a reader. */
     from: s.run.fromLabel ?? null,
@@ -378,7 +388,23 @@ export function suggestPipeChanges({
   const base = gasLevels({ runs, source, sourceMBar, flowFor, teeDiameters }, opts);
   if (base.error) return { error: base.error };
 
-  const failing = (r) => [...r.pressures.entries()].filter(([, p]) => p < minMBar);
+  /* A node fails on pressure; a run fails on capacity. Both are the
+     network being undersized, and a cascade that fixed one and left the
+     other would send somebody back round for a second answer.
+
+     A run over capacity is reported against the node it ends at, so the
+     two kinds of failure count and clear the same way. */
+  const failing = (r) => {
+    const out = [...r.pressures.entries()].filter(([, p]) => p < minMBar);
+    const named = new Set(out.map(([n]) => n));
+    for (const l of r.legs) {
+      if (l.overCapacity && l.to && !named.has(String(l.to))) {
+        out.push([String(l.to), r.pressures.get(String(l.to)) ?? sourceMBar]);
+        named.add(String(l.to));
+      }
+    }
+    return out;
+  };
   const bad = failing(base);
   if (!bad.length) return { ok: true, failing: [], suggestions: [] };
 
@@ -436,8 +462,12 @@ export function suggestPipeChanges({
       const now = ladder.findIndex((x) => Number(x.bore) === Number(r.bore));
       for (let i = now + 1; i < ladder.length; i++) {
         const bigger = ladder[i];
-        const swapped = current.map((x) =>
-          (String(x.id) === String(r.id) ? { ...x, bore: bigger.bore } : x));
+        /* The rating comes with the size, or a suggestion could move a
+           run to a pipe that is still over capacity and report it as
+           cleared. */
+        const swapped = current.map((x) => (String(x.id) === String(r.id)
+          ? { ...x, bore: bigger.bore, maxKw: bigger.maxKw ?? x.maxKw }
+          : x));
         const after = gasLevels(
           { runs: swapped, source, sourceMBar, flowFor, teeDiameters }, opts);
         if (after.error) continue;
@@ -455,6 +485,23 @@ export function suggestPipeChanges({
     }
 
     if (!best) break;   /* nothing left that any single upsize improves */
+
+    /* One line per run. The cascade can reach a pipe twice — 63 to 90
+       clears the pressure, then 90 to 180 clears the capacity — and
+       "upsize G1, then upsize G1 again" is two instructions for one
+       piece of work. The earlier line is raised to the final size. */
+    const already = suggestions.find((x) => String(x.runId) === String(best.run.id));
+    if (already) {
+      already.toBore = best.bigger.bore;
+      already.sizeLabel = best.bigger.label ?? `${best.bigger.bore}mm bore`;
+      already.clears += best.cleared;
+      already.stillFailing = best.left.length;
+      already.lowestAfter = [...best.after.pressures.values()]
+        .reduce((a, b) => Math.min(a, b));
+      current = best.swapped;
+      remaining = best.left;
+      continue;
+    }
 
     suggestions.push({
       runId: best.run.id,

@@ -7404,6 +7404,9 @@ export default function GISCanvasPage() {
           fromLabel: labelAt((r.pts || [])[0]),
           toLabel: labelAt((r.pts || [])[(r.pts || []).length - 1]),
           bore: r.size?.diameter ? r.size.diameter - 11 : null,
+          /* What this size is rated to carry, so the check can say when
+             a minimum-size build has outrun it. */
+          maxKw: r.size?.maxKw ?? null,
           services: tees.get(String(r.featureId ?? "")) ?? r.services ?? 0,
         })),
         source: (plan.runs || [])[0]?.fromNode,
@@ -7436,7 +7439,11 @@ export default function GISCanvasPage() {
          and repeat until it holds or nothing helps. */
       const sizes = (lookups?.gasPipeSizes || [])
         .filter((x) => Number(x.Diameter_mm) > 0)
-        .map((x) => ({ bore: Number(x.Diameter_mm) - 11, label: `${x.Diameter_mm}mm` }));
+        .map((x) => ({
+          bore: Number(x.Diameter_mm) - 11,
+          label: `${x.Diameter_mm}mm`,
+          maxKw: Number(x.Max_kW) || null,
+        }));
       const advice = suggestPipeChanges({
         runs: result.runsUsed, source: (plan.runs || [])[0]?.fromNode, sourceMBar,
         flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes,
@@ -7546,6 +7553,15 @@ export default function GISCanvasPage() {
          anyone notices. When MP schemes need sizing, the column goes on
          Project_Scope and this line reads it. */
       tier: "LP",
+      /* Everything at the smallest pipe, and the levels check decides
+         what has to grow.
+
+         The alternative sizes each length to the load it carries, which
+         produces a network that is right on capacity and says nothing
+         about pressure. Starting small makes the levels check the one
+         place that judges the design \u2014 and it is how a designer works:
+         lay it, check it, upsize what fails. */
+      minimumSize: true,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
     });
     if (plan.error) return setError(plan.error);
@@ -11660,7 +11676,10 @@ export default function GISCanvasPage() {
                      added, and a report that says nothing until it fails
                      is one that gets acted on too late. */
                   const min = gasLevelsResult.minMBar;
-                  const band = l.at < min ? "bad"
+                  /* Over capacity is red whatever the pressure says: a
+                     main carrying more than its size is rated for is
+                     undersized even where the pressure holds. */
+                  const band = (l.at < min || l.overCapacity) ? "bad"
                     : l.at < min + (sourceOf(gasLevelsResult) - min)
                       * (1 - (gasLevelsResult.amberPct ?? 80) / 100) ? "warn" : "";
                   return (
@@ -11668,7 +11687,13 @@ export default function GISCanvasPage() {
                     <td>{l.id}</td>
                     <td>{l.from ?? "\u2014"}</td>
                     <td>{l.to ?? "\u2014"}</td>
-                    <td className="num">{l.boreMM.toFixed(1)}</td>
+                    <td className="num" title={l.overCapacity
+                      ? `Carrying ${Number(l.kw).toFixed(0)} kW; this size is rated `
+                        + `to ${Number(l.maxKw).toFixed(0)} kW`
+                      : undefined}>
+                      {l.boreMM.toFixed(1)}
+                      {l.overCapacity ? " \u26a0" : ""}
+                    </td>
                     <td className="num">
                       {l.metres.toFixed(1)}
                       {l.fittingsM ? <span className="gl-fit"> +{l.fittingsM}</span> : null}

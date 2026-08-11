@@ -319,8 +319,10 @@ export function gasLevels({
 
   const legs = segments.map((s) => ({
     id: s.id,
-    from: String(s.from),
-    to: String(s.to),
+    /* What the drawing calls each end, where it calls it anything. The
+       graph indices behind them are of no use to a reader. */
+    from: s.run.fromLabel ?? null,
+    to: s.run.toLabel ?? null,
     metres: s.lengthM,
     fittingsM: Math.round(s.fittingsM * 100) / 100,
     services: s.run.services || 0,
@@ -336,5 +338,13 @@ export function gasLevels({
     unreached: walked.unreached,
     lowest: [...walked.pressures.entries()]
       .reduce((lo, e) => (e[1] < lo[1] ? e : lo), [String(source), sourceMBar]),
+    /* The drawing's name for the lowest node, where it has one. The
+       graph index it is keyed on is not something to show anybody. */
+    lowestLabel: (() => {
+      const worst = [...walked.pressures.entries()]
+        .reduce((lo, e) => (e[1] < lo[1] ? e : lo), [String(source), sourceMBar]);
+      const leg = segments.find((s) => String(s.to) === worst[0]);
+      return leg?.run?.toLabel ?? null;
+    })(),
   };
 }

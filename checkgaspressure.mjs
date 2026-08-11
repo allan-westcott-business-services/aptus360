@@ -22,7 +22,7 @@
      + density at operating pressure           0.985  <- this
 */
 import {
-  pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees,
+  pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees, gasLevels,
 } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
@@ -199,6 +199,81 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   if (serviceTees({}).size !== 0) fail("no mains produced counts");
   const oneNode = serviceTees({ mains, services: [{ geometry: [[20, 0]] }] });
   if ([...oneNode.values()].some((n) => n)) fail("a one-point service counted as a tee");
+}
+
+/* A run's flow comes off the run, and a zero must fail loudly.
+
+   The first version of the canvas wiring asked the diversity table for
+   a `kw` field it does not have — rows carry `max` and `factor` — so
+   every flow came back zero, every drop was zero, and every span node
+   read as the POC's pressure. It looked like a working panel full of
+   23.00s.
+
+   Zero flow is not a pressure of "no drop"; it is a calculation that
+   did not happen. */
+{
+  const kwToM3h = (kw) => (Number(kw) || 0) * 3600 / 39500;
+  const runs = [
+    { id: "G1", fromNode: "P", endNode: "n2", metres: 15.5, services: 0, bore: 169, kw: 1210 },
+    { id: "G2", fromNode: "n2", endNode: "n21", metres: 121.3, services: 11, bore: 52, kw: 48 },
+  ];
+  const r = gasLevels({ runs, source: "P", sourceMBar: 23, flowFor: (x) => kwToM3h(x.kw) });
+  if (r.error) fail(`a straightforward network was refused: ${r.error}`);
+  else {
+    for (const l of r.legs) {
+      if (!(l.flowM3h > 0)) fail(`${l.id} came out with no flow`);
+      if (!(l.drop > 0)) fail(`${l.id} came out with no pressure drop`);
+    }
+    const last = r.legs[r.legs.length - 1];
+    if (!(last.at < 23)) fail("the far node is still at the POC's pressure");
+    /* 1210 kW diversified is about 110 m3/h at 39.5 MJ/m3. */
+    if (Math.abs(r.legs[0].flowM3h - 110.3) > 1) {
+      fail(`1210 kW became ${r.legs[0].flowM3h.toFixed(1)} m3/h, wanted about 110.3`);
+    }
+  }
+}
+
+/* A leg is named the way the drawing names things.
+
+   G1 is a length of gas main. The nodes are G0 and the A-numbers, and
+   there is exactly one G0. The first version reported the graph's own
+   indices in the To column — "to 138" — which named nothing anybody
+   could find on the drawing. */
+{
+  const kwToM3h = (kw) => (Number(kw) || 0) * 3600 / 39500;
+  const runs = [
+    { id: "G1", fromNode: 0, endNode: 1, fromLabel: "G0", toLabel: "A1",
+      metres: 15.5, services: 0, bore: 169, kw: 1210 },
+    { id: "G2", fromNode: 1, endNode: 2, fromLabel: "A1", toLabel: "A5",
+      metres: 121.3, services: 11, bore: 52, kw: 48 },
+    /* A run ending on a bend, which has no node and so no name. */
+    { id: "G3", fromNode: 1, endNode: 3, fromLabel: "A1", toLabel: null,
+      metres: 30, services: 0, bore: 79, kw: 136 },
+  ];
+  const r = gasLevels({ runs, source: 0, sourceMBar: 23, flowFor: (x) => kwToM3h(x.kw) });
+  if (r.error) fail(`the network was refused: ${r.error}`);
+  else {
+    const first = r.legs[0];
+    if (first.from !== "G0") fail(`the first leg starts at "${first.from}", wanted G0`);
+    if (first.to !== "A1") fail(`the first leg ends at "${first.to}", wanted A1`);
+    if (r.legs.some((l) => /^\d+$/.test(String(l.to)))) {
+      fail("a leg reported a graph index instead of a label");
+    }
+    if (r.legs[2].to !== null) fail("a bend was given an invented name");
+    /* Exactly one G0, and the mains are G-numbers rather than nodes. */
+    const nodeNames = r.legs.flatMap((l) => [l.from, l.to]).filter(Boolean);
+    if (nodeNames.filter((n) => n === "G0").length !== 1) {
+      fail("G0 appears more than once, or not at all");
+    }
+    if (nodeNames.some((n) => /^G[1-9]/.test(n))) {
+      fail("a node is named G-something; only the mains carry G numbers");
+    }
+    /* And the bores differ, because the loads do. A single bore
+       everywhere was the symptom of every flow being zero. */
+    if (new Set(r.legs.map((l) => l.boreMM)).size < 2) {
+      fail("every leg came out the same bore");
+    }
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

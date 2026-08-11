@@ -7324,10 +7324,39 @@ export default function GISCanvasPage() {
         tier: "LP",
       });
 
+      /* What the drawing calls each end of a run.
+
+         gasMainRuns numbers its own graph internally, so fromNode and
+         endNode are indices — "138" and "21" mean nothing to anybody
+         reading a levels table. The drawing's own names are on the span
+         nodes and on the origin, so each end of a run is matched to
+         whichever of those it sits on.
+
+         A run end with nothing on it is a bend rather than a node, and
+         is shown as a dash rather than an invented name. */
+      const labelAt = (pt) => {
+        if (!pt) return null;
+        let best = null;
+        for (const f of features) {
+          const lbl = f.Attributes?.Span_Label;
+          if (!lbl) continue;
+          const q = (f.Geometry || [])[0];
+          if (!q) continue;
+          const d = Math.hypot(q[0] - pt[0], q[1] - pt[1]);
+          if (d <= 1.5 && (!best || d < best.d)) best = { lbl, d };
+        }
+        return best?.lbl ?? null;
+      };
+
       const result = gasLevels({
         runs: (plan.runs || []).map((r, i) => ({
           ...r,
+          /* The gas main length label \u2014 G1, G2 \u2014 which is what a
+             length of main is called. Not a node: the nodes are G0 and
+             the A-numbers. */
           id: r.id ?? `G${i + 1}`,
+          fromLabel: labelAt((r.pts || [])[0]),
+          toLabel: labelAt((r.pts || [])[(r.pts || []).length - 1]),
           bore: r.size?.diameter ? r.size.diameter - 11 : null,
           services: tees.get(String(r.featureId ?? "")) ?? r.services ?? 0,
         })),
@@ -11540,8 +11569,8 @@ export default function GISCanvasPage() {
           <div className="gl-head">
             <strong>Gas levels</strong>
             <span className="gl-low">
-              {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar `}
-              {`at ${gasLevelsResult.lowest[0]}`}
+              {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
+              {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}
             </span>
             <button className="gl-x" onClick={() => setGasLevelsResult(null)}>&times;</button>
           </div>
@@ -11549,7 +11578,11 @@ export default function GISCanvasPage() {
             <table className="gl-tbl">
               <thead>
                 <tr>
-                  <th>Run</th><th>To</th>
+                  {/* The main length, then the two ends it runs
+                      between. "Main" rather than "Run" because G1 is a
+                      length of gas main, not a node \u2014 the nodes are
+                      G0 and the A-numbers. */}
+                  <th>Main</th><th>From</th><th>To</th>
                   <th className="num">Bore</th><th className="num">Length</th>
                   <th className="num">Tees</th><th className="num">Flow</th>
                   <th className="num">Drop</th><th className="num">Pressure</th>
@@ -11559,7 +11592,8 @@ export default function GISCanvasPage() {
                 {gasLevelsResult.legs.map((l) => (
                   <tr key={l.id}>
                     <td>{l.id}</td>
-                    <td>{l.to}</td>
+                    <td>{l.from ?? "\u2014"}</td>
+                    <td>{l.to ?? "\u2014"}</td>
                     <td className="num">{l.boreMM.toFixed(1)}</td>
                     <td className="num">
                       {l.metres.toFixed(1)}

@@ -11649,6 +11649,34 @@ export default function GISCanvasPage() {
         <div className="gl-panel" role="dialog" aria-label="Gas levels">
           <div className="gl-head">
             <strong>Gas levels</strong>
+            {/* The verdict, and the lines it was judged against.
+
+                Nothing highlighted is the ordinary result on a design
+                that holds up, and it reads exactly like a check that
+                did not run. Saying so turns silence into an answer, and
+                naming the thresholds lets somebody see that the limit
+                they set in Admin is the one being applied. */}
+            {(() => {
+              const min = gasLevelsResult.minMBar;
+              const amberAt = min + (sourceOf(gasLevelsResult) - min)
+                * (1 - (gasLevelsResult.amberPct ?? 80) / 100);
+              const bad = gasLevelsResult.legs.filter((l) => l.at < min || l.overCapacity);
+              const warn = gasLevelsResult.legs.filter((l) =>
+                !(l.at < min || l.overCapacity) && l.at < amberAt);
+              return (
+                <span className={`gl-verdict ${bad.length ? "bad" : warn.length ? "warn" : "ok"}`}>
+                  {bad.length
+                    ? `${bad.length} out of tolerance`
+                    : warn.length
+                      ? `${warn.length} close to the limit`
+                      : `All ${gasLevelsResult.legs.length} within tolerance`}
+                  <span className="gl-thresh">
+                    {` \u00b7 red below ${min.toFixed(2)}, `}
+                    {`amber below ${amberAt.toFixed(2)} mbar`}
+                  </span>
+                </span>
+              );
+            })()}
             <span className="gl-low">
               {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
               {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}
@@ -12401,6 +12429,11 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gl-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
   border-bottom: 1px solid var(--border); font-size: 13px; }
 .gl-low { color: var(--muted); font-size: 12px; margin-left: auto; }
+.gl-verdict { font: 700 11.5px inherit; padding: 3px 9px; border-radius: 20px; }
+.gl-verdict.ok { background: var(--ok-bg); color: var(--ok-text); }
+.gl-verdict.warn { background: var(--warn-bg); color: var(--warn-text); }
+.gl-verdict.bad { background: var(--err-bg); color: var(--err-text); }
+.gl-thresh { font-weight: 500; opacity: .8; }
 .gl-x { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer;
   color: var(--muted); padding: 0 4px; }
 .gl-body { overflow: auto; padding: 4px 12px 12px; }

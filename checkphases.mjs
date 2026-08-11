@@ -15,6 +15,8 @@
    database, and if the two disagree the fixture is the one that is
    wrong. */
 import { planningMock } from "./src/lib/mockData.js";
+import { teamMayTake } from "./src/features/calloffs/assignments.js";
+import { phaseUtilityNames } from "./src/features/planning/timeline.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -62,6 +64,46 @@ if (at(service, "Reinstatement") !== -1
 for (const [what, seq] of [["mains", mains], ["service", service]]) {
   for (const phase of ["Excavation", "Reinstatement"]) {
     if (!seq.includes(phase)) fail(`${what} call-off has no ${phase}`);
+  }
+}
+
+// ── A gang can only be given work it holds the craft for ──
+//
+// The rule skipped the check when the task type had no craft set, so a
+// phase nobody had configured could be dropped on any gang at all —
+// the opposite of what the rule is for, and invisible, because it looks
+// like the drop simply worked.
+{
+  const team = { Team_ID: 1, Team_Name: "MU Gang 1", Active: true };
+  const base = {
+    teamCrafts: [{ Team_ID: 1, Craft_ID: 1 }],
+    teamRegions: [{ Team_ID: 1, Region_ID: 1 }],
+    regionId: 1,
+  };
+  if (teamMayTake(team, { ...base, craftId: 1, taskName: "Excavation and Lay" })) {
+    fail("a gang holding the craft was refused");
+  }
+  if (!teamMayTake(team, { ...base, craftId: 4, taskName: "Jointing" })) {
+    fail("a gang without the craft was allowed");
+  }
+  if (!teamMayTake(team, { ...base, craftId: null, taskName: "Laying" })) {
+    fail("a phase with no craft set was allowed onto any gang");
+  }
+}
+
+// ── Reinstatement carries no utility dots ──
+//
+// It puts the ground back, and what was laid in it does not matter.
+// Null means "all of them", which is what was being drawn; an empty
+// list means none.
+{
+  const r = phaseUtilityNames("Reinstatement");
+  if (r === null || r.length) fail("reinstatement still carries utility dots");
+  if (phaseUtilityNames("Jointing")?.join() !== "electric") {
+    fail("jointing is no longer electric-only");
+  }
+  if (phaseUtilityNames("Excavation and Lay") !== null) {
+    fail("excavation stopped showing the utilities in the trench");
   }
 }
 

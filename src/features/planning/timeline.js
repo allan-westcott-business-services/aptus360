@@ -246,6 +246,15 @@ export function phaseColours(taskTypes = []) {
 export function phaseUtilityNames(phaseName) {
   const n = String(phaseName || "").toLowerCase().trim();
   if (n.startsWith("joint")) return ["electric"];
+  /* Reinstatement puts the ground back, and it does not matter what was
+     laid in it. The dots said "electric, gas and water" on every
+     reinstatement bar, which is true of the trench and irrelevant to the
+     work \u2014 colour that carries no information is colour a reader has to
+     learn to ignore.
+
+     An empty list, not null: null means "everything", which is exactly
+     what was being drawn. */
+  if (n.startsWith("reinstat")) return [];
   return null;
 }
 

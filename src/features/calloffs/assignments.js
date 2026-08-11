@@ -117,7 +117,21 @@ export function teamMayTake(team, opts = {}) {
     }
   }
 
-  if (craftId != null) {
+  /* A phase with no craft set is refused, not waved through.
+
+     The rule used to skip the check when craftId was null, so a task
+     type nobody had given a craft to could be dropped on any gang at
+     all \u2014 which is the opposite of what the rule is for, and invisible
+     because it looks like the drop simply worked.
+
+     A missing craft is a gap in Admin rather than a fact about the
+     work, so the refusal says where to fix it. */
+  if (craftId == null) {
+    return `${taskName || "That phase"} has no craft set, so there is no way `
+      + "to tell which gangs can do it. Set one on the task type in Admin.";
+  }
+
+  {
     const holds = teamCrafts.some((x) =>
       Number(x.Team_ID) === Number(team.Team_ID)
       && Number(x.Craft_ID) === Number(craftId));

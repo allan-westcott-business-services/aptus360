@@ -102,6 +102,24 @@ export default function FeatureEditor({
     return [...byBore.values()].sort((a, b) =>
       Number(a.Diameter_mm) - Number(b.Diameter_mm));
   })();
+
+  /* Which option is showing, matched on bore rather than on the id.
+
+     The picker keeps one rule per bore and the build stores whichever
+     rule the load happened to select \u2014 the same 63mm pipe, a different
+     row. Comparing ids meant the stored value matched no option, so the
+     browser fell back to the first one and every built main read "Sized
+     by the build" however it had been sized. */
+  const gasPipeValue = (() => {
+    const id = f.Attributes?.Gas_Pipe_Size_ID;
+    if (id == null) return "";
+    const stored = (lookups?.gasPipeSizes || [])
+      .find((x) => Number(x.Gas_Pipe_Size_ID) === Number(id));
+    if (!stored) return "";
+    const match = gasPipeChoices
+      .find((x) => Number(x.Diameter_mm) === Number(stored.Diameter_mm));
+    return match ? String(match.Gas_Pipe_Size_ID) : "";
+  })();
   const pipeChoices = (lookups?.waterPipeSizes || [])
     .filter((x) => (x.Pipe_Kind ?? "main") === (isServiceLine ? "service" : "main"));
 
@@ -1160,7 +1178,7 @@ export default function FeatureEditor({
                         nothing can look up, so the pressure calculation
                         would be left guessing at the pipe. */}
                     <select id="fe-gas-pipe"
-                      value={f.Attributes.Gas_Pipe_Size_ID ?? ""}
+                      value={gasPipeValue}
                       onChange={(e) => {
                         const id = e.target.value ? Number(e.target.value) : null;
                         const row = gasPipeChoices
@@ -1189,8 +1207,7 @@ export default function FeatureEditor({
                          hand is changed against a figure rather than a
                          hunch. */
                       const row = gasPipeChoices.find((x) =>
-                        Number(x.Gas_Pipe_Size_ID)
-                          === Number(f.Attributes.Gas_Pipe_Size_ID));
+                        String(x.Gas_Pipe_Size_ID) === gasPipeValue);
                       const bits = [];
                       if (row?.Max_kW) bits.push(`Rated to ${Number(row.Max_kW)} kW`);
                       if (f.Attributes.Load_kW != null) {

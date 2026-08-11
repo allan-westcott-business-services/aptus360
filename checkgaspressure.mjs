@@ -535,6 +535,52 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* The picker shows the size that is stored, whichever rule it came
+   from.
+
+   Gas_Pipe_Size holds one row per sizing rule, so 63mm appears several
+   times. The picker keeps one row per bore; the build stores whichever
+   row the load selected. Comparing ids meant the stored value matched
+   no option, the browser fell back to the first, and every built main
+   read "Sized by the build" however it had actually been sized.
+
+   Matched on bore instead, which is what a pipe size is. */
+{
+  const all = [
+    { Gas_Pipe_Size_ID: 1, Diameter_mm: 32, Max_kW: 40, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 3, Diameter_mm: 63, Max_kW: 90, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 4, Diameter_mm: 63, Max_kW: 120, Pressure_Tier: "LP" },
+    { Gas_Pipe_Size_ID: 6, Diameter_mm: 90, Max_kW: 340, Pressure_Tier: "LP" },
+  ];
+  const byBore = new Map();
+  for (const x of all) {
+    const held = byBore.get(Number(x.Diameter_mm));
+    if (!held || Number(x.Max_kW) > Number(held.Max_kW)) {
+      byBore.set(Number(x.Diameter_mm), x);
+    }
+  }
+  const choices = [...byBore.values()]
+    .sort((a, b) => Number(a.Diameter_mm) - Number(b.Diameter_mm));
+
+  const shown = (storedId) => {
+    const stored = all.find((x) => Number(x.Gas_Pipe_Size_ID) === Number(storedId));
+    if (!stored) return "";
+    const match = choices
+      .find((x) => Number(x.Diameter_mm) === Number(stored.Diameter_mm));
+    return match ? Number(match.Diameter_mm) : "";
+  };
+
+  /* Both 63mm rules resolve to the one 63mm entry. This is the case
+     that was broken: rule 3 is not in the list, and comparing ids gave
+     nothing. */
+  if (shown(3) !== 63) fail(`a main stored as rule 3 showed "${shown(3)}", wanted 63`);
+  if (shown(4) !== 63) fail(`a main stored as rule 4 showed "${shown(4)}", wanted 63`);
+  if (shown(6) !== 90) fail("a 90mm main did not show 90mm");
+  /* An id that is no longer in the table falls back to the blank
+     option, which is honest: nothing can be said about it. */
+  if (shown(99) !== "") fail("an unknown pipe size resolved to something");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

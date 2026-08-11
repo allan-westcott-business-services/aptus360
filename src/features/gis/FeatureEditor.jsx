@@ -61,6 +61,23 @@ export default function FeatureEditor({
   /* Main or service, off the line type — the same test the network
      builder uses, so the editor offers what the build would choose. */
   const isServiceLine = /service/i.test(f.Attributes?.Line_Type || "");
+
+  /* Gas, by the same test as water. */
+  const isGas = feature.Feature_Type === "line" && !isTrench && (() => {
+    const t = lineTypes.find((x) => x.Type_Key === f.Attributes?.Line_Type);
+    return t ? t.Layer_Key === "gas" : feature.Layer_Key === "gas";
+  })();
+
+  /* The sizes for this tier, smallest first.
+
+     Low pressure only, which is the assumption the build makes too \u2014
+     nothing in the schema records a scheme's tier yet. Sorted by bore
+     rather than by label, because "125" sorts before "63" as text and a
+     size list out of order is one somebody picks the wrong row from. */
+  const gasPipeChoices = (lookups?.gasPipeSizes || [])
+    .filter((x) => (x.Pressure_Tier ?? "LP") === "LP")
+    .slice()
+    .sort((a, b) => Number(a.Diameter_mm) - Number(b.Diameter_mm));
   const pipeChoices = (lookups?.waterPipeSizes || [])
     .filter((x) => (x.Pipe_Kind ?? "main") === (isServiceLine ? "service" : "main"));
 
@@ -1109,6 +1126,59 @@ export default function FeatureEditor({
                         rebuilding will not overwrite a cable you have chosen.
                       </p>
                     )}
+                  </div>
+                ) : isGas ? (
+                  <div className="fld">
+                    <label htmlFor="fe-gas-pipe">Pipe size</label>
+                    {/* A list, not a box to type in. The build writes a
+                        Gas_Pipe_Size_ID and the levels check reads that
+                        row's bore \u2014 a size typed as free text is a label
+                        nothing can look up, so the pressure calculation
+                        would be left guessing at the pipe. */}
+                    <select id="fe-gas-pipe"
+                      value={f.Attributes.Gas_Pipe_Size_ID ?? ""}
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null;
+                        const row = gasPipeChoices
+                          .find((x) => Number(x.Gas_Pipe_Size_ID) === id);
+                        setAttr("Gas_Pipe_Size_ID")(id);
+                        /* The label travels with the id so the drawing
+                           reads without a lookup, the same as water. */
+                        setAttr("Size")(row
+                          ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
+                          : "");
+                      }}>
+                      <option value="">Sized by the build</option>
+                      {gasPipeChoices.map((x) => (
+                        <option key={x.Gas_Pipe_Size_ID} value={x.Gas_Pipe_Size_ID}>
+                          {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
+                        </option>
+                      ))}
+                    </select>
+                    {!gasPipeChoices.length ? (
+                      <p className="hint">
+                        No low pressure gas pipe sizes yet &mdash; add them in
+                        Admin &rsaquo; Gas Pipe Sizes.
+                      </p>
+                    ) : (() => {
+                      /* What this length carries, so a size changed by
+                         hand is changed against a figure rather than a
+                         hunch. */
+                      const row = gasPipeChoices.find((x) =>
+                        Number(x.Gas_Pipe_Size_ID)
+                          === Number(f.Attributes.Gas_Pipe_Size_ID));
+                      const bits = [];
+                      if (row?.Max_kW) bits.push(`Rated to ${Number(row.Max_kW)} kW`);
+                      if (f.Attributes.Load_kW != null) {
+                        bits.push(`carrying ${Number(f.Attributes.Load_kW)} kW`);
+                      }
+                      if (f.Attributes.Supplies != null) {
+                        bits.push(`${f.Attributes.Supplies} supplies beyond`);
+                      }
+                      return bits.length
+                        ? <p className="hint">{bits.join(" \u00b7 ")}</p>
+                        : null;
+                    })()}
                   </div>
                 ) : isWater ? (
                   <>

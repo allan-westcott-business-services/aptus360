@@ -46,6 +46,10 @@ const SUB_COLS = [
 const ASGN_COLS = [
   "Assignment_ID", "Submission_ID", "Task_Type_ID", "Team_ID", "Span_ID",
   "Start_Date", "End_Date", "Plot_Range", "Status",
+  /* Whether the paperwork that sends a gang to site has been raised
+     (0150). Not the status: a booking can be scheduled with no
+     instruction written yet. */
+  "Work_Instruction_Created",
   /* Which weekend halves this booking works — 0133. The board shows it
      on the panel behind a bar, and a drag has to respect it. */
   "Sat_AM", "Sat_PM", "Sun_AM", "Sun_PM",

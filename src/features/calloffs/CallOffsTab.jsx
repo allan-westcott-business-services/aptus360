@@ -5,7 +5,7 @@ import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
 import { listGis } from "../../api/gis.js";
-import { trenchGraph, routeBetween } from "../gis/mainsCallOff.js";
+import { trenchGraph } from "../gis/mainsCallOff.js";
 import { isTrenchFeature } from "../gis/snapping.js";
 import { getProject } from "../../api/projects.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -68,6 +68,7 @@ export default function CallOffsTab({ projectId }) {
   /* The drawing itself, kept so a trench section's length can be
      measured along the dig rather than typed. */
   const [gisFeatures, setGisFeatures] = useState([]);
+  const [gisLineTypes, setGisLineTypes] = useState([]);
   const [project, setProject] = useState(null);
 
   /* Today, as the picker wants it. Computed per render rather than
@@ -117,6 +118,10 @@ export default function CallOffsTab({ projectId }) {
          would be worse than one offering plots alone. */
       const gis = await listGis(projectId).catch(() => ({ features: [] }));
       setGisFeatures(gis.features || []);
+      /* The line types come back with the drawing, not from lookups.
+         Reading them from `lookups` found nothing, so every line failed
+         the trench test and no section could ever be measured. */
+      setGisLineTypes(gis.lineTypes || []);
       setSpanNodes((gis.features || [])
         .filter((f) => f.Feature_Role === "spannode" || f.Attributes?.Span_Label)
         .map((f) => ({
@@ -170,7 +175,7 @@ export default function CallOffsTab({ projectId }) {
   const lengthBetween = useCallback((fromLabel, fromKind, toLabel, toKind) => {
     if (!fromLabel || !toLabel) return null;
     const trenches = gisFeatures.filter((f) => f.Feature_Type === "line"
-      && isTrenchFeature(f, lookups?.lineTypes || []));
+      && isTrenchFeature(f, gisLineTypes));
     if (!trenches.length) return null;
 
     /* Where each end sits. A span node is a point on the drawing; a
@@ -196,10 +201,13 @@ export default function CallOffsTab({ projectId }) {
     const graph = trenchGraph(trenches, nodes);
     /* The graph node nearest each end, since a plot seed sits off the
        trench rather than on it. */
+    /* A graph point is { at, node }, not a bare coordinate. Reading it
+       as an array gave NaN for every distance, so every end resolved to
+       the first point and the length came out as zero. */
     const nearest = (pt) => {
       let best = null;
       graph.points.forEach((q, i) => {
-        const d = Math.hypot(q[0] - pt[0], q[1] - pt[1]);
+        const d = Math.hypot(q.at[0] - pt[0], q.at[1] - pt[1]);
         if (!best || d < best.d) best = { i, d };
       });
       return best;
@@ -208,16 +216,28 @@ export default function CallOffsTab({ projectId }) {
     const to = nearest(b);
     if (!from || !to || from.i === to.i) return null;
 
-    const route = routeBetween(graph, graph.idOf(from.i), graph.idOf(to.i));
-    if (!route || !route.length) return null;
-    let m = 0;
-    for (let i = 1; i < route.length; i++) {
-      const p1 = graph.points[route[i - 1]];
-      const p2 = graph.points[route[i]];
-      m += Math.hypot(p2[0] - p1[0], p2[1] - p1[1]);
+    /* Shortest path over the graph's own adjacency.
+
+       Not routeBetween: that resolves span node Feature_IDs, and an end
+       of a section is often a plot or a bare trench end with no node on
+       it. The edges already carry their length along the trench \u2014 B.m
+       minus A.m, measured down the polyline \u2014 so summing them gives
+       the dig rather than the straight line, which is the whole point
+       of routing at all. */
+    const best = new Map([[from.i, 0]]);
+    const queue = [from.i];
+    while (queue.length) {
+      const at = queue.shift();
+      for (const e of graph.adj.get(at) || []) {
+        const next = best.get(at) + e.len;
+        if (best.has(e.to) && best.get(e.to) <= next) continue;
+        best.set(e.to, next);
+        queue.push(e.to);
+      }
     }
-    return Math.round(m * 10) / 10;
-  }, [gisFeatures, plots, lookups]);
+    const m = best.get(to.i);
+    return m == null ? null : Math.round(m * 10) / 10;
+  }, [gisFeatures, gisLineTypes, plots]);
 
   /* The chosen plots as rows, in the order they appear on the project
      rather than the order they were clicked — a call-off reads better

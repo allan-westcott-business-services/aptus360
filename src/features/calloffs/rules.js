@@ -192,16 +192,33 @@ export function toItems(rows, mode) {
        what was chosen, and a section can run either kind to either
        kind. Plot-to-plot keeps the plain "12 \u2013 16" it has always had,
        because that is how a run of plots is described on site. */
+    /* Each end named for what it is, and plots put in order.
+
+       "27 \u2013 23" reads as a range that runs backwards, and does not
+       say whether 27 is a plot or a node \u2014 plot 12 and node A12 are
+       different points. "Plot 23 to Plot 27" says both.
+
+       Only plot-to-plot is reordered. A section from a span node to a
+       plot runs in the direction it was drawn, and swapping its ends
+       because one happens to be numerically smaller would describe a
+       different piece of trench. */
     Plots: String(r.Plots ?? "").trim() || (() => {
       const from = String(r.From_Plot ?? "").trim();
       const to = String(r.To_Plot ?? "").trim();
       if (!from && !to) return null;
-      const bothPlots = (r.From_Kind ?? "plot") === "plot"
-        && (r.To_Kind ?? "plot") === "plot";
-      if (bothPlots) return [from, to].filter(Boolean).join(" \u2013 ") || null;
+
+      const fromKind = r.From_Kind ?? "plot";
+      const toKind = r.To_Kind ?? "plot";
       const name = (v, kind) => (!v ? null
         : `${kind === "node" ? "Span Node" : "Plot"} ${v}`);
-      return [name(from, r.From_Kind), name(to, r.To_Kind)]
+
+      if (fromKind === "plot" && toKind === "plot" && from && to) {
+        const [a, b] = [from, to]
+          .sort((x, y) => (Number(x) - Number(y))
+            || String(x).localeCompare(String(y), undefined, { numeric: true }));
+        return `Plot ${a} to Plot ${b}`;
+      }
+      return [name(from, fromKind), name(to, toKind)]
         .filter(Boolean).join(" to ") || null;
     })(),
     D_or_P: clean(r.D_or_P),

@@ -2313,7 +2313,21 @@ function Assignments({ row }) {
                         })}
                     </div>
                   )}
-                  {draft.byUtility && !(draft.utility_ids || []).length && (
+                  {/* All three are offered because nothing says
+                      otherwise, which is not the same as the call-off
+                      covering all three. Said plainly: a gas and water
+                      call-off showing Electric here is one whose
+                      utilities were never recorded, and the fix is on
+                      the call-off rather than in this panel. */}
+                  {draft.byUtility && !(row.utility_ids || []).length && (
+                    <p className="asg-split-hint">
+                      This call-off has no utilities recorded, so every one is
+                      offered. Set them on the call-off to narrow this.
+                    </p>
+                  )}
+
+                  {draft.byUtility && !(draft.utility_ids || []).length
+                    && !!(row.utility_ids || []).length && (
                     <p className="asg-split-hint">
                       Nothing chosen &mdash; this booking would cover no utilities.
                     </p>

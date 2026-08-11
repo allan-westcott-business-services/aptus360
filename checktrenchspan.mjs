@@ -21,6 +21,7 @@
    Hence a test that walks the whole path rather than any one piece. */
 import { trenchGraph } from "./src/features/gis/mainsCallOff.js";
 import { isTrenchFeature } from "./src/features/gis/snapping.js";
+import { toItems } from "./src/features/calloffs/rules.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -85,6 +86,38 @@ else if (Math.abs(m - 180) > 0.5) {
    whole approach exists to avoid. */
 if (m != null && Math.abs(m - Math.hypot(100, 80)) < 1) {
   fail("the section was measured as the straight line, not along the dig");
+}
+
+/* How a section reads once saved.
+
+   "27 \u2013 23" is a range that runs backwards and does not say whether
+   27 is a plot or a node \u2014 plot 12 and node A12 are different points.
+   Both ends are named, and plots put in order. */
+{
+  const text = (from, fromKind, to, toKind) => toItems(
+    [{ From_Plot: from, From_Kind: fromKind, To_Plot: to, To_Kind: toKind }],
+    "Span",
+  )[0].Plots;
+
+  for (const [a, b] of [["27", "23"], ["23", "27"]]) {
+    const got = text(a, "plot", b, "plot");
+    if (got !== "Plot 23 to Plot 27") {
+      fail(`plots ${a} and ${b} read as "${got}"`);
+    }
+  }
+  if (text("E0", "node", "27", "plot") !== "Span Node E0 to Plot 27") {
+    fail(`node to plot reads as "${text("E0", "node", "27", "plot")}"`);
+  }
+  /* A section from a node to a plot runs the way it was drawn. Swapping
+     its ends because one is numerically smaller would describe a
+     different piece of trench. */
+  if (text("A8", "node", "A3", "node") !== "Span Node A8 to Span Node A3") {
+    fail("a node-to-node section was reordered");
+  }
+  /* Plots compared as numbers, not as text: "9" before "10". */
+  if (text("10", "plot", "9", "plot") !== "Plot 9 to Plot 10") {
+    fail(`plots 10 and 9 read as "${text("10", "plot", "9", "plot")}"`);
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

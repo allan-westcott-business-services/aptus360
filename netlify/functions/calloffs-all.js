@@ -66,6 +66,26 @@ export default async function handler(req) {
       kids.ColumnList = cols.data || [];
     }
 
+    /* Which utilities each call-off covers (0146).
+
+       This endpoint serves the call-offs page, and it did not fetch
+       them at all \u2014 so every call-off arrived with none recorded and
+       the assignment panel offered all three utilities whatever the
+       call-off was for. The project's own call-off tab reads a
+       different endpoint, which did fetch them, which is why the two
+       screens disagreed.
+
+       Tolerated missing like the rest: a database without 0146 has no
+       such table, and a list that fails to load because of it would be
+       worse than one that cannot narrow the split. */
+    let utils = [];
+    if (ids.length) {
+      const { data } = await db.from("Call_Off_Utility")
+        .select("Submission_ID,Utility_ID").in("Submission_ID", ids)
+        .then((r) => r, () => ({ data: [] }));
+      utils = data || [];
+    }
+
     /* The site name, where the submission did not capture one.
 
        A call-off records the site as it was when raised, so a project
@@ -97,6 +117,9 @@ export default async function handler(req) {
         items: mode
           ? kids[mode].filter((k) => k.Submission_ID === s.Submission_ID)
           : [],
+        utility_ids: utils
+          .filter((u) => u.Submission_ID === s.Submission_ID)
+          .map((u) => Number(u.Utility_ID)),
       };
     });
 

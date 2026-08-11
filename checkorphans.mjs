@@ -32,6 +32,10 @@ const PENDING = new Set([
   "src/features/gis/styleTouch.js",     // set a style by looking at the drawing
   "src/features/gis/zOrder.js",         // which feature draws over which
   "src/features/projects/EditContractForm.jsx",
+  /* The gas pressure calculation, validated against a real GASWorkS
+     model but not yet on a screen. Waiting on how fittings are to be
+     supplied \u2014 they are the largest term and are not on the drawing. */
+  "src/features/gis/gasPressure.js",
 ]);
 
 function walk(dir, out = []) {

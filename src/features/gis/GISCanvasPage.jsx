@@ -9962,15 +9962,6 @@ export default function GISCanvasPage() {
                       hint="Every junction, including each service joint"
                       disabled={!circuitsFrom(features).length}
                       onClick={() => runLevelsCheck({ stopAt: "junctions" })} />
-                    {/* The gas equivalent. Disabled without a POC
-                        pressure to start from, because the whole answer
-                        is that figure less what the pipe costs. */}
-                    <MenuItem label={busy === "gaslevels"
-                      ? "Checking\u2026" : "Run Gas Levels Check"}
-                      hint="Pressure at every span node, from the gas POC"
-                      disabled={!!busy || !features.some((f) =>
-                        f.Feature_Role === "poc" && f.Layer_Key === "gas")}
-                      onClick={() => runGasLevelsCheck()} />
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
                       hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
                       disabled={!!busy}
@@ -10065,6 +10056,20 @@ export default function GISCanvasPage() {
                             hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
                             disabled={!projectId || !!busy}
                             onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
+                        )}
+                        {/* Beside the build, because it reads what the
+                            build laid: the sizes on the drawing are
+                            what each length's drop is worked out from.
+                            It was under Electric with the volt drop
+                            check, which put a gas answer behind an
+                            electric heading. */}
+                        {key === "gas" && (
+                          <MenuItem label={busy === "gaslevels"
+                            ? "Checking\u2026" : "Run Gas Levels Check"}
+                            hint="Pressure at every span node, from the gas POC's output pressure"
+                            disabled={!!busy || !features.some((f) =>
+                              f.Feature_Role === "poc" && f.Layer_Key === "gas")}
+                            onClick={() => runGasLevelsCheck()} />
                         )}
                         {key === "water" && (
                           <MenuItem label="+ Service Valve"

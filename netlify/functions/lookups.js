@@ -67,6 +67,7 @@ export default async function handler() {
         .select("Transformer_Size_ID,Label,Rating_kVA,Loop_Impedance_Ohm")
         .eq("Is_Active", true).order("Sort_Order"),
       vdSettings: db.from("Electric_VD_Setting").select("*").limit(1),
+      gasPressureSettings: db.from("Gas_Pressure_Setting").select("*").limit(1),
       /* What size of water pipe carries how many plots. Ordered by what
          they carry rather than by diameter: that is the order the sizing
          reads them in, and the two only agree while somebody keeps them

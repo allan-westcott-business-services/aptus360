@@ -207,6 +207,9 @@ const TABLES = {
   Electric_Joint:            { pk: "Joint_ID",            order: "Sort_Order" },
   House_Type_Consumption:    { pk: "Consumption_ID",      order: "Bedrooms" },
   Electric_VD_Setting:       { pk: "VD_Setting_ID",       order: "VD_Setting_ID" },
+  Gas_Pressure_Setting: {
+    pk: "Gas_Pressure_Setting_ID", order: "Gas_Pressure_Setting_ID",
+  },
   Tender_Points_Band:        { pk: "Band_ID",             order: "Sort_Order" },
   Tender_Points_Rule:        { pk: "Rule_ID",             order: "Sort_Order" },
   Base_Points_Band:          { pk: "Band_ID",             order: "Sort_Order" },

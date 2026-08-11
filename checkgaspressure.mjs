@@ -23,6 +23,7 @@
 */
 import {
   pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees, gasLevels,
+  suggestPipeChanges,
 } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
@@ -273,6 +274,56 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
     if (new Set(r.legs.map((l) => l.boreMM)).size < 2) {
       fail("every leg came out the same bore");
     }
+  }
+}
+
+/* Recommending pipe sizes, the way the electric check recommends
+   cables: apply the best single upsize, re-run, repeat.
+
+   One bigger pipe rarely clears a network failing at several nodes —
+   upsizing the spine fixes what is near it and leaves the far leg
+   short — so a single suggestion would read as a fix and not be one. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const runs = [
+    { id: "G1", fromNode: "P", endNode: "A1", fromLabel: "G0", toLabel: "A1",
+      metres: 20, services: 0, bore: 52, kw: 900 },
+    { id: "G2", fromNode: "A1", endNode: "A5", fromLabel: "A1", toLabel: "A5",
+      metres: 400, services: 14, bore: 52, kw: 300 },
+  ];
+  const sizes = [{ bore: 52, label: "63mm" }, { bore: 79, label: "90mm" },
+    { bore: 114, label: "125mm" }, { bore: 169, label: "180mm" }];
+  const common = { source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw), sizes };
+
+  const r = suggestPipeChanges({ runs, minMBar: 19, ...common });
+  if (r.error) fail(`the recommender refused a plain network: ${r.error}`);
+  else {
+    if (r.failing.length !== 2) fail(`${r.failing.length} nodes reported failing, wanted 2`);
+    if (!r.suggestions.length) fail("nothing was suggested for a network that fails");
+    if (!r.clearsAll) fail("the cascade did not clear the network");
+    /* Each step must be a real upsize, and named the way the drawing is. */
+    for (const x of r.suggestions) {
+      if (!(x.toBore > x.fromBore)) fail(`${x.runId} was told to go smaller`);
+      if (!x.from || !x.to) fail(`${x.runId} has an unnamed end`);
+    }
+    /* And it must actually hold afterwards, checked against gasLevels
+       rather than trusted \u2014 a suggestion that promises something the
+       check then disagrees with is worse than none. */
+    let after = runs;
+    for (const x of r.suggestions) {
+      after = after.map((y) => (y.id === x.runId ? { ...y, bore: x.toBore } : y));
+    }
+    const proved = gasLevels({ runs: after, ...common });
+    const lowest = Math.min(...proved.pressures.values());
+    if (lowest < 19) {
+      fail(`after every suggested change the lowest is still ${lowest.toFixed(2)} mbar`);
+    }
+  }
+
+  /* A network already inside its limit gets no advice. */
+  const fine = suggestPipeChanges({ runs, minMBar: 1, ...common });
+  if (fine.failing.length || fine.suggestions.length) {
+    fail("a passing network was given suggestions");
   }
 }
 

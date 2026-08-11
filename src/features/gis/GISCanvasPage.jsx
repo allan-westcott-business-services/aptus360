@@ -73,7 +73,7 @@ import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
-import { gasLevels, serviceTees } from "./gasPressure.js";
+import { gasLevels, serviceTees, suggestPipeChanges } from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
 } from "./easement.js";
@@ -7276,6 +7276,10 @@ export default function GISCanvasPage() {
      Reads the sizes already on the drawing rather than sizing again. A
      network that has not been built has no sizes, and the check says so
      instead of guessing at pipe nobody has chosen. */
+  /* The pressure the network starts from, for banding the table. */
+  const sourceOf = (r) => (r?.legs?.length
+    ? Math.max(...r.legs.map((l) => l.at)) : 0) || 23;
+
   /* Gas at 39.5 MJ/m³ gross, so 24 kW is 2.19 m³/h.
 
      Gross rather than net, and worth saying because the two differ by
@@ -7419,7 +7423,26 @@ export default function GISCanvasPage() {
       });
 
       if (result.error) { setError(result.error); return; }
-      setGasLevelsResult(result);
+
+      /* The limit, from Admin rather than from here. A floor that lives
+         in the code is one nobody can change when an operator asks for
+         a different one. */
+      const gs = lookups?.gasPressureSettings?.[0] || {};
+      const minMBar = Number(gs.Min_Pressure_mBar ?? 19);
+      const amberPct = Number(gs.Amber_Pct ?? 80);
+
+      /* What would fix it, worked out the same way the electric check
+         suggests cable changes: apply the best single upsize, re-run,
+         and repeat until it holds or nothing helps. */
+      const sizes = (lookups?.gasPipeSizes || [])
+        .filter((x) => Number(x.Diameter_mm) > 0)
+        .map((x) => ({ bore: Number(x.Diameter_mm) - 11, label: `${x.Diameter_mm}mm` }));
+      const advice = suggestPipeChanges({
+        runs: result.runsUsed, source: (plan.runs || [])[0]?.fromNode, sourceMBar,
+        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes,
+      });
+
+      setGasLevelsResult({ ...result, minMBar, amberPct, advice });
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -11631,8 +11654,17 @@ export default function GISCanvasPage() {
                 </tr>
               </thead>
               <tbody>
-                {gasLevelsResult.legs.map((l) => (
-                  <tr key={l.id}>
+                {gasLevelsResult.legs.map((l) => {
+                  /* Red below the limit, amber approaching it. A node at
+                     19.2 passes and will not survive the next plot being
+                     added, and a report that says nothing until it fails
+                     is one that gets acted on too late. */
+                  const min = gasLevelsResult.minMBar;
+                  const band = l.at < min ? "bad"
+                    : l.at < min + (sourceOf(gasLevelsResult) - min)
+                      * (1 - (gasLevelsResult.amberPct ?? 80) / 100) ? "warn" : "";
+                  return (
+                  <tr key={l.id} className={band}>
                     <td>{l.id}</td>
                     <td>{l.from ?? "\u2014"}</td>
                     <td>{l.to ?? "\u2014"}</td>
@@ -11646,7 +11678,8 @@ export default function GISCanvasPage() {
                     <td className="num">{l.drop.toFixed(3)}</td>
                     <td className="num">{l.at.toFixed(2)}</td>
                   </tr>
-                ))}
+                  );
+                })}
               </tbody>
             </table>
             {!!gasLevelsResult.unreached?.length && (
@@ -11657,6 +11690,43 @@ export default function GISCanvasPage() {
                 not joined to the rest.
               </p>
             )}
+            {gasLevelsResult.advice?.failing?.length > 0 && (
+              <div className="gl-advice">
+                <p className="gl-advice-h">
+                  {`${gasLevelsResult.advice.failing.length} node`}
+                  {gasLevelsResult.advice.failing.length === 1 ? " is" : "s are"}
+                  {` below ${gasLevelsResult.minMBar} mbar.`}
+                </p>
+                {gasLevelsResult.advice.suggestions?.length ? (
+                  <>
+                    <p className="gl-note">
+                      {gasLevelsResult.advice.clearsAll
+                        ? "These changes together bring it inside the limit:"
+                        : "These help but do not clear it \u2014 the design needs "
+                          + "looking at rather than resizing:"}
+                    </p>
+                    <ul className="gl-fixes">
+                      {gasLevelsResult.advice.suggestions.map((x) => (
+                        <li key={x.runId}>
+                          <strong>{x.runId}</strong>
+                          {` ${x.from} to ${x.to}: `}
+                          {`${x.fromBore}mm bore \u2192 ${x.sizeLabel}`}
+                          <span className="gl-fit">
+                            {` \u00b7 lowest becomes ${x.lowestAfter.toFixed(2)} mbar`}
+                          </span>
+                        </li>
+                      ))}
+                    </ul>
+                  </>
+                ) : (
+                  <p className="gl-note">
+                    No single change of pipe size clears it. The route or the
+                    point of connection is what needs revisiting.
+                  </p>
+                )}
+              </div>
+            )}
+
             <p className="gl-note">
               Lengths include an allowance for each service tee, counted off the
               drawing. Pressures are within about 1.5% of GASWorkS on the design
@@ -12316,6 +12386,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   letter-spacing: .04em; position: sticky; top: 0; background: var(--white); }
 .gl-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .gl-fit { color: var(--muted); }
+.gl-tbl tr.bad td { background: var(--err-bg); color: var(--err-text); font-weight: 700; }
+.gl-tbl tr.warn td { background: var(--warn-bg); color: var(--warn-text); }
+.gl-advice { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
+.gl-advice-h { font: 700 12px inherit; color: var(--err-text); margin: 0 0 4px; }
+.gl-fixes { margin: 6px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }
+
 .gl-note { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 8px 0 0; }
 
 .gco-utils { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;

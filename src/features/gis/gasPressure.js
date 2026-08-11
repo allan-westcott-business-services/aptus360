@@ -334,6 +334,10 @@ export function gasLevels({
 
   return {
     pressures: walked.pressures,
+    /* The runs exactly as they were measured, so a suggestion is worked
+       out against the same network rather than one rebuilt from
+       different assumptions. */
+    runsUsed: runs,
     legs,
     unreached: walked.unreached,
     lowest: [...walked.pressures.entries()]
@@ -346,5 +350,136 @@ export function gasLevels({
       const leg = segments.find((s) => String(s.to) === worst[0]);
       return leg?.run?.toLabel ?? null;
     })(),
+  };
+}
+
+/* What would bring a failing node back inside its limit.
+
+   A node fails because of everything between it and the origin, so the
+   fix is rarely at the node that reports it. Upsizing the last length
+   may not clear it, and upsizing an early one clears every node beyond
+   it at once. The useful answer is the cheapest change that clears
+   everything, not the first change that clears something.
+
+   The physics is not repeated here. gasLevels already works out the
+   pressures given the sizes on the runs, and a scenario is that same
+   function called again with one size swapped \u2014 anything else would be
+   a second implementation of the sum, and the two would drift, which is
+   how a suggestion comes to promise something the check then disagrees
+   with. Deliberately the same approach as suggestCableChanges.
+
+   Tried smallest change first, nearest the origin first: a bigger pipe
+   early is usually cheaper than several bigger pipes late, and it is
+   the one that clears the most nodes. */
+export function suggestPipeChanges({
+  runs = [], source, sourceMBar, flowFor, minMBar,
+  sizes = [], teeDiameters = TEE_DIAMETERS, maxSuggestions = 4,
+} = {}, opts = {}) {
+  const base = gasLevels({ runs, source, sourceMBar, flowFor, teeDiameters }, opts);
+  if (base.error) return { error: base.error };
+
+  const failing = (r) => [...r.pressures.entries()].filter(([, p]) => p < minMBar);
+  const bad = failing(base);
+  if (!bad.length) return { ok: true, failing: [], suggestions: [] };
+
+  /* Sizes smallest first, by bore, which is the property that orders
+     them \u2014 a label sorts "125" before "63" as text. */
+  const ladder = sizes
+    .filter((x) => Number(x.bore) > 0)
+    .slice()
+    .sort((a, b) => Number(a.bore) - Number(b.bore));
+  if (ladder.length < 2) {
+    return { error: "The gas pipe table has too few sizes to suggest a change." };
+  }
+
+  /* The runs on the way to a failing node, nearest the origin first. A
+     run feeding two failing nodes is worth changing once. */
+  const onPathTo = (target, from = runs) => {
+    const byTo = new Map(from.map((r) => [String(r.endNode), r]));
+    const path = [];
+    let at = String(target);
+    const guard = new Set();
+    while (byTo.has(at) && !guard.has(at)) {
+      guard.add(at);
+      const r = byTo.get(at);
+      path.unshift(r);
+      at = String(r.fromNode);
+    }
+    return path;
+  };
+
+  /* A cascade, not a list of alternatives.
+
+     One bigger pipe rarely clears a network that fails at several
+     nodes: upsizing the spine fixes the nodes near it and leaves the
+     far leg still short. So the best single change is found, applied,
+     and the search run again on the result \u2014 giving a set of changes
+     that together bring the network inside its limit, in the order they
+     do the most good.
+
+     Capped, because a network that needs more changes than this is not
+     a sizing problem: it is a design that needs looking at, and a list
+     of nine upsizes reads as a fault in the tool. */
+  let current = runs;
+  let remaining = bad;
+  const suggestions = [];
+
+  while (remaining.length && suggestions.length < maxSuggestions) {
+    const onPath = new Set();
+    for (const [node] of remaining) {
+      for (const r of onPathTo(node, current)) onPath.add(String(r.id));
+    }
+
+    let best = null;
+    for (const r of current) {
+      if (!onPath.has(String(r.id))) continue;
+      const now = ladder.findIndex((x) => Number(x.bore) === Number(r.bore));
+      for (let i = now + 1; i < ladder.length; i++) {
+        const bigger = ladder[i];
+        const swapped = current.map((x) =>
+          (String(x.id) === String(r.id) ? { ...x, bore: bigger.bore } : x));
+        const after = gasLevels(
+          { runs: swapped, source, sourceMBar, flowFor, teeDiameters }, opts);
+        if (after.error) continue;
+        const left = failing(after);
+        if (left.length >= remaining.length) continue;
+        const cleared = remaining.length - left.length;
+        /* Most cleared, then the smaller pipe: the cheapest change that
+           does the most. */
+        if (!best || cleared > best.cleared
+          || (cleared === best.cleared && bigger.bore < best.bigger.bore)) {
+          best = { run: r, bigger, cleared, left, after, swapped };
+        }
+        break;   /* the smallest size of this run that helps */
+      }
+    }
+
+    if (!best) break;   /* nothing left that any single upsize improves */
+
+    suggestions.push({
+      runId: best.run.id,
+      from: best.run.fromLabel ?? String(best.run.fromNode),
+      to: best.run.toLabel ?? String(best.run.endNode),
+      fromBore: best.run.bore,
+      toBore: best.bigger.bore,
+      sizeLabel: best.bigger.label ?? `${best.bigger.bore}mm bore`,
+      clears: best.cleared,
+      stillFailing: best.left.length,
+      lowestAfter: [...best.after.pressures.values()].reduce((a, b) => Math.min(a, b)),
+    });
+    current = best.swapped;
+    remaining = best.left;
+  }
+
+  return {
+    ok: true,
+    failing: bad.map(([node, mbar]) => ({ node, mbar })),
+    suggestions,
+    /* Whether the cascade actually gets there. A set of changes that
+       leaves nodes short is still worth showing \u2014 it is progress, and
+       hiding it would leave somebody with a failing network and no
+       indication of what helps \u2014 but it must not read as a fix. */
+    clearsAll: remaining.length === 0,
+    stillFailing: remaining.map(([node, mbar]) => ({ node, mbar })),
   };
 }

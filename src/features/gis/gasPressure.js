@@ -122,6 +122,71 @@ export function pipeDrop({
   return f * ((lengthM + fittingsM) / d) * (rho * v * v / 2) / 100;
 }
 
+/* Service tees on a length of main.
+
+   A tee is where a service pipe meets a main. There is no Service Tee
+   object and there does not need to be: the drawing already knows, the
+   same way it knows where a span node falls — a service end sitting on
+   a main is a connection.
+
+   ── Why derived rather than counted by hand ──
+
+   The GASWorkS model carried 15 fittings against 72 dwellings, on
+   pipes that do not correspond to where the services actually are: one
+   pipe with nine customers has one fitting, another with five has
+   none, and a pipe with no customers has one. Whatever those 15 were,
+   they were not service tees. Counting from the drawing is both more
+   faithful to the ground and impossible to forget to update when a
+   service moves.
+
+   ── The tolerance ──
+
+   CONNECT_M, the same distance the rest of the drawing treats as
+   joined. Tighter and a service drawn a centimetre short stops being a
+   tee; looser and a service passing near a main is counted as meeting
+   it.
+
+   Only the service's ends are considered. A service crossing a main on
+   its way somewhere else is not teed into it, and counting the crossing
+   would add a fitting nobody installs. */
+export function serviceTees({
+  mains = [], services = [], toleranceM = 0.25,
+} = {}) {
+  const near = (p, a, b) => {
+    /* Distance from p to the segment a-b. */
+    const vx = b[0] - a[0], vy = b[1] - a[1];
+    const wx = p[0] - a[0], wy = p[1] - a[1];
+    const len2 = vx * vx + vy * vy;
+    const t = len2 ? Math.max(0, Math.min(1, (wx * vx + wy * vy) / len2)) : 0;
+    return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
+  };
+
+  const counts = new Map(mains.map((m) => [String(m.id), 0]));
+  for (const svc of services) {
+    const geom = svc.geometry || [];
+    if (geom.length < 2) continue;
+    /* Both ends: a service runs main to plot, and which end was drawn
+       first is not something to depend on. */
+    for (const end of [geom[0], geom[geom.length - 1]]) {
+      let best = null;
+      for (const m of mains) {
+        const g = m.geometry || [];
+        for (let i = 1; i < g.length; i++) {
+          const d = near(end, g[i - 1], g[i]);
+          if (d <= toleranceM && (!best || d < best.d)) best = { id: String(m.id), d };
+        }
+      }
+      /* The nearest main only. A tee joins one main, and a service end
+         at a junction of two would otherwise be counted twice. */
+      if (best) {
+        counts.set(best.id, (counts.get(best.id) ?? 0) + 1);
+        break;
+      }
+    }
+  }
+  return counts;
+}
+
 /* Pressure at every node, walking out from the source.
 
    `segments` are {from, to, flowM3h, boreMM, lengthM, fittingsM}. The

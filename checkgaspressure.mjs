@@ -22,7 +22,7 @@
      + density at operating pressure           0.985  <- this
 */
 import {
-  pipeDrop, boreFor, frictionFactor, nodePressures,
+  pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees,
 } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
@@ -159,6 +159,46 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   if (!r.unreached.includes("8") || !r.unreached.includes("9")) {
     fail("a detached run was not reported as unreached");
   }
+}
+
+/* Service tees, counted off the drawing.
+ 
+   The model's own 15 fittings did not correspond to where the services
+   are — one pipe with nine customers had one, another with five had
+   none, and a pipe with no customers had one. So they are derived
+   instead, and these are the cases that decide whether the derivation
+   is trustworthy. */
+{
+  const mains = [
+    { id: "M1", geometry: [[0, 0], [100, 0]] },
+    { id: "M2", geometry: [[100, 0], [200, 0]] },
+  ];
+  const stub = (x, y) => ({ geometry: [[x, y], [x, y + 10]] });
+  const counts = serviceTees({
+    mains,
+    services: [
+      stub(20, 0),        // squarely on M1
+      stub(50, 0.1),      // 100mm off, within the joining tolerance
+      stub(150, 0),       // on M2
+      stub(60, 5),        // five metres away: not a tee
+      /* Crosses M1 without ending on it. A service passing over a main
+         on its way elsewhere is not teed into it, and counting the
+         crossing would add a fitting nobody installs. */
+      { geometry: [[30, -20], [30, 20]] },
+    ],
+  });
+  if (counts.get("M1") !== 2) fail(`M1 got ${counts.get("M1")} tees, wanted 2`);
+  if (counts.get("M2") !== 1) fail(`M2 got ${counts.get("M2")} tees, wanted 1`);
+
+  /* A service ending where two mains meet joins one of them, not both. */
+  const junction = serviceTees({ mains, services: [stub(100, 0)] });
+  const total = [...junction.values()].reduce((a, b) => a + b, 0);
+  if (total !== 1) fail(`a service at a junction of two mains counted ${total} times`);
+
+  /* And nothing silly on degenerate input. */
+  if (serviceTees({}).size !== 0) fail("no mains produced counts");
+  const oneNode = serviceTees({ mains, services: [{ geometry: [[20, 0]] }] });
+  if ([...oneNode.values()].some((n) => n)) fail("a one-point service counted as a tee");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

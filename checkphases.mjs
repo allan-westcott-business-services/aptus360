@@ -86,8 +86,13 @@ for (const [what, seq] of [["mains", mains], ["service", service]]) {
   if (!teamMayTake(team, { ...base, craftId: 4, taskName: "Jointing" })) {
     fail("a gang without the craft was allowed");
   }
-  if (!teamMayTake(team, { ...base, craftId: null, taskName: "Laying" })) {
-    fail("a phase with no craft set was allowed onto any gang");
+  /* A phase with no craft is allowed, because Task_Type can hold only
+     one craft and ours are done by several. Refusing here blocked every
+     Excavation & Lay drag on the board. The real fix is a craft that
+     knows its work type and utilities \u2014 until then this must not
+     pretend to judge. */
+  if (teamMayTake(team, { ...base, craftId: null, taskName: "Laying" })) {
+    fail("a phase with no craft was refused, blocking legitimate work");
   }
 }
 

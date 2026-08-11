@@ -117,21 +117,21 @@ export function teamMayTake(team, opts = {}) {
     }
   }
 
-  /* A phase with no craft set is refused, not waved through.
+  /* No craft on the task type means the check cannot run, and the drop
+     is allowed.
 
-     The rule used to skip the check when craftId was null, so a task
-     type nobody had given a craft to could be dropped on any gang at
-     all \u2014 which is the opposite of what the rule is for, and invisible
-     because it looks like the drop simply worked.
+     This was briefly a refusal, which was wrong. Task_Type holds a
+     single Craft_ID, so the model can say "Excavation & Lay is done by
+     craft X" and no more. Ours is done by three \u2014 Multi Utility Mains,
+     Multi Utility Service and Electric Only \u2014 and which one applies
+     depends on the call-off's work type and its utilities. So the craft
+     is left unset because there is no one right answer to put there,
+     and refusing blamed Admin for something Admin cannot fix.
 
-     A missing craft is a gap in Admin rather than a fact about the
-     work, so the refusal says where to fix it. */
-  if (craftId == null) {
-    return `${taskName || "That phase"} has no craft set, so there is no way `
-      + "to tell which gangs can do it. Set one on the task type in Admin.";
-  }
-
-  {
+     Until a craft can be matched on work type and utilities, this
+     allows what it cannot judge rather than blocking work that is
+     perfectly legitimate. */
+  if (craftId != null) {
     const holds = teamCrafts.some((x) =>
       Number(x.Team_ID) === Number(team.Team_ID)
       && Number(x.Craft_ID) === Number(craftId));

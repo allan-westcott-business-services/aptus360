@@ -58,14 +58,14 @@ import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
 import { find as findFeatures, strays, gaps } from "./find.js";
-import { planSpanNodes, plantLabel } from "./spanNodes.js";
+import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import {
-  gasMainRuns, diversityTable, diversityFor,
+  gasMainRuns,
 } from "./gasNetwork.js";
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
@@ -5910,7 +5910,17 @@ export default function GISCanvasPage() {
   async function placeSpanNodes() {
     const trenches = features.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
-    const plant = features.find((f) => plantLabel(f));
+    /* Every utility's origin, not the first plant on the drawing.
+
+       `features.find` returned whichever came first, so a site with a
+       substation and a gas POC gave electric its E0 and left gas to be
+       numbered as an ordinary span — which is how a generic A-number
+       ended up on a gas POC.
+
+       Substation first, so the A-numbers count outward from it. */
+    const origins = [...originsOf(features).values()].map((o) => o.feature);
+    const plant = origins.sort((a, b) =>
+      (a.Feature_Role === "substation" ? -1 : 0) - (b.Feature_Role === "substation" ? -1 : 0));
 
     /* The meters, so a trench with one on its end is recognised as a
        service and skipped. Nothing is placed where a service joins a
@@ -5955,6 +5965,28 @@ export default function GISCanvasPage() {
       let moved = 0;
       let doneCount = 0;
       let stopped = false;
+
+      /* Name the origins on the drawing.
+
+         E0, G0 and W0 are what a levels check counts from and what a
+         call-off names a run against, but nothing had ever written them
+         onto the plant \u2014 the labels existed only in the code, so the
+         drawing showed a substation and a gas POC with no origin marked
+         and the first junction reading A1 as though it were the start.
+
+         Written here because this is the run that decides the
+         numbering: the origins and the spans have to agree, and doing
+         them together is the only way they cannot drift. */
+      for (const [, origin] of originsOf(features)) {
+        const f = origin.feature;
+        if (f.Attributes?.Span_Label === origin.label) continue;
+        await bulkUpdateFeatures(projectId, [{
+          Feature_ID: f.Feature_ID,
+          Label: origin.label,
+          Attributes: { ...f.Attributes, Span_Label: origin.label, Span_Seq: 0 },
+        }]);
+        moved += 1;
+      }
 
       for (const nd of plan.nodes) {
         /* Stopping part-way is safe here, as it is for Auto Service: a
@@ -7244,6 +7276,14 @@ export default function GISCanvasPage() {
      Reads the sizes already on the drawing rather than sizing again. A
      network that has not been built has no sizes, and the check says so
      instead of guessing at pipe nobody has chosen. */
+  /* Gas at 39.5 MJ/m³ gross, so 24 kW is 2.19 m³/h.
+
+     Gross rather than net, and worth saying because the two differ by
+     17% \u2014 which at the square of flow is about 37% of the pressure
+     drop. Net (33.6) would read as the more conservative choice; gross
+     is what the meter and the operator quote. */
+  const kwToM3h = (kw) => (Number(kw) || 0) * 3600 / 39500;
+
   async function runGasLevelsCheck() {
     if (!projectId) return;
     setBusy("gaslevels");
@@ -7284,7 +7324,6 @@ export default function GISCanvasPage() {
         tier: "LP",
       });
 
-      const divTable = diversityTable(lookups?.gasDiversity || []);
       const result = gasLevels({
         runs: (plan.runs || []).map((r, i) => ({
           ...r,
@@ -7294,14 +7333,18 @@ export default function GISCanvasPage() {
         })),
         source: (plan.runs || [])[0]?.fromNode,
         sourceMBar,
-        /* Diversified once on everything downstream, not the sum of the
-           branches' diversified figures \u2014 forty houses diversify
-           harder than two lots of twenty. */
-        flowFor: (r) => {
-          const row = diversityFor(divTable, r.metersBeyond ?? r.meters ?? 0);
-          const kw = row?.kw ?? 0;
-          return kw * 3600 / 39500;   // kW to m3/h at 39.5 MJ/m3
-        },
+        /* The load the build already worked out for this run: what lies
+           beyond it, summed and multiplied by the diversity factor for
+           how many supplies that is.
+
+           Read off the run rather than recomputed. Doing the lookup
+           again here got it wrong \u2014 it asked the table for a `kw`
+           field that does not exist, so every flow came back zero and
+           every pressure stayed at the POC's. The build already applies
+           the factor per node against what is beyond that node, which
+           is the reading the standard wants and the one that gets the
+           spine and its legs right. */
+        flowFor: (r) => kwToM3h(r.kw ?? 0),
       });
 
       if (result.error) { setError(result.error); return; }

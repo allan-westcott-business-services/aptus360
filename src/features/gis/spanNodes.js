@@ -37,11 +37,52 @@ export const PLANT = {
   pumping: { role: "pumping", layer: "water", label: "W0" },
 };
 
+/* Where a utility is measured from when its plant is not there.
+
+   Gas is measured from the governor, but a site fed at low pressure
+   from an existing main has no governor \u2014 the POC is the origin. The
+   same for water without a pumping station. Electric is measured from
+   the substation, which is always drawn, so its POC is not a fallback:
+   the incomer runs POC to substation and the network starts at the
+   substation.
+
+   Without this a gas POC matched nothing and took a generic A-number,
+   which put the origin of the gas network in the middle of the span
+   numbering and left the levels check with nothing to start from. */
+const STANDS_IN = { gas: "governor", water: "pumping" };
+
 export function plantLabel(feature) {
   for (const p of Object.values(PLANT)) {
     if (feature?.Feature_Role === p.role) return p.label;
   }
   return null;
+}
+
+/* The origin for each utility, and what it is called.
+
+   One per utility rather than one per site: a site has a substation and
+   a gas POC and a water POC, and picking whichever came first in the
+   feature list gave one utility an origin and left the others to be
+   numbered as spans.
+
+   Plant wins over a POC where both are drawn \u2014 a governor and a gas
+   POC on one site are two different points, and the network starts at
+   the governor. */
+export function originsOf(features = []) {
+  const out = new Map();
+  for (const p of Object.values(PLANT)) {
+    const plant = features.find((f) => f.Feature_Role === p.role);
+    if (plant) out.set(p.layer, { feature: plant, label: p.label });
+  }
+  for (const [layer, role] of Object.entries(STANDS_IN)) {
+    if (out.has(layer)) continue;
+    const poc = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === layer);
+    if (poc) {
+      const p = Object.values(PLANT).find((x) => x.role === role);
+      out.set(layer, { feature: poc, label: p.label, standingIn: true });
+    }
+  }
+  return out;
 }
 
 /* Every point where trenches meet or stop.
@@ -173,7 +214,14 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
   const serviceIds = opts.serviceIds ?? servicesAmong(trenches, opts);
   const mains = trenches.filter((t) => !serviceIds.has(t.Feature_ID));
 
-  const plantAt = (plant?.Geometry || [])[0];
+  /* Every origin, not one. `plant` may be a single feature (as it was)
+     or a list of them, so a site with a substation and a gas POC gets a
+     node at neither rather than at whichever was found first. */
+  const plantList = Array.isArray(plant) ? plant : [plant].filter(Boolean);
+  const plantPoints = plantList
+    .map((f) => (f?.Geometry || [])[0])
+    .filter(Boolean);
+  const plantAt = plantPoints[0];
   const points = junctionsOf(mains, opts);
   if (!points.length) return { error: "No trenches to place span nodes on." };
 
@@ -191,7 +239,10 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
        the end of a run; two is a bend. */
     const arms = p.ends + p.through;
     if (arms !== 1 && arms < 3) return false;
-    if (plantAt && dist(p.at, plantAt) <= (opts.plantM ?? 2.0)) return false;
+    /* Any origin, not just the first. A point on the gas POC is G0 and
+       must not also take an A-number, which is what happened when only
+       the substation was checked. */
+    if (plantPoints.some((q) => dist(p.at, q) <= (opts.plantM ?? 2.0))) return false;
     return true;
   });
 
@@ -257,9 +308,15 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
     }
   }
 
-  /* From the plant, or from whichever point is furthest from everything
-     if there is no plant yet — a drawing without a substation should
-     still number sensibly rather than refuse. */
+  /* From the first origin given, or from whichever point is furthest
+     from everything if there is no plant yet — a drawing without a
+     substation should still number sensibly rather than refuse.
+
+     One root even where there are several origins: A-numbers run
+     outward across the whole dig, and numbering each utility's network
+     separately would give two A3s on one drawing. Which origin they
+     count from decides only the order, and the caller puts the
+     substation first. */
   let root = 0;
   if (plantAt) {
     let best = Infinity;

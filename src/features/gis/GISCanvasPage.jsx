@@ -11695,7 +11695,11 @@ export default function GISCanvasPage() {
                 </span>
               );
             })()}
+            {/* The line it is being judged against, on screen rather
+                than in Admin. "Nothing is red" and "the limit is not
+                what I set" look the same until the figure is shown. */}
             <span className="gl-low">
+              {`red below ${gasLevelsResult.minMBar} mbar \u00b7 `}
               {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
               {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}
             </span>
@@ -11761,6 +11765,22 @@ export default function GISCanvasPage() {
                 not joined to the rest.
               </p>
             )}
+            {/* A pass says so.
+
+                Nothing was shown when every node held up, which reads
+                exactly like a check that has not run or a feature that
+                is missing — and it is the reason the suggestions looked
+                absent when in fact there was nothing to suggest. The
+                verdict states the limit it was judged against, so a
+                pass can be told from a limit nobody set. */}
+            {!gasLevelsResult.advice?.failing?.length && (
+              <p className="gl-pass">
+                {`\u2713 Every node holds above ${gasLevelsResult.minMBar} mbar `}
+                {`\u2014 lowest is ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
+                {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}.
+              </p>
+            )}
+
             {gasLevelsResult.advice?.failing?.length > 0 && (
               <div className="gl-advice">
                 <p className="gl-advice-h">
@@ -12464,6 +12484,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gl-fit { color: var(--muted); }
 .gl-tbl tr.bad td { background: var(--err-bg); color: var(--err-text); font-weight: 700; }
 .gl-tbl tr.warn td { background: var(--warn-bg); color: var(--warn-text); }
+.gl-pass { font-size: 12px; color: var(--ok-text); background: var(--ok-bg);
+  border-radius: 7px; padding: 7px 10px; margin: 10px 0 0; }
 .gl-advice { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
 .gl-advice-h { font: 700 12px inherit; color: var(--err-text); margin: 0 0 4px; }
 .gl-fixes { margin: 6px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }

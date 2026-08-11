@@ -7322,7 +7322,49 @@ export default function GISCanvasPage() {
         diversity: lookups?.gasDiversity || [],
         diversityOperators: lookups?.gasDiversityOperators || [],
         tier: "LP",
+        /* The plot behind each gas meter, which is where the load is.
+
+           Without this every meter reads as carrying nothing: the load
+           is on the plot, not on the meter, and a service with no load
+           is skipped before it can add to a node. So every run came
+           back at 0 kW, every flow at 0 m3/h, and every length sized to
+           the smallest pipe in the table \u2014 which is why the bore read
+           52.0 the whole way down.
+
+           The gas build passes this. The check has to pass the same
+           thing or it is measuring a different network. */
+        plotById: (id) => plotList.find((p) => p.plot_id === id),
       });
+
+      /* Said plainly, and said why.
+
+         A network carrying no load is not a network at 23 mbar
+         throughout; it is a question that has not been answered, and a
+         table of identical figures reads as an answer. The build
+         already works out which of the three things went wrong, so the
+         message names it rather than leaving somebody to guess. */
+      const carried = (plan.runs || []).reduce((t, r) => t + (Number(r.kw) || 0), 0);
+      if (!carried) {
+        const why = [];
+        if (plan.noLoad?.length) {
+          why.push(`${plan.noLoad.length} plot`
+            + `${plan.noLoad.length === 1 ? " has" : "s have"} no gas load set`);
+        }
+        if (plan.unattachedServices?.length) {
+          why.push(`${plan.unattachedServices.length} service trench`
+            + `${plan.unattachedServices.length === 1 ? "" : "es"} `
+            + "do not reach a meter");
+        }
+        if (plan.strandedMeters?.length) {
+          why.push(`${plan.strandedMeters.length} meter`
+            + `${plan.strandedMeters.length === 1 ? " is" : "s are"} on no service`);
+        }
+        setError("No gas load reached the mains, so every length carries 0 kW "
+          + "and sizes to the smallest pipe."
+          + (why.length ? ` ${why.join("; ")}.` : " Check the plots have a gas "
+            + "load and each has a meter on a service joined to the main."));
+        return;
+      }
 
       /* What the drawing calls each end of a run.
 

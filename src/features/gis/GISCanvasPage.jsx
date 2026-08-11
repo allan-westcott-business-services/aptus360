@@ -10751,14 +10751,6 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
-          onInspectTrench={(f) => {
-            /* The editor closes as the answer opens. The panel sits
-               top-right and the editor is a centred modal over it, so
-               leaving both up would put the answer behind the thing
-               that asked for it. */
-            inspectTrench(f);
-            setEditing(null);
-          }}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}

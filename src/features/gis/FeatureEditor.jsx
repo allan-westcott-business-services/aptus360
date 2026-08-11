@@ -8,6 +8,7 @@ import {
 } from "./snapping.js";
 import { EASEMENT_KEY } from "./easement.js";
 import { contentsOf } from "./trenchContents.js";
+import { UTILITIES } from "../../lib/utilities.js";
 import { trenchSize } from "./trenchSize.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
@@ -27,9 +28,6 @@ export default function FeatureEditor({
   /* The whole drawing, so a meter can be offered the circuits that
      already exist on it. */
   allFeatures = [],
-  /* Ask the canvas what is routed along this trench. It owns the
-     panel that answers, and the line types it is worked out from. */
-  onInspectTrench,
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
   onIsolateCircuit, circuitIsolated,
 }) {
@@ -73,6 +71,63 @@ export default function FeatureEditor({
      trench widens it, and a figure somebody typed once would go stale
      the moment the drawing changed. NJUG spacing, ordinary case \u2014 see
      trenchSize.js for what that assumes and where to change it. */
+  /* What is routed along this trench, as sizes.
+
+     Read from the same contentsOf the dimensions come from, so the two
+     cannot disagree about what is in it. */
+  const trenchContents = useMemo(() => {
+    if (!isTrench || feature.Feature_Type !== "line") return [];
+    const serviceLineTypes = new Set(lineTypes
+      .filter((t) => t.Layer_Key !== "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key));
+    const serviceTrenchTypes = new Set(["trench_service", ...lineTypes
+      .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)]);
+
+    const res = contentsOf(feature, allFeatures, {
+      serviceLineTypes,
+      serviceTrenchTypes,
+      isTrench: (x) => x.Feature_Type === "line"
+        && isTrenchType(x.Attributes?.Line_Type, lineTypes),
+      /* The size, which is what somebody wants \u2014 a cable's label is
+         its circuit and way, which says which run it is and nothing
+         about what was laid. */
+      labelOf: (x) => {
+        const sizeId = x.Attributes?.Cable_Size_ID ?? x.Attributes?.VD_Cable_Size_ID;
+        const size = sizeId != null
+          ? (lookups?.cableSizes || []).find((c) =>
+            String(c.Cable_Size_ID) === String(sizeId))?.Size_Label
+          : null;
+        if (size) return size;
+        const pipe = String(x.Attributes?.Size ?? "").trim();
+        if (pipe) return pipe;
+        return lineTypes.find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label
+          ?? x.Label ?? null;
+      },
+    });
+    if (res.error) return [];
+
+    return (res.contents || []).map((c, i) => {
+      const layer = (layers || []).find((l) => l.Layer_Key === c.utility);
+      /* The same icon the Plot Connections page uses.
+
+         Matched on the layer's name against the shared utility list, so
+         the bolt, the flame and the droplet mean the same thing
+         wherever they appear. A dot needs the legend held in your head,
+         and green for gas against blue for water is the pair most often
+         got the wrong way round. */
+      const name = layer?.Label ?? c.utility ?? "";
+      const known = UTILITIES.find((u) =>
+        u.name.toLowerCase() === String(name).toLowerCase());
+      return {
+        key: c.feature?.Feature_ID ?? i,
+        label: c.label || "\u2014",
+        icon: known?.icon ?? "\u25CF",
+        utility: known?.name ?? name,
+      };
+    });
+  }, [isTrench, feature, allFeatures, lineTypes, layers, lookups]);
+
   const trenchDims = useMemo(() => {
     if (!isTrench || feature.Feature_Type !== "line") return null;
     const serviceLineTypes = new Set(lineTypes
@@ -1625,23 +1680,25 @@ export default function FeatureEditor({
             </>
           )}
 
-          {/* What is routed along this length.
+          {/* What is laid in it.
 
-              On the editor rather than the right-click menu: somebody
-              looking at a trench's surface and dimensions is asking the
-              same question, and having it in two places meant knowing
-              which one to reach for.
-
-              The whole run, not a stretch. The menu passed the point
-              clicked so it could answer for the length under the cursor;
-              there is no such point here, and the whole trench is the
-              honest reading of a button on the feature itself. */}
-          {isTrench && (
+              Shown, not offered behind a button: it is what the width
+              and depth are worked out from, so a reader looking at
+              1.26m wants to see the three things that made it 1.26m.
+              Sizes only \u2014 lengths, shares and what runs past belong to
+              the inspect panel, and repeating them here would be a
+              second version of that panel in a smaller box. */}
+          {isTrench && !!trenchContents.length && (
             <div className="fld">
-              <button type="button" className="fe-inspect"
-                onClick={() => onInspectTrench?.(feature)}>
-                What is in this trench
-              </button>
+              <label>In this trench</label>
+              <ul className="fe-inside">
+                {trenchContents.map((c) => (
+                  <li key={c.key}>
+                    <i title={c.utility}>{c.icon}</i>
+                    {c.label}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 
@@ -1691,10 +1748,13 @@ const CSS = `
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
 /* The one tick box in this editor, so it gets a rule of its own rather
    than borrowing a field's. */
-.fe-inspect { width: 100%; font: 600 12.5px inherit; padding: 8px 10px;
-  border-radius: 8px; border: 1px solid var(--border); background: var(--white);
-  color: var(--text); cursor: pointer; }
-.fe-inspect:hover { border-color: var(--accent); color: var(--accent); }
+.fe-inside { list-style: none; margin: 0 0 4px; padding: 2px 0 0; display: flex;
+  flex-wrap: wrap; gap: 5px 14px; }
+.fe-inside li { display: inline-flex; align-items: center; gap: 6px;
+  font-size: 12.5px; }
+/* The utility icon, as the Plot Connections page shows it. */
+.fe-inside i { font-style: normal; font-size: 13px; line-height: 1;
+  flex: 0 0 auto; }
 
 .fe-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px;
   font-weight: 600; color: var(--text); cursor: pointer; margin: 2px 0 10px; }

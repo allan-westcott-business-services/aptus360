@@ -73,7 +73,9 @@ import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
-import { gasLevels, serviceTees, suggestPipeChanges } from "./gasPressure.js";
+import {
+  gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS,
+} from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
 } from "./easement.js";
@@ -7394,6 +7396,24 @@ export default function GISCanvasPage() {
         return best?.lbl ?? null;
       };
 
+      /* Every setting, not two of them.
+
+         The minimum and the amber band were read here and the rest were
+         left to their defaults, so changing the tee allowance, the
+         efficiency or the temperature in Admin did nothing at all \u2014
+         the fields were there and the answer never moved.
+
+         Gathered into one object and passed on, so a setting added to
+         the table later is one edit rather than three. */
+      const gs = lookups?.gasPressureSettings?.[0] || {};
+      const minMBar = Number(gs.Min_Pressure_mBar ?? 19);
+      const amberPct = Number(gs.Amber_Pct ?? 80);
+      const teeDiameters = Number(gs.Tee_Diameters ?? TEE_DIAMETERS);
+      const gasOpts = {
+        ...(gs.Efficiency != null ? { efficiency: Number(gs.Efficiency) } : {}),
+        ...(gs.Temperature_C != null ? { temperatureC: Number(gs.Temperature_C) } : {}),
+      };
+
       const result = gasLevels({
         runs: (plan.runs || []).map((r, i) => ({
           ...r,
@@ -7423,17 +7443,15 @@ export default function GISCanvasPage() {
            is the reading the standard wants and the one that gets the
            spine and its legs right. */
         flowFor: (r) => kwToM3h(r.kw ?? 0),
-      });
+        /* The allowance per service tee, from Admin. */
+        teeDiameters,
+      }, gasOpts);
 
       if (result.error) { setError(result.error); return; }
 
       /* The limit, from Admin rather than from here. A floor that lives
          in the code is one nobody can change when an operator asks for
          a different one. */
-      const gs = lookups?.gasPressureSettings?.[0] || {};
-      const minMBar = Number(gs.Min_Pressure_mBar ?? 19);
-      const amberPct = Number(gs.Amber_Pct ?? 80);
-
       /* What would fix it, worked out the same way the electric check
          suggests cable changes: apply the best single upsize, re-run,
          and repeat until it holds or nothing helps. */
@@ -7446,8 +7464,8 @@ export default function GISCanvasPage() {
         }));
       const advice = suggestPipeChanges({
         runs: result.runsUsed, source: (plan.runs || [])[0]?.fromNode, sourceMBar,
-        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes,
-      });
+        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes, teeDiameters,
+      }, gasOpts);
 
       setGasLevelsResult({ ...result, minMBar, amberPct, advice });
       setError("");

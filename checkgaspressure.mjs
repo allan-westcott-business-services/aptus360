@@ -425,6 +425,49 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* Every setting on the Admin panel has to move the answer.
+
+   The check read the minimum and the amber band and left the rest to
+   their defaults, so changing the tee allowance, the efficiency or the
+   temperature did nothing at all — the fields were there and the
+   numbers never budged. A setting that cannot be felt is worse than no
+   setting, because somebody trusts it. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const runs = [{
+    id: "G1", fromNode: "P", endNode: "A1",
+    metres: 200, services: 8, bore: 52, kw: 110,
+  }];
+  const base = { source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw) };
+  const drop = (teeDiameters, opts) =>
+    gasLevels({ ...base, runs, teeDiameters }, opts || {}).legs[0].drop;
+
+  const normal = drop(60);
+  if (!(drop(200) > normal)) fail("a larger tee allowance did not increase the drop");
+  if (!(drop(0) < normal)) fail("removing the tee allowance did not reduce the drop");
+  if (!(drop(60, { efficiency: 0.70 }) > normal)) {
+    fail("a lower pipe efficiency did not increase the drop");
+  }
+  if (!(drop(60, { temperatureC: 30 }) < normal)) {
+    fail("warmer gas did not reduce the drop");
+  }
+  /* And the suggestions honour them too, or advice would be worked out
+     against different conditions from the check that produced it.
+
+     Compared on the pressure the advice reports, not on how many nodes
+     fail: a one-run network has one node, and it either passes or does
+     not whatever the allowance. Counting failures said nothing, which
+     is why the first version of this test failed against correct
+     code. */
+  const sizes = [{ bore: 52, label: "63mm" }, { bore: 79, label: "90mm" }];
+  const after = (teeDiameters) => suggestPipeChanges(
+    { ...base, runs, minMBar: 22.5, sizes, teeDiameters },
+  ).suggestions[0]?.lowestAfter;
+  if (!(after(200) < after(0))) {
+    fail("the tee allowance did not reach the pipe size advice");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

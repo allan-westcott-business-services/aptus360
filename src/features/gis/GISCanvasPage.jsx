@@ -7419,6 +7419,35 @@ export default function GISCanvasPage() {
         ...(gs.Temperature_C != null ? { temperatureC: Number(gs.Temperature_C) } : {}),
       };
 
+      /* The size actually on the drawing, where a pipe carries one.
+
+         gasMainRuns works out what each length ought to be from the
+         load it carries. That is the right answer for a build, and the
+         wrong one for a check: it meant the levels check re-sized the
+         network from scratch every time and never looked at the pipe.
+         So changing a size by hand, or pressing Make change, moved
+         nothing at all \u2014 the next run computed the same size again and
+         reported the same pressures.
+
+         Read off the features on the run, falling back to the computed
+         size where nothing has been chosen. A size somebody has picked
+         wins over one the build would have picked. */
+      const sizeOnDrawing = (pts) => {
+        if (!pts?.length) return null;
+        const near = (q) => pts.some((r) =>
+          Math.hypot(r[0] - q[0], r[1] - q[1]) <= 0.5);
+        for (const f of src) {
+          if (f.Feature_Type !== "line") continue;
+          if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
+          if (f.Attributes?.Gas_Pipe_Size_ID == null) continue;
+          if (!(f.Geometry || []).every(near)) continue;
+          const row = (lookups?.gasPipeSizes || []).find((x) =>
+            Number(x.Gas_Pipe_Size_ID) === Number(f.Attributes.Gas_Pipe_Size_ID));
+          if (row) return row;
+        }
+        return null;
+      };
+
       const result = gasLevels({
         runs: (plan.runs || []).map((r, i) => ({
           ...r,
@@ -7428,10 +7457,22 @@ export default function GISCanvasPage() {
           id: r.id ?? `G${i + 1}`,
           fromLabel: labelAt((r.pts || [])[0]),
           toLabel: labelAt((r.pts || [])[(r.pts || []).length - 1]),
-          bore: r.size?.diameter ? r.size.diameter - 11 : null,
-          /* What this size is rated to carry, so the check can say when
-             a minimum-size build has outrun it. */
-          maxKw: r.size?.maxKw ?? null,
+          /* Chosen on the drawing if it has been; otherwise what the
+             build worked out. */
+          ...(() => {
+            const chosen = sizeOnDrawing(r.pts);
+            return chosen
+              ? {
+                bore: Number(chosen.Diameter_mm) - 11,
+                maxKw: Number(chosen.Max_kW) || null,
+              }
+              : {
+                bore: r.size?.diameter ? r.size.diameter - 11 : null,
+                /* What this size is rated to carry, so the check can say
+                   when a minimum-size build has outrun it. */
+                maxKw: r.size?.maxKw ?? null,
+              };
+          })(),
           services: tees.get(String(r.featureId ?? "")) ?? r.services ?? 0,
         })),
         source: (plan.runs || [])[0]?.fromNode,

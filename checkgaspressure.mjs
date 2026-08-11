@@ -500,6 +500,41 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* Changing the pipe has to change the pressure.
+
+   gasMainRuns works out what each length ought to be from the load it
+   carries. That is right for a build and wrong for a check: the levels
+   check re-sized the network from scratch every time and never looked
+   at the pipe on the drawing, so "Make change" wrote a bigger size and
+   the next run computed the same size again and reported the same
+   pressures. The button appeared to do nothing.
+
+   The engine was never the problem, which is why this checks the thing
+   that was: a bigger bore must produce a smaller drop. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const base = { source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw) };
+  const at = (bore) => gasLevels({
+    ...base,
+    runs: [{
+      id: "G1", fromNode: "P", endNode: "A1",
+      metres: 300, services: 9, bore, kw: 110,
+    }],
+  }).legs[0];
+
+  const small = at(52);
+  const big = at(114);
+  if (!(big.drop < small.drop)) fail("a bigger bore did not reduce the drop");
+  if (!(big.at > small.at)) fail("a bigger bore did not raise the node pressure");
+  /* And by a lot: drop goes as the fifth power of diameter, so this is
+     not a rounding difference. Anything under a halving means the bore
+     is not reaching the calculation. */
+  if (!(big.drop < small.drop / 2)) {
+    fail(`52mm to 114mm changed the drop only from ${small.drop.toFixed(3)} `
+      + `to ${big.drop.toFixed(3)}`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

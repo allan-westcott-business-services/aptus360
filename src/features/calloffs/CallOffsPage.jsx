@@ -1712,6 +1712,14 @@ function Assignments({ row }) {
             || !partIsFree(taken.get(d), "PM"));
         };
 
+        /* Mains or service, from the call-off's work type. It decides
+           which of the Excavation & Lay crafts applies.
+
+           Off the row, which already carries it \u2014 there is no
+           workTypes list in this component, and reaching for one that
+           does not exist would have thrown the moment a phase rendered. */
+        const workTypeName = row.Work_Type?.Work_Type_Name || "";
+
         const can = eligibleTeams(teams, {
           teamCrafts, teamRegions,
           craftId: ph.Craft_ID,
@@ -1731,14 +1739,6 @@ function Assignments({ row }) {
             ? draft.utility_ids
             : (row.utility_ids || []),
         });
-        /* Mains or service, from the call-off's work type. It decides
-           which of the Excavation & Lay crafts applies.
-
-           Off the row, which already carries it \u2014 there is no
-           workTypes list in this component, and reaching for one that
-           does not exist would have thrown the moment a phase rendered. */
-        const workTypeName = row.Work_Type?.Work_Type_Name || "";
-
         const floor = floorFor(ph.Task_Type_ID, mine, plotUniverse, null);
 
         return (

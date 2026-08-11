@@ -65,7 +65,7 @@ import {
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import {
-  gasMainRuns,
+  gasMainRuns, END_EXTEND_M,
 } from "./gasNetwork.js";
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
@@ -464,6 +464,7 @@ export default function GISCanvasPage() {
   const [lockedClasses, setLockedClasses] = useState(
     () => recall("gisLocked", []) ?? []);
   useEffect(() => remember("gisLocked", lockedClasses), [lockedClasses]);
+
 
   /* What would bring the failing nodes back inside their limits.
 
@@ -1145,7 +1146,16 @@ export default function GISCanvasPage() {
      they answer different questions — what did somebody pick, and what
      is off screen — and deriving the picks back out of the hidden set
      is not possible once an H has been pressed as well. */
-  const [shownOnly, setShownOnly] = useState([]);
+  /* Which layers are showing, remembered across a reload.
+
+     Everything else on this toolbar is \u2014 the basemap, the locked
+     classes, which project is open \u2014 and this was not, so a refresh
+     put every layer back on and left somebody switching them off again.
+
+     `shownOnly` is the one to keep: `hidden` and `solo` are both worked
+     out from it, so restoring it restores all three without any of them
+     being able to disagree. */
+  const [shownOnly, setShownOnly] = useState(() => recall("gisShownOnly", []));
 
   /* Show only these, and work out what that hides.
 
@@ -1155,6 +1165,7 @@ export default function GISCanvasPage() {
      disappears under a key nobody pressed. */
   const applyShown = useCallback((keys) => {
     setShownOnly(keys);
+    remember("gisShownOnly", keys);
     setSolo(keys.length === 1 ? keys[0] : null);
     if (!keys.length) { setHidden([]); return; }
 
@@ -1453,6 +1464,20 @@ export default function GISCanvasPage() {
       chosenColours: sub?.Attributes?.Circuit_Colours || {},
     });
   }, [features]);
+
+  /* Put the remembered choice back once there are features to work it
+     out against.
+
+     applyShown derives the hidden set from the features, so calling it
+     before they arrive would hide nothing and quietly clear the
+     setting. Runs when the drawing first has something in it. */
+  const restoredLayers = useRef(false);
+  useEffect(() => {
+    if (restoredLayers.current || !features.length) return;
+    restoredLayers.current = true;
+    const saved = recall("gisShownOnly", []);
+    if (Array.isArray(saved) && saved.length) applyShown(saved);
+  }, [features, applyShown]);
 
   /* Where each gas main stops, so the cap can be drawn there.
 
@@ -7387,7 +7412,24 @@ export default function GISCanvasPage() {
 
          A run end with nothing on it is a bend rather than a node, and
          is shown as a dash rather than an invented name. */
-      const labelAt = (pt) => {
+      /* A point `back` metres in from the end of a polyline. */
+      const backAlong = (pts, back) => {
+        if (!pts?.length) return null;
+        let left = back;
+        for (let i = pts.length - 1; i > 0; i--) {
+          const a = pts[i];
+          const b = pts[i - 1];
+          const seg = Math.hypot(b[0] - a[0], b[1] - a[1]);
+          if (seg >= left) {
+            const t = seg ? left / seg : 0;
+            return [a[0] + (b[0] - a[0]) * t, a[1] + (b[1] - a[1]) * t];
+          }
+          left -= seg;
+        }
+        return pts[0];
+      };
+
+      const labelAt = (pt, opts = {}) => {
         if (!pt) return null;
         let best = null;
         for (const f of src) {
@@ -7396,7 +7438,7 @@ export default function GISCanvasPage() {
           const q = (f.Geometry || [])[0];
           if (!q) continue;
           const d = Math.hypot(q[0] - pt[0], q[1] - pt[1]);
-          if (d <= 1.5 && (!best || d < best.d)) best = { lbl, d };
+          if (d <= (opts.within ?? 1.5) && (!best || d < best.d)) best = { lbl, d };
         }
         return best?.lbl ?? null;
       };
@@ -7456,7 +7498,24 @@ export default function GISCanvasPage() {
              the A-numbers. */
           id: r.id ?? `G${i + 1}`,
           fromLabel: labelAt((r.pts || [])[0]),
-          toLabel: labelAt((r.pts || [])[(r.pts || []).length - 1]),
+          /* The far end of a run, with the cap taken off.
+
+             A gas main is drawn END_EXTEND_M past its last node so the
+             end cap has pipe to sit on. The run's final point is
+             therefore about 1.5m beyond the span node it ends at \u2014
+             exactly the tolerance this searched within, so the label
+             was found or missed on rounding and several runs showed a
+             dash where a node plainly exists.
+
+             Stepped back along the polyline rather than searched for in
+             a wider circle: widening to 3m would reach a neighbouring
+             node on a tight run, and answering with the wrong node is
+             worse than answering with none. */
+          toLabel: (() => {
+            const pts = r.pts || [];
+            const end = pts[pts.length - 1];
+            return labelAt(backAlong(pts, END_EXTEND_M)) || labelAt(end);
+          })(),
           /* Chosen on the drawing if it has been; otherwise what the
              build worked out. */
           ...(() => {

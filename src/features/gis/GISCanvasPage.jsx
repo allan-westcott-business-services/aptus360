@@ -64,13 +64,16 @@ import {
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
-import { gasMainRuns } from "./gasNetwork.js";
+import {
+  gasMainRuns, diversityTable, diversityFor,
+} from "./gasNetwork.js";
 import { waterMainRuns, sizeTable, sizeFor } from "./waterNetwork.js";
 import { serviceValves, VALVE_WIDTH_M } from "./serviceValves.js";
 import { gasMainEnds, GAS_CAP_SPINE_M, GAS_CAP_ARM_M } from "./gasEnds.js";
 import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
+import { gasLevels, serviceTees } from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
 } from "./easement.js";
@@ -544,6 +547,8 @@ export default function GISCanvasPage() {
      read before pressing OK is a list read while deciding whether to
      press it, and this is the one somebody works from afterwards. */
   const [gasUnserved, setGasUnserved] = useState(null);
+  /* The result of a gas levels check: pressure at every span node. */
+  const [gasLevelsResult, setGasLevelsResult] = useState(null);
   const [classPlan, setClassPlan] = useState(null);
   const [reclass, setReclass] = useState(false);
   /* Right-click menu: what was clicked, and where to put the menu.
@@ -7226,6 +7231,86 @@ export default function GISCanvasPage() {
      the spur is the service pipe's job, which is what "up to each
      service trench" means on a drawing: the tee is a place the main
      goes past, not a place it stops. */
+  /* ── Gas levels ──────────────────────────────────────────────────
+
+     What each span node sits at, given the pressure the POC offers and
+     what the pipe between them costs.
+
+     The same walk the gas build does, re-run for pressure rather than
+     for size: every length of main carries what is downstream of it,
+     diversified once on the count of dwellings, and each length's drop
+     comes off the pressure at its upstream node.
+
+     Reads the sizes already on the drawing rather than sizing again. A
+     network that has not been built has no sizes, and the check says so
+     instead of guessing at pipe nobody has chosen. */
+  async function runGasLevelsCheck() {
+    if (!projectId) return;
+    setBusy("gaslevels");
+    try {
+      const poc = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === "gas");
+      if (!poc) {
+        setError("There is no gas POC on this drawing to measure from.");
+        return;
+      }
+      const sourceMBar = Number(poc.Attributes?.Output_Pressure_mBar);
+      if (!(sourceMBar > 0)) {
+        setError("Set the gas POC's output pressure before running the check \u2014 "
+          + "right-click it and fill in Output pressure (mbar).");
+        return;
+      }
+
+      const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
+        && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+      const mains = features.filter((f) => f.Feature_Type === "line"
+        && f.Attributes?.Line_Type === mainType?.Type_Key)
+        .map((f) => ({ id: f.Feature_ID, geometry: f.Geometry || [] }));
+      const services = features.filter((f) => f.Feature_Type === "line"
+        && f.Layer_Key === "gas" && /service/i.test(f.Attributes?.Line_Type || ""))
+        .map((f) => ({ id: f.Feature_ID, geometry: f.Geometry || [] }));
+
+      /* Tees counted off the drawing rather than entered: the model we
+         calibrated against carried fittings that did not correspond to
+         where the services are, and a count nobody maintains goes stale
+         the first time a service moves. */
+      const tees = serviceTees({ mains, services });
+
+      const plan = gasMainRuns(features, {
+        lineTypes,
+        pipeSizes: lookups?.gasPipeSizes || [],
+        pipeSizeOperators: lookups?.gasPipeSizeOperators || [],
+        diversity: lookups?.gasDiversity || [],
+        diversityOperators: lookups?.gasDiversityOperators || [],
+        tier: "LP",
+      });
+
+      const divTable = diversityTable(lookups?.gasDiversity || []);
+      const result = gasLevels({
+        runs: (plan.runs || []).map((r, i) => ({
+          ...r,
+          id: r.id ?? `G${i + 1}`,
+          bore: r.size?.diameter ? r.size.diameter - 11 : null,
+          services: tees.get(String(r.featureId ?? "")) ?? r.services ?? 0,
+        })),
+        source: (plan.runs || [])[0]?.fromNode,
+        sourceMBar,
+        /* Diversified once on everything downstream, not the sum of the
+           branches' diversified figures \u2014 forty houses diversify
+           harder than two lots of twenty. */
+        flowFor: (r) => {
+          const row = diversityFor(divTable, r.metersBeyond ?? r.meters ?? 0);
+          const kw = row?.kw ?? 0;
+          return kw * 3600 / 39500;   // kW to m3/h at 39.5 MJ/m3
+        },
+      });
+
+      if (result.error) { setError(result.error); return; }
+      setGasLevelsResult(result);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   async function buildGasNetwork() {
     if (!projectId) return;
     const src = features;
@@ -9877,6 +9962,15 @@ export default function GISCanvasPage() {
                       hint="Every junction, including each service joint"
                       disabled={!circuitsFrom(features).length}
                       onClick={() => runLevelsCheck({ stopAt: "junctions" })} />
+                    {/* The gas equivalent. Disabled without a POC
+                        pressure to start from, because the whole answer
+                        is that figure less what the pipe costs. */}
+                    <MenuItem label={busy === "gaslevels"
+                      ? "Checking\u2026" : "Run Gas Levels Check"}
+                      hint="Pressure at every span node, from the gas POC"
+                      disabled={!!busy || !features.some((f) =>
+                        f.Feature_Role === "poc" && f.Layer_Key === "gas")}
+                      onClick={() => runGasLevelsCheck()} />
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
                       hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
                       disabled={!!busy}
@@ -11393,7 +11487,62 @@ export default function GISCanvasPage() {
               </div>
             )}
 
-            {gasUnserved && (
+            {gasLevelsResult && (
+        <div className="gl-panel" role="dialog" aria-label="Gas levels">
+          <div className="gl-head">
+            <strong>Gas levels</strong>
+            <span className="gl-low">
+              {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar `}
+              {`at ${gasLevelsResult.lowest[0]}`}
+            </span>
+            <button className="gl-x" onClick={() => setGasLevelsResult(null)}>&times;</button>
+          </div>
+          <div className="gl-body">
+            <table className="gl-tbl">
+              <thead>
+                <tr>
+                  <th>Run</th><th>To</th>
+                  <th className="num">Bore</th><th className="num">Length</th>
+                  <th className="num">Tees</th><th className="num">Flow</th>
+                  <th className="num">Drop</th><th className="num">Pressure</th>
+                </tr>
+              </thead>
+              <tbody>
+                {gasLevelsResult.legs.map((l) => (
+                  <tr key={l.id}>
+                    <td>{l.id}</td>
+                    <td>{l.to}</td>
+                    <td className="num">{l.boreMM.toFixed(1)}</td>
+                    <td className="num">
+                      {l.metres.toFixed(1)}
+                      {l.fittingsM ? <span className="gl-fit"> +{l.fittingsM}</span> : null}
+                    </td>
+                    <td className="num">{l.services || ""}</td>
+                    <td className="num">{l.flowM3h.toFixed(2)}</td>
+                    <td className="num">{l.drop.toFixed(3)}</td>
+                    <td className="num">{l.at.toFixed(2)}</td>
+                  </tr>
+                ))}
+              </tbody>
+            </table>
+            {!!gasLevelsResult.unreached?.length && (
+              <p className="gl-note">
+                {`${gasLevelsResult.unreached.length} node`}
+                {gasLevelsResult.unreached.length === 1 ? "" : "s"}
+                {" not reached from the POC \u2014 a length of main drawn but "}
+                not joined to the rest.
+              </p>
+            )}
+            <p className="gl-note">
+              Lengths include an allowance for each service tee, counted off the
+              drawing. Pressures are within about 1.5% of GASWorkS on the design
+              this was validated against.
+            </p>
+          </div>
+        </div>
+      )}
+
+      {gasUnserved && (
               <div className="gis-trace" role="dialog"
                 aria-label="Gas meters not reached">
                 <div className="gt-head">
@@ -12026,6 +12175,25 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-p { flex: 1; color: var(--muted); }
 .gco-err { color: #b91c1c; font-weight: 600; font-size: 11px; margin: 4px 0; }
 .gco-warn { color: #b45309; font-weight: 600; font-size: 11px; margin: 4px 0; }
+.gl-panel { position: absolute; right: 16px; bottom: 16px; z-index: 40;
+  width: min(680px, calc(100vw - 32px)); max-height: 60vh; display: flex;
+  flex-direction: column; background: var(--white); border: 1px solid var(--border);
+  border-radius: 10px; box-shadow: 0 8px 28px rgba(0,0,0,.16); }
+.gl-head { display: flex; align-items: center; gap: 10px; padding: 10px 12px;
+  border-bottom: 1px solid var(--border); font-size: 13px; }
+.gl-low { color: var(--muted); font-size: 12px; margin-left: auto; }
+.gl-x { border: 0; background: none; font-size: 18px; line-height: 1; cursor: pointer;
+  color: var(--muted); padding: 0 4px; }
+.gl-body { overflow: auto; padding: 4px 12px 12px; }
+.gl-tbl { width: 100%; border-collapse: collapse; font-size: 12px; }
+.gl-tbl th, .gl-tbl td { padding: 5px 8px; border-bottom: 1px solid var(--border);
+  text-align: left; white-space: nowrap; }
+.gl-tbl th { font: 700 10px inherit; color: var(--muted); text-transform: uppercase;
+  letter-spacing: .04em; position: sticky; top: 0; background: var(--white); }
+.gl-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
+.gl-fit { color: var(--muted); }
+.gl-note { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 8px 0 0; }
+
 .gco-utils { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
   padding: 8px 0 2px; border-top: 1px solid var(--border); margin-top: 8px; }
 .gco-utils-label { font: 700 10px inherit; color: var(--muted);

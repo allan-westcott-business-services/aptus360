@@ -246,3 +246,95 @@ export function nodePressures({ segments = [], source, sourceMBar = 23 } = {}, o
 
   return { pressures: out, loops, unreached };
 }
+
+/* Equivalent length allowed for one service tee, in metres of its own
+   bore.
+
+   About 60 diameters, the usual figure for a tee taken through the
+   branch. Not from our GASWorkS model: that carried 15 "fittings"
+   against 72 dwellings, on pipes that do not correspond to where the
+   services are, so whatever they were they were not service tees and
+   their 186-773 diameters do not transfer.
+
+   A number to be calibrated rather than trusted. With the drawing
+   behind a modelled job, the allowance that reproduces its measured
+   drop can be solved for directly, and this becomes that. */
+export const TEE_DIAMETERS = 60;
+
+export const teeAllowanceM = (boreMM, diameters = TEE_DIAMETERS) =>
+  (boreMM / 1000) * diameters;
+
+/* Pressure at every span node on a gas network.
+
+   `runs` are what gasMainRuns produces — a length of main between two
+   nodes, with its size, its length, and the services teed off it.
+
+   The pressure at a node is the POC's less every drop on the way to it,
+   and each run's drop uses the flow that run carries: everything
+   downstream, diversified once on the count of dwellings rather than by
+   adding up its branches' diversified figures.
+
+   Returns the pressure at each node and the drop on each run, plus
+   anything that stopped it being answerable. */
+export function gasLevels({
+  runs = [], source, sourceMBar, flowFor, teeDiameters = TEE_DIAMETERS,
+} = {}, opts = {}) {
+  if (!(sourceMBar > 0)) {
+    return { error: "No output pressure is set on the gas POC." };
+  }
+
+  const segments = runs.map((r, i) => {
+    const bore = r.bore ?? null;
+    return {
+      id: r.id ?? `r${i}`,
+      from: r.fromNode,
+      to: r.endNode,
+      boreMM: bore,
+      lengthM: r.metres,
+      /* One allowance per service teed off this length. */
+      fittingsM: (r.services || 0) * teeAllowanceM(bore, teeDiameters),
+      flowM3h: flowFor ? flowFor(r) : 0,
+      run: r,
+    };
+  });
+
+  const missing = segments.filter((s) => !(s.boreMM > 0)).map((s) => s.id);
+  if (missing.length) {
+    return {
+      error: `${missing.length} length${missing.length === 1 ? "" : "s"} of main `
+        + "have no pipe size, so their drop cannot be worked out. Build the gas "
+        + "network first.",
+    };
+  }
+
+  const walked = nodePressures({ segments, source, sourceMBar }, opts);
+  if (!walked.pressures) {
+    return {
+      error: "The mains form a ring, so the flow divides and the pressures "
+        + "depend on which way round it is walked. A ring needs solving "
+        + "rather than tracing.",
+      loops: walked.loops,
+    };
+  }
+
+  const legs = segments.map((s) => ({
+    id: s.id,
+    from: String(s.from),
+    to: String(s.to),
+    metres: s.lengthM,
+    fittingsM: Math.round(s.fittingsM * 100) / 100,
+    services: s.run.services || 0,
+    boreMM: s.boreMM,
+    flowM3h: s.flowM3h,
+    drop: pipeDrop({ ...s, gaugeMBar: walked.pressures.get(String(s.from)) ?? sourceMBar }, opts),
+    at: walked.pressures.get(String(s.to)),
+  }));
+
+  return {
+    pressures: walked.pressures,
+    legs,
+    unreached: walked.unreached,
+    lowest: [...walked.pressures.entries()]
+      .reduce((lo, e) => (e[1] < lo[1] ? e : lo), [String(source), sourceMBar]),
+  };
+}

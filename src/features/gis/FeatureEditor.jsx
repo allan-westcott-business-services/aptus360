@@ -647,14 +647,38 @@ export default function FeatureEditor({
           )}
 
           {feature.Feature_Role === "poc" && (
-            <div className="fld">
-              <label htmlFor="fe-poc">Agreed output ({pocUnit(f.Layer_Key)})</label>
-              <input id="fe-poc" type="number" step="0.1"
-                value={f.Attributes.Output ?? ""}
-                onChange={(e) => setAttr("Output")(e.target.value)} />
-              <p className="hint">
-                What the DNO has agreed to supply here. Circuits are checked against it.
-              </p>
+            <div className="fe-row">
+              <div className="fld">
+                <label htmlFor="fe-poc">Agreed output ({pocUnit(f.Layer_Key)})</label>
+                <input id="fe-poc" type="number" step="0.1"
+                  value={f.Attributes.Output ?? ""}
+                  onChange={(e) => setAttr("Output")(e.target.value)} />
+                <p className="hint">
+                  What the operator has agreed to supply here. Circuits are
+                  checked against it.
+                </p>
+              </div>
+
+              {/* Gas is agreed on two things, not one: how much, and at
+                  what pressure. The output above is the capacity; this
+                  is where the network starts from, and every span node
+                  pressure is this less what the pipe to it costs.
+
+                  Only on gas \u2014 electricity has no equivalent, and an
+                  empty pressure box on an electric POC is a question
+                  with no answer. */}
+              {f.Layer_Key === "gas" && (
+                <div className="fld">
+                  <label htmlFor="fe-poc-p">Output pressure (mbar)</label>
+                  <input id="fe-poc-p" type="number" step="0.1" min="0"
+                    value={f.Attributes.Output_Pressure_mBar ?? ""}
+                    onChange={(e) => setAttr("Output_Pressure_mBar")(e.target.value)} />
+                  <p className="hint">
+                    The pressure offered at the connection. The gas levels
+                    check starts here.
+                  </p>
+                </div>
+              )}
             </div>
           )}
 

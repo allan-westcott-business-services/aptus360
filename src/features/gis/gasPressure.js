@@ -515,6 +515,11 @@ export function suggestPipeChanges({
 
     suggestions.push({
       runId: best.run.id,
+      /* The polyline this run covers, so a caller can find the features
+         it is drawn as and change them. gasMainRuns does not carry
+         their ids, and matching by geometry is what the labels already
+         do. */
+      runPts: best.run.pts || null,
       from: best.run.fromLabel ?? String(best.run.fromNode),
       to: best.run.toLabel ?? String(best.run.endNode),
       fromBore: best.run.bore,

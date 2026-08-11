@@ -468,6 +468,38 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* A suggestion has to be applyable.
+
+   "Make change" finds the features a run is drawn as by matching their
+   geometry against the run's polyline — gasMainRuns does not carry
+   their ids. Without runPts on the suggestion there is nothing to match
+   against, and the button can only report that it could not find the
+   pipe it had just named. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const runs = [{
+    id: "G1", fromNode: "P", endNode: "A1", fromLabel: "G0", toLabel: "A1",
+    metres: 200, services: 6, bore: 52, kw: 900, maxKw: 120,
+    pts: [[0, 0], [200, 0]],
+  }];
+  const sizes = [{ bore: 52, label: "63mm", maxKw: 120 },
+    { bore: 169, label: "180mm", maxKw: 2400 }];
+  const a = suggestPipeChanges({
+    runs, source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw),
+    minMBar: 19, sizes,
+  });
+  if (!a.suggestions.length) fail("nothing suggested for a failing network");
+  for (const x of a.suggestions) {
+    if (!Array.isArray(x.runPts) || x.runPts.length < 2) {
+      fail(`${x.runId} carries no geometry, so it cannot be applied`);
+    }
+    /* And enough to write the change: which bore to move to, and what
+       to call it on the drawing. */
+    if (!(x.toBore > 0)) fail(`${x.runId} names no bore to change to`);
+    if (!x.sizeLabel) fail(`${x.runId} names no size label`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

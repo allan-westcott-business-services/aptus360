@@ -7290,11 +7290,16 @@ export default function GISCanvasPage() {
      is what the meter and the operator quote. */
   const kwToM3h = (kw) => (Number(kw) || 0) * 3600 / 39500;
 
-  async function runGasLevelsCheck() {
+  async function runGasLevelsCheck({ srcFeatures = null } = {}) {
     if (!projectId) return;
     setBusy("gaslevels");
     try {
-      const poc = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === "gas");
+      /* The features to measure. Passed in when a suggestion has just
+         been applied, because setFeatures has not landed yet and
+         reading state here would measure the network as it was before
+         the change \u2014 which then reports the same failure again. */
+      const src = srcFeatures || features;
+      const poc = src.find((f) => f.Feature_Role === "poc" && f.Layer_Key === "gas");
       if (!poc) {
         setError("There is no gas POC on this drawing to measure from.");
         return;
@@ -7308,10 +7313,10 @@ export default function GISCanvasPage() {
 
       const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
         && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
-      const mains = features.filter((f) => f.Feature_Type === "line"
+      const mains = src.filter((f) => f.Feature_Type === "line"
         && f.Attributes?.Line_Type === mainType?.Type_Key)
         .map((f) => ({ id: f.Feature_ID, geometry: f.Geometry || [] }));
-      const services = features.filter((f) => f.Feature_Type === "line"
+      const services = src.filter((f) => f.Feature_Type === "line"
         && f.Layer_Key === "gas" && /service/i.test(f.Attributes?.Line_Type || ""))
         .map((f) => ({ id: f.Feature_ID, geometry: f.Geometry || [] }));
 
@@ -7321,7 +7326,7 @@ export default function GISCanvasPage() {
          the first time a service moves. */
       const tees = serviceTees({ mains, services });
 
-      const plan = gasMainRuns(features, {
+      const plan = gasMainRuns(src, {
         lineTypes,
         pipeSizes: lookups?.gasPipeSizes || [],
         pipeSizeOperators: lookups?.gasPipeSizeOperators || [],
@@ -7385,7 +7390,7 @@ export default function GISCanvasPage() {
       const labelAt = (pt) => {
         if (!pt) return null;
         let best = null;
-        for (const f of features) {
+        for (const f of src) {
           const lbl = f.Attributes?.Span_Label;
           if (!lbl) continue;
           const q = (f.Geometry || [])[0];
@@ -7469,6 +7474,87 @@ export default function GISCanvasPage() {
 
       setGasLevelsResult({ ...result, minMBar, amberPct, advice });
       setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Apply one suggested pipe change, then measure again.
+
+     ── Which features are this run ──
+
+     A run is a length of main between two nodes and may be drawn as
+     several features; gasMainRuns does not carry their ids. They are
+     found by geometry: a gas main whose points all lie on the run's
+     polyline is part of it. The same matching the labels use, so the
+     two cannot disagree about which pipe a suggestion names.
+
+     ── Re-run from what was just read ──
+
+     The features are read once and that same array is used to set the
+     canvas and to re-run the check. Reading twice gave two arrays of
+     identical content, and the staleness test compares by identity — so
+     the panel declared itself out of date the moment it finished. The
+     electric scenario had exactly this bug; its comment says so. */
+  async function applyGasSuggestion(sug) {
+    if (!projectId || !sug) return;
+    setBusy(`gasfix:${sug.runId}`);
+    try {
+      const size = (lookups?.gasPipeSizes || [])
+        .filter((x) => (x.Pressure_Tier ?? "LP") === "LP")
+        .find((x) => Number(x.Diameter_mm) - 11 === Number(sug.toBore));
+      if (!size) {
+        setError(`No pipe size matches a ${sug.toBore}mm bore.`);
+        return;
+      }
+
+      const onRun = (f) => {
+        const pts = sug.runPts || [];
+        if (!pts.length) return false;
+        const near = (q) => pts.some((r) =>
+          Math.hypot(r[0] - q[0], r[1] - q[1]) <= 0.5);
+        return (f.Geometry || []).every(near);
+      };
+      const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
+        && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+      const rows = features
+        .filter((f) => f.Feature_Type === "line"
+          && f.Attributes?.Line_Type === mainType?.Type_Key
+          && onRun(f))
+        .map((f) => ({
+          Feature_ID: f.Feature_ID,
+          Attributes: {
+            ...f.Attributes,
+            Gas_Pipe_Size_ID: size.Gas_Pipe_Size_ID,
+            Size: size.Size_Label || `${Number(size.Diameter_mm)}mm`,
+          },
+        }));
+
+      if (!rows.length) {
+        setError(`Could not find the pipe for ${sug.runId} on the drawing.`);
+        return;
+      }
+
+      const before = features.filter((f) =>
+        rows.some((r) => Number(r.Feature_ID) === Number(f.Feature_ID)));
+      for (let i = 0; i < rows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+      }
+      await recordAction(
+        `Upsize ${sug.runId} to ${sug.sizeLabel}`,
+        before,
+        before.map((f) => ({
+          ...f,
+          Attributes: rows.find((r) =>
+            Number(r.Feature_ID) === Number(f.Feature_ID)).Attributes,
+        })),
+      );
+
+      const fresh = await listGis(projectId);
+      setFeatures(fresh.features || []);
+      setStatus(`${sug.runId} is now ${sug.sizeLabel} \u2014 re-running the levels check`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+      await runGasLevelsCheck({ srcFeatures: fresh.features || [] });
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
   }
@@ -11799,12 +11885,22 @@ export default function GISCanvasPage() {
                     <ul className="gl-fixes">
                       {gasLevelsResult.advice.suggestions.map((x) => (
                         <li key={x.runId}>
-                          <strong>{x.runId}</strong>
-                          {` ${x.from} to ${x.to}: `}
-                          {`${x.fromBore}mm bore \u2192 ${x.sizeLabel}`}
-                          <span className="gl-fit">
-                            {` \u00b7 lowest becomes ${x.lowestAfter.toFixed(2)} mbar`}
+                          <span className="gl-fix-t">
+                            <strong>{x.runId}</strong>
+                            {` ${x.from} to ${x.to}: `}
+                            {`${x.fromBore}mm bore \u2192 ${x.sizeLabel}`}
+                            <span className="gl-fit">
+                              {` \u00b7 lowest becomes ${x.lowestAfter.toFixed(2)} mbar`}
+                            </span>
                           </span>
+                          {/* Applies it and measures again, so the panel
+                              shows the design as it now is rather than
+                              as it was when the advice was worked out. */}
+                          <button className="btn accent sm"
+                            disabled={!!busy}
+                            onClick={() => applyGasSuggestion(x)}>
+                            {busy === `gasfix:${x.runId}` ? "Changing\u2026" : "Make change"}
+                          </button>
                         </li>
                       ))}
                     </ul>
@@ -12488,7 +12584,11 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-radius: 7px; padding: 7px 10px; margin: 10px 0 0; }
 .gl-advice { border-top: 1px solid var(--border); margin-top: 10px; padding-top: 10px; }
 .gl-advice-h { font: 700 12px inherit; color: var(--err-text); margin: 0 0 4px; }
-.gl-fixes { margin: 6px 0 0; padding-left: 18px; font-size: 12px; line-height: 1.7; }
+.gl-fixes { margin: 6px 0 0; padding: 0; list-style: none; font-size: 12px; }
+.gl-fixes li { display: flex; align-items: center; gap: 10px; padding: 5px 0;
+  border-bottom: 1px solid var(--border); }
+.gl-fixes li:last-child { border-bottom: 0; }
+.gl-fix-t { flex: 1; min-width: 0; line-height: 1.5; }
 
 .gl-note { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 8px 0 0; }
 

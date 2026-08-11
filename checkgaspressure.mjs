@@ -439,16 +439,16 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
     metres: 200, services: 8, bore: 52, kw: 110,
   }];
   const base = { source: "P", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw) };
-  const drop = (teeDiameters, opts) =>
-    gasLevels({ ...base, runs, teeDiameters }, opts || {}).legs[0].drop;
+  const drop = (teeMetres, opts) =>
+    gasLevels({ ...base, runs, teeMetres }, opts || {}).legs[0].drop;
 
-  const normal = drop(60);
-  if (!(drop(200) > normal)) fail("a larger tee allowance did not increase the drop");
+  const normal = drop(3);
+  if (!(drop(10) > normal)) fail("a larger tee allowance did not increase the drop");
   if (!(drop(0) < normal)) fail("removing the tee allowance did not reduce the drop");
-  if (!(drop(60, { efficiency: 0.70 }) > normal)) {
+  if (!(drop(3, { efficiency: 0.70 }) > normal)) {
     fail("a lower pipe efficiency did not increase the drop");
   }
-  if (!(drop(60, { temperatureC: 30 }) < normal)) {
+  if (!(drop(3, { temperatureC: 30 }) < normal)) {
     fail("warmer gas did not reduce the drop");
   }
   /* And the suggestions honour them too, or advice would be worked out
@@ -460,10 +460,10 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
      is why the first version of this test failed against correct
      code. */
   const sizes = [{ bore: 52, label: "63mm" }, { bore: 79, label: "90mm" }];
-  const after = (teeDiameters) => suggestPipeChanges(
-    { ...base, runs, minMBar: 22.5, sizes, teeDiameters },
+  const after = (teeMetres) => suggestPipeChanges(
+    { ...base, runs, minMBar: 22.5, sizes, teeMetres },
   ).suggestions[0]?.lowestAfter;
-  if (!(after(200) < after(0))) {
+  if (!(after(10) < after(0))) {
     fail("the tee allowance did not reach the pipe size advice");
   }
 }

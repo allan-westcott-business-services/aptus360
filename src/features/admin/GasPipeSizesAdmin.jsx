@@ -294,12 +294,18 @@ export default function GasPipeSizesAdmin() {
                 onBlur={(e) => saveLimit("Amber_Pct", e.target.value)} />
               <em>how far toward the minimum before it is worth flagging</em>
             </label>
+            {/* Metres, because that is what a designer can check
+                against a job. It was a multiple of the bore, which
+                scales itself across sizes and is more exact \u2014 but
+                nobody measures a dig in diameters. */}
             <label className="gp-limit">
-              <span>Service tee allowance (diameters)</span>
-              <input type="number" step="1" min="0"
-                defaultValue={limit.Tee_Diameters ?? ""}
-                onBlur={(e) => saveLimit("Tee_Diameters", e.target.value)} />
-              <em>equivalent length per tee; 60 is the textbook figure</em>
+              <span>Service tee allowance (m)</span>
+              <input type="number" step="0.1" min="0"
+                defaultValue={limit.Tee_Length_M ?? ""}
+                onBlur={(e) => saveLimit("Tee_Length_M", e.target.value)} />
+              <em>
+                metres of main each service tee adds; about 3m on a 63mm main
+              </em>
             </label>
             <label className="gp-limit">
               <span>Pipe efficiency</span>
@@ -567,6 +573,13 @@ const CSS = `
   border: 1px solid var(--border); background: var(--white); }
 /* Prose, not another label: the hint inherited the uppercase tracking
    from the field name above it and shouted louder than the field. */
+.gp-limit-unit { display: flex; align-items: center; gap: 6px; }
+.gp-limit-unit input { flex: 1; min-width: 0; }
+/* A unit, not a second label: it inherited the uppercase tracking from
+   the field name above and shouted louder than the value beside it. */
+.gp-limit-unit > span { font: 500 12px inherit; color: var(--muted);
+  text-transform: none; letter-spacing: 0; white-space: nowrap; }
+
 .gp-limit em { font-style: normal; font: 400 11px inherit; color: var(--muted);
   text-transform: none; letter-spacing: 0; }
 .gp-limit { flex: 1 1 190px; max-width: 260px; }

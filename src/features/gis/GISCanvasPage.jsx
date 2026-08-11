@@ -74,7 +74,7 @@ import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
 import {
-  gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS,
+  gasLevels, serviceTees, suggestPipeChanges, TEE_LENGTH_M,
 } from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
@@ -7408,7 +7408,7 @@ export default function GISCanvasPage() {
       const gs = lookups?.gasPressureSettings?.[0] || {};
       const minMBar = Number(gs.Min_Pressure_mBar ?? 19);
       const amberPct = Number(gs.Amber_Pct ?? 80);
-      const teeDiameters = Number(gs.Tee_Diameters ?? TEE_DIAMETERS);
+      const teeMetres = Number(gs.Tee_Length_M ?? TEE_LENGTH_M);
       const gasOpts = {
         ...(gs.Efficiency != null ? { efficiency: Number(gs.Efficiency) } : {}),
         ...(gs.Temperature_C != null ? { temperatureC: Number(gs.Temperature_C) } : {}),
@@ -7444,7 +7444,7 @@ export default function GISCanvasPage() {
            spine and its legs right. */
         flowFor: (r) => kwToM3h(r.kw ?? 0),
         /* The allowance per service tee, from Admin. */
-        teeDiameters,
+        teeMetres,
       }, gasOpts);
 
       if (result.error) { setError(result.error); return; }
@@ -7464,7 +7464,7 @@ export default function GISCanvasPage() {
         }));
       const advice = suggestPipeChanges({
         runs: result.runsUsed, source: (plan.runs || [])[0]?.fromNode, sourceMBar,
-        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes, teeDiameters,
+        flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes, teeMetres,
       }, gasOpts);
 
       setGasLevelsResult({ ...result, minMBar, amberPct, advice });

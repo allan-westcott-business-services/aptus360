@@ -7,6 +7,8 @@ import {
   lineLength, isTrenchType, isTrenchFeature, classLabel,
 } from "./snapping.js";
 import { EASEMENT_KEY } from "./easement.js";
+import { contentsOf } from "./trenchContents.js";
+import { trenchSize } from "./trenchSize.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
@@ -61,6 +63,39 @@ export default function FeatureEditor({
   /* Main or service, off the line type — the same test the network
      builder uses, so the editor offers what the build would choose. */
   const isServiceLine = /service/i.test(f.Attributes?.Line_Type || "");
+
+  /* How wide and deep this length has to be dug, from what is in it.
+
+     Read only, and worked out rather than stored: adding a cable to a
+     trench widens it, and a figure somebody typed once would go stale
+     the moment the drawing changed. NJUG spacing, ordinary case \u2014 see
+     trenchSize.js for what that assumes and where to change it. */
+  const trenchDims = useMemo(() => {
+    if (!isTrench || feature.Feature_Type !== "line") return null;
+    const serviceLineTypes = new Set(lineTypes
+      .filter((t) => t.Layer_Key !== "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key));
+    const serviceTrenchTypes = new Set(["trench_service", ...lineTypes
+      .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)]);
+
+    const res = contentsOf(feature, allFeatures, {
+      serviceLineTypes,
+      serviceTrenchTypes,
+      isTrench: (x) => x.Feature_Type === "line"
+        && isTrenchType(x.Attributes?.Line_Type, lineTypes),
+    });
+    if (res.error) return null;
+
+    return trenchSize((res.contents || []).map((c) => {
+      const mm = Number(String(c.feature?.Attributes?.Size ?? "")
+        .replace(/[^0-9.]/g, ""));
+      return {
+        utility: c.utility,
+        outsideDiameterMM: mm > 0 ? mm : null,
+      };
+    }));
+  }, [isTrench, feature, allFeatures, lineTypes]);
 
   /* Gas, by the same test as water. */
   const isGas = feature.Feature_Type === "line" && !isTrench && (() => {
@@ -1057,6 +1092,36 @@ export default function FeatureEditor({
                       ))}
                     </select>
                     <p className="hint">What it is dug through. Drives reinstatement.</p>
+                  </div>
+
+                  {/* Dug size, from what is routed in it. Read only:
+                      the drawing decides, not a typed number. */}
+                  <div className="fld">
+                    <label htmlFor="fe-tw">Width (m)</label>
+                    <input id="fe-tw" readOnly
+                      value={trenchDims?.items ? trenchDims.widthM.toFixed(2) : ""}
+                      title={trenchDims?.items
+                        ? `${trenchDims.contentWidthM}m of pipe and cable`
+                          + ` + ${trenchDims.separationWidthM}m between them`
+                          + ` + ${trenchDims.marginWidthM}m working room`
+                        : undefined} />
+                    <p className="hint">
+                      {trenchDims?.items
+                        ? `NJUG spacing for ${trenchDims.items} `
+                          + `${trenchDims.items === 1 ? "utility" : "utilities"}`
+                        : "Nothing routed in it yet"}
+                    </p>
+                  </div>
+
+                  <div className="fld">
+                    <label htmlFor="fe-td">Depth (m)</label>
+                    <input id="fe-td" readOnly
+                      value={trenchDims?.items ? trenchDims.depthM.toFixed(2) : ""} />
+                    <p className="hint">
+                      {trenchDims?.items
+                        ? `To the ${trenchDims.deepest} at ${trenchDims.coverM}m cover`
+                        : "\u2014"}
+                    </p>
                   </div>
 
                   {/* What stage this length is at. The same list the

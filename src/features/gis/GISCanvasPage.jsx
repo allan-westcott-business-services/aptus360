@@ -64,6 +64,7 @@ import {
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
+import { trenchSize } from "./trenchSize.js";
 import {
   gasMainRuns, END_EXTEND_M,
 } from "./gasNetwork.js";
@@ -6363,7 +6364,25 @@ export default function GISCanvasPage() {
       },
     });
     if (res.error) { setError(res.error); return; }
-    setInspect({ ...res, stretch });
+
+    /* How wide and deep this length has to be dug, from what is in it.
+
+       Worked out here rather than stored, so it follows the drawing: a
+       cable added to a trench widens it without anybody remembering to
+       revise a number. The diameters come off the features where they
+       carry one \u2014 gas and water hold a size, cable does not, and a
+       nominal width is used for those and said to be nominal. */
+    const njug = trenchSize((res.contents || []).map((c) => {
+      const size = String(c.feature?.Attributes?.Size ?? "");
+      const mm = Number(size.replace(/[^0-9.]/g, ""));
+      return {
+        utility: c.utility,
+        outsideDiameterMM: mm > 0 ? mm : null,
+        label: c.label,
+      };
+    }));
+
+    setInspect({ ...res, stretch, njug });
     setError("");
   }
 
@@ -11094,6 +11113,33 @@ export default function GISCanvasPage() {
                   </p>
                 )}
 
+                {/* How wide and deep this length has to be dug.
+
+                    From what is in it rather than typed, so adding a
+                    cable widens the trench without anybody remembering
+                    to revise a figure. The working is shown because a
+                    dimension on a drawing gets questioned, and "NJUG
+                    says so" is not an answer somebody can check. */}
+                {!!inspect.njug?.items && (
+                  <div className="gco-size">
+                    <span className="gco-size-fig">
+                      {`${inspect.njug.widthM.toFixed(2)}m wide`}
+                    </span>
+                    <span className="gco-size-fig">
+                      {`${inspect.njug.depthM.toFixed(2)}m deep`}
+                    </span>
+                    <span className="gco-size-why">
+                      {`${inspect.njug.contentWidthM}m of pipe and cable`}
+                      {inspect.njug.separationWidthM
+                        ? ` + ${inspect.njug.separationWidthM}m between them` : ""}
+                      {` + ${inspect.njug.marginWidthM}m working room`}
+                      {inspect.njug.atMinimum ? " (at the minimum dig width)" : ""}
+                      {`; dug to the ${inspect.njug.deepest} at `}
+                      {`${inspect.njug.coverM}m cover`}
+                    </span>
+                  </div>
+                )}
+
                 {/* What was near this stretch but not laid in it used
                     to be listed here.
 
@@ -12668,6 +12714,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-x { background: none; border: none; cursor: pointer; color: var(--muted);
   font: 600 11px inherit; padding: 0 3px; }
 .gco-x:hover { color: #b91c1c; }
+.gco-size { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--border); }
+.gco-size-fig { font: 700 13px inherit; color: var(--text); }
+.gco-size-why { flex-basis: 100%; font-size: 11.5px; color: var(--muted);
+  line-height: 1.5; }
+
 .gco-none { color: var(--muted); font-style: italic; margin: 6px 0; }
 .gco-range { border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px;
   margin-bottom: 6px; }

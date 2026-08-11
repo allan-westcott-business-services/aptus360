@@ -148,6 +148,19 @@ export function teamMayTake(team, opts = {}) {
   return null;
 }
 
+/* Whether a phase can be divided between gangs by utility.
+
+   Reinstatement cannot. It puts the ground back, and what was laid in
+   it does not matter — the same reason a reinstatement bar carries no
+   utility dots on the planning board. Offering the split there asks a
+   question with no answer, and a booking saved covering "gas only"
+   would describe a reinstatement that stops at the gas.
+
+   By name, because that is what distinguishes the phases here and what
+   the board already matches on. */
+export const splitsByUtility = (taskTypeName) =>
+  !String(taskTypeName || "").toLowerCase().trim().startsWith("reinstat");
+
 /* Which crafts can do a given piece of work.
 
    A craft says three things: the phase it performs, whether it is mains

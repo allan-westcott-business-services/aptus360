@@ -15,7 +15,7 @@
    database, and if the two disagree the fixture is the one that is
    wrong. */
 import { planningMock } from "./src/lib/mockData.js";
-import { teamMayTake } from "./src/features/calloffs/assignments.js";
+import { teamMayTake, splitsByUtility } from "./src/features/calloffs/assignments.js";
 import { phaseUtilityNames } from "./src/features/planning/timeline.js";
 
 let bad = 0;
@@ -110,6 +110,24 @@ for (const [what, seq] of [["mains", mains], ["service", service]]) {
   if (phaseUtilityNames("Excavation and Lay") !== null) {
     fail("excavation stopped showing the utilities in the trench");
   }
+}
+
+// ── Reinstatement is not split by utility ──
+//
+// It puts the ground back and what was laid in it does not matter —
+// the same reason a reinstatement bar carries no utility dots. A
+// booking saved covering "gas only" would describe a reinstatement that
+// stops at the gas.
+{
+  for (const name of ["Reinstatement", "reinstatement", "Reinstate"]) {
+    if (splitsByUtility(name)) fail(`${name} was offered a utility split`);
+  }
+  for (const name of ["Excavation and Lay", "Jointing", "Laying"]) {
+    if (!splitsByUtility(name)) fail(`${name} was refused a utility split`);
+  }
+  /* And an unnamed phase keeps the split rather than losing it: the
+     rule names the one exception, not the rule. */
+  if (!splitsByUtility("")) fail("a phase with no name lost the split");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

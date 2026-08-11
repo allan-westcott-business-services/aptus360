@@ -17,6 +17,7 @@ import {
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
   bookedParts, partIsFree,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
+  splitsByUtility,
 } from "./assignments.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
@@ -1342,6 +1343,10 @@ function Assignments({ row }) {
      One definition because six places ask, and six copies is six
      chances for one to forget the utilities and disable plots that are
      free. */
+  /* What a phase is called, for the rules that go by name. */
+  const phaseOf = (taskTypeId) => phases
+    .find((p) => Number(p.Task_Type_ID) === Number(taskTypeId))?.Task_Type_Name || "";
+
   const takenFor = (taskTypeId, exceptId = null, opts = {}) => {
     const { named = false, forUtilities = null } = opts;
     return takenPlots(
@@ -1593,7 +1598,13 @@ function Assignments({ row }) {
           await adminDelete("Call_Off_Assignment_Utility", r.Assignment_Utility_ID);
         }
         const madeUtils = [];
-        if (draft.byUtility) {
+        /* And not on reinstatement, whatever the flag says.
+
+           The tick is hidden there, so a booking whose phase changed —
+           or one saved before the rule existed — could carry a split
+           with no control left to clear it. Written from the rule
+           rather than from the flag, so the two cannot disagree. */
+        if (draft.byUtility && splitsByUtility(phaseOf(draft.Task_Type_ID))) {
           for (const uid of [...new Set((draft.utility_ids || []).map(Number))]) {
             madeUtils.push(await adminCreate("Call_Off_Assignment_Utility", {
               Assignment_ID: id, Utility_ID: uid,
@@ -2133,15 +2144,19 @@ function Assignments({ row }) {
                       </label>
                     )}
 
-                    <label className="asg-split-tick">
-                      <input type="checkbox" checked={!!draft.byUtility}
-                        onChange={(e) => setDraft((d) => ({
-                          ...d,
-                          byUtility: e.target.checked,
-                          utility_ids: e.target.checked ? (d.utility_ids || []) : [],
-                        }))} />
-                      Split by utility
-                    </label>
+                    {/* Not on reinstatement: it puts the ground back and
+                        what was laid in it does not matter. */}
+                    {splitsByUtility(ph.Task_Type_Name) && (
+                      <label className="asg-split-tick">
+                        <input type="checkbox" checked={!!draft.byUtility}
+                          onChange={(e) => setDraft((d) => ({
+                            ...d,
+                            byUtility: e.target.checked,
+                            utility_ids: e.target.checked ? (d.utility_ids || []) : [],
+                          }))} />
+                        Split by utility
+                      </label>
+                    )}
                     </div>
 
                     <div className="asg-days-head">
@@ -2258,7 +2273,7 @@ function Assignments({ row }) {
                     the days it divides \u2014 not here, where it was a
                     second copy of the same control. */}
                 <div className="asg-split">
-                  {draft.byUtility && (
+                  {draft.byUtility && splitsByUtility(ph.Task_Type_Name) && (
                     <div className="asg-split-utils">
                       {utils
                         /* Only the utilities this call-off covers. A

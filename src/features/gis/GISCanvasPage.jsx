@@ -569,6 +569,8 @@ export default function GISCanvasPage() {
      figures on the drawing outlive the panel, and closing one should
      not discard the other. */
   const [gasLevelsPanel, setGasLevelsPanel] = useState(false);
+  /* What each length of main carries, once a check has run. */
+  const [gasFlow, setGasFlow] = useState(new Map());
 
   /* Which of the two recorded sizes is being looked at.
 
@@ -637,6 +639,7 @@ export default function GISCanvasPage() {
       || measured === `${sizeMode.gas ?? "manual"}\n${networkFingerprint}`) return;
     setGasLevelsResult(null);
     setGasLevelsPanel(false);
+    setGasFlow(new Map());
   }, [networkFingerprint, gasLevelsResult]);
 
   /* The pressure at each span node, by its label, for drawing on the
@@ -2929,8 +2932,24 @@ export default function GISCanvasPage() {
             && (a.Size || a.Water_Pipe_Size_ID != null
               || a.Gas_Pipe_Size_ID != null || a.Manual_Gas_Pipe_Size_ID != null
               || a.Meters != null)
-            ? `${sizeLabelOf(f, sizeCatalogues) || a.Size || "size not set"}  `
-              + `${lineLength(f.Geometry).toFixed(1)} m`
+            /* Stacked, not run together.
+
+               Diameter, length and flow are three different quantities
+               and reading them off one line meant telling them apart by
+               their units. One under another, each is where it is
+               expected.
+
+               Q only once a levels check has run: it is a result rather
+               than a property of the pipe, and a flow left on a drawing
+               whose network has since changed would be a figure nobody
+               could tell was stale. */
+            ? [
+              sizeLabelOf(f, sizeCatalogues) || a.Size || "size not set",
+              `${lineLength(f.Geometry).toFixed(1)} m`,
+              Number.isFinite(gasFlow.get(Number(f.Feature_ID)))
+                ? `Q ${gasFlow.get(Number(f.Feature_ID)).toFixed(2)} m\u00b3/h`
+                : null,
+            ].filter(Boolean).join("\n")
             : "";
 
           /* ── What a cable says ──
@@ -3001,7 +3020,12 @@ export default function GISCanvasPage() {
 
             ctx.font = "700 11px ui-monospace, Menlo, monospace";
             ctx.textAlign = "center";
-            const w = ctx.measureText(txt).width + 10;
+            /* Measured on the widest line, and the plate grown for the
+               rest \u2014 a box sized to one line of a three-line label
+               clips the other two. */
+            const lines = String(txt).split("\n");
+            const w = Math.max(...lines.map((t) => ctx.measureText(t).width)) + 10;
+            const lineH = 12;
 
             /* A leader back to the pipe. Always for a placed label —
                it is pointing at a spot and the line says which — and
@@ -3106,9 +3130,14 @@ export default function GISCanvasPage() {
                same origin, same width, same height — so what can be
                clicked is what can be seen. Rounding the corners takes
                nothing off that: the radius is inside the rectangle. */
+            /* Tall enough for however many lines the label has, and
+               centred on the same point a single line was \u2014 so a
+               one-line label sits exactly where it always did and a
+               three-line one grows evenly about it rather than
+               downwards into the drawing. */
+            const bh = 15 + (lines.length - 1) * lineH;
             const bx = mid.x - w / 2;
-            const by = mid.y - 20;
-            const bh = 15;
+            const by = mid.y - 20 - (lines.length - 1) * lineH / 2;
             const rad = 4;
 
             ctx.beginPath();
@@ -3136,7 +3165,10 @@ export default function GISCanvasPage() {
                it with the label would take that away just where it is
                needed most. */
             ctx.fillStyle = st.labelColour;
-            ctx.fillText(txt, mid.x, mid.y - 9);
+            lines.forEach((t, li) => {
+              ctx.fillText(t, mid.x, mid.y - 9 + li * lineH
+                - (lines.length - 1) * lineH / 2);
+            });
             ctx.restore();
           });
         }
@@ -8239,6 +8271,15 @@ export default function GISCanvasPage() {
            were these. */
         measuredFingerprint: `${sizeMode.gas ?? "manual"}\n${fingerprintOf(src)}`,
       });
+      /* Flow per length of main, keyed by the feature it is drawn as.
+
+         Q is a result rather than a property of a pipe \u2014 it depends on
+         what lies beyond it and how that diversifies \u2014 so it lives with
+         the check and clears when the check does. */
+      setGasFlow(new Map((result.legs || [])
+        .map((l, i) => [Number(result.runsUsed?.[i]?.featureId), l.flowM3h])
+        .filter(([id, q]) => Number.isFinite(id) && Number.isFinite(q))));
+
       setGasLevelsPanel(true);
       /* Said, rather than left to be noticed. A panel that reports one
          network on a site fed from two looks like a full check, and the

@@ -11,6 +11,16 @@ export default async function handler() {
 
     const queries = {
       branches:       db.from("Customer_Branch").select("Branch_ID,Branch_Name,Branch_Dropdown,Customer_ID").eq("Is_Active", true).order("Branch_Dropdown"),
+      /* Branches of the organisations, which is where a customer is
+         added now. Customer_Branch above is the older table, and the
+         project form read only that \u2014 so a developer added today had a
+         branch nothing offered.
+
+         Both are served and offered together rather than one being
+         migrated into the other: a project already points at a
+         Customer_Branch by id, and rewriting those is a data change
+         rather than a display one. */
+      orgBranches:    db.from("Organisation_Branch").select("Organisation_Branch_ID,Organisation_ID,Branch_Name,Branch_Dropdown").eq("Is_Active", true).order("Branch_Dropdown"),
       customers:      db.from("Customer").select("Customer_ID,Customer_Name").eq("Is_Active", true).order("Customer_Name"),
       regions:        db.from("Region").select("Region_ID,Region").eq("Is_Active", true).order("Sort_Order"),
       subRegions:     db.from("Sub_Region").select("Sub_Region_ID,Region_ID,Sub_Region").eq("Is_Active", true).order("Sort_Order"),

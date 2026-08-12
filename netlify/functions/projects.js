@@ -9,7 +9,11 @@ const PROJECT_COLUMNS = [
   /* The two references the project is known by elsewhere: the AP number
      to the network operator, the tender reference to the client. */
   "AP_Number", "Tender_Ref",
-  "Customer_ID", "Branch_ID", "Region_ID", "Sub_Region_ID",
+  "Customer_ID", "Branch_ID",
+  /* The branch where it is an Organisation_Branch (0154). A project
+     names one or the other, never both. */
+  "Organisation_Branch_ID",
+  "Region_ID", "Sub_Region_ID",
   "Site_Name", "Site_Address", "Postcode", "Eastings", "Northings",
   "Date_Received", "KPI_Date", "Date_Sent", "Secured_Date", "Status_Changed_Date",
   "BDD_KAM_ID", "Estimator_ID", "Quote_Type_ID", "I_and_C", "Is_Priority", "Notes",

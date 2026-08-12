@@ -256,7 +256,19 @@ export default function CallOffsTab({ projectId }) {
      this call-off — it is a fact about the project, and a box somebody
      can type a different answer into is a box that will eventually
      disagree with the project it was raised under. */
+  /* From whichever branch table the project names.
+
+     Customer_Branch is the older one and Organisation_Branch is where a
+     customer is added now (0154). A project points at one or the other,
+     so asking only the first left the company blank on every project
+     whose customer was entered as an organisation. */
   const branchName = useMemo(() => {
+    const orgId = project?.Organisation_Branch_ID;
+    if (orgId) {
+      const o = (lookups?.orgBranches || [])
+        .find((x) => Number(x.Organisation_Branch_ID) === Number(orgId));
+      return o?.Branch_Dropdown || o?.Branch_Name || "";
+    }
     if (!project?.Branch_ID) return "";
     const b = (lookups?.branches || [])
       .find((x) => Number(x.Branch_ID) === Number(project.Branch_ID));

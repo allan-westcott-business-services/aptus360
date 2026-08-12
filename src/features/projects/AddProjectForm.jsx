@@ -13,7 +13,7 @@ import { statusesForStage, firstStatusForStage, peopleWithRole, ROLE, STAGES } f
 
 const REQUIRED = [
   ["Date_Received", "Date received"],
-  ["Branch_ID", "Customer branch"],
+  ["Branch_Choice", "Customer branch"],
   ["Region_ID", "Region"],
   ["Quote_Type_ID", "Quote type"],
   ["BDD_KAM_ID", "BDD / KAM"],
@@ -25,7 +25,7 @@ const blank = () => ({
   Project_Ref: "",
   Date_Received: new Date().toISOString().slice(0, 10),
   KPI_Date: "",
-  Branch_ID: "",
+  Branch_Choice: "",
   Region_ID: "",
   Sub_Region_ID: "",
   Quote_Type_ID: "1",
@@ -92,9 +92,26 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
 
     setSaving(true);
     try {
-      const branch = lookups.branches.find((b) => +b.Branch_ID === +f.Branch_ID);
+      /* Undo the prefix: "c12" is Customer_Branch 12, "o12" is
+         Organisation_Branch 12, and they are not the same branch. */
+      const choice = String(f.Branch_Choice ?? "");
+      const isOrg = choice.startsWith("o");
+      /* Empty means nothing chosen, not branch nought. Number("") is 0,
+         and 0 is a perfectly valid-looking id to write into a foreign
+         key column. */
+      const id = /^[co]\d+$/.test(choice) ? Number(choice.slice(1)) : null;
+      const branch = isOrg
+        ? null
+        : lookups.branches.find((b) => +b.Branch_ID === id);
+
       const result = await createProject({
         ...f,
+        Branch_Choice: undefined,
+        Branch_ID: isOrg ? null : id,
+        Organisation_Branch_ID: isOrg ? id : null,
+        /* Customer_ID comes off a Customer_Branch. An organisation's
+           branch has no Customer to name, and inventing one would put a
+           project under a customer nobody chose. */
         Customer_ID: branch ? branch.Customer_ID : null,
         scopes: scopes.map((id) => ({ Utility_ID: id, Scope_Status_ID: 1 })),
       });
@@ -181,10 +198,28 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
           </Field>
 
           <Field label="Customer branch" required span={3}>
-            <Select value={f.Branch_ID} onChange={set("Branch_ID")}>
+            {/* Both branch tables, told apart by a prefix.
+
+                Customer_Branch and Organisation_Branch are separate
+                sequences, so a bare number cannot say which table it
+                came from \u2014 and writing an organisation's id into
+                Branch_ID would point the project at whatever customer
+                branch shared that number. The prefix is undone on save,
+                into whichever column the choice belongs in.
+
+                One list rather than two dropdowns: to whoever is filling
+                this in they are all customers, and which table a branch
+                happens to live in is our problem rather than theirs. */}
+            <Select value={f.Branch_Choice} onChange={set("Branch_Choice")}>
               <option value="">Select&hellip;</option>
               {lookups.branches.map((b) => (
-                <option key={b.Branch_ID} value={b.Branch_ID}>
+                <option key={`c${b.Branch_ID}`} value={`c${b.Branch_ID}`}>
+                  {b.Branch_Dropdown || b.Branch_Name}
+                </option>
+              ))}
+              {(lookups.orgBranches || []).map((b) => (
+                <option key={`o${b.Organisation_Branch_ID}`}
+                  value={`o${b.Organisation_Branch_ID}`}>
                   {b.Branch_Dropdown || b.Branch_Name}
                 </option>
               ))}

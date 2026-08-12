@@ -769,6 +769,42 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* A meter fed from one side is not unserved.
+
+   Each walk sees only the network it starts from, so on a site fed from
+   two sides every walk reports the other side's meters as unreachable
+   \u2014 "its service meets the main at a point the POC can't reach", said
+   about a plot that plainly has gas. Forty-five of them on a site where
+   every one is fed.
+
+   A meter is unserved only if every walk says so. */
+{
+  const reconcile = (perWalk) => {
+    const complaints = new Map();
+    for (const list of perWalk) {
+      for (const id of list) complaints.set(id, (complaints.get(id) || 0) + 1);
+    }
+    return [...complaints.entries()]
+      .filter(([, n]) => n >= perWalk.length)
+      .map(([id]) => id)
+      .sort((a, b) => a - b);
+  };
+
+  /* Two networks. Walk one feeds 2 and 3, walk two feeds 5 and 6, and
+     neither feeds 9 \u2014 which is the only real fault. */
+  const got = reconcile([[5, 6, 9], [2, 3, 9]]);
+  if (got.join() !== "9") {
+    fail(`reported ${got.join(", ") || "nothing"} as unserved, wanted only 9`);
+  }
+
+  /* One network behaves exactly as before: every complaint stands. */
+  const single = reconcile([[2, 3]]);
+  if (single.join() !== "2,3") fail("a single network stopped reporting its own faults");
+
+  /* And a site where nothing is fed still says so. */
+  if (reconcile([[1], [1]]).join() !== "1") fail("a genuinely unfed meter was dropped");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

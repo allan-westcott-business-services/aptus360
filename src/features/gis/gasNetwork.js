@@ -353,6 +353,12 @@ export function gasMainRuns(features = [], opts = {}) {
 
   if (pocs.length > 1 && !opts.singlePoc) {
     const seen = new Set();
+    /* How many walks complained about each meter, and how many ran. A
+       meter every walk complains about is unserved; one that only some
+       complain about is fed by the rest. */
+    const complaints = new Map();
+    const unservedById = new Map();
+    let walksDone = 0;
     const merged = {
       runs: [], unserved: [], strandedMeters: [], unattachedServices: [],
       overDiverse: [], noLoad: [], bySize: new Map(), totalM: 0,
@@ -386,13 +392,43 @@ export function gasMainRuns(features = [], opts = {}) {
       }
       merged.runs.push(...claimed);
 
+      /* Complaints are gathered, then reconciled below.
+
+         Each walk sees only its own network, so it reports every meter
+         on the other one as unreachable \u2014 "its service meets the main
+         at a point the POC can't reach", said about a plot that is
+         perfectly well fed from the other side. Which is the fault
+         somebody sees: 45 meters listed as unserved on a site where
+         every one of them has gas. */
       for (const k of ["unserved", "strandedMeters", "unattachedServices",
         "overDiverse", "noLoad"]) {
         merged[k].push(...(part[k] || []));
       }
+      /* Counted per walk rather than pooled: a meter is only genuinely
+         unserved if every network says so. One walk complaining about a
+         meter another feeds is the artefact this exists to remove. */
+      walksDone += 1;
+      for (const m of part.unservedMeters || []) {
+        const id = Number(m.id ?? m.Feature_ID);
+        complaints.set(id, (complaints.get(id) || 0) + 1);
+        if (!unservedById.has(id)) unservedById.set(id, m);
+      }
       merged.totalM = Math.round((merged.totalM + (part.totalM || 0)) * 10) / 10;
       merged.networks.push({ poc, runs: claimed.length, metres: part.totalM ?? 0 });
     });
+
+    /* Unserved by every network, or not unserved at all. */
+    const reallyUnfed = new Set([...complaints.entries()]
+      .filter(([, n]) => n >= walksDone)
+      .map(([id]) => id));
+
+    merged.unservedMeters = [...unservedById.entries()]
+      .filter(([id]) => reallyUnfed.has(id))
+      .map(([, m]) => m);
+    merged.strandedMeters = (merged.strandedMeters || [])
+      .filter((m) => reallyUnfed.has(Number(m.id ?? m.Feature_ID)));
+    merged.unattachedServices = (merged.unattachedServices || []).filter((sv) =>
+      (sv.meterList || []).some((m) => reallyUnfed.has(Number(m.id ?? m.Feature_ID))));
 
     /* Only an error if nothing at all could be built. */
     return merged.runs.length ? merged : { error, networks: merged.networks };

@@ -75,7 +75,7 @@ import {
   rangesToSpans, toCallOffRows, labelOf as spanNodeLabel, orderPair,
 } from "./mainsCallOff.js";
 import {
-  gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS,
+  gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS, lineFollows,
 } from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
@@ -7508,13 +7508,14 @@ export default function GISCanvasPage() {
          wins over one the build would have picked. */
       const sizeOnDrawing = (pts) => {
         if (!pts?.length) return null;
-        const near = (q) => pts.some((r) =>
-          Math.hypot(r[0] - q[0], r[1] - q[1]) <= 0.5);
         for (const f of src) {
           if (f.Feature_Type !== "line") continue;
           if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
           if (f.Attributes?.Gas_Pipe_Size_ID == null) continue;
-          if (!(f.Geometry || []).every(near)) continue;
+          /* On the run's line, not on its vertices. A pipe drawn along
+             a run has points between the run's own, and comparing
+             vertex to vertex missed every one of them. */
+          if (!lineFollows(f.Geometry || [], pts)) continue;
           const row = (lookups?.gasPipeSizes || []).find((x) =>
             Number(x.Gas_Pipe_Size_ID) === Number(f.Attributes.Gas_Pipe_Size_ID));
           if (row) return row;
@@ -7639,13 +7640,9 @@ export default function GISCanvasPage() {
         return;
       }
 
-      const onRun = (f) => {
-        const pts = sug.runPts || [];
-        if (!pts.length) return false;
-        const near = (q) => pts.some((r) =>
-          Math.hypot(r[0] - q[0], r[1] - q[1]) <= 0.5);
-        return (f.Geometry || []).every(near);
-      };
+      /* Same rule as the check uses to read a size, so Make change
+         writes to exactly the features the report measured. */
+      const onRun = (f) => lineFollows(f.Geometry || [], sug.runPts || []);
       const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
         && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
       const rows = features

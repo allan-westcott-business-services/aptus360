@@ -565,3 +565,34 @@ export function suggestPipeChanges({
     stillFailing: remaining.map(([node, mbar]) => ({ node, mbar })),
   };
 }
+
+/* Whether a point lies on a polyline, within a tolerance.
+
+   Distance to the nearest *segment*, not to the nearest vertex. A run
+   is built from the vertices the network walk produced; a pipe drawn
+   along it has its own points, which fall between them. Comparing
+   vertex to vertex meant a pipe with a single intermediate point
+   matched nothing \u2014 so the size chosen on the drawing was never found
+   and the check reported the size the build would have picked. */
+export function onPolyline(pt, pts, tolerance = 0.5) {
+  if (!pt || !pts?.length) return false;
+  if (pts.length === 1) return Math.hypot(pts[0][0] - pt[0], pts[0][1] - pt[1]) <= tolerance;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const len2 = vx * vx + vy * vy;
+    const t = len2
+      ? Math.max(0, Math.min(1, ((pt[0] - a[0]) * vx + (pt[1] - a[1]) * vy) / len2))
+      : 0;
+    const d = Math.hypot(pt[0] - (a[0] + t * vx), pt[1] - (a[1] + t * vy));
+    if (d <= tolerance) return true;
+  }
+  return false;
+}
+
+/* Whether a line is drawn along a run: every one of its points sits on
+   the run's polyline. */
+export const lineFollows = (geometry = [], runPts = [], tolerance = 0.5) =>
+  geometry.length > 0 && geometry.every((q) => onPolyline(q, runPts, tolerance));

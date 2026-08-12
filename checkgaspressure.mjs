@@ -23,7 +23,7 @@
 */
 import {
   pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees, gasLevels,
-  suggestPipeChanges, teeAllowanceM,
+  suggestPipeChanges, teeAllowanceM, lineFollows,
 } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
@@ -636,6 +636,41 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
     fail("the allowance ignores the configured number of diameters");
   }
   if (teeAllowanceM(50.9, 0) !== 0) fail("a zero allowance still added length");
+}
+
+/* A pipe is matched to the run it is drawn along, by the line and not
+   by its vertices.
+
+   A run is built from the vertices the network walk produced; a pipe
+   drawn along it has its own points, which fall between them.
+   Comparing vertex to vertex meant a pipe with one intermediate point
+   matched nothing — so a size chosen on the drawing was never found,
+   the report showed the size the build would have picked, and Make
+   change wrote to no features at all. Both read this. */
+{
+  const run = [[0, 0], [100, 0]];
+
+  /* The case that was broken: a midpoint on a straight run. */
+  if (!lineFollows([[0, 0], [50, 0], [100, 0]], run)) {
+    fail("a pipe with an intermediate point did not match its run");
+  }
+  /* Part of a run is still on it. */
+  if (!lineFollows([[20, 0], [80, 0]], run)) {
+    fail("a pipe along part of a run did not match it");
+  }
+  /* And these must not match, or a size would be read off the wrong
+     pipe \u2014 worse than reading none. */
+  if (lineFollows([[20, 5], [80, 5]], run)) {
+    fail("a pipe five metres off the run matched it");
+  }
+  if (lineFollows([[0, 0], [140, 0]], run)) {
+    fail("a pipe running past the end of the run matched it");
+  }
+  /* Corners are ordinary. */
+  if (!lineFollows([[0, 0], [100, 0], [100, 40]], [[0, 0], [100, 0], [100, 80]])) {
+    fail("a pipe round a corner did not match its run");
+  }
+  if (lineFollows([], run)) fail("a line with no geometry matched a run");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

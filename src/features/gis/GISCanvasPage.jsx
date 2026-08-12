@@ -3552,6 +3552,46 @@ export default function GISCanvasPage() {
          rather than floor let an 11px label into a 10px radius. */
       const fontPx = Math.floor(Math.min(r, r * 2 / Math.max(1, code.length) * 1.15));
 
+      /* ── The levels verdict, as a ring ──
+
+         A node below the limit, or close to it, marked where it is.
+         The report says which nodes fail; finding them meant reading a
+         label off a table and hunting for it on the drawing, which on a
+         site with twenty-odd spans is the slow half of the job.
+
+         Outside the white ring, so it reads as something added to the
+         node rather than a change to the node itself \u2014 the same colours
+         as the report, so the two are obviously the same statement.
+
+         Only where the check has run and the gas layer is showing:
+         gasPressureAt is null otherwise, and a stale verdict is worse
+         than none. */
+      const mbarHere = gasPressureAt?.get(String(code));
+      if (mbarHere != null) {
+        const min = gasLevelsResult?.minMBar ?? 19;
+        const src = gasLevelsResult?.sourceMBar ?? 23;
+        const amberAt = min + (src - min)
+          * (1 - (gasLevelsResult?.amberPct ?? 80) / 100);
+        const verdict = mbarHere < min ? "#b91c1c"
+          : mbarHere < amberAt ? "#b45309" : null;
+        if (verdict) {
+          /* A white ring under the coloured one, so the trench running
+             through does not cut the circle into arcs \u2014 which reads as
+             a broken ring rather than a mark on the node. */
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, r + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = "#fff";
+          ctx.lineWidth = 6;
+          ctx.stroke();
+
+          ctx.beginPath();
+          ctx.arc(q.x, q.y, r + 5, 0, Math.PI * 2);
+          ctx.strokeStyle = verdict;
+          ctx.lineWidth = 3;
+          ctx.stroke();
+        }
+      }
+
       /* A white ring under the fill, so the node reads as sitting on top
          of whatever it covers rather than merging into it. */
       ctx.beginPath();

@@ -237,6 +237,59 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   }
 }
 
+/* A moved span node still names the run that ends on it.
+
+   The marker is dragged a metre or two clear so its label can be read;
+   the anchor is the point on the dig it was placed at. Matching a run
+   end against the marker meant a tidied drawing lost its labels — the
+   levels report showed a dash where a node plainly exists, and more of
+   them the more the drawing had been tidied. */
+{
+  const nodes = [{
+    Attributes: { Span_Label: "A12", Span_Anchor: [100, 0] },
+    Geometry: [[103, 4]],
+  }];
+  const labelAt = (pt) => {
+    for (const f of nodes) {
+      const a = f.Attributes?.Span_Anchor;
+      const q = (Array.isArray(a) && a.length === 2 ? a : (f.Geometry || [])[0]);
+      if (Math.hypot(q[0] - pt[0], q[1] - pt[1]) <= 1.5) return f.Attributes.Span_Label;
+    }
+    return null;
+  };
+
+  if (labelAt([100, 0]) !== "A12") fail("a moved span node no longer names its run end");
+  /* And it does not name a run end that is genuinely elsewhere. */
+  if (labelAt([140, 0])) fail("a span node claimed a run end forty metres away");
+
+  /* A node with no anchor still matches on its position, as it always
+     did \u2014 nothing placed before anchors existed loses its label. */
+  const old = [{ Attributes: { Span_Label: "A9" }, Geometry: [[50, 0]] }];
+  const oldAt = (pt) => old.find((f) => {
+    const q = f.Geometry[0];
+    return Math.hypot(q[0] - pt[0], q[1] - pt[1]) <= 1.5;
+  })?.Attributes?.Span_Label ?? null;
+  if (oldAt([50, 0]) !== "A9") fail("a node placed before anchors lost its label");
+}
+
+/* Two networks cannot both call a length G13.
+
+   Each is built from its own POC and labels its mains from one, so the
+   report listed two G13s and two G16s with no way to tell them apart. */
+{
+  const seen = new Map();
+  const uniq = (l) => {
+    const before = seen.get(l) ?? 0;
+    seen.set(l, before + 1);
+    return before ? `${l}${String.fromCharCode(97 + before)}` : l;
+  };
+  const got = ["G13", "G16", "G13", "G16", "G17"].map(uniq);
+  if (new Set(got).size !== got.length) fail(`duplicate labels: ${got.join(", ")}`);
+  if (got[0] !== "G13" || got[2] !== "G13b") {
+    fail(`the first keeps its name and the second is lettered: got ${got.join(", ")}`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

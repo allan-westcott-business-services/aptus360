@@ -7505,6 +7505,27 @@ export default function GISCanvasPage() {
 
       const old = src.filter((f) => f.Attributes?.Generated
         && f.Layer_Key === "electric");
+      /* What somebody chose by hand, kept across the rebuild.
+
+         A rebuild deletes the generated mains and lays them again, so
+         an override went with them \u2014 every manually set pipe size lost
+         on every build, silently, which is the one thing a rebuild must
+         not do. The calculated size is the build's to replace; the
+         override is not.
+
+         Remembered by geometry rather than by id, because the new
+         features are new rows: the same length of main is the same
+         points on the ground whether it was laid a minute or a month
+         ago. */
+      const overrides = new Map();
+      for (const f of old) {
+        const id = f.Attributes?.Manual_Gas_Pipe_Size_ID;
+        if (id == null) continue;
+        const key = (f.Geometry || [])
+          .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
+        overrides.set(key, { id, size: f.Attributes?.Size ?? null });
+      }
+
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       let step = 0;
@@ -7915,7 +7936,17 @@ export default function GISCanvasPage() {
         for (const f of src) {
           const lbl = f.Attributes?.Span_Label;
           if (!lbl) continue;
-          const q = (f.Geometry || [])[0];
+          /* Where the node belongs on the trench, not where its marker
+             was dragged to.
+
+             A span node's marker is moved a metre or two clear so its
+             label can be read; the anchor is the point on the dig it
+             was placed at. Matching on the marker meant a moved node
+             was no longer near the end of its run, so the report showed
+             a dash where a node plainly exists \u2014 and it showed more of
+             them the more the drawing had been tidied. */
+          const a = f.Attributes?.Span_Anchor;
+          const q = (Array.isArray(a) && a.length === 2 ? a : (f.Geometry || [])[0]);
           if (!q) continue;
           const d = Math.hypot(q[0] - pt[0], q[1] - pt[1]);
           if (d <= (opts.within ?? 1.5) && (!best || d < best.d)) best = { lbl, d };
@@ -8006,6 +8037,10 @@ export default function GISCanvasPage() {
         return null;
       };
 
+      /* How many times each drawn label has been used, so two networks
+         cannot both call a length G13. */
+      const seenLabels = new Map();
+
       const result = gasLevels({
         runs: (plan.runs || []).map((r, i) => ({
           ...r,
@@ -8023,7 +8058,20 @@ export default function GISCanvasPage() {
 
              Falls back to a count where a length carries no label, so a
              hand-drawn main still gets a row. */
-          id: mainOnRun(r.pts)?.Label || r.id || `G${i + 1}`,
+          /* The drawing's own name, made unique across the site.
+
+             Each network is built from its own POC and labels its mains
+             G1, G2 from one \u2014 so two networks both have a G13 and a
+             G16, and the report listed each twice with no way to tell
+             them apart. The second and later get a letter, the same way
+             a second origin does. */
+          id: (() => {
+            const drawn = mainOnRun(r.pts)?.Label;
+            if (!drawn) return r.id || `G${i + 1}`;
+            const before = seenLabels.get(drawn) ?? 0;
+            seenLabels.set(drawn, before + 1);
+            return before ? `${drawn}${String.fromCharCode(97 + before)}` : drawn;
+          })(),
           fromLabel: labelAt((r.pts || [])[0]),
           /* The far end of a run, with the cap taken off.
 
@@ -8403,6 +8451,27 @@ export default function GISCanvasPage() {
     setBusy("gasnet");
     try {
       setProgress({ done: 0, total: plan.runs.length, label: "Laying gas main" });
+      /* What somebody chose by hand, kept across the rebuild.
+
+         A rebuild deletes the generated mains and lays them again, so
+         an override went with them \u2014 every manually set pipe size lost
+         on every build, silently, which is the one thing a rebuild must
+         not do. The calculated size is the build's to replace; the
+         override is not.
+
+         Remembered by geometry rather than by id, because the new
+         features are new rows: the same length of main is the same
+         points on the ground whether it was laid a minute or a month
+         ago. */
+      const overrides = new Map();
+      for (const f of old) {
+        const id = f.Attributes?.Manual_Gas_Pipe_Size_ID;
+        if (id == null) continue;
+        const key = (f.Geometry || [])
+          .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
+        overrides.set(key, { id, size: f.Attributes?.Size ?? null });
+      }
+
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       for (const [i, r] of plan.runs.entries()) {
@@ -8452,6 +8521,25 @@ export default function GISCanvasPage() {
               Raw_Load_kW: r.rawKw,
               Supplies: r.supplies,
             } : {}),
+            /* The override this length carried before the rebuild, put
+               back on the new feature.
+
+               Last, so it wins: the calculated block above writes Size
+               from the system pipe, and an override placed before it
+               would have its label overwritten \u2014 the drawing would then
+               show the size the build chose while the feature carried
+               the one somebody set. */
+            ...(() => {
+              const key = (r.pts || [])
+                .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
+              const held = overrides.get(key);
+              return held
+                ? {
+                  Manual_Gas_Pipe_Size_ID: held.id,
+                  ...(held.size ? { Size: held.size } : {}),
+                }
+                : {};
+            })(),
             /* How many services come off this length, and how many
                meters they carry — the numbers somebody would otherwise
                count off the drawing by hand when checking a quantity. */
@@ -8677,22 +8765,6 @@ export default function GISCanvasPage() {
         + "mains trench leads away from it.");
     }
 
-    /* A network that failed while another succeeded.
-
-       The merge builds what it can and reports the rest, so one bad
-       network no longer stops the good one \u2014 but it was reported into
-       a field nobody read. The build appeared to work and half the site
-       stayed empty, which is the worst of the three possible outcomes.
-
-       Named per POC, because "one network failed" is a search and "the
-       POC at Gib Lane cannot reach any service" is a fix. */
-    const failedNetworks = (plan.networks || []).filter((n) => n.error);
-    if (failedNetworks.length) {
-      setError(failedNetworks
-        .map((n) => `${n.poc?.Label || `POC ${n.poc?.Feature_ID}`}: ${n.error}`)
-        .join(" \u00b7 "));
-    }
-
     const old = src.filter((f) => f.Feature_Type === "line"
       && f.Layer_Key === "water"
       && !!f.Attributes?.Generated);
@@ -8726,6 +8798,27 @@ export default function GISCanvasPage() {
     setBusy("waternet");
     try {
       setProgress({ done: 0, total: plan.runs.length, label: "Laying water main" });
+      /* What somebody chose by hand, kept across the rebuild.
+
+         A rebuild deletes the generated mains and lays them again, so
+         an override went with them \u2014 every manually set pipe size lost
+         on every build, silently, which is the one thing a rebuild must
+         not do. The calculated size is the build's to replace; the
+         override is not.
+
+         Remembered by geometry rather than by id, because the new
+         features are new rows: the same length of main is the same
+         points on the ground whether it was laid a minute or a month
+         ago. */
+      const overrides = new Map();
+      for (const f of old) {
+        const id = f.Attributes?.Manual_Gas_Pipe_Size_ID;
+        if (id == null) continue;
+        const key = (f.Geometry || [])
+          .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
+        overrides.set(key, { id, size: f.Attributes?.Size ?? null });
+      }
+
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       for (const [i, r] of plan.runs.entries()) {

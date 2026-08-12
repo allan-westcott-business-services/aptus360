@@ -181,6 +181,61 @@ if (sizeIdFor({ Layer_Key: "trench", Attributes: {} }, "trench") !== null) {
   }
 }
 
+/* A rebuild replaces what the build drew, and nothing else.
+
+   Build Gas Network deletes the generated mains and lays them again, so
+   an override went with them — every manually set pipe size lost on
+   every build, silently. The calculated size is the build's to replace;
+   the decision somebody made is not. */
+{
+  const key = (pts) => pts
+    .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
+
+  const before = [
+    {
+      Geometry: [[0, 0], [100, 0]],
+      Attributes: { Gas_Pipe_Size_ID: 1, Manual_Gas_Pipe_Size_ID: 6, Size: "180mm PE" },
+    },
+    {
+      Geometry: [[100, 0], [200, 0]],
+      Attributes: { Gas_Pipe_Size_ID: 1, Size: "63mm PE" },
+    },
+  ];
+
+  const overrides = new Map();
+  for (const f of before) {
+    const id = f.Attributes?.Manual_Gas_Pipe_Size_ID;
+    if (id != null) {
+      overrides.set(key(f.Geometry), { id, size: f.Attributes?.Size ?? null });
+    }
+  }
+
+  const rebuild = (pts, systemLabel) => {
+    const held = overrides.get(key(pts));
+    return {
+      Gas_Pipe_Size_ID: 1,
+      Size: systemLabel,
+      ...(held
+        ? { Manual_Gas_Pipe_Size_ID: held.id, ...(held.size ? { Size: held.size } : {}) }
+        : {}),
+    };
+  };
+
+  const kept = rebuild([[0, 0], [100, 0]], "63mm PE");
+  if (kept.Manual_Gas_Pipe_Size_ID !== 6) fail("a rebuild lost an override");
+  /* And its label, or the drawing would show the size the build chose
+     while the feature carried the one somebody set. */
+  if (kept.Size !== "180mm PE") fail("a rebuild overwrote an override's label");
+
+  const plain = rebuild([[100, 0], [200, 0]], "90mm PE");
+  if (plain.Manual_Gas_Pipe_Size_ID != null) {
+    fail("a length nobody overrode came back with an override");
+  }
+  if (plain.Size !== "90mm PE") {
+    fail("a rebuild did not update the calculated size where none was overridden");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Size modes behave (both recorded, either read, neither lost).");
 process.exit(bad ? 1 : 0);

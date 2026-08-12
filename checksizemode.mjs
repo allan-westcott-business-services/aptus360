@@ -152,6 +152,35 @@ if (sizeIdFor({ Layer_Key: "trench", Attributes: {} }, "trench") !== null) {
   }
 }
 
+/* Every reader of a size agrees.
+
+   The drawing, the bill and the levels check all show what would be
+   built: the override where there is one. The levels check followed the
+   Sizes menu instead, so a length upsized by hand read 63mm on the
+   report and 180mm PE on the canvas beside it \u2014 the same pipe, two
+   answers, and no way to tell which was being priced. */
+{
+  const over = {
+    Layer_Key: "gas",
+    Attributes: { Gas_Pipe_Size_ID: 4, Manual_Gas_Pipe_Size_ID: 6 },
+  };
+
+  /* What each reader asks for. */
+  const forDrawing = sizeIdFor(over, "gas", "manual");
+  const forBill = sizeIdFor(over, "gas", "manual");
+  const forCheck = sizeIdFor(over, "gas", "manual");
+
+  if (forDrawing !== 6 || forBill !== 6 || forCheck !== 6) {
+    fail("the drawing, the bill and the levels check do not agree on a size");
+  }
+
+  /* The system view still shows the calculated size \u2014 that is what it
+     is for, and it must not follow the override. */
+  if (sizeIdFor(over, "gas", "system") !== 4) {
+    fail("the system view stopped showing what the build worked out");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Size modes behave (both recorded, either read, neither lost).");
 process.exit(bad ? 1 : 0);

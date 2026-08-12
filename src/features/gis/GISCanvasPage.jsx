@@ -7954,6 +7954,23 @@ export default function GISCanvasPage() {
          Read off the features on the run, falling back to the computed
          size where nothing has been chosen. A size somebody has picked
          wins over one the build would have picked. */
+      /* The main drawn along this run, sized or not.
+
+         Kept apart from the size lookup: that one skips a length with
+         no size on it, which is right for reading a bore and wrong for
+         reading a name \u2014 an unsized main still has a label and still
+         needs a row in the report. */
+      const mainOnRun = (pts) => {
+        if (!pts?.length) return null;
+        for (const f of src) {
+          if (f.Feature_Type !== "line") continue;
+          if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
+          if (!lineFollows(f.Geometry || [], pts)) continue;
+          return f;
+        }
+        return null;
+      };
+
       const sizeOnDrawing = (pts) => {
         if (!pts?.length) return null;
         for (const f of src) {
@@ -7963,7 +7980,20 @@ export default function GISCanvasPage() {
              question the drawing is currently showing \u2014 run it on
              system sizes and on manual sizes and the difference is what
              the overrides are worth. */
-          const sizeId = sizeIdFor(f, "gas", sizeMode.gas ?? "system");
+          /* The size that will be built, not the one the menu happens
+             to be showing.
+
+             This followed the toggle, which defaults to system \u2014 so a
+             length upsized by hand was measured at the size the build
+             had rejected, and the report disagreed with the drawing
+             beside it. The drawing and the bill both take the override
+             unconditionally; a check that did not was answering a
+             different question from the one being asked.
+
+             The toggle still governs what is drawn. Comparing the two
+             is done by looking, not by getting a check nobody asked
+             for. */
+          const sizeId = sizeIdFor(f, "gas", "manual");
           if (sizeId == null) continue;
           /* On the run's line, not on its vertices. A pipe drawn along
              a run has points between the run's own, and comparing
@@ -7971,7 +8001,7 @@ export default function GISCanvasPage() {
           if (!lineFollows(f.Geometry || [], pts)) continue;
           const row = (lookups?.gasPipeSizes || []).find((x) =>
             Number(x.Gas_Pipe_Size_ID) === Number(sizeId));
-          if (row) return row;
+          if (row) return { row, feature: f };
         }
         return null;
       };
@@ -7982,7 +8012,18 @@ export default function GISCanvasPage() {
           /* The gas main length label \u2014 G1, G2 \u2014 which is what a
              length of main is called. Not a node: the nodes are G0 and
              the A-numbers. */
-          id: r.id ?? `G${i + 1}`,
+          /* The name the drawing gives this length, not a fresh count.
+
+             The build labels each main G1, G2 as it lays it; the report
+             numbered its own runs from one again. On a site where the
+             two orders differ \u2014 which they do the moment a network is
+             built from more than one POC \u2014 the same pipe was G12 on the
+             canvas and G16 on the report, and neither could be checked
+             against the other.
+
+             Falls back to a count where a length carries no label, so a
+             hand-drawn main still gets a row. */
+          id: mainOnRun(r.pts)?.Label || r.id || `G${i + 1}`,
           fromLabel: labelAt((r.pts || [])[0]),
           /* The far end of a run, with the cap taken off.
 
@@ -8005,7 +8046,8 @@ export default function GISCanvasPage() {
           /* Chosen on the drawing if it has been; otherwise what the
              build worked out. */
           ...(() => {
-            const chosen = sizeOnDrawing(r.pts);
+            const found = sizeOnDrawing(r.pts);
+            const chosen = found?.row;
             return chosen
               ? {
                 bore: Number(chosen.Diameter_mm) - 11,

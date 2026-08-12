@@ -76,6 +76,7 @@ import {
 } from "./mainsCallOff.js";
 import {
   gasLevels, serviceTees, suggestPipeChanges, TEE_DIAMETERS, lineFollows,
+  fingerprintOf,
 } from "./gasPressure.js";
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
@@ -558,6 +559,20 @@ export default function GISCanvasPage() {
      not discard the other. */
   const [gasLevelsPanel, setGasLevelsPanel] = useState(false);
 
+  /* What the gas check depends on, as one string.
+
+     One function, used both to record what a check measured and to
+     decide whether it is still valid \u2014 two implementations would
+     eventually disagree, and the failure would be a check that never
+     goes stale or one that never survives.
+
+     Geometry, pipe size and line type \u2014 the three things that change
+     an answer. Deliberately not the whole feature: a label offset, a
+     note or a build status changes the drawing without changing the
+     network, and treating those as edits threw away a valid check. */
+  const networkFingerprint = useMemo(
+    () => fingerprintOf(features), [features]);
+
   /* The check is answered against a drawing, so it stops being an
      answer when the drawing changes.
 
@@ -572,20 +587,23 @@ export default function GISCanvasPage() {
     /* Nothing to go stale. */
     if (!gasLevelsResult) return;
 
-    /* Compared against what the result says it measured, not against
-       what was in state when the last effect ran.
+    /* Stale when the *network* changed, not when any array did.
 
-       A remembered previous drawing is wrong for the case that matters:
-       Make change saves, reloads and re-runs in one go, so the new
-       result arrives alongside new features and would look like an edit
-       against the old check. Asking the result itself removes the
-       question \u2014 it is stale exactly when the drawing is no longer the
-       one it was measured on. */
-    const measured = gasLevelsResult.measuredAgainst;
-    if (!measured || measured === features) return;
+       Comparing the features array by identity was too blunt: every
+       edit makes a new array, including moving a label. Dragging a
+       pressure label therefore cleared the pressures the moment it
+       started \u2014 they all vanished on mousedown.
+
+       So the comparison is a fingerprint of what the check actually
+       measured: which pipes exist, where they run, and what size they
+       are. Moving a label, renaming something or nudging a span node's
+       marker leaves it alone; resizing a pipe, redrawing a trench or
+       deleting a run does not. */
+    const measured = gasLevelsResult.measuredFingerprint;
+    if (!measured || measured === networkFingerprint) return;
     setGasLevelsResult(null);
     setGasLevelsPanel(false);
-  }, [features, gasLevelsResult]);
+  }, [networkFingerprint, gasLevelsResult]);
 
   /* The pressure at each span node, by its label, for drawing on the
      canvas. Null when the gas layer is hidden or no check has run \u2014
@@ -7815,7 +7833,10 @@ export default function GISCanvasPage() {
       /* What it was measured against, so the staleness check can tell a
          drawing that changed from the reload this check just did. */
       setGasLevelsResult({
-        ...result, minMBar, amberPct, advice, measuredAgainst: src,
+        ...result, minMBar, amberPct, advice,
+        /* What it was measured against, so the staleness check can tell
+           a changed network from a moved label. */
+        measuredFingerprint: fingerprintOf(src),
       });
       setGasLevelsPanel(true);
       setError("");

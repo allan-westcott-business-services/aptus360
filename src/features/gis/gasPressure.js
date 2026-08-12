@@ -601,3 +601,25 @@ export function onPolyline(pt, pts, tolerance = 0.5) {
    the run's polyline. */
 export const lineFollows = (geometry = [], runPts = [], tolerance = 0.5) =>
   geometry.length > 0 && geometry.every((q) => onPolyline(q, runPts, tolerance));
+
+/* What a gas levels check depends on, as one string.
+
+   Geometry, pipe size and line type — the three things that change an
+   answer. Deliberately not the whole feature: a label offset, a note or
+   a build status changes the drawing without changing the network, and
+   treating those as edits threw away a valid check the moment somebody
+   dragged a pressure label.
+
+   A span node is measured from its anchor, so that is what counts here;
+   where its marker was dragged to does not. */
+export const fingerprintOf = (features = []) => features
+  .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+  .map((f) => [
+    f.Feature_ID,
+    f.Attributes?.Line_Type ?? "",
+    f.Attributes?.Gas_Pipe_Size_ID ?? "",
+    f.Feature_Role === "spannode"
+      ? JSON.stringify(f.Attributes?.Span_Anchor ?? f.Geometry?.[0] ?? null)
+      : JSON.stringify(f.Geometry ?? null),
+  ].join("|"))
+  .join("\n");

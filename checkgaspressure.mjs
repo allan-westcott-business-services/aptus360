@@ -23,7 +23,7 @@
 */
 import {
   pipeDrop, boreFor, frictionFactor, nodePressures, serviceTees, gasLevels,
-  suggestPipeChanges, teeAllowanceM, lineFollows,
+  suggestPipeChanges, teeAllowanceM, lineFollows, fingerprintOf,
 } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
@@ -712,6 +712,60 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
     if (l.to && !byNode.has(String(l.to))) {
       fail(`${l.to} is in the report but would show nothing on the drawing`);
     }
+  }
+}
+
+/* A check goes stale when the network changes, not when anything does.
+
+   The pressures drawn beside the nodes have to outlive an annotation
+   and not outlive a design change. Comparing the features array by
+   identity was too blunt \u2014 every edit makes a new array, so dragging a
+   pressure label cleared every pressure on mousedown.
+
+   The fingerprint is geometry, pipe size and line type: the three
+   things that change an answer. */
+{
+  const base = [
+    {
+      Feature_ID: 1, Feature_Type: "line",
+      Attributes: { Line_Type: "gas_main", Gas_Pipe_Size_ID: 4 },
+      Geometry: [[0, 0], [100, 0]],
+    },
+    {
+      Feature_ID: 2, Feature_Type: "point", Feature_Role: "spannode",
+      Attributes: { Span_Anchor: [100, 0] }, Geometry: [[100, 0]],
+    },
+  ];
+  const fp = fingerprintOf(base);
+  const after = (edit) => fingerprintOf(base.map((f) => edit(f) ?? f));
+
+  /* Annotation: the check must survive. */
+  const survives = [
+    ["dragging a pressure label", (f) => (f.Feature_ID === 2
+      ? { ...f, Attributes: { ...f.Attributes, Pressure_Offset: [3, 3] } } : null)],
+    /* The marker moves; the anchor is what the network is measured
+       from, so this is annotation too. */
+    ["dragging a span node marker", (f) => (f.Feature_ID === 2
+      ? { ...f, Geometry: [[102, 3]] } : null)],
+    ["editing a note", (f) => (f.Feature_ID === 1
+      ? { ...f, Attributes: { ...f.Attributes, Notes: "x" } } : null)],
+  ];
+  for (const [what, edit] of survives) {
+    if (after(edit) !== fp) fail(`${what} threw away a valid check`);
+  }
+
+  /* Design: the check must not survive, because it would still say the
+     design passes. */
+  const clears = [
+    ["resizing a pipe", (f) => (f.Feature_ID === 1
+      ? { ...f, Attributes: { ...f.Attributes, Gas_Pipe_Size_ID: 6 } } : null)],
+    ["reshaping a trench", (f) => (f.Feature_ID === 1
+      ? { ...f, Geometry: [[0, 0], [140, 0]] } : null)],
+    ["moving a span node's anchor", (f) => (f.Feature_ID === 2
+      ? { ...f, Attributes: { ...f.Attributes, Span_Anchor: [90, 0] } } : null)],
+  ];
+  for (const [what, edit] of clears) {
+    if (after(edit) === fp) fail(`${what} left a stale check on screen`);
   }
 }
 

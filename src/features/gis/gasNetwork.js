@@ -329,7 +329,79 @@ export function diversityInversions(table = []) {
    Pure: it reads features and returns geometry. Creating anything is
    the canvas's job, which is what lets this be tested against a made-up
    drawing rather than against a project. */
+/* Build every gas network on the drawing.
+
+   A site can be fed from more than one side: two mains in different
+   roads, each serving its own part of an estate, with the networks
+   never meeting. The walk below starts at one POC and reaches only what
+   is connected to it, so a second network was left undrawn — no error,
+   no mention, just half a site with no main on it.
+
+   Run once per POC and the results joined. Safe precisely because the
+   networks do not touch: a trench reachable from two POCs would be one
+   network with two feeds, which is a different problem and one this
+   would get wrong. So anything already claimed by an earlier walk is
+   left to it, and a trench claimed twice is reported rather than laid
+   twice.
+
+   Run labels are made unique across the whole drawing, since G1 from
+   one network and G1 from another are two different lengths of main. */
 export function gasMainRuns(features = [], opts = {}) {
+  const layerKey = opts.layerKey ?? "gas";
+  const pocs = features.filter((f) => f.Feature_Role === "poc"
+    && f.Layer_Key === layerKey && (f.Geometry || []).length);
+
+  if (pocs.length > 1 && !opts.singlePoc) {
+    const seen = new Set();
+    const merged = {
+      runs: [], unserved: [], strandedMeters: [], unattachedServices: [],
+      overDiverse: [], noLoad: [], bySize: new Map(), totalM: 0,
+      networks: [],
+    };
+    let error = null;
+
+    pocs.forEach((poc, i) => {
+      /* One POC at a time, by hiding the others from the walk: it takes
+         the first it finds, and this is the only way to say which
+         without rewriting how it starts. */
+      const only = features.filter((f) => f.Feature_Role !== "poc"
+        || f.Layer_Key !== layerKey || f === poc);
+      const part = gasMainRuns(only, { ...opts, singlePoc: true });
+
+      if (part.error) {
+        /* One network failing does not stop the rest \u2014 half a drawing
+           built is better than none, and the reason is reported. */
+        merged.networks.push({ poc, error: part.error });
+        if (!error) error = part.error;
+        return;
+      }
+
+      const claimed = [];
+      for (const r of part.runs || []) {
+        const key = String(r.featureId ?? `${r.fromNode}|${r.endNode}`);
+        if (seen.has(key)) continue;
+        seen.add(key);
+        /* Numbered across the drawing, so no two lengths share a name. */
+        claimed.push({ ...r, id: `G${merged.runs.length + claimed.length + 1}` });
+      }
+      merged.runs.push(...claimed);
+
+      for (const k of ["unserved", "strandedMeters", "unattachedServices",
+        "overDiverse", "noLoad"]) {
+        merged[k].push(...(part[k] || []));
+      }
+      merged.totalM = Math.round((merged.totalM + (part.totalM || 0)) * 10) / 10;
+      merged.networks.push({ poc, runs: claimed.length, metres: part.totalM ?? 0 });
+    });
+
+    /* Only an error if nothing at all could be built. */
+    return merged.runs.length ? merged : { error, networks: merged.networks };
+  }
+
+  return gasMainRunsFromOne(features, opts);
+}
+
+function gasMainRunsFromOne(features = [], opts = {}) {
   const {
     lineTypes = [],
     eps = CONNECT_EPS,

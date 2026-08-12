@@ -187,7 +187,7 @@ export default function PlotsTab({ projectId, projectRef }) {
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
   const [selected, setSelected] = useState([]);
-  const [bulk, setBulk] = useState({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
+  const [bulk, setBulk] = useState({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", Gas_Load_kW: "", PV: "", Self_Lay_Provider: "" });
   const [bulkBusy, setBulkBusy] = useState(false);
   const [mode, setMode] = useState("list");
   const [plots, setPlots] = useState([]);
@@ -361,6 +361,10 @@ export default function PlotsTab({ projectId, projectRef }) {
 
     if (bulk.Heat_Pump_Model_ID) changes.Heat_Pump_Model_ID = Number(bulk.Heat_Pump_Model_ID);
     if (bulk.KVA_Load !== "") changes.KVA_Load = Number(bulk.KVA_Load);
+    /* The plot's own gas load, which wins over the one its house type
+       carries. Set here for the same reason kVA is: a phase of forty
+       plots is one figure entered once, not forty. */
+    if (bulk.Gas_Load_kW !== "") changes.Gas_Load_kW = Number(bulk.Gas_Load_kW);
     if (bulk.PV) changes.PV = bulk.PV === "y";
     if (bulk.Self_Lay_Provider) changes.Self_Lay_Provider = bulk.Self_Lay_Provider === "y";
     setBulkBusy(true);
@@ -370,7 +374,7 @@ export default function PlotsTab({ projectId, projectRef }) {
         setBulkDev("");
       }
       if (Object.keys(changes).length) await bulkUpdatePlots(projectId, selected, changes);
-      setBulk({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", PV: "", Self_Lay_Provider: "" });
+      setBulk({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", Gas_Load_kW: "", PV: "", Self_Lay_Provider: "" });
       setSelected([]);
       await load();
     } catch (e) {
@@ -564,6 +568,11 @@ export default function PlotsTab({ projectId, projectRef }) {
               )}
               <input type="number" step="0.1" placeholder="kVA" className="bulk-kva"
                 value={bulk.KVA_Load} onChange={(e) => setBulk((b) => ({ ...b, KVA_Load: e.target.value }))} />
+              {/* Beside the kVA, because they are the same decision
+                  asked twice \u2014 what this plot draws, on each utility. */}
+              <input type="number" step="0.1" placeholder="Gas kW" className="bulk-kva"
+                value={bulk.Gas_Load_kW}
+                onChange={(e) => setBulk((b) => ({ ...b, Gas_Load_kW: e.target.value }))} />
               <select value={bulk.PV} onChange={(e) => setBulk((b) => ({ ...b, PV: e.target.value }))}>
                 <option value="">PV&hellip;</option><option value="y">PV: Yes</option><option value="n">PV: No</option>
               </select>

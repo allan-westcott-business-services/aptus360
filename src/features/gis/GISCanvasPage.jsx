@@ -65,6 +65,7 @@ import {
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
+import { sizeIdFor, isOverridden } from "./sizeMode.js";
 import {
   gasMainRuns, END_EXTEND_M,
 } from "./gasNetwork.js";
@@ -558,6 +559,22 @@ export default function GISCanvasPage() {
      figures on the drawing outlive the panel, and closing one should
      not discard the other. */
   const [gasLevelsPanel, setGasLevelsPanel] = useState(false);
+
+  /* Which of the two recorded sizes is being looked at.
+
+     Per utility, because a designer overriding gas has no reason to
+     stop looking at the calculated electric. Remembered like the other
+     toolbar settings, so a reload does not quietly put somebody back on
+     a different set of figures from the one they were reading. */
+  const [sizeMode, setSizeMode] = useState(
+    () => recall("gisSizeMode", { electric: "system", gas: "system", water: "system" }));
+  const setSizeModeFor = useCallback((utility, mode) => {
+    setSizeMode((m) => {
+      const next = { ...m, [utility]: mode };
+      remember("gisSizeMode", next);
+      return next;
+    });
+  }, []);
 
   /* What the gas check depends on, as one string.
 
@@ -7736,13 +7753,18 @@ export default function GISCanvasPage() {
         for (const f of src) {
           if (f.Feature_Type !== "line") continue;
           if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
-          if (f.Attributes?.Gas_Pipe_Size_ID == null) continue;
+          /* Whichever size is in force, so the check answers the
+             question the drawing is currently showing \u2014 run it on
+             system sizes and on manual sizes and the difference is what
+             the overrides are worth. */
+          const sizeId = sizeIdFor(f, "gas", sizeMode.gas ?? "system");
+          if (sizeId == null) continue;
           /* On the run's line, not on its vertices. A pipe drawn along
              a run has points between the run's own, and comparing
              vertex to vertex missed every one of them. */
           if (!lineFollows(f.Geometry || [], pts)) continue;
           const row = (lookups?.gasPipeSizes || []).find((x) =>
-            Number(x.Gas_Pipe_Size_ID) === Number(f.Attributes.Gas_Pipe_Size_ID));
+            Number(x.Gas_Pipe_Size_ID) === Number(sizeId));
           if (row) return row;
         }
         return null;
@@ -10481,6 +10503,20 @@ export default function GISCanvasPage() {
                   </Menu>
 
                   <Menu id="electric" label="Electric" open={open} setOpen={setOpen} columns={2}>
+                    {/* As on Gas and Water: which of the two recorded
+                        sizes is in force. */}
+                    <MenuGroup label="Sizes" />
+                    <MenuItem label="System calculated" indent
+                      active={(sizeMode.electric ?? "system") === "system"}
+                      keepOpen
+                      hint="What the build worked out from the load"
+                      onClick={() => setSizeModeFor("electric", "system")} />
+                    <MenuItem label="Manually set" indent
+                      active={sizeMode.electric === "manual"}
+                      keepOpen
+                      hint="Overrides where set, calculated elsewhere"
+                      onClick={() => setSizeModeFor("electric", "manual")} />
+                    <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
                     {/* The whole utility at once, as a named action rather
                         than the S beside a row. Isolating one utility is
@@ -10659,6 +10695,40 @@ export default function GISCanvasPage() {
                     return (
                       <Menu key={key} id={key} label={layer?.Label ?? name}
                         open={open} setOpen={setOpen}>
+                        {/* Drawing first, because it is what somebody
+                            opens this menu to do. The Electric and
+                            Trench menus already lead with theirs; gas
+                            and water were the two without, so a pipe
+                            had to be drawn from the Trench menu's list
+                            and its utility guessed from the type name. */}
+                        {/* Which sizes are in force.
+
+                            The build's answer and the designer's are
+                            both kept; this says which is read \u2014 by the
+                            drawing, by the editor and by the levels
+                            check. Switching discards nothing and
+                            recalculates nothing. */}
+                        <MenuGroup label="Sizes" />
+                        <MenuItem label="System calculated" indent
+                          active={(sizeMode[key] ?? "system") === "system"}
+                          keepOpen
+                          hint="What the build worked out from the load"
+                          onClick={() => setSizeModeFor(key, "system")} />
+                        <MenuItem label="Manually set" indent
+                          active={sizeMode[key] === "manual"}
+                          keepOpen
+                          hint="Overrides where set, calculated elsewhere"
+                          onClick={() => setSizeModeFor(key, "manual")} />
+
+                        <div className="gm-sep" />
+                        <MenuGroup label="Draw" />
+                        {typesOn(key).map((t) => (
+                          <MenuItem key={t.Type_Key} label={t.Label} indent
+                            active={isDrawing(t.Type_Key)}
+                            onClick={() => drawAs(t.Type_Key)} />
+                        ))}
+
+                        <div className="gm-sep" />
                         <MenuGroup label="Show or Hide" />
                         {/* As on the Electric menu: the whole utility as
                             a named action, not only the S on the layer
@@ -11882,6 +11952,41 @@ export default function GISCanvasPage() {
                 <button className="gc-item" onClick={() => {
                   setEditing(ctx.feature); setCtx(null);
                 }}>Edit</button>
+
+                {/* ── Lay something in this trench ──
+
+                    Offered on the trench because that is what is under
+                    the cursor: laying a cable starts by choosing which
+                    dig it goes in, and picking the type from a menu at
+                    the top of the screen means naming the trench again
+                    with the mouse.
+
+                    Mains types in a mains trench and service types in a
+                    service trench, from the configured line types rather
+                    than a written list \u2014 a service cable in a mains
+                    trench is not a mistake the drawing should help
+                    somebody make. */}
+                {(() => {
+                  const key = ctx.feature.Attributes?.Line_Type ?? "";
+                  if (ctx.feature.Feature_Type !== "line") return null;
+                  if (!isTrenchType(key, lineTypes)) return null;
+                  const isService = /service/i.test(key);
+                  const lay = lineTypes.filter((t) => t.Layer_Key !== "trench"
+                    && /service/i.test(t.Type_Key) === isService);
+                  if (!lay.length) return null;
+                  return (
+                    <>
+                      <div className="gc-sep" />
+                      {lay.map((t) => (
+                        <button key={t.Type_Key} className="gc-item"
+                          onClick={() => { drawAs(t.Type_Key); setCtx(null); }}>
+                          {`Lay ${t.Label}`}
+                        </button>
+                      ))}
+                      <div className="gc-sep" />
+                    </>
+                  );
+                })()}
 
                 {/* Only where the object belongs to one, and only on the
                     electric layer — that is where circuits live, and the

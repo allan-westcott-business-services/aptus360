@@ -107,7 +107,18 @@ export default function FeatureEditor({
     });
     if (res.error) return [];
 
-    return (res.contents || []).map((c, i) => {
+    /* One row per size, with a count.
+
+       A row per feature reads as duplicates: three plots' services in
+       one stretch of main are three separate cables that happen to be
+       the same size, and "63mm, 63mm, 63mm" looks like the list is
+       broken rather than like three services. Grouped, it says what is
+       actually there \u2014 3 x 63mm.
+
+       Grouped after the utility is resolved, not before: a 63mm water
+       service and a 63mm gas service are not the same thing however
+       alike their labels look. */
+    const rows = (res.contents || []).map((c, i) => {
       const layer = (layers || []).find((l) => l.Layer_Key === c.utility);
       /* The same icon the Plot Connections page uses.
 
@@ -126,6 +137,14 @@ export default function FeatureEditor({
         utility: known?.name ?? name,
       };
     });
+
+    const grouped = [];
+    for (const r of rows) {
+      const held = grouped.find((g) => g.label === r.label && g.utility === r.utility);
+      if (held) held.count += 1;
+      else grouped.push({ ...r, count: 1 });
+    }
+    return grouped;
   }, [isTrench, feature, allFeatures, lineTypes, layers, lookups]);
 
   const trenchDims = useMemo(() => {
@@ -203,6 +222,23 @@ export default function FeatureEditor({
      row. Comparing ids meant the stored value matched no option, so the
      browser fell back to the first one and every built main read "Sized
      by the build" however it had been sized. */
+  /* An id, resolved to the one option offered for its bore.
+
+     The picker keeps one row per bore and the build stores whichever
+     rule its load selected, so comparing ids directly matches nothing
+     \u2014 which is what made every built main read as unsized. */
+  const gasOptionFor = (id) => {
+    if (id == null) return "";
+    const stored = (lookups?.gasPipeSizes || [])
+      .find((x) => Number(x.Gas_Pipe_Size_ID) === Number(id));
+    if (!stored) return "";
+    const match = gasPipeChoices
+      .find((x) => Number(x.Diameter_mm) === Number(stored.Diameter_mm));
+    return match ? String(match.Gas_Pipe_Size_ID) : "";
+  };
+
+  const manualGasValue = gasOptionFor(f.Attributes?.Manual_Gas_Pipe_Size_ID);
+
   const gasPipeValue = (() => {
     const id = f.Attributes?.Gas_Pipe_Size_ID;
     if (id == null) return "";
@@ -692,7 +728,6 @@ export default function FeatureEditor({
                   <option value="on">On site</option>
                   <option value="off">Off site</option>
                 </select>
-                <p className="hint">Off site carries a different rate and notice.</p>
               </div>
 
               <div className="fld">
@@ -702,7 +737,6 @@ export default function FeatureEditor({
                     onChange={(e) => setAttr(EASEMENT_KEY)(e.target.checked)} />
                   Easement
                 </label>
-                <p className="hint">Land the trench has a right to cross.</p>
               </div>
             </div>
           ) : (
@@ -1153,7 +1187,6 @@ export default function FeatureEditor({
                         <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
                       ))}
                     </select>
-                    <p className="hint">What it is dug through. Drives reinstatement.</p>
                   </div>
 
                   {/* Dug size, from the drawing rather than typed: the
@@ -1163,7 +1196,6 @@ export default function FeatureEditor({
                     <label htmlFor="fe-tl">Length (m)</label>
                     <input id="fe-tl" readOnly
                       value={length > 0 ? length.toFixed(1) : ""} />
-                    <p className="hint">Measured along the line.</p>
                   </div>
 
                   <div className="fld">
@@ -1175,23 +1207,12 @@ export default function FeatureEditor({
                           + ` + ${trenchDims.separationWidthM}m between them`
                           + ` + ${trenchDims.marginWidthM}m working room`
                         : undefined} />
-                    <p className="hint">
-                      {trenchDims?.items
-                        ? `NJUG spacing for ${trenchDims.items} `
-                          + `${trenchDims.items === 1 ? "utility" : "utilities"}`
-                        : "Nothing routed in it yet"}
-                    </p>
                   </div>
 
                   <div className="fld">
                     <label htmlFor="fe-td">Depth (m)</label>
                     <input id="fe-td" readOnly
                       value={trenchDims?.items ? trenchDims.depthM.toFixed(2) : ""} />
-                    <p className="hint">
-                      {trenchDims?.items
-                        ? `To the ${trenchDims.deepest} at ${trenchDims.coverM}m cover`
-                        : "\u2014"}
-                    </p>
                   </div>
 
                   {/* What stage this length is at. The same list the
@@ -1210,7 +1231,6 @@ export default function FeatureEditor({
                         <option key={bs.key} value={bs.key}>{bs.label}</option>
                       ))}
                     </select>
-                    <p className="hint">Marking part of a run splits it on the canvas.</p>
                   </div>
 
                   </>
@@ -1287,27 +1307,53 @@ export default function FeatureEditor({
                     )}
                   </div>
                 ) : isGas ? (
+                  <>
+                  {/* The build's answer, read only.
+
+                      Kept beside the override rather than replaced by
+                      it: with one field, rebuilding wiped every
+                      override without saying so, and overriding made
+                      the calculated size unrecoverable. Both are
+                      recorded, and the Sizes toggle on the Gas menu
+                      says which one the drawing and the levels check
+                      read. */}
                   <div className="fld">
-                    <label htmlFor="fe-gas-pipe">Pipe size</label>
+                    <label htmlFor="fe-gas-sys">System calculated</label>
+                    <input id="fe-gas-sys" readOnly
+                      value={(() => {
+                        const v = gasOptionFor(f.Attributes?.Gas_Pipe_Size_ID);
+                        const row = gasPipeChoices
+                          .find((x) => String(x.Gas_Pipe_Size_ID) === v);
+                        return row
+                          ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
+                          : "";
+                      })()} />
+                  </div>
+
+                  <div className="fld">
+                    <label htmlFor="fe-gas-pipe">Manually set</label>
                     {/* A list, not a box to type in. The build writes a
                         Gas_Pipe_Size_ID and the levels check reads that
                         row's bore \u2014 a size typed as free text is a label
                         nothing can look up, so the pressure calculation
                         would be left guessing at the pipe. */}
+                    {/* Writes the override, never the system size \u2014
+                        that is the build's to set, and overwriting it
+                        here is what lost it before. */}
                     <select id="fe-gas-pipe"
-                      value={gasPipeValue}
+                      value={manualGasValue}
                       onChange={(e) => {
                         const id = e.target.value ? Number(e.target.value) : null;
                         const row = gasPipeChoices
                           .find((x) => Number(x.Gas_Pipe_Size_ID) === id);
-                        setAttr("Gas_Pipe_Size_ID")(id);
+                        setAttr("Manual_Gas_Pipe_Size_ID")(id);
                         /* The label travels with the id so the drawing
                            reads without a lookup, the same as water. */
                         setAttr("Size")(row
                           ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
                           : "");
                       }}>
-                      <option value="">Sized by the build</option>
+                      <option value="">Not overridden</option>
                       {gasPipeChoices.map((x) => (
                         <option key={x.Gas_Pipe_Size_ID} value={x.Gas_Pipe_Size_ID}>
                           {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
@@ -1338,6 +1384,7 @@ export default function FeatureEditor({
                         : null;
                     })()}
                   </div>
+                  </>
                 ) : isWater ? (
                   <>
                   {/* Water sizes from the table, not from typing.
@@ -1695,7 +1742,7 @@ export default function FeatureEditor({
                 {trenchContents.map((c) => (
                   <li key={c.key}>
                     <i title={c.utility}>{c.icon}</i>
-                    {c.label}
+                    {c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label}
                   </li>
                 ))}
               </ul>
@@ -1708,11 +1755,6 @@ export default function FeatureEditor({
               onChange={(e) => setAttr("Notes")(e.target.value)} />
           </div>
 
-          {(isLine || isPoly) && (
-            <p className="fe-tip">
-              Close this and drag the white handles to reshape it.
-            </p>
-          )}
         </div>
 
         <div className="fe-foot">
@@ -1845,7 +1887,6 @@ const CSS = `
   background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px;
   color: var(--muted); }
 .fe-way strong { color: var(--accent); font-size: 12px; }
-.fe-tip { margin: 0; font-size: 11px; color: var(--muted); font-style: italic; }
 .fe-foot { display: flex; align-items: center; gap: 8px; padding: 13px 18px;
   border-top: 1px solid var(--border); }
 .fe-spacer { flex: 1; }

@@ -570,7 +570,9 @@ export default function GISCanvasPage() {
      not discard the other. */
   const [gasLevelsPanel, setGasLevelsPanel] = useState(false);
   /* What each length of main carries, once a check has run. */
-  const [gasFlow, setGasFlow] = useState(new Map());
+  /* What each length of main carries, from the check that produced it.
+     Read off the result so it cannot outlive it. */
+  const gasFlow = gasLevelsResult?.flowByFeature ?? null;
 
   /* Which of the two recorded sizes is being looked at.
 
@@ -639,7 +641,6 @@ export default function GISCanvasPage() {
       || measured === `${sizeMode.gas ?? "manual"}\n${networkFingerprint}`) return;
     setGasLevelsResult(null);
     setGasLevelsPanel(false);
-    setGasFlow(new Map());
   }, [networkFingerprint, gasLevelsResult]);
 
   /* The pressure at each span node, by its label, for drawing on the
@@ -2946,7 +2947,7 @@ export default function GISCanvasPage() {
             ? [
               sizeLabelOf(f, sizeCatalogues) || a.Size || "size not set",
               `${lineLength(f.Geometry).toFixed(1)} m`,
-              Number.isFinite(gasFlow.get(Number(f.Feature_ID)))
+              Number.isFinite(gasFlow?.get(Number(f.Feature_ID)))
                 ? `Q ${gasFlow.get(Number(f.Feature_ID)).toFixed(2)} m\u00b3/h`
                 : null,
             ].filter(Boolean).join("\n")
@@ -2987,10 +2988,23 @@ export default function GISCanvasPage() {
              always shown. */
           const sizeShown = sizeLabelOf(f, sizeCatalogues) || a.Size;
 
-          const txt = on
-            ? [spelled || sizeShown, `${lineLength(f.Geometry).toFixed(1)} m`]
-              .filter(Boolean).join("  ")
-            : [tag, own].filter(Boolean).join("  ");
+          /* Selected or not, a pipe says the same three things.
+
+             The selected branch built its own one-line label, so
+             clicking a main replaced the stacked size, length and flow
+             with a shorter version \u2014 and Q disappeared exactly when
+             somebody was looking closely at that length.
+
+             The tag goes on its own line above, rather than joined to
+             the first with spaces: run together it made the top line
+             far wider than the two below it and pushed the whole plate
+             off the pipe. */
+          const txt = own
+            ? [on ? null : tag, own].filter(Boolean).join("\n")
+            : (on
+              ? [spelled || sizeShown, `${lineLength(f.Geometry).toFixed(1)} m`]
+                .filter(Boolean).join("  ")
+              : tag || "");
 
           if (txt) placements.forEach((pl, idx) => {
             const placed = !!pl;
@@ -8318,16 +8332,20 @@ export default function GISCanvasPage() {
            \u2014 the figures for the other mode, presented as though they
            were these. */
         measuredFingerprint: `${sizeMode.gas ?? "manual"}\n${fingerprintOf(src)}`,
+        /* Flow per length of main, keyed by the feature it is drawn as.
+
+           On the result rather than in state of its own. Held
+           separately it was set here and cleared by the staleness
+           effect on the very next render \u2014 the check runs against the
+           features it was handed, which after a rebuild are not yet the
+           ones in state, so the fingerprints differed and everything
+           not attached to the result was wiped. The pressures survived
+           because they travel with it; Q did not, which is why it never
+           appeared. */
+        flowByFeature: new Map((result.legs || [])
+          .map((l, i) => [Number(result.runsUsed?.[i]?.featureId), l.flowM3h])
+          .filter(([id, q]) => Number.isFinite(id) && Number.isFinite(q))),
       });
-      /* Flow per length of main, keyed by the feature it is drawn as.
-
-         Q is a result rather than a property of a pipe \u2014 it depends on
-         what lies beyond it and how that diversifies \u2014 so it lives with
-         the check and clears when the check does. */
-      setGasFlow(new Map((result.legs || [])
-        .map((l, i) => [Number(result.runsUsed?.[i]?.featureId), l.flowM3h])
-        .filter(([id, q]) => Number.isFinite(id) && Number.isFinite(q))));
-
       setGasLevelsPanel(true);
       /* Said, rather than left to be noticed. A panel that reports one
          network on a site fed from two looks like a full check, and the

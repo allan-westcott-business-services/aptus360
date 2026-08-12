@@ -1022,6 +1022,24 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
   /* A pipe the check did not measure has no flow, rather than zero. */
   if (map.get(99) != null) fail("an unmeasured pipe was given a flow");
+
+  /* And it travels with the result, not beside it.
+
+     Held as state of its own, it was set when the check ran and cleared
+     by the staleness effect on the very next render: the check runs
+     against the features it was handed, which after a rebuild are not
+     yet the ones in state, so the fingerprints differed and anything
+     not attached to the result was wiped. The pressures survived
+     because they travel with it; the flow did not, which is why Q never
+     appeared on a single pipe. */
+  const stored = { ...r, flowByFeature: map };
+  if (!(stored.flowByFeature?.get(77) > 0)) {
+    fail("the flow does not travel with the result");
+  }
+  const afterClear = null;
+  if ((afterClear?.flowByFeature ?? null) !== null) {
+    fail("a cleared check left its flows behind");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

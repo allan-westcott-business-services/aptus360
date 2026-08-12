@@ -10069,6 +10069,46 @@ export default function GISCanvasPage() {
                             toggleClassLock(x, l.Layer_Key))} />
                       );
                     })}
+
+                    {/* Locked line types, listed here too.
+
+                        They are locked from the right-click menu, where
+                        the thing being locked is under the cursor \u2014 but
+                        this menu showed layers only, so a locked line
+                        type refused every drag with a message naming a
+                        key ("lt:trench_main") that appeared nowhere on
+                        screen and could not be undone from anywhere.
+
+                        Only the locked ones. Listing every line type
+                        would double the length of a menu whose ordinary
+                        use is layers, and an unlocked type is already
+                        one right-click away. */}
+                    {(() => {
+                      const lockedTypes = lockedClasses
+                        .filter((k) => String(k).startsWith("lt:"))
+                        .map((k) => ({
+                          key: k,
+                          label: lineTypes.find((t) => `lt:${t.Type_Key}` === k)?.Label
+                            ?? String(k).slice(3),
+                        }));
+                      if (!lockedTypes.length) return null;
+                      return (
+                        <>
+                          <div className="gm-sep" />
+                          <MenuGroup label="Locked line types" />
+                          {lockedTypes.map((t) => (
+                            <MenuItem key={t.key}
+                              label={`\uD83D\uDD12  ${t.label}`}
+                              active
+                              keepOpen
+                              hint="Locked \u2014 cannot be moved"
+                              onClick={() => setLockedClasses((x) =>
+                                toggleClassLock(x, t.key))} />
+                          ))}
+                        </>
+                      );
+                    })()}
+
                     <div className="gm-sep" />
 
                     {/* Circuit rings are controlled from the circuit

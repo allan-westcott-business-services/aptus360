@@ -553,6 +553,39 @@ export default function GISCanvasPage() {
   const [gasUnserved, setGasUnserved] = useState(null);
   /* The result of a gas levels check: pressure at every span node. */
   const [gasLevelsResult, setGasLevelsResult] = useState(null);
+  /* Whether the table is showing. Kept apart from the result: the
+     figures on the drawing outlive the panel, and closing one should
+     not discard the other. */
+  const [gasLevelsPanel, setGasLevelsPanel] = useState(false);
+
+  /* The check is answered against a drawing, so it stops being an
+     answer when the drawing changes.
+
+     Cleared on any edit rather than left to go stale: a pressure beside
+     a node after the pipe under it was resized is a number nobody can
+     tell is wrong, and it is wrong in the direction that matters \u2014 it
+     still says the design passes.
+
+     Counted rather than deep-compared: features is replaced on every
+     edit, and identity is enough to know something happened. */
+  useEffect(() => {
+    /* Nothing to go stale. */
+    if (!gasLevelsResult) return;
+
+    /* Compared against what the result says it measured, not against
+       what was in state when the last effect ran.
+
+       A remembered previous drawing is wrong for the case that matters:
+       Make change saves, reloads and re-runs in one go, so the new
+       result arrives alongside new features and would look like an edit
+       against the old check. Asking the result itself removes the
+       question \u2014 it is stale exactly when the drawing is no longer the
+       one it was measured on. */
+    const measured = gasLevelsResult.measuredAgainst;
+    if (!measured || measured === features) return;
+    setGasLevelsResult(null);
+    setGasLevelsPanel(false);
+  }, [features, gasLevelsResult]);
 
   /* The pressure at each span node, by its label, for drawing on the
      canvas. Null when the gas layer is hidden or no check has run \u2014
@@ -3490,16 +3523,52 @@ export default function GISCanvasPage() {
           ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
           ctx.textAlign = "left";
           ctx.textBaseline = "middle";
+          const w = ctx.measureText(text).width;
+
+          /* Where it has been dragged to, or beside the node.
+
+             Its own offset rather than the feature's Label_Offset: a
+             span node's code and its pressure are two labels on one
+             point, and sharing an offset would drag both. */
+          const off = f.Attributes?.Pressure_Offset;
+          const dragged = Array.isArray(off) && off.length === 2;
+          const x = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]).x : q.x + r + 5;
+          const y = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]).y : q.y;
+
+          /* A leader back to the node once it has been moved, for the
+             same reason the node has one back to the trench: a figure
+             floating in a garden belongs to nothing until a line says
+             which node it is reporting. */
+          if (dragged) {
+            ctx.save();
+            ctx.setLineDash([2, 3]);
+            ctx.strokeStyle = "rgba(15,23,42,.4)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(q.x, q.y);
+            ctx.lineTo(x - 2, y);
+            ctx.stroke();
+            ctx.restore();
+          }
+
           /* A backing plate, because a figure over a trench or a
              building line is unreadable on its own. */
-          const w = ctx.measureText(text).width;
-          const x = q.x + r + 5;
           ctx.fillStyle = "rgba(255,255,255,.88)";
-          ctx.fillRect(x - 2, q.y - 7, w + 4, 14);
+          ctx.fillRect(x - 2, y - 7, w + 4, 14);
           ctx.fillStyle = bad ? "#b91c1c" : "#334155";
-          ctx.fillText(text, x, q.y);
+          ctx.fillText(text, x, y);
           ctx.textAlign = "center";
           ctx.textBaseline = "alphabetic";
+
+          /* Picked up like any other label, using the same hit list and
+             the same drag \u2014 `kind` tells the drag which offset to
+             write. */
+          labelHits.current.push({
+            id: f.Feature_ID, idx: null, kind: "pressure", anchor: g[0], txt: text,
+            cx: x + w / 2, cy: y,
+            x: x - 2, y: y - 7, w: w + 4, h: 14,
+            spin: 0,
+          });
         }
       }
     }
@@ -3671,9 +3740,12 @@ export default function GISCanvasPage() {
              property off it threw, the click handler stopped where it
              stood, and every label became unpickable. */
           labelIdx: lab.idx ?? null,
-          startOffset: (lab.idx != null
-            ? f?.Attributes?.Labels?.[lab.idx]?.off
-            : f?.Attributes?.Label_Offset) ?? [0, 0],
+          labelKind: lab.kind ?? null,
+          startOffset: (lab.kind === "pressure"
+            ? f?.Attributes?.Pressure_Offset
+            : lab.idx != null
+              ? f?.Attributes?.Labels?.[lab.idx]?.off
+              : f?.Attributes?.Label_Offset) ?? [0, 0],
         };
         return;
       }
@@ -4060,6 +4132,12 @@ export default function GISCanvasPage() {
         if (f.Feature_ID !== d.featureId) return f;
         /* One of several, or the automatic one. Written into its own
            entry so dragging the third label does not move the first. */
+        /* The pressure label has its own offset: a span node's code and
+           its pressure sit on one point, and one offset would move
+           both. */
+        if (d.labelKind === "pressure") {
+          return { ...f, Attributes: { ...f.Attributes, Pressure_Offset: moved } };
+        }
         if (d.labelIdx != null && Array.isArray(f.Attributes?.Labels)) {
           const list = f.Attributes.Labels.map((pl, i) =>
             (i === d.labelIdx ? { ...pl, off: moved } : pl));
@@ -7734,7 +7812,12 @@ export default function GISCanvasPage() {
         flowFor: (r) => kwToM3h(r.kw ?? 0), minMBar, sizes, teeDiameters,
       }, gasOpts);
 
-      setGasLevelsResult({ ...result, minMBar, amberPct, advice });
+      /* What it was measured against, so the staleness check can tell a
+         drawing that changed from the reload this check just did. */
+      setGasLevelsResult({
+        ...result, minMBar, amberPct, advice, measuredAgainst: src,
+      });
+      setGasLevelsPanel(true);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -12057,7 +12140,7 @@ export default function GISCanvasPage() {
               </div>
             )}
 
-            {gasLevelsResult && (
+            {gasLevelsResult && gasLevelsPanel && (
         <div className="gl-panel" role="dialog" aria-label="Gas levels">
           <div className="gl-head">
             <strong>Gas levels</strong>
@@ -12097,7 +12180,13 @@ export default function GISCanvasPage() {
               {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
               {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}
             </span>
-            <button className="gl-x" onClick={() => setGasLevelsResult(null)}>&times;</button>
+            {/* Closing the table puts the table away, not the answer.
+
+                The pressures beside the nodes are the useful half of a
+                levels check \u2014 they are read while moving pipe around,
+                which is exactly when the table is in the way. Clearing
+                them on close meant closing the panel undid the check. */}
+            <button className="gl-x" onClick={() => setGasLevelsPanel(false)}>&times;</button>
           </div>
           <div className="gl-body">
             <table className="gl-tbl">

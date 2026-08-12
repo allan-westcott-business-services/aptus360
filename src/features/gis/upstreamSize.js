@@ -42,59 +42,92 @@ const touching = (pipes, at, exceptId, tol) => pipes.filter((p) =>
   Number(p.Feature_ID) !== Number(exceptId)
   && endsOf(p).some((e) => near(e, at, tol)));
 
-/* The chain of mains from `start` back towards the POC.
+/* The chain of mains from `start` back to the POC.
 
-   Returns the pipes in order, nearest the edited one first, and whether
-   the POC was actually reached. */
+   A proper trace, not a walk that gives up at the first junction.
+
+   The first version followed the pipes while each step had exactly one
+   way onward and stopped at anything else. That was far too cautious: a
+   junction is where a leg comes off, which is most points on a real
+   network, so it refused to answer almost every time. And a junction is
+   not ambiguous \u2014 one branch leads to the POC and the others lead away
+   from it, and finding out which is what a trace is for.
+
+   So it searches the network properly, shortest route first, and the
+   route that arrives is the feed. Returned nearest the edited pipe
+   first, which is the order somebody reads it in.
+
+   ── What is genuinely ambiguous ──
+
+   Two different routes of the same length, which is a ring: the gas
+   arrives both ways and no upstream chain is *the* one. That is
+   reported rather than guessed at. A longer second route is not
+   ambiguous \u2014 gas takes both, but the short way is what feeds it. */
 export function upstreamChain(pipes = [], start, pocAt, opts = {}) {
-  const { tol = 0.5, limit = 200 } = opts;
+  const { tol = 0.5 } = opts;
   if (!start || !pocAt) return { chain: [], reachedPoc: false, why: "no POC" };
 
-  /* Which end of the edited pipe faces the POC. Both are tried, and the
-     one that gets there wins — a pipe is drawn in whichever direction
-     somebody happened to draw it, and that is not a fact about where
-     the gas comes from. */
-  const attempts = endsOf(start).map((end) => {
-    const chain = [];
-    const seen = new Set([Number(start.Feature_ID)]);
-    let here = end;
-    let ambiguous = false;
+  const atPoc = (f) => endsOf(f).some((e) => near(e, pocAt, tol));
 
-    for (let i = 0; i < limit; i++) {
-      if (near(here, pocAt, tol)) {
-        return { chain, reachedPoc: true, ambiguous: false };
-      }
-      const next = touching(pipes, here, null, tol)
-        .filter((p) => !seen.has(Number(p.Feature_ID)));
+  /* Breadth first, so the first arrival is the shortest route. Each
+     state is a pipe and the end of it the search is leaving from. */
+  const queue = endsOf(start).map((end) => ({ pipe: start, from: end, chain: [] }));
+  const seen = new Set([Number(start.Feature_ID)]);
+  let arrived = null;
+  let arrivedAgain = false;
 
-      if (next.length === 0) break;
-      if (next.length > 1) { ambiguous = true; break; }
+  while (queue.length) {
+    const { from, chain } = queue.shift();
 
-      const step = next[0];
-      seen.add(Number(step.Feature_ID));
-      chain.push(step);
-      /* Carry on from its far end. */
-      const [a, b] = endsOf(step);
-      here = near(a, here, tol) ? b : a;
+    if (near(from, pocAt, tol)) {
+      /* The edited pipe touches the POC itself: nothing upstream. */
+      if (!arrived) arrived = chain;
+      else if (chain.length === arrived.length) arrivedAgain = true;
+      continue;
     }
-    return { chain, reachedPoc: false, ambiguous };
-  });
 
-  const won = attempts.find((x) => x.reachedPoc);
-  if (won) return { ...won, why: null };
+    for (const next of touching(pipes, from, null, tol)) {
+      const id = Number(next.Feature_ID);
+      if (seen.has(id)) continue;
 
-  /* Neither end reached it. Report the longer attempt, and say why it
-     stopped — a chain that ran into a junction is a different problem
-     from one that ran into open ground. */
-  const best = attempts.sort((a, b) => b.chain.length - a.chain.length)[0]
-    ?? { chain: [], ambiguous: false };
+      const [a, b] = endsOf(next);
+      const far = near(a, from, tol) ? b : a;
+      const path = [...chain, next];
+
+      if (atPoc(next)) {
+        /* Not marked seen: a pipe touching the POC is an arrival, and
+           another route reaching it by a different pipe of the same
+           length is the ring worth reporting. Marking it would hide
+           the second arrival behind the first. */
+        if (!arrived) arrived = path;
+        else if (path.length === arrived.length
+          && Number(arrived[arrived.length - 1]?.Feature_ID) !== id) {
+          arrivedAgain = true;
+        }
+        continue;
+      }
+      seen.add(id);
+      queue.push({ pipe: next, from: far, chain: path });
+    }
+  }
+
+  if (arrived) {
+    return {
+      chain: arrived,
+      reachedPoc: true,
+      /* Said, not refused: the sizing still applies to the route the
+         gas actually takes, and a ring is worth knowing about. */
+      why: arrivedAgain
+        ? "the main forms a ring, so it is fed both ways \u2014 the shorter "
+          + "route was used"
+        : null,
+    };
+  }
+
   return {
-    chain: best.chain,
+    chain: [],
     reachedPoc: false,
-    why: best.ambiguous
-      ? "the route back to the POC branches, so which pipe feeds this one "
-        + "cannot be told from the drawing"
-      : "no continuous run of main leads back to the POC",
+    why: "no continuous run of main leads back to the POC",
   };
 }
 

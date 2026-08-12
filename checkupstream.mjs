@@ -55,22 +55,52 @@ const POC = [0, 0];
   if (r.changes.length) fail("a downstream leg was widened");
 }
 
-// 4. Where the route branches, the walk stops and says so. Which pipe
-//    feeds this one is not something geometry can answer, and guessing
-//    would upsize somebody else's main.
+// 4. A junction is traced through, not stopped at.
+//
+//    The first version followed the pipes while each step had exactly
+//    one way onward and gave up at anything else — which is most points
+//    on a real network, so it refused to answer almost every time. A
+//    junction is not ambiguous: one branch leads to the POC and the
+//    others lead away, and finding out which is what a trace is for.
 {
   const pipes = [
     P(1, [[0, 0], [100, 0]], 52),
     P(2, [[100, 0], [200, 0]], 52),
     P(3, [[200, 0], [300, 0]], 52),
+    /* Legs coming off the spine, which is what makes the junctions. */
     P(4, [[100, 0], [100, 80]], 52),
+    P(5, [[200, 0], [200, 80]], 52),
   ];
+
   const r = upstreamTooSmall(pipes, pipes[2], POC, 114, { boreOf });
-  if (r.reachedPoc) fail("a branching route was walked as though unambiguous");
-  if (!/branch/i.test(r.why || "")) fail("a branching route did not say why it stopped");
-  /* What it did reach is still reported — a partial answer that names
-     its own limit beats none. */
-  if (!r.changes.length) fail("nothing was reported before the branch");
+  if (!r.reachedPoc) fail("a spine with legs off it did not reach the POC");
+  if (r.changes.map((c) => c.feature.Feature_ID).join() !== "2,1") {
+    fail(`the feed traced as ${r.changes.map((c) => c.feature.Feature_ID).join() || "nothing"}, wanted 2,1`);
+  }
+
+  /* Upsizing a leg walks the spine back, and does not touch the other
+     leg — which is beside it, not upstream of it. */
+  const leg = upstreamTooSmall(pipes, pipes[4], POC, 114, { boreOf });
+  if (!leg.reachedPoc) fail("a leg did not trace back to the POC");
+  if (leg.changes.some((c) => c.feature.Feature_ID === 4)) {
+    fail("a sibling leg was treated as upstream");
+  }
+}
+
+// 4b. The shorter route is the feed. A second, longer way round is not
+//     ambiguity — gas takes both, but the short way is what feeds it.
+{
+  const ring = [
+    P(1, [[0, 0], [100, 0]], 52),
+    P(2, [[100, 0], [100, 100]], 52),
+    P(3, [[100, 100], [0, 100]], 52),
+    P(4, [[0, 100], [0, 0]], 52),
+  ];
+  const r = upstreamChain(ring, ring[1], POC);
+  if (!r.reachedPoc) fail("a ring could not be traced at all");
+  if (r.chain.length !== 1) {
+    fail(`the long way round was taken (${r.chain.length} pipes, wanted 1)`);
+  }
 }
 
 // 5. A pipe drawn the other way round is the same pipe. Which direction

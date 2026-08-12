@@ -901,6 +901,40 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* A leg the walk never reached has no pressure, and the report has to
+   survive that.
+
+   It happens on a site fed from more than one side: the check measures
+   the network its POC starts from, and the rest are honestly unknown.
+   The table called toFixed on the missing figure and took the whole
+   canvas down with "Cannot read properties of undefined" \u2014 a worse
+   answer than saying nothing. */
+{
+  const ns = (i, r) => ({
+    ...r, fromNode: `p${i}:${r.fromNode}`, endNode: `p${i}:${r.endNode}`,
+  });
+  const runs = [
+    ns(0, { id: "G1", fromNode: 0, endNode: 1, metres: 100, services: 2, bore: 79, kw: 200 }),
+    ns(1, { id: "G9", fromNode: 0, endNode: 1, metres: 100, services: 2, bore: 79, kw: 200 }),
+  ];
+  const r = gasLevels({
+    runs, source: "p0:0", sourceMBar: 23, flowFor: (x) => x.kw * 3600 / 39500,
+  });
+
+  const unreached = r.legs.filter((l) => l.at == null);
+  if (!unreached.length) fail("the second network was measured as though joined");
+
+  /* Every other column is a number, so the row can be drawn. Only the
+     pressure is unknown, and only it needs guarding. */
+  for (const l of r.legs) {
+    for (const k of ["boreMM", "metres", "fittingsM", "flowM3h", "drop"]) {
+      if (typeof l[k] !== "number") {
+        fail(`${l.id} has no ${k}, so its row cannot be drawn`);
+      }
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

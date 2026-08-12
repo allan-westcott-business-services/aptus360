@@ -12649,7 +12649,8 @@ export default function GISCanvasPage() {
                 what I set" look the same until the figure is shown. */}
             <span className="gl-low">
               {`red below ${gasLevelsResult.minMBar} mbar \u00b7 `}
-              {`lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
+              {Number.isFinite(gasLevelsResult.lowest?.[1])
+                ? `lowest ${gasLevelsResult.lowest[1].toFixed(2)} mbar` : ""}
               {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}
             </span>
             {/* Closing the table puts the table away, not the answer.
@@ -12689,7 +12690,9 @@ export default function GISCanvasPage() {
                   /* Over capacity is red whatever the pressure says: a
                      main carrying more than its size is rated for is
                      undersized even where the pressure holds. */
-                  const band = (l.at < min || l.overCapacity) ? "bad"
+                  /* Nothing to judge where there is no pressure. */
+                  const band = l.at == null ? ""
+                    : (l.at < min || l.overCapacity) ? "bad"
                     : l.at < min + (sourceOf(gasLevelsResult) - min)
                       * (1 - (gasLevelsResult.amberPct ?? 80) / 100) ? "warn" : "";
                   return (
@@ -12723,7 +12726,16 @@ export default function GISCanvasPage() {
                     <td className="num">{l.services || ""}</td>
                     <td className="num">{l.flowM3h.toFixed(2)}</td>
                     <td className="num">{l.drop.toFixed(3)}</td>
-                    <td className="num">{l.at.toFixed(2)}</td>
+                    {/* A length the walk never reached has no pressure.
+
+                        That happens on a site fed from more than one
+                        side: the check measures the network its POC
+                        starts from, and the rest are honestly unknown.
+                        Calling toFixed on it crashed the whole canvas,
+                        which is a worse answer than saying nothing. */}
+                    <td className="num">
+                      {l.at == null ? "\u2014" : l.at.toFixed(2)}
+                    </td>
                   </tr>
                   );
                 })}
@@ -12748,7 +12760,8 @@ export default function GISCanvasPage() {
             {!gasLevelsResult.advice?.failing?.length && (
               <p className="gl-pass">
                 {`\u2713 Every node holds above ${gasLevelsResult.minMBar} mbar `}
-                {`\u2014 lowest is ${gasLevelsResult.lowest[1].toFixed(2)} mbar`}
+                {Number.isFinite(gasLevelsResult.lowest?.[1])
+                  ? ` \u2014 lowest is ${gasLevelsResult.lowest[1].toFixed(2)} mbar` : ""}
                 {gasLevelsResult.lowestLabel ? ` at ${gasLevelsResult.lowestLabel}` : ""}.
               </p>
             )}

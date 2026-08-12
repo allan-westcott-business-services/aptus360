@@ -6789,10 +6789,21 @@ export default function GISCanvasPage() {
   function findGaps() {
     const list = gaps(features, {
       isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
+      /* A service trench is only wrong if it reaches no main at all.
+         Its boundary end is meant to be loose. */
+      isService: (f) => /service/i.test(f.Attributes?.Line_Type || ""),
     });
     setGapList(list);
+    /* Said as two different faults, because they need different fixes.
+       A service that reaches no main is disconnected work; a mains end
+       near another main is a join somebody missed. */
+    const svc = list.filter((x) => x.why === "does not reach a mains trench").length;
+    const ends = list.length - svc;
     setError(list.length
-      ? `${list.length} trench end(s) close to another trench but not joined.`
+      ? [
+        svc ? `${svc} service trench(es) not joined to a mains trench` : null,
+        ends ? `${ends} mains trench end(s) close to another but not joined` : null,
+      ].filter(Boolean).join(" \u00b7 ")
       : "");
     if (!list.length) {
       setStatus("Every trench end is either joined or clear of the others");

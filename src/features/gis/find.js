@@ -176,7 +176,12 @@ export function strays(features = [], { factor = 3 } = {}) {
    already joined and there is nothing to report; above it they are far
    enough apart to be a deliberate gap rather than a miss. */
 export function gaps(features = [], opts = {}) {
-  const { joinedM = 0.25, nearM = 2.0, isTrench = () => true } = opts;
+  const {
+    joinedM = 0.25, nearM = 2.0, isTrench = () => true,
+    /* Which trenches are services. A service is judged as a whole
+       rather than end by end \u2014 see below. */
+    isService = () => false,
+  } = opts;
 
   const trenches = features.filter((f) =>
     f.Feature_Type === "line" && (f.Geometry || []).length >= 2 && isTrench(f));
@@ -195,9 +200,64 @@ export function gaps(features = [], opts = {}) {
     return { point, d: dist(p, point) };
   };
 
+  const mains = trenches.filter((x) => !isService(x));
+
   const out = [];
   for (const f of trenches) {
     const g = f.Geometry;
+
+    /* ── A service is checked as a whole, not end by end ──
+
+       A service trench is joined to the main at one end and stops at
+       the property boundary at the other. The boundary end is meant to
+       be loose \u2014 but on an estate it lands within a couple of metres of
+       the next plot's service, so every one of them was reported as a
+       near miss. On forty-five plots that is ninety complaints about
+       correct work, which buries the one that matters.
+
+       So the only question worth asking of a service is whether it
+       reaches a main at all. One that does is finished, whatever its
+       far end is near; one that does not is broken however tidy it
+       looks. */
+    if (isService(f)) {
+      const reaches = [g[0], g[g.length - 1]].some((end) =>
+        mains.some((m) => {
+          const og = m.Geometry;
+          for (let i = 0; i + 1 < og.length; i++) {
+            if (nearestOn(end, og[i], og[i + 1]).d <= joinedM) return true;
+          }
+          return false;
+        }));
+      if (reaches) continue;
+
+      /* Not joined to any main. Reported against the end nearest one,
+         so the panel can zoom to the place the join is missing rather
+         than to whichever end was drawn first. */
+      let near = null;
+      for (const end of [g[0], g[g.length - 1]]) {
+        for (const m of mains) {
+          const og = m.Geometry;
+          for (let i = 0; i + 1 < og.length; i++) {
+            const hit = nearestOn(end, og[i], og[i + 1]);
+            if (!near || hit.d < near.d) {
+              near = { d: hit.d, point: hit.point, other: m, end };
+            }
+          }
+        }
+      }
+      if (near) {
+        out.push({
+          feature: f,
+          at: [near.end[0], near.end[1]],
+          to: near.point,
+          other: near.other,
+          gapM: Math.round(near.d * 100) / 100,
+          why: "not joined to a mains trench",
+        });
+      }
+      continue;
+    }
+
     for (const end of [g[0], g[g.length - 1]]) {
       let best = null;
 

@@ -359,9 +359,16 @@ export function gasMainRuns(features = [], opts = {}) {
     const complaints = new Map();
     const unservedById = new Map();
     let walksDone = 0;
+    /* Every field a single walk returns, because the caller reads them
+       all \u2014 the confirm names the services, the meters and the capped
+       ends, and the schedule is built from `sized`. Carrying only the
+       runs left those undefined, so the second build put up a dialogue
+       full of blanks or fell over before it appeared. */
     const merged = {
       runs: [], unserved: [], strandedMeters: [], unattachedServices: [],
-      overDiverse: [], noLoad: [], bySize: new Map(), totalM: 0,
+      overDiverse: [], noLoad: [], unservedMeters: [],
+      bySize: new Map(), sized: [], totalM: 0,
+      services: 0, meters: 0, endCaps: 0, extendedM: 0,
       networks: [],
     };
     let error = null;
@@ -414,6 +421,31 @@ export function gasMainRuns(features = [], opts = {}) {
         if (!unservedById.has(id)) unservedById.set(id, m);
       }
       merged.totalM = Math.round((merged.totalM + (part.totalM || 0)) * 10) / 10;
+      /* Counts add across networks: two feeds serving forty plots is
+         forty services, not two lots reported separately. */
+      for (const k of ["services", "meters", "endCaps"]) {
+        merged[k] += Number(part[k] || 0);
+      }
+      merged.extendedM = Math.round(
+        (merged.extendedM + Number(part.extendedM || 0)) * 10) / 10;
+
+      /* The schedule, merged by size rather than concatenated \u2014 400 m
+         of 63mm from each network is 800 m of 63mm to order, not two
+         lines somebody has to add up. */
+      for (const row of part.sized || []) {
+        const held = merged.sized.find((x) =>
+          String(x.label ?? x.size) === String(row.label ?? row.size));
+        if (held) {
+          held.metres = Math.round(
+            ((held.metres || 0) + (row.metres || 0)) * 10) / 10;
+        } else {
+          merged.sized.push({ ...row });
+        }
+      }
+      for (const [k, v] of (part.bySize instanceof Map
+        ? part.bySize : new Map(Object.entries(part.bySize || {})))) {
+        merged.bySize.set(k, (merged.bySize.get(k) || 0) + v);
+      }
       merged.networks.push({ poc, runs: claimed.length, metres: part.totalM ?? 0 });
     });
 

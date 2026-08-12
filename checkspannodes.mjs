@@ -197,6 +197,46 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (originFor([], 1)) fail("an origin was found on an empty drawing");
 }
 
+/* A site fed from more than one side.
+
+   Two gas mains in different roads, each serving its own part of the
+   estate, with the networks never meeting. One origin meant the second
+   network had no point to be measured from — drawable but not
+   traceable. */
+{
+  const feats = [
+    { Feature_ID: 1, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[0, 0]] },
+    { Feature_ID: 2, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[500, 0]] },
+    { Feature_ID: 3, Feature_Role: "poc", Layer_Key: "water", Geometry: [[0, 50]] },
+  ];
+  const origins = originsOf(feats);
+
+  const gas = [...origins].filter(([, o]) => (o.layer ?? "") === "gas"
+    || o.feature.Layer_Key === "gas");
+  if (gas.length !== 2) fail(`${gas.length} gas origins for two POCs`);
+
+  /* The first keeps the plain key, so everything that asks for "the gas
+     origin" and means the only one carries on working. */
+  if (origins.get("gas")?.label !== "G0") fail("the first gas POC is not G0");
+
+  /* And the second is lettered, not numbered: G1 is a length of main,
+     and two things on a drawing must not share a name. */
+  const second = [...origins].find(([k]) => String(k).startsWith("gas:"));
+  if (!second) fail("a second gas POC got no origin of its own");
+  else if (second[1].label !== "G0b") {
+    fail(`the second gas POC is "${second[1].label}", wanted G0b`);
+  }
+  if ([...origins].some(([, o]) => /^G[1-9]/.test(o.label))) {
+    fail("an origin took a mains number");
+  }
+
+  /* Every entry says which layer it belongs to, since the key no longer
+     always does. */
+  for (const [, o] of origins) {
+    if (!o.layer && !o.feature?.Layer_Key) fail("an origin does not name its layer");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

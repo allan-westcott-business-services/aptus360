@@ -2333,7 +2333,25 @@ export default function GISCanvasPage() {
     const drawOrder = inDrawOrder(
       visible.filter((f) => f.Feature_Role !== "spannode"),
       (typeKey) => isTrenchType(typeKey, lineTypes),
-    );
+    )
+      /* Lines above plant.
+ 
+         A substation is a large square and was drawn in creation order
+         like everything else, so one added after its cables covered
+         them \u2014 the run appeared to stop at the edge of the box and
+         start again the other side. Cables and trenches are the thing
+         being read; the plant is what they run to.
+ 
+         Points that are not plant keep their place: a meter or a joint
+         is small, sits on the end of what it belongs to, and a cable
+         drawn over it would hide the connection rather than reveal
+         it. */
+      .sort((a, b) => {
+        const plant = (f) => (f.Feature_Type === "point"
+          && (f.Feature_Role === "substation" || f.Feature_Role === "governor"
+            || f.Feature_Role === "pumping" || f.Feature_Role === "poc") ? 0 : 1);
+        return plant(a) - plant(b);
+      });
 
     /* ── Easements ──────────────────────────────────────────────────
 
@@ -3656,10 +3674,28 @@ export default function GISCanvasPage() {
       const g = f.Geometry || [];
       let best = null;
 
+      /* How big the thing is on screen, not how close the cursor is to
+         a stored coordinate.
+
+         A point was hit only within HIT_PX of its centre. That is right
+         for a meter, which is a small dot, and wrong for a substation,
+         which is a large square \u2014 clicking plainly inside one did
+         nothing, because the middle was the only part of it that could
+         be picked up.
+
+         So the reach is the drawn radius where that is larger. The
+         style is what decides how big it is drawn, so asking the style
+         is what keeps the two in step: a symbol resized in Admin
+         becomes easier to click without anybody remembering to change
+         this. */
+      const drawnPx = f.Feature_Type === "point"
+        ? Math.max(HIT_PX, (styleFor(f)?.symbolPx ?? 0) + 2)
+        : HIT_PX;
+
       for (const m of g) {
         const p = toPx(m);
         const d = Math.hypot(p.x - px, p.y - py);
-        if (d <= HIT_PX && (!best || d < best.d)) best = { d, via: "vertex" };
+        if (d <= drawnPx && (!best || d < best.d)) best = { d, via: "vertex" };
       }
 
       if (f.Feature_Type !== "point") {
@@ -5466,10 +5502,27 @@ export default function GISCanvasPage() {
     const layerKey = forLayer
       ?? (role === "substation" || role === "poc" ? "electric" : (utilities[0]?.layer_key ?? "electric"));
 
-    if (role === "poc") {
-      const existing = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === layerKey);
+    /* One electric POC, several gas or water ones.
+
+       A site can be fed from more than one side: two gas mains in
+       different roads, each serving its own part of the estate, with
+       the networks never meeting. Refusing the second left no way to
+       draw that at all.
+
+       Electric keeps the rule. Its POC feeds the substation, the
+       substation feeds every circuit, and a second POC would mean a
+       second incomer \u2014 which is a different kind of scheme and not one
+       this draws today. Better a clear refusal than a drawing that
+       half-supports it.
+
+       Nothing else changes here: the walks find their own starting
+       points, and each network is traced from the POC that feeds it. */
+    if (role === "poc" && layerKey === "electric") {
+      const existing = features.find((f) => f.Feature_Role === "poc"
+        && f.Layer_Key === "electric");
       if (existing) {
-        setError(`There is already a ${layerKey} POC. Move or delete it rather than adding a second.`);
+        setError("There is already an electric POC. Move or delete it rather "
+          + "than adding a second.");
         setSelected([existing.Feature_ID]);
         return;
       }
@@ -6170,6 +6223,7 @@ export default function GISCanvasPage() {
     setBusy("origins");
     try {
       const origins = [...originsOf(features)]
+        .map(([key, o]) => [o.layer ?? key, o])
         .filter(([layer]) => !layerWanted || layer === layerWanted);
       if (!origins.length) {
         setError(layerWanted
@@ -6302,7 +6356,10 @@ export default function GISCanvasPage() {
          Placed on top of the plant, sharing its position, and carrying
          the circuit so a site with two substations has an origin for
          each. */
-      for (const [layer, origin] of originsOf(features)) {
+      for (const [key, origin] of originsOf(features)) {
+        /* The key identifies the origin and may name the POC \u2014 "gas:2"
+           for a second feed. The layer is on the entry. */
+        const layer = origin.layer ?? key;
         const f = origin.feature;
         const at = (f.Geometry || [])[0];
         if (!at) continue;
@@ -7699,11 +7756,28 @@ export default function GISCanvasPage() {
          reading state here would measure the network as it was before
          the change \u2014 which then reports the same failure again. */
       const src = srcFeatures || features;
-      const poc = src.find((f) => f.Feature_Role === "poc" && f.Layer_Key === "gas");
-      if (!poc) {
+      /* A site can be fed from more than one side, and the networks do
+         not meet. Measured from the POC that feeds each one.
+
+         Taking the first would report one network and silently leave
+         the rest unmeasured \u2014 the worst of the three possible answers,
+         because the panel would look like a full check.
+
+         gasMainRuns walks from the POCs it finds, so the runs already
+         cover every network; what has to be per-POC is the pressure it
+         starts at. Those genuinely differ: two mains in two roads are
+         two different offers.
+
+         One for now, and honestly so: the walk returns one set of runs
+         with one starting node, so this measures the network fed by the
+         POC that starts it. A second POC's network is drawn, built and
+         billed correctly; its pressures are not yet reported. */
+      const pocs = src.filter((f) => f.Feature_Role === "poc" && f.Layer_Key === "gas");
+      if (!pocs.length) {
         setError("There is no gas POC on this drawing to measure from.");
         return;
       }
+      const poc = pocs[0];
       const sourceMBar = Number(poc.Attributes?.Output_Pressure_mBar);
       if (!(sourceMBar > 0)) {
         setError("Set the gas POC's output pressure before running the check \u2014 "
@@ -7962,6 +8036,14 @@ export default function GISCanvasPage() {
         measuredFingerprint: fingerprintOf(src),
       });
       setGasLevelsPanel(true);
+      /* Said, rather than left to be noticed. A panel that reports one
+         network on a site fed from two looks like a full check, and the
+         unmeasured half is the half nobody looks at. */
+      if (pocs.length > 1) {
+        setError(`${pocs.length} gas POCs on this drawing \u2014 these levels are `
+          + `for the network fed from ${poc.Label || "the first"}. `
+          + "The others are not measured yet.");
+      }
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }

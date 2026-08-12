@@ -74,13 +74,34 @@ export function originsOf(features = []) {
     const plant = features.find((f) => f.Feature_Role === p.role);
     if (plant) out.set(p.layer, { feature: plant, label: p.label });
   }
+
+  /* Every POC, not the first.
+
+     A site can be fed from more than one side \u2014 two gas mains in
+     different roads, each serving its own part of the estate, with the
+     networks never meeting. One origin meant the second network had no
+     point to be measured from, so it could be drawn but not traced.
+
+     Numbered after the first: G0, then G0b, G0c. Not G1, which is a
+     length of main \u2014 the numbers belong to the mains and the letters
+     to the origins, and borrowing one for the other would make two
+     things on a drawing share a name.
+
+     Keyed per POC so each is its own entry, while the plain layer key
+     still finds the first \u2014 everything that asks for "the gas origin"
+     and means the only one keeps working. */
   for (const [layer, role] of Object.entries(STANDS_IN)) {
     if (out.has(layer)) continue;
-    const poc = features.find((f) => f.Feature_Role === "poc" && f.Layer_Key === layer);
-    if (poc) {
-      const p = Object.values(PLANT).find((x) => x.role === role);
-      out.set(layer, { feature: poc, label: p.label, standingIn: true });
-    }
+    const pocs = features.filter((f) => f.Feature_Role === "poc"
+      && f.Layer_Key === layer);
+    const p = Object.values(PLANT).find((x) => x.role === role);
+    pocs.forEach((poc, i) => {
+      const label = i === 0
+        ? p.label
+        : `${p.label}${String.fromCharCode(97 + i)}`;
+      out.set(i === 0 ? layer : `${layer}:${poc.Feature_ID}`,
+        { feature: poc, label, standingIn: true, layer });
+    });
   }
   return out;
 }

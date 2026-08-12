@@ -410,7 +410,24 @@ export function gasMainRuns(features = [], opts = {}) {
         if (seen.has(key)) continue;
         seen.add(key);
         /* Numbered across the drawing, so no two lengths share a name. */
-        claimed.push({ ...r, id: `G${merged.runs.length + claimed.length + 1}` });
+        /* Node ids made unique to this walk.
+
+           fromNode and endNode index the graph each walk builds for
+           itself, so both networks number from zero. Merged as they
+           came, walk B's node 1 was walk A's node 1 \u2014 two separate
+           networks fused into one nonsense graph, and every pressure
+           worked out along a chain that does not exist. The levels
+           check reported drops far larger than any real design.
+
+           Prefixed rather than renumbered: the value only has to be
+           consistent within the merged set, and the POC it came from
+           is a name nobody can collide with. */
+        claimed.push({
+          ...r,
+          id: `G${merged.runs.length + claimed.length + 1}`,
+          fromNode: `p${i}:${r.fromNode}`,
+          endNode: `p${i}:${r.endNode}`,
+        });
       }
       merged.runs.push(...claimed);
 

@@ -853,6 +853,54 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   if (shared.length !== 1) fail("a trench reached by two walks was laid twice");
 }
 
+/* Two networks merged must not become one graph.
+
+   fromNode and endNode index the graph each walk builds for itself, so
+   both networks number from zero. Merged as they came, walk B's node 1
+   was walk A's node 1 — two separate networks fused into a chain that
+   does not exist, and every pressure worked out along it. A design that
+   had been reporting sensible end-of-line pressures started returning
+   very low ones, or was refused as a ring. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const runs = (prefix) => [
+    { id: `${prefix}1`, fromNode: 0, endNode: 1, metres: 100, services: 3, bore: 79, kw: 200 },
+    { id: `${prefix}2`, fromNode: 1, endNode: 2, metres: 100, services: 3, bore: 52, kw: 80 },
+  ];
+
+  /* As it was: node ids collide. */
+  const naive = [...runs("A"), ...runs("B")];
+  const fused = gasLevels({
+    runs: naive, source: 0, sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw),
+  });
+  const fusedLow = !fused.error && [...(fused.pressures?.values() ?? [])]
+    .some((v) => v < 20);
+  if (!fused.error && !fusedLow) {
+    fail("colliding node ids stopped producing a wrong answer on their own");
+  }
+
+  /* Namespaced per walk, as the merge now does. */
+  const ns = (i, r) => ({
+    ...r, fromNode: `p${i}:${r.fromNode}`, endNode: `p${i}:${r.endNode}`,
+  });
+  const apart = [...runs("A").map((r) => ns(0, r)), ...runs("B").map((r) => ns(1, r))];
+  const ok = gasLevels({
+    runs: apart, source: "p0:0", sourceMBar: 23, flowFor: (r) => kwToM3h(r.kw),
+  });
+
+  if (ok.error) fail(`two separate networks were refused: ${ok.error.slice(0, 50)}`);
+  else {
+    const measured = [...ok.pressures.values()];
+    if (measured.some((v) => v < 20)) {
+      fail(`a 200 m network dropped to ${Math.min(...measured).toFixed(2)} mbar`);
+    }
+    /* The other network is unreached rather than wrongly chained on. */
+    if (!(ok.unreached || []).length) {
+      fail("the second network was walked as though joined to the first");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

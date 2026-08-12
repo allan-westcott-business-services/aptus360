@@ -8190,7 +8190,9 @@ export default function GISCanvasPage() {
       const seenLabels = new Map();
 
       const result = gasLevels({
-        runs: (plan.runs || []).map((r, i) => ({
+        runs: (plan.runs || []).map((r, i) => {
+          const onRun = mainOnRun(r.pts);
+          return {
           ...r,
           /* The gas main length label \u2014 G1, G2 \u2014 which is what a
              length of main is called. Not a node: the nodes are G0 and
@@ -8213,8 +8215,15 @@ export default function GISCanvasPage() {
              G16, and the report listed each twice with no way to tell
              them apart. The second and later get a letter, the same way
              a second origin does. */
+          /* The feature this run is drawn as, found once and used for
+             both its name and its flow. It was looked up for the label
+             and separately for the flow, and when the label was
+             reworked the flow's copy went with it \u2014 so featureId was
+             never set, the map was always empty, and Q never appeared
+             on any pipe. */
+          featureId: onRun?.Feature_ID ?? null,
           id: (() => {
-            const drawn = mainOnRun(r.pts)?.Label;
+            const drawn = onRun?.Label;
             if (!drawn) return r.id || `G${i + 1}`;
             const before = seenLabels.get(drawn) ?? 0;
             seenLabels.set(drawn, before + 1);
@@ -8256,8 +8265,10 @@ export default function GISCanvasPage() {
                 maxKw: r.size?.maxKw ?? null,
               };
           })(),
-          services: tees.get(String(r.featureId ?? "")) ?? r.services ?? 0,
-        })),
+          /* Tees counted against the feature this run is drawn as. */
+          services: tees.get(String(onRun?.Feature_ID ?? "")) ?? r.services ?? 0,
+          };
+        }),
         source: (plan.runs || [])[0]?.fromNode,
         sourceMBar,
         /* The load the build already worked out for this run: what lies

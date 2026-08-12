@@ -985,6 +985,45 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* Q reaches the drawing.
+
+   The flow shown on a pipe label comes from the leg the check worked
+   out, matched to the feature the run is drawn as. That match lives on
+   `featureId`, which was set beside the label lookup — and when the
+   label was reworked, the flow's copy of the lookup went with it. So
+   featureId was never set, the map was always empty, and Q never
+   appeared on any pipe. */
+{
+  const runs = [
+    { id: "G1", featureId: 77, fromNode: "P", endNode: "A1", metres: 100, services: 2, bore: 79, kw: 200 },
+    { id: "G2", featureId: 78, fromNode: "A1", endNode: "A5", metres: 60, services: 1, bore: 52, kw: 60 },
+  ];
+  const r = gasLevels({
+    runs, source: "P", sourceMBar: 23, flowFor: (x) => x.kw * 3600 / 39500,
+  });
+
+  /* The run carries its feature through the check, or nothing on the
+     drawing can be matched to a flow. */
+  for (const [i, run] of runs.entries()) {
+    if (r.runsUsed?.[i]?.featureId !== run.featureId) {
+      fail(`run ${run.id} lost its feature id, so its pipe cannot show a flow`);
+    }
+  }
+
+  const map = new Map(r.legs
+    .map((l, i) => [Number(r.runsUsed?.[i]?.featureId), l.flowM3h])
+    .filter(([id, q]) => Number.isFinite(id) && Number.isFinite(q)));
+
+  if (map.size !== runs.length) {
+    fail(`${map.size} of ${runs.length} pipes got a flow`);
+  }
+  if (!(map.get(77) > map.get(78))) {
+    fail("the spine does not carry more than the leg beyond it");
+  }
+  /* A pipe the check did not measure has no flow, rather than zero. */
+  if (map.get(99) != null) fail("an unmeasured pipe was given a flow");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

@@ -935,6 +935,56 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* A run is measured with its own pipe, or with none.
+
+   The size lookup tested for a size before testing the geometry, so an
+   unsized main was skipped and the loop carried on — and a different
+   pipe lying along the same run could then match and lend it its bore.
+   One length measured with another length's pipe: a wrong pressure that
+   looks entirely plausible, and the reason a design that had been
+   reporting sensible levels started looking out.
+
+   Several pipes can genuinely follow one run — a short length drawn
+   over part of it satisfies the same test — so the order matters. */
+{
+  const run = [[0, 0], [100, 0]];
+  const whole = [[0, 0], [100, 0]];
+  const part = [[0, 0], [50, 0]];
+
+  if (!lineFollows(whole, run)) fail("a main along the whole run did not match it");
+  if (!lineFollows(part, run)) {
+    fail("a main along part of the run stopped matching, so this test proves nothing");
+  }
+
+  /* The two orderings, as the lookup does them. */
+  const pipes = [
+    { id: "own", geometry: whole, sizeId: null },
+    { id: "other", geometry: part, sizeId: 6 },
+  ];
+  const sizeFirst = () => {
+    for (const p of pipes) {
+      if (p.sizeId == null) continue;
+      if (!lineFollows(p.geometry, run)) continue;
+      return p.id;
+    }
+    return null;
+  };
+  const geometryFirst = () => {
+    for (const p of pipes) {
+      if (!lineFollows(p.geometry, run)) continue;
+      return p.sizeId == null ? null : p.id;
+    }
+    return null;
+  };
+
+  if (sizeFirst() !== "other") {
+    fail("the old ordering stopped borrowing, so the fix is untested");
+  }
+  if (geometryFirst() !== null) {
+    fail("a run with no size of its own borrowed another pipe's");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

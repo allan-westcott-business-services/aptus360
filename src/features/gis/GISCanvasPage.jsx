@@ -8025,15 +8025,23 @@ export default function GISCanvasPage() {
              The toggle still governs what is drawn. Comparing the two
              is done by looking, not by getting a check nobody asked
              for. */
-          const sizeId = sizeIdFor(f, "gas", "manual");
-          if (sizeId == null) continue;
-          /* On the run's line, not on its vertices. A pipe drawn along
-             a run has points between the run's own, and comparing
-             vertex to vertex missed every one of them. */
+          /* Geometry first, size second.
+
+             The size test came first, so an unsized main was skipped
+             and the loop carried on \u2014 and a *different* pipe further
+             down the list could then match this run and lend it its
+             bore. One length measured with another length's pipe, which
+             is a wrong pressure that looks entirely plausible.
+
+             Now the pipe on this run is found first, and whether it has
+             a size is a fact about that pipe: no size means no size,
+             not somebody else's. */
           if (!lineFollows(f.Geometry || [], pts)) continue;
+          const sizeId = sizeIdFor(f, "gas", "manual");
+          if (sizeId == null) return null;
           const row = (lookups?.gasPipeSizes || []).find((x) =>
             Number(x.Gas_Pipe_Size_ID) === Number(sizeId));
-          if (row) return { row, feature: f };
+          return row ? { row, feature: f } : null;
         }
         return null;
       };

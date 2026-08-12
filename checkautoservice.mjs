@@ -75,6 +75,87 @@ const utils = () => ["electric"];
   }
 }
 
+/* What a trench offers to lay, from the configured line types.
+
+   Mains types in a mains trench and service types in a service trench.
+   A service cable in a mains trench is not a mistake the drawing should
+   help somebody make, and reading the split off the type keys means a
+   line type added in Admin appears without editing this. */
+{
+  const lineTypes = [
+    { Type_Key: "trench_main", Layer_Key: "trench", Label: "Mains Trench" },
+    { Type_Key: "trench_service", Layer_Key: "trench", Label: "Service Trench" },
+    { Type_Key: "hv_main", Layer_Key: "electric", Label: "HV Cable" },
+    { Type_Key: "elec_service", Layer_Key: "electric", Label: "Service Cable" },
+    { Type_Key: "gas_main", Layer_Key: "gas", Label: "Gas Main" },
+    { Type_Key: "gas_service", Layer_Key: "gas", Label: "Gas Service" },
+    { Type_Key: "water_main", Layer_Key: "water", Label: "Water Main" },
+    { Type_Key: "water_service", Layer_Key: "water", Label: "Water Service" },
+  ];
+  const offered = (trenchKey) => {
+    const isService = /service/i.test(trenchKey);
+    return lineTypes
+      .filter((t) => t.Layer_Key !== "trench"
+        && /service/i.test(t.Type_Key) === isService)
+      .map((t) => t.Label);
+  };
+
+  const mains = offered("trench_main");
+  const svc = offered("trench_service");
+
+  for (const want of ["HV Cable", "Gas Main", "Water Main"]) {
+    if (!mains.includes(want)) fail(`a mains trench does not offer ${want}`);
+  }
+  for (const want of ["Service Cable", "Gas Service", "Water Service"]) {
+    if (!svc.includes(want)) fail(`a service trench does not offer ${want}`);
+  }
+  /* And neither offers the other's. */
+  if (mains.some((x) => /service/i.test(x))) {
+    fail("a mains trench offered a service to be laid in it");
+  }
+  if (svc.some((x) => /main/i.test(x))) {
+    fail("a service trench offered a main to be laid in it");
+  }
+}
+
+/* Every cable turns at the boundary point.
+
+   The dig runs from the main to the boundary, and the cable is laid in
+   it — so the boundary is a vertex on every cable, not a place the line
+   happens to pass near. Without it the cable is a straight run from the
+   main to a meter, which is not where the trench goes. */
+{
+  const seed = {
+    Feature_ID: 1, Geometry: [[100, 40]],
+    Attributes: { Boundary_At: [100, 25] },
+  };
+  const p = planSeed(seed, MAINS, () => ["electric", "gas"], {});
+  if (p.skipped) fail(`a plot with a boundary point was skipped: ${p.skipped}`);
+  else {
+    for (const c of p.cables) {
+      const hasBoundary = c.geometry.some((q) =>
+        Math.hypot(q[0] - 100, q[1] - 25) < 0.01);
+      if (!hasBoundary) {
+        fail(`a cable runs ${JSON.stringify(c.geometry)} without turning at the boundary`);
+      }
+      /* And it starts on the main, not at the plot. */
+      if (Math.abs(c.geometry[0][1]) > 0.01) {
+        fail("a cable does not start where the trench meets the main");
+      }
+    }
+  }
+
+  /* A plot with no boundary point is reported, not guessed at. Falling
+     back to the furthest meter made the dig run to somebody's meter
+     rather than to their boundary, and every cable followed it. */
+  const none = planSeed(
+    { Feature_ID: 2, Geometry: [[100, 40]], Attributes: {} },
+    MAINS, () => ["electric"], {},
+  );
+  if (!none.skipped) fail("a plot with no boundary point was serviced anyway");
+  if (none.trench) fail("a plot with no boundary point still got a dig");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service behaves (the cable follows the dig it is laid in).");
 process.exit(bad ? 1 : 0);

@@ -212,7 +212,23 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
     ? [Number(at[0]), Number(at[1])]
     : null;
 
-  const stop = boundary || furthest;
+  /* The dig stops at the boundary point, and nowhere else.
+
+     It used to fall back to the furthest meter when a plot had none.
+     That is what produced a service running straight from the main to a
+     meter: with stop set to the meter itself, the route had no boundary
+     vertex to turn at, and the "trench" was a line to somebody's meter
+     rather than to their boundary. Every cable then followed that,
+     because the cable follows the dig.
+
+     Skipped and reported instead. A plot with no boundary point cannot
+     have its dig placed \u2014 the drawing has not said where the dig
+     stops \u2014 and guessing at it produced a wrong answer that looked
+     like a right one. */
+  if (!boundary) {
+    return { seed, skipped: "no property boundary point \u2014 place one on the plot" };
+  }
+  const stop = boundary;
   const fromStop = nearestMains(stop, trenches);
   const tee = fromStop || best;
 

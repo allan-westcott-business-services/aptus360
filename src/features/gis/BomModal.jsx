@@ -1,6 +1,7 @@
 import { useState, useEffect, useMemo } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import * as XLSX from "xlsx";
+import { byItemSize } from "./bomSort.js";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
 import { parseHex, tint, contrast } from "../../lib/pillColour.js";
@@ -424,7 +425,14 @@ export default function BomModal({
        Quantity stays numeric — writing "417.2 m" into the cell makes it
        text and every sum downstream returns zero. The unit has its own
        column for the same reason. */
-    const detailOf = (list) => list.map((r) => ({
+    const detailOf = (list) => [...list]
+      /* Grouped as the bill groups them, then by size within each
+         group: a sheet sorted by size alone would interleave the
+         electric and the water. */
+      .sort((a, b) => String(a.site ?? "").localeCompare(String(b.site ?? ""))
+        || String(a.utility ?? "").localeCompare(String(b.utility ?? ""))
+        || byItemSize(a.item, b.item))
+      .map((r) => ({
       Site: r.site || "n/a",
       Utility: r.utility,
       /* Named on every row, so a sheet that has been filtered or pivoted
@@ -657,7 +665,8 @@ export default function BomModal({
                         </tr>
                       </thead>
                       <tbody>
-                        {g.items.map((r, i) => (
+                        {[...g.items].sort((a, b) => byItemSize(a.item, b.item))
+                          .map((r, i) => (
                           <tr key={i}>
                             <td>{r.item}</td>
                             <td className="bom-surf">{r.surface || "\u2014"}</td>

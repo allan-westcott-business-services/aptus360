@@ -61,7 +61,23 @@ export function lockReason(f, keys = [], lockedClasses = [], labelFor = (k) => k
   if (isFeatureLocked(f)) return "This feature is locked.";
   const set = new Set(lockedClasses);
   const hit = keys.find((k) => k != null && set.has(k));
-  return hit ? `${labelFor(hit)} are locked.` : "";
+  if (!hit) return "";
+
+  /* Never the raw key.
+
+     A line type's key is stored as "lt:trench_main", and the message
+     read that back when the label could not be resolved \u2014 which names
+     nothing on screen and, until the locked line types were listed in
+     the menu, could not be undone from anywhere. If the label is not
+     known, the key is at least made legible.
+
+     The label lookup can miss legitimately: a class locked in a
+     previous session is read from storage before the line types have
+     loaded. */
+  const label = labelFor(hit);
+  if (label && label !== hit) return `${label} are locked.`;
+  const pretty = String(hit).replace(/^lt:/, "").replace(/_/g, " ");
+  return `${pretty} are locked.`;
 }
 
 /* Turning a class lock on or off. */

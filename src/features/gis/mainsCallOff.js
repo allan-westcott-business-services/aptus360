@@ -160,7 +160,18 @@ export function trenchGraph(trenches = [], nodes = [], opts = {}) {
   };
 
   for (const n of nodes) {
-    const p = (n.Geometry || [])[0];
+    /* Where the node belongs on the dig, which is not always where it
+       is drawn.
+
+       A span node is a marker on the trench, and it gets moved a metre
+       or two clear so the label can be read. Its Anchor is the point on
+       the trench it was placed at; the graph uses that, so nudging the
+       marker cannot take it off the network.
+
+       Falling back to its own position for a node placed before anchors
+       existed, which is what it has always used. */
+    const a = n.Attributes?.Span_Anchor;
+    const p = (Array.isArray(a) && a.length === 2 ? a : (n.Geometry || [])[0]);
     if (p) intern(p, n);
   }
   for (const t of trenches) {

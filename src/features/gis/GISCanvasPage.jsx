@@ -606,6 +606,7 @@ export default function GISCanvasPage() {
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
   const drag = useRef(null);
 
+
   useEffect(() => {
     listProjects({ limit: 500 })
       .then((r) => setProjects(r.rows || []))
@@ -3336,6 +3337,44 @@ export default function GISCanvasPage() {
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
       const ps = styleFor(f);
+
+      /* ── The leader back to the trench ──
+
+         A span node is a marker on the dig, moved a metre or two clear
+         so its label can be read. Moving it does not move where it is
+         measured from \u2014 that is its anchor \u2014 but with nothing drawn
+         between them the pair looks like a node floating in a garden,
+         and which point on the trench it belongs to is a guess.
+
+         Faint and dotted, because it is an annotation rather than
+         anything laid: it says these two are the same thing, and should
+         not read as another run. Only where the node has actually been
+         moved, so an untouched drawing gains no clutter. */
+      const anchor = f.Attributes?.Span_Anchor;
+      if (Array.isArray(anchor) && anchor.length === 2) {
+        const away = Math.hypot(anchor[0] - g[0][0], anchor[1] - g[0][1]);
+        if (away > 0.4) {
+          const a = toPx(anchor);
+          const b = toPx(g[0]);
+          ctx.save();
+          ctx.setLineDash([2, 3]);
+          ctx.strokeStyle = "rgba(15,23,42,.45)";
+          ctx.lineWidth = 1;
+          ctx.beginPath();
+          ctx.moveTo(a.x, a.y);
+          ctx.lineTo(b.x, b.y);
+          ctx.stroke();
+          /* A tick where it belongs on the trench, so the end of the
+             leader is a place rather than where a line happens to
+             stop. */
+          ctx.beginPath();
+          ctx.setLineDash([]);
+          ctx.arc(a.x, a.y, 2, 0, Math.PI * 2);
+          ctx.fillStyle = "rgba(15,23,42,.45)";
+          ctx.fill();
+          ctx.restore();
+        }
+      }
       /* Its zoom band, like every other feature.
 
          This pass never asked, so Min_Scale and Max_Scale did nothing to
@@ -6042,21 +6081,50 @@ export default function GISCanvasPage() {
         });
         doneCount += 1;
 
-        const match = existing.find((f) => !claimed.has(f.Feature_ID)
-          && Math.hypot((f.Geometry?.[0]?.[0] ?? 0) - nd.at[0],
-                        (f.Geometry?.[0]?.[1] ?? 0) - nd.at[1]) < 1);
+        /* Within five metres, not one.
+
+           A node nudged off the trench by hand is the case this has to
+           recover: at one metre it was not matched, so re-placing added
+           a second node beside it and left the drifted one behind. Five
+           is wide enough to reclaim a node somebody moved and narrow
+           enough not to claim its neighbour \u2014 span nodes sit at
+           junctions and ends, which are not five metres apart.
+
+           Nearest first, so where two are in range the closer one is
+           reclaimed rather than whichever came first in the list. */
+        const match = existing
+          .filter((f) => !claimed.has(f.Feature_ID))
+          .map((f) => ({
+            f,
+            d: Math.hypot((f.Geometry?.[0]?.[0] ?? 0) - nd.at[0],
+              (f.Geometry?.[0]?.[1] ?? 0) - nd.at[1]),
+          }))
+          .filter((x) => x.d < 5)
+          .sort((a, b) => a.d - b.d)[0]?.f;
 
         if (match) {
           claimed.add(match.Feature_ID);
-          /* Only where the label actually changes — replacing every node
-             on every run would churn the drawing for nothing. */
-          if (match.Attributes?.Span_Label !== nd.label) {
+          /* Only where something actually changes — rewriting every
+             node on every run would churn the drawing for nothing.
+
+             The anchor counts as a change. A node placed before anchors
+             existed has none, and one that has drifted has an anchor
+             that no longer says where it belongs; both are corrected
+             here. The marker is left exactly where it is, because
+             somebody moved it there on purpose. */
+          const anchorNow = match.Attributes?.Span_Anchor;
+          const anchorStale = !Array.isArray(anchorNow)
+            || anchorNow.length !== 2
+            || Math.hypot(anchorNow[0] - nd.at[0], anchorNow[1] - nd.at[1]) > 0.01;
+
+          if (match.Attributes?.Span_Label !== nd.label || anchorStale) {
             await bulkUpdateFeatures(projectId, [{
               Feature_ID: match.Feature_ID,
               Label: `Point ${nd.label}`,
               Attributes: {
                 ...match.Attributes,
                 Span_Seq: nd.seq, Span_Label: nd.label, Span_Kind: nd.kind,
+                Span_Anchor: nd.at,
               },
             }]);
             moved += 1;
@@ -6075,6 +6143,11 @@ export default function GISCanvasPage() {
           Label: `Point ${nd.label}`,
           Attributes: {
             Span_Seq: nd.seq, Span_Label: nd.label, Span_Kind: nd.kind,
+            /* Where on the trench this node belongs, kept apart from
+               where it is drawn. The marker gets moved a metre or two
+               clear so a label can be read; the network is measured
+               from the anchor, so moving it cannot break a route. */
+            Span_Anchor: nd.at,
             Connects: [],
           },
         });

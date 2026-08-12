@@ -220,7 +220,45 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      cable measured to its own foot would leave the trench and come back
      — the furthest meter decides where the service tees in and the rest
      follow it. */
-  const trench = [tee.foot, stop];
+  /* The route from the main to the boundary.
+
+     A straight line is what this drew, and it is only right when
+     nothing has been dug yet. Where a service trench is already on the
+     drawing the cable is laid *in* it, so the route has to follow it —
+     otherwise the cable cuts the corner, comes out shorter than the dig
+     it sits in, and every quantity taken off it is wrong.
+
+     Matched by both ends: a service trench belonging to this plot runs
+     from near the tee to near the boundary. Anything else on the
+     drawing is somebody else's dig, and following it would route this
+     plot's service through a neighbour's garden.
+
+     Nothing found leaves the straight line, which is the right answer
+     when there is no trench to follow. */
+  const onService = (opts.serviceTrenches || [])
+    .map((t) => {
+      const g = t.Geometry || t;
+      if (!Array.isArray(g) || g.length < 2) return null;
+      const a = g[0];
+      const b = g[g.length - 1];
+      const near = (p1, p2) => Math.hypot(p1[0] - p2[0], p1[1] - p2[1]);
+      /* Either way round: which end was drawn first is not something
+         to depend on. */
+      const forward = Math.max(near(a, tee.foot), near(b, stop));
+      const back = Math.max(near(b, tee.foot), near(a, stop));
+      const tol = opts.serviceTol ?? 3;
+      if (forward <= tol) return g;
+      if (back <= tol) return [...g].reverse();
+      return null;
+    })
+    .filter(Boolean)[0];
+
+  /* Ends pinned to the tee and the boundary, so the route starts where
+     the main is actually joined and finishes where the dig stops \u2014 the
+     drawn trench may be a few centimetres off either. */
+  const trench = onService
+    ? [tee.foot, ...onService.slice(1, -1), stop]
+    : [tee.foot, stop];
 
   /* Within a millimetre is the same place. A meter sitting on the
      boundary point would otherwise get a zero-length segment on the end
@@ -228,11 +266,14 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      everything downstream to trip over. */
   const samePlace = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-3;
 
+  /* The cable follows the dig, then leaves it for the meter. Where the
+     trench bends, so does the cable: it is laid in the ground that was
+     opened, not across it. */
   const cables = meters.map((m) => ({
     utility: m.utility,
     geometry: samePlace(m.point, stop)
-      ? [tee.foot, m.point]
-      : [tee.foot, stop, m.point],
+      ? [...trench]
+      : [...trench, m.point],
   }));
 
   return {

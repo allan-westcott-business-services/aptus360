@@ -9091,10 +9091,19 @@ export default function GISCanvasPage() {
       return sizeFor(table, 1);
     })();
 
+    /* Service trenches already on the drawing, so a cable follows the
+       dig rather than cutting across it. Only the service ones: the
+       mains are what the tee comes off, and following one would run the
+       service down the road. */
+    const serviceTrenches = features.filter((f) => f.Feature_Type === "line"
+      && isTrenchType(f.Attributes?.Line_Type, lineTypes)
+      && /service/i.test(f.Attributes?.Line_Type || ""));
+
     const { plans, skipped } = planAutoService(seeds, trenches, utilitiesFor, {
       alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
       meterServed,
       existingMeter,
+      serviceTrenches,
     });
     if (!plans.length && !refill.length && !teeGeom.size) {
       setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped (${skipped[0]?.why ?? "unknown"}).`);

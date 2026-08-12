@@ -3598,14 +3598,47 @@ export default function GISCanvasPage() {
          Only where the check has run and the gas layer is showing:
          gasPressureAt is null otherwise, and a stale verdict is worse
          than none. */
-      const mbarHere = gasPressureAt?.get(String(code));
+      /* Matched on the label, and on the anchor where the label does
+         not resolve.
+
+         The map is keyed on what the report calls each node \u2014 A19 and
+         so on \u2014 which comes from the run's own end. A node whose
+         Span_Label differs from the name the report gave it, or which
+         carries none, matched nothing and went unringed while its row
+         sat plainly in red.
+
+         Falling back to position closes that: the pressure belongs to a
+         point on the dig, and the node is at that point whatever it is
+         called. */
+      const mbarHere = gasPressureAt?.get(String(code))
+        ?? (() => {
+          if (!gasLevelsResult?.legs || !gasPressureAt) return null;
+          const a = f.Attributes?.Span_Anchor;
+          const at = (Array.isArray(a) && a.length === 2 ? a : g[0]);
+          for (const l of gasLevelsResult.legs) {
+            const end = (l.runPts || [])[(l.runPts || []).length - 1];
+            if (!end || l.at == null) continue;
+            if (Math.hypot(end[0] - at[0], end[1] - at[1]) <= 2.5) return l.at;
+          }
+          return null;
+        })();
       if (mbarHere != null) {
         const min = gasLevelsResult?.minMBar ?? 19;
         const src = gasLevelsResult?.sourceMBar ?? 23;
         const amberAt = min + (src - min)
           * (1 - (gasLevelsResult?.amberPct ?? 80) / 100);
+        /* A clear orange, not a dark amber.
+
+           #b45309 is a burnt amber \u2014 correct as a warning colour and,
+           at three pixels on a ring the same size as the red one, near
+           enough to #b91c1c that the two read as the same alert. The
+           distinction only matters if it can be seen at a glance, so
+           this is a brighter orange with more yellow in it.
+
+           The table keeps the darker shade: there it sits as text on a
+           tinted row, where the brighter one is hard to read. */
         const verdict = mbarHere < min ? "#b91c1c"
-          : mbarHere < amberAt ? "#b45309" : null;
+          : mbarHere < amberAt ? "#f97316" : null;
         if (verdict) {
           /* A white ring under the coloured one, so the trench running
              through does not cut the circle into arcs \u2014 which reads as
@@ -3679,7 +3712,11 @@ export default function GISCanvasPage() {
          Red below the limit, matching the report. A node that fails is
          the thing somebody is looking for. */
       if (gasPressureAt && fontPx >= 7 && view.scale > 1.2) {
-        const mbar = gasPressureAt.get(String(code));
+        /* The same figure the ring used, not a second lookup: two ways
+           of finding one number is two ways for them to disagree, and a
+           node ringed red with no pressure beside it would be exactly
+           that. */
+        const mbar = mbarHere;
         if (mbar != null) {
           const bad = mbar < (gasLevelsResult?.minMBar ?? 19);
           const text = `${mbar.toFixed(2)} mbar`;

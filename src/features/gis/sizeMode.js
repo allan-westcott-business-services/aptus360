@@ -31,7 +31,18 @@
    reading it as the system's answer is what it always was. */
 
 export const SIZE_KEYS = {
-  electric: { system: "Cable_Size_ID", manual: "Manual_Cable_Size_ID" },
+  /* An electric line stores VD_Cable_Size_ID, not Cable_Size_ID \u2014 the
+     name is from the volt drop work, where the size was first needed.
+     Naming the wrong key here would have stranded every cable size
+     already on the drawing. */
+  electric: {
+    system: "VD_Cable_Size_ID", manual: "Manual_VD_Cable_Size_ID",
+    /* The catalogue's own key, which is not the attribute name: a
+       feature stores VD_Cable_Size_ID and Electric_Cable_Size keys on
+       Cable_Size_ID. Looking one up by the other found nothing and left
+       every cable unlabelled. */
+    idColumn: "Cable_Size_ID",
+  },
   gas: { system: "Gas_Pipe_Size_ID", manual: "Manual_Gas_Pipe_Size_ID" },
   water: { system: "Water_Pipe_Size_ID", manual: "Manual_Water_Pipe_Size_ID" },
 };
@@ -76,3 +87,36 @@ export const utilityOf = (feature) => {
   const k = feature?.Layer_Key;
   return SIZE_KEYS[k] ? k : null;
 };
+
+/* What a line's size is called, for the drawing and the bill.
+
+   The override where there is one, the calculated size everywhere else
+   \u2014 the pipe that will actually go in the ground. A label still
+   showing the calculated size on a length somebody upsized is the one
+   figure that gets read off and ordered from.
+
+   Needs the catalogue to turn an id into a name. Without one it falls
+   back to the Size attribute, which the build and the editor both write
+   alongside the id for exactly this reason: a drawing that can be read
+   without a lookup.
+
+   Deliberately not the canvas toggle. That is a view, so the two can be
+   compared; the label says what would be built. */
+export function sizeLabelOf(feature, catalogues = {}) {
+  const utility = utilityOf(feature);
+  if (!utility) return null;
+  const keys = keysFor(utility);
+  const attrs = feature?.Attributes ?? {};
+
+  const id = attrs[keys.manual] ?? attrs[keys.system] ?? null;
+  const rows = catalogues[utility] ?? [];
+  const idKey = keys.idColumn ?? keys.system;
+  const row = id != null
+    ? rows.find((x) => String(x[idKey]) === String(id))
+    : null;
+  if (row) {
+    return row.Size_Label
+      || (row.Diameter_mm != null ? `${Number(row.Diameter_mm)}mm` : null);
+  }
+  return attrs.Size ?? null;
+}

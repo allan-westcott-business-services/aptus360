@@ -601,10 +601,67 @@ function gasMainRunsFromOne(features = [], opts = {}) {
     adj.get(b).push(a);
   };
 
+  /* ── Mains split where a service meets them ──
+
+     The graph used a main's own vertices and nothing else, so a service
+     teeing into the middle of a length had no node to attach to. It was
+     then measured to the nearest vertex \u2014 the far end of the main \u2014
+     and reported as tens of metres short, and the whole network built
+     nothing.
+
+     Check Trench Joins measures to the *line*, so it called the same
+     drawing perfectly joined. Two definitions of "joined", and a
+     drawing that satisfied one and failed the other with no way to see
+     why.
+
+     So each service end is projected onto the mains and the main split
+     there. A tee is a node because that is what a tee is. */
+  const serviceEnds = [];
+  for (const sv of services) {
+    const g = sv.Geometry || [];
+    if (g.length < 2) continue;
+    serviceEnds.push(g[0], g[g.length - 1]);
+  }
+
   const trenchNodes = new Map();
+  const trenchPoints = new Map();
   for (const f of mains) {
-    const ids = f.Geometry.map(intern);
+    const g = f.Geometry;
+    /* Every vertex, plus every point along it where a service lands. */
+    const along = [];
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = g[i];
+      const b = g[i + 1];
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (!len2) continue;
+      for (const e of serviceEnds) {
+        let u = ((e[0] - a[0]) * vx + (e[1] - a[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const q = [a[0] + vx * u, a[1] + vy * u];
+        if (dist(e, q) > eps) continue;
+        /* Ignore a landing that is already a vertex: it would add a
+           node in the same place and an edge of no length. */
+        if (dist(q, a) <= eps || dist(q, b) <= eps) continue;
+        along.push({ seg: i, u, at: q });
+      }
+    }
+    along.sort((x, y) => (x.seg - y.seg) || (x.u - y.u));
+
+    const points = [];
+    for (let i = 0; i < g.length; i++) {
+      points.push(g[i]);
+      for (const cut of along) if (cut.seg === i) points.push(cut.at);
+    }
+
+    const ids = points.map(intern);
+    /* The points those ids came from, kept with them. Anything reading
+       trenchNodes alongside the feature's own Geometry would now be
+       reading two lists of different lengths \u2014 the split added points
+       the geometry does not have. */
     trenchNodes.set(f.Feature_ID, ids);
+    trenchPoints.set(f.Feature_ID, points);
     for (let i = 0; i + 1 < ids.length; i++) addEdge(ids[i], ids[i + 1]);
   }
 
@@ -1117,6 +1174,13 @@ function gasMainRunsFromOne(features = [], opts = {}) {
   const unserved = [];
   for (const f of mains) {
     const ids = trenchNodes.get(f.Feature_ID) || [];
+    /* The points those ids came from, which is the geometry plus any
+       tee the main was split at \u2014 not f.Geometry, which is shorter now
+       and would pair each id with the wrong point. */
+    const pts = trenchPoints.get(f.Feature_ID) || f.Geometry;
+    /* The feature's own geometry, for what belongs to the whole of it:
+       its length and where it starts. Those are facts about the trench
+       as drawn, not about the graph it was cut into. */
     const geom = f.Geometry;
 
     if (!ids.some((i) => seen[i])) {
@@ -1136,7 +1200,7 @@ function gasMainRunsFromOne(features = [], opts = {}) {
     let bare = 0;
     for (let i = 0; i + 1 < ids.length; i++) {
       if (covered.has(edgeKey(ids[i], ids[i + 1]))) continue;
-      bare += dist(geom[i], geom[i + 1]);
+      bare += dist(pts[i], pts[i + 1]);
     }
     if (bare > eps) {
       unserved.push({

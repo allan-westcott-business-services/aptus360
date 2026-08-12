@@ -381,8 +381,22 @@ export function gasMainRuns(features = [], opts = {}) {
       /* One POC at a time, by hiding the others from the walk: it takes
          the first it finds, and this is the only way to say which
          without rewriting how it starts. */
+      /* Compared by id, not by identity.
+
+         `f === poc` holds only while both come from the same array. Any
+         reload, spread or map between building the POC list and this
+         filter makes them different objects with the same contents \u2014
+         and then every POC is hidden, the walk finds none, and the
+         build reports "Place the gas POC first" on a drawing with two
+         of them. */
+      /* By id where there is one, and by identity where there is not:
+         a POC placed but not yet saved has no Feature_ID, and NaN never
+         equals NaN, so comparing ids alone hid it from its own walk. */
+      const sameAsPoc = (f) => (poc.Feature_ID != null
+        ? Number(f.Feature_ID) === Number(poc.Feature_ID)
+        : f === poc);
       const only = features.filter((f) => f.Feature_Role !== "poc"
-        || f.Layer_Key !== layerKey || f === poc);
+        || f.Layer_Key !== layerKey || sameAsPoc(f));
       const part = gasMainRuns(only, { ...opts, singlePoc: true });
 
       if (part.error) {

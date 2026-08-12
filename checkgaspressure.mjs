@@ -1078,6 +1078,49 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* Each walk sees exactly its own POC.
+
+   The build runs once per POC by hiding the others from the walk, which
+   takes the first it finds. That filter compared by object identity —
+   `f === poc` — which holds only while both come from the same array.
+   Any reload, spread or map in between makes them equal objects that
+   are not the same object, and then *every* POC is hidden: the walk
+   finds none and the build reports "Place the gas POC first" on a
+   drawing with two of them. */
+{
+  const sameAsPoc = (f, poc) => (poc.Feature_ID != null
+    ? Number(f.Feature_ID) === Number(poc.Feature_ID)
+    : f === poc);
+  const visible = (features, poc) => features.filter((f) =>
+    f.Feature_Role !== "poc" || f.Layer_Key !== "gas" || sameAsPoc(f, poc));
+
+  const pocs = [
+    { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "gas" },
+    { Feature_ID: 91, Feature_Role: "poc", Layer_Key: "gas" },
+  ];
+
+  /* The case that broke: the POC list and the feature list are copies
+     of each other, as they are after any reload. */
+  const reloaded = pocs.map((x) => ({ ...x }));
+  for (const poc of pocs) {
+    const seen = visible(reloaded, poc);
+    if (seen.length !== 1) {
+      fail(`${seen.length} POCs visible to the walk from ${poc.Feature_ID}, wanted 1`);
+    }
+    if (Number(seen[0]?.Feature_ID) !== Number(poc.Feature_ID)) {
+      fail("a walk was given the wrong POC");
+    }
+  }
+
+  /* A POC placed but not yet saved has no id, and NaN never equals
+     NaN — so comparing ids alone hid it from its own walk. */
+  const unsaved = { Feature_Role: "poc", Layer_Key: "gas" };
+  const withUnsaved = [unsaved, pocs[1]];
+  if (visible(withUnsaved, unsaved).length !== 1) {
+    fail("an unsaved POC was hidden from its own walk");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

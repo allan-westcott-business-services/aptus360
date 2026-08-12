@@ -65,7 +65,7 @@ import {
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
-import { sizeIdFor, isOverridden } from "./sizeMode.js";
+import { sizeIdFor, isOverridden, sizeLabelOf } from "./sizeMode.js";
 import {
   gasMainRuns, END_EXTEND_M,
 } from "./gasNetwork.js";
@@ -554,6 +554,15 @@ export default function GISCanvasPage() {
      press it, and this is the one somebody works from afterwards. */
   const [gasUnserved, setGasUnserved] = useState(null);
   /* The result of a gas levels check: pressure at every span node. */
+  /* The size tables, keyed by utility, for turning an id into a name.
+     One object so a label does not have to know which table a utility
+     keeps its sizes in. */
+  const sizeCatalogues = useMemo(() => ({
+    gas: lookups?.gasPipeSizes || [],
+    water: lookups?.waterPipeSizes || [],
+    electric: lookups?.cableSizes || [],
+  }), [lookups]);
+
   const [gasLevelsResult, setGasLevelsResult] = useState(null);
   /* Whether the table is showing. Kept apart from the result: the
      figures on the drawing outlive the panel, and closing one should
@@ -2902,7 +2911,8 @@ export default function GISCanvasPage() {
              for. */
           const sized = f.Layer_Key === "water"
             && (a.Size || a.Water_Pipe_Size_ID != null || a.Meters != null)
-            ? `${a.Size ?? "size not set"}  ${lineLength(f.Geometry).toFixed(1)} m`
+            ? `${sizeLabelOf(f, sizeCatalogues) || a.Size || "size not set"}  `
+              + `${lineLength(f.Geometry).toFixed(1)} m`
             : "";
 
           /* ── What a cable says ──
@@ -2930,8 +2940,18 @@ export default function GISCanvasPage() {
              electric answer the same question in the same shape. */
           const own = sized || cabled;
 
+          /* The size in force, not the one the build worked out.
+
+             A length upsized by hand is that size on the ground, so it
+             is that size on the drawing \u2014 a label still showing the
+             calculated pipe is the one figure somebody reads off and
+             orders from. Falls back to the calculated size where
+             nothing has been overridden, which is what the label has
+             always shown. */
+          const sizeShown = sizeLabelOf(f, sizeCatalogues) || a.Size;
+
           const txt = on
-            ? [spelled || a.Size, `${lineLength(f.Geometry).toFixed(1)} m`]
+            ? [spelled || sizeShown, `${lineLength(f.Geometry).toFixed(1)} m`]
               .filter(Boolean).join("  ")
             : [tag, own].filter(Boolean).join("  ");
 
@@ -8252,6 +8272,22 @@ export default function GISCanvasPage() {
         + "mains trench leads away from it.");
     }
 
+    /* A network that failed while another succeeded.
+
+       The merge builds what it can and reports the rest, so one bad
+       network no longer stops the good one \u2014 but it was reported into
+       a field nobody read. The build appeared to work and half the site
+       stayed empty, which is the worst of the three possible outcomes.
+
+       Named per POC, because "one network failed" is a search and "the
+       POC at Gib Lane cannot reach any service" is a fix. */
+    const failedNetworks = (plan.networks || []).filter((n) => n.error);
+    if (failedNetworks.length) {
+      setError(failedNetworks
+        .map((n) => `${n.poc?.Label || `POC ${n.poc?.Feature_ID}`}: ${n.error}`)
+        .join(" \u00b7 "));
+    }
+
     /* Generated and gas: a rebuild replaces what this drew and leaves
        a pipe somebody drew by hand exactly where it is. */
     const old = src.filter((f) => f.Feature_Type === "line"
@@ -8597,6 +8633,22 @@ export default function GISCanvasPage() {
     if (!plan.runs.length) {
       return setError("Nothing to lay \u2014 the POC is on the network but no "
         + "mains trench leads away from it.");
+    }
+
+    /* A network that failed while another succeeded.
+
+       The merge builds what it can and reports the rest, so one bad
+       network no longer stops the good one \u2014 but it was reported into
+       a field nobody read. The build appeared to work and half the site
+       stayed empty, which is the worst of the three possible outcomes.
+
+       Named per POC, because "one network failed" is a search and "the
+       POC at Gib Lane cannot reach any service" is a fix. */
+    const failedNetworks = (plan.networks || []).filter((n) => n.error);
+    if (failedNetworks.length) {
+      setError(failedNetworks
+        .map((n) => `${n.poc?.Label || `POC ${n.poc?.Feature_ID}`}: ${n.error}`)
+        .join(" \u00b7 "));
     }
 
     const old = src.filter((f) => f.Feature_Type === "line"

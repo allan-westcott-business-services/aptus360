@@ -367,7 +367,11 @@ export function gasMainRuns(features = [], opts = {}) {
     const merged = {
       runs: [], unserved: [], strandedMeters: [], unattachedServices: [],
       overDiverse: [], noLoad: [], unservedMeters: [],
-      bySize: new Map(), sized: [], totalM: 0,
+      /* An array of { key, label, runs, metres }, as a single walk
+         returns \u2014 not a Map. Initialising it as one and calling .set()
+         crashed the levels check with "boolean true is not iterable"
+         the moment it tried to read the schedule. */
+      bySize: [], sized: null, totalM: 0,
       services: 0, meters: 0, endCaps: 0, extendedM: 0,
       networks: [],
     };
@@ -461,22 +465,21 @@ export function gasMainRuns(features = [], opts = {}) {
       merged.extendedM = Math.round(
         (merged.extendedM + Number(part.extendedM || 0)) * 10) / 10;
 
-      /* The schedule, merged by size rather than concatenated \u2014 400 m
-         of 63mm from each network is 800 m of 63mm to order, not two
-         lines somebody has to add up. */
-      for (const row of part.sized || []) {
-        const held = merged.sized.find((x) =>
-          String(x.label ?? x.size) === String(row.label ?? row.size));
+      /* `sized` says whether the walk could size at all \u2014 it is the
+         sizing table, not a list of rows. Treating it as rows and
+         spreading it is what produced "boolean true is not iterable".
+         The schedule itself is bySize, merged above. */
+      merged.sized = merged.sized || part.sized;
+      /* Merged by size, so 400 m of 63mm from each network is one row
+         of 800 m rather than two lines to add up. */
+      for (const row of part.bySize || []) {
+        const held = merged.bySize.find((x) => x.key === row.key);
         if (held) {
-          held.metres = Math.round(
-            ((held.metres || 0) + (row.metres || 0)) * 10) / 10;
+          held.runs += row.runs;
+          held.metres = Math.round((held.metres + row.metres) * 10) / 10;
         } else {
-          merged.sized.push({ ...row });
+          merged.bySize.push({ ...row });
         }
-      }
-      for (const [k, v] of (part.bySize instanceof Map
-        ? part.bySize : new Map(Object.entries(part.bySize || {})))) {
-        merged.bySize.set(k, (merged.bySize.get(k) || 0) + v);
       }
       merged.networks.push({ poc, runs: claimed.length, metres: part.totalM ?? 0 });
     });

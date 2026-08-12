@@ -805,6 +805,54 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   if (reconcile([[1], [1]]).join() !== "1") fail("a genuinely unfed meter was dropped");
 }
 
+/* Two networks are not the same network twice.
+
+   Each walk builds its own graph and numbers it from zero, so keying a
+   run on fromNode|endNode made the second network's runs collide with
+   the first's \u2014 every one dropped as a duplicate. One network built
+   and the other silently produced nothing.
+
+   Keyed on the geometry instead, which is global: two runs with the
+   same points are the same length of main, and no two lengths in
+   different roads can share them. */
+{
+  const keyOf = (r) => (r.pts || [])
+    .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
+
+  const walkA = [
+    { fromNode: 0, endNode: 1, pts: [[0, 0], [100, 0]] },
+    { fromNode: 1, endNode: 2, pts: [[100, 0], [200, 0]] },
+  ];
+  const walkB = [
+    { fromNode: 0, endNode: 1, pts: [[900, 0], [1000, 0]] },
+    { fromNode: 1, endNode: 2, pts: [[1000, 0], [1100, 0]] },
+  ];
+
+  const dedupe = (runs, key) => {
+    const seen = new Set();
+    return runs.filter((r) => {
+      const k = key(r);
+      if (seen.has(k)) return false;
+      seen.add(k);
+      return true;
+    });
+  };
+
+  const byIndex = dedupe([...walkA, ...walkB],
+    (r) => `${r.fromNode}|${r.endNode}`);
+  if (byIndex.length !== 2) fail("the graph-index key stopped colliding on its own");
+
+  const byGeometry = dedupe([...walkA, ...walkB], keyOf);
+  if (byGeometry.length !== 4) {
+    fail(`${byGeometry.length} of 4 runs kept across two networks`);
+  }
+
+  /* And a trench genuinely reached by both walks is still laid once \u2014
+     that is what the guard is for. */
+  const shared = dedupe([walkA[0], { ...walkA[0], fromNode: 7 }], keyOf);
+  if (shared.length !== 1) fail("a trench reached by two walks was laid twice");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

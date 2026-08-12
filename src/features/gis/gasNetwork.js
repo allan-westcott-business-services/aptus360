@@ -391,7 +391,22 @@ export function gasMainRuns(features = [], opts = {}) {
 
       const claimed = [];
       for (const r of part.runs || []) {
-        const key = String(r.featureId ?? `${r.fromNode}|${r.endNode}`);
+        /* Keyed on where the run is, not on the graph's numbering.
+
+           fromNode and endNode are indices into the graph each walk
+           builds for itself, so both networks number from zero and the
+           second one's runs collided with the first's \u2014 every one of
+           them dropped as a duplicate, which is why one network built
+           and the other silently produced nothing.
+
+           The geometry is global: two runs with the same points are the
+           same length of main, and no two lengths in different roads
+           can share them. Rounded to the centimetre so a value that
+           came back from the database with a different last decimal
+           place still matches itself. */
+        const key = (r.pts || [])
+          .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`)
+          .join(" ");
         if (seen.has(key)) continue;
         seen.add(key);
         /* Numbered across the drawing, so no two lengths share a name. */

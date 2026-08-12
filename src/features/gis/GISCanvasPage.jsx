@@ -9121,6 +9121,18 @@ export default function GISCanvasPage() {
       && isTrenchType(f.Attributes?.Line_Type, lineTypes)
       && /service/i.test(f.Attributes?.Line_Type || ""));
 
+    /* The 25mm row, where the catalogue has one. Matched on the bore
+       rather than the label, because "25mm" and "25mm PE" are the same
+       pipe written two ways. */
+    const gasServiceSize = (() => {
+      const row = (lookups?.gasPipeSizes || [])
+        .filter((x) => (x.Pressure_Tier ?? "LP") === "LP")
+        .find((x) => Number(x.Diameter_mm) === 25);
+      return row
+        ? { id: row.Gas_Pipe_Size_ID, label: row.Size_Label || "25mm" }
+        : null;
+    })();
+
     const { plans, skipped } = planAutoService(seeds, trenches, utilitiesFor, {
       alreadyServiced: (s) => serviced.has(Number(s.Feature_ID)),
       meterServed,
@@ -9217,6 +9229,26 @@ export default function GISCanvasPage() {
                  mains are sized from. */
               ...(c.utility.layer_key === "water" && serviceSize
                 ? { Water_Pipe_Size_ID: serviceSize.id, Size: serviceSize.label }
+                : {}),
+              /* A gas service is 25mm, which is what goes in unless
+                 somebody says otherwise.
+
+                 Not sized from the load like a main: a domestic service
+                 feeds one dwelling, the answer is the same every time,
+                 and a table lookup that always returns the same row is
+                 a lookup that can fail for no benefit. Overridable on
+                 the feature afterwards, like any other size.
+
+                 From the catalogue where the size is in it, so the bill
+                 itemises it and the levels check can read its bore. The
+                 label goes on regardless \u2014 a drawing that says 25mm is
+                 better than one that says nothing, even where the
+                 catalogue has no row to point at. */
+              ...(c.utility.layer_key === "gas"
+                ? {
+                  Size: gasServiceSize?.label ?? "25mm",
+                  ...(gasServiceSize ? { Gas_Pipe_Size_ID: gasServiceSize.id } : {}),
+                }
                 : {}),
               Connects: connectedTo(c.geometry, features, null),
             },

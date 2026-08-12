@@ -673,6 +673,48 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   if (lineFollows([], run)) fail("a line with no geometry matched a run");
 }
 
+/* The pressure shown beside each span node on the drawing.
+
+   Built from the legs, keyed on the node each one ends at. The origin
+   is the exception: no leg ends there, so it comes from the figure the
+   check started with. Taking the highest leg pressure instead gets the
+   first node *after* the source, which on any network with a drop is a
+   different number — G0 would have read 18.87 on a 23 mbar POC. */
+{
+  const kwToM3h = (kw) => kw * 3600 / 39500;
+  const r = gasLevels({
+    runs: [
+      { id: "G1", fromNode: "P", endNode: "A1", fromLabel: "G0", toLabel: "A1",
+        metres: 20, services: 0, bore: 52, kw: 900 },
+      { id: "G2", fromNode: "A1", endNode: "A5", fromLabel: "A1", toLabel: "A5",
+        metres: 200, services: 6, bore: 52, kw: 300 },
+    ],
+    source: "P", sourceMBar: 23, flowFor: (x) => kwToM3h(x.kw),
+  });
+
+  if (r.sourceMBar !== 23) fail("the check does not report what it started from");
+
+  const byNode = new Map();
+  for (const l of r.legs) if (l.to && l.at != null) byNode.set(String(l.to), l.at);
+  const first = r.legs[0]?.from;
+  if (first != null && r.sourceMBar != null) byNode.set(String(first), r.sourceMBar);
+
+  if (byNode.get("G0") !== 23) {
+    fail(`the origin would show ${byNode.get("G0")}, wanted the source pressure`);
+  }
+  if (!(byNode.get("A1") < 23)) fail("the first node did not drop below the source");
+  if (!(byNode.get("A5") < byNode.get("A1"))) {
+    fail("pressure did not fall along the network");
+  }
+  /* Every node the report names has a figure to draw, or the drawing
+     and the table would disagree about which nodes were measured. */
+  for (const l of r.legs) {
+    if (l.to && !byNode.has(String(l.to))) {
+      fail(`${l.to} is in the report but would show nothing on the drawing`);
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

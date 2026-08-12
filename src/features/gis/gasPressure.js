@@ -373,6 +373,11 @@ export function gasLevels({
   }));
 
   return {
+    /* What the network starts from, so a caller does not have to infer
+       it. Taking the highest leg pressure gets the first node after the
+       source rather than the source itself \u2014 on a network with any
+       drop at all, those are different numbers. */
+    sourceMBar,
     pressures: walked.pressures,
     /* The runs exactly as they were measured, so a suggestion is worked
        out against the same network rather than one rebuilt from

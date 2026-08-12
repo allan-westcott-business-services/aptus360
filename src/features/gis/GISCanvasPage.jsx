@@ -553,6 +553,26 @@ export default function GISCanvasPage() {
   const [gasUnserved, setGasUnserved] = useState(null);
   /* The result of a gas levels check: pressure at every span node. */
   const [gasLevelsResult, setGasLevelsResult] = useState(null);
+
+  /* The pressure at each span node, by its label, for drawing on the
+     canvas. Null when the gas layer is hidden or no check has run \u2014
+     both mean there is nothing to say rather than a figure of zero. */
+  const gasPressureAt = useMemo(() => {
+    if (!gasLevelsResult?.legs || hidden.includes("gas")) return null;
+    const m = new Map();
+    for (const l of gasLevelsResult.legs) {
+      if (l.to && l.at != null) m.set(String(l.to), l.at);
+    }
+    /* And the origin, which no leg ends at, from the figure the check
+       started with rather than from the highest leg \u2014 the highest leg
+       is the first node after the source, which on any network with a
+       drop is a different number. */
+    const first = gasLevelsResult.legs[0]?.from;
+    if (first != null && gasLevelsResult.sourceMBar != null) {
+      m.set(String(first), gasLevelsResult.sourceMBar);
+    }
+    return m.size ? m : null;
+  }, [gasLevelsResult, hidden]);
   const [classPlan, setClassPlan] = useState(null);
   const [reclass, setReclass] = useState(false);
   /* Right-click menu: what was clicked, and where to put the menu.
@@ -3445,6 +3465,42 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "middle";
         ctx.fillText(code, q.x, q.y);
         ctx.textBaseline = "alphabetic";
+      }
+
+      /* ── The pressure at this node ──
+
+         Beside the node rather than in the report only: a designer
+         moving pipe around is looking at the drawing, and reading a
+         figure means finding the row in a table by its label. Shown on
+         the drawing, the answer is where the question is.
+
+         Only while the gas layer is showing, and only after the check
+         has run \u2014 a pressure is a result rather than a property of a
+         node, and one left on screen after the drawing changed would be
+         a stale number nobody could tell was stale. Any edit clears the
+         result, so this goes with it.
+
+         Red below the limit, matching the report. A node that fails is
+         the thing somebody is looking for. */
+      if (gasPressureAt && fontPx >= 7 && view.scale > 1.2) {
+        const mbar = gasPressureAt.get(String(code));
+        if (mbar != null) {
+          const bad = mbar < (gasLevelsResult?.minMBar ?? 19);
+          const text = `${mbar.toFixed(2)} mbar`;
+          ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          /* A backing plate, because a figure over a trench or a
+             building line is unreadable on its own. */
+          const w = ctx.measureText(text).width;
+          const x = q.x + r + 5;
+          ctx.fillStyle = "rgba(255,255,255,.88)";
+          ctx.fillRect(x - 2, q.y - 7, w + 4, 14);
+          ctx.fillStyle = bad ? "#b91c1c" : "#334155";
+          ctx.fillText(text, x, q.y);
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+        }
       }
     }
 

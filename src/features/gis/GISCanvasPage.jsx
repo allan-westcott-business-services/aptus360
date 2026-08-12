@@ -8137,7 +8137,20 @@ export default function GISCanvasPage() {
         for (const f of src) {
           if (f.Feature_Type !== "line") continue;
           if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
-          if (!lineFollows(f.Geometry || [], pts)) continue;
+          /* The run lies on the main, not the main on the run.
+
+             The build draws a main END_EXTEND_M past its last node so
+             the end cap has pipe to sit on \u2014 so the main is longer than
+             the run it was laid along, and asking whether every point
+             of the main sits on the run failed on that overhang. Every
+             time, on every capped length.
+
+             That is why this returned nothing: the run label fell back
+             to a fresh count, and featureId was never set, so the flow
+             map was empty and Q appeared on no pipe at all. Reversed,
+             the overhang is simply extra main beyond the run, which is
+             what it is. */
+          if (!lineFollows(pts, f.Geometry || [])) continue;
           return f;
         }
         return null;
@@ -8175,8 +8188,13 @@ export default function GISCanvasPage() {
 
              Now the pipe on this run is found first, and whether it has
              a size is a fact about that pipe: no size means no size,
-             not somebody else's. */
-          if (!lineFollows(f.Geometry || [], pts)) continue;
+             not somebody else's.
+
+             The run lies on the main, not the other way round: the
+             build extends a main past its last node for the end cap, so
+             the main is the longer of the two and asking whether it sits
+             on the run failed on the overhang. */
+          if (!lineFollows(pts, f.Geometry || [])) continue;
           /* The mode the Sizes menu is showing.
 
              Fixed to the override for a while, because the drawing and
@@ -8391,7 +8409,9 @@ export default function GISCanvasPage() {
 
       /* Same rule as the check uses to read a size, so Make change
          writes to exactly the features the report measured. */
-      const onRun = (f) => lineFollows(f.Geometry || [], sug.runPts || []);
+      /* Same containment as the check reads sizes with, so Make change
+         writes to exactly the features the report measured. */
+      const onRun = (f) => lineFollows(sug.runPts || [], f.Geometry || []);
       const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
         && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
       const rows = features

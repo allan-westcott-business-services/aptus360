@@ -1042,6 +1042,42 @@ for (const bad of [{}, { flowM3h: 0, boreMM: 50, lengthM: 10 },
   }
 }
 
+/* A main is matched to its run the right way round.
+
+   The build draws a main END_EXTEND_M past its last node so the end cap
+   has pipe to sit on \u2014 so the main is *longer* than the run it was laid
+   along. Asking whether every point of the main sits on the run failed
+   on that overhang, every time, on every capped length.
+
+   Nothing errored: the run label fell back to a fresh count, the size
+   fell back to the calculated one, and featureId was never set, so the
+   flow map stayed empty and Q appeared on no pipe at all. Three
+   symptoms, one cause, and none of them looked like a matching
+   problem. */
+{
+  const run = [[0, 0], [100, 0]];
+  const capped = [[0, 0], [101.5, 0]];
+
+  /* The direction that was wrong. */
+  if (lineFollows(capped, run)) {
+    fail("a capped main now fits inside its run, so this test proves nothing");
+  }
+  /* The direction that is right: the run lies on the main, and the
+     overhang is simply extra main beyond it. */
+  if (!lineFollows(run, capped)) {
+    fail("a capped main was not matched to the run it was laid along");
+  }
+
+  /* Still specific: a main in another road does not match. */
+  if (lineFollows(run, [[0, 80], [100, 80]])) {
+    fail("a main in a different road matched this run");
+  }
+  /* And a main that stops short does not cover the run. */
+  if (lineFollows(run, [[0, 0], [40, 0]])) {
+    fail("a main covering part of the run matched the whole of it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Gas pressure behaves (${MODEL.length} real pipes, median `
     + `${median.toFixed(3)} of GASWorkS, worst ${worst.ratio.toFixed(3)}).`);

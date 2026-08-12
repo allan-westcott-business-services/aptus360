@@ -28,6 +28,9 @@ export default function FeatureEditor({
   /* The whole drawing, so a meter can be offered the circuits that
      already exist on it. */
   allFeatures = [],
+  /* Told when a gas main is sized by hand, so the canvas can offer to
+     bring the pipes between here and the POC up to match. */
+  onUpstreamSize,
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
   onIsolateCircuit, circuitIsolated,
 }) {
@@ -1244,12 +1247,32 @@ export default function FeatureEditor({
                      Build LV Network sets this on every run it draws, so
                      a generated feeder arrives with a cable already on
                      it — this is where you see and change it. */
+                  <>
+                  {/* What Build LV Network worked out, read only. The
+                      override sits beside it: a rebuild cannot wipe a
+                      decision, and a decision cannot hide what the build
+                      said. */}
                   <div className="fld">
-                    <label htmlFor="fe-cablesize">Cable size</label>
-                    <select id="fe-cablesize" value={f.Attributes.VD_Cable_Size_ID ?? ""}
-                      onChange={(e) => setAttr("VD_Cable_Size_ID")(
+                    <label htmlFor="fe-cable-sys">System calculated</label>
+                    <input id="fe-cable-sys" readOnly
+                      value={(() => {
+                        const c = (lookups?.cableSizes || []).find((x) =>
+                          Number(x.Cable_Size_ID)
+                            === Number(f.Attributes.VD_Cable_Size_ID));
+                        if (!c) return "";
+                        const t = (lookups?.cableTypes || [])
+                          .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+                        return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
+                      })()} />
+                  </div>
+
+                  <div className="fld">
+                    <label htmlFor="fe-cablesize">Manually set</label>
+                    <select id="fe-cablesize"
+                      value={f.Attributes.Manual_VD_Cable_Size_ID ?? ""}
+                      onChange={(e) => setAttr("Manual_VD_Cable_Size_ID")(
                         e.target.value ? Number(e.target.value) : null)}>
-                      <option value="">&mdash; not set &mdash;</option>
+                      <option value="">Not overridden</option>
                       {/* The cable and nothing else. The material and
                           the missing-figures warning were on every
                           option and turned a list of sizes into a list
@@ -1306,6 +1329,7 @@ export default function FeatureEditor({
                       </p>
                     )}
                   </div>
+                  </>
                 ) : isGas ? (
                   <>
                   {/* The build's answer, read only.
@@ -1347,6 +1371,12 @@ export default function FeatureEditor({
                         const row = gasPipeChoices
                           .find((x) => Number(x.Gas_Pipe_Size_ID) === id);
                         setAttr("Manual_Gas_Pipe_Size_ID")(id);
+                        /* Upstream cannot be narrower than what it
+                           feeds. Offered rather than done silently: it
+                           changes lengths of main nobody selected, and
+                           a rule that rewrites the drawing without
+                           saying so is one nobody trusts. */
+                        if (id != null && row) onUpstreamSize?.(feature, row);
                         /* The label travels with the id so the drawing
                            reads without a lookup, the same as water. */
                         setAttr("Size")(row
@@ -1402,14 +1432,33 @@ export default function FeatureEditor({
                       branch in a fragment to fit the label control in
                       made it a child of that fragment, so JSX read it
                       as text and printed it in the modal. */}
+                  {/* What the build worked out, read only. The override
+                      sits beside it rather than replacing it, so a
+                      rebuild cannot wipe a decision and a decision
+                      cannot hide what the build said. */}
                   <div className="fld">
-                    <label htmlFor="fe-pipe">Pipe size</label>
-                    <select id="fe-pipe" value={f.Attributes.Water_Pipe_Size_ID ?? ""}
+                    <label htmlFor="fe-water-sys">System calculated</label>
+                    <input id="fe-water-sys" readOnly
+                      value={(() => {
+                        const row = (lookups?.waterPipeSizes || []).find((x) =>
+                          Number(x.Water_Pipe_Size_ID)
+                            === Number(f.Attributes.Water_Pipe_Size_ID));
+                        return row
+                          ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
+                          : "";
+                      })()} />
+                  </div>
+
+                  <div className="fld">
+                    <label htmlFor="fe-pipe">Manually set</label>
+                    <select id="fe-pipe"
+                      value={f.Attributes.Manual_Water_Pipe_Size_ID ?? ""}
                       onChange={(e) => {
                         const id = e.target.value ? Number(e.target.value) : null;
                         const row = (lookups?.waterPipeSizes || [])
                           .find((x) => Number(x.Water_Pipe_Size_ID) === id);
-                        setAttr("Water_Pipe_Size_ID")(id);
+                        /* The override, never the build's own answer. */
+                        setAttr("Manual_Water_Pipe_Size_ID")(id);
                         /* Size follows the choice rather than being a
                            second field to keep in step. Everything that
                            already shows a pipe reads Size \u2014 trench
@@ -1420,7 +1469,7 @@ export default function FeatureEditor({
                           ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
                           : null);
                       }}>
-                      <option value="">&mdash; not set &mdash;</option>
+                      <option value="">Not overridden</option>
                       {/* The size and nothing else.
 
                           The capacity and the operators were on each

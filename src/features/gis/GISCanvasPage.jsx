@@ -66,6 +66,7 @@ import {
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
 import { sizeIdFor, isOverridden, sizeLabelOf } from "./sizeMode.js";
+import { upstreamTooSmall } from "./upstreamSize.js";
 import {
   gasMainRuns, END_EXTEND_M,
 } from "./gasNetwork.js";
@@ -8247,6 +8248,86 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Bring the mains between an edited length and the POC up to size.
+
+     A pipe cannot be fed through something narrower than itself, so
+     upsizing one length by hand makes every smaller pipe on the way
+     back to the POC wrong. Applied to the manual size, not the
+     calculated one: the build's own answer is its to set, and this is
+     a consequence of somebody's decision rather than a second opinion
+     about the load.
+
+     Asked rather than done. It changes lengths of main nobody
+     selected, and a rule that quietly rewrites the drawing is one
+     nobody trusts the next time. */
+  async function enforceUpstreamSize(edited, size) {
+    if (!projectId || !edited || !size) return;
+    const bore = Number(size.Diameter_mm) - 11;
+    if (!(bore > 0)) return;
+
+    const mainType = lineTypes.find((t) => t.Layer_Key === "gas"
+      && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
+    const mains = features.filter((f) => f.Feature_Type === "line"
+      && f.Attributes?.Line_Type === mainType?.Type_Key);
+
+    /* The POC this length is fed from. With more than one on the
+       drawing the nearest is the one to walk towards \u2014 the networks do
+       not meet, so the nearest is the only one reachable. */
+    const pocs = features.filter((f) => f.Feature_Role === "poc"
+      && f.Layer_Key === "gas" && (f.Geometry || []).length);
+    if (!pocs.length) return;
+    const from = (edited.Geometry || [])[0] ?? [0, 0];
+    const poc = pocs.reduce((best, x) => {
+      const d = Math.hypot(x.Geometry[0][0] - from[0], x.Geometry[0][1] - from[1]);
+      return !best || d < best.d ? { f: x, d } : best;
+    }, null);
+
+    const boreOf = (f) => {
+      const id = sizeIdFor(f, "gas", "manual");
+      const row = (lookups?.gasPipeSizes || [])
+        .find((x) => Number(x.Gas_Pipe_Size_ID) === Number(id));
+      return row ? Number(row.Diameter_mm) - 11 : null;
+    };
+
+    const { changes, reachedPoc, why } = upstreamTooSmall(
+      mains, edited, poc.f.Geometry[0], bore, { boreOf });
+
+    if (!changes.length) {
+      /* Nothing to do is worth saying only where the walk failed: a
+         chain that could not be followed is a fact about the drawing,
+         and silence would read as "everything upstream is fine". */
+      if (!reachedPoc && why) setStatus(`Upstream not checked \u2014 ${why}`);
+      return;
+    }
+
+    const label = size.Size_Label || `${Number(size.Diameter_mm)}mm`;
+    if (!window.confirm(
+      `${changes.length} length(s) of main between here and the POC are `
+      + `narrower than ${label}.\n\nBring them up to ${label}? `
+      + "A main cannot be fed through a smaller one."
+      + (reachedPoc ? "" : `\n\nNote: ${why}.`)
+    )) return;
+
+    try {
+      const rows = changes.map((c) => ({
+        Feature_ID: c.feature.Feature_ID,
+        Attributes: {
+          ...c.feature.Attributes,
+          Manual_Gas_Pipe_Size_ID: size.Gas_Pipe_Size_ID,
+          Size: label,
+        },
+      }));
+      await bulkUpdateFeatures(projectId, rows);
+      await recordAction(`Upsize ${rows.length} upstream main(s) to ${label}`,
+        changes.map((c) => c.feature),
+        rows.map((r, i) => ({ ...changes[i].feature, Attributes: r.Attributes })));
+      const fresh = await listGis(projectId);
+      setFeatures(fresh.features || []);
+      setStatus(`${rows.length} upstream main(s) brought up to ${label}`);
+      setTimeout(() => setStatus(""), 6000);
+    } catch (e) { setError(e.message); }
+  }
+
   async function buildGasNetwork() {
     if (!projectId) return;
     const src = features;
@@ -11530,6 +11611,7 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
+          onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}

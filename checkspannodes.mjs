@@ -143,6 +143,60 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (reclaims(6)) fail("re-placing reclaimed a node six metres away");
 }
 
+/* An origin is a span node, and one serves every circuit.
+
+   Labelling the substation put "E0" on the drawing and satisfied a
+   reader, but every trace looks for a feature with the span node role
+   and Span_Seq 0 — so the levels check reported "Circuit 1: no origin
+   node" while E0 sat plainly on screen.
+
+   One node, not one per circuit. They are the same point on the ground
+   — the substation the whole network is measured from — so four copies
+   stacked on one spot is four things to keep in step for no gain. */
+{
+  const originFor = (features, circuitId) => {
+    const nodes = features.filter((f) => f.Feature_Role === "spannode"
+      && Number(f.Attributes?.Span_Seq) === 0);
+    return nodes.find((f) =>
+      Number(f.Attributes?.Circuit_ID) === Number(circuitId))
+      ?? nodes.find((f) => f.Attributes?.Circuit_ID == null)
+      ?? null;
+  };
+
+  /* A labelled substation is not an origin, however it reads. */
+  const labelled = [{
+    Feature_Role: "substation", Layer_Key: "electric",
+    Attributes: { Span_Label: "E0", Span_Seq: 0, Circuit_ID: 1 },
+  }];
+  if (originFor(labelled, 1)) fail("a labelled substation counted as an origin node");
+
+  /* One node with no circuit on it is the origin for all of them. */
+  const shared = [{
+    Feature_Role: "spannode", Layer_Key: "electric",
+    Attributes: { Span_Label: "E0", Span_Seq: 0 },
+  }];
+  for (const id of [1, 2, 3]) {
+    if (!originFor(shared, id)) fail(`circuit ${id} could not find the shared origin`);
+  }
+
+  /* A drawing that already has per-circuit origins keeps working, and
+     the one naming this circuit wins. */
+  const named = [
+    { Feature_Role: "spannode", Layer_Key: "electric",
+      Attributes: { Span_Seq: 0 } },
+    { Feature_Role: "spannode", Layer_Key: "electric",
+      Attributes: { Span_Seq: 0, Circuit_ID: 2, Span_Label: "mine" } },
+  ];
+  if (originFor(named, 2)?.Attributes?.Span_Label !== "mine") {
+    fail("a circuit's own origin did not win over the shared one");
+  }
+  if (originFor(named, 1)?.Attributes?.Circuit_ID != null) {
+    fail("a circuit took another circuit's origin");
+  }
+
+  if (originFor([], 1)) fail("an origin was found on an empty drawing");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

@@ -238,10 +238,23 @@ export function circuitsFrom(features = []) {
 export const spanLabel = (letter, seq) => `${letter}${seq}`;
 
 export function originNodeFor(features, circuitId) {
-  return features.find((f) =>
-    f.Feature_Role === "spannode"
-    && Number(f.Attributes?.Circuit_ID) === Number(circuitId)
-    && Number(f.Attributes?.Span_Seq) === 0) || null;
+  const nodes = features.filter((f) => f.Feature_Role === "spannode"
+    && Number(f.Attributes?.Span_Seq) === 0);
+
+  /* One node on the substation, shared by every circuit.
+
+     Requiring a matching Circuit_ID meant a site needed one origin per
+     circuit, all stacked on the same spot. They are the same point on
+     the ground \u2014 the substation the whole network is measured from \u2014
+     and four copies of it is four things to keep in step for no gain.
+
+     A node naming this circuit still wins where one exists, so a
+     drawing that already has them keeps working. Otherwise the one
+     that names no circuit is the origin for all of them. */
+  return nodes.find((f) =>
+    Number(f.Attributes?.Circuit_ID) === Number(circuitId))
+    ?? nodes.find((f) => f.Attributes?.Circuit_ID == null)
+    ?? null;
 }
 
 /* ── Full trace from here ──

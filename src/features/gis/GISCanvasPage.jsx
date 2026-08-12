@@ -6156,6 +6156,68 @@ export default function GISCanvasPage() {
      replaced: one somebody moved or added by hand is theirs, and
      deleting it to put an identical one back would lose whatever else
      was set on it. */
+  /* Put back an origin node that has been deleted.
+
+     Place Span Nodes does this too, but it also renumbers every span on
+     the drawing \u2014 a large change to undo one deletion, and one nobody
+     will risk on a drawing they have finished. This does the origins
+     and nothing else.
+
+     Electric gets one per circuit; gas and water get one, since they
+     have a single network from the governor or the POC. */
+  async function placeOriginNodes(layerWanted = null) {
+    if (!projectId) return;
+    setBusy("origins");
+    try {
+      const origins = [...originsOf(features)]
+        .filter(([layer]) => !layerWanted || layer === layerWanted);
+      if (!origins.length) {
+        setError(layerWanted
+          ? `No ${layerWanted} plant or POC on this drawing to measure from.`
+          : "No substation, governor or POC on this drawing.");
+        return;
+      }
+
+      let made = 0;
+      for (const [layer, origin] of origins) {
+        const at = (origin.feature.Geometry || [])[0];
+        if (!at) continue;
+        /* One per origin. Every circuit is measured from the same
+           substation, so one node serves them all. */
+        const already = features.some((x) => x.Feature_Role === "spannode"
+          && Number(x.Attributes?.Span_Seq) === 0
+          && x.Layer_Key === layer
+          && Math.hypot(((x.Geometry || [])[0]?.[0] ?? 0) - at[0],
+            ((x.Geometry || [])[0]?.[1] ?? 0) - at[1]) < 1.5);
+        if (already) continue;
+
+        await createFeature(projectId, {
+          Layer_Key: layer,
+          Feature_Type: "point",
+          Feature_Role: "spannode",
+          Geometry: [at],
+          Label: `Point ${origin.label}`,
+          Attributes: {
+            Span_Seq: 0,
+            Span_Label: origin.label,
+            Span_Kind: "origin",
+            Span_Anchor: at,
+            Connects: [],
+          },
+        });
+        made += 1;
+      }
+
+      await load(projectId);
+      setStatus(made
+        ? `${made} origin node(s) placed`
+        : "Every origin is already there \u2014 nothing to put back");
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   async function placeSpanNodes() {
     const trenches = features.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
@@ -6226,15 +6288,54 @@ export default function GISCanvasPage() {
          Written here because this is the run that decides the
          numbering: the origins and the spans have to agree, and doing
          them together is the only way they cannot drift. */
-      for (const [, origin] of originsOf(features)) {
+      /* ── The origin node ──
+
+         A real span node on the plant, not a label written onto it.
+
+         Labelling the substation put "E0" on the drawing and satisfied
+         a reader, but every trace looks for a feature with the span
+         node role and Span_Seq 0 \u2014 so the levels check reported
+         "Circuit 1: no origin node" while E0 sat plainly on screen.
+         The label is a name; the node is the thing the network is
+         measured from.
+
+         Placed on top of the plant, sharing its position, and carrying
+         the circuit so a site with two substations has an origin for
+         each. */
+      for (const [layer, origin] of originsOf(features)) {
         const f = origin.feature;
-        if (f.Attributes?.Span_Label === origin.label) continue;
-        await bulkUpdateFeatures(projectId, [{
-          Feature_ID: f.Feature_ID,
-          Label: origin.label,
-          Attributes: { ...f.Attributes, Span_Label: origin.label, Span_Seq: 0 },
-        }]);
-        moved += 1;
+        const at = (f.Geometry || [])[0];
+        if (!at) continue;
+
+        /* One node, shared by every circuit.
+
+           They are the same point on the ground \u2014 the substation the
+           whole network is measured from \u2014 so one per circuit would be
+           four copies stacked on one spot, four things to keep in step
+           for no gain. No Circuit_ID on it: naming one would make it
+           that circuit's origin and leave the rest without. */
+        const existing = features.find((x) => x.Feature_Role === "spannode"
+          && Number(x.Attributes?.Span_Seq) === 0
+          && x.Layer_Key === layer
+          && Math.hypot(((x.Geometry || [])[0]?.[0] ?? 0) - at[0],
+            ((x.Geometry || [])[0]?.[1] ?? 0) - at[1]) < 1.5);
+        if (existing) continue;
+
+        await createFeature(projectId, {
+          Layer_Key: layer,
+          Feature_Type: "point",
+          Feature_Role: "spannode",
+          Geometry: [at],
+          Label: `Point ${origin.label}`,
+          Attributes: {
+            Span_Seq: 0,
+            Span_Label: origin.label,
+            Span_Kind: "origin",
+            Span_Anchor: at,
+            Connects: [],
+          },
+        });
+        made += 1;
       }
 
       for (const nd of plan.nodes) {
@@ -10537,6 +10638,12 @@ export default function GISCanvasPage() {
                   <Menu id="electric" label="Electric" open={open} setOpen={setOpen} columns={2}>
                     {/* As on Gas and Water: which of the two recorded
                         sizes is in force. */}
+                    <MenuItem label={busy === "origins" ? "Placing\u2026" : "Place E0"}
+                      hint="The origin every circuit is measured from"
+                      disabled={!!busy}
+                      onClick={() => placeOriginNodes("electric")} />
+                    <div className="gm-sep" />
+
                     <MenuGroup label="Sizes" />
                     <MenuItem label="System calculated" indent
                       active={(sizeMode.electric ?? "system") === "system"}
@@ -10740,6 +10847,17 @@ export default function GISCanvasPage() {
                             drawing, by the editor and by the levels
                             check. Switching discards nothing and
                             recalculates nothing. */}
+                        {/* Putting back an origin that was deleted.
+                            Place Span Nodes does it too, but renumbers
+                            every span on the way \u2014 too large a change
+                            to make to fix one deletion. */}
+                        <MenuItem label={busy === "origins"
+                          ? "Placing\u2026" : `Place ${key === "gas" ? "G0" : "W0"}`}
+                          hint="The origin the network is measured from"
+                          disabled={!!busy}
+                          onClick={() => placeOriginNodes(key)} />
+                        <div className="gm-sep" />
+
                         <MenuGroup label="Sizes" />
                         <MenuItem label="System calculated" indent
                           active={(sizeMode[key] ?? "system") === "system"}

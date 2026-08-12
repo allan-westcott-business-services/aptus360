@@ -577,7 +577,13 @@ export default function GISCanvasPage() {
      toolbar settings, so a reload does not quietly put somebody back on
      a different set of figures from the one they were reading. */
   const [sizeMode, setSizeMode] = useState(
-    () => recall("gisSizeMode", { electric: "system", gas: "system", water: "system" }));
+    /* Manually set by default.
+
+       Not system: that would mean a drawing opened fresh ignores every
+       override until somebody thinks to change a menu, and the sizes
+       that will be built are the ones anybody wants to see first. The
+       system view is for comparison, which is a deliberate act. */
+    () => recall("gisSizeMode", { electric: "manual", gas: "manual", water: "manual" }));
   const setSizeModeFor = useCallback((utility, mode) => {
     setSizeMode((m) => {
       const next = { ...m, [utility]: mode };
@@ -627,7 +633,8 @@ export default function GISCanvasPage() {
        marker leaves it alone; resizing a pipe, redrawing a trench or
        deleting a run does not. */
     const measured = gasLevelsResult.measuredFingerprint;
-    if (!measured || measured === networkFingerprint) return;
+    if (!measured
+      || measured === `${sizeMode.gas ?? "manual"}\n${networkFingerprint}`) return;
     setGasLevelsResult(null);
     setGasLevelsPanel(false);
   }, [networkFingerprint, gasLevelsResult]);
@@ -2906,12 +2913,22 @@ export default function GISCanvasPage() {
              size carries a plot count and no diameter, and that is the
              length most worth reading.
 
-             Water only. Gas carries a size too and the same line would
-             label it, which would put text on every gas main on every
-             existing drawing on the strength of a change nobody asked
-             for. */
-          const sized = f.Layer_Key === "water"
-            && (a.Size || a.Water_Pipe_Size_ID != null || a.Meters != null)
+             Gas as well as water. It was water only, on the grounds
+             that labelling gas would put text on every main on every
+             existing drawing \u2014 which was the right caution then and is
+             wrong now that a size can be set by hand: an override
+             nobody can see on the drawing is a decision nobody can
+             check.
+
+             The size shown is the one that will be built \u2014 the
+             override where there is one, the calculated size elsewhere
+             \u2014 and it does not follow the Sizes menu. The menu governs
+             what the levels check measures; the drawing says what goes
+             in the ground. */
+          const sized = (f.Layer_Key === "water" || f.Layer_Key === "gas")
+            && (a.Size || a.Water_Pipe_Size_ID != null
+              || a.Gas_Pipe_Size_ID != null || a.Manual_Gas_Pipe_Size_ID != null
+              || a.Meters != null)
             ? `${sizeLabelOf(f, sizeCatalogues) || a.Size || "size not set"}  `
               + `${lineLength(f.Geometry).toFixed(1)} m`
             : "";
@@ -8037,7 +8054,20 @@ export default function GISCanvasPage() {
              a size is a fact about that pipe: no size means no size,
              not somebody else's. */
           if (!lineFollows(f.Geometry || [], pts)) continue;
-          const sizeId = sizeIdFor(f, "gas", "manual");
+          /* The mode the Sizes menu is showing.
+
+             Fixed to the override for a while, because the drawing and
+             the bill both take it unconditionally and a report that
+             disagreed with the drawing beside it was worse than one
+             that followed a menu. But that made the toggle inert:
+             switching to System calculated and re-running produced the
+             same figures, so the one question the two modes exist to
+             answer \u2014 what are the overrides worth \u2014 could not be asked.
+
+             So the check follows the menu and the bill does not. They
+             are different questions: the bill is what will be ordered,
+             and the check is what somebody is examining. */
+          const sizeId = sizeIdFor(f, "gas", sizeMode.gas ?? "manual");
           if (sizeId == null) return null;
           const row = (lookups?.gasPipeSizes || []).find((x) =>
             Number(x.Gas_Pipe_Size_ID) === Number(sizeId));
@@ -8163,7 +8193,11 @@ export default function GISCanvasPage() {
         ...result, minMBar, amberPct, advice,
         /* What it was measured against, so the staleness check can tell
            a changed network from a moved label. */
-        measuredFingerprint: fingerprintOf(src),
+        /* The mode is part of what was measured. Without it, switching
+           the menu left the previous result on screen looking current
+           \u2014 the figures for the other mode, presented as though they
+           were these. */
+        measuredFingerprint: `${sizeMode.gas ?? "manual"}\n${fingerprintOf(src)}`,
       });
       setGasLevelsPanel(true);
       /* Said, rather than left to be noticed. A panel that reports one

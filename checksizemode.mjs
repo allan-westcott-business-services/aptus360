@@ -152,6 +152,59 @@ if (sizeIdFor({ Layer_Key: "trench", Attributes: {} }, "trench") !== null) {
   }
 }
 
+/* The drawing shows what will be built, whatever the menu says.
+
+   The label takes the override where there is one and the calculated
+   size elsewhere, and it does not follow the Sizes menu \u2014 that governs
+   what the levels check measures. An override nobody can see on the
+   drawing is a decision nobody can check. */
+{
+  const cat = {
+    gas: [{ Gas_Pipe_Size_ID: 4, Size_Label: "90mm PE" },
+      { Gas_Pipe_Size_ID: 6, Size_Label: "180mm PE" }],
+  };
+  const over = {
+    Layer_Key: "gas",
+    /* A stale Size attribute, as a rebuild can leave. The label must
+       come from the id, not from the text beside it. */
+    Attributes: { Gas_Pipe_Size_ID: 4, Manual_Gas_Pipe_Size_ID: 6, Size: "90mm PE" },
+  };
+  if (sizeLabelOf(over, cat) !== "180mm PE") {
+    fail(`an overridden main is labelled ${sizeLabelOf(over, cat)}, wanted 180mm PE`);
+  }
+
+  const plain = { Layer_Key: "gas", Attributes: { Gas_Pipe_Size_ID: 4 } };
+  if (sizeLabelOf(plain, cat) !== "90mm PE") {
+    fail("a main with no override is not labelled with its calculated size");
+  }
+}
+
+/* The levels check follows the menu; the bill does not.
+
+   They are different questions. The bill is what will be ordered, so it
+   takes the override whatever a menu says \u2014 a bill that changed with a
+   toggle is one nobody could check. The levels check is what somebody
+   is examining, and the two modes exist precisely so the difference can
+   be measured: run it one way, switch, run it again.
+
+   Fixing the check to the override made the toggle inert, which is the
+   one thing that stops that question being asked at all. */
+{
+  const f = {
+    Layer_Key: "gas",
+    Attributes: { Gas_Pipe_Size_ID: 4, Manual_Gas_Pipe_Size_ID: 6 },
+  };
+  if (sizeIdFor(f, "gas", "manual") === sizeIdFor(f, "gas", "system")) {
+    fail("the two modes cannot be told apart, so the toggle does nothing");
+  }
+  /* A length nobody overrode reads the same either way, which is what
+     makes the comparison meaningful: only the overrides move. */
+  const plain = { Layer_Key: "gas", Attributes: { Gas_Pipe_Size_ID: 4 } };
+  if (sizeIdFor(plain, "gas", "manual") !== sizeIdFor(plain, "gas", "system")) {
+    fail("a length with no override differs between the modes");
+  }
+}
+
 /* Every reader of a size agrees.
 
    The drawing, the bill and the levels check all show what would be

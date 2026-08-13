@@ -10,6 +10,7 @@ import { EASEMENT_KEY } from "./easement.js";
 import { contentsOf } from "./trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
 import { trenchSize } from "./trenchSize.js";
+import { TRENCH_CARRIES } from "./trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
@@ -1195,6 +1196,44 @@ export default function FeatureEditor({
                     </select>
                   </div>
 
+                  {/* What this length will take.
+
+                      A dig is not always for everything: water may run
+                      as a closed loop where electric never would, and
+                      the length closing that loop carries water alone.
+                      Ticked here so a build knows not to walk it.
+
+                      Nothing ticked means everything, which is what a
+                      trench drawn before this existed says \u2014 and what
+                      somebody means by not answering. */}
+                  <div className="fld fe-carries">
+                    <label>Carries</label>
+                    <div className="fe-carry-row">
+                      {TRENCH_CARRIES.map(({ key, label }) => (
+                        <label key={key} className="fe-check">
+                          <input type="checkbox"
+                            checked={f.Attributes?.[key] ?? true}
+                            onChange={(e) => {
+                              /* The first tick writes all four, so the
+                                 trench states its whole answer rather
+                                 than one flag against three silences \u2014
+                                 which would read as "carries only this"
+                                 the moment anything was unticked. */
+                              const now = TRENCH_CARRIES.reduce((o, x) => ({
+                                ...o, [x.key]: f.Attributes?.[x.key] ?? true,
+                              }), {});
+                              now[key] = e.target.checked;
+                              setF((prev) => ({
+                                ...prev,
+                                Attributes: { ...prev.Attributes, ...now },
+                              }));
+                            }} />
+                          {label}
+                        </label>
+                      ))}
+                    </div>
+                  </div>
+
                   {/* Dug size, from the drawing rather than typed: the
                       length is measured off the line, and the width and
                       depth follow from what is routed in it. */}
@@ -1849,6 +1888,9 @@ const CSS = `
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
 /* The one tick box in this editor, so it gets a rule of its own rather
    than borrowing a field's. */
+.fe-carries { flex: 1 1 100%; }
+.fe-carry-row { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 2px; }
+
 .fe-inside { list-style: none; margin: 0 0 4px; padding: 2px 0 0; display: flex;
   flex-wrap: wrap; gap: 5px 14px; }
 .fe-inside li { display: inline-flex; align-items: center; gap: 6px;

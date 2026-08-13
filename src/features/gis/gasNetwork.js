@@ -95,6 +95,7 @@
    against a drawing that no database has ever seen. */
 
 import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "./feeder.js";
+import { carries } from "./trenchCarries.js";
 
 /* ── How far the main runs past the last tee ──
 
@@ -571,7 +572,14 @@ function gasMainRunsFromOne(features = [], opts = {}) {
     && isTrenchLine(f, lineTypes)
     && (f.Geometry || []).length >= 2);
 
-  const mains = trenches.filter((f) => !isServiceLine(f));
+  /* Only the lengths that will take gas.
+
+     A trench can be dug for one utility and not another \u2014 water round
+     a loop that electric and gas never follow. A build that walked
+     those laid pipe nobody would install. Silence still means
+     everything, so a drawing made before this says the same as it
+     always did. */
+  const mains = trenches.filter((f) => !isServiceLine(f) && carries(f, "gas"));
   const services = trenches.filter(isServiceLine);
 
   if (!mains.length) {

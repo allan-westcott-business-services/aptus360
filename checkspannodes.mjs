@@ -356,6 +356,35 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (within(40)) fail("a node forty metres away was adopted");
 }
 
+/* The node a cable feeds, and the node the trace measures to, are the
+   same node.
+
+   A cable often stops a few metres short of the trench end where its
+   span node sits. The trace was taught to reach that far; the routine
+   that puts the cable size onto the node was not, so the node showed
+   "not set" while a cable plainly ran up to it \u2014 and the trace then had
+   no size to read.
+
+   One figure for both, or the two have separate opinions about which
+   node a cable feeds. */
+{
+  const REACH = 10;
+  const CONNECT = 0.5;
+
+  const fedAt = (d) => d <= REACH;
+  const joinedAt = (d) => d <= CONNECT;
+
+  /* The case from the drawing. */
+  if (joinedAt(2.5)) fail("a 2.5 m gap counts as joined, so this proves nothing");
+  if (!fedAt(2.5)) fail("a node 2.5 m past the cable end is still unfed");
+
+  /* Touching, as most are. */
+  if (!fedAt(0.3)) fail("a node on the cable end is unfed");
+
+  /* And not so far that a cable adopts a node from elsewhere. */
+  if (fedAt(14)) fail("a node fourteen metres away was fed");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

@@ -1813,7 +1813,14 @@ export default function FeatureEditor({
               two of them: four tickboxes in one column's width made the
               row four lines deep and left everything beside it floating
               against a tall empty box. */}
-          {isTrench && (
+          {/* A length of trench, not anything on the trench layer.
+
+              A span node carries Layer_Key "trench" \u2014 it belongs to the
+              dig \u2014 so isTrenchFeature says yes to it, and the tickboxes
+              appeared on a node where they mean nothing. What a trench
+              carries is a fact about a length, so the question is asked
+              only of a line. */}
+          {isTrench && feature.Feature_Type === "line" && (
             <div className="fe-row fe-carry-block">
               {/* What this length will take.
 

@@ -41,6 +41,7 @@ import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
+import { SPAN_REACH_M } from "./feeder.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
@@ -5486,8 +5487,23 @@ export default function GISCanvasPage() {
       && String(f.Attributes?.Circuit_ID) === String(cid)
       && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
       && (f.Geometry || []).length
-      && ends.some((e) =>
-        Math.hypot(f.Geometry[0][0] - e[0], f.Geometry[0][1] - e[1]) <= CONNECT_M));
+      /* As far as the trace reaches, not as far as a snap does.
+
+         CONNECT_M is the tolerance for two things being joined, and a
+         cable often stops a few metres short of the trench end where
+         its node sits. At that distance the node was fed by nothing, so
+         its cable stayed unset and the trace had no size to read \u2014 the
+         node was reported with "not set" beside it while a cable
+         plainly ran up to it.
+
+         The trace already allows SPAN_REACH_M for exactly this gap.
+         Using the same figure means the two agree about which node a
+         cable feeds, rather than each having its own opinion. */
+      && ends.some((e) => {
+        const a = f.Attributes?.Span_Anchor;
+        const at = (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
+        return Math.hypot(at[0] - e[0], at[1] - e[1]) <= SPAN_REACH_M;
+      }));
 
     if (!near.length) return null;
     return near.reduce((a, b) =>

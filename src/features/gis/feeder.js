@@ -29,6 +29,8 @@
 
 /* Two vertices this close are the same point. The original's value, in
    the same units — drawing coordinates, so metres here. */
+import { carries } from "./trenchCarries.js";
+
 export const CONNECT_EPS = 0.5;
 
 /* The cable in force on a feature.
@@ -117,6 +119,17 @@ export function buildFeederModel(features = [], opts = {}) {
 
   for (const f of features) {
     if (f.Feature_Type !== "line" || !isTrench(f, lineTypes)) continue;
+    /* Only the lengths that will take a cable.
+
+       A dig is not always for everything: water may run as a closed
+       loop where electric never would, and routing a feeder round it
+       would lay cable in a trench nobody dug for it. Silence still
+       means everything, so a drawing made before the flags existed
+       routes exactly as it always did.
+
+       LV, because this is the LV feeder model. A length open to HV and
+       shut to LV is correctly refused here. */
+    if (!carries(f, "electric", "lv")) continue;
     const pts = f.Geometry || [];
     if (pts.length < 2) continue;
     const svc = isService(f);
@@ -383,8 +396,55 @@ export function trenchComponents(features = [], opts = {}) {
     adj.get(b).add(a);
   };
 
+  /* ── Split where one run meets another part way along ──
+
+     The graph was built from each run's own vertices, so a service
+     touching a main between two of them was connected on paper and
+     invisible to routing. The comment above serviceTrenchCheck names
+     this exactly: "connected on paper and invisible to routing".
+
+     The consequence is a cable that cannot follow its trench, because
+     as far as the router is concerned the trench does not reach the
+     main \u2014 so it falls back to running straight to the meter. Which is
+     what a service cable has been doing.
+
+     The same fault, and the same fix, as the gas build had. */
+  const ends = [];
   for (const f of runs) {
-    const ids = (f.Geometry || []).map(intern);
+    const g = f.Geometry || [];
+    if (g.length >= 2) ends.push(g[0], g[g.length - 1]);
+  }
+
+  for (const f of runs) {
+    const g = f.Geometry || [];
+    const cuts = [];
+    for (let i = 0; i + 1 < g.length; i++) {
+      const a = g[i];
+      const b = g[i + 1];
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const len2 = vx * vx + vy * vy;
+      if (!len2) continue;
+      for (const e of ends) {
+        let u = ((e[0] - a[0]) * vx + (e[1] - a[1]) * vy) / len2;
+        u = Math.max(0, Math.min(1, u));
+        const q = [a[0] + vx * u, a[1] + vy * u];
+        if (dist(e, q) > eps) continue;
+        /* A landing already at a vertex needs no cut: it would add a
+           node in the same place and an edge of no length. */
+        if (dist(q, a) <= eps || dist(q, b) <= eps) continue;
+        cuts.push({ seg: i, u, at: q });
+      }
+    }
+    cuts.sort((x, y) => (x.seg - y.seg) || (x.u - y.u));
+
+    const points = [];
+    for (let i = 0; i < g.length; i++) {
+      points.push(g[i]);
+      for (const c of cuts) if (c.seg === i) points.push(c.at);
+    }
+
+    const ids = points.map(intern);
     runNodes.set(f.Feature_ID, ids);
     for (let i = 0; i + 1 < ids.length; i++) link(ids[i], ids[i + 1]);
   }

@@ -41,6 +41,7 @@
    nobody chose. */
 
 import { CONNECT_EPS, SNAP_TOL, isTrenchLine, isServiceLine } from "./feeder.js";
+import { carries } from "./trenchCarries.js";
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
@@ -227,7 +228,13 @@ export function waterMainRuns(features = [], opts = {}) {
     && isTrenchLine(f, lineTypes)
     && (f.Geometry || []).length >= 2);
 
-  const mains = trenches.filter((f) => !isServiceLine(f));
+  /* Only the lengths that will take water.
+
+     The other two builds already ask. Water is the utility most likely
+     to be the reason a length is restricted at all \u2014 a closed loop
+     round a site that electric would never follow \u2014 so it would be odd
+     for it to be the one build that ignored the answer. */
+  const mains = trenches.filter((f) => !isServiceLine(f) && carries(f, "water"));
   const services = trenches.filter(isServiceLine);
 
   if (!mains.length) {

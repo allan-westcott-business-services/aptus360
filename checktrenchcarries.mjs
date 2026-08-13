@@ -88,6 +88,71 @@ if (carriesLabel(waterOnly) !== "Water") {
   }
 }
 
+// 7. Span nodes are placed regardless of what a trench carries.
+//
+//    A node is a measuring point on the dig, not a thing being laid, so
+//    a water-only length still gets one at its end. The levels check
+//    measures between nodes, and a length with no node at its end
+//    cannot be measured to — the run would simply stop being reported.
+//
+//    So placement filters on nothing here: it is the *routing* that
+//    respects the flags, not the marking out.
+{
+  const forPlacement = (trenches) => trenches;   // as the placer takes them
+  const both = [plain, waterOnly];
+  if (forPlacement(both).length !== 2) {
+    fail("a restricted trench was left out of span node placement");
+  }
+  /* While routing does exclude it \u2014 the two must differ, or one of
+     them is wrong. */
+  if (trenchesFor(both, "gas").length !== 1) {
+    fail("routing stopped excluding a trench that refuses gas");
+  }
+  if (forPlacement(both).length === trenchesFor(both, "gas").length) {
+    fail("placement and routing see the same trenches, so one is wrong");
+  }
+}
+
+// 8. LV and HV route separately.
+//
+//    The LV feeder model asks for 'lv'. A length open to HV and shut to
+//    LV is correctly refused it, which is the case the two flags exist
+//    for.
+{
+  const hvOnly = {
+    Attributes: {
+      Carries_LV: false, Carries_HV: true, Carries_Gas: false, Carries_Water: false,
+    },
+  };
+  if (carries(hvOnly, "electric", "lv")) fail("an HV-only trench accepted an LV feeder");
+  if (!carries(hvOnly, "electric", "hv")) fail("an HV-only trench refused HV");
+}
+
+// 9. All three builds ask, and each asks about itself.
+//
+//    The filter lives in each build's own graph, so it is three changes
+//    rather than one — and a build that forgets to ask lays its cable
+//    or pipe in a trench nobody dug for it, with nothing to say so.
+{
+  const only = (util) => ({
+    Attributes: TRENCH_CARRIES.reduce((o, x) => ({
+      ...o, [x.key]: x.utility === util,
+    }), {}),
+  });
+
+  const waterLoop = only("water");
+  /* The case from the drawing: a length closing a water loop. */
+  if (carries(waterLoop, "electric", "lv")) fail("the LV build would route round a water loop");
+  if (carries(waterLoop, "gas")) fail("the gas build would lay pipe round a water loop");
+  if (!carries(waterLoop, "water")) fail("the water build would skip its own loop");
+
+  /* And the reverse: an electric-only length is not dug for water. */
+  const cableRun = only("electric");
+  if (carries(cableRun, "water")) fail("the water build would use a cable-only trench");
+  if (carries(cableRun, "gas")) fail("the gas build would use a cable-only trench");
+  if (!carries(cableRun, "electric", "lv")) fail("the LV build would skip its own trench");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Trench contents behave (silence means everything, LV and HV apart).");
 process.exit(bad ? 1 : 0);

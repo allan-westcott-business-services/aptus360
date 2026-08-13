@@ -1508,7 +1508,7 @@ export default function GISCanvasPage() {
     && selectedFeatures.every((f) => f.Feature_Type === "line");
 
   const drawing = tool === "boundary" || tool === "devarea"
-    || tool === "line" || tool === "circuit";
+    || tool === "line" || tool === "circuit" || tool === "lassodelete";
 
   /* A cable's full name, for a status line or a tooltip. */
   const cableName = (c) => {
@@ -3482,17 +3482,37 @@ export default function GISCanvasPage() {
     // line or boundary in progress
     if (draft.length) {
       const pts = draft.map(toPx);
+
+      /* A delete lasso is drawn in red and shaded, so it cannot be
+         mistaken for a boundary being added. The two are the same
+         gesture and opposite in consequence, and a shape that looks
+         like something being created while it is about to remove
+         twenty objects is the wrong thing to be ambiguous about. */
+      const lasso = tool === "lassodelete";
+      if (lasso && pts.length > 1) {
+        ctx.save();
+        ctx.beginPath();
+        pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
+        if (cursor) { const c = toPx(cursor); ctx.lineTo(c.x, c.y); }
+        ctx.closePath();
+        ctx.fillStyle = "rgba(185,28,28,.10)";
+        ctx.fill();
+        ctx.restore();
+      }
+
       ctx.beginPath();
       pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
       if (cursor) { const c = toPx(cursor); ctx.lineTo(c.x, c.y); }
-      ctx.strokeStyle = typeOf(lineType)?.Colour ?? "#0f172a";
+      ctx.strokeStyle = lasso ? "#b91c1c" : (typeOf(lineType)?.Colour ?? "#0f172a");
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 2;
       ctx.stroke();
       ctx.setLineDash([]);
       pts.forEach((p) => {
         ctx.beginPath(); ctx.arc(p.x, p.y, 4, 0, Math.PI * 2);
-        ctx.fillStyle = typeOf(lineType)?.Colour ?? "#0f172a"; ctx.fill();
+        ctx.fillStyle = tool === "lassodelete"
+          ? "#b91c1c" : (typeOf(lineType)?.Colour ?? "#0f172a");
+        ctx.fill();
       });
     }
 
@@ -4969,6 +4989,11 @@ export default function GISCanvasPage() {
     if (tool === "circuit") {
       if (g.length < 3) { setDraft([]); setTool("select"); return; }
       await finishCircuit(g);
+      return;
+    }
+    /* A delete lasso is drawn as a polygon and never saved as one. */
+    if (tool === "lassodelete") {
+      await deleteInsidePolygon(g);
       return;
     }
     const isPoly = tool === "boundary" || tool === "devarea";
@@ -8132,11 +8157,54 @@ export default function GISCanvasPage() {
          no size on it, which is right for reading a bore and wrong for
          reading a name \u2014 an unsized main still has a label and still
          needs a row in the report. */
+      /* Where a run's midpoint falls, for matching by proximity. */
+      const midOf = (pts = []) => {
+        if (!pts.length) return null;
+        let total = 0;
+        for (let i = 1; i < pts.length; i++) {
+          total += Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+        }
+        let run = 0;
+        for (let i = 1; i < pts.length; i++) {
+          const seg = Math.hypot(pts[i][0] - pts[i - 1][0], pts[i][1] - pts[i - 1][1]);
+          if (run + seg >= total / 2) {
+            const t = seg ? (total / 2 - run) / seg : 0;
+            return [pts[i - 1][0] + (pts[i][0] - pts[i - 1][0]) * t,
+              pts[i - 1][1] + (pts[i][1] - pts[i - 1][1]) * t];
+          }
+          run += seg;
+        }
+        return pts[pts.length - 1];
+      };
+
       const mainOnRun = (pts) => {
         if (!pts?.length) return null;
+
+        /* Containment first, proximity second.
+
+           Matching a run to the pipe drawn along it by containment is
+           exact when it works and silent when it does not \u2014 a
+           millimetre of difference anywhere along a hundred metres and
+           the answer is simply nothing, with no error and no clue. That
+           has cost five rounds of guessing on one missing figure.
+
+           So where containment finds nothing, the nearest main by
+           midpoint is taken instead. Two lengths of main in different
+           roads are not five metres apart at their middles, so this
+           cannot pick the wrong one; and it cannot fail for a reason
+           nobody can see, which is the property that was missing. */
+        let nearest = null;
+        const mid = midOf(pts);
+
         for (const f of src) {
           if (f.Feature_Type !== "line") continue;
           if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
+
+          if (mid) {
+            const fm = midOf(f.Geometry || []);
+            const d = fm ? Math.hypot(fm[0] - mid[0], fm[1] - mid[1]) : Infinity;
+            if (d <= 5 && (!nearest || d < nearest.d)) nearest = { f, d };
+          }
           /* The run lies on the main, not the main on the run.
 
              The build draws a main END_EXTEND_M past its last node so
@@ -8153,69 +8221,23 @@ export default function GISCanvasPage() {
           if (!lineFollows(pts, f.Geometry || [])) continue;
           return f;
         }
-        return null;
+        return nearest?.f ?? null;
       };
 
+      /* One matcher, used for the size as well as the name and the
+         flow. Two ways of deciding which pipe a run is drawn as is two
+         ways for them to disagree \u2014 which is how the report came to
+         show one length's size against another length's label. */
       const sizeOnDrawing = (pts) => {
-        if (!pts?.length) return null;
-        for (const f of src) {
-          if (f.Feature_Type !== "line") continue;
-          if (f.Attributes?.Line_Type !== mainType?.Type_Key) continue;
-          /* Whichever size is in force, so the check answers the
-             question the drawing is currently showing \u2014 run it on
-             system sizes and on manual sizes and the difference is what
-             the overrides are worth. */
-          /* The size that will be built, not the one the menu happens
-             to be showing.
-
-             This followed the toggle, which defaults to system \u2014 so a
-             length upsized by hand was measured at the size the build
-             had rejected, and the report disagreed with the drawing
-             beside it. The drawing and the bill both take the override
-             unconditionally; a check that did not was answering a
-             different question from the one being asked.
-
-             The toggle still governs what is drawn. Comparing the two
-             is done by looking, not by getting a check nobody asked
-             for. */
-          /* Geometry first, size second.
-
-             The size test came first, so an unsized main was skipped
-             and the loop carried on \u2014 and a *different* pipe further
-             down the list could then match this run and lend it its
-             bore. One length measured with another length's pipe, which
-             is a wrong pressure that looks entirely plausible.
-
-             Now the pipe on this run is found first, and whether it has
-             a size is a fact about that pipe: no size means no size,
-             not somebody else's.
-
-             The run lies on the main, not the other way round: the
-             build extends a main past its last node for the end cap, so
-             the main is the longer of the two and asking whether it sits
-             on the run failed on the overhang. */
-          if (!lineFollows(pts, f.Geometry || [])) continue;
-          /* The mode the Sizes menu is showing.
-
-             Fixed to the override for a while, because the drawing and
-             the bill both take it unconditionally and a report that
-             disagreed with the drawing beside it was worse than one
-             that followed a menu. But that made the toggle inert:
-             switching to System calculated and re-running produced the
-             same figures, so the one question the two modes exist to
-             answer \u2014 what are the overrides worth \u2014 could not be asked.
-
-             So the check follows the menu and the bill does not. They
-             are different questions: the bill is what will be ordered,
-             and the check is what somebody is examining. */
-          const sizeId = sizeIdFor(f, "gas", sizeMode.gas ?? "manual");
-          if (sizeId == null) return null;
-          const row = (lookups?.gasPipeSizes || []).find((x) =>
-            Number(x.Gas_Pipe_Size_ID) === Number(sizeId));
-          return row ? { row, feature: f } : null;
-        }
-        return null;
+        const f = mainOnRun(pts);
+        if (!f) return null;
+        const sizeId = sizeIdFor(f, "gas", sizeMode.gas ?? "manual");
+        if (sizeId == null) return null;
+        const row = (lookups?.gasPipeSizes || []).find((x) =>
+          Number(x.Gas_Pipe_Size_ID) === Number(sizeId));
+        return row ? { row, feature: f } : null;
       };
+
 
       /* How many times each drawn label has been used, so two networks
          cannot both call a length G13. */
@@ -8364,6 +8386,25 @@ export default function GISCanvasPage() {
           .map((l, i) => [Number(result.runsUsed?.[i]?.featureId), l.flowM3h])
           .filter(([id, q]) => Number.isFinite(id) && Number.isFinite(q))),
       });
+      /* Said out loud, because "I cannot see Q" and "Q was never worked
+         out" look identical on a drawing.
+
+         The flow is shown on a main by matching the run the check
+         measured to the feature it is drawn as. When that match fails
+         the label simply omits Q \u2014 no error, nothing to see \u2014 and
+         every attempt to find the fault has been a guess. This reports
+         how many matched, so the next question is answerable rather
+         than another round of looking. */
+      {
+        const matched = [...(result.flowByFeature?.keys() ?? [])].length;
+        const total = (result.legs || []).length;
+        if (matched < total) {
+          setStatus(`${matched} of ${total} lengths of main matched to a pipe `
+            + "on the drawing \u2014 the rest show no Q");
+          setTimeout(() => setStatus(""), 9000);
+        }
+      }
+
       setGasLevelsPanel(true);
       /* Said, rather than left to be noticed. A panel that reports one
          network on a site fed from two looks like a full check, and the
@@ -8535,6 +8576,75 @@ export default function GISCanvasPage() {
       setStatus(`${rows.length} upstream main(s) brought up to ${label}`);
       setTimeout(() => setStatus(""), 6000);
     } catch (e) { setError(e.message); }
+  }
+
+  /* Delete everything inside a drawn polygon.
+
+     Selecting a dozen objects one at a time is the slow way to clear a
+     phase that has been redrawn, and a rubber-band box cannot follow a
+     curved road. A lasso can.
+
+     ── What counts as inside ──
+
+     Every point of a feature. A line half inside is left alone: a
+     trench running out of the area carries on being a trench, and
+     deleting it would take away work outside the polygon somebody drew.
+     Points are inside if they are inside.
+
+     Locked classes are skipped, as they are everywhere else \u2014 a lock
+     is a statement that something is not to be moved or removed, and a
+     lasso is not an exception to it. */
+  async function deleteInsidePolygon(ring) {
+    if (!projectId || (ring || []).length < 3) { setDraft([]); setTool("select"); return; }
+
+    const inside = features.filter((f) => {
+      if (locked(f)) return false;
+      const g = f.Geometry || [];
+      if (!g.length) return false;
+      return g.every((q) => pointInPolygon(q, ring));
+    });
+
+    setDraft([]);
+    setTool("select");
+
+    if (!inside.length) {
+      setError("Nothing inside that outline \u2014 a feature counts only where "
+        + "the whole of it is within.");
+      return;
+    }
+
+    /* Named by kind, so the count can be checked against the drawing
+       before anything goes. "Delete 23 features" is a number nobody can
+       verify; "9 trenches, 8 services, 6 meters" is. */
+    const byKind = new Map();
+    for (const f of inside) {
+      const k = classLabel(f, lineTypes) || f.Feature_Type;
+      byKind.set(k, (byKind.get(k) || 0) + 1);
+    }
+    const summary = [...byKind.entries()]
+      .sort((a, b) => b[1] - a[1])
+      .map(([k, n]) => `${n} \u00d7 ${k}`)
+      .join("\n");
+
+    if (!window.confirm(
+      `Delete ${inside.length} object(s) inside the outline?\n\n${summary}`
+    )) return;
+
+    setBusy("lassodelete");
+    try {
+      await deleteFeatures(projectId, inside.map((f) => f.Feature_ID));
+      /* One undo for the whole lasso: it was one action, and undoing it
+         a feature at a time would be twenty presses. */
+      await recordAction(`Delete ${inside.length} object(s) inside an outline`,
+        inside, []);
+      const fresh = await listGis(projectId);
+      setFeatures(fresh.features || []);
+      setSelected([]);
+      setStatus(`${inside.length} object(s) deleted`);
+      setTimeout(() => setStatus(""), 6000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
   }
 
   async function buildGasNetwork() {
@@ -11581,6 +11691,22 @@ export default function GISCanvasPage() {
                   </Menu>
 
                   <Menu id="tools" label="Tools & Reporting" open={open} setOpen={setOpen}>
+                    {/* Drawn round whatever is to go, rather than
+                        selected one object at a time. A phase that has
+                        been redrawn is a dozen clicks otherwise, and a
+                        rubber-band box cannot follow a curved road. */}
+                    <MenuItem label={tool === "lassodelete"
+                      ? "Drawing\u2026 click to place, double-click to finish"
+                      : "Polygon Delete"}
+                      hint="Draw round objects, then delete them together"
+                      active={tool === "lassodelete"}
+                      disabled={!projectId || !!busy}
+                      onClick={() => {
+                        setDraft([]);
+                        setTool(tool === "lassodelete" ? "select" : "lassodelete");
+                      }} />
+                    <div className="gm-sep" />
+
                     <MenuItem label="Bill of Materials"
                       hint="Quantities by site, utility and surface"
                       disabled={!projectId} onClick={() => setBomOpen(true)} />

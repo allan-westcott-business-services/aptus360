@@ -1196,44 +1196,6 @@ export default function FeatureEditor({
                     </select>
                   </div>
 
-                  {/* What this length will take.
-
-                      A dig is not always for everything: water may run
-                      as a closed loop where electric never would, and
-                      the length closing that loop carries water alone.
-                      Ticked here so a build knows not to walk it.
-
-                      Nothing ticked means everything, which is what a
-                      trench drawn before this existed says \u2014 and what
-                      somebody means by not answering. */}
-                  <div className="fld fe-carries">
-                    <label>Carries</label>
-                    <div className="fe-carry-row">
-                      {TRENCH_CARRIES.map(({ key, label }) => (
-                        <label key={key} className="fe-check">
-                          <input type="checkbox"
-                            checked={f.Attributes?.[key] ?? true}
-                            onChange={(e) => {
-                              /* The first tick writes all four, so the
-                                 trench states its whole answer rather
-                                 than one flag against three silences \u2014
-                                 which would read as "carries only this"
-                                 the moment anything was unticked. */
-                              const now = TRENCH_CARRIES.reduce((o, x) => ({
-                                ...o, [x.key]: f.Attributes?.[x.key] ?? true,
-                              }), {});
-                              now[key] = e.target.checked;
-                              setF((prev) => ({
-                                ...prev,
-                                Attributes: { ...prev.Attributes, ...now },
-                              }));
-                            }} />
-                          {label}
-                        </label>
-                      ))}
-                    </div>
-                  </div>
-
                   {/* Dug size, from the drawing rather than typed: the
                       length is measured off the line, and the width and
                       depth follow from what is routed in it. */}
@@ -1847,6 +1809,52 @@ export default function FeatureEditor({
             </div>
           )}
 
+          {/* Its own row, under the fields rather than wedged between
+              two of them: four tickboxes in one column's width made the
+              row four lines deep and left everything beside it floating
+              against a tall empty box. */}
+          {isTrench && (
+            <div className="fe-row fe-carry-block">
+              {/* What this length will take.
+
+                  A dig is not always for everything: water may run
+                  as a closed loop where electric never would, and
+                  the length closing that loop carries water alone.
+                  Ticked here so a build knows not to walk it.
+
+                  Nothing ticked means everything, which is what a
+                  trench drawn before this existed says \u2014 and what
+                  somebody means by not answering. */}
+              <div className="fld fe-carries">
+                <label>Carries</label>
+                <div className="fe-carry-row">
+                  {TRENCH_CARRIES.map(({ key, label }) => (
+                    <label key={key} className="fe-check">
+                      <input type="checkbox"
+                        checked={f.Attributes?.[key] ?? true}
+                        onChange={(e) => {
+                          /* The first tick writes all four, so the
+                             trench states its whole answer rather
+                             than one flag against three silences \u2014
+                             which would read as "carries only this"
+                             the moment anything was unticked. */
+                          const now = TRENCH_CARRIES.reduce((o, x) => ({
+                            ...o, [x.key]: f.Attributes?.[x.key] ?? true,
+                          }), {});
+                          now[key] = e.target.checked;
+                          setF((prev) => ({
+                            ...prev,
+                            Attributes: { ...prev.Attributes, ...now },
+                          }));
+                        }} />
+                      {label}
+                    </label>
+                  ))}
+                </div>
+              </div>
+            </div>
+          )}
+
           <div className="fld">
             <label htmlFor="fe-notes">Notes</label>
             <textarea id="fe-notes" rows={2} value={f.Attributes.Notes ?? ""}
@@ -1888,8 +1896,32 @@ const CSS = `
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
 /* The one tick box in this editor, so it gets a rule of its own rather
    than borrowing a field's. */
+/* Carries takes a row of its own, under the fields rather than wedged
+   between two of them.
+
+   It was a field in the same row as Surface and Length, so four
+   tickboxes had to stack vertically inside one column's width \u2014 which
+   pushed the row to four lines tall and left the controls beside it
+   floating against a tall empty box.
+
+   Full width and ordered last, so it sits under everything on the row
+   whatever order the fields appear in. The tickboxes then have the
+   whole width and sit on one line. */
+/* Carries is a row of its own now, not a field in the row above.
+
+   CSS alone could not do it: full width and an order put the box on the
+   same line whenever the row had space, and four tickboxes stacked in
+   one column's width is what made the row four lines deep. Moving the
+   markup is what actually says "this belongs under the others". */
+.fe-carry-block { margin-top: -2px; }
 .fe-carries { flex: 1 1 100%; }
-.fe-carry-row { display: flex; flex-wrap: wrap; gap: 4px 16px; padding-top: 2px; }
+.fe-carry-row {
+  display: flex; flex-wrap: wrap; gap: 6px 18px; padding-top: 3px;
+  align-items: center;
+}
+/* Level with each other rather than each box sitting on its own
+   baseline, which is what made the column look ragged. */
+.fe-carry-row .fe-check { margin: 0; white-space: nowrap; }
 
 .fe-inside { list-style: none; margin: 0 0 4px; padding: 2px 0 0; display: flex;
   flex-wrap: wrap; gap: 5px 14px; }

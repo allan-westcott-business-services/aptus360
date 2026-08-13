@@ -40,8 +40,12 @@ const METER = {
   else if (Math.abs(d.get(4) - 120) > 0.01) {
     fail(`the meter is ${d.get(4)} m from the substation, wanted 120`);
   }
-  /* Each step counts once: the cable, then the service beyond it. */
-  if (Math.abs(d.get(2) - 100) > 0.01) fail("the cable's own distance is wrong");
+  /* A line's own distance is how far its *nearest* end is, which is
+     what "how far is this cable from the substation" means. It used to
+     be the far end, because arriving at a feature charged its whole
+     length \u2014 the thing that made two meters six metres apart report
+     sixty metres apart. */
+  if (Math.abs(d.get(2) - 0) > 0.01) fail("the cable's own distance is wrong");
 }
 
 // 2. A stored length still wins. Somebody who has measured a run and
@@ -55,10 +59,18 @@ const METER = {
   }
 }
 
-// 3. A point adds nothing. A meter is a place on the run, not more run.
+// 3. A meter is measured to where it joins, not to the end of the cable
+//    it joins. A meter twenty metres along a service is twenty metres
+//    further than the service's start, and no further than its end.
 {
   const d = distancesFrom([SUB, CABLE, SERVICE, METER], 1);
-  if (d.get(4) !== d.get(3)) fail("a meter added length to the run reaching it");
+  if (Math.abs(d.get(4) - 120) > 0.01) {
+    fail(`the meter is ${d.get(4)} m along the run, wanted 120`);
+  }
+  /* The service starts at the main, so its own distance is 100. */
+  if (Math.abs(d.get(3) - 100) > 0.01) {
+    fail(`the service is ${d.get(3)} m from the substation, wanted 100`);
+  }
 }
 
 // 4. Something not joined to anything has no distance, rather than
@@ -197,6 +209,34 @@ const METER = {
   const gap = distancesFrom([SUB, offset, far], 1);
   if (gap.get(7) != null) {
     fail("a cable starting three metres away was treated as joined");
+  }
+}
+
+// 9. Two services teeing off one long main.
+//
+//    The case from the drawing, and the one the old model could not
+//    do. Arriving at a cable charged its whole length, so a meter
+//    joining a 200 m main paid 200 m however far along it teed in —
+//    two plots six metres apart reported sixty metres apart.
+//
+//    The graph is now the points the lines are drawn through, with an
+//    edge per segment, and a meter joins at the place it actually tees
+//    in.
+{
+  const main = { Feature_ID: 2, Feature_Type: "line", Geometry: [[0, 0], [200, 0]] };
+  const svc23 = { Feature_ID: 3, Feature_Type: "line", Geometry: [[60, 0], [60, 4]] };
+  const svc24 = { Feature_ID: 4, Feature_Type: "line", Geometry: [[66, 0], [66, 4]] };
+  const m23 = { Feature_ID: 5, Feature_Role: "meter", Geometry: [[60, 4]] };
+  const m24 = { Feature_ID: 6, Feature_Role: "meter", Geometry: [[66, 4]] };
+
+  const d = distancesFrom([SUB, main, svc23, svc24, m23, m24], 1);
+
+  if (Math.abs(d.get(5) - 64) > 0.01) fail(`plot 23 is ${d.get(5)} m, wanted 64`);
+  if (Math.abs(d.get(6) - 70) > 0.01) fail(`plot 24 is ${d.get(6)} m, wanted 70`);
+  /* And the difference is the distance between the plots, not the
+     length of the main. */
+  if (Math.abs((d.get(6) - d.get(5)) - 6) > 0.01) {
+    fail(`the plots report ${(d.get(6) - d.get(5)).toFixed(1)} m apart, wanted 6`);
   }
 }
 

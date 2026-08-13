@@ -278,6 +278,13 @@ const idsOf = (f) => (Array.isArray(f.Attributes?.Connects) ? f.Attributes.Conne
    agree. */
 const CONNECT_M = 0.25;
 
+/* How far a meter may sit from the cable serving it.
+
+   A meter is a box on a wall and the service ends at the plot
+   boundary, so they are metres apart on every drawing. Plant is not
+   allowed this: a feeder leaving a substation starts on it. */
+const METER_REACH_M = 12;
+
 export function buildGraph(features = []) {
   const byId = new Map(features.map((f) => [Number(f.Feature_ID), f]));
   const adj = new Map();
@@ -322,7 +329,6 @@ export function buildGraph(features = []) {
 
      METER_REACH_M is the same figure the rest of the electric model
      uses for a meter and its service. */
-  const METER_REACH_M = 12;
   const isPoint = (f) => (f.Geometry || []).length === 1;
   const reachFor = (a, b) => (isPoint(a) || isPoint(b) ? METER_REACH_M : CONNECT_M);
   const near = (p, q, r) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= r;
@@ -565,48 +571,208 @@ export function traceFrom(startId, features, rootId) {
    the length of each line passed through; points add nothing of their
    own, since a meter has no length. */
 export function distancesFrom(features, rootId) {
-  const graph = buildGraph(features);
+  /* Measured along the cable, not cable by cable.
+
+     The graph used to be one node per feature, so arriving at a cable
+     cost its whole length however far along it you joined. Two meters
+     six metres apart on the same run therefore reported seventy and a
+     hundred and thirty: one had joined a short service, the other a
+     long main, and the main's full length went onto its total.
+
+     So the nodes are the points the lines are drawn through, and an
+     edge is one segment with its own length. A meter joins at the
+     nearest point on the nearest cable — the actual place it tees in —
+     and the walk adds only the metres between there and the
+     substation.
+
+     Dijkstra rather than breadth first, because the shortest route is
+     the one the cable takes, not the one with fewest corners in it. */
   const root = Number(rootId);
-  if (!graph.byId.has(root)) return new Map();
+  const start = features.find((f) => Number(f.Feature_ID) === root);
+  const at = (start?.Geometry || [])[0];
+  if (!at) return new Map();
 
-  /* Shortest by metres, not by hops.
+  /* ── Points, interned so a shared corner is one node ── */
+  const pts = [];
+  const idOf = new Map();
+  const key = (p) => `${p[0].toFixed(3)},${p[1].toFixed(3)}`;
+  const intern = (p) => {
+    const k = key(p);
+    if (idOf.has(k)) return idOf.get(k);
+    const i = pts.length;
+    pts.push([p[0], p[1]]);
+    idOf.set(k, i);
+    return i;
+  };
 
-     This walked breadth first and took the first arrival as final,
-     which finds the route with the fewest features in it \u2014 not the
-     shortest one. A run of three long cables beat a run of ten short
-     ones, so a meter fifty metres away reported a hundred and thirty:
-     the length of whichever way round the walk happened to reach it
-     first.
+  const adj = new Map();
+  const edge = (a, b, w) => {
+    if (a === b) return;
+    if (!adj.has(a)) adj.set(a, []);
+    if (!adj.has(b)) adj.set(b, []);
+    adj.get(a).push([b, w]);
+    adj.get(b).push([a, w]);
+  };
 
-     Smallest-known-distance first instead, and a node is revisited when
-     a shorter way to it turns up. That is what "distance from the
-     substation" means \u2014 the way the cable actually runs, which is the
-     shortest route through the network. */
-  const dist = new Map([[root, 0]]);
-  const seen = new Set();
+  const lines = features.filter((f) => (f.Geometry || []).length >= 2);
 
+  /* How much a line's drawn metres are worth, where somebody has
+     measured it. One place, so the edge loop and the join below cannot
+     disagree about the length of the same run. */
+  const scaleOf = (f) => {
+    const g = f.Geometry;
+    let drawn = 0;
+    for (let i = 1; i < g.length; i++) {
+      drawn += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+    }
+    const stated = Number(f.Attributes?.Length_m ?? 0) || 0;
+    return stated && drawn ? stated / drawn : 1;
+  };
+
+  /* Every line, cut wherever another line's end lands on it.
+
+     A service tees into the middle of a main, not at one of its
+     corners, so without this the two shared no point and the service
+     was joined to nothing \u2014 every meter beyond it unreachable. Same
+     fault the gas graph had, and the same cut fixes it. */
+  const ends = [];
+  for (const f of lines) {
+    const g = f.Geometry;
+    ends.push(g[0], g[g.length - 1]);
+  }
+
+  for (const f of lines) {
+    const g = f.Geometry;
+    /* A measured length overrides the drawing.
+
+       Somebody who has walked a run and entered it knows something the
+       geometry does not \u2014 a trench dug round an obstruction, say. The
+       segments are scaled so they still sum to that figure, which keeps
+       a join half way along the line half way along the measurement. */
+    const scale = scaleOf(f);
+
+    for (let i = 1; i < g.length; i++) {
+      const a = g[i - 1];
+      const b = g[i];
+      const cuts = [];
+      for (const e of ends) {
+        const vx = b[0] - a[0];
+        const vy = b[1] - a[1];
+        const len2 = vx * vx + vy * vy;
+        if (!len2) continue;
+        const t = Math.max(0, Math.min(1,
+          ((e[0] - a[0]) * vx + (e[1] - a[1]) * vy) / len2));
+        const q = [a[0] + vx * t, a[1] + vy * t];
+        if (Math.hypot(e[0] - q[0], e[1] - q[1]) > CONNECT_M) continue;
+        if (t <= 0.0001 || t >= 0.9999) continue;   // already an end
+        cuts.push({ t, q });
+      }
+      cuts.sort((x, y) => x.t - y.t);
+
+      let prev = a;
+      for (const c of cuts) {
+        edge(intern(prev), intern(c.q),
+          Math.hypot(c.q[0] - prev[0], c.q[1] - prev[1]) * scale);
+        prev = c.q;
+      }
+      edge(intern(prev), intern(b),
+        Math.hypot(b[0] - prev[0], b[1] - prev[1]) * scale);
+    }
+  }
+
+  /* ── Where a point joins a line ──
+     The nearest place on it, which is where a service tees in rather
+     than the nearest corner somebody happened to draw. */
+  const onSegment = (p, a, b) => {
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const len2 = vx * vx + vy * vy;
+    const t = len2
+      ? Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2))
+      : 0;
+    const q = [a[0] + vx * t, a[1] + vy * t];
+    return { q, d: Math.hypot(p[0] - q[0], p[1] - q[1]) };
+  };
+
+  const joinAt = (p, reach) => {
+    let best = null;
+    for (const f of lines) {
+      const g = f.Geometry;
+      for (let i = 1; i < g.length; i++) {
+        const hit = onSegment(p, g[i - 1], g[i]);
+        if (hit.d > reach) continue;
+        /* The line's own scale travels with the hit: splicing a join
+           into a measured run has to cost measured metres, or the join
+           quietly reverts that length to what was drawn. */
+        if (!best || hit.d < best.d) {
+          best = { ...hit, a: g[i - 1], b: g[i], scale: scaleOf(f) };
+        }
+      }
+    }
+    if (!best) return null;
+    /* Spliced into the segment, so joining half way along costs half
+       the segment rather than all of it. */
+    const id = intern(best.q);
+    const ia = intern(best.a);
+    const ib = intern(best.b);
+    edge(ia, id,
+      Math.hypot(best.q[0] - best.a[0], best.q[1] - best.a[1]) * best.scale);
+    edge(id, ib,
+      Math.hypot(best.b[0] - best.q[0], best.b[1] - best.q[1]) * best.scale);
+    return id;
+  };
+
+  /* Plant joins exactly: a feeder leaving a substation starts on it,
+     and a gap there is a drawing not joined up. A meter is a box on a
+     wall and sits back from its service. */
+  const rootNode = joinAt(at, CONNECT_M);
+  if (rootNode == null) return new Map();
+
+  /* ── Shortest route to every point ── */
+  const dist = new Map([[rootNode, 0]]);
+  const done = new Set();
   for (;;) {
-    /* The nearest node not yet settled. A linear scan rather than a
-       heap: a drawing has hundreds of features, not millions, and the
-       obvious version is the one that can be checked by reading it. */
     let cur = null;
     let best = Infinity;
-    for (const [id, d] of dist) {
-      if (seen.has(id) || d >= best) continue;
-      cur = id;
+    for (const [i, d] of dist) {
+      if (done.has(i) || d >= best) continue;
+      cur = i;
       best = d;
     }
     if (cur == null) break;
-    seen.add(cur);
-
-    for (const next of graph.adj.get(cur) || []) {
-      const f = graph.byId.get(next);
-      const through = best + lengthOf(f);
-      const known = dist.get(next);
-      if (known == null || through < known) dist.set(next, through);
+    done.add(cur);
+    for (const [next, w] of adj.get(cur) || []) {
+      const through = best + w;
+      if (dist.get(next) == null || through < dist.get(next)) dist.set(next, through);
     }
   }
-  return dist;
+
+  /* ── Back to features ── */
+  const out = new Map();
+  for (const f of features) {
+    const g = f.Geometry || [];
+    if (!g.length) continue;
+    if (g.length === 1) {
+      const id = joinAt(g[0], f.Feature_Role === "meter" ? METER_REACH_M : CONNECT_M);
+      /* Re-run the walk is not needed: splicing a join adds a point
+         between two that are already settled, so its distance is the
+         nearer settled end plus the bit along the segment. */
+      if (id == null) continue;
+      const d = dist.get(id);
+      if (d != null) out.set(Number(f.Feature_ID), d);
+      continue;
+    }
+    /* A line is as far away as its nearest end, which is what "how far
+       is this cable from the substation" means. */
+    let near = null;
+    for (const q of [g[0], g[g.length - 1]]) {
+      const d = dist.get(idOf.get(key(q)));
+      if (d != null && (near == null || d < near)) near = d;
+    }
+    if (near != null) out.set(Number(f.Feature_ID), near);
+  }
+  out.set(root, 0);
+  return out;
 }
 
 export function circuitReport(features = [], plotById = () => null, opts = {}) {

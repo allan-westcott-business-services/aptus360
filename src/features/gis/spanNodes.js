@@ -24,6 +24,8 @@
    that happens to turn a corner, and putting a node there would split a
    span for no reason anybody on site would recognise. */
 
+import { TRENCH_CARRIES } from "./trenchCarries.js";
+
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /* The plant a utility is measured from, and what it is called.
@@ -254,12 +256,41 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
      The substation is the origin — E0 — and a span node on top of it
      would be a second name for the same place, with A1 and E0 both
      meaning the transformer. */
+  /* Where what a trench carries changes.
+
+     A length restricted to one utility is a boundary in the network:
+     a cable can run up to it and no further, so the design has to be
+     measurable to exactly that point. Without a node there the last
+     thing before the boundary is measured to whatever lies past it, or
+     to nothing at all.
+
+     A bend between two lengths that carry different things is
+     therefore not a bend. It is the end of one network and the start of
+     another, and it gets a node like any other end.
+
+     Judged on the trenches meeting at the point, not on one of them:
+     the boundary is between them, and either may be the restricted
+     one. */
+  const restrictedAt = (p) => {
+    const here = mains.filter((t) => {
+      const g = t.Geometry || [];
+      return g.length >= 2
+        && [g[0], g[g.length - 1]].some((e) => dist(e, p.at) <= (opts.eps ?? 0.25));
+    });
+    if (here.length < 2) return false;
+    /* Any of them narrowed, and they do not all say the same thing. */
+    const said = here.map((t) => TRENCH_CARRIES
+      .map(({ key }) => (t.Attributes?.[key] === false ? "0" : "1")).join(""));
+    return said.some((x) => x.includes("0")) && new Set(said).size > 1;
+  };
+
   const wanted = points.filter((p) => {
     /* Arms leaving this point: what ends here, plus twice anything
        passing through it. Three or more is a junction; exactly one is
        the end of a run; two is a bend. */
     const arms = p.ends + p.through;
-    if (arms !== 1 && arms < 3) return false;
+    /* A bend where the carrying changes is not a bend. */
+    if (arms !== 1 && arms < 3 && !restrictedAt(p)) return false;
     /* Any origin, not just the first. A point on the gas POC is G0 and
        must not also take an A-number, which is what happened when only
        the substation was checked. */

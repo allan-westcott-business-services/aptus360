@@ -153,6 +153,38 @@ if (carriesLabel(waterOnly) !== "Water") {
   if (!carries(cableRun, "electric", "lv")) fail("the LV build would skip its own trench");
 }
 
+// 10. A node goes where the carrying changes.
+//
+//     A length restricted to one utility is a boundary in the network:
+//     a cable runs up to it and no further, so the design has to be
+//     measurable to exactly that point. Two lengths meeting end to end
+//     is normally a bend and gets nothing — but a bend where one side
+//     refuses what the other carries is not a bend. It is the end of
+//     one network and the start of another.
+{
+  const said = (t) => TRENCH_CARRIES
+    .map(({ key }) => (t.Attributes?.[key] === false ? "0" : "1")).join("");
+  /* The rule, as the placer applies it: something is narrowed, and the
+     two do not agree. */
+  const boundary = (a, b) => {
+    const both = [said(a), said(b)];
+    return both.some((x) => x.includes("0")) && new Set(both).size > 1;
+  };
+
+  const open = { Attributes: {} };
+  const water = {
+    Attributes: {
+      Carries_LV: false, Carries_HV: false, Carries_Gas: false, Carries_Water: true,
+    },
+  };
+
+  if (!boundary(open, water)) fail("no node where an open trench meets a water-only one");
+  /* Two lengths that agree are an ordinary bend, restricted or not \u2014
+     otherwise every length of a water loop would carry a node. */
+  if (boundary(open, open)) fail("a node was placed at an ordinary bend");
+  if (boundary(water, water)) fail("a node was placed mid-way along a water loop");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Trench contents behave (silence means everything, LV and HV apart).");
 process.exit(bad ? 1 : 0);

@@ -799,9 +799,22 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      Worked out before the pruning below, because a span node is a
      reason to keep a branch even where nothing beyond it draws load. */
   const hasSpanNode = new Set();
+  /* This circuit's node, or one that names no circuit at all.
+
+     A node is given its circuit when the build routes through it \u2014 and
+     a node the build pruned never gets one. So the node at the end of
+     the trench was excluded here for having no circuit, having been
+     excluded from the routing for having no load: two rules, each
+     making the other true, and the node absent from the levels
+     entirely.
+
+     A node naming another circuit is still skipped. One naming none is
+     wherever it physically sits, and the distance check below is what
+     decides whether that is here. */
   for (const sn of features) {
     if (sn.Feature_Role !== "spannode") continue;
-    if (Number(sn.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    const own = sn.Attributes?.Circuit_ID;
+    if (own != null && Number(own) !== Number(circuitId)) continue;
     /* Where it belongs on the dig, not where its marker was dragged. */
     const a = sn.Attributes?.Span_Anchor;
     const at0 = (Array.isArray(a) && a.length === 2 ? a : (sn.Geometry || [])[0])
@@ -848,10 +861,21 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   for (const sn of features) {
     if (sn.Feature_Role !== "spannode") continue;
     if (Number(sn.Feature_ID) === Number(nodeId)) continue;
-    if (Number(sn.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
-    const idx = Number(sn.Attributes?.Span_Seq) === 0
-      ? S : nearest((sn.Geometry || [])[0] || [0, 0]);
-    if (idx >= 0) stops.set(idx, sn);
+    /* Same rule as above: this circuit's, or one that names none. */
+    const own = sn.Attributes?.Circuit_ID;
+    if (own != null && Number(own) !== Number(circuitId)) continue;
+    /* From the anchor, so a marker dragged clear still resolves to the
+       point on the dig it was placed at. */
+    const a = sn.Attributes?.Span_Anchor;
+    const at = (Array.isArray(a) && a.length === 2 ? a : (sn.Geometry || [])[0])
+      || [0, 0];
+    const idx = Number(sn.Attributes?.Span_Seq) === 0 ? S : nearest(at);
+    if (idx < 0) continue;
+    /* A node naming no circuit has to be near this one to belong to it
+       \u2014 otherwise every unassigned node on the site would appear in
+       every circuit's report. */
+    if (own == null && dist(nodes[idx], at) > SPAN_REACH_M) continue;
+    stops.set(idx, sn);
   }
 
   /* And every junction, when asked for.

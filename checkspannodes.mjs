@@ -385,6 +385,37 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (fedAt(14)) fail("a node fourteen metres away was fed");
 }
 
+/* A node with no circuit on it still appears in the report.
+
+   A node is given its circuit when the build routes through it — and a
+   node the build pruned never gets one. So the node at the end of the
+   trench was excluded from the levels for having no circuit, having
+   been excluded from the routing for having no load: two rules, each
+   making the other true, and the node missing from the report while
+   sitting plainly on the drawing.
+
+   That is the shape of fault worth naming: neither rule is wrong on its
+   own. */
+{
+  const REACH = 10;
+  /* The rule as the trace applies it: this circuit's node, or one that
+     names none and is near enough to belong here. */
+  const belongs = (own, circuitId, gap) => {
+    if (own != null) return Number(own) === Number(circuitId);
+    return gap <= REACH;
+  };
+
+  if (!belongs(1, 1, 0)) fail("a node on this circuit was excluded");
+  if (belongs(2, 1, 0)) fail("a node on another circuit was included");
+
+  /* The case from the drawing: no circuit, 2.5 m from the cable end. */
+  if (!belongs(null, 1, 2.5)) fail("an unassigned node at the trench end was excluded");
+
+  /* And an unassigned node elsewhere on the site is not adopted \u2014
+     otherwise every one of them would appear in every circuit. */
+  if (belongs(null, 1, 60)) fail("an unassigned node across the site was adopted");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

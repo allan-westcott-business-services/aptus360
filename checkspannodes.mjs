@@ -529,6 +529,34 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   }
 }
 
+/* A node already holding a service cable is corrected.
+
+   Refusing to set a service was only half of it. The sync writes what
+   it finds and never takes anything away, so every node recorded before
+   that rule went in kept its service cable — and the volt drop along
+   the mains went on being computed from it.
+
+   The clearing pass runs first, then the mains pass fills what it can.
+   A node left with nothing is the honest state: no main feeds it. */
+{
+  const names = { 7: "3c WAVE 95", 21: "Single Phase Service CNE 4" };
+  const isService = (id) => /service/i.test(names[id] ?? "");
+
+  if (!isService(21)) fail("a service cable was not recognised as one");
+  if (isService(7)) fail("an LV main was mistaken for a service");
+
+  const nodes = [{ id: "A1", held: 21 }, { id: "A9", held: 7 }, { id: "A21", held: null }];
+  const cleared = nodes.filter((n) => n.held != null && isService(n.held));
+
+  if (cleared.length !== 1 || cleared[0].id !== "A1") {
+    fail("the wrong nodes were cleared of their service cable");
+  }
+  /* A node correctly holding a main is not disturbed \u2014 clearing
+     everything and rebuilding would lose a size somebody had chosen by
+     hand wherever no main happened to reach. */
+  if (cleared.some((n) => n.id === "A9")) fail("a node holding a main was cleared");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

@@ -6061,6 +6061,43 @@ export default function GISCanvasPage() {
       && sizeIdFor(f, "electric", "manual") != null);
 
     const updates = new Map();
+
+    /* A node holding a service cable is corrected, not left.
+
+       Refusing to *set* a service was only half of it: a node that
+       already had one kept it, because the sync only ever writes what
+       it finds and never takes anything away. So every node recorded
+       before that rule went in still reads "Single Phase Service CNE 4"
+       with no main in sight.
+
+       Cleared first, then filled by the loop below where a main
+       actually reaches. A node left with nothing is the honest state:
+       no main feeds it, and that is worth seeing rather than a service
+       standing in for one. */
+    const cableName = (id) => {
+      const c = (lookups?.cableSizes || [])
+        .find((x) => Number(x.Cable_Size_ID) === Number(id));
+      if (!c) return "";
+      const t = (lookups?.cableTypes || [])
+        .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+      return `${t?.Cable_Type ?? ""} ${c.Size_Label ?? ""}`;
+    };
+
+    for (const f of features) {
+      if (f.Feature_Role !== "spannode") continue;
+      const held = sizeIdFor(f, "electric", "manual");
+      if (held == null) continue;
+      if (!/service/i.test(cableName(held))) continue;
+      updates.set(f.Feature_ID, {
+        node: f,
+        Attributes: {
+          ...f.Attributes,
+          VD_Cable_Size_ID: null,
+          Manual_VD_Cable_Size_ID: null,
+        },
+      });
+    }
+
     for (const line of lines) {
       const node = nodeFedBy(line);
       if (!node) continue;

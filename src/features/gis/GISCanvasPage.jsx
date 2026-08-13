@@ -5726,7 +5726,7 @@ export default function GISCanvasPage() {
       for (const line of features) {
         if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
         if (line.Attributes?.Line_Type !== "elec_main") continue;
-        const fed = nodeFedBy(line, src);
+        const fed = nodeFedBy(line, features);
         if (!fed || Number(fed.Feature_ID) !== Number(node.Feature_ID)) continue;
         rows.push({
           Feature_ID: line.Feature_ID,
@@ -10721,7 +10721,7 @@ export default function GISCanvasPage() {
       if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
       if (line.Attributes?.Circuit_ID == null) continue;
       if (line.Attributes?.VD_Cable_Size_ID == null) continue;
-      const node = nodeFedBy(line, src);
+      const node = nodeFedBy(line, features);
       if (!node) continue;
       if (String(node.Attributes?.VD_Cable_Size_ID ?? "")
         !== String(line.Attributes.VD_Cable_Size_ID)) out.push(node);

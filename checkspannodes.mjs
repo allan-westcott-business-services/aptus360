@@ -290,6 +290,41 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   }
 }
 
+/* Tracing from the origin.
+
+   One origin node serves every circuit on the substation, so it carries
+   no Circuit_ID. A trace took the circuit off the node it starts from,
+   and the levels check therefore failed on the very node it had just
+   been handed: "That span node doesn't belong to a circuit" — about a
+   node it would not name, on a drawing with twenty of them. */
+{
+  const origin = { Attributes: { Span_Seq: 0, Span_Label: "E0" } };
+  const ordinary = { Attributes: { Circuit_ID: 2, Span_Label: "A7" } };
+
+  /* What the trace resolves: what it was told, then what the node says,
+     then the only circuit there is. */
+  const pick = (node, circuits, given) => given
+    ?? node.Attributes?.Circuit_ID
+    ?? (circuits.length === 1 ? circuits[0].id : null);
+
+  if (pick(origin, [{ id: 1 }, { id: 2 }], 1) !== 1) {
+    fail("the levels check could not trace its own circuit from the origin");
+  }
+  if (pick(ordinary, [{ id: 1 }, { id: 2 }]) !== 2) {
+    fail("an ordinary node stopped naming its own circuit");
+  }
+  /* Tracing by hand from the origin on a one-circuit site needs no
+     choice, so it should not ask for one. */
+  if (pick(origin, [{ id: 4 }]) !== 4) {
+    fail("a single-circuit site could not be traced from its origin");
+  }
+  /* With several and nothing given, there is genuinely no answer \u2014 and
+     the message names the node rather than saying "that span node". */
+  if (pick(origin, [{ id: 1 }, { id: 2 }]) !== null) {
+    fail("a circuit was guessed at from an origin serving several");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

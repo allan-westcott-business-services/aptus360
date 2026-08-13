@@ -31,6 +31,23 @@
    the same units — drawing coordinates, so metres here. */
 export const CONNECT_EPS = 0.5;
 
+/* The cable in force on a feature.
+
+   Two are recorded: what Build LV Network worked out, and what a
+   designer overrode it with. `sizeMode` says which the drawing is
+   showing, and the trace has to agree \u2014 a volt drop computed on the
+   calculated cables while the drawing shows the overrides is a figure
+   for a design nobody is looking at.
+
+   Defaults to the system size, which is what this always read. */
+export function cableIdOf(feature, mode = "system") {
+  const a = feature?.Attributes ?? {};
+  if (mode === "manual") {
+    return a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID ?? null;
+  }
+  return a.VD_Cable_Size_ID ?? null;
+}
+
 /* Meters per cable. Above this the run needs another cable beside it,
    which is what makes a run break mid-trench. */
 export const METERS_PER_CABLE = 70;
@@ -642,15 +659,34 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      more of them: the figures at a service joint are exactly what the
      leg arriving there already computes, and were simply never reported
      because no leg stopped there. */
-  const { lineTypes = [], plotById = () => null, stopAt = "spannodes" } = opts;
+  const {
+    lineTypes = [], plotById = () => null, stopAt = "spannodes",
+    /* Which circuit is being traced, where the caller knows.
+
+       A trace used to take it off the node it starts from. That works
+       for an ordinary span node and not for an origin: one origin node
+       serves every circuit on the substation, so it carries no
+       Circuit_ID at all \u2014 and a levels check starting there was told
+       "that span node doesn't belong to a circuit", about the node it
+       had just been given and with no way to know which. */
+    circuitId: wantedCircuit = null,
+  } = opts;
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
   if (!node || node.Feature_Role !== "spannode") {
     return { error: "Select a span node." };
   }
-  const circuitId = node.Attributes?.Circuit_ID;
+  const circuitId = wantedCircuit ?? node.Attributes?.Circuit_ID;
   if (circuitId == null) {
-    return { error: "That span node doesn't belong to a circuit." };
+    /* Named, so it can be found. A message about "that span node" on a
+       drawing with twenty of them is a search, not a fault report. */
+    const called = node.Attributes?.Span_Label || node.Label
+      || `feature ${node.Feature_ID}`;
+    return {
+      error: `${called} does not belong to a circuit, and no circuit was `
+        + "given to trace. Link it to a circuit, or start from a node that "
+        + "is on one.",
+    };
   }
   const circuitName = node.Attributes?.Circuit_Name || `Circuit ${circuitId}`;
 
@@ -946,7 +982,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
            looked up from spanNodes — a junction is not in that list, on
            purpose, so a lookup would find nothing and the column would
            read "not set" on every junction row. */
-        cableSizeId: stops.get(cur)?.Attributes?.VD_Cable_Size_ID ?? null,
+        cableSizeId: cableIdOf(stops.get(cur)),
         /* Meters picked up along the way — the load this length of cable
            carries directly. */
         distribution: along.length,
@@ -1025,10 +1061,10 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       .map(([index, f]) => ({
         index,
         feature: f,
-        cableSizeId: f.Attributes?.VD_Cable_Size_ID ?? null,
+        cableSizeId: cableIdOf(f),
       })).concat([{
       index: startIdx, feature: node,
-      cableSizeId: node.Attributes?.VD_Cable_Size_ID ?? null,
+      cableSizeId: cableIdOf(node),
     }]),
     totalMetres: Math.round(legs.reduce((t, l) => t + l.metres, 0) * 10) / 10,
     totalMeters: cum[startIdx] || 0,

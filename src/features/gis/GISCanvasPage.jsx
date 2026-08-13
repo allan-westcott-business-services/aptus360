@@ -10344,6 +10344,9 @@ export default function GISCanvasPage() {
       if (!origin) { failed.push(`${c.name}: no origin node`); continue; }
       const r = spanTrace(src, origin.Feature_ID, {
         lineTypes,
+        /* The circuit being checked. The origin serves them all and so
+           names none; without this the trace could not tell which. */
+        circuitId: c.id,
         plotById: (id) => plotList.find((p) => p.plot_id === id),
         stopAt,
       });
@@ -10469,6 +10472,11 @@ export default function GISCanvasPage() {
     const r = spanTrace(src, node.Feature_ID, {
       lineTypes,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
+      /* Tracing from the origin, which names no circuit because it
+         serves them all: the only circuit is the one to take. With
+         several, the node has to say which, and it does. */
+      circuitId: node.Attributes?.Circuit_ID
+        ?? (circuitsFrom(src).length === 1 ? circuitsFrom(src)[0].id : null),
     });
     if (r.error) { setError(r.error); setTrace(null); return; }
 

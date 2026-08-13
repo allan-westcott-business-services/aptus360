@@ -327,21 +327,59 @@ export function buildGraph(features = []) {
   const reachFor = (a, b) => (isPoint(a) || isPoint(b) ? METER_REACH_M : CONNECT_M);
   const near = (p, q, r) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= r;
 
+  const gapBetween = (fa, fb) => {
+    const ea = endsOf(fa);
+    const eb = endsOf(fb);
+    let best = Infinity;
+    for (const p of ea) {
+      for (const q of eb) {
+        const d = Math.hypot(p[0] - q[0], p[1] - q[1]);
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  };
+
+  /* Lines join whatever they touch. */
   for (let i = 0; i < features.length; i++) {
     const fa = features[i];
-    const ea = endsOf(fa);
-    if (!ea.length) continue;
+    if (isPoint(fa) || !endsOf(fa).length) continue;
     for (let j = i + 1; j < features.length; j++) {
       const fb = features[j];
-      const eb = endsOf(fb);
-      if (!eb.length) continue;
-      const reach = reachFor(fa, fb);
-      if (!ea.some((p) => eb.some((q) => near(p, q, reach)))) continue;
+      if (isPoint(fb) || !endsOf(fb).length) continue;
+      if (gapBetween(fa, fb) > CONNECT_M) continue;
       const a = Number(fa.Feature_ID);
       const b = Number(fb.Feature_ID);
       link(a, b);
       link(b, a);
     }
+  }
+
+  /* A point joins the one line nearest it, and no other.
+
+     A meter within reach of several was linked to all of them, so the
+     walk took whichever gave the shortest route \u2014 usually straight to
+     the main, skipping the service cable that actually feeds it. Two
+     plots off the same length of main then reported the same distance
+     however far apart their services were, which is exactly what a
+     drawing showing 6.3 m between them did not say.
+
+     Nearest only. A meter is served by one cable, and which one is not
+     a matter of opinion: it is the one it sits on the end of. */
+  for (const f of features) {
+    if (!isPoint(f) || !endsOf(f).length) continue;
+    let best = null;
+    for (const g of features) {
+      if (g === f || isPoint(g) || !endsOf(g).length) continue;
+      const d = gapBetween(f, g);
+      if (d > METER_REACH_M) continue;
+      if (!best || d < best.d) best = { g, d };
+    }
+    if (!best) continue;
+    const a = Number(f.Feature_ID);
+    const b = Number(best.g.Feature_ID);
+    link(a, b);
+    link(b, a);
   }
 
   return { byId, adj };

@@ -102,6 +102,40 @@ const METER = {
   if (adrift.get(4) != null) fail("a meter forty metres away was measured");
 }
 
+// 6. Two meters off the same main are as far apart as their services.
+//
+//    A meter within reach of several lines was linked to all of them,
+//    so the walk took whichever gave the shortest route — usually
+//    straight to the main, skipping the service cable that actually
+//    feeds it. Two plots then reported the same distance however far
+//    apart their services ran, which is what a drawing showing 6.3 m
+//    between them plainly did not say.
+{
+  const main = { Feature_ID: 2, Feature_Type: "line", Geometry: [[0, 0], [100, 0]] };
+  /* Plot 23 comes off the main; plot 24 is 6.3 m further along. */
+  const svc23 = { Feature_ID: 3, Feature_Type: "line", Geometry: [[100, 0], [100, 5]] };
+  const svc24 = { Feature_ID: 4, Feature_Type: "line", Geometry: [[100, 5], [100, 11.3]] };
+  const m23 = { Feature_ID: 5, Feature_Role: "meter", Geometry: [[100, 5]] };
+  const m24 = { Feature_ID: 6, Feature_Role: "meter", Geometry: [[100, 11.3]] };
+
+  const d = distancesFrom([SUB, main, svc23, svc24, m23, m24], 1);
+  const a = d.get(5);
+  const b = d.get(6);
+
+  if (a == null || b == null) fail("a meter on a service run has no distance");
+  else {
+    if (Math.abs(a - b) < 0.01) {
+      fail(`both meters report ${a} m, though their services differ by 6.3`);
+    }
+    if (Math.abs((b - a) - 6.3) > 0.01) {
+      fail(`the meters are ${(b - a).toFixed(1)} m apart, wanted 6.3`);
+    }
+    /* And by the route, not as the crow flies: the run goes out along
+       the main and back down the services. */
+    if (Math.abs(a - 105) > 0.01) fail(`the nearer meter is ${a} m, wanted 105`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Distances behave (measured from the drawing when nothing is stored).");
 process.exit(bad ? 1 : 0);

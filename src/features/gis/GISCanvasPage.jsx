@@ -5478,8 +5478,9 @@ export default function GISCanvasPage() {
   const nodeFedBy = useCallback((line) => {
     const g = line?.Geometry || [];
     if (g.length < 2) return null;
-    const cid = line.Attributes?.Circuit_ID;
-    if (cid == null) return null;
+    /* A cable with no circuit feeds whichever node it ends at. Refusing
+       it here is what left a hand-drawn run's node unset. */
+    const cid = line.Attributes?.Circuit_ID ?? null;
     const ends = [g[0], g[g.length - 1]];
 
     const near = features.filter((f) =>
@@ -5494,7 +5495,7 @@ export default function GISCanvasPage() {
          this cable.
 
          A node naming a different circuit is still skipped. */
-      && (f.Attributes?.Circuit_ID == null
+      && (cid == null || f.Attributes?.Circuit_ID == null
         || String(f.Attributes.Circuit_ID) === String(cid))
       && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
       && (f.Geometry || []).length
@@ -6011,10 +6012,21 @@ export default function GISCanvasPage() {
      names them, and only then writes. What the trace reads becomes what
      the sections say. */
   async function syncNodeCables({ silent = false } = {}) {
+    /* Every electric line with a size on it, whether or not it names a
+       circuit.
+
+       This required a Circuit_ID, which a cable gets when the build
+       routes it \u2014 so a run the build did not claim fed nothing, and the
+       node at its end kept "not set" against it. The same fault as the
+       levels report and nodeFedBy had, in the third place it reads a
+       field the build fills in.
+
+       A cable with no circuit still has a size and still runs up to a
+       node. Which node is decided by where it ends, which is what
+       nodeFedBy answers. */
     const lines = features.filter((f) =>
       f.Feature_Type === "line"
       && f.Layer_Key === "electric"
-      && f.Attributes?.Circuit_ID != null
       /* Either size: a cable set by hand is the one that will be
          pulled, so it is the one the node has to carry. Reading only
          the calculated size meant an overridden run left its node on
@@ -6044,7 +6056,25 @@ export default function GISCanvasPage() {
       });
     }
 
+    /* Nodes still without a cable, and no line reaching them.
+
+       Said out loud because "not set" on a node and "no cable runs to
+       this node" look identical on the drawing, and four rounds have
+       gone into telling them apart by guesswork. A count turns the next
+       question into a fact. */
+    const stillUnset = features.filter((f) => f.Feature_Role === "spannode"
+      && Number(f.Attributes?.Span_Seq) !== 0
+      && sizeIdFor(f, "electric", "manual") == null
+      && !updates.has(f.Feature_ID));
+
     if (!updates.size) {
+      if (stillUnset.length) {
+        setStatus(`${stillUnset.length} span node(s) have no cable reaching `
+          + "them \u2014 the nearest run ends more than "
+          + `${SPAN_REACH_M} m away, or has no size on it`);
+        setTimeout(() => setStatus(""), 9000);
+        return;
+      }
       /* Quiet when run as part of something larger: "already matches"
          is worth saying to somebody who pressed the menu item and
          noise to somebody who pressed Build. */
@@ -10276,7 +10306,23 @@ export default function GISCanvasPage() {
     const ordered = traceOrder === "chain"
       ? byConnectivity(trace.legs, trace.from)
       : null;
-    if (ordered) return traceEnds ? endsOnly(ordered) : ordered;
+    /* The origin first, whatever the sort.
+
+       E0 is where every reading starts, so a report that buries it half
+       way down is read from the middle outwards. It came last on the
+       voltage sort because it has the highest voltage on the circuit,
+       which is exactly why it belongs at the top.
+
+       Applied after ordering rather than as a sort key, so the rest
+       keep whatever order was asked for. */
+    const originFirst = (rows) => {
+      const isOrigin = ({ leg }) => Number(leg?.fromSeq) === 0
+        || String(leg?.from ?? "").toUpperCase() === "E0";
+      const head = rows.filter(isOrigin);
+      return head.length ? [...head, ...rows.filter((r) => !isOrigin(r))] : rows;
+    };
+
+    if (ordered) return originFirst(traceEnds ? endsOnly(ordered) : ordered);
     const sorted = trace.legs
       .map((leg, i) => ({ leg, i }))
       .sort((a, b) => {
@@ -10289,7 +10335,7 @@ export default function GISCanvasPage() {
         if (tl !== ul) return tl < ul ? -1 : 1;
         return tn - un;
       });
-    return traceEnds ? endsOnly(sorted) : sorted;
+    return originFirst(traceEnds ? endsOnly(sorted) : sorted);
     /* traceOrder and traceEnds are in here because the body reads them.
        A memo that reads a value and does not depend on it recomputes
        only when something else changes — which on the bill of materials
@@ -14150,9 +14196,20 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   cursor: pointer; font: 600 11px inherit; padding: 3px 10px; color: #b91c1c; }
 .gsp-x { background: none; border: none; cursor: pointer; font: 600 11.5px inherit;
   color: var(--accent); }
-.gis-trace { position: absolute; right: 12px; top: 44px; z-index: 8; width: 300px;
+/* The levels report fills the pane rather than a 300px column.
+
+   Every row is a leg with a from, a to, a voltage and a cable, and at
+   300px the cable name wrapped onto its own line \u2014 so a circuit of
+   twenty legs read as forty rows of half-sentences. Given the width it
+   is a table.
+
+   Still inset from the edges: it sits over the drawing, and a panel
+   flush to the frame reads as a page rather than something covering
+   what is underneath. */
+.gis-trace { position: absolute; right: 12px; top: 44px; bottom: 12px; z-index: 8;
+  width: auto; left: 12px; max-width: none;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;
-  padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: 60%;
+  padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2); max-height: none;
   overflow-y: auto; }
 .gt-head { display: flex; align-items: center; justify-content: space-between; gap: 8px;
   margin-bottom: 7px; font-size: 12.5px; }

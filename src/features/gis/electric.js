@@ -309,7 +309,23 @@ export function buildGraph(features = []) {
     if (!g.length) return [];
     return g.length === 1 ? [g[0]] : [g[0], g[g.length - 1]];
   };
-  const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= CONNECT_M;
+  /* Two tolerances, because two different things are being asked.
+
+     Cable to cable is a joint: they either meet or they do not, and
+     CONNECT_M is the tolerance the canvas uses to decide that.
+
+     A meter to the cable serving it is not a joint. The meter is a box
+     on a wall and the cable ends at the plot boundary, so they are
+     metres apart on every drawing ever made \u2014 and at a quarter of a
+     metre the meter was joined to nothing, which is why every distance
+     came back as a dash.
+
+     METER_REACH_M is the same figure the rest of the electric model
+     uses for a meter and its service. */
+  const METER_REACH_M = 12;
+  const isPoint = (f) => (f.Geometry || []).length === 1;
+  const reachFor = (a, b) => (isPoint(a) || isPoint(b) ? METER_REACH_M : CONNECT_M);
+  const near = (p, q, r) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= r;
 
   for (let i = 0; i < features.length; i++) {
     const fa = features[i];
@@ -319,7 +335,8 @@ export function buildGraph(features = []) {
       const fb = features[j];
       const eb = endsOf(fb);
       if (!eb.length) continue;
-      if (!ea.some((p) => eb.some((q) => near(p, q)))) continue;
+      const reach = reachFor(fa, fb);
+      if (!ea.some((p) => eb.some((q) => near(p, q, reach)))) continue;
       const a = Number(fa.Feature_ID);
       const b = Number(fb.Feature_ID);
       link(a, b);

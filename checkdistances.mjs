@@ -72,6 +72,36 @@ const METER = {
   if (d.get(9) != null) fail("a meter joined to nothing was given a distance");
 }
 
+// 5. A meter does not sit exactly on the end of its cable.
+//
+//    That was the third reason the column was blank, and the one that
+//    survived the first two fixes. Cable to cable is a joint: they
+//    either meet or they do not. A meter to the cable serving it is not
+//    a joint — the meter is a box on a wall and the cable ends at the
+//    plot boundary, so they are metres apart on every drawing ever
+//    made. At a quarter of a metre the meter was joined to nothing.
+{
+  const at = (x, y) => ({
+    Feature_ID: 4, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[x, y]],
+  });
+
+  for (const [what, m] of [
+    ["exactly on the cable end", at(100, 20)],
+    ["a metre past it", at(100, 21)],
+    ["five metres past it", at(100, 25)],
+  ]) {
+    const d = distancesFrom([SUB, CABLE, SERVICE, m], 1);
+    if (d.get(4) == null) fail(`a meter ${what} has no distance`);
+  }
+
+  /* And not so far that a meter is adopted by a cable serving somebody
+     else \u2014 that would report a plausible distance down the wrong run,
+     which is worse than a dash. */
+  const adrift = distancesFrom([SUB, CABLE, SERVICE, at(100, 60)], 1);
+  if (adrift.get(4) != null) fail("a meter forty metres away was measured");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Distances behave (measured from the drawing when nothing is stored).");
 process.exit(bad ? 1 : 0);

@@ -152,6 +152,7 @@ export default function POCApplicationsTab({ projectId }) {
       Non_Residential_kVA: "",
       Application_Date: "", Expected_Rx_Date: "", Applicant_Person_ID: "",
       Business_Address: "", Plot_Count: "", Requested_kVA: "", Contingency_Load: "",
+      Agreed_Output: "", Output_Pressure_mBar: "",
       /* Which plots and supplies an interim application covers. Blank on
          every other type, and blank here rather than absent so the field
          exists before anything is chosen — a form whose shape changes
@@ -271,6 +272,21 @@ export default function POCApplicationsTab({ projectId }) {
         Applicant_Company_Address: APPLICANT_ADDRESS,
       };
 
+      /* Typed rather than derived, so they go through as given. Empty
+         becomes null: a blank box means "not agreed yet", and zero would
+         mean the operator agreed to nothing. */
+      const num = (v) => (String(v ?? "").trim() === "" ? null : Number(v));
+      const gas = isGas ? {
+        Agreed_Output: num(f.Agreed_Output),
+        Output_Pressure_mBar: num(f.Output_Pressure_mBar),
+      } : {
+        /* Cleared when the utility is no longer gas, for the same reason
+           the electric figures are: a pressure left behind on an
+           electric application is a number nothing can explain. */
+        Agreed_Output: null,
+        Output_Pressure_mBar: null,
+      };
+
       const derived = isElectric ? {
         Requested_kVA: Number(requestedKva.toFixed(1)),
         Non_Residential_kVA: Number(nonResKva.toFixed(1)),
@@ -290,6 +306,7 @@ export default function POCApplicationsTab({ projectId }) {
           ...rest,
           ...applicant,
           ...derived,
+          ...gas,
           Utility_ID: Number(f.Utility_ID),
           POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
           POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -305,7 +322,7 @@ export default function POCApplicationsTab({ projectId }) {
         return;
       }
       const res = await createPoc(projectId, {
-        ...rest, ...applicant, ...derived, idno_ids, dno_id,
+        ...rest, ...applicant, ...derived, ...gas, idno_ids, dno_id,
         Utility_ID: Number(f.Utility_ID),
         POC_Status_ID: f.POC_Status_ID ? Number(f.POC_Status_ID) : null,
         POC_Type_ID: f.POC_Type_ID ? Number(f.POC_Type_ID) : null,
@@ -397,6 +414,15 @@ export default function POCApplicationsTab({ projectId }) {
     if (!f.Utility_ID) return false;
     const u = UTILITIES.find((x) => Number(x.id) === Number(f.Utility_ID));
     return u?.name === "Electric";
+  })();
+
+  /* Gas, by the same rule and for the same reason: the pressure fields
+     appear when Gas is chosen rather than sitting there empty asking a
+     question that may not apply. */
+  const isGas = (() => {
+    if (!f.Utility_ID) return false;
+    const u = UTILITIES.find((x) => Number(x.id) === Number(f.Utility_ID));
+    return u?.name === "Gas";
   })();
 
   /* An interim application covers a subset of the site.
@@ -621,7 +647,7 @@ export default function POCApplicationsTab({ projectId }) {
       </div>
 
       {flash && <Banner kind="ok">{flash}</Banner>}
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {/* Popup blockers and missing data both surface here rather than in
           an alert: the form opens in another window, so an alert can end
           up behind it where nobody sees it. */}
@@ -741,6 +767,29 @@ export default function POCApplicationsTab({ projectId }) {
                 are four things somebody has to decide are deliberately
                 blank. Hidden rather than disabled: a disabled field still
                 says the question was asked. */}
+            {isGas && (
+              <>
+                {/* Typed, not worked out. Both are what the operator has
+                    agreed to, not something derived from the plots — a
+                    box the designer cannot type in would be no use for
+                    recording somebody else's answer. */}
+                <div className="fld"><label>Agreed output</label>
+                  <input type="number" step="any" min="0" placeholder="\u2014"
+                    value={f.Agreed_Output ?? ""}
+                    onChange={(e) => set("Agreed_Output")(e.target.value)} />
+                  <p className="hint">capacity the connection is agreed at</p></div>
+
+                <div className="fld"><label>Output pressure (mbar)</label>
+                  <input type="number" step="any" min="0" placeholder="\u2014"
+                    value={f.Output_Pressure_mBar ?? ""}
+                    onChange={(e) => set("Output_Pressure_mBar")(e.target.value)} />
+                  <p className="hint">
+                    the pressure at the point of connection &mdash; what a gas
+                    design starts from
+                  </p></div>
+              </>
+            )}
+
             {isElectric && (
               <>
                 <div className="fld"><label>Requested kVA load</label>

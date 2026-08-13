@@ -159,7 +159,7 @@ export default function ActivityTab({ projectId, view = "history" }) {
   return (
     <div>
       <style>{CSS}</style>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {view === "comments" ? (
         <>

@@ -330,7 +330,7 @@ export default function PlotConnectionsPage() {
       )}
 
       {flash && <Banner kind="ok">{flash}</Banner>}
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="pc-toolbar">
         <input className="tb-search" value={search} aria-label="Search connections" placeholder="&#128269; Search project, site or plot&hellip;"

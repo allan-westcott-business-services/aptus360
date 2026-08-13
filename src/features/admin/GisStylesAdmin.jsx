@@ -250,7 +250,7 @@ export default function GisStylesAdmin() {
         just a colour and inherit the rest. Leave a scope field on &ldquo;Any&rdquo; and it
         stops narrowing.
       </p>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
 
       <div className="gs-split">

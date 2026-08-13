@@ -118,7 +118,7 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
   return (
     <div className="opt-panel">
       <style>{CSS}</style>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="opt-head">
         <span className="opt-title">Options from {providerName}</span>

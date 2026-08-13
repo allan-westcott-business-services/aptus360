@@ -152,7 +152,7 @@ export default function AddPlotsForm({
           {done} plot{done === 1 ? "" : "s"} added. Add more below, or go back to the list.
         </Banner>
       )}
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <Section title="Applied to every plot in this batch">
         <div className="grid6">

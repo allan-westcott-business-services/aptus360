@@ -66,7 +66,7 @@ export default function SubRegionAdmin() {
     <div>
       <style>{CSS}</style>
       <h2 className="admin-title">Region &amp; Sub Region</h2>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="add-panel">
         <p className="panel-label">Add a sub region</p>

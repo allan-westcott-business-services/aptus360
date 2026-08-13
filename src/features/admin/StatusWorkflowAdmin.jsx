@@ -97,7 +97,7 @@ export default function StatusWorkflowAdmin() {
     <div>
       <style>{CSS}</style>
       <h2 className="admin-title">Status Workflow</h2>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="wf-pickers">
         <div className="fld">

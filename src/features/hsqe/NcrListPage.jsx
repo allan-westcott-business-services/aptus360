@@ -231,7 +231,7 @@ export default function NcrListPage() {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {!lookups.businessUnits.length && (
         <Banner kind="muted">

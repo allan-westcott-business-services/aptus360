@@ -69,7 +69,12 @@ export default function VehiclesPage() {
     try {
       const [v, p, ...rest] = await Promise.all([
         adminList("Vehicle"),
-        adminList("Person"),
+        /* Tolerated rather than required. "Person" is a legacy table
+           this migration series never creates, and on a database
+           without it the whole screen would fail over a dropdown —
+           the fleet, its MOTs and its insurance are all still worth
+           showing. Assignees just read as unassigned. */
+        adminList("Person").catch(() => ({ rows: [] })),
         ...SUB_KINDS.map((k) => adminList(k.table).catch(() => ({ rows: [] }))),
       ]);
       setVehicles(v.rows || []);
@@ -273,7 +278,7 @@ export default function VehiclesPage() {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {!shown.length ? (
         <p className="vh-none">

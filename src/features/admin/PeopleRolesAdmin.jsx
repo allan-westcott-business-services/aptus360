@@ -324,7 +324,7 @@ export default function PeopleRolesAdmin() {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="pr-split">
         <div className="pr-list">

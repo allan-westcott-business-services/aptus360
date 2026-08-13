@@ -131,7 +131,7 @@ export default function PlotAssignment({ projectId, quotationId, optionId, sibli
         </span>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {plots.length === 0 ? (
         <p className="pa-none">No plots on this project yet.</p>

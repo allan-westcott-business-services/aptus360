@@ -75,7 +75,7 @@ export default function AddPlotsModal({
         </div>
 
         <div className="ap-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           <div className="fld">
             <label htmlFor="ap-range">Plot range <span className="req">*</span></label>

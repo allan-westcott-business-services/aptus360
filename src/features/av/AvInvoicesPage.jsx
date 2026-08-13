@@ -212,7 +212,7 @@ export default function AvInvoicesPage({ projectId, embedded = false }) {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
 
       <div className="av-cards">

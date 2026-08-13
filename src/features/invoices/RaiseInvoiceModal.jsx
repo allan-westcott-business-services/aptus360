@@ -223,7 +223,7 @@ export default function RaiseInvoiceModal({ projectId, projectRef, onClose, onRa
         </div>
 
         <div className="ri-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
           {loading && <p className="ri-empty">Finding billable plots&hellip;</p>}
 
           {!loading && (

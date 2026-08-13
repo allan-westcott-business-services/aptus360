@@ -93,7 +93,7 @@ export default function EntityNotes({ entityType, entityId, labelFor }) {
         ))}
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {loading ? (
         <p className="en-none">Loading&hellip;</p>
       ) : tab === "comments" ? (

@@ -261,7 +261,7 @@ export default function TeamsAdmin() {
           this screen is also reached from Operations, where there is no
           menu beside it saying what you are looking at. */}
       <h2 className="admin-title">Teams</h2>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="tm-split">
         <div className="tm-list">

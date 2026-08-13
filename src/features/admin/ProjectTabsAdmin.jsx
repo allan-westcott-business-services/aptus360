@@ -2,7 +2,7 @@ import { useState, useEffect, useCallback } from "react";
 import Banner from "../../components/Banner.jsx";
 import { adminList, adminCreate, adminUpdate } from "../../api/admin.js";
 import { AREAS } from "../../lib/navigation.js";
-import { TABS, PINNED_TAB, tabsForStage } from "../../lib/projectTabs.js";
+import { TABS, STAGES, PINNED_TAB, visibleStages } from "../../lib/projectTabs.js";
 
 /* Which project tabs each section shows.
 
@@ -43,6 +43,7 @@ const stageNote = (tab) => {
 
 export default function ProjectTabsAdmin() {
   const [rows, setRows] = useState([]);
+  const [stageRows, setStageRows] = useState([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
   const [busy, setBusy] = useState(null);
@@ -51,8 +52,12 @@ export default function ProjectTabsAdmin() {
 
   const load = useCallback(async () => {
     try {
-      const { rows: r = [] } = await adminList("Project_Tab_Visibility");
-      setRows(r);
+      const soft = (t) => adminList(t).catch(() => ({ rows: [] }));
+      const [tabs, stages] = await Promise.all([
+        adminList("Project_Tab_Visibility"), soft("Project_Stage_Visibility"),
+      ]);
+      setRows(tabs.rows || []);
+      setStageRows(stages.rows || []);
       setError("");
     } catch (e) {
       setError(e.message);
@@ -100,6 +105,36 @@ export default function ProjectTabsAdmin() {
     }
   }
 
+  const stageOn = (areaKey, stageId) => {
+    const row = stageRows.find((r) =>
+      r.Area_Key === areaKey && r.Stage_Key === stageId);
+    return !row || row.Is_Visible !== false;
+  };
+
+  async function toggleStage(areaKey, stageId) {
+    const key = `stage:${areaKey}:${stageId}`;
+    const existing = stageRows.find((r) =>
+      r.Area_Key === areaKey && r.Stage_Key === stageId);
+    const next = !stageOn(areaKey, stageId);
+    setBusy(key);
+    try {
+      if (existing) {
+        await adminUpdate("Project_Stage_Visibility",
+          existing.Project_Stage_Visibility_ID, { Is_Visible: next });
+        setStageRows((xs) => xs.map((x) =>
+          x.Project_Stage_Visibility_ID === existing.Project_Stage_Visibility_ID
+            ? { ...x, Is_Visible: next } : x));
+      } else {
+        const created = await adminCreate("Project_Stage_Visibility",
+          { Area_Key: areaKey, Stage_Key: stageId, Is_Visible: next },
+          "Project_Stage_Visibility_ID");
+        setStageRows((xs) => [...xs, created]);
+      }
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
+  }
+
   async function setAll(areaKey, visible) {
     setBusy(`all:${areaKey}`);
     try {
@@ -129,7 +164,7 @@ export default function ProjectTabsAdmin() {
         section asks for.
       </p>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {!areas.length ? (
         <Banner kind="warn">
@@ -189,6 +224,57 @@ export default function ProjectTabsAdmin() {
         </div>
       )}
 
+      {!!areas.length && (
+        <>
+          <h3 className="pt-h3">Stages</h3>
+          <p className="pt-intro">
+            The project page opens with a Tender / Contract switch. Untick a stage
+            and that section never sees it. A section left with one stage gets no
+            switch at all, since there is nothing to switch between; a section with
+            neither is ignored and shown both, because a project page with no stage
+            has nothing to show.
+          </p>
+          <div className="pt-scroll">
+            <table className="pt-grid">
+              <thead>
+                <tr>
+                  <th className="pt-corner">Section</th>
+                  {STAGES.map((sg) => <th key={sg.id}>{sg.label}</th>)}
+                  <th className="pt-actions">Switch</th>
+                </tr>
+              </thead>
+              <tbody>
+                {areas.map((area) => {
+                  const shown = visibleStages(area.id, stageRows);
+                  const ignored = STAGES.every((sg) => !stageOn(area.id, sg.id));
+                  return (
+                    <tr key={area.id}>
+                      <th scope="row" className="pt-area">
+                        <span className="pt-area-dot" style={{ background: area.colour }} />
+                        <span>{area.label}</span>
+                      </th>
+                      {STAGES.map((sg) => (
+                        <td key={sg.id}>
+                          <input type="checkbox" checked={stageOn(area.id, sg.id)}
+                            disabled={!!busy}
+                            aria-label={`${sg.label} stage in ${area.label}`}
+                            onChange={() => toggleStage(area.id, sg.id)} />
+                        </td>
+                      ))}
+                      <td className="pt-actions pt-stage-note">
+                        {ignored ? "Both \u2014 setting ignored"
+                          : shown.length === 1 ? `${shown[0].label} only, no switch`
+                            : "Shown"}
+                      </td>
+                    </tr>
+                  );
+                })}
+              </tbody>
+            </table>
+          </div>
+        </>
+      )}
+
       <p className="hint pt-foot">
         Sections are defined in the application, not here &mdash; this lists the ones
         that can open a project. Details cannot be unticked, so a section always has
@@ -223,4 +309,6 @@ const CSS = `
 .pt-actions { white-space: nowrap; }
 .pt-actions .btn + .btn { margin-left: 4px; }
 .pt-foot { margin-top: 12px; }
+.pt-h3 { margin: 26px 0 6px; font-size: 15px; font-weight: 700; }
+.pt-stage-note { font-size: 11.5px; color: var(--muted); text-align: left !important; }
 `;

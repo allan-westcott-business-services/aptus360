@@ -687,7 +687,7 @@ export default function FeatureEditor({
               </button>
             </div>
           )}
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           {/* A trench lays these out in two rows of three, with its own
               fields, rather than a column of eight boxes — the modal was

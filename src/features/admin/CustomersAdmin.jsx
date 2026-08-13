@@ -117,7 +117,7 @@ export default function CustomersAdmin() {
         customer needs at least one. The code prefixes plot numbers where a site has
         more than one developer.
       </p>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="ca-split">
         <div className="ca-list">

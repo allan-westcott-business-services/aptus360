@@ -104,7 +104,7 @@ export default function DesignEditModal({
         </div>
 
         <div className="dm-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           <p className="dm-label">Ownership</p>
           <div className="dm-grid">

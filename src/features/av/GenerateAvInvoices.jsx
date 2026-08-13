@@ -209,7 +209,7 @@ export default function GenerateAvInvoices() {
   return (
     <div className="gav">
       <style>{CSS}</style>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {phase === "idle" && (
         <div className="gav-card">

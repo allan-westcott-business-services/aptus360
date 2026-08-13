@@ -280,7 +280,7 @@ export default function OrganisationsAdmin() {
         One record per company. An organisation can hold several roles at once &mdash; an
         IDNO that also supplies, a subcontractor covering more than one trade.
       </p>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="oa-split">
         {/* ── list ── */}

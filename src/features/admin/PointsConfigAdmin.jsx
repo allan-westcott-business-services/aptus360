@@ -98,7 +98,7 @@ export default function PointsConfigAdmin() {
         come from a second band, scored per scope.
       </p>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="pc-tabs">
         {TABS.map((t) => (

@@ -126,7 +126,7 @@ export default function BulkEditor({
         </div>
 
         <div className="fe-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           <p className="be-note">
             Blank fields are left as they are. Only what you fill in is written.

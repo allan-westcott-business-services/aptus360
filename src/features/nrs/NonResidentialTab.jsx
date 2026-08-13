@@ -137,7 +137,7 @@ export default function NonResidentialTab({ projectId }) {
         </button>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {rows.length > 0 && (
         <div className="nrs-summary">

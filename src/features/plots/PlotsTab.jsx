@@ -460,7 +460,7 @@ export default function PlotsTab({ projectId, projectRef }) {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {genMsg && <Banner kind="ok">{genMsg}</Banner>}
 
       {genOpen && (

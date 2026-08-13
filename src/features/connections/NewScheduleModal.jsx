@@ -170,7 +170,7 @@ export default function NewScheduleModal({ onClose, onSaved }) {
         </div>
 
         <div className="ns-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           <div className="ns-row">
             <div className="fld grow">

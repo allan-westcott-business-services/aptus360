@@ -201,7 +201,7 @@ export default function ElectricSpecsAdmin() {
         electrical properties &mdash; rating, fuse, volt drop, loop impedance.
       </p>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="es-tabs">
         {TABS.map((t) => (

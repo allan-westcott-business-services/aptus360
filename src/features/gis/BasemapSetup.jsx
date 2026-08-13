@@ -224,7 +224,7 @@ export default function BasemapSetup({ projectId, project, basemap, onChange, on
         </div>
 
         <div className="bs-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
           {status && <Banner kind="ok">{status}</Banner>}
 
           {step === "import" && (

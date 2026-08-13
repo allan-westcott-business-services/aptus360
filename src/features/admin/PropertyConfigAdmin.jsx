@@ -107,7 +107,7 @@ export default function PropertyConfigAdmin() {
       <style>{CSS}</style>
       <h2 className="admin-title">House Types</h2>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="add-panel">
         <p className="panel-label">Add new house type</p>

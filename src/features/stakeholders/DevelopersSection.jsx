@@ -87,7 +87,7 @@ export default function DevelopersSection({ projectId, onChanged }) {
       }
     >
       <style>{CSS}</style>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {noMain && <Banner kind="warn">No main developer set for this project.</Banner>}
       {unassigned > 0 && rows.length > 1 && (
         <Banner kind="warn">

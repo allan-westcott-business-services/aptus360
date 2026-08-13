@@ -562,7 +562,7 @@ export default function BomModal({
         </div>
 
         <div className="bom-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
           {loading && <p className="bom-empty">Working out quantities&hellip;</p>}
 
           {!loading && !rows.length && !error && (

@@ -192,7 +192,7 @@ export default function ProjectInvoicesTab({ projectId, projectRef }) {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
 
       {raising && (

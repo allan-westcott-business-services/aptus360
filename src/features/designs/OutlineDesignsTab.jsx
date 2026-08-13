@@ -222,7 +222,7 @@ export default function OutlineDesignsTab({ projectId }) {
       )}
 
       {flash && <Banner kind="ok">{flash}</Banner>}
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <Banner kind="muted">
         <strong>Design points:</strong>{" "}

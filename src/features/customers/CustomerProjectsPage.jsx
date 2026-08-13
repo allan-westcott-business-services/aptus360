@@ -143,7 +143,7 @@ export default function CustomerProjectsPage() {
         </div>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {groups.length === 0 && (
         <p className="cp-none">No customer matches that.</p>

@@ -188,7 +188,7 @@ export default function AssetValueTab({ projectId }) {
         </button>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {showForm && (
         <div className="av-form">

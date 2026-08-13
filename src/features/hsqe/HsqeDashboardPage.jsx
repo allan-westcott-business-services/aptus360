@@ -195,7 +195,7 @@ export default function HsqeDashboardPage() {
         <button className="btn sm" onClick={load}>Refresh</button>
       </div>
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       {!total ? (
         <p className="hq-none">

@@ -12042,7 +12042,9 @@ export default function GISCanvasPage() {
         </Banner>
       )}
 
-      {error && <Banner kind="error">{error}</Banner>}
+      {/* Dismissable: an error that has been read should not sit over
+          the drawing for the rest of the session. */}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
       {status && <Banner kind="ok">{status}</Banner>}
 
       {!projectId ? (

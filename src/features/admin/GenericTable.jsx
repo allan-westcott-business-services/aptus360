@@ -112,7 +112,7 @@ export default function GenericTable({ table }) {
     <div>
       <style>{CSS}</style>
       <h2 className="admin-title">{table.label}</h2>
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <div className="add-panel">
         <p className="panel-label">{editing ? "Edit entry" : "Add new entry"}</p>

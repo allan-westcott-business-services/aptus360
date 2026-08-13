@@ -127,7 +127,7 @@ export default function StakeholderTab({ projectId }) {
     <div>
       <style>{CSS}</style>
       {flash && <Banner kind="ok">{flash}</Banner>}
-      {error && <Banner kind="error">{error}</Banner>}
+      {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
       <DevelopersSection projectId={projectId} />
 

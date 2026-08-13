@@ -66,7 +66,7 @@ export default function PhotoPanel({ connection, onClose, onChanged }) {
         </div>
 
         <div className="php-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           <label className="php-drop">
             <input type="file" accept="image/*" multiple disabled={busy}

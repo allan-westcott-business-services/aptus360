@@ -221,7 +221,20 @@ input[type="radio"]:disabled { cursor: not-allowed; opacity: 0.6; }
 .banner {
   border-radius: var(--radius); padding: 9px 13px; font-size: 12.5px; margin: 10px 0;
   border: 1px solid; line-height: 1.5;
+  /* The text takes the room and the cross sits at the end, so a long
+     message wraps within the banner rather than pushing the control
+     off it. */
+  display: flex; align-items: flex-start; gap: 10px;
 }
+.banner-text { flex: 1; min-width: 0; }
+/* Inherits the banner's colour, so it is legible on every kind without
+   naming four of them. */
+.banner-x {
+  flex: 0 0 auto; border: 0; background: none; cursor: pointer;
+  color: inherit; opacity: .65; font-size: 17px; line-height: 1;
+  padding: 0 2px; margin: -1px 0 0;
+}
+.banner-x:hover { opacity: 1; }
 .banner.error { background: var(--err-bg); color: var(--err-text); border-color: var(--err-border); }
 .banner.ok { background: var(--ok-bg); color: var(--ok-text); border-color: var(--ok-border); }
 .banner.warn { background: var(--warn-bg); color: var(--warn-text); border-color: var(--warn-border); }

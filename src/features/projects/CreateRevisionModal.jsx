@@ -77,7 +77,7 @@ export default function CreateRevisionModal({ project, onClose, onCreated }) {
         </div>
 
         <div className="cr-body">
-          {error && <Banner kind="error">{error}</Banner>}
+          {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           <Banner kind="warn">
             The current revision will be marked <strong>Superseded</strong> and can no longer

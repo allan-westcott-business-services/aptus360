@@ -416,6 +416,56 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (belongs(null, 1, 60)) fail("an unassigned node across the site was adopted");
 }
 
+/* The cable that feeds a node with no circuit on it.
+
+   Third place the same fault appeared: the levels report, the pruning,
+   and now the routine that puts a cable size onto a node — each
+   filtered on Circuit_ID, and a node the build pruned never has one.
+   Fixing two of the three left the node in the report with "not set"
+   beside it while a cable plainly ran up to it.
+
+   Worth naming as a pattern: a rule that reads a field the build fills
+   in will always miss whatever the build skipped. */
+{
+  const REACH = 10;
+  const eligible = (node, cid) =>
+    (node.circuit == null || String(node.circuit) === String(cid))
+    && node.seq !== 0
+    && node.gap <= REACH;
+
+  /* The case from the drawing. */
+  if (!eligible({ circuit: null, seq: null, gap: 2.5 }, 1)) {
+    fail("an unassigned node 2.5 m from the cable end was fed by nothing");
+  }
+  /* An ordinary assigned node is unaffected. */
+  if (!eligible({ circuit: 1, seq: 9, gap: 0.2 }, 1)) {
+    fail("a node on this circuit stopped being fed");
+  }
+  /* Another circuit's node is still not this cable's business. */
+  if (eligible({ circuit: 2, seq: 4, gap: 1 }, 1)) {
+    fail("a cable fed a node belonging to another circuit");
+  }
+  /* And nothing feeds the origin. */
+  if (eligible({ circuit: 1, seq: 0, gap: 0 }, 1)) fail("the origin was fed");
+
+  /* Where neither node has a sequence, the nearer wins \u2014 sequence
+     alone left it to whichever the array happened to hold first. */
+  const pick = (a, b) => {
+    const sa = a.seq ?? -1;
+    const sb = b.seq ?? -1;
+    if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
+    return b.gap < a.gap ? b : a;
+  };
+  if (pick({ seq: null, gap: 6 }, { seq: null, gap: 2.5 }).gap !== 2.5) {
+    fail("the further of two unassigned nodes was chosen");
+  }
+  /* Two assigned nodes still order by sequence, which is what it is
+     for: the one further along the run is the one being fed. */
+  if (pick({ seq: 3, gap: 0.1 }, { seq: 9, gap: 4 }).seq !== 9) {
+    fail("sequence stopped deciding between two assigned nodes");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

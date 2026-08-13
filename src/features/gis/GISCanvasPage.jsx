@@ -5484,7 +5484,18 @@ export default function GISCanvasPage() {
 
     const near = features.filter((f) =>
       f.Feature_Role === "spannode"
-      && String(f.Attributes?.Circuit_ID) === String(cid)
+      /* This cable's circuit, or a node that names none.
+
+         A node is given its circuit when the build routes through it,
+         and one the build pruned never gets one \u2014 so the node at the
+         end of the trench was fed by nothing here for the same reason
+         it was missing from the levels: it had no circuit to match on.
+         The distance test below is what decides whether it belongs to
+         this cable.
+
+         A node naming a different circuit is still skipped. */
+      && (f.Attributes?.Circuit_ID == null
+        || String(f.Attributes.Circuit_ID) === String(cid))
       && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
       && (f.Geometry || []).length
       /* As far as the trace reaches, not as far as a snap does.
@@ -5506,8 +5517,28 @@ export default function GISCanvasPage() {
       }));
 
     if (!near.length) return null;
-    return near.reduce((a, b) =>
-      (Number(b.Attributes?.Span_Seq ?? -1) > Number(a.Attributes?.Span_Seq ?? -1) ? b : a));
+
+    /* The furthest along the run, and where that cannot be told, the
+       closest to the cable's end.
+
+       Span_Seq orders nodes along a circuit, which is the right answer
+       for two assigned nodes meeting at a section. A node the build
+       never routed through has no sequence \u2014 so with the unassigned
+       now eligible, the sequence alone left the choice to whichever the
+       array happened to hold first. Distance settles it: the node this
+       cable actually runs up to is the one nearest its end. */
+    const gapOf = (f) => {
+      const a = f.Attributes?.Span_Anchor;
+      const at = (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
+      return Math.min(...ends.map((e) => Math.hypot(at[0] - e[0], at[1] - e[1])));
+    };
+
+    return near.reduce((a, b) => {
+      const sa = Number(a.Attributes?.Span_Seq ?? -1);
+      const sb = Number(b.Attributes?.Span_Seq ?? -1);
+      if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
+      return gapOf(b) < gapOf(a) ? b : a;
+    });
   }, [features]);
 
   /* Putting a suggested change on the drawing.

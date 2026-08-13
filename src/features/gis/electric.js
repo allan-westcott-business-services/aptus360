@@ -368,6 +368,23 @@ export function buildGraph(features = []) {
      a matter of opinion: it is the one it sits on the end of. */
   for (const f of features) {
     if (!isPoint(f) || !endsOf(f).length) continue;
+    /* Meters only.
+
+       A substation is a point too, and it feeds every cable leaving it
+       \u2014 limiting it to one made the whole network hang off a single
+       run, and the walk then reached everything the long way round.
+       A meter is served by one cable; plant is not. */
+    if (f.Feature_Role !== "meter") {
+      for (const g of features) {
+        if (g === f || isPoint(g) || !endsOf(g).length) continue;
+        if (gapBetween(f, g) > CONNECT_M) continue;
+        const a = Number(f.Feature_ID);
+        const b = Number(g.Feature_ID);
+        link(a, b);
+        link(b, a);
+      }
+      continue;
+    }
     let best = null;
     for (const g of features) {
       if (g === f || isPoint(g) || !endsOf(g).length) continue;
@@ -544,15 +561,41 @@ export function distancesFrom(features, rootId) {
   const root = Number(rootId);
   if (!graph.byId.has(root)) return new Map();
 
+  /* Shortest by metres, not by hops.
+
+     This walked breadth first and took the first arrival as final,
+     which finds the route with the fewest features in it \u2014 not the
+     shortest one. A run of three long cables beat a run of ten short
+     ones, so a meter fifty metres away reported a hundred and thirty:
+     the length of whichever way round the walk happened to reach it
+     first.
+
+     Smallest-known-distance first instead, and a node is revisited when
+     a shorter way to it turns up. That is what "distance from the
+     substation" means \u2014 the way the cable actually runs, which is the
+     shortest route through the network. */
   const dist = new Map([[root, 0]]);
-  const queue = [root];
-  while (queue.length) {
-    const cur = queue.shift();
+  const seen = new Set();
+
+  for (;;) {
+    /* The nearest node not yet settled. A linear scan rather than a
+       heap: a drawing has hundreds of features, not millions, and the
+       obvious version is the one that can be checked by reading it. */
+    let cur = null;
+    let best = Infinity;
+    for (const [id, d] of dist) {
+      if (seen.has(id) || d >= best) continue;
+      cur = id;
+      best = d;
+    }
+    if (cur == null) break;
+    seen.add(cur);
+
     for (const next of graph.adj.get(cur) || []) {
-      if (dist.has(next)) continue;
       const f = graph.byId.get(next);
-      dist.set(next, dist.get(cur) + lengthOf(f));
-      queue.push(next);
+      const through = best + lengthOf(f);
+      const known = dist.get(next);
+      if (known == null || through < known) dist.set(next, through);
     }
   }
   return dist;

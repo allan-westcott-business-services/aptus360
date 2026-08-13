@@ -136,6 +136,53 @@ const METER = {
   }
 }
 
+// 7. The shortest route, not the one with fewest cables in it.
+//
+//    The walk was breadth first and took the first arrival as final,
+//    which finds the route with the fewest features — not the shortest.
+//    Three long cables beat ten short ones, so a meter fifty metres
+//    away reported a hundred and thirty: whichever way round the walk
+//    happened to reach it first.
+{
+  /* The drawing: E0 to A1 is 25.6 m, A1 to A5 is 25.4 m, then a 4 m
+     service to the meter. */
+  const e0a1 = { Feature_ID: 2, Feature_Type: "line", Geometry: [[0, 0], [25.6, 0]] };
+  const a1a5 = { Feature_ID: 3, Feature_Type: "line", Geometry: [[25.6, 0], [51, 0]] };
+  const svc = { Feature_ID: 4, Feature_Type: "line", Geometry: [[51, 0], [51, 4]] };
+  const meter = { Feature_ID: 5, Feature_Role: "meter", Geometry: [[51, 4]] };
+
+  const d = distancesFrom([SUB, e0a1, a1a5, svc, meter], 1);
+  if (Math.abs(d.get(5) - 55) > 0.01) {
+    fail(`the meter is ${d.get(5)} m along the run, wanted 55`);
+  }
+
+  /* And where two routes exist, the shorter wins — which is what
+     breadth first could not do. */
+  const detour = { Feature_ID: 6, Feature_Type: "line", Geometry: [[0, 0], [0, 300]] };
+  const back = { Feature_ID: 7, Feature_Type: "line", Geometry: [[0, 300], [51, 0]] };
+  const both = distancesFrom([SUB, e0a1, a1a5, svc, meter, detour, back], 1);
+  if (Math.abs(both.get(5) - 55) > 0.01) {
+    fail(`with a longer route present the meter reads ${both.get(5)} m, wanted 55`);
+  }
+}
+
+// 8. Plant joins every cable leaving it; a meter joins one.
+//
+//    A substation is a point too, and limiting it to its nearest cable
+//    made the whole network hang off a single run — everything was then
+//    reached the long way round.
+{
+  const left = { Feature_ID: 2, Feature_Type: "line", Geometry: [[0, 0], [-50, 0]] };
+  const right = { Feature_ID: 3, Feature_Type: "line", Geometry: [[0, 0], [50, 0]] };
+  const mLeft = { Feature_ID: 4, Feature_Role: "meter", Geometry: [[-50, 0]] };
+  const mRight = { Feature_ID: 5, Feature_Role: "meter", Geometry: [[50, 0]] };
+
+  const d = distancesFrom([SUB, left, right, mLeft, mRight], 1);
+  if (d.get(4) == null || d.get(5) == null) {
+    fail("a substation fed only one of the two cables leaving it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Distances behave (measured from the drawing when nothing is stored).");
 process.exit(bad ? 1 : 0);

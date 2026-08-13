@@ -5483,6 +5483,21 @@ export default function GISCanvasPage() {
     const cid = line.Attributes?.Circuit_ID ?? null;
     const ends = [g[0], g[g.length - 1]];
 
+    /* A service cable never feeds a span node.
+
+       A node is a point on the mains run, and the cable feeding it is
+       the main arriving there \u2014 the service is what leaves it for a
+       plot. Recording a service against a node meant the volt drop
+       along the mains was computed on a service cable, which is a
+       smaller conductor and a shorter run: wrong, and wrong in the
+       direction that looks acceptable.
+
+       Refused at the source rather than by preferring the main, so it
+       cannot be chosen when no main is near either. A node with only a
+       service reaching it has no feeding cable, which is the truth. */
+    if (isTrenchType(line.Attributes?.Line_Type, lineTypes)) return null;
+    if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
+
     const near = features.filter((f) =>
       f.Feature_Role === "spannode"
       /* This cable's circuit, or a node that names none.
@@ -5534,6 +5549,17 @@ export default function GISCanvasPage() {
       return Math.min(...ends.map((e) => Math.hypot(at[0] - e[0], at[1] - e[1])));
     };
 
+    /* The node this cable arrives at, not one it leaves.
+
+       A cable runs between two nodes, so both are near it \u2014 and the one
+       it feeds is the far one, the node further from the substation.
+       Taking the nearer meant a node was given the cable heading away
+       from it while the cable that actually arrives went unrecorded.
+
+       Span_Seq counts outward from the origin, so the higher of the two
+       is downstream: that is the node this cable feeds. Where neither
+       is numbered, the closest to an end is taken, which is the best
+       that can be said without the graph. */
     return near.reduce((a, b) => {
       const sa = Number(a.Attributes?.Span_Seq ?? -1);
       const sb = Number(b.Attributes?.Span_Seq ?? -1);
@@ -7765,8 +7791,20 @@ export default function GISCanvasPage() {
           ? (lookups?.cableSizes || []).find((c) => Number(c.Cable_Size_ID) === Number(id))
           : null;
       })();
-      const startCable = scopeDefault || defaultFeederCable(
-        lookups?.cableSizes || [], lookups?.cableTypes || []);
+      /* Every run starts at the minimum LV cable.
+
+         A build lays the smallest cable that could do the job and the
+         volt drop check is what says where that is not enough. Starting
+         from a scope default meant a site whose default was set larger
+         began oversized everywhere, and the check could never say so \u2014
+         it only reports cable that is too small.
+
+         defaultFeederCable is the minimum: the highest impedance LV
+         mains cable in the catalogue, which is 3c WAVE 95. The scope
+         default is used only where the catalogue offers nothing, so a
+         drawing is never left with no cable at all. */
+      const startCable = defaultFeederCable(
+        lookups?.cableSizes || [], lookups?.cableTypes || []) || scopeDefault;
 
       const totalRuns = planned.reduce((t, x) => t + x.sections.length, 0);
       const totalNodes = planned.reduce((t, x) => t + x.nodes.length, 0);

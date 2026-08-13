@@ -290,6 +290,43 @@ export function buildGraph(features = []) {
     const a = Number(f.Feature_ID);
     for (const b of idsOf(f)) { link(a, b); link(b, a); }
   }
+
+  /* And by geometry, where nothing says Connects.
+
+     Connects is written when somebody draws a feature onto another. A
+     built network is not drawn that way \u2014 the routing lays cables from
+     a graph of its own and never fills it in \u2014 so on a generated
+     drawing this graph had no edges at all, and every distance from the
+     substation came back null. Which is what the report showed: a
+     column of dashes.
+
+     Ends touching within the same tolerance the canvas uses, so the two
+     agree about what is joined. Added rather than replacing Connects:
+     a hand-drawn link is a statement, and geometry is what to fall back
+     on where none was made. */
+  const endsOf = (f) => {
+    const g = f.Geometry || [];
+    if (!g.length) return [];
+    return g.length === 1 ? [g[0]] : [g[0], g[g.length - 1]];
+  };
+  const near = (p, q) => Math.hypot(p[0] - q[0], p[1] - q[1]) <= CONNECT_M;
+
+  for (let i = 0; i < features.length; i++) {
+    const fa = features[i];
+    const ea = endsOf(fa);
+    if (!ea.length) continue;
+    for (let j = i + 1; j < features.length; j++) {
+      const fb = features[j];
+      const eb = endsOf(fb);
+      if (!eb.length) continue;
+      if (!ea.some((p) => eb.some((q) => near(p, q)))) continue;
+      const a = Number(fa.Feature_ID);
+      const b = Number(fb.Feature_ID);
+      link(a, b);
+      link(b, a);
+    }
+  }
+
   return { byId, adj };
 }
 
@@ -316,7 +353,27 @@ export function rootAt(graph, rootId) {
   return { parent, children };
 }
 
-const lengthOf = (f) => Number(f?.Attributes?.Length_m ?? 0) || 0;
+/* How long a feature is.
+
+   The stored figure where there is one, and otherwise measured off the
+   geometry. Length_m is written when somebody draws a line and edits
+   it; a cable the build laid has none, so every distance from the
+   substation came out as zero even once the graph connected \u2014 the walk
+   added nothing at each step.
+
+   A point has no length, which is right: a meter adds nothing to the
+   run that reaches it. */
+const lengthOf = (f) => {
+  const stored = Number(f?.Attributes?.Length_m ?? 0) || 0;
+  if (stored) return stored;
+  const g = f?.Geometry || [];
+  if (g.length < 2) return 0;
+  let total = 0;
+  for (let i = 1; i < g.length; i++) {
+    total += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+  }
+  return total;
+};
 
 /* Walk outwards from a starting feature, closing a leg whenever another
    span node is reached. Returns one entry per leg. */

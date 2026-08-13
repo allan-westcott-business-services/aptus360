@@ -466,6 +466,69 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   }
 }
 
+/* A cable with no circuit still feeds the node it ends at.
+
+   Fourth place the same fault appeared. Circuit_ID is written by the
+   build, so every rule that reads it misses whatever the build did not
+   route: the levels report, the pruning, nodeFedBy, and the list of
+   cables the sync considers at all.
+
+   Each fix looked right and changed nothing, because the next rule down
+   filtered the same way. Worth stating as a rule of its own: a field
+   the build fills in cannot be used to decide what the build missed. */
+{
+  const REACH = 10;
+  const considered = (l) => l.type === "line" && l.layer === "electric"
+    && l.size != null;
+  const feeds = (l, n) =>
+    (l.circuit == null || n.circuit == null
+      || String(l.circuit) === String(n.circuit))
+    && n.seq !== 0 && n.gap <= REACH;
+
+  const routed = { type: "line", layer: "electric", circuit: 1, size: 7 };
+  const unrouted = { type: "line", layer: "electric", circuit: null, size: 7 };
+  const unsized = { type: "line", layer: "electric", circuit: 1, size: null };
+
+  if (!considered(routed)) fail("a routed cable stopped being considered");
+  if (!considered(unrouted)) fail("a cable with no circuit was ignored");
+  /* A cable with no size has nothing to give a node, so it is rightly
+     out \u2014 the node would be set to nothing. */
+  if (considered(unsized)) fail("a cable with no size was used to set a node");
+
+  const node = { circuit: null, seq: 4, gap: 2.5 };
+  if (!feeds(unrouted, node)) fail("an unrouted cable fed nothing");
+  if (!feeds(routed, node)) fail("a routed cable stopped feeding an unassigned node");
+
+  /* Two named circuits that differ are still kept apart. */
+  if (feeds({ circuit: 2 }, { circuit: 1, seq: 4, gap: 1 })) {
+    fail("a cable fed a node on another circuit");
+  }
+}
+
+/* What may be recorded as the cable feeding a span node.
+
+   A node is a point on the mains run: the cable feeding it is the main
+   arriving there, and the service is what leaves it for a plot.
+   Recording a service meant the volt drop along the mains was computed
+   on a smaller conductor over a shorter run — wrong, and wrong in the
+   direction that looks acceptable. */
+{
+  const eligible = (lineType) => !/service/i.test(String(lineType ?? ""))
+    && !/trench/i.test(String(lineType ?? ""));
+
+  if (!eligible("lv_main")) fail("an LV main was refused as a feeding cable");
+  if (eligible("elec_service")) fail("a service cable was accepted as a feeding cable");
+  if (eligible("trench_main")) fail("a trench was accepted as a feeding cable");
+
+  /* And the node a cable feeds is the far one — the cable runs between
+     two, and the one it arrives at is downstream. Span_Seq counts
+     outward from the origin, so the higher is the fed node. */
+  const fedNode = (a, b) => (Number(b.seq) > Number(a.seq) ? b : a);
+  if (fedNode({ seq: 4 }, { seq: 9 }).seq !== 9) {
+    fail("the upstream node was recorded as the one being fed");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

@@ -42,12 +42,21 @@ export const CONNECT_EPS = 0.5;
    for a design nobody is looking at.
 
    Defaults to the system size, which is what this always read. */
-export function cableIdOf(feature, mode = "system") {
+export function cableIdOf(feature, mode = "manual") {
+  /* The cable that will be pulled, unless somebody asks for the
+     build's own answer.
+
+     This defaulted to the calculated size, so a cable set by hand
+     appeared on the drawing and in the bill but not in the levels
+     report \u2014 the one place the size actually changes the answer. The
+     volt drop was worked out on a conductor nobody is laying.
+
+     The override where there is one and the calculated size elsewhere,
+     which is the same rule the drawing and the bill follow. Passing
+     "system" still gives the build's answer, for comparing the two. */
   const a = feature?.Attributes ?? {};
-  if (mode === "manual") {
-    return a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID ?? null;
-  }
-  return a.VD_Cable_Size_ID ?? null;
+  if (mode === "system") return a.VD_Cable_Size_ID ?? null;
+  return a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID ?? null;
 }
 
 /* Meters per cable. Above this the run needs another cable beside it,
@@ -861,6 +870,19 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   for (const sn of features) {
     if (sn.Feature_Role !== "spannode") continue;
     if (Number(sn.Feature_ID) === Number(nodeId)) continue;
+    /* This utility's nodes only.
+
+       A gas POC placed near the substation gets its own origin node,
+       G0, at very nearly the same point. Every node with sequence zero
+       was taken as the origin regardless of which layer it belonged
+       to, so an electric trace reported its first leg as leaving G0 \u2014
+       the gas network's origin, on an electric circuit.
+
+       The node's own layer settles it. Nodes drawn before layers were
+       recorded have none, and those are still accepted: excluding them
+       would empty the report on an older drawing. */
+    if (sn.Layer_Key && sn.Layer_Key !== "electric"
+      && sn.Layer_Key !== "trench") continue;
     /* Same rule as above: this circuit's, or one that names none. */
     const own = sn.Attributes?.Circuit_ID;
     if (own != null && Number(own) !== Number(circuitId)) continue;

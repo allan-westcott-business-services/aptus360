@@ -53,6 +53,9 @@ export default function FeatureEditor({
      layer has no type until somebody picks one, and asking the type
      alone hid every trench-only control on exactly those sections. */
   const isTrench = isTrenchFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
+  /* Whether this edit changed the cable, so the span node it feeds can
+     be brought with it once the change is saved. */
+  const [cableChanged, setCableChanged] = useState(false);
   /* An electric line picks its cable from the catalogue. Judged by the
      layer its type belongs to rather than by the key's spelling, so a
      type added later lands in the right branch without a code change. */
@@ -532,6 +535,13 @@ export default function FeatureEditor({
         }))
         .filter((r) => r.name && r.name !== r.was);
       if (renames.length) await onRenameCircuits?.(renames);
+
+      /* The span node this run feeds, brought with it.
+
+         After the save rather than on the dropdown: pushing at the
+         moment of choosing read the drawing as it was before the edit
+         landed, so the node was given the old size or nothing at all. */
+      if (cableChanged) await onCableSized?.(feature);
 
       onClose();
     } catch (e) { setError(e.message); setBusy(false); }
@@ -1277,11 +1287,15 @@ export default function FeatureEditor({
                       onChange={(e) => {
                         const id = e.target.value ? Number(e.target.value) : null;
                         setAttr("Manual_VD_Cable_Size_ID")(id);
-                        /* The span node fed by this run carries the
-                           cable the trace reads, so changing one here
-                           without the other leaves the volt drop
-                           computed on a cable nobody is laying. */
-                        onCableSized?.(feature, id);
+                        /* Marked, not pushed.
+
+                           The span node fed by this run carries the
+                           cable the trace reads, so the two have to move
+                           together. But pushing here read the drawing as
+                           it was before this edit was saved \u2014 the node
+                           was given the old size, or nothing changed at
+                           all. It goes out on save instead. */
+                        setCableChanged(true);
                       }}>
                       <option value="">Not overridden</option>
                       {/* The cable and nothing else. The material and

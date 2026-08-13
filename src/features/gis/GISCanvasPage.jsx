@@ -5561,7 +5561,11 @@ export default function GISCanvasPage() {
      can run either way round while the numbering always counts outward
      from the substation. The node with the higher sequence is the one
      downstream, and downstream is what the run feeds. */
-  const nodeFedBy = useCallback((line) => {
+  /* `from` is the drawing to look in. Passed after a save, because
+     state has not caught up and the node would be matched against the
+     cable as it was before the edit. */
+  const nodeFedBy = useCallback((line, from = null) => {
+    const look = from || features;
     const g = line?.Geometry || [];
     if (g.length < 2) return null;
     /* A cable with no circuit feeds whichever node it ends at. Refusing
@@ -5579,7 +5583,7 @@ export default function GISCanvasPage() {
        The end further from the substation is downstream. That is a fact
        about the drawing rather than about the numbering, so it holds
        for a node the build never sequenced. */
-    const sub = features.find((f) => f.Feature_Role === "substation"
+    const sub = look.find((f) => f.Feature_Role === "substation"
       && (f.Geometry || []).length);
     const at = sub?.Geometry?.[0] ?? null;
     /* Both ends are searched, and the far one only decides between
@@ -5607,7 +5611,7 @@ export default function GISCanvasPage() {
     if (isTrenchType(line.Attributes?.Line_Type, lineTypes)) return null;
     if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
 
-    const near = features.filter((f) =>
+    const near = look.filter((f) =>
       f.Feature_Role === "spannode"
       /* This cable's circuit, or a node that names none.
 
@@ -5722,7 +5726,7 @@ export default function GISCanvasPage() {
       for (const line of features) {
         if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
         if (line.Attributes?.Line_Type !== "elec_main") continue;
-        const fed = nodeFedBy(line);
+        const fed = nodeFedBy(line, src);
         if (!fed || Number(fed.Feature_ID) !== Number(node.Feature_ID)) continue;
         rows.push({
           Feature_ID: line.Feature_ID,
@@ -6163,7 +6167,10 @@ export default function GISCanvasPage() {
      So this is the deliberate reconciliation: it says how many disagree,
      names them, and only then writes. What the trace reads becomes what
      the sections say. */
-  async function syncNodeCables({ silent = false } = {}) {
+  async function syncNodeCables({ silent = false, srcFeatures = null } = {}) {
+    /* The drawing to work from. Passed in after a save, because state
+       has not caught up and reading it would sync the old sizes. */
+    const src = srcFeatures || features;
     /* Every electric line with a size on it, whether or not it names a
        circuit.
 
@@ -6176,7 +6183,7 @@ export default function GISCanvasPage() {
        A cable with no circuit still has a size and still runs up to a
        node. Which node is decided by where it ends, which is what
        nodeFedBy answers. */
-    const lines = features.filter((f) =>
+    const lines = src.filter((f) =>
       f.Feature_Type === "line"
       && f.Layer_Key === "electric"
       /* Either size: a cable set by hand is the one that will be
@@ -6209,7 +6216,7 @@ export default function GISCanvasPage() {
       return `${t?.Cable_Type ?? ""} ${c.Size_Label ?? ""}`;
     };
 
-    for (const f of features) {
+    for (const f of src) {
       if (f.Feature_Role !== "spannode") continue;
       const held = sizeIdFor(f, "electric", "manual");
       if (held == null) continue;
@@ -6225,10 +6232,22 @@ export default function GISCanvasPage() {
     }
 
     for (const line of lines) {
-      const node = nodeFedBy(line);
+      const node = nodeFedBy(line, src);
       if (!node) continue;
       const want = sizeIdFor(line, "electric", "manual");
-      if (String(sizeIdFor(node, "electric", "manual") ?? "") === String(want)) continue;
+
+      /* What this node will hold once the passes are done \u2014 the
+         clearing pass may already have emptied it.
+
+         Reading the original feature here compared against the service
+         cable that was about to be removed, and where the main happened
+         to be a different size the comparison passed and the update was
+         written from stale attributes. Where it matched, the node was
+         skipped entirely and kept nothing at all. */
+      const pending = updates.get(node.Feature_ID);
+      const attrsNow = pending ? pending.Attributes : node.Attributes;
+      const heldNow = sizeIdFor({ ...node, Attributes: attrsNow }, "electric", "manual");
+      if (String(heldNow ?? "") === String(want)) continue;
       /* Last one wins where two sections meet at a node, which cannot
          happen on a routed network — a node has one run feeding it. */
       updates.set(node.Feature_ID, {
@@ -6237,7 +6256,7 @@ export default function GISCanvasPage() {
            overridden, so the node says the same thing the drawing does
            and a rebuild does not quietly undo it. */
         Attributes: {
-          ...node.Attributes,
+          ...attrsNow,
           ...(line.Attributes?.Manual_VD_Cable_Size_ID != null
             ? { Manual_VD_Cable_Size_ID: want }
             : { VD_Cable_Size_ID: want }),
@@ -6251,7 +6270,7 @@ export default function GISCanvasPage() {
        this node" look identical on the drawing, and four rounds have
        gone into telling them apart by guesswork. A count turns the next
        question into a fact. */
-    const stillUnset = features.filter((f) => f.Feature_Role === "spannode"
+    const stillUnset = src.filter((f) => f.Feature_Role === "spannode"
       && Number(f.Attributes?.Span_Seq) !== 0
       && sizeIdFor(f, "electric", "manual") == null
       && !updates.has(f.Feature_ID));
@@ -10702,7 +10721,7 @@ export default function GISCanvasPage() {
       if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
       if (line.Attributes?.Circuit_ID == null) continue;
       if (line.Attributes?.VD_Cable_Size_ID == null) continue;
-      const node = nodeFedBy(line);
+      const node = nodeFedBy(line, src);
       if (!node) continue;
       if (String(node.Attributes?.VD_Cable_Size_ID ?? "")
         !== String(line.Attributes.VD_Cable_Size_ID)) out.push(node);
@@ -12377,7 +12396,16 @@ export default function GISCanvasPage() {
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
-          onCableSized={() => syncNodeCables({ silent: true })}
+          onCableSized={async () => {
+            /* The saved drawing, then the sync.
+
+               syncNodeCables reads `features`, and the save that just
+               happened has not reached state yet \u2014 so without the
+               reload it pushes the size the cable had before the edit. */
+            const fresh = await listGis(projectId);
+            setFeatures(fresh.features || []);
+            await syncNodeCables({ silent: true, srcFeatures: fresh.features || [] });
+          }}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}

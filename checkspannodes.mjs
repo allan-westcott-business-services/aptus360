@@ -557,6 +557,112 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (cleared.some((n) => n.id === "A9")) fail("a node holding a main was cleared");
 }
 
+/* A cable feeds the downstream node of the two it touches.
+
+   Both ends are searched and the far one only decides between them.
+   Narrowing the search to a single end was wrong: a node sitting at the
+   near end was then not found at all, so cables that had been matching
+   stopped matching and nothing was updated. The far end is a tie-break,
+   not a filter.
+
+   Three steps, each answering what the one before could not:
+   sequence where both nodes have one, distance from the substation
+   where they do not, and nearness as the last thing left to say. */
+{
+  const sub = [0, 0];
+  const fromSub = (p) => Math.hypot(p[0] - sub[0], p[1] - sub[1]);
+  const pick = (a, b) => {
+    const sa = a.seq ?? -1;
+    const sb = b.seq ?? -1;
+    if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
+    const da = fromSub(a.at);
+    const db = fromSub(b.at);
+    if (Math.abs(da - db) > 0.5) return db > da ? b : a;
+    return b.gap < a.gap ? b : a;
+  };
+
+  /* Sequenced: the higher number is downstream. */
+  if (pick({ seq: 1, at: [100, 0], gap: 0 }, { seq: 2, at: [200, 0], gap: 0 }).seq !== 2) {
+    fail("a cable fed the upstream node of two sequenced ones");
+  }
+  /* Unsequenced: the one further from the substation. */
+  const un = pick({ seq: null, at: [100, 0], gap: 0 }, { seq: null, at: [200, 0], gap: 0 });
+  if (fromSub(un.at) !== 200) fail("a cable fed the node nearer the substation");
+  /* Equally far: the nearer to the cable's end, which is all that is
+     left to distinguish them. */
+  if (pick({ seq: null, at: [100, 0], gap: 4 }, { seq: null, at: [100, 0], gap: 1 }).gap !== 1) {
+    fail("two nodes the same distance out were not separated by nearness");
+  }
+}
+
+/* An electric trace starts at E0, not at whatever origin is nearest.
+
+   A gas POC placed near the substation gets its own origin node, G0, at
+   very nearly the same point. Every node with sequence zero was taken
+   as the origin regardless of layer, so an electric circuit reported
+   its first leg as leaving G0 — the gas network's origin.
+
+   The origins are per utility; the A-numbered nodes are not, because
+   they mark the dig itself and every utility shares it. */
+{
+  const usable = (layer) => !(layer && layer !== "electric" && layer !== "trench");
+
+  if (!usable("electric")) fail("an electric origin was skipped");
+  /* Span nodes live on the trench layer \u2014 they mark the dig, which
+     every utility shares. */
+  if (!usable("trench")) fail("a span node on the trench layer was skipped");
+  if (usable("gas")) fail("a gas origin was taken as an electric one");
+  if (usable("water")) fail("a water origin was taken as an electric one");
+  /* A node drawn before layers were recorded is still used: excluding
+     it would empty the report on an older drawing. */
+  if (!usable(null)) fail("a node with no layer was skipped");
+}
+
+/* The levels report reads the cable that will be pulled.
+
+   cableIdOf defaulted to the calculated size, so a cable set by hand
+   showed on the drawing and in the bill but not in the levels report —
+   the one place the size changes the answer. The volt drop was worked
+   out on a conductor nobody is laying.
+
+   Same rule as the drawing and the bill: the override where there is
+   one, the calculated size elsewhere. Asking for "system" still gives
+   the build's answer, for comparing the two. */
+{
+  const pick = (attrs, mode) => (mode === "system"
+    ? (attrs.VD_Cable_Size_ID ?? null)
+    : (attrs.Manual_VD_Cable_Size_ID ?? attrs.VD_Cable_Size_ID ?? null));
+
+  const built = { VD_Cable_Size_ID: 7 };
+  const over = { VD_Cable_Size_ID: 7, Manual_VD_Cable_Size_ID: 9 };
+
+  if (pick(over) !== 9) fail("the levels report reads the calculated cable");
+  if (pick(built) !== 7) fail("a cable with no override stopped being read");
+  if (pick(over, "system") !== 7) fail("the system view stopped showing the build's answer");
+}
+
+/* And the two passes of the node sync compose.
+
+   The clearing pass empties a node holding a service cable; the mains
+   pass fills it. Reading the original feature in the second compared
+   against the cable about to be removed \u2014 so where the main was the
+   same size the node was skipped and kept nothing at all. */
+{
+  const names = { 7: "3c WAVE 95", 21: "Single Phase Service CNE 4" };
+  const run = (held, mainSize) => {
+    const updates = new Map();
+    if (held != null && /service/i.test(names[held] ?? "")) updates.set(1, { vd: null });
+    const pending = updates.get(1);
+    const now = pending ? pending.vd : held;
+    if (String(now ?? "") !== String(mainSize)) updates.set(1, { vd: mainSize });
+    return updates.get(1)?.vd ?? "unchanged";
+  };
+
+  if (run(21, 7) !== 7) fail("a node holding a service was not given the main");
+  if (run(null, 7) !== 7) fail("an empty node was not filled");
+  if (run(7, 7) !== "unchanged") fail("a node already correct was rewritten");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

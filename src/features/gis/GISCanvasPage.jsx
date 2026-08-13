@@ -67,6 +67,7 @@ import {
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
 import { sizeIdFor, isOverridden, sizeLabelOf } from "./sizeMode.js";
+import { electricSteps } from "./electricSteps.js";
 import { upstreamTooSmall } from "./upstreamSize.js";
 import {
   gasMainRuns, END_EXTEND_M,
@@ -570,6 +571,7 @@ export default function GISCanvasPage() {
      figures on the drawing outlive the panel, and closing one should
      not discard the other. */
   const [gasLevelsPanel, setGasLevelsPanel] = useState(false);
+  const [stepsOpen, setStepsOpen] = useState(false);
   /* What each length of main carries, once a check has run. */
   /* What each length of main carries, from the check that produced it.
      Read off the result so it cannot outlive it. */
@@ -748,6 +750,25 @@ export default function GISCanvasPage() {
        anything that is not horizontal. */
     return best ? -Math.atan2(best.vy, best.vx) : 0;
   }, [features]);
+
+  /* Where the electric design has got to, worked out from the drawing.
+
+     Not stored: a step recorded as done when somebody pressed a button
+     says so for ever, including after the trench it drew is deleted. */
+  const steps = useMemo(() => electricSteps({
+    features, plots: plotList, developers, lineTypes,
+  }), [features, plotList, developers, lineTypes]);
+
+  /* Run a step, or say what has to happen first.
+
+     Refused rather than hidden or greyed: a menu item that vanishes
+     leaves somebody hunting for it, and one greyed with no reason is
+     the same problem more politely. The reason is the useful part. */
+  const runStep = useCallback((key, go) => {
+    const r = steps.allows(key);
+    if (!r.ok) { setError(r.why); return; }
+    go();
+  }, [steps]);
 
   const drag = useRef(null);
 
@@ -2457,6 +2478,14 @@ export default function GISCanvasPage() {
       if (f.Feature_Type === "point") {
         const p = pts[0];
         const isMeter = f.Feature_Role === "meter";
+        /* Which way the cable under a joint runs.
+
+           Declared with the other facts about this point rather than
+           beside the drawing that uses it: the rotation is opened in
+           one block and closed in another, and a const inside the
+           first is not in scope for the second \u2014 "spin is not
+           defined", on every drawing with a joint on it. */
+        const spin = f.Feature_Role === "joint" ? jointAngle(f) : 0;
         const isSeed = f.Feature_Role === "plot";
         /* Seeds take the bedroom colour used everywhere else for plots.
 
@@ -2599,7 +2628,6 @@ export default function GISCanvasPage() {
              The angle is taken from the cable under it rather than
              stored, so moving either keeps them in step and nothing has
              to be re-run to correct the drawing. */
-          const spin = f.Feature_Role === "joint" ? jointAngle(f) : 0;
           if (spin) {
             ctx.save();
             ctx.translate(p.x, p.y);
@@ -11614,7 +11642,8 @@ export default function GISCanvasPage() {
                     <MenuItem label={busy === "autoservice" ? "Auto Service\u2026" : "Auto Service"}
                       hint="Draw the service trench and cable for every meter without one"
                       disabled={!!busy || !projectId}
-                      onClick={() => withUndo("Auto Service", runAutoService)} />
+                      onClick={() => runStep("service",
+                        () => withUndo("Auto Service", runAutoService))} />
                     <MenuItem label="Check Services Reach the Mains"
                       disabled={!projectId}
                       onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
@@ -11756,7 +11785,8 @@ export default function GISCanvasPage() {
                     <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
                       hint="Routes each circuit's cables along the trenches"
                       disabled={busy === "feeder" || !circuitsFrom(features).length}
-                      onClick={() => withUndo("Build LV Network", () => buildLvNetwork())} />
+                      onClick={() => runStep("build",
+                        () => withUndo("Build LV Network", () => buildLvNetwork()))} />
                     <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
                       hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes"
                       disabled={!!busy || !circuitsFrom(features).length}
@@ -12006,6 +12036,17 @@ export default function GISCanvasPage() {
                   </Menu>
 
                   <Menu id="tools" label="Tools & Reporting" open={open} setOpen={setOpen}>
+                    {/* The order the electric design is built in.
+
+                        Shown rather than only enforced: somebody who
+                        knows what is blocked can go and do it, and
+                        somebody who does not is otherwise guessing at
+                        which of eight things comes next. */}
+                    <MenuItem label={`Electric build order \u00b7 ${steps.doneCount} of 8`}
+                      hint={steps.next ? `Next: ${steps.next.title}` : "All steps done"}
+                      onClick={() => setStepsOpen(true)} />
+                    <div className="gm-sep" />
+
                     {/* Drawn round whatever is to go, rather than
                         selected one object at a time. A phase that has
                         been redrawn is a dozen clicks otherwise, and a
@@ -12361,6 +12402,34 @@ export default function GISCanvasPage() {
       {/* Dismissable: an error that has been read should not sit over
           the drawing for the rest of the session. */}
       {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
+
+      {stepsOpen && (
+        <div className="gis-steps">
+          <div className="gs-head">
+            <strong>Electric build order</strong>
+            <button className="gs-x" onClick={() => setStepsOpen(false)}>&times;</button>
+          </div>
+          <ol className="gs-list">
+            {steps.steps.map((st) => (
+              <li key={st.key}
+                className={st.done ? "gs-done" : st.open ? "gs-now" : "gs-wait"}>
+                <span className="gs-mark">{st.done ? "\u2713" : ""}</span>
+                <span className="gs-body">
+                  <strong>{st.title}</strong>
+                  <span className="gs-hint">{st.hint}</span>
+                  <span className="gs-detail">{st.detail}</span>
+                </span>
+              </li>
+            ))}
+          </ol>
+          <p className="gs-foot">
+            {steps.next
+              ? `Next: ${steps.next.title}.`
+              : "Every step is done."}
+            {" Worked out from the drawing, so it stays right if something is redrawn."}
+          </p>
+        </div>
+      )}
       {status && <Banner kind="ok">{status}</Banner>}
 
       {!projectId ? (
@@ -14379,6 +14448,34 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    Still inset from the edges: it sits over the drawing, and a panel
    flush to the frame reads as a page rather than something covering
    what is underneath. */
+/* The build order, as a panel rather than a wizard.
+
+   A wizard owns the screen and makes a designer answer questions in the
+   order it likes; this sits beside the drawing and says where things
+   have got to. Somebody who wants to work out of order still can \u2014 the
+   steps that matter are refused with a reason, and the rest are theirs
+   to judge. */
+.gis-steps { position: absolute; left: 12px; top: 44px; z-index: 9; width: 330px;
+  background: var(--white); border: 1px solid var(--border); border-radius: 10px;
+  padding: 10px 12px; box-shadow: 0 10px 30px rgba(15,23,42,.2);
+  max-height: 70%; overflow-y: auto; font-size: 12.5px; }
+.gs-head { display: flex; align-items: center; justify-content: space-between; }
+.gs-x { border: 0; background: none; font-size: 17px; line-height: 1; cursor: pointer;
+  color: var(--muted); }
+.gs-list { list-style: none; margin: 8px 0 0; padding: 0; counter-reset: step; }
+.gs-list li { display: flex; gap: 8px; padding: 7px 0;
+  border-top: 1px solid var(--bg); }
+.gs-mark { flex: 0 0 16px; font-weight: 700; color: var(--ok-text); }
+.gs-body { display: flex; flex-direction: column; gap: 1px; min-width: 0; }
+.gs-hint { color: var(--muted); }
+.gs-detail { font-size: 11.5px; color: var(--muted); }
+/* Done recedes, the next one leads, and the rest are quiet \u2014 the eye
+   should land on the one thing to do now. */
+.gs-done { opacity: .55; }
+.gs-now strong { color: var(--accent); }
+.gs-wait { opacity: .75; }
+.gs-foot { margin: 8px 0 0; font-size: 11.5px; color: var(--muted); }
+
 .gis-trace { position: absolute; right: 12px; top: 44px; bottom: 12px; z-index: 8;
   width: auto; left: 12px; max-width: none;
   background: var(--white); border: 1px solid var(--border); border-radius: 10px;

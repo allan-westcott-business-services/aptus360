@@ -714,6 +714,41 @@ export default function GISCanvasPage() {
 
   // view transform: metres → pixels
   const [view, setView] = useState({ x: 60, y: 60, scale: 4 });
+  /* Which way the cable under a joint runs, in radians.
+
+     The nearest segment of the nearest line, which is the cable the
+     joint sits on. Nothing found leaves it square to the page, which is
+     the old behaviour and the honest answer when there is no cable to
+     align to. */
+  const jointAngle = useCallback((joint) => {
+    const at = (joint.Geometry || [])[0];
+    if (!at) return 0;
+    let best = null;
+    for (const f of features) {
+      if (f.Feature_Type !== "line") continue;
+      if (f.Layer_Key !== joint.Layer_Key) continue;
+      const g = f.Geometry || [];
+      for (let i = 1; i < g.length; i++) {
+        const a = g[i - 1];
+        const b = g[i];
+        const vx = b[0] - a[0];
+        const vy = b[1] - a[1];
+        const len2 = vx * vx + vy * vy;
+        if (!len2) continue;
+        const t = Math.max(0, Math.min(1,
+          ((at[0] - a[0]) * vx + (at[1] - a[1]) * vy) / len2));
+        const q = [a[0] + vx * t, a[1] + vy * t];
+        const d = Math.hypot(at[0] - q[0], at[1] - q[1]);
+        if (d > 3) continue;
+        if (!best || d < best.d) best = { d, vx, vy };
+      }
+    }
+    /* Screen y grows downward while the drawing's grows up, so the
+       angle is negated \u2014 without it every joint leans the wrong way on
+       anything that is not horizontal. */
+    return best ? -Math.atan2(best.vy, best.vx) : 0;
+  }, [features]);
+
   const drag = useRef(null);
 
 
@@ -2553,6 +2588,25 @@ export default function GISCanvasPage() {
             }
           }
 
+          /* A joint lies along its cable.
+
+             It is a box buried in the trench, laid the way the cable
+             runs \u2014 so a square drawn square to the page reads as a
+             marker on the drawing rather than as the thing it
+             represents. On a curved road a row of them all facing the
+             same way looks like a mistake.
+
+             The angle is taken from the cable under it rather than
+             stored, so moving either keeps them in step and nothing has
+             to be re-run to correct the drawing. */
+          const spin = f.Feature_Role === "joint" ? jointAngle(f) : 0;
+          if (spin) {
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(spin);
+            ctx.translate(-p.x, -p.y);
+          }
+
           symbolPath(ctx, ps.symbol, p.x, p.y, r);
           if (STROKE_ONLY.has(ps.symbol)) {
             ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? fill);
@@ -2566,6 +2620,10 @@ export default function GISCanvasPage() {
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
+        /* The rotation ends with the symbol. A label drawn inside it
+           would be rotated too, and a joint's label is read off the
+           page rather than along the cable. */
+        if (spin) ctx.restore();
         /* Labels are a layer of their own: on a drawing this dense they
            are the difference between reading it and not, and sometimes
            the difference between seeing the geometry and not. Selection
@@ -5481,7 +5539,30 @@ export default function GISCanvasPage() {
     /* A cable with no circuit feeds whichever node it ends at. Refusing
        it here is what left a hand-drawn run's node unset. */
     const cid = line.Attributes?.Circuit_ID ?? null;
+    /* Only the far end of the cable, measured from the substation.
+
+       A cable was matched against both of its ends, so it could claim
+       the node it *leaves* as readily as the node it arrives at. On the
+       first run that is the difference between A1 being fed by the
+       cable from the substation and being fed by the cable heading away
+       from it \u2014 and with unassigned nodes now eligible, the tie-break
+       fell to whichever was nearer rather than which was upstream.
+
+       The end further from the substation is downstream. That is a fact
+       about the drawing rather than about the numbering, so it holds
+       for a node the build never sequenced. */
+    const sub = features.find((f) => f.Feature_Role === "substation"
+      && (f.Geometry || []).length);
+    const at = sub?.Geometry?.[0] ?? null;
+    /* Both ends are searched, and the far one only decides between
+       them.
+
+       Narrowing the search to a single end was wrong: a node sitting at
+       the near end was then not found at all, so cables that had been
+       matching stopped matching and no node was updated with anything.
+       The far end is a tie-break, not a filter. */
     const ends = [g[0], g[g.length - 1]];
+    const fromSub = (p) => (at ? Math.hypot(p[0] - at[0], p[1] - at[1]) : 0);
 
     /* A service cable never feeds a span node.
 
@@ -5560,10 +5641,27 @@ export default function GISCanvasPage() {
        is downstream: that is the node this cable feeds. Where neither
        is numbered, the closest to an end is taken, which is the best
        that can be said without the graph. */
+    /* The downstream node of the two.
+
+       Span_Seq counts outward from the origin, so where both are
+       numbered the higher is downstream and that is the node this cable
+       feeds. Where they are not \u2014 a node the build never sequenced \u2014
+       distance from the substation says the same thing about the
+       drawing rather than about the numbering.
+
+       Only then the nearest, which is all that is left to say. */
+    const posOf = (f) => {
+      const a2 = f.Attributes?.Span_Anchor;
+      return (Array.isArray(a2) && a2.length === 2 ? a2 : f.Geometry[0]);
+    };
+
     return near.reduce((a, b) => {
       const sa = Number(a.Attributes?.Span_Seq ?? -1);
       const sb = Number(b.Attributes?.Span_Seq ?? -1);
       if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
+      const da = fromSub(posOf(a));
+      const db = fromSub(posOf(b));
+      if (at && Math.abs(da - db) > 0.5) return db > da ? b : a;
       return gapOf(b) < gapOf(a) ? b : a;
     });
   }, [features]);

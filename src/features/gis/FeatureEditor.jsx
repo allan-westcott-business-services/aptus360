@@ -31,6 +31,9 @@ export default function FeatureEditor({
   /* Told when a gas main is sized by hand, so the canvas can offer to
      bring the pipes between here and the POC up to match. */
   onUpstreamSize,
+  /* Told when a cable is sized by hand, so the canvas can put the same
+     size on the span node the run feeds. */
+  onCableSized,
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
   onIsolateCircuit, circuitIsolated,
 }) {
@@ -1270,8 +1273,15 @@ export default function FeatureEditor({
                     <label htmlFor="fe-cablesize">Manually set</label>
                     <select id="fe-cablesize"
                       value={f.Attributes.Manual_VD_Cable_Size_ID ?? ""}
-                      onChange={(e) => setAttr("Manual_VD_Cable_Size_ID")(
-                        e.target.value ? Number(e.target.value) : null)}>
+                      onChange={(e) => {
+                        const id = e.target.value ? Number(e.target.value) : null;
+                        setAttr("Manual_VD_Cable_Size_ID")(id);
+                        /* The span node fed by this run carries the
+                           cable the trace reads, so changing one here
+                           without the other leaves the volt drop
+                           computed on a cable nobody is laying. */
+                        onCableSized?.(feature, id);
+                      }}>
                       <option value="">Not overridden</option>
                       {/* The cable and nothing else. The material and
                           the missing-figures warning were on every

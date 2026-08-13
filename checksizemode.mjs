@@ -289,6 +289,28 @@ if (sizeIdFor({ Layer_Key: "trench", Attributes: {} }, "trench") !== null) {
   }
 }
 
+/* A span node carries the cable of the run feeding it, including where
+   that run was sized by hand.
+
+   The trace reads the node's cable, not the run's. Applying only the
+   calculated size left an overridden run's node on the size the build
+   chose, and the volt drop was then worked out on a cable nobody is
+   laying. */
+{
+  const run = {
+    Layer_Key: "electric",
+    Attributes: { VD_Cable_Size_ID: 7, Manual_VD_Cable_Size_ID: 9 },
+  };
+  if (sizeIdFor(run, "electric", "manual") !== 9) {
+    fail("the sync would put the calculated cable on the node");
+  }
+  /* And a run nobody overrode still passes its calculated size on. */
+  const plain = { Layer_Key: "electric", Attributes: { VD_Cable_Size_ID: 7 } };
+  if (sizeIdFor(plain, "electric", "manual") !== 7) {
+    fail("a run with no override stopped passing its cable to the node");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Size modes behave (both recorded, either read, neither lost).");
 process.exit(bad ? 1 : 0);

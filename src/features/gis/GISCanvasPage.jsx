@@ -2969,9 +2969,21 @@ export default function GISCanvasPage() {
              geometry, so it follows a run edited since, and the cable is
              the one on the line now, so a size changed in the editor
              shows immediately. */
-          const cabled = f.Layer_Key === "electric" && a.VD_Cable_Size_ID != null
-            ? `${cableNames.get(Number(a.VD_Cable_Size_ID)) ?? "cable not in the catalogue"}`
-              + `  ${lineLength(f.Geometry).toFixed(1)} m`
+          /* The cable that will be pulled: the one set by hand where
+             there is one, and the build's otherwise. It read only the
+             calculated size, so a run somebody had overridden went on
+             showing the size the build chose \u2014 the same fault the gas
+             mains had, on the other utility.
+
+             Stacked like a pipe, for the same reason: size and length
+             are two quantities, and one line means telling them apart
+             by their units. */
+          const cableId = sizeIdFor(f, "electric", "manual");
+          const cabled = f.Layer_Key === "electric" && cableId != null
+            ? [
+              cableNames.get(Number(cableId)) ?? "cable not in the catalogue",
+              `${lineLength(f.Geometry).toFixed(1)} m`,
+            ].join("\n")
             : "";
 
           /* The line's own label, as against the circuit's. Water and
@@ -5951,30 +5963,48 @@ export default function GISCanvasPage() {
      So this is the deliberate reconciliation: it says how many disagree,
      names them, and only then writes. What the trace reads becomes what
      the sections say. */
-  async function syncNodeCables() {
+  async function syncNodeCables({ silent = false } = {}) {
     const lines = features.filter((f) =>
       f.Feature_Type === "line"
       && f.Layer_Key === "electric"
       && f.Attributes?.Circuit_ID != null
-      && f.Attributes?.VD_Cable_Size_ID != null);
+      /* Either size: a cable set by hand is the one that will be
+         pulled, so it is the one the node has to carry. Reading only
+         the calculated size meant an overridden run left its node on
+         the size the build had chosen \u2014 and the volt drop was then
+         worked out on a cable nobody is laying. */
+      && sizeIdFor(f, "electric", "manual") != null);
 
     const updates = new Map();
     for (const line of lines) {
       const node = nodeFedBy(line);
       if (!node) continue;
-      const want = line.Attributes.VD_Cable_Size_ID;
-      if (String(node.Attributes?.VD_Cable_Size_ID ?? "") === String(want)) continue;
+      const want = sizeIdFor(line, "electric", "manual");
+      if (String(sizeIdFor(node, "electric", "manual") ?? "") === String(want)) continue;
       /* Last one wins where two sections meet at a node, which cannot
          happen on a routed network — a node has one run feeding it. */
       updates.set(node.Feature_ID, {
         node,
-        Attributes: { ...node.Attributes, VD_Cable_Size_ID: want },
+        /* Written to the node's own manual field where the run was
+           overridden, so the node says the same thing the drawing does
+           and a rebuild does not quietly undo it. */
+        Attributes: {
+          ...node.Attributes,
+          ...(line.Attributes?.Manual_VD_Cable_Size_ID != null
+            ? { Manual_VD_Cable_Size_ID: want }
+            : { VD_Cable_Size_ID: want }),
+        },
       });
     }
 
     if (!updates.size) {
-      setStatus("Every span node already matches the run feeding it.");
-      setTimeout(() => setStatus(""), 6000);
+      /* Quiet when run as part of something larger: "already matches"
+         is worth saying to somebody who pressed the menu item and
+         noise to somebody who pressed Build. */
+      if (!silent) {
+        setStatus("Every span node already matches the run feeding it.");
+        setTimeout(() => setStatus(""), 6000);
+      }
       return;
     }
 
@@ -7897,6 +7927,17 @@ export default function GISCanvasPage() {
       try {
         jointsMade = await placeFeederJoints({ silent: true, srcFeatures: all });
       } catch { /* A joint that cannot be placed must not fail the build. */ }
+
+      /* Every span node given the cable of the run feeding it.
+
+         The trace reads a node's cable, not the run's, so a build that
+         laid cables and left the nodes alone produced a network that
+         could not be checked \u2014 and it was a separate menu item nobody
+         had reason to know they had to press. It belongs to the build,
+         because it is part of having built. */
+      try {
+        await syncNodeCables({ silent: true });
+      } catch { /* Never fail a build over the nodes. */ }
 
       await load(projectId);
 
@@ -11955,6 +11996,7 @@ export default function GISCanvasPage() {
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
+          onCableSized={() => syncNodeCables({ silent: true })}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}

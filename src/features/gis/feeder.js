@@ -82,6 +82,15 @@ export const METERS_PER_CABLE = 70;
    with. */
 export const SNAP_TOL = 12;
 
+/* How far past the end of a cable a span node may sit and still be
+   reported.
+
+   A cable often stops a few metres short of the trench end, and the
+   node marking that end is still the node the design is measured to.
+   Ten metres covers that and refuses to adopt a node from elsewhere on
+   the site. */
+export const SPAN_REACH_M = 10;
+
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 const isTrench = (f, lineTypes = []) => {
@@ -785,11 +794,50 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     : nearest((node.Geometry || [])[0] || [0, 0]);
   if (startIdx < 0) return { error: "Couldn't locate this node on the circuit." };
 
+  /* Which graph nodes carry a span node on this circuit.
+
+     Worked out before the pruning below, because a span node is a
+     reason to keep a branch even where nothing beyond it draws load. */
+  const hasSpanNode = new Set();
+  for (const sn of features) {
+    if (sn.Feature_Role !== "spannode") continue;
+    if (Number(sn.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    /* Where it belongs on the dig, not where its marker was dragged. */
+    const a = sn.Attributes?.Span_Anchor;
+    const at0 = (Array.isArray(a) && a.length === 2 ? a : (sn.Geometry || [])[0])
+      || [0, 0];
+    const at = nearest(at0);
+    if (at < 0) continue;
+    /* Bounded, because nearest has no limit of its own: without this a
+       node on the far side of the site would keep alive whatever graph
+       node happened to be closest to it. A few metres is the gap being
+       allowed for \u2014 a cable stopping short of the trench end \u2014 not a
+       licence to adopt anything. */
+    if (dist(nodes[at], at0) > SPAN_REACH_M) continue;
+    hasSpanNode.add(at);
+  }
+
   /* Mains children carrying load. parSvc drops service spurs; cum > 0
-     drops branches that lead nowhere for this circuit. */
+     drops branches that lead nowhere for this circuit.
+
+     ── Except a branch ending at a span node ──
+
+     A node at the end of a trench with no meter beyond it carries no
+     load, so the pruning dropped it and no leg ever stopped there. The
+     report then ran the previous node straight to the meter and the
+     span node was missing from the levels entirely \u2014 which is what
+     "A16 → Electric Meter 62" was, with A23 nowhere in it.
+
+     A span node is a measuring point, not a customer. It is worth
+     reporting precisely because somebody placed it, and the cable
+     stopping a few metres short of it does not make it disappear. The
+     level shown is the level at the end of the cable, since that is
+     where the cable ends: no drop is invented for pipe that was never
+     laid. */
   const kids = new Map();
   for (let i = 0; i < nodes.length; i++) {
-    if (parent[i] < 0 || parSvc[i] || cum[i] <= 0) continue;
+    if (parent[i] < 0 || parSvc[i]) continue;
+    if (cum[i] <= 0 && !hasSpanNode.has(i)) continue;
     if (!kids.has(parent[i])) kids.set(parent[i], []);
     kids.get(parent[i]).push(i);
   }

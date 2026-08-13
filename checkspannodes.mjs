@@ -325,6 +325,37 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   }
 }
 
+/* A span node past the end of the cable is still reported.
+
+   A cable often stops a few metres short of the trench end, and the
+   node marking that end carries no load beyond it — so the walk pruned
+   the branch and no leg ever stopped there. The report ran the previous
+   node straight to the meter and the span node was missing from the
+   levels entirely.
+
+   A span node is a measuring point, not a customer. It is worth
+   reporting because somebody placed it, and the cable stopping short
+   does not make it disappear. */
+{
+  const REACH = 10;
+  const keep = (cum, hasNode) => cum > 0 || hasNode;
+
+  /* The case from the drawing: a node at a dead end, nothing beyond. */
+  if (!keep(0, true)) fail("a span node with no load beyond it was dropped");
+  /* An ordinary loaded branch is unaffected. */
+  if (!keep(12, false)) fail("a branch carrying load was dropped");
+  /* And a dead end with neither load nor a node is still pruned —
+     otherwise every stub of trench would appear in the levels. */
+  if (keep(0, false)) fail("an empty dead end was kept");
+
+  /* The reach is bounded. Without a limit the nearest graph node to a
+     span node is always *some* node, so one on the far side of the site
+     would keep alive whatever happened to be closest to it. */
+  const within = (d) => d <= REACH;
+  if (!within(3)) fail("a node three metres past the cable was refused");
+  if (within(40)) fail("a node forty metres away was adopted");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

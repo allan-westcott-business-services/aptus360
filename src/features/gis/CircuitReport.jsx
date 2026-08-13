@@ -247,6 +247,17 @@ export default function CircuitReport({
                   <span className="cr-meta">
                     from {report.station} &middot; {c.count} meter{c.count === 1 ? "" : "s"}
                     {" \u00B7 "}{kvaF(c.totalKva)}
+                    {/* Said where it happens rather than left as a
+                        column of dashes: a missing distance means the
+                        walk could not get there from the substation,
+                        which is a network not joined up \u2014 usually a
+                        feeder that does not start on the substation. */}
+                    {c.unreached > 0 && (
+                      <span className="cr-gap">
+                        {" "}({c.unreached} not reached from the substation \u2014
+                        check the feeder starts on it)
+                      </span>
+                    )}
                     {c.kvaMissing > 0 && (
                       <span className="cr-gap"> ({c.kvaMissing} with no load recorded)</span>
                     )}

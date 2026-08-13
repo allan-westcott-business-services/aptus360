@@ -181,6 +181,23 @@ const METER = {
   if (d.get(4) == null || d.get(5) == null) {
     fail("a substation fed only one of the two cables leaving it");
   }
+
+  /* And a feeder must start *on* the substation.
+
+     A meter is allowed to sit metres from its service, because a meter
+     is a box on a wall. A feeder is not: it leaves the substation, and
+     a gap there is a drawing that has not been joined up rather than a
+     tolerance to widen. Absorbing it would hide the fault and put a few
+     metres of nothing into every distance on the site.
+
+     So this must NOT be reached — and the report says how many meters
+     it could not get to, rather than showing a column of dashes. */
+  const offset = { Feature_ID: 6, Feature_Type: "line", Geometry: [[3, 0], [53, 0]] };
+  const far = { Feature_ID: 7, Feature_Role: "meter", Geometry: [[53, 0]] };
+  const gap = distancesFrom([SUB, offset, far], 1);
+  if (gap.get(7) != null) {
+    fail("a cable starting three metres away was treated as joined");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

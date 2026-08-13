@@ -377,6 +377,14 @@ export function buildGraph(features = []) {
     if (f.Feature_Role !== "meter") {
       for (const g of features) {
         if (g === f || isPoint(g) || !endsOf(g).length) continue;
+        /* Exactly on it, as a cable leaving a substation should be.
+
+           A meter is allowed to sit metres from its service because a
+           meter is a box on a wall. A feeder is not: it starts at the
+           substation, and a gap there is a drawing that has not been
+           joined up rather than a tolerance to be widened. Absorbing it
+           would hide the fault and put a few metres of nothing into
+           every distance on the site. */
         if (gapBetween(f, g) > CONNECT_M) continue;
         const a = Number(f.Feature_ID);
         const b = Number(g.Feature_ID);
@@ -682,6 +690,14 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
        because the total is the figure people quote. */
     kvaMissing: rows.filter((r) => r.kvaMissing).length,
     maxDist: rows.reduce((t, r) => (r.distM != null && r.distM > t ? r.distM : t), 0),
+    /* Meters the walk could not reach from the substation.
+
+       A blank distance column is the symptom of a network that is not
+       joined up \u2014 most often a feeder that does not start exactly on
+       the substation \u2014 and a column of dashes says nothing about which.
+       Counted here so the report can say it plainly rather than leaving
+       somebody to wonder whether the figure is missing or the run is. */
+    unreached: rows.filter((r) => r.distM == null).length,
   });
 
   const circuits = [...byCircuit.values()]

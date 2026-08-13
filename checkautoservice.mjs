@@ -5,7 +5,7 @@
    drawing, so on any trench that is not a straight line the cable came
    out shorter than the dig it sits in — and every quantity taken off it
    was wrong in the cheap direction. */
-import { planSeed } from "./src/features/gis/autoService.js";
+import { planSeed, layServices } from "./src/features/gis/autoService.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -154,6 +154,111 @@ const utils = () => ["electric"];
   );
   if (!none.skipped) fail("a plot with no boundary point was serviced anyway");
   if (none.trench) fail("a plot with no boundary point still got a dig");
+}
+
+/* Every utility's service runs along its trench.
+
+   Auto Service draws the dig from the main to the boundary and lays the
+   pipe or cable in it. The plan is the same for electric, gas and
+   water: start where the service trench meets the main, follow it to
+   the boundary, then leave it for the meter. */
+{
+  const p = planSeed(
+    { Feature_ID: 1, Geometry: [[100, 40]], Attributes: { Boundary_At: [100, 25] } },
+    MAINS, () => ["electric", "gas", "water"], {},
+  );
+  if (p.skipped) fail(`a plot with a boundary was skipped: ${p.skipped}`);
+  else {
+    for (const c of p.cables) {
+      /* Three points: the tee, the boundary, the meter. Two would mean
+         it had gone straight from the main to the meter, which is the
+         fault \u2014 the cable is laid in the dig, and the dig turns at the
+         boundary. */
+      if (c.geometry.length < 3) {
+        fail(`the ${c.utility} service runs straight to its meter`);
+      }
+      /* And it starts on the main, not at the plot. */
+      if (Math.abs(c.geometry[0][1]) > 0.01) {
+        fail(`the ${c.utility} service does not start at the main`);
+      }
+      /* Turning at the boundary, wherever the meter ended up. */
+      if (!c.geometry.some((q) => Math.hypot(q[0] - 100, q[1] - 25) < 0.01)) {
+        fail(`the ${c.utility} service does not turn at the boundary`);
+      }
+    }
+    /* All three follow the same dig. */
+    const firsts = new Set(p.cables.map((c) => JSON.stringify(c.geometry[0])));
+    if (firsts.size !== 1) fail("the three utilities start in different places");
+  }
+}
+
+/* Laying one utility's services into trenches already drawn.
+
+   Auto Service draws the dig and lays everything in it. This does the
+   second half only, for one utility — because the three are rarely
+   designed together, and a water run should not quietly add gas pipe to
+   plots nobody has thought about yet. */
+{
+  const isTrench = (f) => /trench/.test(f.Attributes?.Line_Type ?? "");
+  const L = (id, pts, t) => ({
+    Feature_ID: id, Feature_Type: "line",
+    Attributes: { Line_Type: t }, Geometry: pts,
+  });
+  const meter = (id, at, layer) => ({
+    Feature_ID: id, Feature_Role: "meter", Layer_Key: layer, Geometry: [at],
+  });
+
+  /* A service trench that doglegs, with a water meter at its end. */
+  const base = [
+    L(1, [[0, 0], [200, 0]], "trench_main"),
+    L(2, [[60, 0], [60, 8], [70, 8]], "trench_service"),
+    meter(3, [70, 9], "water"),
+  ];
+
+  const r = layServices(base, "water", { isTrench });
+  if (r.error) fail(`laying refused: ${r.error}`);
+  else {
+    if (r.cables.length !== 1) fail(`${r.cables.length} cables laid, wanted 1`);
+    const g = r.cables[0].geometry;
+    /* It starts at the main, follows the dogleg, and ends at the
+       meter. Four points: anything fewer means it cut a corner. */
+    if (g.length !== 4) fail(`the run has ${g.length} points, wanted 4`);
+    if (g[0][0] !== 60 || g[0][1] !== 0) fail("the run does not start at the main");
+    if (Math.abs(g[g.length - 1][1] - 9) > 0.01) fail("the run does not reach the meter");
+  }
+
+  /* Only the utility asked for. A gas meter on the same trench is not
+     this run's business. */
+  const withGas = [...base, meter(4, [70, 9.2], "gas")];
+  const water = layServices(withGas, "water", { isTrench });
+  if (water.cables.length !== 1) fail("laying water touched another utility's plot");
+  const gas = layServices(withGas, "gas", { isTrench });
+  if (gas.cables.length !== 1) fail("gas could not be laid in the same trench");
+
+  /* A trench with no meter of that utility is reported, not guessed
+     at. */
+  const noMeter = layServices([base[0], base[1]], "water", { isTrench });
+  if (noMeter.cables.length) fail("a service was laid to no meter");
+  if (!noMeter.skipped.length) fail("a trench with no meter was passed over silently");
+
+  /* And a trench that reaches no main is not laid into: a service has
+     to come from somewhere. */
+  const adrift = layServices([
+    L(1, [[0, 0], [200, 0]], "trench_main"),
+    L(2, [[600, 0], [600, 8]], "trench_service"),
+    meter(3, [600, 9], "water"),
+  ], "water", { isTrench });
+  if (adrift.cables.length) fail("a service was laid into a trench meeting no main");
+
+  /* Running it twice lays nothing the second time, because somebody
+     will. */
+  const laidAlready = [...base, {
+    Feature_ID: 9, Feature_Type: "line", Layer_Key: "water",
+    Attributes: { Line_Type: "water_service" },
+    Geometry: [[60, 0], [60, 8], [70, 8], [70, 9]],
+  }];
+  const again = layServices(laidAlready, "water", { isTrench });
+  if (again.cables.length) fail("running it twice laid the service twice");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

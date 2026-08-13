@@ -17,6 +17,15 @@ const LT = [
   { Type_Key: "trench_main", Layer_Key: "trench" },
   { Type_Key: "trench_service", Layer_Key: "trench" },
 ];
+/* A boundary is a polygon on the boundary layer, and a developer area
+   is the same thing carrying a developer. There is no Feature_Role
+   "boundary" — looking for one meant a site with its red line plainly
+   drawn read as having none. */
+const poly = (attrs = {}, id = 90) => ({
+  Feature_ID: id, Feature_Type: "polygon", Layer_Key: "boundary",
+  Attributes: attrs, Geometry: [[0, 0], [10, 0], [10, 10]],
+});
+
 const line = (type, id = 1) => ({
   Feature_ID: id, Feature_Type: "line",
   Attributes: { Line_Type: type }, Geometry: [[0, 0], [10, 0]],
@@ -53,7 +62,7 @@ const pt = (role, attrs = {}, id = 1) => ({
   const r = electricSteps({
     plots,
     features: [
-      { Feature_Role: "boundary", Feature_Type: "line", Geometry: [[0, 0], [1, 1]] },
+      poly(),
       pt("plot"),
     ],
     lineTypes: LT,
@@ -82,7 +91,7 @@ const pt = (role, attrs = {}, id = 1) => ({
 {
   const base = {
     plots: [{ plot_id: 1, config_code: "3BS", heat_source_id: 2 }],
-    features: [{ Feature_Role: "boundary", Feature_Type: "line", Geometry: [[0, 0], [1, 1]] }],
+    features: [poly()],
     lineTypes: LT,
   };
   const one = electricSteps({ ...base, developers: [{ id: 1 }] });
@@ -98,7 +107,7 @@ const pt = (role, attrs = {}, id = 1) => ({
   const r = electricSteps({
     plots: [{ plot_id: 1, config_code: "3BS", heat_source_id: 2 }],
     features: [
-      { Feature_Role: "boundary", Feature_Type: "line", Geometry: [[0, 0], [1, 1]] },
+      poly(),
       pt("plot", {}, 1),
       line("trench_main", 2),
       line("trench_service", 3),
@@ -119,7 +128,7 @@ const pt = (role, attrs = {}, id = 1) => ({
     plots: [{ plot_id: 1, config_code: "3BS", heat_source_id: 2 }],
     developers: [{ id: 1 }],
     features: [
-      { Feature_Role: "boundary", Feature_Type: "line", Geometry: [[0, 0], [1, 1]] },
+      poly(),
       pt("plot", {}, 1),
       line("trench_main", 2),
       line("trench_service", 3),
@@ -134,6 +143,45 @@ const pt = (role, attrs = {}, id = 1) => ({
   });
   if (r.doneCount !== 8) fail(`a finished design reads ${r.doneCount} of 8 done`);
   if (r.next) fail(`a finished design still wants ${r.next.key}`);
+}
+
+// 8. The boundary is found the way the rest of the application finds
+//    it: a polygon on the boundary layer, without a developer on it.
+{
+  const plots = [{ plot_id: 1, config_code: "3BS", heat_source_id: 2 }];
+
+  const one = electricSteps({
+    plots, features: [poly()], developers: [{ id: 1 }], lineTypes: LT,
+  });
+  if (!one.steps[1].done) fail("a drawn site boundary was not detected");
+
+  /* A developer area is on the same layer and is not the red line \u2014
+     counting one would say the site was bounded when only one
+     developer's patch was. */
+  const areaOnly = electricSteps({
+    plots,
+    features: [poly({ Project_Developer_ID: 1 }, 91)],
+    developers: [{ id: 1 }],
+    lineTypes: LT,
+  });
+  if (areaOnly.steps[1].done) {
+    fail("a developer area was counted as the site boundary");
+  }
+
+  /* Two developers need an area each. */
+  const two = electricSteps({
+    plots, features: [poly()], developers: [{ id: 1 }, { id: 2 }], lineTypes: LT,
+  });
+  if (two.steps[1].done) fail("two developers with no areas counted as done");
+
+  const withAreas = electricSteps({
+    plots,
+    features: [poly(), poly({ Project_Developer_ID: 1 }, 91),
+      poly({ Project_Developer_ID: 2 }, 92)],
+    developers: [{ id: 1 }, { id: 2 }],
+    lineTypes: LT,
+  });
+  if (!withAreas.steps[1].done) fail("two developers with an area each was not done");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

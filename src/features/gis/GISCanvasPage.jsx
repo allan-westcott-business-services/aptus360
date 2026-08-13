@@ -27,7 +27,7 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import {
   planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline,
-  isServed, meterHasService,
+  isServed, meterHasService, layServices,
 } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
@@ -8966,6 +8966,66 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Lay one utility's services into trenches that are already drawn.
+
+     Auto Service draws the dig and lays everything in it. This does the
+     second half only, for the utility whose menu it was chosen from \u2014
+     because the three are rarely designed together, and a water run
+     should not quietly add gas pipe to plots nobody has thought about
+     yet. */
+  async function autoLayServices(utility) {
+    if (!projectId) return;
+    setBusy("laysvc");
+    try {
+      const { cables, skipped, error } = layServices(features, utility, {
+        isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
+      });
+      if (error) { setError(error); return; }
+      if (!cables.length) {
+        setError(skipped.length
+          ? `Nothing to lay \u2014 ${skipped[0].why}`
+          : `Every service trench already carries ${utility}.`);
+        return;
+      }
+
+      const type = lineTypes.find((t) => t.Layer_Key === utility
+        && /service/i.test(t.Type_Key));
+      if (!type) {
+        setError(`No ${utility} service line type is configured.`);
+        return;
+      }
+
+      const made = [];
+      for (const c of cables) {
+        const f = await createFeature(projectId, {
+          Layer_Key: utility,
+          Feature_Type: "line",
+          Geometry: c.geometry,
+          Attributes: {
+            Line_Type: type.Type_Key,
+            /* Marked as laid by this, so a rebuild can replace it
+               rather than leaving two runs in one trench. */
+            Generated: true,
+            Connects: connectedTo(c.geometry, features, null),
+            /* The scope defaults for this line type — size, and whatever
+               else a new service of this utility starts with. */
+            ...defaultsFor(type.Type_Key),
+          },
+        });
+        made.push(f);
+      }
+
+      await recordAction(`Lay ${made.length} ${utility} service(s)`, [], made);
+      const fresh = await listGis(projectId);
+      setFeatures(fresh.features || []);
+      setStatus(`${made.length} ${utility} service(s) laid`
+        + (skipped.length ? ` \u00b7 ${skipped.length} trench(es) skipped` : ""));
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   async function buildGasNetwork() {
     if (!projectId) return;
     const src = features;
@@ -11668,6 +11728,13 @@ export default function GISCanvasPage() {
                       onClick={() => placeOriginNodes("electric")} />
                     <div className="gm-sep" />
 
+                    <MenuItem label={busy === "laysvc"
+                      ? "Laying\u2026" : "Auto Lay Services"}
+                      hint="Runs the cable along service trenches already drawn"
+                      disabled={!!busy}
+                      onClick={() => autoLayServices("electric")} />
+                    <div className="gm-sep" />
+
                     <MenuGroup label="Sizes" />
                     <MenuItem label="System calculated" indent
                       active={(sizeMode.electric ?? "system") === "system"}
@@ -11881,6 +11948,13 @@ export default function GISCanvasPage() {
                           hint="The origin the network is measured from"
                           disabled={!!busy}
                           onClick={() => placeOriginNodes(key)} />
+                        <div className="gm-sep" />
+
+                        <MenuItem label={busy === "laysvc"
+                          ? "Laying\u2026" : "Auto Lay Services"}
+                          hint="Runs the pipe along service trenches already drawn"
+                          disabled={!!busy}
+                          onClick={() => autoLayServices(key)} />
                         <div className="gm-sep" />
 
                         <MenuGroup label="Sizes" />

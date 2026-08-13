@@ -416,3 +416,145 @@ export function mainsTrenches(features = [], isTrench) {
   const mains = trenches.filter((f) => String(f.Attributes?.Line_Type || "").includes("main"));
   return mains.length ? mains : trenches;
 }
+
+
+/* ── Laying a service into a trench that is already there ──
+
+   Auto Service draws the dig and lays everything in it. This does the
+   second half only, for one utility: the trenches are on the drawing
+   already, and what is wanted is the gas pipe — or the water, or the
+   cable — run along them.
+
+   ── Why one utility at a time ──
+
+   The three are rarely designed together. Water goes in when the water
+   design is being done, and a run of it should not quietly add gas
+   pipe to plots whose gas has not been thought about yet. So the
+   utility is chosen and nothing else is touched.
+
+   ── The same route as Auto Service ──
+
+   From where the service trench meets the main, along the trench, to
+   the boundary point, then out to the meter. Not straight to the meter:
+   the pipe is laid in the dig, and a run measured across it is short
+   by however far the dig went round.
+
+   ── What it will not do ──
+
+   It lays nothing where a service of that utility already runs along
+   the trench. Running it twice should be the same as running it once,
+   because somebody will. */
+
+const endsOfLine = (f) => {
+  const g = f.Geometry || [];
+  return g.length >= 2 ? [g[0], g[g.length - 1]] : [];
+};
+
+const gapTo = (p, pts = []) => {
+  let best = Infinity;
+  for (let i = 1; i < pts.length; i++) {
+    const a = pts[i - 1];
+    const b = pts[i];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const len2 = vx * vx + vy * vy;
+    const t = len2
+      ? Math.max(0, Math.min(1, ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2))
+      : 0;
+    const d = Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t));
+    if (d < best) best = d;
+  }
+  return best;
+};
+
+export function layServices(features = [], utility, opts = {}) {
+  const {
+    isTrench = () => false,
+    isService = (f) => /service/i.test(String(f.Attributes?.Line_Type ?? "")),
+    /* How near a meter has to be to the trench's far end to be the one
+       it serves. A meter is a box on a wall set back from the boundary,
+       so this is metres rather than centimetres. */
+    meterM = 12,
+    /* And how near the other end has to be to a main to count as teed
+       in. That is a joint, so it is tight. */
+    teeM = 0.5,
+  } = opts;
+
+  const lines = features.filter((f) => f.Feature_Type === "line"
+    && (f.Geometry || []).length >= 2);
+  const trenches = lines.filter((f) => isTrench(f));
+  const mains = trenches.filter((f) => !isService(f));
+  const services = trenches.filter(isService);
+
+  if (!services.length) {
+    return { error: "No service trenches drawn \u2014 draw them, or run Auto Service." };
+  }
+
+  const meters = features.filter((f) => f.Feature_Role === "meter"
+    && f.Layer_Key === utility && (f.Geometry || []).length);
+
+  /* Anything of this utility already laid along a trench. Matched on
+     the trench rather than on the plot: a plot can have two services
+     in different phases, and it is this length of dig that is being
+     filled. */
+  const laid = lines.filter((f) => f.Layer_Key === utility
+    && !isTrench(f));
+
+  const cables = [];
+  const skipped = [];
+
+  for (const sv of services) {
+    const ends = endsOfLine(sv);
+    if (ends.length !== 2) continue;
+
+    /* Which end is the main. Both are tried, because which end
+       somebody drew first says nothing about where the gas comes
+       from. */
+    const teeEnd = ends.find((e) => mains.some((m) => gapTo(e, m.Geometry) <= teeM));
+    if (!teeEnd) {
+      skipped.push({ trench: sv, why: "does not meet a mains trench" });
+      continue;
+    }
+    const farEnd = ends.find((e) => e !== teeEnd) ?? ends[1];
+
+    const meter = meters
+      .map((m) => ({ m, d: Math.hypot(m.Geometry[0][0] - farEnd[0],
+        m.Geometry[0][1] - farEnd[1]) }))
+      .filter((x) => x.d <= meterM)
+      .sort((a, b) => a.d - b.d)[0]?.m;
+
+    if (!meter) {
+      skipped.push({ trench: sv, why: `no ${utility} meter at the end of it` });
+      continue;
+    }
+
+    /* Already served: something of this utility runs the length of
+       this trench. */
+    const already = laid.some((f) => {
+      const g = f.Geometry || [];
+      return g.length >= 2
+        && gapTo(g[0], sv.Geometry) <= teeM
+        && g.some((q) => Math.hypot(q[0] - meter.Geometry[0][0],
+          q[1] - meter.Geometry[0][1]) <= 0.5);
+    });
+    if (already) continue;
+
+    /* Along the dig, in the direction that starts at the main. */
+    const along = Math.hypot(sv.Geometry[0][0] - teeEnd[0],
+      sv.Geometry[0][1] - teeEnd[1]) <= teeM
+      ? sv.Geometry
+      : [...sv.Geometry].reverse();
+
+    const at = meter.Geometry[0];
+    const same = Math.hypot(along[along.length - 1][0] - at[0],
+      along[along.length - 1][1] - at[1]) < 1e-3;
+
+    cables.push({
+      trench: sv,
+      meter,
+      geometry: same ? [...along] : [...along, at],
+    });
+  }
+
+  return { cables, skipped };
+}

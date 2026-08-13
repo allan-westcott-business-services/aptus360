@@ -51,6 +51,24 @@ export function electricSteps({
   const meters = features.filter((f) => f.Feature_Role === "meter"
     && f.Layer_Key === "electric");
 
+  /* A boundary is known by its layer, not by a Feature_Role.
+
+     I looked for Feature_Role "boundary", which nothing writes \u2014 so a
+     site with its red line plainly drawn read as having none. The rule
+     that matters is the one boundaryPolygons uses: on the boundary
+     layer, a polygon, and without a developer on it.
+
+     A developer area sits on the same layer and is told apart by
+     carrying Project_Developer_ID. Counting one as the red line would
+     say the site was bounded when only one developer's patch was. */
+  const boundaryPolys = features.filter((f) => f.Layer_Key === "boundary"
+    && f.Feature_Type === "polygon"
+    && (f.Geometry || []).length >= 3);
+  const siteBoundaries = boundaryPolys
+    .filter((f) => f.Attributes?.Project_Developer_ID == null);
+  const devAreas = boundaryPolys
+    .filter((f) => f.Attributes?.Project_Developer_ID != null);
+
   /* A plot needs both to be sized: the house type says how big it is
      and the heat source says what it draws. Either missing and the
      load is a guess. */
@@ -71,14 +89,12 @@ export function electricSteps({
       key: "boundary",
       title: "Draw the boundaries",
       hint: "The site, and a developer area for each developer beyond the first",
-      done: has(features, (f) => f.Feature_Role === "boundary")
+      done: siteBoundaries.length > 0
         /* One developer needs no areas: the whole site is theirs. */
-        && (developers.length < 2
-          || count(features, (f) => f.Feature_Role === "devarea") >= developers.length),
-      detail: !has(features, (f) => f.Feature_Role === "boundary")
+        && (developers.length < 2 || devAreas.length >= developers.length),
+      detail: siteBoundaries.length === 0
         ? "No site boundary drawn"
-        : `${count(features, (f) => f.Feature_Role === "devarea")} developer area(s) `
-          + `for ${developers.length} developer(s)`,
+        : `${devAreas.length} developer area(s) for ${developers.length} developer(s)`,
     },
     {
       key: "seeds",

@@ -49,7 +49,9 @@ import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
 } from "./feederColour.js";
-import { planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd } from "./joints.js";
+import {
+  planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
+} from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
@@ -746,59 +748,30 @@ export default function GISCanvasPage() {
         if (!best || d < best.d) best = { d, vx, vy };
       }
     }
-    /* Screen y grows downward while the drawing's grows up, so the
-       angle is negated \u2014 without it every joint leans the wrong way on
-       anything that is not horizontal. */
-    return best ? -Math.atan2(best.vy, best.vx) : 0;
+    /* Not negated. This read "screen y grows downward while the
+       drawing's grows up", which is not what toPx does:
+
+           x = m[0] * scale + view.x
+           y = m[1] * scale + view.y
+
+       No flip. The two share an axis convention, so a vector's angle in
+       metres is already its angle in pixels and atan2 is what
+       ctx.rotate wants. The negation reflected every joint about the
+       horizontal instead of turning it — invisible on a horizontal run
+       and on anything at 45 degrees, and wrong everywhere else. A square
+       joint is symmetric enough that it read as "leaning slightly odd"
+       rather than as a fault, which is why it survived. The bottle end,
+       which has a front and a back, is what made it obvious. */
+    return best ? Math.atan2(best.vy, best.vx) : 0;
   }, [features]);
 
-  /* Which way a bottle end faces.
-
-     jointAngle gives the bearing of the cable and nothing about its
-     direction, which is all the other joints need: a breech box laid at
-     35 degrees is laid the same whichever end you started drawing from.
-     A bottle end is not symmetrical. The stem carries on the way the
-     cable was going and the bars close it off, so pointing it the wrong
-     way lays the symbol back along its own cable and the seal ends up
-     between the joint and the substation.
-
-     Taken from the run's own end rather than from the segment under the
-     point: the direction wanted is the one the cable was heading when it
-     stopped, which is the last vertex minus the one before it. Whichever
-     end of the run is nearer the joint is the end it seals \u2014 a line's
-     stored direction says only which way somebody drew it, and a feeder
-     joined from two drawn pieces can hold either.
-
-     Falls back to jointAngle where no feeder end is near enough, so a
-     bottle end dropped by hand away from a cable still lies flat rather
-     than snapping to due east. */
-  const bottleEndAngle = useCallback((joint) => {
-    const at = (joint.Geometry || [])[0];
-    if (!at) return 0;
-    let best = null;
-    for (const f of features) {
-      if (f.Feature_Type !== "line") continue;
-      if (f.Layer_Key !== joint.Layer_Key) continue;
-      if (f.Attributes?.Line_Type !== "elec_main") continue;
-      const g = f.Geometry || [];
-      if (g.length < 2) continue;
-      const dA = Math.hypot(g[0][0] - at[0], g[0][1] - at[1]);
-      const dZ = Math.hypot(g[g.length - 1][0] - at[0], g[g.length - 1][1] - at[1]);
-      const atStart = dA <= dZ;
-      const d = atStart ? dA : dZ;
-      if (d > SPAN_REACH_M) continue;
-      const tip = atStart ? g[0] : g[g.length - 1];
-      const prev = atStart ? g[1] : g[g.length - 2];
-      const vx = tip[0] - prev[0];
-      const vy = tip[1] - prev[1];
-      if (!vx && !vy) continue;
-      if (!best || d < best.d) best = { d, vx, vy };
-    }
-    if (!best) return jointAngle(joint);
-    /* Negated for the same reason jointAngle is: screen y grows
-       downward and the drawing's grows up. */
-    return -Math.atan2(best.vy, best.vx);
-  }, [features, jointAngle]);
+  /* The angle for a bottle end, from joints.js so it can be tested
+     against a known cable. Falls back to jointAngle where no feeder end
+     is near enough — one dropped by hand away from a cable still lies
+     flat rather than snapping to due east. */
+  const bottleEndSpin = useCallback((joint) => (
+    bottleEndAngle(joint, features, { reach: SPAN_REACH_M }) ?? jointAngle(joint)
+  ), [features, jointAngle]);
 
   /* Where the electric design has got to, worked out from the drawing.
 
@@ -2538,7 +2511,7 @@ export default function GISCanvasPage() {
            bottleEndAngle rather than jointAngle because this symbol has
            a front and a back \u2014 see the note on it above. */
         const spin = f.Feature_Role !== "joint" ? 0
-          : (isBottleEnd(f) ? bottleEndAngle(f) : jointAngle(f));
+          : (isBottleEnd(f) ? bottleEndSpin(f) : jointAngle(f));
         const isSeed = f.Feature_Role === "plot";
         /* Seeds take the bedroom colour used everywhere else for plots.
 

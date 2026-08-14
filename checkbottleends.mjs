@@ -11,7 +11,9 @@
    with no loaded way onward. This proves the difference.
 
    Run: node checkbottleends.mjs */
-import { planJoints, JOINT_KINDS, isBottleEnd } from "./src/features/gis/joints.js";
+import {
+  planJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
+} from "./src/features/gis/joints.js";
 import { symbolPath, STROKE_ONLY, SYMBOLS } from "./src/lib/gisStyle.js";
 
 let bad = 0;
@@ -209,6 +211,110 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
      the end of the run. */
   if (!STROKE_ONLY.has("bottleend")) fail("the bottle end is not stroke-only");
   if (!SYMBOLS.includes("bottleend")) fail("the bottle end is not in the symbol list");
+}
+
+/* 8. The symbol ends up along the cable on screen.
+
+      Orientation is two separable things and testing the symbol alone
+      only covers one of them: the shape can be built about the right
+      axis and still be turned by the wrong angle. This closes the loop
+      by doing what the canvas does \u2014 take the angle, rotate the symbol's
+      own axis by it the way ctx.rotate would, and check the result
+      points along the cable in screen pixels.
+
+      The sign is the whole point. toPx is
+
+          x = m[0] * scale + view.x
+          y = m[1] * scale + view.y
+
+      with no y flip, so drawing and screen share an axis convention and
+      atan2(vy, vx) is already the angle ctx.rotate wants. Negating it \u2014
+      which jointAngle did, and which this function copied \u2014 reflects the
+      symbol about the horizontal rather than turning it: right on a
+      horizontal run, right at 45 degrees, and wrong everywhere else. */
+{
+  /* Same convention as toPx: scale and translate, no flip. */
+  const toPx = ([mx, my], scale = 4, vx = 100, vy = 60) =>
+    [mx * scale + vx, my * scale + vy];
+
+  const runs = [
+    { name: "north-east", from: [0, 0], to: [40, -40] },
+    { name: "south-east", from: [0, 0], to: [40, 40] },
+    { name: "due west", from: [40, 0], to: [0, 0] },
+    { name: "due south", from: [0, 0], to: [0, 40] },
+    { name: "shallow north-east", from: [0, 0], to: [60, -12] },
+  ];
+
+  for (const run of runs) {
+    const feeder = {
+      Feature_ID: 900, Feature_Type: "line", Layer_Key: "electric",
+      Geometry: [run.from, run.to],
+      Attributes: { Line_Type: "elec_main", Circuit_ID: 1 },
+    };
+    const joint = {
+      Feature_Role: "joint", Layer_Key: "electric", Geometry: [run.to],
+      Attributes: { Joint_Type: "bottleend" },
+    };
+
+    const spin = bottleEndAngle(joint, [feeder], { reach: 10 });
+    if (spin == null) { fail(`no angle found for a run heading ${run.name}`); continue; }
+
+    /* The symbol's own axis is +x, pointing outward from the cable.
+       ctx.rotate(a) sends (1,0) to (cos a, sin a) in canvas pixels. */
+    const facing = [Math.cos(spin), Math.sin(spin)];
+
+    /* Which way the cable is heading, in the same pixels. */
+    const a = toPx(run.from);
+    const b = toPx(run.to);
+    const len = Math.hypot(b[0] - a[0], b[1] - a[1]);
+    const cable = [(b[0] - a[0]) / len, (b[1] - a[1]) / len];
+
+    /* Same direction: the dot product is 1, not -1 (pointing back down
+       the cable) and not 0 (square across it). */
+    const dot = facing[0] * cable[0] + facing[1] * cable[1];
+    if (dot < 0.999) {
+      const deg = (x) => (Math.atan2(x[1], x[0]) * 180 / Math.PI).toFixed(1);
+      fail(`on a run heading ${run.name} the bottle end faces ${deg(facing)}\u00b0`
+        + ` and the cable runs at ${deg(cable)}\u00b0`);
+    }
+  }
+
+  /* Drawn the other way round, the seal is still at the outer end. A
+     feeder joined from two pieces can hold its points either way. */
+  {
+    const feeder = {
+      Feature_ID: 901, Feature_Type: "line", Layer_Key: "electric",
+      Geometry: [[40, -40], [0, 0]],
+      Attributes: { Line_Type: "elec_main", Circuit_ID: 1 },
+    };
+    const joint = {
+      Feature_Role: "joint", Layer_Key: "electric", Geometry: [[40, -40]],
+      Attributes: { Joint_Type: "bottleend" },
+    };
+    const spin = bottleEndAngle(joint, [feeder], { reach: 10 });
+    const facing = [Math.cos(spin), Math.sin(spin)];
+    /* Outward here is towards [40,-40] from [0,0]: right and up. */
+    if (!(facing[0] > 0 && facing[1] < 0)) {
+      fail("on a run drawn back towards the substation the seal points inward");
+    }
+  }
+
+  /* Nothing near enough is null, not zero. Zero is due east, which is a
+     real answer and would be wrong on every run but one. */
+  {
+    const far = {
+      Feature_ID: 902, Feature_Type: "line", Layer_Key: "electric",
+      Geometry: [[500, 500], [560, 500]],
+      Attributes: { Line_Type: "elec_main" },
+    };
+    const joint = {
+      Feature_Role: "joint", Layer_Key: "electric", Geometry: [[0, 0]],
+      Attributes: { Joint_Type: "bottleend" },
+    };
+    if (bottleEndAngle(joint, [far], { reach: 10 }) !== null) {
+      fail("a bottle end far from any feeder was given an angle anyway");
+    }
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

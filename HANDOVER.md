@@ -224,6 +224,18 @@ function or move the logic somewhere it can be imported from.
     wrong menu and whose original was never removed. Two controls for one
     setting is the same fault as two records of one fact in 13.
 
+19. **The canvas does not flip the y axis.** `toPx` is
+    `x = m[0] * scale + view.x`, `y = m[1] * scale + view.y` — no flip,
+    so drawing and screen share an axis convention and a vector's angle
+    in metres is already its angle in pixels. `jointAngle` negated its
+    `atan2` under a comment claiming the drawing's y grew upward, which
+    reflected every joint about the horizontal rather than turning it.
+    It is right on a horizontal run and right at 45 degrees, and wrong
+    everywhere else — a square joint is symmetric enough that it read as
+    "leaning slightly odd" rather than as a fault, which is how it
+    survived. Only the bottle end, which has a front and a back, made it
+    visible. If a symbol needs turning to the drawing, do not negate.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

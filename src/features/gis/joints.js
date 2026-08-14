@@ -38,6 +38,67 @@ export const JOINT_KINDS = {
   straight: { code: "STR", label: "Straight Joint" },
 };
 
+/* Which way a bottle end faces, as an angle for ctx.rotate.
+
+   The stem carries on the way the cable was going and the bars close it
+   off, so unlike every other joint this symbol has a front and a back.
+   Pointing it the wrong way lays the seal back along its own cable,
+   between the joint and the substation.
+
+   ── The direction ──
+
+   Taken from the run's own end, not from the segment under the point:
+   the last vertex minus the one before it, which is where the cable was
+   heading when it stopped. Whichever end of the run is nearer the joint
+   is the end it seals — a line's stored direction says only which way
+   somebody drew it, and a feeder joined from two drawn pieces can hold
+   either.
+
+   ── The sign ──
+
+   Not negated, and this is the whole of the bug the drawing had. The
+   canvas and the drawing share an axis convention: toPx is
+
+       x = m[0] * scale + view.x
+       y = m[1] * scale + view.y
+
+   with no flip, so a vector's angle in metres is already its angle in
+   pixels, and atan2(vy, vx) is what ctx.rotate wants. Negating it
+   reflects the symbol about the horizontal, which for a run heading
+   north-east draws the seal to the south-east instead.
+
+   Kept here rather than in the canvas so it can be tested against a
+   known cable. It is geometry, not drawing. */
+export function bottleEndAngle(joint, features = [], opts = {}) {
+  const { reach = 10 } = opts;
+  const at = (joint?.Geometry || [])[0];
+  if (!at) return null;
+
+  let best = null;
+  for (const f of features) {
+    if (f.Feature_Type !== "line") continue;
+    if (f.Layer_Key !== joint.Layer_Key) continue;
+    if (f.Attributes?.Line_Type !== "elec_main") continue;
+    const g = f.Geometry || [];
+    if (g.length < 2) continue;
+
+    const dA = Math.hypot(g[0][0] - at[0], g[0][1] - at[1]);
+    const dZ = Math.hypot(g[g.length - 1][0] - at[0], g[g.length - 1][1] - at[1]);
+    const atStart = dA <= dZ;
+    const d = atStart ? dA : dZ;
+    if (d > reach) continue;
+
+    const tip = atStart ? g[0] : g[g.length - 1];
+    const prev = atStart ? g[1] : g[g.length - 2];
+    const vx = tip[0] - prev[0];
+    const vy = tip[1] - prev[1];
+    if (!vx && !vy) continue;
+    if (!best || d < best.d) best = { d, vx, vy };
+  }
+
+  return best ? Math.atan2(best.vy, best.vx) : null;
+}
+
 /* Whether a joint is a bottle end.
 
    In joints.js rather than in the canvas because three places ask it —

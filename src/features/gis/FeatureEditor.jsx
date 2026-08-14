@@ -1,4 +1,4 @@
-import { useState, useMemo } from "react";
+import { useState, useMemo, useCallback } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { BUILD_STATUSES } from "./buildStatus.js";
@@ -428,6 +428,19 @@ export default function FeatureEditor({
     [isJoint, feature, allFeatures, plotList],
   );
 
+  /* A cable size as it is written on the drawing. Three places wanted
+     the same three lines: the run's read-only system field, and now the
+     span node's system field and its "what the trace reads" line. */
+  const cableLabel = useCallback((id) => {
+    if (id == null) return "";
+    const c = (lookups?.cableSizes || [])
+      .find((x) => Number(x.Cable_Size_ID) === Number(id));
+    if (!c) return "";
+    const t = (lookups?.cableTypes || [])
+      .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+    return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
+  }, [lookups]);
+
   const cableChoices = useMemo(() => {
     const sizes = lookups?.cableSizes || [];
     const types = lookups?.cableTypes || [];
@@ -819,34 +832,67 @@ export default function FeatureEditor({
               Not offered on the origin: nothing feeds the substation. */}
           {feature.Feature_Role === "spannode"
             && Number(f.Attributes.Span_Seq) !== 0 && (
-            <div className="fld">
-              <label htmlFor="fe-cable">Cable feeding this point</label>
-              <select id="fe-cable" value={f.Attributes.VD_Cable_Size_ID ?? ""}
-                onChange={(e) => setAttr("VD_Cable_Size_ID")(
-                  e.target.value ? Number(e.target.value) : null)}>
-                <option value="">&mdash; not set &mdash;</option>
-                {(lookups?.cableSizes || []).map((c) => {
-                  const t = (lookups?.cableTypes || [])
-                    .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
-                  /* Most of the catalogue is names only. Saying so here
-                     is the difference between choosing a cable and
-                     wondering later why the leg reports nothing. */
-                  const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
-                  return (
-                    <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
-                      {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
-                      {c.Material ? ` (${c.Material})` : ""}
-                      {usable ? "" : " — no figures"}
-                    </option>
-                  );
-                })}
-              </select>
-              {!(lookups?.cableSizes || []).length && (
+            <>
+              {/* The build's answer and the override, the same pair the
+                  drawn run carries.
+
+                  This was a single select bound to VD_Cable_Size_ID.
+                  Every other reader in the app — cableIdOf, sizeIdFor,
+                  sizeLabelOf, the levels report, the BOM, and the cable
+                  editor itself — takes the override first and falls back
+                  to the calculated size. This one field read the system
+                  size alone, so a node fed by an overridden run showed 95
+                  while its label and the trace both said 300 — and saving
+                  it wrote the system field while leaving the override
+                  standing, so the control could not correct what it was
+                  displaying. */}
+              <div className="fld">
+                <label htmlFor="fe-cable-sys">System calculated</label>
+                <input id="fe-cable-sys" readOnly
+                  value={cableLabel(f.Attributes.VD_Cable_Size_ID)} />
+              </div>
+
+              <div className="fld">
+                <label htmlFor="fe-cable">Manually set</label>
+                <select id="fe-cable"
+                  value={f.Attributes.Manual_VD_Cable_Size_ID ?? ""}
+                  onChange={(e) => setAttr("Manual_VD_Cable_Size_ID")(
+                    e.target.value ? Number(e.target.value) : null)}>
+                  <option value="">Not overridden</option>
+                  {(lookups?.cableSizes || []).map((c) => {
+                    const t = (lookups?.cableTypes || [])
+                      .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+                    /* Most of the catalogue is names only. Saying so here
+                       is the difference between choosing a cable and
+                       wondering later why the leg reports nothing. */
+                    const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
+                    return (
+                      <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
+                        {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
+                        {c.Material ? ` (${c.Material})` : ""}
+                        {usable ? "" : " — no figures"}
+                      </option>
+                    );
+                  })}
+                </select>
+                {/* What the trace will actually read, spelled out. Two
+                    fields with a precedence rule between them is exactly
+                    the arrangement nobody should have to hold in their
+                    head while checking a volt drop. */}
                 <p className="hint">
-                  No cable sizes yet &mdash; add them in Admin &rsaquo; Cable Sizes.
+                  {(f.Attributes.Manual_VD_Cable_Size_ID
+                    ?? f.Attributes.VD_Cable_Size_ID) == null
+                    ? "No cable set — everything beyond this point is unknowable rather than merely approximate."
+                    : `The trace reads ${cableLabel(f.Attributes.Manual_VD_Cable_Size_ID
+                      ?? f.Attributes.VD_Cable_Size_ID)}. Normally set by the run feeding this point; overriding it here parts the two.`}
                 </p>
-              )}
-            </div>
+                {!(lookups?.cableSizes || []).length && (
+                  <p className="hint">
+                    No cable sizes yet &mdash; add them in Admin &rsaquo; Cable Sizes.
+                  </p>
+                )}
+              </div>
+            </>
           )}
 
           {feature.Feature_Role === "substation" && (

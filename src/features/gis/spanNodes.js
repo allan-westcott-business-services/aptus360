@@ -427,3 +427,111 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
     mainsUsed: mains.length,
   };
 }
+
+/* ── Which span node a cable run feeds ──
+
+   Volt drop is totalled span by span and each stretch uses the cable of
+   the node it arrives at, so the figure the trace reads lives on the
+   node rather than on the drawn section. Changing the cable on a
+   section therefore changed nothing anyone could see: both pickers look
+   the same and are filled from the same catalogue, and only one of them
+   is read.
+
+   Which node a section feeds is decided by Span_Seq rather than by which
+   end of the geometry it is, because a line redrawn or joined can run
+   either way round while the numbering always counts outward from the
+   substation. The node with the higher sequence is the one downstream,
+   and downstream is what the run feeds.
+
+   Lifted out of GISCanvasPage so it can be tested against directly.
+   checkspannodes.mjs previously re-implemented this rule inline as a
+   local double, which meant the suite went on passing while the real
+   function drifted away underneath it \u2014 the mirrors were right and the
+   thing they stood for was not. A test that imports the function it
+   names is the only kind that can fail for the right reason. */
+export function nodeFedBy(line, features = [], opts = {}) {
+  const { isTrench = () => false, reach = 10 } = opts;
+  const look = features;
+  const g = line?.Geometry || [];
+  if (g.length < 2) return null;
+  /* A cable with no circuit feeds whichever node it ends at. Refusing
+     it here is what left a hand-drawn run's node unset. */
+  const cid = line.Attributes?.Circuit_ID ?? null;
+
+  /* A service cable never feeds a span node.
+
+     A node is a point on the mains run, and the cable feeding it is the
+     main arriving there \u2014 the service is what leaves it for a plot.
+     Recording a service against a node meant the volt drop along the
+     mains was computed on a service cable, which is a smaller conductor
+     and a shorter run: wrong, and wrong in the direction that looks
+     acceptable. */
+  if (isTrench(line.Attributes?.Line_Type)) return null;
+  if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
+
+  const sub = look.find((f) => f.Feature_Role === "substation"
+    && (f.Geometry || []).length);
+  const at = sub?.Geometry?.[0] ?? null;
+  const ends = [g[0], g[g.length - 1]];
+  const fromSub = (p) => (at ? Math.hypot(p[0] - at[0], p[1] - at[1]) : 0);
+
+  const eligible = look.filter((f) =>
+    f.Feature_Role === "spannode"
+    /* This cable's circuit, or a node that names none. A node is given
+       its circuit when the build routes through it, and one the build
+       pruned never gets one. */
+    && (cid == null || f.Attributes?.Circuit_ID == null
+      || String(f.Attributes.Circuit_ID) === String(cid))
+    && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
+    && (f.Geometry || []).length);
+
+  const posOf = (f) => {
+    const a = f.Attributes?.Span_Anchor;
+    return (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
+  };
+
+  /* The nearest node to each end, and only that one.
+
+     Every node within reach of either end used to be a candidate, and on
+     short spans that takes in the node beyond the one this cable
+     reaches: with A1 and A2 eight metres apart, the cable from the
+     substation to A1 had both in range, and the downstream rule then
+     preferred A2. Editing the first cable changed the second node.
+
+     One node per end removes the question. A cable runs between two
+     points and feeds the far one; a node past that is the next cable's
+     business. */
+  const nearestTo = (end) => {
+    let best = null;
+    for (const f of eligible) {
+      const p = posOf(f);
+      const d = Math.hypot(p[0] - end[0], p[1] - end[1]);
+      if (d > reach) continue;
+      if (!best || d < best.d) best = { f, d };
+    }
+    return best?.f ?? null;
+  };
+
+  const near = [...new Set(ends.map(nearestTo).filter(Boolean))];
+  if (!near.length) return null;
+
+  const gapOf = (f) => {
+    const p = posOf(f);
+    return Math.min(...ends.map((e) => Math.hypot(p[0] - e[0], p[1] - e[1])));
+  };
+
+  /* The downstream node of the two. Span_Seq counts outward from the
+     origin, so where both are numbered the higher is downstream. Where
+     they are not \u2014 a node the build never sequenced \u2014 distance from the
+     substation says the same thing about the drawing rather than about
+     the numbering. Only then the nearest, which is all that is left. */
+  return near.reduce((a, b) => {
+    const sa = Number(a.Attributes?.Span_Seq ?? -1);
+    const sb = Number(b.Attributes?.Span_Seq ?? -1);
+    if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
+    const da = fromSub(posOf(a));
+    const db = fromSub(posOf(b));
+    if (at && Math.abs(da - db) > 0.5) return db > da ? b : a;
+    return gapOf(b) < gapOf(a) ? b : a;
+  });
+}

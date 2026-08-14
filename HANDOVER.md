@@ -1,7 +1,13 @@
 # Aptus360 — handover notes
 
 Rewritten at the end of the session that added the landing page and
-area-scoped navigation. Migrations run to **0136**.
+area-scoped navigation. Migrations run to **0157**.
+
+The body below still describes the state at 0136 and has not been
+re-checked against everything that landed since — call-off utility,
+assignment split, gas pressure, craft scope, project organisation branch
+and multiple gas/water POCs are all in `supabase/migrations/` and are not
+described here. Read the migrations before trusting the "open work" list.
 
 The previous version of this file was written at migration 0048 and had
 gone badly out of date: it listed GIS undo/redo, trenching and the
@@ -72,6 +78,8 @@ caught a fault that had already shipped at least once.
 | `node checknav.mjs` | Every rendered view sits in an area; no view in two areas; area colours distinct; areas open on a built screen |
 | `node checkhome.mjs` | Mounts the shell in jsdom and drives it — landing page, per-area menus, back navigation, reload restore |
 | `node checkhr.mjs` | Mounts all sixteen HR modules; icons, modals, sidebar bridge |
+| `node checkspannodes.mjs` | Span node origins, and which node a cable run feeds |
+| `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
 | `python3 checkcols.py` | Explicit column lists against the schema |
 | `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
@@ -86,6 +94,24 @@ caught a fault that had already shipped at least once.
 `zoomToPoints`. Both are false positives: each is referenced inside a
 `function` body that only runs on user action, by which time the `const`
 is initialised. Don't "fix" them.
+
+**`npm test` does not currently run.** Its first step is
+`checkimports.mjs`, which is not in the repo and is not in git history
+either; `checklazy.mjs` is missing the same way, and
+`checkprojecttabs.mjs` reads `supabase/migrations/0138_project_tabs.sql`,
+which is also absent. The suite dies on step one, so anyone who has been
+running `npm test` and seeing it stop has been reading a missing-file
+error as a pass. Run the scripts individually until those three are
+restored. Related: the migrations folder has 78 files but 0002-0049 and
+a scatter of later numbers are missing — since migrations are pasted in
+by hand, that folder is the only record there is.
+
+**A check that re-implements the thing it tests proves nothing.**
+`checkspannodes.mjs` carried local copies of `nodeFedBy` and the node
+sync and went on passing through every fault listed under 13 below,
+because the copies were right and the functions they stood for had
+moved. It imports them now. When adding a check, import the real
+function or move the logic somewhere it can be imported from.
 
 ## Recurring faults — all of these bit more than once
 
@@ -145,6 +171,33 @@ is initialised. Don't "fix" them.
     browser that doesn't know it drops the whole declaration, taking the
     tile background with it. The house idiom is eight-digit hex alpha
     built in JS — see `src/lib/colour.js`.
+
+13. **Two records of one fact, editable apart.** A cable size lives on
+    the drawn run *and* on the span node it feeds, because the volt drop
+    sum reads it from the node. Every fault in the span node cable
+    reports came from those two drifting: a run saying 300 with its node
+    saying 95, and the trace quietly reporting a design nobody is
+    building. Made worse by the system/manual pair, which doubles each
+    record again — writing only the overridden field left a node reading
+    300 through `Manual_VD_Cable_Size_ID` and 95 through
+    `VD_Cable_Size_ID`, both true, with each reader believing whichever
+    it happened to look at. The node now mirrors the run in *both*
+    fields, including clearing the override when the run loses one. If
+    you add a third reader, make it read `sizeIdFor(f, utility,
+    "manual")` and nothing else.
+
+14. **A whole-drawing reconciliation hung off a single edit.** Saving one
+    cable called `syncNodeCables`, which walks every electric line in the
+    project. One edit became a site-wide sweep that "corrected" nodes
+    which had drifted for unrelated reasons months earlier, and asked
+    about all of them in one dialog. The edited feature was passed to the
+    handler and discarded. Reconciling everything is a deliberate act and
+    belongs on the menu; a save carries to the one node it feeds.
+
+15. **A `silent` flag that doesn't cover the loudest thing.**
+    `syncNodeCables({ silent: true })` suppressed the status toasts and
+    not the `window.confirm`, so a background call stopped the page with
+    a modal.
 
 ## Decisions worth knowing
 

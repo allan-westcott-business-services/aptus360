@@ -42,6 +42,7 @@ import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { SPAN_REACH_M } from "./feeder.js";
+import { nodeFedBy as nodeFedByLine } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
@@ -5551,158 +5552,20 @@ export default function GISCanvasPage() {
 
   /* The span node a cable run feeds.
 
-     Volt drop is totalled span by span and each stretch uses the cable
-     of the node it arrives at, so the figure the trace reads lives on
-     the node rather than on the drawn section. Changing the cable on a
-     section therefore changed nothing anyone could see: both pickers
-     look the same and are filled from the same catalogue, and only one
-     of them is read.
+     The rule itself now lives in spanNodes.js, so the check suite can
+     import it instead of re-implementing it. This is the binding to
+     component state and nothing more.
 
-     Which node a section feeds is decided by Span_Seq rather than by
-     which end of the geometry it is, because a line redrawn or joined
-     can run either way round while the numbering always counts outward
-     from the substation. The node with the higher sequence is the one
-     downstream, and downstream is what the run feeds. */
-  /* `from` is the drawing to look in. Passed after a save, because
-     state has not caught up and the node would be matched against the
-     cable as it was before the edit. */
-  const nodeFedBy = useCallback((line, from = null) => {
-    const look = from || features;
-    const g = line?.Geometry || [];
-    if (g.length < 2) return null;
-    /* A cable with no circuit feeds whichever node it ends at. Refusing
-       it here is what left a hand-drawn run's node unset. */
-    const cid = line.Attributes?.Circuit_ID ?? null;
-    /* Only the far end of the cable, measured from the substation.
-
-       A cable was matched against both of its ends, so it could claim
-       the node it *leaves* as readily as the node it arrives at. On the
-       first run that is the difference between A1 being fed by the
-       cable from the substation and being fed by the cable heading away
-       from it \u2014 and with unassigned nodes now eligible, the tie-break
-       fell to whichever was nearer rather than which was upstream.
-
-       The end further from the substation is downstream. That is a fact
-       about the drawing rather than about the numbering, so it holds
-       for a node the build never sequenced. */
-    const sub = look.find((f) => f.Feature_Role === "substation"
-      && (f.Geometry || []).length);
-    const at = sub?.Geometry?.[0] ?? null;
-    /* Both ends are searched, and the far one only decides between
-       them.
-
-       Narrowing the search to a single end was wrong: a node sitting at
-       the near end was then not found at all, so cables that had been
-       matching stopped matching and no node was updated with anything.
-       The far end is a tie-break, not a filter. */
-    const ends = [g[0], g[g.length - 1]];
-    const fromSub = (p) => (at ? Math.hypot(p[0] - at[0], p[1] - at[1]) : 0);
-
-    /* A service cable never feeds a span node.
-
-       A node is a point on the mains run, and the cable feeding it is
-       the main arriving there \u2014 the service is what leaves it for a
-       plot. Recording a service against a node meant the volt drop
-       along the mains was computed on a service cable, which is a
-       smaller conductor and a shorter run: wrong, and wrong in the
-       direction that looks acceptable.
-
-       Refused at the source rather than by preferring the main, so it
-       cannot be chosen when no main is near either. A node with only a
-       service reaching it has no feeding cable, which is the truth. */
-    if (isTrenchType(line.Attributes?.Line_Type, lineTypes)) return null;
-    if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
-
-    const eligible = look.filter((f) =>
-      f.Feature_Role === "spannode"
-      /* This cable's circuit, or a node that names none.
-
-         A node is given its circuit when the build routes through it,
-         and one the build pruned never gets one — so the node at the
-         end of the trench was fed by nothing here for the same reason
-         it was missing from the levels: it had no circuit to match on. */
-      && (cid == null || f.Attributes?.Circuit_ID == null
-        || String(f.Attributes.Circuit_ID) === String(cid))
-      && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
-      && (f.Geometry || []).length);
-
-    /* The nearest node to each end, and only that one.
-
-       Every node within reach of either end used to be a candidate, and
-       on short spans that takes in the node beyond the one this cable
-       reaches: with A1 and A2 eight metres apart, the cable from the
-       substation to A1 had both in range, and the downstream rule then
-       preferred A2. Editing the first cable changed the second node.
-
-       One node per end removes the question. A cable runs between two
-       points and feeds the far one; a node past that is the next
-       cable's business. */
-    const nearestTo = (end) => {
-      let best = null;
-      for (const f of eligible) {
-        const a = f.Attributes?.Span_Anchor;
-        const at = (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
-        const d = Math.hypot(at[0] - end[0], at[1] - end[1]);
-        if (d > SPAN_REACH_M) continue;
-        if (!best || d < best.d) best = { f, d };
-      }
-      return best?.f ?? null;
-    };
-
-    const near = [...new Set(ends.map(nearestTo).filter(Boolean))];
-
-    if (!near.length) return null;
-
-    /* The furthest along the run, and where that cannot be told, the
-       closest to the cable's end.
-
-       Span_Seq orders nodes along a circuit, which is the right answer
-       for two assigned nodes meeting at a section. A node the build
-       never routed through has no sequence \u2014 so with the unassigned
-       now eligible, the sequence alone left the choice to whichever the
-       array happened to hold first. Distance settles it: the node this
-       cable actually runs up to is the one nearest its end. */
-    const gapOf = (f) => {
-      const a = f.Attributes?.Span_Anchor;
-      const at = (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
-      return Math.min(...ends.map((e) => Math.hypot(at[0] - e[0], at[1] - e[1])));
-    };
-
-    /* The node this cable arrives at, not one it leaves.
-
-       A cable runs between two nodes, so both are near it \u2014 and the one
-       it feeds is the far one, the node further from the substation.
-       Taking the nearer meant a node was given the cable heading away
-       from it while the cable that actually arrives went unrecorded.
-
-       Span_Seq counts outward from the origin, so the higher of the two
-       is downstream: that is the node this cable feeds. Where neither
-       is numbered, the closest to an end is taken, which is the best
-       that can be said without the graph. */
-    /* The downstream node of the two.
-
-       Span_Seq counts outward from the origin, so where both are
-       numbered the higher is downstream and that is the node this cable
-       feeds. Where they are not \u2014 a node the build never sequenced \u2014
-       distance from the substation says the same thing about the
-       drawing rather than about the numbering.
-
-       Only then the nearest, which is all that is left to say. */
-    const posOf = (f) => {
-      const a2 = f.Attributes?.Span_Anchor;
-      return (Array.isArray(a2) && a2.length === 2 ? a2 : f.Geometry[0]);
-    };
-
-    return near.reduce((a, b) => {
-      const sa = Number(a.Attributes?.Span_Seq ?? -1);
-      const sb = Number(b.Attributes?.Span_Seq ?? -1);
-      if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
-      const da = fromSub(posOf(a));
-      const db = fromSub(posOf(b));
-      if (at && Math.abs(da - db) > 0.5) return db > da ? b : a;
-      return gapOf(b) < gapOf(a) ? b : a;
-    });
-  }, [features]);
+     `from` is the drawing to look in. Passed after a save, because state
+     has not caught up and the node would be matched against the cable as
+     it was before the edit. */
+  const nodeFedBy = useCallback((line, from = null) => nodeFedByLine(
+    line, from || features,
+    {
+      isTrench: (t) => isTrenchType(t, lineTypes),
+      reach: SPAN_REACH_M,
+    },
+  ), [features, lineTypes]);
 
   /* Putting a suggested change on the drawing.
 
@@ -5803,35 +5666,26 @@ export default function GISCanvasPage() {
 
       /* Carry a changed cable through to the node that reads it.
 
-         Only when it actually changed, and only onto a node that was
-         carrying the old size — a node someone has deliberately set to
-         something else is a decision, and overwriting it because a
-         section beneath it was edited would undo that silently. A node
-         with nothing set is filled in, since no figure at all makes
-         everything beyond it unknowable. */
-      const wasCable = before?.Attributes?.VD_Cable_Size_ID ?? null;
-      const nowCable = changes?.Attributes?.VD_Cable_Size_ID ?? null;
+         Both sizes are compared, not just the system one. This read
+         VD_Cable_Size_ID on either side of the change, so overriding a
+         run \u2014 which writes Manual_VD_Cable_Size_ID and leaves the system
+         field alone \u2014 produced `nowCable === wasCable` and skipped the
+         whole block, warning and all. With the Sizes menu on "Manually
+         set", every edit a designer makes took that dead path, which is
+         why the only thing that appeared to happen came from elsewhere.
+
+         The work itself is carryCableToNode, so there is one carry and
+         not two that can disagree. Handed a patched drawing because
+         state has not caught up with the write that just landed. */
       const isFeeder = before?.Feature_Type === "line"
         && before?.Layer_Key === "electric";
+      const after = { ...before, ...changes };
+      const wasSize = sizeIdFor(before, "electric", "manual");
+      const nowSize = sizeIdFor(after, "electric", "manual");
 
-      if (isFeeder && nowCable != null && String(nowCable) !== String(wasCable)) {
-        const node = nodeFedBy({ ...before, ...changes });
-        const nodeCable = node?.Attributes?.VD_Cable_Size_ID ?? null;
-        if (node && (nodeCable == null || String(nodeCable) === String(wasCable))) {
-          const attrs = { ...node.Attributes, VD_Cable_Size_ID: nowCable };
-          setFeatures((f) => f.map((x) =>
-            (x.Feature_ID === node.Feature_ID ? { ...x, Attributes: attrs } : x)));
-          await updateFeature(projectId, node.Feature_ID, { Attributes: attrs });
-          setStatus(`Cable also set on ${node.Attributes?.Span_Label ?? "the span node"} `
-            + "\u2014 that is the figure the trace reads");
-          setTimeout(() => setStatus(""), 8000);
-        } else if (node && nodeCable != null) {
-          /* Left alone, but said out loud: the trace will go on using
-             the node's figure and the two now disagree. */
-          setStatus(`${node.Attributes?.Span_Label ?? "The span node"} keeps its own cable `
-            + "\u2014 the trace reads that, not this section");
-          setTimeout(() => setStatus(""), 9000);
-        }
+      if (isFeeder && String(wasSize ?? "") !== String(nowSize ?? "")) {
+        await carryCableToNode(after,
+          features.map((x) => (x.Feature_ID === id ? after : x)));
       }
     }
     catch (e) { setError(e.message); await load(projectId); throw e; }
@@ -6160,6 +6014,85 @@ export default function GISCanvasPage() {
       `picked from the report${skipped ? `, ${skipped} already on a circuit skipped` : ""}`);
   }
 
+  /* Carry one edited run's cable onto the one span node it feeds.
+
+     What happens after a cable is saved, and the whole of it. Editing a
+     section is a statement about that section, so it reaches exactly the
+     node that section arrives at and stops there.
+
+     ── Why both fields are written ──
+
+     The node's cable is not an independent fact. It is the cable of the
+     run arriving at the node, recorded a second time because that is
+     where the volt drop sum reads it. Two records of one fact that can
+     be edited apart is precisely the drift this whole class of fault
+     comes from \u2014 a section saying 300 and its node saying 95, with the
+     trace quietly reporting the design nobody is building.
+
+     So the node mirrors the run: the system size from the system size,
+     the override from the override, including clearing the override when
+     it is taken off the run. Writing only the overridden field was what
+     left A1 reading 300 through Manual_VD_Cable_Size_ID while its
+     VD_Cable_Size_ID still said 95 \u2014 true for whichever field the reader
+     happened to look at, and the node editor looked at the other one. */
+  async function carryCableToNode(edited, srcFeatures) {
+    const src = srcFeatures || features;
+    /* The saved copy, not the one the editor handed over: that is the
+       feature as it was before the write landed. */
+    const line = src.find((f) => Number(f.Feature_ID) === Number(edited?.Feature_ID));
+    if (!line || line.Feature_Type !== "line" || line.Layer_Key !== "electric") return;
+
+    const node = nodeFedBy(line, src);
+    if (!node) {
+      /* Said out loud rather than passed over. A run whose end is more
+         than SPAN_REACH_M from any node feeds nothing, and the trace
+         will go on using whatever that node already held \u2014 which looks
+         identical to the edit having worked. */
+      setStatus("No span node within reach of this run \u2014 the trace still "
+        + "reads the node's own cable");
+      setTimeout(() => setStatus(""), 9000);
+      return;
+    }
+
+    const wantSystem = line.Attributes?.VD_Cable_Size_ID ?? null;
+    const wantManual = line.Attributes?.Manual_VD_Cable_Size_ID ?? null;
+    const heldSystem = node.Attributes?.VD_Cable_Size_ID ?? null;
+    const heldManual = node.Attributes?.Manual_VD_Cable_Size_ID ?? null;
+
+    if (String(heldSystem ?? "") === String(wantSystem ?? "")
+      && String(heldManual ?? "") === String(wantManual ?? "")) return;
+
+    const attrs = {
+      ...node.Attributes,
+      VD_Cable_Size_ID: wantSystem,
+      Manual_VD_Cable_Size_ID: wantManual,
+    };
+
+    setFeatures((f) => f.map((x) =>
+      (x.Feature_ID === node.Feature_ID ? { ...x, Attributes: attrs } : x)));
+    try {
+      await updateFeature(projectId, node.Feature_ID, { Attributes: attrs });
+      const label = node.Attributes?.Span_Label ?? "the span node";
+      const shown = sizeNameOf(wantManual ?? wantSystem);
+      setStatus(`${label} now reads ${shown || "no cable"} \u2014 that is the `
+        + "figure the trace uses");
+      setTimeout(() => setStatus(""), 8000);
+    } catch (e) { setError(e.message); await load(projectId); }
+  }
+
+  /* A cable size as it is written on the drawing. Shared by the carry,
+     the sync's dialog and anything else that has to name a size rather
+     than compute with one. */
+  function sizeNameOf(id) {
+    if (id == null) return "";
+    const c = (lookups?.cableSizes || [])
+      .find((x) => Number(x.Cable_Size_ID) === Number(id));
+    if (!c) return String(id);
+    const t = (lookups?.cableTypes || [])
+      .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+    return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
+  }
+
   /* Force every span node's cable to match the run that feeds it.
 
      The saving path carries a cable through as it is changed, but only
@@ -6253,19 +6186,37 @@ export default function GISCanvasPage() {
       const pending = updates.get(node.Feature_ID);
       const attrsNow = pending ? pending.Attributes : node.Attributes;
       const heldNow = sizeIdFor({ ...node, Attributes: attrsNow }, "electric", "manual");
-      if (String(heldNow ?? "") === String(want)) continue;
+
+      /* Both fields, or the two records drift apart again.
+
+         Only the overridden field was written, so a node fed by an
+         overridden run ended up with Manual_VD_Cable_Size_ID = 300 and
+         VD_Cable_Size_ID still 95. Every reader that takes manual-then-
+         system saw 300 and the one place that read the system field
+         alone \u2014 the span node editor \u2014 saw 95, on the same node, at the
+         same moment. Neither was wrong about the field it read.
+
+         The node mirrors the run in both, including clearing the
+         override when the run no longer carries one. Matching on the
+         effective size alone is not enough to skip: a node can agree
+         about what it reads while still holding a stale override that
+         will surface the moment the run's override comes off. */
+      const wantSystem = line.Attributes?.VD_Cable_Size_ID ?? null;
+      const wantManual = line.Attributes?.Manual_VD_Cable_Size_ID ?? null;
+      const heldSystem = attrsNow?.VD_Cable_Size_ID ?? null;
+      const heldManual = attrsNow?.Manual_VD_Cable_Size_ID ?? null;
+      if (String(heldNow ?? "") === String(want)
+        && String(heldSystem ?? "") === String(wantSystem ?? "")
+        && String(heldManual ?? "") === String(wantManual ?? "")) continue;
+
       /* Last one wins where two sections meet at a node, which cannot
          happen on a routed network — a node has one run feeding it. */
       updates.set(node.Feature_ID, {
         node,
-        /* Written to the node's own manual field where the run was
-           overridden, so the node says the same thing the drawing does
-           and a rebuild does not quietly undo it. */
         Attributes: {
           ...attrsNow,
-          ...(line.Attributes?.Manual_VD_Cable_Size_ID != null
-            ? { Manual_VD_Cable_Size_ID: want }
-            : { VD_Cable_Size_ID: want }),
+          VD_Cable_Size_ID: wantSystem,
+          Manual_VD_Cable_Size_ID: wantManual,
         },
       });
     }
@@ -6299,14 +6250,32 @@ export default function GISCanvasPage() {
       return;
     }
 
-    const sizeName = (id) => (lookups?.cableSizes || [])
-      .find((c) => String(c.Cable_Size_ID) === String(id))?.Size_Label ?? id;
+    /* The size this node will actually end up reading, which is the
+       override where there is one.
+
+       This printed VD_Cable_Size_ID, the system field. Where the run
+       carries an override the update writes the *manual* field and
+       leaves the system one alone \u2014 so the dialog named the old
+       calculated size while writing the new one. Changing a cable from
+       95 to 300 produced a dialog offering to set the node to 95, which
+       reads as the sync undoing the edit. It was not: the write was
+       right and the sentence describing it was wrong, which is the more
+       dangerous way round, because the sensible response is to cancel. */
     const names = [...updates.values()]
       .map((u) => `${u.node.Attributes?.Span_Label ?? u.node.Feature_ID}`
-        + ` \u2192 ${sizeName(u.Attributes.VD_Cable_Size_ID)}`)
+        + ` \u2192 ${sizeNameOf(u.Attributes.Manual_VD_Cable_Size_ID
+          ?? u.Attributes.VD_Cable_Size_ID) || "not set"}`)
       .slice(0, 12);
 
-    if (!window.confirm(
+    /* Silent means silent, including this.
+
+       `silent` guarded the status toasts and not the confirm, so the one
+       genuinely interrupting thing in the function ignored the flag that
+       exists to suppress it: a background reconciliation stopped the
+       page with a modal. Nothing calls this silently now that the carry
+       is its own function, but the flag has to mean what it says or the
+       next caller inherits the same surprise. */
+    if (!silent && !window.confirm(
       `Set the cable on ${updates.size} span node(s) to match the run feeding each?\n\n`
       + names.join("\n")
       + (updates.size > names.length ? `\n\u2026and ${updates.size - names.length} more` : "")
@@ -12488,15 +12457,29 @@ export default function GISCanvasPage() {
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
-          onCableSized={async () => {
-            /* The saved drawing, then the sync.
+          onCableSized={async (edited) => {
+            /* The saved drawing, then the one node this run feeds.
 
-               syncNodeCables reads `features`, and the save that just
+               carryCableToNode reads the drawing, and the save that just
                happened has not reached state yet \u2014 so without the
-               reload it pushes the size the cable had before the edit. */
+               reload it pushes the size the cable had before the edit.
+
+               This used to call syncNodeCables, which is the whole-
+               drawing reconciliation behind the menu item: it walks
+               every electric line in the project and rewrites every node
+               that disagrees with the run feeding it. Hung off a single
+               cable save, that turned one edit into a site-wide sweep \u2014
+               so changing the cable at the substation also "corrected"
+               nodes that had drifted for unrelated reasons, sometimes
+               months earlier, and asked about all of them in one dialog.
+               The edited feature was passed in and then discarded.
+
+               One edit, one node. Reconciling the rest of the drawing is
+               a deliberate act and stays on the menu where it can be
+               chosen. */
             const fresh = await listGis(projectId);
             setFeatures(fresh.features || []);
-            await syncNodeCables({ silent: true, srcFeatures: fresh.features || [] });
+            await carryCableToNode(edited, fresh.features || []);
           }}
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}

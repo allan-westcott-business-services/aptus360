@@ -18,7 +18,9 @@
    governor — left its gas POC unmatched, and it took a generic
    A-number. The origin of the gas network ended up numbered as an
    ordinary span, and the levels check had nothing to count from. */
-import { originsOf, planSpanNodes, plantLabel } from "./src/features/gis/spanNodes.js";
+import {
+  originsOf, planSpanNodes, plantLabel, nodeFedBy,
+} from "./src/features/gis/spanNodes.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -694,6 +696,141 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (anyInReach([0, 24]).n !== "A2") {
     fail("the old rule stopped picking A2, so this test proves nothing");
   }
+}
+
+/* ── Against the real nodeFedBy, not a copy of it ──
+
+   Everything above this line tests a local re-implementation of the
+   rule. That is why none of it caught the faults reported from the
+   drawing at Winston Road: the mirrors were right and the functions
+   they stood for had moved. These import the thing itself.
+
+   The drawing, as measured off the canvas: E0 at the substation, A1
+   24 m out, A2 7.8 m beyond A1, A3 14.3 m beyond A2. A1 and A2 are
+   closer together than SPAN_REACH_M, which is the arrangement that
+   made the substation's cable reach past the node it feeds. */
+{
+  const REACH = 10;
+  const opts = { isTrench: () => false, reach: REACH };
+
+  const sub = { Feature_ID: 100, Feature_Role: "substation", Geometry: [[0, 0]] };
+  const spanNode = (id, label, seq, at) => ({
+    Feature_ID: id, Feature_Role: "spannode", Geometry: [at],
+    Attributes: { Span_Label: label, Span_Seq: seq, Circuit_ID: 1 },
+  });
+  const drawing = [
+    sub,
+    spanNode(1, "A1", 1, [24, 0]),
+    spanNode(2, "A2", 2, [31.8, 0]),
+    spanNode(3, "A3", 3, [46.1, 0]),
+  ];
+  const cable = (pts, attrs = {}) => ({
+    Feature_ID: 10, Feature_Type: "line", Layer_Key: "electric", Geometry: pts,
+    Attributes: { Line_Type: "lv_main", Circuit_ID: 1, ...attrs },
+  });
+  const fed = (line) => nodeFedBy(line, drawing, opts)?.Attributes?.Span_Label ?? null;
+
+  if (fed(cable([[0, 0], [24, 0]])) !== "A1") {
+    fail("the substation's cable does not feed A1");
+  }
+  if (fed(cable([[24, 0], [31.8, 0]])) !== "A2") fail("the cable to A2 does not feed A2");
+  if (fed(cable([[31.8, 0], [46.1, 0]])) !== "A3") fail("the cable to A3 does not feed A3");
+
+  /* Drawn the other way round. A run redrawn or joined can hold its
+     points in either order and still feed the node it arrives at. */
+  if (fed(cable([[24, 0], [0, 0]])) !== "A1") {
+    fail("a cable drawn back towards the substation fed the wrong node");
+  }
+
+  /* A service never feeds a node, whatever it reaches. */
+  if (fed(cable([[24, 0], [31.8, 0]], { Line_Type: "elec_service" })) !== null) {
+    fail("a service cable was recorded as feeding a span node");
+  }
+  if (nodeFedBy(cable([[24, 0], [31.8, 0]]), drawing,
+    { isTrench: () => true, reach: REACH }) !== null) {
+    fail("a trench was recorded as feeding a span node");
+  }
+
+  /* Out of reach of everything feeds nothing, rather than the nearest
+     thing that happens to exist. */
+  if (fed(cable([[200, 0], [300, 0]])) !== null) {
+    fail("a cable nowhere near a node still fed one");
+  }
+}
+
+/* An override reaches the node, and only the node its own run feeds.
+
+   Two faults met here. Saving an override changed Manual_VD_Cable_Size_ID
+   and the carry compared VD_Cable_Size_ID on both sides, so it saw no
+   change and did nothing; the fallback was the whole-drawing sync, which
+   swept in every node that disagreed for any reason. Both are settled by
+   carrying the effective size to exactly one node. */
+{
+  const REACH = 10;
+  const opts = { isTrench: () => false, reach: REACH };
+  const SYS = 7;      // 3c WAVE 95
+  const OVER = 9;     // 3c WAVE 300
+
+  const sub = { Feature_ID: 100, Feature_Role: "substation", Geometry: [[0, 0]] };
+  const node = (id, label, seq, at, attrs = {}) => ({
+    Feature_ID: id, Feature_Role: "spannode", Geometry: [at],
+    Attributes: { Span_Label: label, Span_Seq: seq, Circuit_ID: 1, ...attrs },
+  });
+
+  /* A2 still carries 300 from when the old rule handed it the
+     substation's cable \u2014 the residue left in the drawing. */
+  const drawing = [
+    sub,
+    node(1, "A1", 1, [24, 0], { VD_Cable_Size_ID: SYS }),
+    node(2, "A2", 2, [31.8, 0], { VD_Cable_Size_ID: OVER }),
+  ];
+  const edited = {
+    Feature_ID: 10, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [24, 0]],
+    Attributes: {
+      Line_Type: "lv_main", Circuit_ID: 1,
+      VD_Cable_Size_ID: SYS, Manual_VD_Cable_Size_ID: OVER,
+    },
+  };
+
+  const target = nodeFedBy(edited, drawing, opts);
+  if (target?.Attributes?.Span_Label !== "A1") {
+    fail("an overridden run did not carry to the node it feeds");
+  }
+
+  /* Both fields, so no reader can disagree with another about what this
+     node holds. Writing only the overridden one left A1 reading 300
+     through the override and 95 through the system field. */
+  const attrs = {
+    ...target.Attributes,
+    VD_Cable_Size_ID: edited.Attributes.VD_Cable_Size_ID ?? null,
+    Manual_VD_Cable_Size_ID: edited.Attributes.Manual_VD_Cable_Size_ID ?? null,
+  };
+  const effective = (a) => a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID ?? null;
+
+  if (effective(attrs) !== OVER) fail("the node did not end up reading the override");
+  if (attrs.VD_Cable_Size_ID !== SYS) fail("the build's own answer was lost from the node");
+
+  /* And the dialog names what is written, not the field it used to
+     read. Printing VD_Cable_Size_ID here said 95 while writing 300. */
+  if (effective(attrs) === attrs.VD_Cable_Size_ID) {
+    fail("this case no longer distinguishes the two fields, so it proves nothing");
+  }
+
+  /* A2 is untouched: nothing about editing the substation's cable is a
+     statement about the run into A2. */
+  if (drawing[2].Attributes.VD_Cable_Size_ID !== OVER) {
+    fail("carrying to A1 disturbed A2");
+  }
+
+  /* Taking the override off puts the node back on the build's answer
+     rather than leaving 300 stranded on it. */
+  const cleared = {
+    ...attrs,
+    VD_Cable_Size_ID: SYS,
+    Manual_VD_Cable_Size_ID: null,
+  };
+  if (effective(cleared) !== SYS) fail("clearing the override left it on the node");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

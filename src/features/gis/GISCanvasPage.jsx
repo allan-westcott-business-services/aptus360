@@ -652,6 +652,33 @@ export default function GISCanvasPage() {
   /* The pressure at each span node, by its label, for drawing on the
      canvas. Null when the gas layer is hidden or no check has run \u2014
      both mean there is nothing to say rather than a figure of zero. */
+  /* The levels check's figures, against the span node each belongs to.
+
+     Keyed on stopId — the Feature_ID the leg ends at — rather than on
+     the label. Gas matches its pressures on the node's code and needs a
+     positional fallback for nodes whose Span_Label differs from the name
+     the report gave them; the electric legs already carry the id, so
+     there is nothing to match and nothing to drift.
+
+     Null while the trace is stale. traceAt records the drawing the check
+     ran against, and the panel puts a banner up when it no longer
+     matches; a figure drawn beside a node has no room for a banner, so
+     it goes instead. A volt drop is a result, not a property of a node,
+     and one left beside a node after the cable under it changed is a
+     wrong number that looks exactly like a right one. */
+  const elecLevelsAt = useMemo(() => {
+    if (!trace?.levels || !trace?.hasVd) return null;
+    if (!traceAt || traceAt.features !== features || traceAt.lookups !== lookups) return null;
+    const m = new Map();
+    for (const l of trace.legs || []) {
+      if (l.stopId == null || !l.vd) continue;
+      /* Last one wins, which cannot arise: a node is the end of exactly
+         one leg on the circuit that feeds it. */
+      m.set(Number(l.stopId), l.vd);
+    }
+    return m.size ? m : null;
+  }, [trace, traceAt, features, lookups]);
+
   const gasPressureAt = useMemo(() => {
     if (!gasLevelsResult?.legs || hidden.includes("gas")) return null;
     const m = new Map();
@@ -3950,6 +3977,76 @@ export default function GISCanvasPage() {
           });
         }
       }
+
+      /* ── The electric levels, beside the node ──
+
+         The two figures a designer is actually working to: how much of
+         the volts has gone by this point, and the loop impedance the end
+         of the line sees there. Both are already in the levels report,
+         which means reading them meant finding a row in a table by its
+         label — and on a site with twenty-odd spans that is the slow
+         half of the job. Beside the node, the answer is where the
+         question is.
+
+         Same shape as the gas pressure above it, deliberately: same
+         backing plate, same leader once dragged, same hit list, same
+         drag. Two figures on one plate rather than two labels, because
+         they are read together — a node inside the volt drop limit and
+         outside the impedance limit is one fact about that node, and
+         splitting it across two draggable labels makes it two things to
+         keep beside each other.
+
+         Its own offset again: a node can now carry a code, a pressure
+         and a levels label, and one offset between them would drag the
+         lot. */
+      if (elecLevelsAt && fontPx >= 7 && view.scale > 1.2) {
+        const vd = elecLevelsAt.get(Number(f.Feature_ID));
+        if (vd) {
+          const text = `${vd.pct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`;
+          ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
+          ctx.textAlign = "left";
+          ctx.textBaseline = "middle";
+          const w = ctx.measureText(text).width;
+
+          const off = f.Attributes?.Levels_Offset;
+          const dragged = Array.isArray(off) && off.length === 2;
+          const lp = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]) : null;
+          /* Below the node where the pressure sits to its right, so a
+             drawing carrying both does not stack them on one another. */
+          const x = dragged ? lp.x : q.x + r + 5;
+          const y = dragged ? lp.y : q.y + 15;
+
+          if (dragged) {
+            ctx.save();
+            ctx.setLineDash([2, 3]);
+            ctx.strokeStyle = "rgba(15,23,42,.4)";
+            ctx.lineWidth = 1;
+            ctx.beginPath();
+            ctx.moveTo(q.x, q.y);
+            ctx.lineTo(x - 2, y);
+            ctx.stroke();
+            ctx.restore();
+          }
+
+          ctx.fillStyle = "rgba(255,255,255,.88)";
+          ctx.fillRect(x - 2, y - 7, w + 4, 14);
+          /* Red where either figure is outside its limit, matching the
+             report's own cells. A node that fails is the thing somebody
+             is looking for, and the two limits are checked together
+             because the plate carries both. */
+          ctx.fillStyle = (vd.overPct || vd.overOhms) ? "#b91c1c" : "#334155";
+          ctx.fillText(text, x, y);
+          ctx.textAlign = "center";
+          ctx.textBaseline = "alphabetic";
+
+          labelHits.current.push({
+            id: f.Feature_ID, idx: null, kind: "levels", anchor: g[0], txt: text,
+            cx: x + w / 2, cy: y,
+            x: x - 2, y: y - 7, w: w + 4, h: 14,
+            spin: 0,
+          });
+        }
+      }
     }
 
     /* Last, so the proposal sits over the drawing rather than under the
@@ -3961,7 +4058,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, waterColour, trace, traceLeg, traceOver, elecLevelsAt, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -4140,7 +4237,9 @@ export default function GISCanvasPage() {
           labelKind: lab.kind ?? null,
           startOffset: (lab.kind === "pressure"
             ? f?.Attributes?.Pressure_Offset
-            : lab.idx != null
+            : lab.kind === "levels"
+              ? f?.Attributes?.Levels_Offset
+              : lab.idx != null
               ? f?.Attributes?.Labels?.[lab.idx]?.off
               : f?.Attributes?.Label_Offset) ?? [0, 0],
         };
@@ -4534,6 +4633,9 @@ export default function GISCanvasPage() {
            both. */
         if (d.labelKind === "pressure") {
           return { ...f, Attributes: { ...f.Attributes, Pressure_Offset: moved } };
+        }
+        if (d.labelKind === "levels") {
+          return { ...f, Attributes: { ...f.Attributes, Levels_Offset: moved } };
         }
         if (d.labelIdx != null && Array.isArray(f.Attributes?.Labels)) {
           const list = f.Attributes.Labels.map((pl, i) =>

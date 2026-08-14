@@ -7643,8 +7643,11 @@ export default function GISCanvasPage() {
         utility: c.utility,
         outsideDiameterMM: mm > 0 ? mm : null,
         label: c.label,
+        /* Where along the trench it runs, so consecutive runs of one
+           main are not sized as several laid side by side. */
+        fromM: c.fromM, toM: c.toM,
       };
-    }));
+    }), { trenchM: res.trenchM });
 
     /* How long that hole takes to open and to lay.
 

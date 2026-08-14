@@ -187,6 +187,10 @@ export default function FeatureEditor({
       return {
         utility: c.utility,
         outsideDiameterMM: mm > 0 ? mm : null,
+        /* Where along the trench it runs. Without this a trench with
+           three consecutive gas runs along it is sized as three gas
+           pipes side by side. */
+        fromM: c.fromM, toM: c.toM,
       };
     });
 
@@ -197,7 +201,10 @@ export default function FeatureEditor({
        walked a second time — a second walk is a second chance for the
        duration and the dimensions to be talking about different
        contents. */
-    return { ...trenchSize(items), utilityKeys: items.map((x) => x.utility) };
+    return {
+      ...trenchSize(items, { trenchM: res.trenchM }),
+      utilityKeys: items.map((x) => x.utility),
+    };
   }, [isTrench, feature, allFeatures, lineTypes]);
 
   /* Gas, by the same test as water. */

@@ -71,6 +71,70 @@ export function lengthWithin(line = [], trench = [], opts = {}) {
   return inside;
 }
 
+/* Where a point sits along a trench, in metres from its start. */
+function alongOn(p, g = []) {
+  let run = 0;
+  let best = { m: 0, d: Infinity };
+  for (let i = 0; i + 1 < g.length; i++) {
+    const a = g[i];
+    const b = g[i + 1];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const segLen = Math.hypot(vx, vy);
+    const len2 = vx * vx + vy * vy;
+    if (len2) {
+      let u = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+      u = Math.max(0, Math.min(1, u));
+      const d = dist(p, [a[0] + vx * u, a[1] + vy * u]);
+      if (d < best.d) best = { m: run + segLen * u, d };
+    }
+    run += segLen;
+  }
+  return best.m;
+}
+
+/* Which part of the trench a line covers, in metres from the trench's
+   start.
+
+   ── Why the extent and not just the total ──
+
+   In one section of trench, everything laid in it runs its whole
+   length: pipes and cables do not join a trench part way along. So a
+   line covering half a section is not something laid beside the rest —
+   it is a consecutive run of the same pipe, and the next run picks up
+   where it stopped.
+
+   The total metres cannot tell those apart. Two 50m runs end to end and
+   two 50m cables side by side down the same 50m both come to 100m. The
+   extent can: the first pair occupies 0–50 and 50–100, the second pair
+   occupies 0–50 twice.
+
+   Measured by the same walk lengthWithin uses, keeping the first and
+   last step that fell inside the band rather than counting them. */
+export function spanWithin(line = [], trench = [], opts = {}) {
+  const { withinM = 1.5, stepM = 1.0 } = opts;
+  if (trench.length < 2 || line.length < 2) return null;
+
+  let lo = Infinity;
+  let hi = -Infinity;
+  for (let i = 0; i + 1 < line.length; i++) {
+    const a = line[i];
+    const b = line[i + 1];
+    const segLen = dist(a, b);
+    if (!segLen) continue;
+    const steps = Math.max(1, Math.ceil(segLen / stepM));
+    for (let k = 0; k < steps; k++) {
+      const u = (k + 0.5) / steps;
+      const p = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+      if (nearestOn(p, trench) > withinM) continue;
+      const m = alongOn(p, trench);
+      if (m < lo) lo = m;
+      if (m > hi) hi = m;
+    }
+  }
+  return hi >= lo ? { fromM: lo, toM: hi } : null;
+}
+
 /* The stretch of trench between the span nodes either side of a point.
 
    A trench feature runs from wherever it was drawn to wherever it
@@ -306,11 +370,19 @@ export function contentsOf(trench, features = [], opts = {}) {
       continue;
     }
 
+    /* Where along the trench this one runs, so what is laid beside it
+       can be told from what follows it. Null where it cannot be
+       measured, which the sizing reads as "the whole length" — the
+       cautious answer, since that is the case that widens the trench. */
+    const span = spanWithin(lg, g, { withinM, ...opts });
+
     out.push({
       feature: f,
       utility: f.Layer_Key ?? null,
       lineType: f.Attributes?.Line_Type ?? null,
       label: labelOf(f),
+      fromM: span ? Math.round(span.fromM * 10) / 10 : null,
+      toM: span ? Math.round(span.toM * 10) / 10 : null,
       /* How much of this line is in the trench, and how much of the
          trench it takes up. The second is what says whether it runs the
          whole way or stops part way along. */

@@ -105,7 +105,77 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   }
 }
 
-// 8. Separation is symmetric: the gap between gas and electric does not
+// 8. Consecutive runs of one main are one pipe wide, not several.
+//
+//    This is the fault that produced a three-metre trench from a single
+//    gas, water and LV. Nothing joins a trench part way along its
+//    length, so a line covering part of a section is the next run of
+//    the same pipe rather than something laid beside it. Summing the
+//    list regardless added a diameter and another 0.25m of separation
+//    for every run, and got worse as the design matured, because each
+//    rebuild splits the network into more runs along the same trench.
+{
+  const beside = trenchSize([
+    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 100 },
+    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 100 },
+  ], { trenchM: 100 });
+  const endToEnd = trenchSize([
+    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 50 },
+    { utility: "gas", outsideDiameterMM: 180, fromM: 50, toM: 100 },
+  ], { trenchM: 100 });
+
+  if (endToEnd.items !== 1) {
+    fail(`two runs end to end were sized as ${endToEnd.items} pipes side by side`);
+  }
+  if (!(beside.widthM > endToEnd.widthM)) {
+    fail("two mains laid side by side were no wider than the same two end to end");
+  }
+  if (endToEnd.runs !== 2) fail("the runs along the trench were not reported");
+  if (endToEnd.consecutive !== 1) fail("the consecutive run was not reported as such");
+
+  /* The busiest point decides, wherever it falls. A single run down the
+     whole length beside two consecutive ones is two pipes wide
+     throughout, not three at one end. */
+  const mixed = trenchSize([
+    { utility: "electric", fromM: 0, toM: 100 },
+    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 50 },
+    { utility: "gas", outsideDiameterMM: 180, fromM: 50, toM: 100 },
+  ], { trenchM: 100 });
+  if (mixed.items !== 2) fail(`the busiest cross-section held ${mixed.items}, wanted 2`);
+}
+
+// 9. Depth still comes from everything in it, not from the busiest
+//    cross-section.
+//
+//    A trench is dug to one depth in one pass, so a deeper run further
+//    along still sets it. The width may vary along a section; the depth
+//    may not.
+{
+  const r = trenchSize([
+    { utility: "electric", fromM: 0, toM: 50 },
+    { utility: "water", outsideDiameterMM: 180, fromM: 50, toM: 100 },
+  ], { trenchM: 100 });
+  if (r.items !== 1) fail("two consecutive runs were sized as two side by side");
+  if (r.deepest !== "water") {
+    fail(`depth taken from ${r.deepest} — a deeper run further along did not set it`);
+  }
+}
+
+// 10. Items with no extent are treated as running the whole length.
+//
+//     The cautious reading, and what every caller that knows what is in
+//     a trench but not where should get. Existing callers pass no
+//     extents at all and must be unaffected.
+{
+  const r = trenchSize([
+    { utility: "gas", outsideDiameterMM: 180 },
+    { utility: "electric" },
+  ]);
+  if (r.items !== 2) fail("items with no extent were dropped from the cross-section");
+  if (r.consecutive !== 0) fail("items with no extent were called consecutive");
+}
+
+// 11. Separation is symmetric: the gap between gas and electric does not
 //    depend on which was listed first.
 if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
   fail("the separation between two utilities depends on their order");

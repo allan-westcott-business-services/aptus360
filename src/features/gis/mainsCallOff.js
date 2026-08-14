@@ -226,6 +226,62 @@ export function trenchGraph(trenches = [], nodes = [], opts = {}) {
     points.findIndex((p) => p.node?.Feature_ID === id) };
 }
 
+/* The steps between two graph points, as edges.
+
+   `routeBetween` below answers the same question for two span node
+   Feature_IDs. This one takes point indices, because an end of a
+   call-off section is often a plot seed or a bare trench end with no
+   node on it — which is why CallOffsTab resolves its ends to the
+   nearest point rather than to a node.
+
+   Each edge carries the trench it runs on and its length along that
+   trench. That is the whole reason this returns edges rather than a
+   total: a section crossing from a footway trench into a carriageway
+   one is two different digs, and a single number cannot say so.
+
+   Dijkstra rather than the breadth-first relaxation CallOffsTab uses
+   for lengths alone: that one revisits nodes until the distances settle,
+   which is fine for a total but does not leave a path behind it. */
+export function pathBetween(graph, fromIdx, toIdx) {
+  const { adj } = graph;
+  if (fromIdx == null || toIdx == null || fromIdx === toIdx) return null;
+
+  const best = new Map([[fromIdx, 0]]);
+  const cameBy = new Map();
+  const seen = new Set();
+
+  for (;;) {
+    /* The nearest unsettled point. A linear scan rather than a heap:
+       the graph is one site's trenches, and a heap here would be more
+       code than the site has junctions. */
+    let at = null;
+    let atD = Infinity;
+    for (const [i, d] of best) {
+      if (!seen.has(i) && d < atD) { at = i; atD = d; }
+    }
+    if (at == null) return null;
+    if (at === toIdx) break;
+    seen.add(at);
+
+    for (const e of adj.get(at) || []) {
+      const next = atD + e.len;
+      if (best.has(e.to) && best.get(e.to) <= next) continue;
+      best.set(e.to, next);
+      cameBy.set(e.to, { from: at, edge: e });
+    }
+  }
+
+  const out = [];
+  let cur = toIdx;
+  while (cur !== fromIdx) {
+    const step = cameBy.get(cur);
+    if (!step) return null;
+    out.unshift(step.edge);
+    cur = step.from;
+  }
+  return out;
+}
+
 /* The shortest run of trench between two span nodes.
 
    Returned as the steps taken, each with its length and the trench it

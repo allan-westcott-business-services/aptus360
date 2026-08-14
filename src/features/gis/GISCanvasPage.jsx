@@ -4149,10 +4149,18 @@ export default function GISCanvasPage() {
           const off = f.Attributes?.Levels_Offset;
           const dragged = Array.isArray(off) && off.length === 2;
           const lp = dragged ? toPx([g[0][0] + off[0], g[0][1] + off[1]]) : null;
-          /* Below the node where the pressure sits to its right, so a
-             drawing carrying both does not stack them on one another. */
+          /* Beside the node and centred on it, exactly as the gas
+             pressure is.
+
+             This sat fifteen pixels lower, to keep the two off one
+             another on a drawing carrying both. They cannot be on one
+             drawing: each is now null while its own layer is hidden, and
+             isolating a utility hides the other. So the offset bought
+             nothing and cost the alignment — the label hung below the
+             node it belongs to while the gas one lined up with its
+             centre. */
           const x = dragged ? lp.x : q.x + r + 5;
-          const y = dragged ? lp.y : q.y + 15;
+          const y = dragged ? lp.y : q.y;
 
           if (dragged) {
             ctx.save();

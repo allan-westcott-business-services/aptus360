@@ -1258,8 +1258,20 @@ export default function GISCanvasPage() {
 
      Keyed on Plot_ID rather than on the seed, because that is what a
      meter carries. */
-  /* Whether the circled A is drawn rather than the plain diamond. The
-     A is a water mark; the point under it is not. */
+
+  /* Whether the property boundary markers are drawn.
+
+     Shown unless somebody turns them off. This used to ask whether any
+     layer carrying a Utility_ID was visible, which made a mark that
+     belongs to every utility depend on a column set per database \u2014 and
+     the drawing of it was gated on water besides, so the A appeared on
+     one layer of three.
+
+     A boundary point is a fact about the plot. It goes when it is
+     hidden, and not otherwise. */
+  const boundaryShown = useMemo(
+    () => !hidden.includes("plot:boundary"), [hidden]);
+
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
   const classCount = useMemo(() => {

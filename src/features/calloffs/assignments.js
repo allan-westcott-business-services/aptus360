@@ -702,6 +702,27 @@ export function layHalves(start, startPM, halves = [], weekend = {}) {
   return { days: rows, end: rows.length ? rows[rows.length - 1].date : null };
 }
 
+/* Where a run of half-days, starting on a given morning, finishes.
+
+   The end date a booking of that length needs. Laid half by half around
+   weekends and non-working days rather than by adding days to a date:
+   four half-days from a Friday is Friday and Monday, not Friday and
+   Saturday, and only walking the calendar knows that.
+
+   Built on layHalves, so a defaulted end date and a booking of the same
+   length cannot disagree — one placeholder per half, because layHalves
+   cares how many there are and not what is in them.
+
+   Null for nothing to lay. A call-off the drawing could not estimate
+   has no length, and defaulting it to the start date would say the work
+   takes no time rather than that nobody knows. */
+export function endAfterHalves(start, halfDays, weekend = {}) {
+  const n = Math.ceil(Number(halfDays) || 0);
+  if (!start || n < 1) return null;
+  const { end } = layHalves(start, false, Array.from({ length: n }, () => ({})), weekend);
+  return end;
+}
+
 /* Whether a given half of a given day is worked. */
 export function halfIsWorked(date, pm, weekend = {}) {
   const a = availablePart(date, weekend);

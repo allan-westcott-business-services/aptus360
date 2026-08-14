@@ -490,7 +490,31 @@ export default function CallOffsTab({ projectId }) {
         Contact_Company: branchName || null,
         Contact_Phone: f.Contact_Phone || "N/A",
         Created_By: user?.email ?? null,
-        items: toItems(rowsForMode, mode),
+        /* How long the trenching takes, as the drawing said when this
+           was raised (0159).
+
+           Saved rather than left to be worked out again in Planning.
+           Planning holds none of the drawing, and an estimate
+           recomputed later would move — routing another cable into a
+           trench would silently lengthen a booking a team had already
+           been given. A call-off is a request for work as it was
+           understood on the day.
+
+           Null unless something could actually be estimated, so a
+           call-off whose ends are not on the trench network leaves the
+           end date empty rather than defaulting it to the start. */
+        Estimated_Half_Days: mode === "Span" && digTotal?.halfDays
+          ? digTotal.halfDays
+          : null,
+        items: toItems(
+          mode === "Span"
+            ? rowsForMode.map((r, i) => ({
+              ...r,
+              Estimated_Half_Days: sectionDays[i]?.ok ? sectionDays[i].halfDays : null,
+            }))
+            : rowsForMode,
+          mode,
+        ),
       });
       setOpen(false);
       setPenalty(null);

@@ -1,4 +1,4 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, useCallback } from "react";
 import {
   listAllCallOffs, setCallOffStatus, updateCallOff, deleteCallOff,
 } from "../../api/calloffs.js";
@@ -8,7 +8,8 @@ import { getLookups } from "../../api/lookups.js";
 import { getProject, listProjects } from "../../api/projects.js";
 import { openProject } from "../../lib/projectIntent.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
-import { energisationFloor, dayAfter, byUtilityColumn } from "./rules.js";
+import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
+import { halfDaysText } from "./digDays.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
@@ -17,7 +18,7 @@ import {
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
   bookedParts, partIsFree,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
-  splitsByUtility,
+  splitsByUtility, endAfterHalves,
 } from "./assignments.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
@@ -1271,8 +1272,53 @@ function Assignments({ row }) {
     setError("");
   }
 
+  /* The end date a run of this length needs, from the estimate saved on
+     the call-off when it was raised (0159).
+
+     Per run where one is chosen and the whole call-off where none is,
+     which is what "All spans" means. A run the drawing could not answer
+     for returns nothing rather than a date — the field stays empty, and
+     empty says nobody knows.
+
+     Only for the excavation and lay: a jointing booking is not the
+     trenching, and giving it the trenching's length would put a
+     fortnight against half a day's work. */
+  const endForSpan = useCallback((d, spanId) => {
+    const start = d?.Start_Date;
+    const phaseType = (phases || [])
+      .find((t) => Number(t.Task_Type_ID) === Number(d?.Task_Type_ID));
+    if (!start || !isDigTask(phaseType)) return null;
+
+    const halves = spanId
+      ? (row.items || [])
+        .find((it) => Number(it.Span_ID) === Number(spanId))?.Estimated_Half_Days
+      : row.Estimated_Half_Days;
+
+    return endAfterHalves(start, halves, {});
+  }, [phases, row]);
+
   function openFor(phase) {
     const floor = floorFor(phase.Task_Type_ID, mine, plotUniverse);
+    const start = floor?.date || row.Preferred_Date || "";
+    /* The first run nobody is on yet, worked out below — the end date
+       has to be for that run and not for the whole call-off, or a form
+       that opens on one run of six shows the length of all six. */
+    const openSpan = (() => {
+      if (row.Selection_Mode !== "Span") return "";
+      const onPhase = mine.filter((a) =>
+        Number(a.Task_Type_ID) === Number(phase.Task_Type_ID));
+      const taken = new Set(onPhase
+        .filter((a) => a.Span_ID != null)
+        .map((a) => Number(a.Span_ID)));
+      if (!taken.size) return "";
+      const free = (row.items || [])
+        .find((it) => !taken.has(Number(it.Span_ID)));
+      return free ? String(free.Span_ID) : "";
+    })();
+    const defaultEnd = endForSpan(
+      { Start_Date: start, Task_Type_ID: phase.Task_Type_ID }, openSpan,
+    ) || "";
+
     setDraft({
       Task_Type_ID: phase.Task_Type_ID,
       Team_ID: "",
@@ -1282,22 +1328,33 @@ function Assignments({ row }) {
          assigned. Once one run has a team, opening the form on "all
          spans" offers something that would overlap, and somebody has to
          notice and change it before anything else works. */
-      Span_ID: (() => {
-        if (row.Selection_Mode !== "Span") return "";
-        const onPhase = mine.filter((a) =>
-          Number(a.Task_Type_ID) === Number(phase.Task_Type_ID));
-        const taken = new Set(onPhase
-          .filter((a) => a.Span_ID != null)
-          .map((a) => Number(a.Span_ID)));
-        if (!taken.size) return "";
-        const free = (row.items || [])
-          .find((it) => !taken.has(Number(it.Span_ID)));
-        return free ? String(free.Span_ID) : "";
-      })(),
+      Span_ID: openSpan,
       /* Defaulted to the earliest it may start — the preferred date, or
          later if an earlier phase pushes it. */
       Start_Date: floor?.date || row.Preferred_Date || "",
-      End_Date: "",
+      /* And long enough to do the work.
+
+         From the dig estimate saved on the call-off when it was raised
+         (0159), laid out half by half around weekends — four half-days
+         from a Friday finish on the Monday, which adding days to a date
+         would get wrong.
+
+         Only for the excavation and lay. A jointing or reinstatement
+         booking is not the trenching, and giving it the trenching's
+         length would put a fortnight against half a day's work.
+
+         Left empty where there is no estimate: a call-off raised before
+         this existed, or one whose ends are not all on the trench
+         network. Empty says nobody knows; defaulting it to the start
+         date would say the work takes no time.
+
+         A default, not a decision — the field is still a date picker
+         and the planner changes it where the estimate is wrong. */
+      End_Date: defaultEnd,
+      /* What was defaulted, so changing the run can tell a date the
+         form put there from one somebody typed. Not saved — it exists
+         for as long as the form is open. */
+      autoEnd: defaultEnd,
       /* The plots not already taken by another team on this phase.
 
          A call-off split three and three should open the second
@@ -1958,7 +2015,23 @@ function Assignments({ row }) {
                     <select className="asg-span-sel" value={draft.Span_ID}
                       aria-label="Span"
                       onChange={(e) => setDraft((d2) => ({
-                        ...d2, Span_ID: e.target.value,
+                        ...d2,
+                        Span_ID: e.target.value,
+                        /* And the end date with it. Picking one run out
+                           of six should not leave a booking the length
+                           of all six sitting in the date box — that is
+                           the number a planner would accept without
+                           reading, having just told the form it is
+                           doing a sixth of the work.
+
+                           Only while the default is still standing. A
+                           date somebody has typed is theirs, and moving
+                           it because the run changed would throw away a
+                           decision to make a point about arithmetic. */
+                        End_Date: d2.End_Date && d2.End_Date !== d2.autoEnd
+                          ? d2.End_Date
+                          : (endForSpan(d2, e.target.value) ?? ""),
+                        autoEnd: endForSpan(d2, e.target.value) ?? "",
                       }))}>
                       {/* Spans nobody is on yet.
 
@@ -1987,10 +2060,33 @@ function Assignments({ row }) {
                                 Once one run has a team on it, an
                                 assignment covering everything would
                                 overlap it. */}
-                            {!taken.size && <option value="">All spans</option>}
+                            {/* How long each run takes, on the option
+                                itself.
+
+                                The choice being made here is which runs
+                                go to which team, and that cannot be
+                                made from the run's name alone — "Plot
+                                12 to Plot 16" says nothing about
+                                whether it is an afternoon or a
+                                fortnight. Putting it in the dropdown
+                                puts it where the decision happens,
+                                rather than a field away from it.
+
+                                Left off where the drawing could not
+                                answer for a run: a silent option among
+                                labelled ones reads as unknown, which is
+                                what it is, and "0 days" would read as
+                                nothing to do. */}
+                            {!taken.size && (
+                              <option value="">
+                                {`All spans${row.Estimated_Half_Days
+                                  ? ` \u2014 ${halfDaysText(row.Estimated_Half_Days)}` : ""}`}
+                              </option>
+                            )}
                             {free.map((it) => (
                               <option key={it.Span_ID} value={it.Span_ID}>
-                                {it.Plots}
+                                {`${it.Plots}${it.Estimated_Half_Days
+                                  ? ` \u2014 ${halfDaysText(it.Estimated_Half_Days)}` : ""}`}
                               </option>
                             ))}
                             {!free.length && (
@@ -2031,6 +2127,15 @@ function Assignments({ row }) {
                       ...d,
                       Start_Date: e.target.value,
                       End_Date: slideEnd(d.Start_Date, d.End_Date, e.target.value),
+                      /* Slid with it, so a booking moved a week later is
+                         still recognised as the length the estimate
+                         gave it. Without this, moving the start once
+                         would make every later change to the run leave
+                         the dates alone, on the grounds that somebody
+                         had typed them. */
+                      autoEnd: d.autoEnd
+                        ? slideEnd(d.Start_Date, d.autoEnd, e.target.value)
+                        : d.autoEnd,
                     }))} />
                   <span className="asg-to">to</span>
                   <input className="asg-date" type="date" value={draft.End_Date}

@@ -50,15 +50,30 @@ export function servicePenalty(plotCount, {
    The two are named apart in the message, because "before the dig
    finishes" and "before the visit" are different objections and a
    planner reading the second should not think the first was checked. */
+/* Whether a task type is the excavation and lay.
+
+   Matched on the name, which is how this has always been decided —
+   lifted out of energisationFloor because a second caller needs the
+   same answer, and two copies of "starts with excav or lay" would be
+   two places for a renamed task type to be half handled.
+
+   Only these phases get a duration defaulted from the dig estimate. A
+   jointing or a reinstatement booking is not the trenching, and giving
+   it the trenching's length would put a fortnight against half a day's
+   work. */
+export function isDigTask(taskType) {
+  const n = String(taskType?.Task_Type_Name || "").toLowerCase().trim();
+  return n.startsWith("excav") || n.startsWith("lay");
+}
+
+export function digTaskIds(taskTypes = []) {
+  return new Set(taskTypes.filter(isDigTask).map((t) => Number(t.Task_Type_ID)));
+}
+
 export function energisationFloor(form = {}, opts = {}) {
   const { assignments = [], taskTypes = [] } = opts;
 
-  const digIds = new Set(taskTypes
-    .filter((t) => {
-      const n = String(t.Task_Type_Name || "").toLowerCase().trim();
-      return n.startsWith("excav") || n.startsWith("lay");
-    })
-    .map((t) => Number(t.Task_Type_ID)));
+  const digIds = digTaskIds(taskTypes);
 
   let ends = null;
   for (const a of assignments) {
@@ -222,6 +237,17 @@ export function toItems(rows, mode) {
         .filter(Boolean).join(" to ") || null;
     })(),
     D_or_P: clean(r.D_or_P),
+    /* Half-days to dig and lay this section, worked out from the
+       drawing as the call-off was raised (0159).
+
+       Null where the drawing could not answer — a section whose ends
+       are not both on the trench network has no route to measure. Null
+       rather than zero, because "no work" is not something an estimate
+       can honestly produce and a booking would be defaulted from it. */
+    Estimated_Half_Days: Number.isFinite(Number(r.Estimated_Half_Days))
+      && Number(r.Estimated_Half_Days) > 0
+      ? Math.round(Number(r.Estimated_Half_Days))
+      : null,
     Energisation_Date: clean(r.Energisation_Date),
     Estimated_Length_m: r.Estimated_Length_m === "" || r.Estimated_Length_m == null
       ? null : Number(r.Estimated_Length_m),

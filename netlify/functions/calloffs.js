@@ -15,6 +15,12 @@ const SUB_COLS = [
   "Preferred_Date", "Alternative_Date",
   "Obstruction_Free", "Ground_Unmade", "Line_Level_Required",
   "Notes", "GIS_Data", "Created_By", "Created_At",
+  /* Half-days to excavate and lay every section on this call-off, from
+     the drawing at the moment it was raised (0159). Written once and
+     not recomputed: a call-off is a request for work as it was
+     understood on the day, and an estimate that moved would silently
+     lengthen a booking a team had already been given. */
+  "Estimated_Half_Days",
 ].join(",");
 
 const WRITABLE = new Set(SUB_COLS.split(",")
@@ -32,7 +38,12 @@ export const CHILD = {
     table: "Mains_Call_Off_Span",
     key: "Span_ID",
     cols: ["Plots", "D_or_P", "Energisation_Date", "Estimated_Length_m",
-      "Sort_Order", "From_Node_ID", "To_Node_ID", "Off_Site"],
+      "Sort_Order", "From_Node_ID", "To_Node_ID", "Off_Site",
+      /* Per section, so a call-off split between two teams can give
+         each the length of what it covers rather than the whole job.
+         Nothing reads it yet — stored because it is free to keep now
+         and impossible to recover once the drawing has moved on. */
+      "Estimated_Half_Days"],
   },
   PlotList: {
     table: "Service_Call_Off_Plot",

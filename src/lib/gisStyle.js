@@ -272,11 +272,31 @@ export function symbolPath(ctx, symbol, x, y, r) {
       }
       ctx.closePath();
       break;
+    /* ── A bottle end ──
+
+       The cable comes in from above and stops: a stem down to three
+       bars, each shorter than the one before. Drawn about the point the
+       joint sits on, like every other symbol here, so the stem rises
+       from it rather than the bars sitting on it — the point is where
+       the cable is, and that is the top of the stem.
+
+       Stroke only. There is no inside to fill. */
+    case "bottleend": {
+      const top = y - r;
+      const bar = y + r * 0.15;
+      ctx.moveTo(x, top); ctx.lineTo(x, bar);
+      ctx.moveTo(x - r, bar); ctx.lineTo(x + r, bar);
+      ctx.moveTo(x - r * 0.62, bar + r * 0.42);
+      ctx.lineTo(x + r * 0.62, bar + r * 0.42);
+      ctx.moveTo(x - r * 0.26, bar + r * 0.84);
+      ctx.lineTo(x + r * 0.26, bar + r * 0.84);
+      break;
+    }
     default:
       ctx.arc(x, y, r, 0, Math.PI * 2);
   }
 }
 
-export const SYMBOLS = ["house", "circle", "square", "triangle", "diamond", "cross", "plus", "hexagon"];
+export const SYMBOLS = ["house", "circle", "square", "triangle", "diamond", "cross", "plus", "hexagon", "bottleend"];
 /* Outlines only — a cross has no inside to fill. */
-export const STROKE_ONLY = new Set(["cross", "plus"]);
+export const STROKE_ONLY = new Set(["cross", "plus", "bottleend"]);

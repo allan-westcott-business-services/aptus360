@@ -80,6 +80,7 @@ caught a fault that had already shipped at least once.
 | `node checkhr.mjs` | Mounts all sixteen HR modules; icons, modals, sidebar bridge |
 | `node checkspannodes.mjs` | Span node origins, and which node a cable run feeds |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
+| `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
 | `python3 checkcols.py` | Explicit column lists against the schema |
 | `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
@@ -198,6 +199,30 @@ function or move the logic somewhere it can be imported from.
     `syncNodeCables({ silent: true })` suppressed the status toasts and
     not the `window.confirm`, so a background call stopped the page with
     a modal.
+
+16. **A menu divider means one thing, or it means nothing.** The rule
+    across all seven GIS menus: a `gm-sep` above every `MenuGroup`
+    heading, *except* the first heading in a menu and *except* any
+    heading carrying `newColumn`. A column break is already a break, and
+    a divider above one draws a line across the foot of the previous
+    column, under nothing. Before this was applied the Layers menu had
+    three dividers in a row and a fourth dangling at its foot, Electric
+    had one above its first heading and one stranded between a heading
+    and its first row, and Gas/Water had two with only a comment between
+    them. `checkmenus.py` is not written yet; the audit was done by
+    script and is worth re-running if the menus are reworked.
+
+17. **Comments outlive the code they describe.** Most of the stray
+    dividers above were left behind when the control between them moved
+    to another menu — the comment stayed, so the gap still looked
+    intentional. When moving a menu item, move or delete its comment in
+    the same edit.
+
+18. **A duplicated control drifts.** The Labels switch existed twice in
+    the Layers menu, one copy carrying a comment written for a utility
+    menu ("Labels, on every utility menu") — an edit that landed in the
+    wrong menu and whose original was never removed. Two controls for one
+    setting is the same fault as two records of one fact in 13.
 
 ## Decisions worth knowing
 

@@ -9,6 +9,8 @@
                 the designer has specified a different size beyond this
                 point, or the cumulative customer count has crossed
                 another cable's worth and a new length starts here
+     bottle   — the feeder stops: nothing is fed beyond this point, so
+                the cable is sealed off here
 
    Worked out from the routed network rather than from where line ends
    happen to coincide. The existing gis_place_joints groups coincident
@@ -30,10 +32,22 @@ import { buildFeederModel, cablesFor, METERS_PER_CABLE } from "./feeder.js";
    use: a lookup renamed in Admin should change the label on screen, not
    silently stop matching and leave joints unclassified. */
 export const JOINT_KINDS = {
+  bottleend: { code: "BTL", label: "Bottle End" },
   breech: { code: "BRE", label: "Breech Joint" },
   service: { code: "SVC", label: "Service Joint" },
   straight: { code: "STR", label: "Straight Joint" },
 };
+
+/* Whether a joint is a bottle end.
+
+   In joints.js rather than in the canvas because three places ask it —
+   the drawing, the editor and the placement buttons — and a test on
+   Attributes.Joint_Type written out three times is three chances to
+   compare against the label instead of the key, or to forget the role. */
+export function isBottleEnd(feature) {
+  return feature?.Feature_Role === "joint"
+    && String(feature?.Attributes?.Joint_Type ?? "") === "bottleend";
+}
 
 /* Which wins where more than one cause meets at a point.
 
@@ -43,14 +57,28 @@ export const JOINT_KINDS = {
    straight joint cannot do the work of a breech.
 
    Every reason is recorded on the feature regardless, so the drawing can
-   say a breech joint is also serving a plot rather than losing that. */
-const PRIORITY = ["breech", "straight", "service"];
+   say a breech joint is also serving a plot rather than losing that.
+
+   ── Why a bottle end outranks everything ──
+
+   It can only ever meet one other reason. A breech needs two loaded ways
+   onward and a straight needs one; the end of a run has none, so neither
+   can occur there. The only thing that can share the point is a service,
+   and in practice one always does — the load that makes the node part of
+   the feeder at all arrives through it.
+
+   So the choice at a terminal is not "which of several", it is "service
+   or bottle end", and the cable stopping is the larger fact about the
+   fitting that goes in the ground. The service is still recorded in
+   reasons, so the drawing can say a bottle end also serves a plot. */
+const PRIORITY = ["bottleend", "breech", "straight", "service"];
 const rank = (kind) => PRIORITY.indexOf(kind);
 
 /* Reasons are not the same as kinds: a drum running out produces a
    straight joint, and saying so on the feature is more use than the word
    "straight" alone when someone asks why it is there. */
 export const REASON_TEXT = {
+  bottleend: "the feeder ends here, with nothing fed beyond it",
   breech: "the feeder divides here",
   service: "a service leaves the feeder here",
   straight: "the cable changes here",
@@ -112,6 +140,28 @@ function jointsForCircuit(features, circuit, opts) {
     const loaded = loadChildren(u);
 
     if (loaded.length > 1) reasons.push("breech");
+
+    /* The end of the run.
+
+       No loaded way onward, on a node the feeder does reach: the cable
+       stops here and has to be sealed. Read from the loaded ways rather
+       than from the drawn ends, because the graph is the whole trench
+       network and most of its ends are trenches this circuit never
+       feeds — testing geometry would put a bottle end on every stub in
+       the site.
+
+       `!parSvc[u]` is the other half, and it is not optional. A service
+       spur ends at the plot it serves, and that end satisfies every
+       other condition here: the circuit reaches it, it carries load, and
+       nothing is fed beyond it. Without this test a bottle end appeared
+       at every plot connection on the drawing — more of them than there
+       were feeders, each one on a cable that ends in a cut-out rather
+       than a seal.
+
+       `cum[u] > 0` above is what keeps the rest honest. A node the
+       circuit carries no load through is not part of this feeder, so its
+       being an end says nothing about where this cable stops. */
+    if (!loaded.length && !parSvc[u]) reasons.push("bottleend");
 
     if (loaded.length === 1) {
       const next = loaded[0];

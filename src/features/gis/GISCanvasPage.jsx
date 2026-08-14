@@ -49,7 +49,7 @@ import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
 } from "./feederColour.js";
-import { planJoints, reconcileJoints, JOINT_KINDS } from "./joints.js";
+import { planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd } from "./joints.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
@@ -2478,7 +2478,14 @@ export default function GISCanvasPage() {
            one block and closed in another, and a const inside the
            first is not in scope for the second \u2014 "spin is not
            defined", on every drawing with a joint on it. */
-        const spin = f.Feature_Role === "joint" ? jointAngle(f) : 0;
+        /* A bottle end is the exception among joints: the others are
+           boxes buried the way the cable runs, and turning the symbol to
+           match is what makes them read as objects rather than markers.
+           This one is a stem and three bars, drawn upright like a
+           label \u2014 turned to the bearing of the cable it would lie on its
+           side and stop looking like the symbol it is. */
+        const spin = f.Feature_Role === "joint" && !isBottleEnd(f)
+          ? jointAngle(f) : 0;
         const isSeed = f.Feature_Role === "plot";
         /* Seeds take the bedroom colour used everywhere else for plots.
 
@@ -2628,8 +2635,18 @@ export default function GISCanvasPage() {
             ctx.translate(-p.x, -p.y);
           }
 
-          symbolPath(ctx, ps.symbol, p.x, p.y, r);
-          if (STROKE_ONLY.has(ps.symbol)) {
+          /* A bottle end draws as itself.
+
+             Every other point takes its symbol from the style cascade,
+             which is right where the symbol is a presentation choice: a
+             DNO that draws meters as hexagons should get hexagons. A
+             bottle end is not that. The three-bar symbol is what the
+             fitting is called on the drawing, and a bottle end rendered
+             as the layer's default circle cannot be told from a POC. */
+          const sym = isBottleEnd(f) ? "bottleend" : ps.symbol;
+
+          symbolPath(ctx, sym, p.x, p.y, r);
+          if (STROKE_ONLY.has(sym)) {
             ctx.strokeStyle = on ? "#1d4ed8" : (ps.colour ?? fill);
             ctx.lineWidth = 2.5;
             ctx.stroke();
@@ -5877,6 +5894,93 @@ export default function GISCanvasPage() {
       await load(projectId);
       setStatus(`${label} placed${note}`);
       setTimeout(() => setStatus(""), 7000);
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
+  /* One joint, of a kind the designer names, placed by hand.
+
+     Place Feeder Joints works the whole network out from the routed
+     model, which is the right way round for a design that has been
+     built: it finds every joint the network calls for and nothing else.
+     It is no use at all for the case this covers — a joint that is going
+     in for a reason the model cannot see. An existing main being cut
+     into, a breech left for a phase not yet drawn, a bottle end sealing
+     a cable that stops short of anything.
+
+     Written the same shape as a generated joint, deliberately: same
+     role, same Joint_Type and Joint_Code, so the drawing, the bill and
+     the levels check all read it without knowing where it came from.
+
+     `Generated: false` is the one difference, and it is what stops the
+     next run of Place Feeder Joints treating it as its own. reconcileJoints
+     already leaves an unmatched joint alone and reports it rather than
+     deleting it, so a hand-placed joint survives; this says plainly which
+     ones were somebody's decision. */
+  async function placeJoint(kind) {
+    if (!projectId) return;
+    const spec = JOINT_KINDS[kind];
+    if (!spec) { setError(`No such joint kind: ${kind}`); return; }
+
+    /* Middle of the view, then snapped onto the nearest LV feeder \u2014 the
+       same gesture as + POC, one button rather than a button and a mode. */
+    const cx = (canvasRef.current?.clientWidth ?? 800) / 2;
+    const cy = (canvasRef.current?.clientHeight ?? 500) / 2;
+    let point = toM(cx, cy);
+    let note = "";
+
+    /* Feeders only. A joint is a fitting on an LV main; snapping one to
+       a trench or a service cable would put it where no cable of the
+       right kind runs, and the levels check reads joints off the
+       feeders. */
+    const feeders = visible.filter((f) => f.Feature_Type === "line"
+      && f.Layer_Key === "electric"
+      && f.Attributes?.Line_Type === "elec_main");
+
+    let best = null;
+    for (const t of feeders) {
+      const r = nearestOnPolyline(point, t.Geometry || []);
+      if (r && (!best || r.d < best.d)) best = { ...r, line: t };
+    }
+
+    /* The circuit comes from the cable it lands on. A joint belongs to
+       one network's cables, and guessing would put it on whichever
+       circuit happened to be first \u2014 the same fault placeNode had with
+       utilities[0]. Null where it landed on nothing, which is honest:
+       the joint is placed and can be dragged onto a main. */
+    let circuitId = null;
+    if (best) {
+      point = best.q;
+      circuitId = best.line.Attributes?.Circuit_ID ?? null;
+      note = ` on ${best.line.Label ?? "the feeder"}`;
+    } else {
+      note = " \u2014 not on an LV feeder yet, drag it onto one so the "
+        + "levels check can read it";
+    }
+
+    try {
+      await createFeature(projectId, {
+        Layer_Key: "electric",
+        Feature_Type: "point",
+        Feature_Role: "joint",
+        Geometry: [point],
+        Label: spec.label,
+        Attributes: {
+          Joint_Type: kind,
+          Joint_Code: spec.code,
+          /* Placed by hand is itself the reason. Leaving reasons empty
+             would make the editor say a joint is here for no reason at
+             all, which is not the same as nobody having recorded one. */
+          Joint_Reasons: ["manual"],
+          Ways_In: null,
+          Services: null,
+          Circuit_ID: circuitId,
+          Generated: false,
+        },
+      });
+      await load(projectId);
+      setStatus(`${spec.label} placed${note}`);
+      setTimeout(() => setStatus(""), 8000);
       setError("");
     } catch (e) { setError(e.message); }
   }
@@ -11380,18 +11484,11 @@ export default function GISCanvasPage() {
                       }} />
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
-                    {/* Labels, on every utility menu.
-
-                        Whether the drawing is readable is a
-                        question somebody asks while working on one
-                        utility, and the answer used to be in the
-                        Layers menu \u2014 a different menu from the one
-                        they are in. The same switch, offered where
-                        it is wanted. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(false)}
-                      onShow={() => setShowLabels(true)} />
+                    {/* The Labels switch is under its own heading further
+                        down, not here. There were two of them in this one
+                        menu — the same setting offered twice, which is
+                        how a control and its copy drift into disagreeing
+                        about what they are showing. */}
                     <p className="gm-note">
                       H hides a layer and hides it again to bring it back.
                       S shows only the layers whose S is lit — as many as you
@@ -11533,18 +11630,6 @@ export default function GISCanvasPage() {
                       );
                     })()}
 
-                    <div className="gm-sep" />
-                    {/* Moved from Tools rather than added there as well:
-                        two controls for one setting is how they drift out
-                        of step. This menu is what you can see, and a
-                        label is something you can see. */}
-                    {/* Way and circuit labels are part of the Labels
-                        layer now — this switched the same thing under a
-                        narrower name, which is how someone turns off
-                        "way and circuit labels" and loses plot numbers
-                        with no idea why. */}
-
-                    <div className="gm-sep" />
                     {/* Labelling as a layer.
 
                         Plot numbers, joint names, way and circuit
@@ -11553,7 +11638,6 @@ export default function GISCanvasPage() {
                         labels cover the geometry they describe, and
                         turning them off one kind at a time is four
                         decisions to make the one you wanted. */}
-                    <div className="gm-sep" />
                     <MenuGroup label="Labels" newColumn />
                     {/* Under its own heading, and shaped like every other
                         layer row.
@@ -11649,8 +11733,6 @@ export default function GISCanvasPage() {
                       );
                     })()}
 
-                    <div className="gm-sep" />
-
                     {/* Circuit rings are controlled from the circuit
                         report, which is where the question they answer
                         is being asked. Two controls for one setting is
@@ -11722,6 +11804,17 @@ export default function GISCanvasPage() {
 
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
+                    {/* Labels, on every utility menu.
+
+                        Whether the drawing is readable is a question
+                        somebody asks while working on one utility, and
+                        the answer used to be in the Layers menu — a
+                        different menu from the one they are in. The same
+                        switch, offered where it is wanted. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(false)}
+                      onShow={() => setShowLabels(true)} />
                     <MenuLayer label="Span nodes" colour="#1e3a5f"
                       count={classCount["role:spannode"] || 0}
                       hidden={hidden.includes("role:spannode")}
@@ -11782,8 +11875,6 @@ export default function GISCanvasPage() {
                     }}>
                     {/* As on Gas and Water: which of the two recorded
                         sizes is in force. */}
-                    <div className="gm-sep" />
-
                     <MenuGroup label="Sizes" />
                     <MenuItem label="System calculated" indent
                       active={(sizeMode.electric ?? "system") === "system"}
@@ -11797,16 +11888,17 @@ export default function GISCanvasPage() {
                       onClick={() => setSizeModeFor("electric", "manual")} />
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
-                    {/* The whole utility at once, as a named action rather
-                        than the S beside a row. Isolating one utility is
-                        the common gesture on a busy drawing — everything
-                        electric, nothing else — and reaching it meant
-                        knowing that S on a layer row did that.
+                    {/* Labels, on every utility menu.
 
-                        The same soloClass the rows use, so pressing it
-                        twice restores everything and it cannot disagree
-                        with the S buttons about what is isolated. */}
-                    <div className="gm-sep" />
+                        Whether the drawing is readable is a question
+                        somebody asks while working on one utility, and
+                        the answer used to be in the Layers menu — a
+                        different menu from the one they are in. The same
+                        switch, offered where it is wanted. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(false)}
+                      onShow={() => setShowLabels(true)} />
                     {/* POC and substation first: they are the two fixed
                         points a designer orients by, and everything else
                         is described relative to them. */}
@@ -11864,7 +11956,6 @@ export default function GISCanvasPage() {
                       shown={shownOnly.includes("electric")}
                       onSolo={() => soloClass("electric")} />
 
-                    <div className="gm-sep" />
                     <MenuGroup label="Network" newColumn />
                     <MenuItem label="+ POC" hint="Snaps to the nearest main"
                       disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
@@ -11875,6 +11966,7 @@ export default function GISCanvasPage() {
                       disabled={!!busy || !projectId}
                       onClick={routeSupply} />
 
+                    <div className="gm-sep" />
                     <MenuGroup label="Draw" />
                     {/* Under Draw, because that is what it does: the
                         cable is drawn along a trench rather than by
@@ -11905,9 +11997,39 @@ export default function GISCanvasPage() {
                       onClick={() => runStep("build",
                         () => withUndo("Build LV Network", () => buildLvNetwork()))} />
                     <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
-                      hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes"
+                      hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
                       disabled={!!busy || !circuitsFrom(features).length}
                       onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
+                    {/* One at a time, for the joints the model cannot
+                        know about.
+
+                        Place Feeder Joints above reads the routed
+                        network, so it finds every joint the design calls
+                        for and refuses to invent any others \u2014 which
+                        leaves no way at all to record a joint going in
+                        for a reason outside the model: an existing main
+                        being cut into, a breech left for a phase not yet
+                        drawn, a cable sealed off short of anything.
+
+                        Indented under it because they answer the same
+                        question at different grain, and named as the
+                        fittings rather than as "add joint" so the menu
+                        says what will be in the ground. */}
+                    <MenuItem label="+ Service Joint" indent
+                      hint="One joint, snapped to the nearest LV feeder"
+                      disabled={!!busy || !projectId}
+                      onClick={() => withUndo("Place service joint",
+                        () => placeJoint("service"))} />
+                    <MenuItem label="+ Breech Joint" indent
+                      hint="One joint, snapped to the nearest LV feeder"
+                      disabled={!!busy || !projectId}
+                      onClick={() => withUndo("Place breech joint",
+                        () => placeJoint("breech"))} />
+                    <MenuItem label="+ Bottle End" indent
+                      hint="Seals a feeder that stops here"
+                      disabled={!!busy || !projectId}
+                      onClick={() => withUndo("Place bottle end",
+                        () => placeJoint("bottleend"))} />
 {/* The older Place Joints is gone. It grouped coincident line ends
                         across every utility, so it could not tell a feeder from a
                         water main, wrote no Feature_Role, and put what it made on
@@ -12075,7 +12197,6 @@ export default function GISCanvasPage() {
                       onShow={() => showClass(`${key}:role:meter`)}
                       shown={shownOnly.includes(`${key}:role:meter`)}
                           onSolo={() => soloClass(`${key}:role:meter`)} />
-                        <div className="gm-sep" />
                         {/* The fixed plant on this utility. Gas has a
                             governor where electric has a substation —
                             the point the incoming supply is reduced and
@@ -12151,6 +12272,17 @@ export default function GISCanvasPage() {
 
                   <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}>
                     <MenuGroup label="Show or Hide" />
+                    {/* Labels, on every utility menu.
+
+                        Whether the drawing is readable is a question
+                        somebody asks while working on one utility, and
+                        the answer used to be in the Layers menu — a
+                        different menu from the one they are in. The same
+                        switch, offered where it is wanted. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(false)}
+                      onShow={() => setShowLabels(true)} />
                     {typesOn("lighting").map((t) => (
                       <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                         count={classCount[`lt:${t.Type_Key}`] || 0}
@@ -12183,23 +12315,6 @@ export default function GISCanvasPage() {
                     <MenuItem label={`Electric build order \u00b7 ${steps.doneCount} of 8`}
                       hint={steps.next ? `Next: ${steps.next.title}` : "All steps done"}
                       onClick={() => setStepsOpen(true)} />
-                    <div className="gm-sep" />
-
-                    {/* Drawn round whatever is to go, rather than
-                        selected one object at a time. A phase that has
-                        been redrawn is a dozen clicks otherwise, and a
-                        rubber-band box cannot follow a curved road. */}
-                    <MenuItem label={tool === "lassodelete"
-                      ? "Drawing\u2026 click to place, double-click to finish"
-                      : "Polygon Delete"}
-                      hint="Draw round objects, then delete them together"
-                      active={tool === "lassodelete"}
-                      disabled={!projectId || !!busy}
-                      onClick={() => {
-                        setDraft([]);
-                        setTool(tool === "lassodelete" ? "select" : "lassodelete");
-                      }} />
-                    <div className="gm-sep" />
 
                     {/* A call-off is a report on what is to be laid, not
                         a change to the drawing \u2014 it belongs with the
@@ -12215,8 +12330,6 @@ export default function GISCanvasPage() {
                         setAskAnother(false);
                         if (callOffOpen) setRanges([]);
                       }} />
-                    <div className="gm-sep" />
-
                     <MenuItem label="Bill of Materials"
                       hint="Quantities by site, utility and surface"
                       disabled={!projectId} onClick={() => setBomOpen(true)} />
@@ -12256,6 +12369,27 @@ export default function GISCanvasPage() {
                       hint="Whole categories at once"
                       disabled={!projectId || !features.length}
                       onClick={() => setBulkDelOpen(true)} />
+                    {/* Drawn round whatever is to go, rather than
+                        selected one object at a time. A phase that has
+                        been redrawn is a dozen clicks otherwise, and a
+                        rubber-band box cannot follow a curved road.
+
+                        Under Bulk Delete because it is a third way of
+                        deleting several things at once. It was at the
+                        top of the menu among the reports — the one
+                        destructive item in a run of things that only
+                        read the drawing — and it is marked danger here
+                        like its neighbours, which it never was. */}
+                    <MenuItem label={tool === "lassodelete"
+                      ? "Drawing\u2026 click to place, double-click to finish"
+                      : "Polygon Delete…"} danger
+                      hint="Draw round objects, then delete them together"
+                      active={tool === "lassodelete"}
+                      disabled={!projectId || !!busy}
+                      onClick={() => {
+                        setDraft([]);
+                        setTool(tool === "lassodelete" ? "select" : "lassodelete");
+                      }} />
                   </Menu>
 
                   {/* Find, as a box on the bar rather than a button

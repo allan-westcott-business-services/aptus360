@@ -149,6 +149,10 @@ export default function FeatureEditor({
         u.name.toLowerCase() === String(name).toLowerCase());
       return {
         key: c.feature?.Feature_ID ?? i,
+        /* The layer, kept alongside the display name. The three named
+           size fields look their utility up by key, and "Electric" is a
+           label somebody could rename. */
+        layerKey: c.utility,
         label: c.label || "\u2014",
         icon: known?.icon ?? "\u25CF",
         utility: known?.name ?? name,
@@ -1325,17 +1329,6 @@ export default function FeatureEditor({
               <div className="fe-row">
                 {isTrench ? (
                   <>
-                  <div className="fld">
-                    <label htmlFor="fe-surface">Surface</label>
-                    <select id="fe-surface" value={f.Attributes.Surface_Type ?? ""}
-                      onChange={(e) => setAttr("Surface_Type")(e.target.value)}>
-                      <option value="">&mdash; None &mdash;</option>
-                      {surfaceTypes.map((x) => (
-                        <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
-                      ))}
-                    </select>
-                  </div>
-
                   {/* Dug size, from the drawing rather than typed: the
                       length is measured off the line, and the width and
                       depth follow from what is routed in it. */}
@@ -1360,40 +1353,6 @@ export default function FeatureEditor({
                     <label htmlFor="fe-td">Depth (m)</label>
                     <input id="fe-td" readOnly
                       value={trenchDims?.items ? trenchDims.depthM.toFixed(2) : ""} />
-                  </div>
-
-                  {/* How long it takes, beside the three fields it is
-                      worked out from. Read-only like they are, and for
-                      the same reason: it follows the drawing, and a
-                      duration somebody typed once would go stale the
-                      moment a cable was added. */}
-                  <div className="fld">
-                    <label htmlFor="fe-tt">Dig + lay</label>
-                    <input id="fe-tt" readOnly
-                      value={trenchEstimate?.ok ? hoursText(trenchEstimate.totalHours) : ""}
-                      title={trenchEstimate?.ok
-                        ? `${trenchEstimate.volumeM3}m\u00b3`
-                          + ` at ${trenchEstimate.baseRateM3Hr}m\u00b3/hr`
-                          + ` (${trenchEstimate.machine})`
-                        : undefined} />
-                  </div>
-
-                  {/* What stage this length is at. The same list the
-                      canvas marks with, so the two cannot drift. */}
-                  <div className="fld">
-                    <label htmlFor="fe-build">Build status</label>
-                    <select id="fe-build" value={f.Attributes.Build_Status ?? ""}
-                      /* Null rather than undefined for "not set".
-                         undefined survives in state and then vanishes
-                         when the row is serialised, so what is stored
-                         depends on a JSON quirk rather than on what was
-                         chosen. */
-                      onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
-                      <option value="">&mdash; Not set &mdash;</option>
-                      {BUILD_STATUSES.map((bs) => (
-                        <option key={bs.key} value={bs.key}>{bs.label}</option>
-                      ))}
-                    </select>
                   </div>
 
                   </>
@@ -1956,21 +1915,116 @@ export default function FeatureEditor({
               the inspect panel, and repeating them here would be a
               second version of that panel in a smaller box. */}
           {isTrench && !!trenchContents.length && (
-            <div className="fld">
-              <label>In this trench</label>
-              <ul className="fe-inside">
-                {trenchContents.map((c) => (
-                  <li key={c.key}
-                    title={c.alsoSizes?.length
-                      ? `${c.utility} \u2014 also drawn as `
-                        + `${c.alsoSizes.join(", ")} along part of it`
-                      : c.utility}>
-                    <i>{c.icon}</i>
-                    {c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label}
-                  </li>
-                ))}
-              </ul>
-            </div>
+            <>
+              <div className="fe-inside-head">In this trench</div>
+              <div className="fe-row">
+                {/* A field per utility, in the order they are read on a
+                    drawing. Named rather than listed, so the row lines
+                    up with the dimensions above it and an empty one
+                    says "no gas in this length" — which the old list
+                    could only say by leaving a gap nobody could see.
+
+                    Read-only: the sizes are what is drawn in the
+                    trench, and a field that let you type a different
+                    one would only be a way to disagree with the
+                    drawing. */}
+                {[
+                  ["electric", "Electric Cable Size"],
+                  ["gas", "Gas Pipe Size"],
+                  ["water", "Water Pipe Size"],
+                ].map(([key, label]) => {
+                  const c = trenchContents.find((x) => x.layerKey === key);
+                  return (
+                    <div className="fld" key={key}>
+                      <label htmlFor={`fe-in-${key}`}>{label}</label>
+                      <input id={`fe-in-${key}`} readOnly
+                        value={c
+                          ? (c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label)
+                          : ""}
+                        title={c?.alsoSizes?.length
+                          ? `Also drawn as ${c.alsoSizes.join(", ")} along part of it`
+                          : undefined} />
+                    </div>
+                  );
+                })}
+              </div>
+
+              {/* Anything else laid in it.
+
+                  Three named fields cover what a joint trench normally
+                  carries, but not street lighting or telecoms — and a
+                  utility with no field of its own would vanish from the
+                  panel while still widening the trench. Shown only when
+                  there is something to show. */}
+              {!!trenchContents.filter((c) =>
+                !["electric", "gas", "water"].includes(c.layerKey)).length && (
+                <div className="fe-row">
+                  {trenchContents
+                    .filter((c) => !["electric", "gas", "water"].includes(c.layerKey))
+                    .map((c) => (
+                      <div className="fld" key={c.key}>
+                        <label htmlFor={`fe-in-${c.layerKey}`}>{`${c.utility} Size`}</label>
+                        <input id={`fe-in-${c.layerKey}`} readOnly
+                          value={c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label} />
+                      </div>
+                    ))}
+                </div>
+              )}
+
+              {/* Surface, stage and duration.
+
+                  Below the contents rather than beside the dimensions,
+                  because two of the three follow from what is in the
+                  trench: the surface multiplies the dig and the
+                  duration is worked out from the size above it. The
+                  order reads the way the work happens — what it is dug
+                  through, where it has got to, how long it takes. */}
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-surface">Surface</label>
+                  <select id="fe-surface" value={f.Attributes.Surface_Type ?? ""}
+                    onChange={(e) => setAttr("Surface_Type")(e.target.value)}>
+                    <option value="">&mdash; None &mdash;</option>
+                    {surfaceTypes.map((x) => (
+                      <option key={x.Surface_Key} value={x.Surface_Key}>{x.Label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* What stage this length is at. The same list the
+                    canvas marks with, so the two cannot drift. */}
+                <div className="fld">
+                  <label htmlFor="fe-build">Build status</label>
+                  <select id="fe-build" value={f.Attributes.Build_Status ?? ""}
+                    /* Null rather than undefined for "not set".
+                       undefined survives in state and then vanishes
+                       when the row is serialised, so what is stored
+                       depends on a JSON quirk rather than on what was
+                       chosen. */
+                    onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
+                    <option value="">&mdash; Not set &mdash;</option>
+                    {BUILD_STATUSES.map((bs) => (
+                      <option key={bs.key} value={bs.key}>{bs.label}</option>
+                    ))}
+                  </select>
+                </div>
+
+                {/* Read-only like the dimensions, and for the same
+                    reason: it follows the drawing, and a duration
+                    somebody typed once would go stale the moment a
+                    cable was added. */}
+                <div className="fld">
+                  <label htmlFor="fe-tt">Dig &amp; lay</label>
+                  <input id="fe-tt" readOnly
+                    value={trenchEstimate?.ok ? hoursText(trenchEstimate.totalHours) : ""}
+                    title={trenchEstimate?.ok
+                      ? `${trenchEstimate.volumeM3}m\u00b3`
+                        + ` at ${trenchEstimate.baseRateM3Hr}m\u00b3/hr`
+                        + ` (${trenchEstimate.machine})`
+                      : undefined} />
+                </div>
+              </div>
+            </>
           )}
 
           {/* What made the duration, and what kind of number it is.
@@ -2141,13 +2195,11 @@ const CSS = `
    baseline, which is what made the column look ragged. */
 .fe-carry-row .fe-check { margin: 0; white-space: nowrap; }
 
-.fe-inside { list-style: none; margin: 0 0 4px; padding: 2px 0 0; display: flex;
-  flex-wrap: wrap; gap: 5px 14px; }
-.fe-inside li { display: inline-flex; align-items: center; gap: 6px;
-  font-size: 12.5px; }
-/* The utility icon, as the Plot Connections page shows it. */
-.fe-inside i { font-style: normal; font-size: 13px; line-height: 1;
-  flex: 0 0 auto; }
+/* The heading over the three size fields. Styled as a field label
+   rather than as a section header: it names the row under it, which is
+   what a label does. */
+.fe-inside-head { font: 600 10.5px inherit; letter-spacing: .04em;
+  text-transform: uppercase; color: var(--muted); margin: 2px 0 5px; }
 
 .fe-check { display: flex; align-items: center; gap: 7px; font-size: 12.5px;
   font-weight: 600; color: var(--text); cursor: pointer; margin: 2px 0 10px; }

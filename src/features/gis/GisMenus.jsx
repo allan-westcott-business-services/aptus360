@@ -35,13 +35,24 @@ export function MenuBar({ children }) {
   );
 }
 
-export function Menu({ id, label, open, setOpen, children, badge, columns = 1 }) {
+export function Menu({
+  id, label, open, setOpen, children, badge, columns = 1,
+  /* Run when the menu is opened, not when it closes. A utility menu
+     isolates its utility \u2014 somebody opening Gas is working on gas.
+     Closing it does not put the drawing back: walking away from a menu
+     is not a decision to show everything again. */
+  onOpen,
+}) {
   const isOpen = open === id;
   return (
     <div className="gm-wrap">
       <button className={isOpen ? "gm-btn on" : "gm-btn"}
         aria-expanded={isOpen} aria-haspopup="true"
-        onClick={() => setOpen(isOpen ? null : id)}>
+        onClick={() => {
+          const next = isOpen ? null : id;
+          setOpen(next);
+          if (next === id) onOpen?.();
+        }}>
         {label}
         {badge != null && badge !== 0 && <span className="gm-badge">{badge}</span>}
       </button>

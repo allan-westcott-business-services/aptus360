@@ -1465,10 +1465,15 @@ export default function GISCanvasPage() {
      matters — a feature is hidden if ANY of its keys is hidden, so
      soloing an electric line type has to leave "electric" visible or the
      thing being soloed disappears with everything else. */
-  const soloClass = useCallback((key) => {
+  const soloClass = useCallback((key, only = false) => {
     /* The same act as S, with room for one. Pressing it again shows
        everything, which is the only way back from an isolate that does
-       not require remembering what was on before it. */
+       not require remembering what was on before it.
+
+       `only` turns the toggle off. Opening a utility menu isolates it,
+       and a toggle there would mean opening the Gas menu twice showed
+       every layer again \u2014 the opposite of what opening it is for. */
+    if (only) { applyShown([key]); return; }
     applyShown(solo === key && shownOnly.length === 1 ? [] : [key]);
   }, [applyShown, solo, shownOnly]);
 
@@ -11180,6 +11185,29 @@ export default function GISCanvasPage() {
                 onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
                 Draw line
               </button>
+              {/* What is being drawn, beside the button that starts it.
+
+                  The type was chosen from whichever utility menu it
+                  belonged to and then remembered, so somebody who had
+                  come back to the drawing had to open a menu to find
+                  out what the next line would be. Here it is the label
+                  on the tool.
+
+                  Only while drawing: on the Select tool it would be a
+                  control for something not happening. */}
+              {tool === "line" && (
+                <select className="gt-type" aria-label="Line type to draw"
+                  value={lineType ?? ""}
+                  onChange={(e) => drawAs(e.target.value)}>
+                  {lineTypes
+                    .filter((t) => t.Is_Active !== false)
+                    .map((t) => (
+                      <option key={t.Type_Key} value={t.Type_Key}>
+                        {t.Label}
+                      </option>
+                    ))}
+                </select>
+              )}
             </div>
 
             {/* Undo and redo.
@@ -11695,16 +11723,6 @@ export default function GISCanvasPage() {
                       hint="At every junction and end of the trench network, A1 upwards"
                       disabled={!!busy || !projectId}
                       onClick={placeSpanNodes} />
-                    <MenuItem label="New Mains Call-off"
-                      hint="Pick two span nodes for each run to be laid"
-                      active={callOffOpen}
-                      disabled={!!busy || !projectId}
-                      onClick={() => {
-                        setCallOffOpen(!callOffOpen);
-                        setPick(null);
-                        setAskAnother(false);
-                        if (callOffOpen) setRanges([]);
-                      }} />
 
                     {/* Routing was here: Trace All Meters, Step Through
                         Traces, Suggest Trench Route, Only Live Trench.
@@ -11718,11 +11736,6 @@ export default function GISCanvasPage() {
 
                     <div className="gm-sep" />
                     <MenuGroup label="Services" />
-                    <MenuItem label={busy === "autoservice" ? "Auto Service\u2026" : "Auto Service"}
-                      hint="Draw the service trench and cable for every meter without one"
-                      disabled={!!busy || !projectId}
-                      onClick={() => runStep("service",
-                        () => withUndo("Auto Service", runAutoService))} />
                     <MenuItem label="Check Services Reach the Mains"
                       disabled={!projectId}
                       onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
@@ -11738,20 +11751,13 @@ export default function GISCanvasPage() {
                       onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
                   </Menu>
 
-                  <Menu id="electric" label="Electric" open={open} setOpen={setOpen} columns={2}>
+                  <Menu id="electric" label="Electric" open={open} setOpen={setOpen}
+                    columns={2}
+                    onOpen={() => {
+                      if (classCount.electric > 0) soloClass("electric", true);
+                    }}>
                     {/* As on Gas and Water: which of the two recorded
                         sizes is in force. */}
-                    <MenuItem label={busy === "origins" ? "Placing\u2026" : "Place E0"}
-                      hint="The origin every circuit is measured from"
-                      disabled={!!busy}
-                      onClick={() => placeOriginNodes("electric")} />
-                    <div className="gm-sep" />
-
-                    <MenuItem label={busy === "laysvc"
-                      ? "Laying\u2026" : "Auto Lay Services"}
-                      hint="Runs the cable along service trenches already drawn"
-                      disabled={!!busy}
-                      onClick={() => autoLayServices("electric")} />
                     <div className="gm-sep" />
 
                     <MenuGroup label="Sizes" />
@@ -11776,13 +11782,6 @@ export default function GISCanvasPage() {
                         The same soloClass the rows use, so pressing it
                         twice restores everything and it cannot disagree
                         with the S buttons about what is isolated. */}
-                    <MenuItem label={solo === "electric" ? "Show all layers" : "Isolate Electric"}
-                      hint={solo === "electric"
-                        ? "Bring back everything that was hidden"
-                        : "Show only electric objects, hiding every other utility"}
-                      active={solo === "electric"}
-                      disabled={!(classCount.electric > 0)}
-                      onClick={() => soloClass("electric")} />
                     <div className="gm-sep" />
                     {/* POC and substation first: they are the two fixed
                         points a designer orients by, and everything else
@@ -11853,6 +11852,14 @@ export default function GISCanvasPage() {
                       onClick={routeSupply} />
 
                     <MenuGroup label="Draw" />
+                    {/* Under Draw, because that is what it does: the
+                        cable is drawn along a trench rather than by
+                        hand, but it is still drawing. */}
+                    <MenuItem label={busy === "laysvc"
+                      ? "Laying\u2026" : "Auto Lay Services"} indent
+                      hint="Runs the cable along service trenches already drawn"
+                      disabled={!!busy}
+                      onClick={() => autoLayServices("electric")} />
                     {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"]].map(([key, label]) => {
                       const t = lineTypes.find((x) => x.Type_Key === key);
                       return t ? (
@@ -11942,9 +11949,20 @@ export default function GISCanvasPage() {
                       it loads, so renaming one in Admin still works. */}
                   {[["gas", "Gas"], ["water", "Water"]].map(([key, name]) => {
                     const layer = layers.find((l) => l.Layer_Key === key);
+                    /* Opening the menu isolates the utility.
+
+                       Somebody opening the Gas menu is working on gas,
+                       and the first thing they used to do was press
+                       Isolate Gas — so the menu does it. Closing it does
+                       not put the drawing back: walking away from a menu
+                       is not a decision to show everything again, and a
+                       drawing that re-populated itself the moment the
+                       mouse moved would be unusable. Show all layers is
+                       on the Layers menu. */
                     return (
                       <Menu key={key} id={key} label={layer?.Label ?? name}
-                        open={open} setOpen={setOpen}>
+                        open={open} setOpen={setOpen}
+                        onOpen={() => { if (classCount[key] > 0) soloClass(key, true); }}>
                         {/* Drawing first, because it is what somebody
                             opens this menu to do. The Electric and
                             Trench menus already lead with theirs; gas
@@ -11969,13 +11987,6 @@ export default function GISCanvasPage() {
                           onClick={() => placeOriginNodes(key)} />
                         <div className="gm-sep" />
 
-                        <MenuItem label={busy === "laysvc"
-                          ? "Laying\u2026" : "Auto Lay Services"}
-                          hint="Runs the pipe along service trenches already drawn"
-                          disabled={!!busy}
-                          onClick={() => autoLayServices(key)} />
-                        <div className="gm-sep" />
-
                         <MenuGroup label="Sizes" />
                         <MenuItem label="System calculated" indent
                           active={(sizeMode[key] ?? "system") === "system"}
@@ -11990,6 +12001,14 @@ export default function GISCanvasPage() {
 
                         <div className="gm-sep" />
                         <MenuGroup label="Draw" />
+                        {/* Under Draw, because that is what it does:
+                            the service is drawn along a trench rather
+                            than by hand, but it is still drawing. */}
+                        <MenuItem label={busy === "laysvc"
+                          ? "Laying\u2026" : "Auto Lay Services"} indent
+                          hint="Runs the pipe along service trenches already drawn"
+                          disabled={!!busy}
+                          onClick={() => autoLayServices(key)} />
                         {typesOn(key).map((t) => (
                           <MenuItem key={t.Type_Key} label={t.Label} indent
                             active={isDrawing(t.Type_Key)}
@@ -12001,16 +12020,6 @@ export default function GISCanvasPage() {
                         {/* As on the Electric menu: the whole utility as
                             a named action, not only the S on the layer
                             row below. */}
-                        <MenuItem
-                          label={solo === key
-                            ? "Show all layers"
-                            : `Isolate ${layer?.Label ?? name}`}
-                          hint={solo === key
-                            ? "Bring back everything that was hidden"
-                            : `Show only ${layer?.Label ?? name} objects, hiding every other utility`}
-                          active={solo === key}
-                          disabled={!(classCount[key] > 0)}
-                          onClick={() => soloClass(key)} />
                         <div className="gm-sep" />
                         {typesOn(key).map((t) => (
                           <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
@@ -12153,6 +12162,22 @@ export default function GISCanvasPage() {
                       onClick={() => {
                         setDraft([]);
                         setTool(tool === "lassodelete" ? "select" : "lassodelete");
+                      }} />
+                    <div className="gm-sep" />
+
+                    {/* A call-off is a report on what is to be laid, not
+                        a change to the drawing \u2014 it belongs with the
+                        other things that read the design rather than in
+                        the menu for digging. */}
+                    <MenuItem label="New Mains Call-off"
+                      hint="Pick two span nodes for each run to be laid"
+                      active={callOffOpen}
+                      disabled={!!busy || !projectId}
+                      onClick={() => {
+                        setCallOffOpen(!callOffOpen);
+                        setPick(null);
+                        setAskAnother(false);
+                        if (callOffOpen) setRanges([]);
                       }} />
                     <div className="gm-sep" />
 
@@ -14304,6 +14329,12 @@ const CSS = `
 .gis-proj { display: flex; gap: 8px; align-items: center; }
 .gis-search { width: 190px; font-size: 12px; padding: 6px 9px; }
 .gis-proj select { width: auto; min-width: 260px; font-size: 12.5px; }
+/* The line type sits with the tool rather than in a menu, so it reads
+   as part of what Draw line is about to do. */
+.gt-type { height: 28px; max-width: 190px; border-radius: 7px;
+  border: 1px solid var(--border); background: var(--white);
+  font: inherit; font-size: 12px; padding: 0 6px; margin-left: 6px; }
+
 .gis-tools { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
 .gt { background: var(--white); border: none; padding: 6px 14px; cursor: pointer;
   font: 600 12.5px inherit; color: var(--muted); }

@@ -928,7 +928,29 @@ export default function GISCanvasPage() {
     return () => clearTimeout(t);
   }, [levelsKey, features, liveLevels, levelsByNode]);
 
-  const elecLevelsAt = liveLevels;
+  /* Not while electric is put away.
+
+     A span node deliberately survives a utility isolate — it is the
+     point a levels check and a call-off are measured between, and
+     losing it the moment you look at one utility is losing it exactly
+     when it is wanted. The figures beside it are not like that. A volt
+     drop and a loop impedance are electric facts, and leaving them on a
+     node while the gas drawing is isolated puts one utility's results
+     over another's design.
+
+     Read off `hidden` rather than off `solo`, because both routes end
+     up there: isolating gas sweeps every class key no gas feature
+     carries into the hidden set, "electric" among them, and the H
+     button on the electric row does the same thing directly. One test
+     covers hiding it and isolating away from it.
+
+     `liveLevels` is left alone rather than cleared, so switching back to
+     electric shows the figures again immediately instead of waiting for
+     them to be worked out a second time. */
+  const elecLevelsAt = useMemo(
+    () => (hidden.includes("electric") ? null : liveLevels),
+    [liveLevels, hidden],
+  );
 
 
 
@@ -4028,6 +4050,8 @@ export default function GISCanvasPage() {
 
          Red below the limit, matching the report. A node that fails is
          the thing somebody is looking for. */
+      /* gasPressureAt is already null while the gas layer is hidden —
+         see its own note. Not repeated here: one rule, one place. */
       if (gasPressureAt && fontPx >= 7 && view.scale > 1.2) {
         /* The same figure the ring used, not a second lookup: two ways
            of finding one number is two ways for them to disagree, and a
@@ -4110,6 +4134,9 @@ export default function GISCanvasPage() {
          Its own offset again: a node can now carry a code, a pressure
          and a levels label, and one offset between them would drag the
          lot. */
+      /* elecLevelsAt is already null while the electric layer is hidden,
+         which is where gas keeps the matching test. One rule, one place,
+         and the two utilities answering the same way. */
       if (elecLevelsAt && fontPx >= 7 && view.scale > 1.2) {
         const vd = elecLevelsAt.get(Number(f.Feature_ID));
         if (vd) {
@@ -4169,7 +4196,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, waterColour, trace, traceLeg, traceOver, elecLevelsAt, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

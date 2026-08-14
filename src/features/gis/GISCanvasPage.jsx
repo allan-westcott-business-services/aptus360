@@ -752,6 +752,54 @@ export default function GISCanvasPage() {
     return best ? -Math.atan2(best.vy, best.vx) : 0;
   }, [features]);
 
+  /* Which way a bottle end faces.
+
+     jointAngle gives the bearing of the cable and nothing about its
+     direction, which is all the other joints need: a breech box laid at
+     35 degrees is laid the same whichever end you started drawing from.
+     A bottle end is not symmetrical. The stem carries on the way the
+     cable was going and the bars close it off, so pointing it the wrong
+     way lays the symbol back along its own cable and the seal ends up
+     between the joint and the substation.
+
+     Taken from the run's own end rather than from the segment under the
+     point: the direction wanted is the one the cable was heading when it
+     stopped, which is the last vertex minus the one before it. Whichever
+     end of the run is nearer the joint is the end it seals \u2014 a line's
+     stored direction says only which way somebody drew it, and a feeder
+     joined from two drawn pieces can hold either.
+
+     Falls back to jointAngle where no feeder end is near enough, so a
+     bottle end dropped by hand away from a cable still lies flat rather
+     than snapping to due east. */
+  const bottleEndAngle = useCallback((joint) => {
+    const at = (joint.Geometry || [])[0];
+    if (!at) return 0;
+    let best = null;
+    for (const f of features) {
+      if (f.Feature_Type !== "line") continue;
+      if (f.Layer_Key !== joint.Layer_Key) continue;
+      if (f.Attributes?.Line_Type !== "elec_main") continue;
+      const g = f.Geometry || [];
+      if (g.length < 2) continue;
+      const dA = Math.hypot(g[0][0] - at[0], g[0][1] - at[1]);
+      const dZ = Math.hypot(g[g.length - 1][0] - at[0], g[g.length - 1][1] - at[1]);
+      const atStart = dA <= dZ;
+      const d = atStart ? dA : dZ;
+      if (d > SPAN_REACH_M) continue;
+      const tip = atStart ? g[0] : g[g.length - 1];
+      const prev = atStart ? g[1] : g[g.length - 2];
+      const vx = tip[0] - prev[0];
+      const vy = tip[1] - prev[1];
+      if (!vx && !vy) continue;
+      if (!best || d < best.d) best = { d, vx, vy };
+    }
+    if (!best) return jointAngle(joint);
+    /* Negated for the same reason jointAngle is: screen y grows
+       downward and the drawing's grows up. */
+    return -Math.atan2(best.vy, best.vx);
+  }, [features, jointAngle]);
+
   /* Where the electric design has got to, worked out from the drawing.
 
      Not stored: a step recorded as done when somebody pressed a button
@@ -2478,14 +2526,19 @@ export default function GISCanvasPage() {
            one block and closed in another, and a const inside the
            first is not in scope for the second \u2014 "spin is not
            defined", on every drawing with a joint on it. */
-        /* A bottle end is the exception among joints: the others are
-           boxes buried the way the cable runs, and turning the symbol to
-           match is what makes them read as objects rather than markers.
-           This one is a stem and three bars, drawn upright like a
-           label \u2014 turned to the bearing of the cable it would lie on its
-           side and stop looking like the symbol it is. */
-        const spin = f.Feature_Role === "joint" && !isBottleEnd(f)
-          ? jointAngle(f) : 0;
+        /* Every joint lies along its cable, this one included.
+
+           It was drawn upright for a while on the reasoning that a stem
+           and three bars is read off the page like a label. That was
+           wrong: it is a fitting on the end of a cable, and the stem is
+           the cable carrying on past the last node. Upright, it pointed
+           north on a run heading south-east and read as a separate
+           object sitting near the feeder rather than as its end.
+
+           bottleEndAngle rather than jointAngle because this symbol has
+           a front and a back \u2014 see the note on it above. */
+        const spin = f.Feature_Role !== "joint" ? 0
+          : (isBottleEnd(f) ? bottleEndAngle(f) : jointAngle(f));
         const isSeed = f.Feature_Role === "plot";
         /* Seeds take the bedroom colour used everywhere else for plots.
 

@@ -274,22 +274,26 @@ export function symbolPath(ctx, symbol, x, y, r) {
       break;
     /* ── A bottle end ──
 
-       The cable comes in from above and stops: a stem down to three
-       bars, each shorter than the one before. Drawn about the point the
-       joint sits on, like every other symbol here, so the stem rises
-       from it rather than the bars sitting on it — the point is where
-       the cable is, and that is the top of the stem.
+       The cable runs in and stops: a stem carrying on the way the cable
+       was heading, then three bars square to it, each shorter than the
+       one before.
+
+       Drawn along +x, not up the page. Every joint is turned to the
+       bearing of the cable beneath it, and a rotation aligns +x with
+       that bearing — so a symbol drawn about the y axis comes out lying
+       across its own cable. The stem is the cable continuing, so it has
+       to be the axis the rotation acts on.
 
        Stroke only. There is no inside to fill. */
     case "bottleend": {
-      const top = y - r;
-      const bar = y + r * 0.15;
-      ctx.moveTo(x, top); ctx.lineTo(x, bar);
-      ctx.moveTo(x - r, bar); ctx.lineTo(x + r, bar);
-      ctx.moveTo(x - r * 0.62, bar + r * 0.42);
-      ctx.lineTo(x + r * 0.62, bar + r * 0.42);
-      ctx.moveTo(x - r * 0.26, bar + r * 0.84);
-      ctx.lineTo(x + r * 0.26, bar + r * 0.84);
+      const tip = x - r;                 // where the cable arrives
+      const face = x + r * 0.15;         // the first and longest bar
+      ctx.moveTo(tip, y); ctx.lineTo(face, y);
+      ctx.moveTo(face, y - r); ctx.lineTo(face, y + r);
+      ctx.moveTo(x + r * 0.57, y - r * 0.62);
+      ctx.lineTo(x + r * 0.57, y + r * 0.62);
+      ctx.moveTo(x + r * 0.99, y - r * 0.26);
+      ctx.lineTo(x + r * 0.99, y + r * 0.26);
       break;
     }
     default:

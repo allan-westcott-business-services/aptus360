@@ -12,6 +12,7 @@
 
    Run: node checkbottleends.mjs */
 import { planJoints, JOINT_KINDS, isBottleEnd } from "./src/features/gis/joints.js";
+import { symbolPath, STROKE_ONLY, SYMBOLS } from "./src/lib/gisStyle.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -153,6 +154,61 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
   if (isBottleEnd({ Feature_Role: "point", Attributes: { Joint_Type: "bottleend" } })) {
     fail("isBottleEnd ignored the feature role");
   }
+}
+
+/* 7. The symbol lies along the cable, not up the page.
+
+      Every joint is drawn inside a rotation that aligns the x axis with
+      the bearing of the cable beneath it. A symbol drawn about the y
+      axis therefore comes out square across its own feeder \u2014 which is
+      how this one was first written, and it read as a separate object
+      sitting near the run rather than as its end.
+
+      Checked by recording the path rather than by eye: the stem must be
+      the horizontal part and the three bars the vertical ones, and the
+      bars must sit on the far side from where the cable arrives. */
+{
+  const seg = [];
+  let at = null;
+  const ctx = {
+    beginPath() {}, rect() {}, arc() {}, closePath() {},
+    moveTo(x, y) { at = [x, y]; },
+    lineTo(x, y) { if (at) seg.push([at, [x, y]]); at = [x, y]; },
+  };
+  const R = 10;
+  symbolPath(ctx, "bottleend", 0, 0, R);
+
+  if (seg.length !== 4) fail(`the bottle end draws ${seg.length} strokes, expected 4`);
+
+  const horiz = seg.filter(([a, b]) => Math.abs(a[1] - b[1]) < 0.01);
+  const vert = seg.filter(([a, b]) => Math.abs(a[0] - b[0]) < 0.01);
+  if (horiz.length !== 1) fail(`${horiz.length} horizontal strokes, expected 1 (the stem)`);
+  if (vert.length !== 3) fail(`${vert.length} vertical strokes, expected 3 (the bars)`);
+
+  /* The stem starts where the cable arrives, at -r, so the fitting sits
+     beyond the end of the run rather than back along it. */
+  const stem = horiz[0];
+  if (stem && Math.min(stem[0][0], stem[1][0]) > -R * 0.9) {
+    fail("the stem does not reach back to where the cable arrives");
+  }
+
+  /* Bars in decreasing length, going outward. Reversed, the symbol
+     reads as a funnel rather than a seal. */
+  const bars = vert
+    .map(([a, b]) => ({ x: a[0], len: Math.abs(a[1] - b[1]) }))
+    .sort((m, n) => m.x - n.x);
+  for (let i = 1; i < bars.length; i++) {
+    if (!(bars[i].len < bars[i - 1].len)) {
+      fail("the bars do not shorten as they go outward");
+      break;
+    }
+  }
+  if (bars.length && bars[0].x < 0) fail("the bars sit on the cable side of the joint");
+
+  /* And it is outline-only \u2014 filling it would put a solid block over
+     the end of the run. */
+  if (!STROKE_ONLY.has("bottleend")) fail("the bottle end is not stroke-only");
+  if (!SYMBOLS.includes("bottleend")) fail("the bottle end is not in the symbol list");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

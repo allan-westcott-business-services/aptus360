@@ -1258,42 +1258,8 @@ export default function GISCanvasPage() {
 
      Keyed on Plot_ID rather than on the seed, because that is what a
      meter carries. */
-  const waterPlots = useMemo(() => {
-    const out = new Set();
-    for (const f of features) {
-      if (f.Feature_Role !== "meter" || f.Layer_Key !== "water") continue;
-      if (f.Plot_ID != null) out.add(Number(f.Plot_ID));
-    }
-    return out;
-  }, [features]);
-
   /* Whether the circled A is drawn rather than the plain diamond. The
      A is a water mark; the point under it is not. */
-  const waterShown = useMemo(
-    () => !hidden.includes("water") && !hidden.includes("water:role:meter"),
-    [hidden]);
-
-  /* Whether boundary points are drawn at all.
-
-     They belong to every utility, so they are shown while any of them
-     is — or while the plots are. Isolating a utility hides the plot
-     layer, since a seed carries no utility's keys, and tying the mark
-     to the seed is what made Isolate Water take the boundary points
-     with it. */
-  const boundaryShown = useMemo(() => {
-    /* Shown unless the boundary points themselves are turned off.
-
-       This asked whether any layer carrying a Utility_ID was visible,
-       which made the marker depend on a column that is set per database
-       \u2014 where electric and gas have none, isolating either hid the
-       point that belongs to both. The water layer happened to have one,
-       so it showed there and nowhere else.
-
-       A boundary point is a fact about the plot, not about a utility.
-       It goes when somebody hides it, and not otherwise. */
-    return !hidden.includes("plot:boundary");
-  }, [hidden]);
-
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
   const classCount = useMemo(() => {
@@ -3348,10 +3314,20 @@ export default function GISCanvasPage() {
           ctx.setLineDash([]);
         }
 
-        const isWater = waterShown && f.Plot_ID != null
-          && waterPlots.has(Number(f.Plot_ID));
+        /* The A, on every utility.
 
-        if (isWater && view.scale > 3) {
+           This was drawn only where the water layer was showing and the
+           plot had water on it \u2014 so the point that electric, gas and
+           water all measure to appeared on one of them. The comment a
+           few lines up already says it belongs to every utility and is
+           deliberately painted in a neutral colour; the gate below said
+           otherwise.
+
+           Kept: the zoom threshold. At a distance these would be a
+           field of identical rings, and the boundary point is a detail
+           worth seeing only when the detail is what is being looked
+           at. */
+        if (view.scale > 3) {
           const r = 9;
           ctx.globalAlpha = 1;
           ctx.beginPath();
@@ -3929,7 +3905,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, waterPlots, waterShown, boundaryShown, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, waterColour, trace, traceLeg, traceOver, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

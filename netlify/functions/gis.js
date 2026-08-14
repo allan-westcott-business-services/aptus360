@@ -12,15 +12,34 @@ export default async function handler(req, context) {
 
   try {
     if (req.method === "GET") {
-      const [f, l, t, st, su, ut] = await Promise.all([
+      const [f, l, t, st, su, ut, dr, df, lr] = await Promise.all([
         db.from("GIS_Feature").select(F).eq("Project_ID", projectId).order("Feature_ID"),
         db.from("GIS_Layer").select("*").eq("Is_Active", true).order("Sort_Order"),
         db.from("GIS_Line_Type").select("*").eq("Is_Active", true).order("Sort_Order"),
         db.from("GIS_Style").select("*").eq("Is_Active", true).order("Sort_Order"),
         db.from("GIS_Surface_Type").select("*").eq("Is_Active", true).order("Sort_Order"),
         db.from("Utility").select("Utility_ID,Colour"),
+        /* Excavation and lay rates (0158). Fetched with the rest rather
+           than on their own endpoint: they are read at the same moment
+           as the surfaces they multiply, and a second round trip to get
+           three small lookup tables would make the canvas draw its
+           trenches before it could say how long they take. */
+        db.from("Dig_Rate").select("*").eq("Is_Active", true).order("Sort_Order"),
+        db.from("Dig_Depth_Factor").select("*").order("Depth_From_M"),
+        db.from("Dig_Lay_Rate").select("*").eq("Is_Active", true),
       ]);
       for (const r of [f, l, t, st, su, ut]) if (r.error) throw r.error;
+
+      /* The rate tables are allowed to be missing.
+
+         They arrive in 0158, and an instance that has not been migrated
+         yet should still draw. digRate.js carries the same figures as
+         its fallback, so an empty array here means the estimates come
+         from the code rather than that they disappear — which is what
+         the canvas wants, and is not true of the tables above it. */
+      for (const r of [dr, df, lr]) {
+        if (r.error && !/does not exist/i.test(r.error.message ?? "")) throw r.error;
+      }
 
       /* The utility's colour, applied to what reads it.
 
@@ -77,10 +96,36 @@ export default async function handler(req, context) {
       /* Style rows are left alone. A null colour there already means
          "inherit", and the cascade in gisStyle.js resolves it against
          the line type and the layer — which now carry the utility's. */
+      /* Renamed on the way out rather than in the canvas.
+
+         digRate.js is a plain model with no database in it — it is
+         tested on its own and carries its own defaults — so it takes
+         plain keys. Mapping here means the shape it receives is the
+         same whether the rows came from Postgres, from the mocks, or
+         from the fallback inside the module itself. */
+      const digRates = (dr.data || []).map((r) => ({
+        key: r.Machine_Key,
+        label: r.Label,
+        baseRateM3Hr: Number(r.Base_Rate_M3_Hr),
+        setupMinutes: Number(r.Setup_Minutes),
+        isDefault: !!r.Is_Default,
+        source: r.Source,
+        sampleSize: Number(r.Sample_Size) || 0,
+      }));
+      const digDepthFactors = (df.data || []).map((r) => ({
+        fromM: Number(r.Depth_From_M),
+        toM: r.Depth_To_M == null ? null : Number(r.Depth_To_M),
+        factor: Number(r.Factor),
+        note: r.Note,
+      }));
+      const digLayRates = Object.fromEntries((lr.data || [])
+        .map((r) => [r.Utility_Key, Number(r.Rate_M_Hr)]));
+
       return json({
         features: f.data || [], layers,
         lineTypes, styles: st.data || [],
         surfaceTypes: su.data || [],
+        digRates, digDepthFactors, digLayRates,
       });
     }
 

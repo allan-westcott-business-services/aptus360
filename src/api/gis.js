@@ -28,7 +28,15 @@ const MOCK_LINE_TYPES = [
 export async function listGis(projectId) {
   if (USE_MOCKS) {
     await delay(180);
-    return { features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES, styles: [], surfaceTypes: [] };
+    /* Empty rate tables rather than a mock copy of them. digRate.js
+       carries the same figures as its fallback, so the estimates work
+       on sample data — and mocking them here would be a second copy of
+       the numbers to keep in step with the migration. */
+    return {
+      features: [...store], layers: MOCK_LAYERS, lineTypes: MOCK_LINE_TYPES,
+      styles: [], surfaceTypes: [],
+      digRates: [], digDepthFactors: [], digLayRates: {},
+    };
   }
   return http.get(`/projects/${projectId}/gis`);
 }

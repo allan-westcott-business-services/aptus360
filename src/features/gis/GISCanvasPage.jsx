@@ -69,6 +69,7 @@ import {
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
+import { digEstimate, hoursText } from "./digRate.js";
 import { sizeIdFor, isOverridden, sizeLabelOf } from "./sizeMode.js";
 import { electricSteps } from "./electricSteps.js";
 import { upstreamTooSmall } from "./upstreamSize.js";
@@ -201,6 +202,12 @@ export default function GISCanvasPage() {
   const [showGrid, setShowGrid] = useState(false);
   const [styles, setStyles] = useState([]);
   const [surfaceTypes, setSurfaceTypes] = useState([]);
+  /* Excavation and lay rates (0158). Empty until loaded and empty on
+     mock data — digRate.js falls back to its own figures either way, so
+     an estimate is never missing, only less specific to this company. */
+  const [digRates, setDigRates] = useState([]);
+  const [digDepthFactors, setDigDepthFactors] = useState([]);
+  const [digLayRates, setDigLayRates] = useState({});
   const [surface, setSurface] = useState("");
   const [standard, setStandard] = useState("");   // operator whose style rules apply
   const [editing, setEditing] = useState(null);
@@ -994,6 +1001,9 @@ export default function GISCanvasPage() {
       setLineTypes(res.lineTypes || []);
       setStyles(res.styles || []);
       setSurfaceTypes(res.surfaceTypes || []);
+      setDigRates(res.digRates || []);
+      setDigDepthFactors(res.digDepthFactors || []);
+      setDigLayRates(res.digLayRates || {});
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -7636,7 +7646,29 @@ export default function GISCanvasPage() {
       };
     }));
 
-    setInspect({ ...res, stretch, njug });
+    /* How long that hole takes to open and to lay.
+
+       Downstream of the size rather than beside it: the estimate takes
+       the width and depth trenchSize worked out and knows nothing about
+       NJUG, so changing the spacing standard moves the duration without
+       the estimating model being touched.
+
+       The length is the stretch when one is selected and the whole
+       trench otherwise, which is the same length shown at the top of
+       the panel — a duration against a different length from the one on
+       screen beside it is the kind of disagreement nobody spots. */
+    const dig = digEstimate({
+      lengthM: stretch && !stretch.wholeRun ? stretch.lengthM : res.trenchM,
+      size: njug,
+      surfaceKey: res.trench?.Attributes?.Surface_Type ?? null,
+      utilities: (res.contents || []).map((c) => c.utility),
+      rates: digRates,
+      depthBands: digDepthFactors,
+      layRates: digLayRates,
+      surfaceTypes,
+    });
+
+    setInspect({ ...res, stretch, njug, dig });
     setError("");
   }
 
@@ -12857,6 +12889,9 @@ export default function GISCanvasPage() {
           layers={layers}
           lineTypes={lineTypes}
           surfaceTypes={surfaceTypes}
+          digRates={digRates}
+          digDepthFactors={digDepthFactors}
+          digLayRates={digLayRates}
           plotList={plotList}
           lookups={lookups}
           allFeatures={features}
@@ -13305,6 +13340,48 @@ export default function GISCanvasPage() {
                       {`; dug to the ${inspect.njug.deepest} at `}
                       {`${inspect.njug.coverM}m cover`}
                     </span>
+                  </div>
+                )}
+
+                {/* How long it takes, from the size above it.
+
+                    Directly under the dimensions because that is what
+                    it is made of, and separated from them by its own
+                    label because it is a different kind of number. The
+                    width is NJUG and the same on every job. The
+                    duration is a rate, and the line at the foot says
+                    whose rate and how much is behind it — a figure that
+                    looks measured when it was assumed is worse than no
+                    figure, because nobody questions it. */}
+                {inspect.dig?.ok && (
+                  <div className="gco-dig">
+                    <div className="gco-dig-head">
+                      <span className="gco-dig-fig">{hoursText(inspect.dig.totalHours)}</span>
+                      <span className="gco-dig-lbl">to dig and lay</span>
+                      <span className="gco-dig-vol">{`${inspect.dig.volumeM3} m\u00b3`}</span>
+                    </div>
+                    <span className="gco-size-why">
+                      {`${hoursText(inspect.dig.digHours)} digging`}
+                      {inspect.dig.setupHours
+                        ? ` + ${hoursText(inspect.dig.setupHours)} setting up` : ""}
+                      {inspect.dig.layHours
+                        ? ` + ${hoursText(inspect.dig.layHours)} laying` : ""}
+                      {` \u00b7 ${inspect.dig.machine}`}
+                      {` at ${inspect.dig.baseRateM3Hr} m\u00b3/hr`}
+                      {inspect.dig.depthFactor !== 1
+                        ? `, \u00d7${inspect.dig.depthFactor} for depth` : ""}
+                      {inspect.dig.surfaceFactor !== 1
+                        ? `, \u00d7${inspect.dig.surfaceFactor} for ${inspect.dig.surfaceLabel}`
+                        : ""}
+                      {/* Which surface was assumed, where none is set.
+                          The multiplier between a verge and a 3/4
+                          carriageway is better than two to one, so a
+                          trench with the question unanswered is the one
+                          worth saying something about. */}
+                      {inspect.dig.surfaceAssumed
+                        ? " \u2014 no surface set, estimated as unmade ground" : ""}
+                    </span>
+                    <span className="gco-dig-basis">{inspect.dig.basis}</span>
                   </div>
                 )}
 
@@ -14937,6 +15014,17 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-size-fig { font: 700 13px inherit; color: var(--text); }
 .gco-size-why { flex-basis: 100%; font-size: 11.5px; color: var(--muted);
   line-height: 1.5; }
+.gco-dig { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
+  padding: 9px 0; border-bottom: 1px solid var(--border); }
+.gco-dig-head { display: flex; align-items: baseline; gap: 7px; flex-basis: 100%; }
+.gco-dig-fig { font: 700 13px inherit; color: var(--text); }
+.gco-dig-lbl { font-size: 11.5px; color: var(--muted); flex: 1; }
+.gco-dig-vol { font: 600 11.5px inherit; color: var(--muted); }
+/* The provenance, deliberately quiet but always present. Hiding it
+   behind a hover would mean the one screen where the figure gets
+   believed is the one where nobody sees where it came from. */
+.gco-dig-basis { flex-basis: 100%; font-size: 10.5px; color: var(--muted);
+  font-style: italic; }
 
 .gco-none { color: var(--muted); font-style: italic; margin: 6px 0; }
 .gco-range { border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px;

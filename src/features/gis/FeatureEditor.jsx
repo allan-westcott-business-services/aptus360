@@ -10,6 +10,7 @@ import { EASEMENT_KEY } from "./easement.js";
 import { contentsOf } from "./trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
 import { trenchSize } from "./trenchSize.js";
+import { digEstimate, hoursText } from "./digRate.js";
 import { TRENCH_CARRIES } from "./trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
@@ -26,6 +27,12 @@ import {
    of. The parts that differ appear only when they apply. */
 export default function FeatureEditor({
   feature, layers, lineTypes, surfaceTypes = [], plotList, lookups,
+  /* Excavation and lay rates. Defaulted rather than required: the
+     editor is opened from several places and an estimate that vanished
+     because one of them forgot a prop would look like a trench with no
+     duration rather than like a wiring mistake. digRate.js falls back
+     to its own figures on empty. */
+  digRates = [], digDepthFactors = [], digLayRates = {},
   /* The whole drawing, so a meter can be offered the circuits that
      already exist on it. */
   allFeatures = [],
@@ -174,14 +181,23 @@ export default function FeatureEditor({
     });
     if (res.error) return null;
 
-    return trenchSize((res.contents || []).map((c) => {
+    const items = (res.contents || []).map((c) => {
       const mm = Number(String(c.feature?.Attributes?.Size ?? "")
         .replace(/[^0-9.]/g, ""));
       return {
         utility: c.utility,
         outsideDiameterMM: mm > 0 ? mm : null,
       };
-    }));
+    });
+
+    /* The utility of each thing laid, carried along with the size.
+
+       The estimate needs one entry per lay and trenchSize returns only
+       a count, so the list is kept here rather than contentsOf being
+       walked a second time — a second walk is a second chance for the
+       duration and the dimensions to be talking about different
+       contents. */
+    return { ...trenchSize(items), utilityKeys: items.map((x) => x.utility) };
   }, [isTrench, feature, allFeatures, lineTypes]);
 
   /* Gas, by the same test as water. */
@@ -464,6 +480,33 @@ export default function FeatureEditor({
     (lookups?.propertyTypes || []).find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
   const layer = layers.find((l) => l.Layer_Key === f.Layer_Key);
   const length = (isLine || isPoly) ? lineLength(feature.Geometry || []) : 0;
+
+  /* How long this length takes to open and to lay.
+
+     Downstream of the size, and below `length` rather than beside the
+     size it reads: the memo depends on the measured length, and a hook
+     placed above the const that declares it throws before the panel can
+     render. checkhooks.mjs is what says so.
+
+     Re-run when the surface picker changes as well, because that is a
+     multiplier of better than two to one between a verge and a 3/4
+     carriageway — a duration that did not move when somebody answered
+     the surface question would be the wrong number sitting next to the
+     right answer. */
+  const trenchEstimate = useMemo(() => {
+    if (!trenchDims?.items) return null;
+    return digEstimate({
+      lengthM: length,
+      size: trenchDims,
+      surfaceKey: f.Attributes?.Surface_Type ?? null,
+      utilities: trenchDims.utilityKeys ?? [],
+      rates: digRates,
+      depthBands: digDepthFactors,
+      layRates: digLayRates,
+      surfaceTypes,
+    });
+  }, [trenchDims, length, f.Attributes?.Surface_Type,
+    digRates, digDepthFactors, digLayRates, surfaceTypes]);
 
   /* What this actually is, at the top of the panel.
 
@@ -1278,6 +1321,22 @@ export default function FeatureEditor({
                       value={trenchDims?.items ? trenchDims.depthM.toFixed(2) : ""} />
                   </div>
 
+                  {/* How long it takes, beside the three fields it is
+                      worked out from. Read-only like they are, and for
+                      the same reason: it follows the drawing, and a
+                      duration somebody typed once would go stale the
+                      moment a cable was added. */}
+                  <div className="fld">
+                    <label htmlFor="fe-tt">Dig + lay</label>
+                    <input id="fe-tt" readOnly
+                      value={trenchEstimate?.ok ? hoursText(trenchEstimate.totalHours) : ""}
+                      title={trenchEstimate?.ok
+                        ? `${trenchEstimate.volumeM3}m\u00b3`
+                          + ` at ${trenchEstimate.baseRateM3Hr}m\u00b3/hr`
+                          + ` (${trenchEstimate.machine})`
+                        : undefined} />
+                  </div>
+
                   {/* What stage this length is at. The same list the
                       canvas marks with, so the two cannot drift. */}
                   <div className="fld">
@@ -1869,6 +1928,53 @@ export default function FeatureEditor({
             </div>
           )}
 
+          {/* What made the duration, and what kind of number it is.
+
+              The width and depth above are NJUG and the same on every
+              job. This is a rate, and it says so: the last line reports
+              whether it came from recorded work or from a planning
+              estimate. Shown rather than hidden behind the field's
+              tooltip, because a duration on a programme gets questioned
+              and a tooltip is not an answer somebody can check.
+
+              Reinstatement is not in it. The surface multiplier prices
+              breaking out, not making good, and a trench under a
+              carriageway costs far more to close than to open. */}
+          {isTrench && trenchEstimate?.ok && (
+            <div className="fld">
+              <label>How that was worked out</label>
+              <p className="fe-derived fe-dig">
+                {`${trenchEstimate.volumeM3}m\u00b3 dug`}
+                {` \u00b7 ${hoursText(trenchEstimate.digHours)} digging`}
+                {trenchEstimate.setupHours
+                  ? ` + ${hoursText(trenchEstimate.setupHours)} setting up` : ""}
+                {trenchEstimate.layHours
+                  ? ` + ${hoursText(trenchEstimate.layHours)} laying`
+                    + (trenchEstimate.jointFactor !== 1
+                      ? ` (\u00d7${trenchEstimate.jointFactor}, joint trench)` : "")
+                  : ""}
+                {`. ${trenchEstimate.machine} at ${trenchEstimate.baseRateM3Hr}m\u00b3/hr`}
+                {trenchEstimate.depthFactor !== 1
+                  ? `, \u00d7${trenchEstimate.depthFactor} for depth`
+                    + (trenchEstimate.depthBandNote
+                      ? ` (${trenchEstimate.depthBandNote.toLowerCase()})` : "")
+                  : ""}
+                {trenchEstimate.surfaceFactor !== 1
+                  ? `, \u00d7${trenchEstimate.surfaceFactor} for ${trenchEstimate.surfaceLabel}`
+                  : ""}
+                {"."}
+                {/* The surface is a multiplier of better than two to one
+                    across the six, so a trench with it unanswered is the
+                    one worth saying something about. Said here rather
+                    than as a warning: it is a missing answer, not a
+                    fault. */}
+                {trenchEstimate.surfaceAssumed
+                  ? " No surface set \u2014 estimated as unmade ground." : ""}
+                <em className="fe-dig-basis">{trenchEstimate.basis}</em>
+              </p>
+            </div>
+          )}
+
           {/* Its own row, under the fields rather than wedged between
               two of them: four tickboxes in one column's width made the
               row four lines deep and left everything beside it floating
@@ -2008,6 +2114,15 @@ const CSS = `
 .fe-derived { margin: 0; font-size: 11.5px; color: var(--muted); background: var(--bg);
   border-radius: var(--radius); padding: 8px 10px; line-height: 1.5; }
 .fe-derived strong { color: var(--text); }
+/* The working behind the duration. Same box as any other derived
+   figure, because that is what it is — worked out from the fields
+   above rather than entered. */
+.fe-dig { line-height: 1.6; }
+/* Where the rate came from, on its own line and never hidden. The one
+   screen where an estimate gets believed is the one where nobody can
+   see it was an estimate. */
+.fe-dig-basis { display: block; margin-top: 5px; font-size: 10.5px;
+  font-style: italic; opacity: .85; }
 .fe-kva { display: flex; align-items: baseline; gap: 8px; padding: 6px 2px; }
 .fe-kva strong { font-size: 15px; }
 .fe-kva-src { font-size: 11px; color: var(--muted); }

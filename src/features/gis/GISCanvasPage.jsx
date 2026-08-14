@@ -64,6 +64,7 @@ import {
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
+import { spanContents, callOffUtilities, utilityIdsFor } from "./spanContents.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
@@ -338,6 +339,12 @@ export default function GISCanvasPage() {
      needs to know it is electric and gas before they load the van, and
      the drawing is where somebody knows that. */
   const [callOffUtils, setCallOffUtils] = useState([]);
+  /* Whether the ticks have been touched. Until they have, they follow
+     the drawing — adding a second run to a call-off should bring its
+     utilities with it. Once somebody has chosen, the choice stands: a
+     tick that reset itself as the runs changed would be a form
+     arguing. */
+  const [utilsTouched, setUtilsTouched] = useState(false);
   const [pick, setPick] = useState(null);
   /* Whether to ask for another run. See where a range is added. */
   const [askAnother, setAskAnother] = useState(false);
@@ -448,6 +455,33 @@ export default function GISCanvasPage() {
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [callOffOpen, ranges, features, plotList]);
+
+  /* The utilities the drawing says are on this call-off.
+
+     Read from the trench sections the runs cross, not chosen. The
+     mains on a run are the pipes and cables routed along it, and the
+     drawing already holds that — asking somebody to tick them was
+     asking them to retype it, and a hand can tick gas on a run with no
+     gas in it where the drawing cannot. */
+  const callOffFound = useMemo(
+    () => (callOff?.spans?.length
+      ? callOffUtilities(callOff.spans, features, { lineTypes, lookups })
+      : []),
+    [callOff, features, lineTypes, lookups],
+  );
+
+  /* Ticked to match, until somebody says otherwise.
+
+     Following the drawing rather than replacing the ticks outright: a
+     call-off is a request, and somebody may want only the gas laid on a
+     run that carries three. What changed is the starting point — what
+     is there, rather than nothing. */
+  useEffect(() => {
+    if (utilsTouched) return;
+    const ids = utilityIdsFor(callOffFound, lookups?.utilities || []);
+    setCallOffUtils((cur) => ([...cur].sort().join(",") === [...ids].sort().join(",")
+      ? cur : ids));
+  }, [callOffFound, lookups, utilsTouched]);
 
 
   /* A proposed trench route, before anything is written.
@@ -7527,6 +7561,7 @@ export default function GISCanvasPage() {
       setPick(null);
       setAskAnother(false);
       setCallOffUtils([]);
+      setUtilsTouched(false);
       /* Straight into finishing it, rather than closing and leaving it
          to be found later. */
       setRaised({
@@ -13744,6 +13779,20 @@ export default function GISCanvasPage() {
                               ? sp.plots.join(", ")
                               : "no plots"}
                           </span>
+                          {/* What this run carries, so somebody
+                              splitting the work between teams can see
+                              which span is the gas and which the
+                              electric without opening each trench. */}
+                          <span className="gco-in">
+                            {(() => {
+                              const inIt = spanContents(sp.trenchIds, features,
+                                { lineTypes, lookups });
+                              if (!inIt.length) return "nothing routed yet";
+                              return inIt.map((c) =>
+                                (c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label))
+                                .join(" \u00b7 ");
+                            })()}
+                          </span>
                         </div>
                       );
                     })}
@@ -13766,21 +13815,46 @@ export default function GISCanvasPage() {
                   </p>
                 )}
 
+                {/* What is being laid, read off the drawing.
+
+                    The trench knows: the mains on a run are the pipes
+                    and cables routed along the sections it crosses.
+                    Ticking them by hand was asking somebody to retype
+                    that, and a hand can tick gas on a run with no gas in
+                    it where the drawing cannot.
+
+                    Still tickable, because a call-off is a request and
+                    somebody may want only the gas laid on a run that
+                    carries three. What changed is the starting point:
+                    what is there, rather than nothing. */}
                 {callOff?.spans?.length > 0 && (
                   <div className="gco-utils">
                     <span className="gco-utils-label">Utilities</span>
                     {(lookups?.utilities || [])
                       .filter((u) => !u.Is_Lighting)
-                      .map((u) => (
-                        <label className="gco-util" key={u.Utility_ID}>
-                          <input type="checkbox"
-                            checked={callOffUtils.includes(Number(u.Utility_ID))}
-                            onChange={(e) => setCallOffUtils((cur) => (e.target.checked
-                              ? [...cur, Number(u.Utility_ID)]
-                              : cur.filter((x) => x !== Number(u.Utility_ID))))} />
-                          {u.Utility}
-                        </label>
-                      ))}
+                      .map((u) => {
+                        const onDrawing = utilityIdsFor(
+                          callOffFound, lookups?.utilities || [],
+                        ).includes(Number(u.Utility_ID));
+                        return (
+                          <label
+                            className={`gco-util${onDrawing ? "" : " absent"}`}
+                            key={u.Utility_ID}
+                            title={onDrawing
+                              ? "On the drawing along this call-off"
+                              : "Nothing of this kind is drawn along these runs"}>
+                            <input type="checkbox"
+                              checked={callOffUtils.includes(Number(u.Utility_ID))}
+                              onChange={(e) => {
+                                setUtilsTouched(true);
+                                setCallOffUtils((cur) => (e.target.checked
+                                  ? [...cur, Number(u.Utility_ID)]
+                                  : cur.filter((x) => x !== Number(u.Utility_ID))));
+                              }} />
+                            {u.Utility}
+                          </label>
+                        );
+                      })}
                   </div>
                 )}
 
@@ -15209,6 +15283,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 
 .gco-utils { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
   padding: 8px 0 2px; border-top: 1px solid var(--border); margin-top: 8px; }
+/* A utility with nothing of its kind drawn along these runs. Dimmed
+   rather than hidden: it can still be ticked, and a missing box would
+   look like the panel had lost it. */
+.gco-util.absent { opacity: .45; }
+/* What a span carries, under its plots. */
+.gco-in { flex-basis: 100%; font-size: 10.5px; color: var(--muted);
+  margin-top: 2px; }
 .gco-utils-label { font: 700 10px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
 .gco-util { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;

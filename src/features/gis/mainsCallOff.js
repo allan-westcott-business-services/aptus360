@@ -479,6 +479,23 @@ export function spansBetween(features = [], opts = {}) {
 
   /* Each piece of the span, taken in turn — a plot tees into one of
      them, and which piece it is does not matter. */
+  /* A plot belongs to one span, not to both sides of a node.
+
+     The interval below is inclusive at each end with half a metre of
+     slop, which it has to be: a service teeing in exactly at a node
+     must land on a span rather than falling between two. But two
+     adjacent spans share that node, so a plot connecting there
+     satisfied both and was listed twice — plot 16 appearing on A8–A14
+     and again on A14–A16, on a call-off whose own total counted it
+     once.
+
+     Claimed once, by the first span in the run that takes it. Which of
+     the two is arbitrary on the ground — the plot is at the junction
+     and either gang could connect it — so the rule only has to be
+     consistent, and "the span it is at the end of" is the one somebody
+     reading the call-off in order meets first. */
+  const claimed = new Set();
+
   for (const sp of spans) {
     for (const part of sp.parts) {
       if (!part.trench) continue;
@@ -490,6 +507,7 @@ export function spansBetween(features = [], opts = {}) {
       const hi = Math.max(a.m, b.m);
 
       for (const t of tees) {
+        if (claimed.has(t.meter.Feature_ID)) continue;
         const hit = along(t.at, g);
         /* On this trench, not merely near it — a service teeing into
            the road behind lands within a metre or two of nothing on
@@ -497,6 +515,7 @@ export function spansBetween(features = [], opts = {}) {
         if (hit.m == null || hit.d > attachM) continue;
         if (hit.m < lo - 0.5 || hit.m > hi + 0.5) continue;
         if (!sp.meters.includes(t.meter)) sp.meters.push(t.meter);
+        claimed.add(t.meter.Feature_ID);
       }
     }
   }
@@ -545,6 +564,17 @@ export function spansBetween(features = [], opts = {}) {
            than by the scheduling side going back to the drawing — which
            it has no reason to load. */
         offSite: sp.parts.some((part) => part.trench?.Attributes?.Off_Site === true),
+        /* The trench sections this span runs on.
+
+           Ids rather than the features, because this is read by a panel
+           that already holds the drawing and does not need a second copy
+           of it — and by the scheduling side, which holds neither and
+           would only be carrying them around. What they are for is
+           asking what is laid in the span: the trench knows, so nobody
+           has to be asked to tick it. */
+        trenchIds: [...new Set(sp.parts
+          .map((part) => part.trench?.Feature_ID)
+          .filter((id) => id != null))],
         plots,
         plotCount: plots.length,
       };

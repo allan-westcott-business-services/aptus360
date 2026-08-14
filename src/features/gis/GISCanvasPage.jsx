@@ -1281,9 +1281,18 @@ export default function GISCanvasPage() {
      to the seed is what made Isolate Water take the boundary points
      with it. */
   const boundaryShown = useMemo(() => {
-    if (!hidden.includes("plot")) return true;
-    return layers.some((l) => l.Utility_ID != null && !hidden.includes(l.Layer_Key));
-  }, [hidden, layers]);
+    /* Shown unless the boundary points themselves are turned off.
+
+       This asked whether any layer carrying a Utility_ID was visible,
+       which made the marker depend on a column that is set per database
+       \u2014 where electric and gas have none, isolating either hid the
+       point that belongs to both. The water layer happened to have one,
+       so it showed there and nowhere else.
+
+       A boundary point is a fact about the plot, not about a utility.
+       It goes when somebody hides it, and not otherwise. */
+    return !hidden.includes("plot:boundary");
+  }, [hidden]);
 
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
@@ -11505,6 +11514,21 @@ export default function GISCanvasPage() {
                               line, and both were called the same thing.
                               The layer row is gone; these two cover
                               everything on it between them. */}
+                          {/* The A marker on every plot's property
+                              boundary point. Its own row, because it
+                              belongs to no utility \u2014 hiding it should
+                              not mean hiding the plots, and isolating a
+                              utility should not take it away. */}
+                          <MenuLayer label="Property Boundary Points"
+                            colour={byKey("plot")?.Colour}
+                            count={features.filter((f) => f.Feature_Role === "plot"
+                              && Array.isArray(f.Attributes?.Boundary_At)).length}
+                            hidden={hidden.includes("plot:boundary")}
+                            solo={solo === "plot:boundary"}
+                            onHide={() => hideClass("plot:boundary")}
+                            onShow={() => showClass("plot:boundary")}
+                            shown={shownOnly.includes("plot:boundary")}
+                            onSolo={() => soloClass("plot:boundary")} />
                           <MenuLayer label="Site Boundary" colour={byKey("boundary")?.Colour}
                             count={classCount["boundary:site"] || 0}
                             hidden={hidden.includes("boundary:site")}
@@ -11701,6 +11725,17 @@ export default function GISCanvasPage() {
                   <Menu id="trench" label="Trench" open={open} setOpen={setOpen}
                     columns={2}>
                     <MenuGroup label="Draw" />
+                    {/* Drawing the dig, so it sits with the other ways
+                        of drawing one. Each utility is laid afterwards
+                        from its own menu, so a design done one utility
+                        at a time does not have the other two put in
+                        behind it. */}
+                    <MenuItem label={busy === "autoservice"
+                      ? "Laying\u2026" : "Auto Lay Service Trench"} indent
+                      hint="Draws the service trench to every plot, and nothing in it"
+                      disabled={!!busy || !projectId}
+                      onClick={() => runStep("service", () => withUndo(
+                        "Auto Service", () => runAutoService({ trenchesOnly: true })))} />
                     {typesOn("trench").map((t) => (
                       <MenuItem key={t.Type_Key} label={t.Label} indent
                         active={isDrawing(t.Type_Key)}
@@ -11755,16 +11790,6 @@ export default function GISCanvasPage() {
 
                     <div className="gm-sep" />
                     <MenuGroup label="Services" />
-                    {/* The dig only. Each utility is laid afterwards
-                        from its own menu, so a design done one utility
-                        at a time does not have the other two put in
-                        behind it. */}
-                    <MenuItem label={busy === "autoservice"
-                      ? "Auto Service\u2026" : "Auto Service \u2014 trenches only"}
-                      hint="Draws the service trench to every plot, and nothing in it"
-                      disabled={!!busy || !projectId}
-                      onClick={() => runStep("service", () => withUndo(
-                        "Auto Service", () => runAutoService({ trenchesOnly: true })))} />
                     <MenuItem label="Check Services Reach the Mains"
                       disabled={!projectId}
                       onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />

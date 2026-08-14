@@ -663,6 +663,39 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (run(7, 7) !== "unchanged") fail("a node already correct was rewritten");
 }
 
+/* A cable feeds the node it reaches, not the one beyond it.
+
+   Every node within reach of either end was a candidate, and on short
+   spans that takes in the next node along: with A1 and A2 eight metres
+   apart and a ten metre reach, the cable from the substation to A1 had
+   both in range — and the downstream rule then preferred A2. Editing
+   the first cable changed the second node.
+
+   One node per end. A cable runs between two points and feeds the far
+   one; anything past that is the next cable's business. */
+{
+  const REACH = 10;
+  /* The drawing from the report: E0 at 0, A1 at 24, A2 at 31.8. */
+  const nodes = [{ n: "A1", seq: 1, at: 24 }, { n: "A2", seq: 2, at: 31.8 }];
+
+  const nearestTo = (end) => nodes
+    .filter((x) => Math.abs(x.at - end) <= REACH)
+    .sort((a, b) => Math.abs(a.at - end) - Math.abs(b.at - end))[0];
+  const downstream = (list) => list.reduce((a, b) => (b.seq > a.seq ? b : a));
+
+  const feeds = (ends) => downstream([...new Set(ends.map(nearestTo).filter(Boolean))]).n;
+
+  if (feeds([0, 24]) !== "A1") fail("the substation cable fed the wrong node");
+  if (feeds([24, 31.8]) !== "A2") fail("the second cable stopped feeding A2");
+
+  /* The old rule, kept as the thing being guarded against. */
+  const anyInReach = (ends) => downstream(
+    nodes.filter((x) => ends.some((e) => Math.abs(x.at - e) <= REACH)));
+  if (anyInReach([0, 24]).n !== "A2") {
+    fail("the old rule stopped picking A2, so this test proves nothing");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span node origins behave (E0/G0/W0, POC standing in, none on plant).");
 process.exit(bad ? 1 : 0);

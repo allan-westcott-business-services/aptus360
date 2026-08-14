@@ -5616,39 +5616,43 @@ export default function GISCanvasPage() {
     if (isTrenchType(line.Attributes?.Line_Type, lineTypes)) return null;
     if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
 
-    const near = look.filter((f) =>
+    const eligible = look.filter((f) =>
       f.Feature_Role === "spannode"
       /* This cable's circuit, or a node that names none.
 
          A node is given its circuit when the build routes through it,
-         and one the build pruned never gets one \u2014 so the node at the
+         and one the build pruned never gets one — so the node at the
          end of the trench was fed by nothing here for the same reason
-         it was missing from the levels: it had no circuit to match on.
-         The distance test below is what decides whether it belongs to
-         this cable.
-
-         A node naming a different circuit is still skipped. */
+         it was missing from the levels: it had no circuit to match on. */
       && (cid == null || f.Attributes?.Circuit_ID == null
         || String(f.Attributes.Circuit_ID) === String(cid))
       && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
-      && (f.Geometry || []).length
-      /* As far as the trace reaches, not as far as a snap does.
+      && (f.Geometry || []).length);
 
-         CONNECT_M is the tolerance for two things being joined, and a
-         cable often stops a few metres short of the trench end where
-         its node sits. At that distance the node was fed by nothing, so
-         its cable stayed unset and the trace had no size to read \u2014 the
-         node was reported with "not set" beside it while a cable
-         plainly ran up to it.
+    /* The nearest node to each end, and only that one.
 
-         The trace already allows SPAN_REACH_M for exactly this gap.
-         Using the same figure means the two agree about which node a
-         cable feeds, rather than each having its own opinion. */
-      && ends.some((e) => {
+       Every node within reach of either end used to be a candidate, and
+       on short spans that takes in the node beyond the one this cable
+       reaches: with A1 and A2 eight metres apart, the cable from the
+       substation to A1 had both in range, and the downstream rule then
+       preferred A2. Editing the first cable changed the second node.
+
+       One node per end removes the question. A cable runs between two
+       points and feeds the far one; a node past that is the next
+       cable's business. */
+    const nearestTo = (end) => {
+      let best = null;
+      for (const f of eligible) {
         const a = f.Attributes?.Span_Anchor;
         const at = (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
-        return Math.hypot(at[0] - e[0], at[1] - e[1]) <= SPAN_REACH_M;
-      }));
+        const d = Math.hypot(at[0] - end[0], at[1] - end[1]);
+        if (d > SPAN_REACH_M) continue;
+        if (!best || d < best.d) best = { f, d };
+      }
+      return best?.f ?? null;
+    };
+
+    const near = [...new Set(ends.map(nearestTo).filter(Boolean))];
 
     if (!near.length) return null;
 
@@ -10046,7 +10050,15 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); }
   }
 
-  async function runAutoService() {
+  /* `trenchesOnly` draws the dig and stops there.
+
+     Auto Service used to draw the trench and lay every utility into it
+     in one go. That is the wrong shape for a design done a utility at a
+     time: laying gas while somebody is working on water puts pipe on
+     plots whose gas has not been thought about. So the dig is one act,
+     on the Trench menu, and each utility is laid from its own menu with
+     Auto Lay Services. */
+  async function runAutoService({ trenchesOnly = false } = {}) {
     const seeds = selected.length
       ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
       : features.filter((f) => f.Feature_Role === "plot");
@@ -10391,7 +10403,7 @@ export default function GISCanvasPage() {
           meterCount++;
         }
 
-        for (const c of plan.cables) {
+        for (const c of (trenchesOnly ? [] : plan.cables)) {
           await createFeature(projectId, {
             Layer_Key: c.utility.layer_key,
             Feature_Type: "line",
@@ -10524,7 +10536,14 @@ export default function GISCanvasPage() {
       setError("");
       setStatus(
         (stopped ? `Stopped after ${doneCount} of ${plans.length} plot(s). ` : "")
-        + `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), ${cableCount} service(s)`
+        /* The dig alone reads as the dig alone: reporting "0 service(s)"
+           after a run that was never going to lay any would look like a
+           failure. */
+        + (trenchesOnly
+          ? `Auto service: ${trenchCount} service trench(es), ${meterCount} meter(s)`
+            + " \u2014 lay the pipes and cables from each utility menu"
+          : `Auto service: ${trenchCount} trench(es), ${meterCount} meter(s), `
+            + `${cableCount} service(s)`)
         + (refilled ? `, ${refilled} put back into an existing trench` : "")
         + (teedCount ? `, ${teedCount} main(s) teed` : "")
         + (relink.length ? `, ${relink.length} link(s) rebuilt` : "")
@@ -11736,6 +11755,16 @@ export default function GISCanvasPage() {
 
                     <div className="gm-sep" />
                     <MenuGroup label="Services" />
+                    {/* The dig only. Each utility is laid afterwards
+                        from its own menu, so a design done one utility
+                        at a time does not have the other two put in
+                        behind it. */}
+                    <MenuItem label={busy === "autoservice"
+                      ? "Auto Service\u2026" : "Auto Service \u2014 trenches only"}
+                      hint="Draws the service trench to every plot, and nothing in it"
+                      disabled={!!busy || !projectId}
+                      onClick={() => runStep("service", () => withUndo(
+                        "Auto Service", () => runAutoService({ trenchesOnly: true })))} />
                     <MenuItem label="Check Services Reach the Mains"
                       disabled={!projectId}
                       onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />

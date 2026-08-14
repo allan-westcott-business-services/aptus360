@@ -63,6 +63,7 @@ import {
 } from "./locking.js";
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
+import { planTrenchSplits } from "./splitTrenches.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
@@ -2597,13 +2598,13 @@ export default function GISCanvasPage() {
       (typeKey) => isTrenchType(typeKey, lineTypes),
     )
       /* Lines above plant.
- 
+
          A substation is a large square and was drawn in creation order
          like everything else, so one added after its cables covered
          them \u2014 the run appeared to stop at the edge of the box and
          start again the other side. Cables and trenches are the thing
          being read; the plant is what they run to.
- 
+
          Points that are not plant keep their place: a meter or a joint
          is small, sits on the end of what it belongs to, and a cable
          drawn over it would hide the connection rather than reveal
@@ -7176,6 +7177,38 @@ export default function GISCanvasPage() {
     const plan = planSpanNodes(trenches, plant, { serviceTypes });
     if (plan.error) { setError(plan.error); return; }
 
+    /* ── Cutting the trenches the nodes fall on ──
+
+       A span node marks a point the network is measured between, and
+       until now placing one drew a marker and left the trench alone. A
+       length drawn as one continuous line past three junctions stayed
+       one feature, so everything asking a question about "a trench" got
+       the answer for all three sections at once — which is why a trench
+       carrying one gas, one water and one LV came back listing five
+       things.
+
+       Mains only, matching what the nodes were planned from: a service
+       runs through to a meter and is one length by definition.
+
+       Nothing to cut is the ordinary case on a second run. Once a
+       trench has been split every node on it is at the end of a piece,
+       so there is nothing interior left and the drawing stops
+       changing. */
+    const mainTrenches = trenches
+      .filter((t) => !serviceTypes.has(t.Attributes?.Line_Type));
+    const splitPlan = planTrenchSplits(mainTrenches, plan.nodes.map((n) => n.at));
+
+    if (!window.confirm(
+      `Place ${plan.nodes.length} span node(s)?`
+      + (splitPlan.trenches
+        ? `\n\nThis also cuts ${splitPlan.trenches} trench(es) into `
+          + `${splitPlan.pieces} section(s) at the nodes on them. `
+          + "Each section keeps the surface, build status and everything "
+          + "else the trench carried."
+        : "\n\nNo trench needs cutting \u2014 every node already sits at the end "
+          + "of one.")
+    )) return;
+
     setBusy("spannodes");
     /* Each node is its own round trip, so a site with a couple of
        hundred of them takes long enough that a still screen reads as a
@@ -7357,6 +7390,87 @@ export default function GISCanvasPage() {
         ? 0
         : existing.filter((f) => !claimed.has(f.Feature_ID)).length;
 
+      /* ── The cut ──
+
+         After the nodes, not before: the plan was made from the
+         trenches as drawn, and cutting first would leave the node pass
+         matching against geometry that had moved underneath it.
+
+         Skipped where the run was stopped part-way. A drawing half
+         marked up is recoverable — running it again carries on — but a
+         drawing cut at half its nodes is a different drawing, and the
+         pieces would then be re-planned from on the next run. The cut
+         belongs to a finished pass. */
+      let cutTrenches = 0;
+      let cutPieces = 0;
+      if (!stopped && splitPlan.trenches) {
+        setProgress({
+          done: 0,
+          total: splitPlan.trenches,
+          label: `Cutting ${splitPlan.trenches} trench(es) at the nodes`,
+        });
+
+        /* The drawing as it will be, built up as the writes happen.
+
+           Connects is derived from geometry, so the pieces have to be
+           linked against the drawing they end up in rather than the one
+           they started from — and load() has not run yet. Keeping the
+           list here means the links are computed once, from the right
+           thing, rather than guessed and corrected. */
+        let next = features.filter((f) => f.Feature_Type !== "line"
+          || !splitPlan.splits.some((s) => s.trench.Feature_ID === f.Feature_ID));
+        const madePieces = [];
+
+        for (const [i, sp] of splitPlan.splits.entries()) {
+          for (const piece of sp.pieces) {
+            const { lengthM, ...row } = piece;
+            const made = await createFeature(projectId, row);
+            madePieces.push(made);
+            next = [...next, made];
+          }
+          cutTrenches += 1;
+          cutPieces += sp.pieces.length;
+          setProgress({
+            done: i + 1,
+            total: splitPlan.trenches,
+            label: `Cut ${i + 1} of ${splitPlan.trenches}`,
+          });
+        }
+
+        /* The originals, once their replacements exist. In that order:
+           a failure between the two leaves the drawing with both, which
+           somebody can see and sort out, rather than with neither. */
+        const goneIds = splitPlan.splits.map((s) => s.trench.Feature_ID);
+        for (let i = 0; i < goneIds.length; i += 100) {
+          await deleteFeatures(projectId, goneIds.slice(i, i + 100));
+        }
+
+        /* What is joined to what, for the pieces and for everything
+           that touches them. The same recompute a moved feature gets —
+           links are a fact about where ends are, and every piece has
+           ends the line it came from did not. */
+        setProgress({ done: cutTrenches, total: cutTrenches, label: "Relinking" });
+        const touched = new Set(madePieces.map((f) => Number(f.Feature_ID)));
+        for (const f of madePieces) {
+          for (const id of linksFor(f, next)) touched.add(Number(id));
+        }
+        const rows = next
+          .filter((f) => touched.has(Number(f.Feature_ID))
+            && (f.Feature_Type === "line" || f.Feature_Role === "spannode"))
+          .map((f) => ({ f, Connects: linksFor(f, next) }))
+          .filter(({ f, Connects }) => {
+            const was = f.Attributes?.Connects || [];
+            return [...was].sort().join(",") !== [...Connects].sort().join(",");
+          })
+          .map(({ f, Connects }) => ({
+            Feature_ID: f.Feature_ID,
+            Attributes: { ...f.Attributes, Connects },
+          }));
+        for (let i = 0; i < rows.length; i += 100) {
+          await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+        }
+      }
+
       setProgress({
         done: plan.nodes.length, total: plan.nodes.length, label: "Reloading",
       });
@@ -7368,6 +7482,8 @@ export default function GISCanvasPage() {
         ? `Stopped after ${doneCount} of ${plan.nodes.length} node(s). ` : "")
         + `${made} placed, ${moved} renumbered`
         + (spare ? `, ${spare} left alone` : "")
+        + (cutTrenches
+          ? `, ${cutTrenches} trench(es) cut into ${cutPieces} section(s)` : "")
         + ` \u00b7 ${plan.servicesIgnored} service trench(es) ignored`
         + (plan.plant ? `, plant is ${plan.plant.label}` : "")
         + (stopped ? " \u2014 run it again to carry on where it stopped." : ""));
@@ -12148,7 +12264,12 @@ export default function GISCanvasPage() {
                     <MenuItem label="Place Span Nodes"
                       hint="At every junction and end of the trench network, A1 upwards"
                       disabled={!!busy || !projectId}
-                      onClick={placeSpanNodes} />
+                      /* Under undo, because this now cuts trenches as
+                         well as marking them. Placing a marker was
+                         nothing much to take back; replacing a length
+                         of trench that carries a build status with
+                         three sections of it is. */
+                      onClick={() => withUndo("Place Span Nodes", () => placeSpanNodes())} />
 
                     {/* Routing was here: Trace All Meters, Step Through
                         Traces, Suggest Trench Route, Only Live Trench.

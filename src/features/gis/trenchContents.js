@@ -110,7 +110,14 @@ function alongOn(p, g = []) {
    occupies 0–50 twice.
 
    Measured by the same walk lengthWithin uses, keeping the first and
-   last step that fell inside the band rather than counting them. */
+   last step that fell inside the band rather than counting them.
+
+   Reported, but not what the sizing counts by. Two runs meeting at a
+   bend each sit inside the other's tolerance band for a few metres, so
+   their extents overlap when they are end to end — which read as two
+   pipes laid together. The cross-section counts coverage instead; see
+   concurrentCount in trenchSize.js. This stays because "where along the
+   trench" is a fair question and a panel may want to answer it. */
 export function spanWithin(line = [], trench = [], opts = {}) {
   const { withinM = 1.5, stepM = 1.0 } = opts;
   if (trench.length < 2 || line.length < 2) return null;

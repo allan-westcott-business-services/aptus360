@@ -107,79 +107,90 @@ export function itemWidthM(item) {
   return DEFAULT_ITEM_WIDTH_M;
 }
 
-/* The things laid side by side at the busiest point of the trench.
+/* How many of a set of alike things are laid side by side.
 
    ── Width is a cross-section, and the contents list is not ──
 
    What runs along a trench and what lies across it are different
    questions. In one section of trench the answer to the second is the
    same everywhere: pipes and cables do not join a trench part way along
-   its length, so everything laid in it runs the whole of it.
+   its length, so anything laid in it runs the whole of it.
 
-   That means a line covering only part of a section is not a neighbour
-   of the rest — it is a consecutive run of the same pipe, picking up
-   where the last one stopped. A 145m trench with three gas runs along
-   it has one gas pipe in its cross-section, not three.
+   That means several features of one size in a trench are usually
+   consecutive runs of a single pipe, cut where the build split it at a
+   junction or a size step — not several pipes laid together. A 145m
+   trench with three gas runs along it has one gas pipe across it.
 
    Summing the list regardless was what produced a three-metre trench
    from a single gas, water and LV: every run added its own diameter and
    another 0.25m of separation to a hole nothing extra was being laid
-   in. And it got worse as the design matured, because each rebuild
-   splits the network into more runs — more features along the same
-   trench, none of them beside each other.
+   in. It got worse as the design matured, because each rebuild splits
+   the network into more runs — more features along the same trench,
+   none of them beside each other.
 
-   ── The busiest point, not the first ──
+   ── Counted by coverage, not by where the cuts fall ──
 
-   Swept rather than counted, so the answer does not depend on where the
-   runs happen to be cut. Every start and end is a boundary; between two
-   boundaries the set laid is constant; the trench is dug for the widest
-   of those sets.
+   From the metres, not from the extents. Consecutive runs tile the
+   trench, so their lengths come to one trench length; two laid together
+   come to two. The ratio says which, and it does not care where the
+   joins are.
 
-   An item with no extent counts as running the whole length. That is
-   the cautious reading — it is the one that keeps it in every
-   cross-section — and it is what every caller that knows only what is
-   in a trench, and not where, should get. */
+   Extents were the obvious way to do this and they are not reliable
+   enough. A run is measured as being in the trench anywhere within a
+   metre and a half of it, so where two meet — at a bend, a junction, or
+   a branch turning off — each is inside the other's territory for a few
+   metres and the two read as overlapping when they are end to end.
+   Lengths do not have that problem: a metre counted for one run is a
+   metre not counted for the other.
+
+   Never less than one, and never more than there are features. A group
+   covering half the trench is still one pipe, not half of one. */
+export function concurrentCount(items = [], trenchM = null) {
+  if (!items.length) return 0;
+  if (!trenchM || items.length === 1) return items.length ? 1 : 0;
+
+  /* An item with no measured length is assumed to run the whole way,
+     which is the cautious reading — it is the one that keeps it in the
+     cross-section. */
+  const covered = items.reduce(
+    (t, x) => t + (Number.isFinite(x.withinM) ? x.withinM : trenchM), 0);
+
+  const n = Math.round(covered / trenchM);
+  return Math.min(items.length, Math.max(1, n));
+}
+
+/* What a thing in the trench is grouped with: the same utility at the
+   same size. Two 125mm gas runs are one pipe cut in two; a 125mm and a
+   180mm beside it are two pipes. */
+const groupKey = (x) =>
+  `${x.utility}|${Number(x.outsideDiameterMM) > 0 ? x.outsideDiameterMM : "?"}`;
+
+/* The things laid side by side at any one point.
+
+   Each group of alike runs collapses to however many of it are actually
+   laid together. Sizes are kept apart, so a trench where the main steps
+   from 180mm down to 90mm still reports both — they are one pipe across
+   it, and the wider is what it has to be dug for. */
 export function crossSection(items = [], trenchM = null) {
   if (items.length < 2) return items;
 
-  const spans = items.map((x) => ({
-    item: x,
-    from: Number.isFinite(x.fromM) ? x.fromM : 0,
-    to: Number.isFinite(x.toM) ? x.toM : (trenchM || Infinity),
-  }));
-
-  const bounds = [...new Set(spans.flatMap((s) => [s.from, s.to]))]
-    .sort((a, b) => a - b);
-
-  let best = [];
-  let bestW = -1;
-  for (let i = 0; i + 1 < bounds.length; i++) {
-    /* The middle of the interval, so a run ending exactly where the
-       next begins is not counted in both. */
-    const at = (bounds[i] + bounds[i + 1]) / 2;
-    const here = spans.filter((s) => s.from <= at && at < s.to).map((s) => s.item);
-    if (!here.length) continue;
-    /* Widest rather than most numerous: three ducts are not a wider
-       trench than one large main beside a cable. */
-    const w = here.reduce((t, x) => t + itemWidthM(x), 0)
-      + separationTotal(here);
-    if (w > bestW) { bestW = w; best = here; }
+  const groups = new Map();
+  for (const x of items) {
+    const k = groupKey(x);
+    if (groups.has(k)) groups.get(k).push(x);
+    else groups.set(k, [x]);
   }
 
-  /* No interval at all means nothing carried an extent — one boundary,
-     or none. Everything is then in the cross-section. */
-  return best.length ? best : items;
-}
-
-/* The separations between a set laid side by side, in the order they
-   would be laid: deepest first. */
-function separationTotal(set = []) {
-  const ordered = [...set].sort((a, b) => coverFor(b.utility) - coverFor(a.utility));
-  let t = 0;
-  for (let i = 1; i < ordered.length; i++) {
-    t += separationFor(ordered[i - 1].utility, ordered[i].utility);
+  const out = [];
+  for (const set of groups.values()) {
+    const n = concurrentCount(set, trenchM);
+    /* The widest of the group, repeated. Where a group is one pipe cut
+       into runs of one size this is that size; the repeat only matters
+       where several genuinely run together. */
+    const widest = set.reduce((a, b) => (itemWidthM(b) > itemWidthM(a) ? b : a));
+    for (let i = 0; i < n; i++) out.push(widest);
   }
-  return t;
+  return out;
 }
 
 /* The trench for these contents.

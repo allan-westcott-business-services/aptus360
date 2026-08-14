@@ -9,7 +9,7 @@ import {
 import { EASEMENT_KEY } from "./easement.js";
 import { contentsOf } from "./trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
-import { trenchSize } from "./trenchSize.js";
+import { trenchSize, concurrentCount } from "./trenchSize.js";
 import { digEstimate, hoursText } from "./digRate.js";
 import { TRENCH_CARRIES } from "./trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
@@ -152,16 +152,37 @@ export default function FeatureEditor({
         label: c.label || "\u2014",
         icon: known?.icon ?? "\u25CF",
         utility: known?.name ?? name,
+        withinM: c.withinM,
       };
     });
 
+    /* Counted across the trench, not along it.
+
+       Nothing joins a trench part way along its length, so several
+       features of the same size in one section are consecutive runs of
+       one pipe rather than several laid together. Counting them gave
+       "3 x 95" for a single cable that the build had split into three
+       runs at the junctions — and the count grew every rebuild, because
+       a maturing design splits the network further.
+
+       concurrentCount is the same rule the width uses, so the list and
+       the dimension beside it cannot disagree about how many things are
+       in the trench. */
     const grouped = [];
     for (const r of rows) {
       const held = grouped.find((g) => g.label === r.label && g.utility === r.utility);
-      if (held) held.count += 1;
-      else grouped.push({ ...r, count: 1 });
+      if (held) held.runs.push(r);
+      else grouped.push({ ...r, runs: [r] });
     }
-    return grouped;
+    return grouped.map((g) => ({
+      ...g,
+      count: concurrentCount(g.runs, res.trenchM),
+      /* How many lengths it was drawn in, where that is more than the
+         number laid. Not shown as a count — it is not more pipe — but
+         it explains a trench whose contents look shorter than its
+         feature list. */
+      runCount: g.runs.length,
+    }));
   }, [isTrench, feature, allFeatures, lineTypes, layers, lookups]);
 
   const trenchDims = useMemo(() => {
@@ -190,7 +211,7 @@ export default function FeatureEditor({
         /* Where along the trench it runs. Without this a trench with
            three consecutive gas runs along it is sized as three gas
            pipes side by side. */
-        fromM: c.fromM, toM: c.toM,
+        withinM: c.withinM,
       };
     });
 

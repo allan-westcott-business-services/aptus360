@@ -102,10 +102,10 @@ function trenchLeg(trench, metres, opts) {
     return {
       utility: c.utility,
       outsideDiameterMM: mm > 0 ? mm : null,
-      /* Where along the trench it runs. A section crossing a trench
+      /* How much of the trench it covers. A section crossing a trench
          with several consecutive runs of one main is one pipe wide, not
          several. */
-      fromM: c.fromM, toM: c.toM,
+      withinM: c.withinM,
     };
   });
 

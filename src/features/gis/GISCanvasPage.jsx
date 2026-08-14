@@ -7643,9 +7643,9 @@ export default function GISCanvasPage() {
         utility: c.utility,
         outsideDiameterMM: mm > 0 ? mm : null,
         label: c.label,
-        /* Where along the trench it runs, so consecutive runs of one
+        /* How much of the trench it covers, so consecutive runs of one
            main are not sized as several laid side by side. */
-        fromM: c.fromM, toM: c.toM,
+        withinM: c.withinM,
       };
     }), { trenchM: res.trenchM });
 

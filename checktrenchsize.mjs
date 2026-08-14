@@ -7,7 +7,7 @@
    its contents, that the rules compose the way they should, and that
    the degenerate cases do something sensible. */
 import {
-  trenchSize, coverFor, separationFor,
+  trenchSize, concurrentCount, coverFor, separationFor,
   NJUG_COVER_M, MIN_WIDTH_M, EDGE_MARGIN_M,
 } from "./src/features/gis/trenchSize.js";
 
@@ -109,73 +109,90 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
 //
 //    This is the fault that produced a three-metre trench from a single
 //    gas, water and LV. Nothing joins a trench part way along its
-//    length, so a line covering part of a section is the next run of
-//    the same pipe rather than something laid beside it. Summing the
-//    list regardless added a diameter and another 0.25m of separation
-//    for every run, and got worse as the design matured, because each
-//    rebuild splits the network into more runs along the same trench.
+//    length, so several runs of one size are one pipe cut at the
+//    junctions. Summing them added a diameter and another 0.25m of
+//    separation for every run, and got worse as the design matured,
+//    because each rebuild splits the network further.
 {
-  const beside = trenchSize([
-    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 100 },
-    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 100 },
-  ], { trenchM: 100 });
   const endToEnd = trenchSize([
-    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 50 },
-    { utility: "gas", outsideDiameterMM: 180, fromM: 50, toM: 100 },
-  ], { trenchM: 100 });
+    { utility: "gas", outsideDiameterMM: 125, withinM: 50 },
+    { utility: "gas", outsideDiameterMM: 125, withinM: 51.8 },
+  ], { trenchM: 101.8 });
+  const beside = trenchSize([
+    { utility: "gas", outsideDiameterMM: 125, withinM: 101.8 },
+    { utility: "gas", outsideDiameterMM: 125, withinM: 101.8 },
+  ], { trenchM: 101.8 });
 
   if (endToEnd.items !== 1) {
     fail(`two runs end to end were sized as ${endToEnd.items} pipes side by side`);
   }
+  if (beside.items !== 2) fail("two mains laid the whole length were sized as one");
   if (!(beside.widthM > endToEnd.widthM)) {
-    fail("two mains laid side by side were no wider than the same two end to end");
+    fail("two mains side by side were no wider than the same two end to end");
   }
   if (endToEnd.runs !== 2) fail("the runs along the trench were not reported");
   if (endToEnd.consecutive !== 1) fail("the consecutive run was not reported as such");
-
-  /* The busiest point decides, wherever it falls. A single run down the
-     whole length beside two consecutive ones is two pipes wide
-     throughout, not three at one end. */
-  const mixed = trenchSize([
-    { utility: "electric", fromM: 0, toM: 100 },
-    { utility: "gas", outsideDiameterMM: 180, fromM: 0, toM: 50 },
-    { utility: "gas", outsideDiameterMM: 180, fromM: 50, toM: 100 },
-  ], { trenchM: 100 });
-  if (mixed.items !== 2) fail(`the busiest cross-section held ${mixed.items}, wanted 2`);
 }
 
-// 9. Depth still comes from everything in it, not from the busiest
-//    cross-section.
+// 9. Counted by coverage, not by where the joins fall.
 //
-//    A trench is dug to one depth in one pass, so a deeper run further
-//    along still sets it. The width may vary along a section; the depth
-//    may not.
+//    Extents were the obvious way to do this and were not reliable: a
+//    run counts as being in the trench anywhere within a metre and a
+//    half of it, so two meeting at a bend each sit inside the other's
+//    territory for a few metres and read as overlapping when they are
+//    end to end. That put "2 x 125mm PE" against a single pipe. Lengths
+//    do not have the problem — a metre counted for one run is a metre
+//    not counted for the other.
 {
-  const r = trenchSize([
-    { utility: "electric", fromM: 0, toM: 50 },
-    { utility: "water", outsideDiameterMM: 180, fromM: 50, toM: 100 },
-  ], { trenchM: 100 });
-  if (r.items !== 1) fail("two consecutive runs were sized as two side by side");
-  if (r.deepest !== "water") {
-    fail(`depth taken from ${r.deepest} — a deeper run further along did not set it`);
+  /* Three runs tiling a 101.8m trench, cut unevenly, as a build leaves
+     them. Whatever the cuts, it is one pipe. */
+  for (const cuts of [[34, 34, 33.8], [5, 90, 6.8], [50, 1.8, 50]]) {
+    const r = trenchSize(
+      cuts.map((m) => ({ utility: "gas", outsideDiameterMM: 125, withinM: m })),
+      { trenchM: 101.8 },
+    );
+    if (r.items !== 1) fail(`runs cut at ${cuts.join("/")} counted as ${r.items} pipes`);
+  }
+  /* And a group covering only part of the trench is still one pipe,
+     not a fraction of one. */
+  const part = trenchSize([{ utility: "gas", outsideDiameterMM: 125, withinM: 20 }],
+    { trenchM: 101.8 });
+  if (part.items !== 1) fail("a main covering part of the trench was not counted");
+}
+
+// 10. Sizes are kept apart, and the trench is dug for the wider.
+//
+//     A main stepping from 180mm down to 90mm along a trench is one
+//     pipe across it, but the hole has to take the 180mm.
+{
+  const stepped = trenchSize([
+    { utility: "gas", outsideDiameterMM: 180, withinM: 60 },
+    { utility: "gas", outsideDiameterMM: 90, withinM: 41.8 },
+  ], { trenchM: 101.8 });
+  if (stepped.items !== 2) {
+    fail(`a main stepping size counted as ${stepped.items}, wanted both sizes kept`);
   }
 }
 
-// 10. Items with no extent are treated as running the whole length.
+// 11. Items with no coverage are treated as running the whole length.
 //
 //     The cautious reading, and what every caller that knows what is in
-//     a trench but not where should get. Existing callers pass no
-//     extents at all and must be unaffected.
+//     a trench but not how much of it should get. Existing callers pass
+//     no lengths at all and must be unaffected.
 {
   const r = trenchSize([
     { utility: "gas", outsideDiameterMM: 180 },
     { utility: "electric" },
   ]);
-  if (r.items !== 2) fail("items with no extent were dropped from the cross-section");
-  if (r.consecutive !== 0) fail("items with no extent were called consecutive");
+  if (r.items !== 2) fail("items with no coverage were dropped from the cross-section");
+  if (r.consecutive !== 0) fail("items with no coverage were called consecutive");
+
+  if (concurrentCount([{}, {}], 100) !== 2) fail("items with no coverage were not counted");
+  if (concurrentCount([{ withinM: 50 }], 50) !== 1) fail("a single run counted as none");
+  if (concurrentCount([], 50) !== 0) fail("nothing counted as something");
 }
 
-// 11. Separation is symmetric: the gap between gas and electric does not
+// 12. Separation is symmetric: the gap between gas and electric does not
 //    depend on which was listed first.
 if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
   fail("the separation between two utilities depends on their order");

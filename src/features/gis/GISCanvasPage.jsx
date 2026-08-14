@@ -11201,30 +11201,31 @@ export default function GISCanvasPage() {
                 onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
                 Draw line
               </button>
-              {/* What is being drawn, beside the button that starts it.
-
-                  The type was chosen from whichever utility menu it
-                  belonged to and then remembered, so somebody who had
-                  come back to the drawing had to open a menu to find
-                  out what the next line would be. Here it is the label
-                  on the tool.
-
-                  Only while drawing: on the Select tool it would be a
-                  control for something not happening. */}
-              {tool === "line" && (
-                <select className="gt-type" aria-label="Line type to draw"
-                  value={lineType ?? ""}
-                  onChange={(e) => drawAs(e.target.value)}>
-                  {lineTypes
-                    .filter((t) => t.Is_Active !== false)
-                    .map((t) => (
-                      <option key={t.Type_Key} value={t.Type_Key}>
-                        {t.Label}
-                      </option>
-                    ))}
-                </select>
-              )}
             </div>
+
+            {/* What is being drawn, beside the button that starts it.
+
+                The type was chosen from whichever utility menu it
+                belonged to and then remembered, so somebody who had
+                come back to the drawing had to open a menu to find
+                out what the next line would be. Here it is the label
+                on the tool.
+
+                Only while drawing: on the Select tool it would be a
+                control for something not happening. */}
+            {tool === "line" && (
+              <select className="gt-type" aria-label="Line type to draw"
+                value={lineType ?? ""}
+                onChange={(e) => drawAs(e.target.value)}>
+                {lineTypes
+                  .filter((t) => t.Is_Active !== false)
+                  .map((t) => (
+                    <option key={t.Type_Key} value={t.Type_Key}>
+                      {t.Label}
+                    </option>
+                  ))}
+              </select>
+            )}
 
             {/* Undo and redo.
 
@@ -11410,6 +11411,18 @@ export default function GISCanvasPage() {
                       }} />
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
+                    {/* Labels, on every utility menu.
+
+                        Whether the drawing is readable is a
+                        question somebody asks while working on one
+                        utility, and the answer used to be in the
+                        Layers menu \u2014 a different menu from the one
+                        they are in. The same switch, offered where
+                        it is wanted. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(false)}
+                      onShow={() => setShowLabels(true)} />
                     <p className="gm-note">
                       H hides a layer and hides it again to bring it back.
                       S shows only the layers whose S is lit — as many as you
@@ -12059,6 +12072,18 @@ export default function GISCanvasPage() {
 
                         <div className="gm-sep" />
                         <MenuGroup label="Show or Hide" />
+                        {/* Labels, on every utility menu.
+
+                            Whether the drawing is readable is a
+                            question somebody asks while working on one
+                            utility, and the answer used to be in the
+                            Layers menu \u2014 a different menu from the one
+                            they are in. The same switch, offered where
+                            it is wanted. */}
+                        <MenuLayer label="Labels" colour="#64748b"
+                          hidden={!showLabels}
+                          onHide={() => setShowLabels(false)}
+                          onShow={() => setShowLabels(true)} />
                         {/* As on the Electric menu: the whole utility as
                             a named action, not only the S on the layer
                             row below. */}
@@ -14373,13 +14398,20 @@ const CSS = `
 .gis-proj select { width: auto; min-width: 260px; font-size: 12.5px; }
 /* The line type sits with the tool rather than in a menu, so it reads
    as part of what Draw line is about to do. */
-.gt-type { height: 28px; max-width: 190px; border-radius: 7px;
+.gt-type { height: 30px; max-width: 200px; border-radius: 7px;
   border: 1px solid var(--border); background: var(--white);
-  font: inherit; font-size: 12px; padding: 0 6px; margin-left: 6px; }
+  font: inherit; font-size: 12.5px; padding: 0 8px; flex: 0 0 auto; }
 
-.gis-tools { display: inline-flex; border: 1px solid var(--border); border-radius: 7px; overflow: hidden; }
+/* The tool buttons, and nothing else.
+
+   The line type picker sat inside this, so the group had to grow to
+   hold it \u2014 and with the border wrapping both, "Draw line" broke onto
+   two lines to make room. The picker is a separate control that follows
+   the tools rather than part of them. */
+.gis-tools { display: inline-flex; border: 1px solid var(--border);
+  border-radius: 7px; overflow: hidden; flex: 0 0 auto; }
 .gt { background: var(--white); border: none; padding: 6px 14px; cursor: pointer;
-  font: 600 12.5px inherit; color: var(--muted); }
+  font: 600 12.5px inherit; color: var(--muted); white-space: nowrap; }
 .gt.on { background: var(--accent); color: #fff; }
 .btn.ghost.danger { color: #b91c1c; }
 

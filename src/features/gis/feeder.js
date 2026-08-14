@@ -122,10 +122,54 @@ export function buildFeederModel(features = [], opts = {}) {
   const nodes = [];
   const adj = new Map();
 
+  /* Interning a point against the ones already found.
+
+     This scanned every node for every point, which is O(n²) on the
+     number of vertices in the drawing — and the drawing is every trench
+     on the site, not just this circuit's. On an estate of a few hundred
+     plots the scan alone was two thirds of the time a levels check took,
+     and it runs again for every circuit.
+
+     A grid of buckets `eps` across. Two points within `eps` of each
+     other cannot be more than one bucket apart, so only the nine
+     surrounding buckets need looking at, and the work stops growing with
+     the size of the drawing.
+
+     ── Same answer, not just a faster one ──
+
+     The scan returned the first node within eps, which is the
+     lowest-indexed one, which is the earliest inserted. Bucket order is
+     not insertion order, so taking the first match found here would
+     silently pick a different node when two candidates are both in
+     range. It takes the lowest index instead, which is what the scan
+     did. That case needs two existing nodes within half a metre of each
+     other and is rare, but "rare" and "never" are different things when
+     the answer decides which lengths of trench are one run. */
+  const cell = Math.max(eps, 1e-6);
+  const buckets = new Map();
+
   const intern = (p) => {
-    for (let i = 0; i < nodes.length; i++) if (dist(nodes[i], p) <= eps) return i;
+    const gx = Math.floor(p[0] / cell);
+    const gy = Math.floor(p[1] / cell);
+    let best = -1;
+    for (let ax = gx - 1; ax <= gx + 1; ax++) {
+      for (let ay = gy - 1; ay <= gy + 1; ay++) {
+        const b = buckets.get(`${ax},${ay}`);
+        if (!b) continue;
+        for (const i of b) {
+          if (i > best && best >= 0) continue;
+          if (dist(nodes[i], p) <= eps && (best < 0 || i < best)) best = i;
+        }
+      }
+    }
+    if (best >= 0) return best;
+
     nodes.push([p[0], p[1]]);
-    return nodes.length - 1;
+    const idx = nodes.length - 1;
+    const k = `${gx},${gy}`;
+    const b = buckets.get(k);
+    if (b) b.push(idx); else buckets.set(k, [idx]);
+    return idx;
   };
   const addEdge = (a, b, svc) => {
     if (a === b) return;

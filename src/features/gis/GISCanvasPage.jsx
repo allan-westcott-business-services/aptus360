@@ -652,33 +652,6 @@ export default function GISCanvasPage() {
   /* The pressure at each span node, by its label, for drawing on the
      canvas. Null when the gas layer is hidden or no check has run \u2014
      both mean there is nothing to say rather than a figure of zero. */
-  /* The levels check's figures, against the span node each belongs to.
-
-     Keyed on stopId — the Feature_ID the leg ends at — rather than on
-     the label. Gas matches its pressures on the node's code and needs a
-     positional fallback for nodes whose Span_Label differs from the name
-     the report gave them; the electric legs already carry the id, so
-     there is nothing to match and nothing to drift.
-
-     Null while the trace is stale. traceAt records the drawing the check
-     ran against, and the panel puts a banner up when it no longer
-     matches; a figure drawn beside a node has no room for a banner, so
-     it goes instead. A volt drop is a result, not a property of a node,
-     and one left beside a node after the cable under it changed is a
-     wrong number that looks exactly like a right one. */
-  const elecLevelsAt = useMemo(() => {
-    if (!trace?.levels || !trace?.hasVd) return null;
-    if (!traceAt || traceAt.features !== features || traceAt.lookups !== lookups) return null;
-    const m = new Map();
-    for (const l of trace.legs || []) {
-      if (l.stopId == null || !l.vd) continue;
-      /* Last one wins, which cannot arise: a node is the end of exactly
-         one leg on the circuit that feeds it. */
-      m.set(Number(l.stopId), l.vd);
-    }
-    return m.size ? m : null;
-  }, [trace, traceAt, features, lookups]);
-
   const gasPressureAt = useMemo(() => {
     if (!gasLevelsResult?.legs || hidden.includes("gas")) return null;
     const m = new Map();
@@ -820,6 +793,144 @@ export default function GISCanvasPage() {
   }, [steps]);
 
   const drag = useRef(null);
+
+  /* ── The levels beside every span node, kept up to date ──
+
+     These were read off the stored levels check, which meant they only
+     appeared after somebody ran it and vanished the moment the drawing
+     changed. Two problems with that, and the second is the sharper one:
+
+       they were not always there   — a volt drop is what a designer is
+                                      working to, not something to go
+                                      and ask for
+
+       they vanished on being touched — dragging the label writes
+                                      Levels_Offset, which makes a new
+                                      features array, which made the
+                                      stored result stale, which removed
+                                      the label from under the cursor
+                                      mid-drag. The same fault the gas
+                                      pressure label has.
+
+     So they are computed here instead of read, and the last good figures
+     are held while the next ones are worked out. A label never goes
+     away; at worst it is briefly a few hundred milliseconds behind.
+
+     ── Why it is deferred ──
+
+     A full pass is around sixty milliseconds a circuit on an estate of a
+     few hundred plots. Run inside the render it would freeze the canvas
+     on every mouse move of a vertex drag. So the drawing is watched for
+     changes that could move a figure, and the work is done shortly after
+     they stop — and never while a drag is in flight, because the answer
+     would be thrown away by the next frame anyway. */
+
+  /* What the figures actually depend on. Compared rather than the whole
+     drawing, so moving a label — or a plot, or a boundary — does not set
+     the whole calculation going again.
+
+     Geometry by array identity: every geometry write in this file
+     replaces the array rather than writing into it, so a changed
+     reference means changed geometry and an unchanged one means an
+     attribute moved. Cheap enough to run on every render, which a
+     coordinate-by-coordinate digest would not be. */
+  /* The figures themselves, against the span node each belongs to.
+
+     Keyed on stopId — the Feature_ID the leg ends at — rather than on
+     the label. Gas matches its pressures on the node's code and needs a
+     positional fallback for nodes whose Span_Label differs from the name
+     the report gave them; the electric legs already carry the id, so
+     there is nothing to match and nothing to drift. */
+  const levelsByNode = useCallback((src) => {
+    const circuits = circuitsFrom(src);
+    const cables = lookups?.cableSizes || [];
+    if (!circuits.length || !cables.length) return null;
+
+    const station = src.find((f) => f.Feature_Role === "substation");
+    const vs = lookups?.vdSettings?.[0];
+    const limits = { ...VD_DEFAULTS, ...(vs ? {
+      unbalanced: !!vs.Unbalanced,
+      maxLoopOhms: Number(vs.Max_Loop_Ohms),
+      maxVoltDropPct: Number(vs.Max_Volt_Drop_Pct),
+      unbalancedConstant: Number(vs.Unbalanced_Constant),
+      distributedLoadFactor: Number(vs.Distributed_Load_Factor),
+    } : {}) };
+    const ctx = {
+      cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
+      cableTypes: lookups?.cableTypes || [],
+      transformer: (lookups?.transformerSizes || []).find((t) =>
+        String(t.Transformer_Size_ID)
+          === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+      voltageV: Number(station?.Attributes?.Output_V) || 400,
+      settings: limits,
+    };
+
+    const out = new Map();
+    for (const c of circuits) {
+      const origin = originNodeFor(src, c.id);
+      if (!origin) continue;
+      const r = spanTrace(src, origin.Feature_ID, {
+        lineTypes, circuitId: c.id,
+        plotById: (id) => plotList.find((pl) => pl.plot_id === id),
+        stopAt: "spannodes",
+      });
+      if (r.error) continue;
+      for (const leg of r.legs || []) {
+        if (leg.stopId == null) continue;
+        out.set(Number(leg.stopId), cumulativeToNode({
+          model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
+          partialCableId: leg.cableSizeId ?? null, ...ctx,
+        }));
+      }
+    }
+    return out.size ? out : null;
+  }, [lookups, lineTypes, plotList]);
+
+  const levelsKey = useMemo(() => {
+    const k = [];
+    for (const f of features) {
+      const a = f.Attributes || {};
+      const line = f.Feature_Type === "line";
+      const wanted = line
+        ? (f.Layer_Key === "trench" || f.Layer_Key === "electric")
+        : (f.Feature_Role === "substation" || f.Feature_Role === "meter"
+          || f.Feature_Role === "spannode" || f.Feature_Role === "plot");
+      if (!wanted) continue;
+      k.push(f.Feature_ID, f.Feature_Role, f.Layer_Key, f.Geometry, f.Plot_ID,
+        a.Line_Type, a.Circuit_ID, a.Span_Seq, a.Seed_Feature_ID,
+        a.VD_Cable_Size_ID, a.Manual_VD_Cable_Size_ID,
+        a.Carries_LV, a.Carries_HV);
+    }
+    return k;
+  }, [features]);
+
+  const [liveLevels, setLiveLevels] = useState(null);
+  const levelsSeen = useRef(null);
+
+  useEffect(() => {
+    const same = (a, b) => a && b && a.length === b.length
+      && a.every((x, i) => Object.is(x, b[i]));
+    if (same(levelsSeen.current, levelsKey) && liveLevels) return;
+
+    /* Settled first. A vertex drag changes the drawing on every frame,
+       and every one of those answers would be discarded by the next. */
+    const t = setTimeout(() => {
+      if (drag.current) return;              // still moving; the next change re-arms
+      levelsSeen.current = levelsKey;
+      try {
+        const m = levelsByNode(features);
+        /* Null only where there is nothing to say — no circuits, no
+           cable catalogue. An empty result replaces nothing, so the
+           previous figures stay rather than blinking out. */
+        if (m) setLiveLevels(m);
+      } catch { /* A drawing mid-edit is allowed to be unroutable. */ }
+    }, 350);
+    return () => clearTimeout(t);
+  }, [levelsKey, features, liveLevels, levelsByNode]);
+
+  const elecLevelsAt = liveLevels;
+
+
 
 
   useEffect(() => {

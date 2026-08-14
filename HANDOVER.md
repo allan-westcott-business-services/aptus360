@@ -236,6 +236,26 @@ function or move the logic somewhere it can be imported from.
     survived. Only the bottle end, which has a front and a back, made it
     visible. If a symbol needs turning to the drawing, do not negate.
 
+20. **A label that vanishes when you reach for it.** Anything drawn only
+    while a stored result is fresh disappears the moment it is dragged:
+    the drag writes an offset, that makes a new `features` array, the
+    result goes stale, and the label is removed from under the cursor.
+    The span node levels label had this and the **gas pressure label
+    still does** — same shape, same cause, not yet fixed. A label that
+    can be moved has to be drawn from something a move does not
+    invalidate.
+
+21. **`buildFeederModel` was O(n²).** `intern` scanned every node found
+    so far for every vertex in the drawing — and the drawing is every
+    trench on the site, not just the circuit being routed. On an estate
+    of a few hundred plots that scan alone was two thirds of a levels
+    check, repeated per circuit. It is a spatial hash now, `eps` across,
+    checking nine buckets. It returns the lowest matching index, which is
+    what the linear scan did: bucket order is not insertion order, and
+    taking the first match found would quietly pick a different node
+    where two are both in range. Build LV Network, Place Feeder Joints
+    and the call-offs all sit on this path.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

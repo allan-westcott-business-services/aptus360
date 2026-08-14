@@ -9,7 +9,7 @@ import {
 import { EASEMENT_KEY } from "./easement.js";
 import { contentsOf } from "./trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
-import { trenchSize, concurrentCount } from "./trenchSize.js";
+import { trenchSize, concurrentCount, dominantOf } from "./trenchSize.js";
 import { digEstimate, hoursText } from "./digRate.js";
 import { TRENCH_CARRIES } from "./trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
@@ -170,19 +170,32 @@ export default function FeatureEditor({
        in the trench. */
     const grouped = [];
     for (const r of rows) {
-      const held = grouped.find((g) => g.label === r.label && g.utility === r.utility);
+      const held = grouped.find((g) => g.utility === r.utility);
       if (held) held.runs.push(r);
       else grouped.push({ ...r, runs: [r] });
     }
-    return grouped.map((g) => ({
-      ...g,
-      count: concurrentCount(g.runs, res.trenchM),
-      /* How many lengths it was drawn in, where that is more than the
-         number laid. Not shown as a count — it is not more pipe — but
-         it explains a trench whose contents look shorter than its
-         feature list. */
-      runCount: g.runs.length,
-    }));
+    return grouped.map((g) => {
+      /* Named by the run that covers most of the trench.
+
+         A build cuts a main wherever the calculated size steps, so one
+         pipe comes back as 180mm for most of a run and 90mm past the
+         point the load drops. Listing both read as two pipes; naming
+         the longer says what is mostly in the ground, which is what
+         somebody looking at a trench wants. The width is dug for the
+         widest either way — see crossSection. */
+      const main = dominantOf(g.runs) ?? g;
+      const sizes = [...new Set(g.runs.map((r) => r.label))].filter(Boolean);
+      return {
+        ...g,
+        label: main.label ?? g.label,
+        count: concurrentCount(g.runs, res.trenchM),
+        /* The other sizes it is drawn in, for the tooltip. Not shown as
+           separate entries — they are the same pipe — but a length that
+           steps size is worth being able to see. */
+        alsoSizes: sizes.filter((x) => x !== (main.label ?? g.label)),
+        runCount: g.runs.length,
+      };
+    });
   }, [isTrench, feature, allFeatures, lineTypes, layers, lookups]);
 
   const trenchDims = useMemo(() => {
@@ -1947,8 +1960,12 @@ export default function FeatureEditor({
               <label>In this trench</label>
               <ul className="fe-inside">
                 {trenchContents.map((c) => (
-                  <li key={c.key}>
-                    <i title={c.utility}>{c.icon}</i>
+                  <li key={c.key}
+                    title={c.alsoSizes?.length
+                      ? `${c.utility} \u2014 also drawn as `
+                        + `${c.alsoSizes.join(", ")} along part of it`
+                      : c.utility}>
+                    <i>{c.icon}</i>
                     {c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label}
                   </li>
                 ))}

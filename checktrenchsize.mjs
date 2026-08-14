@@ -7,7 +7,7 @@
    its contents, that the rules compose the way they should, and that
    the degenerate cases do something sensible. */
 import {
-  trenchSize, concurrentCount, coverFor, separationFor,
+  trenchSize, concurrentCount, dominantOf, coverFor, separationFor,
   NJUG_COVER_M, MIN_WIDTH_M, EDGE_MARGIN_M,
 } from "./src/features/gis/trenchSize.js";
 
@@ -160,18 +160,53 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   if (part.items !== 1) fail("a main covering part of the trench was not counted");
 }
 
-// 10. Sizes are kept apart, and the trench is dug for the wider.
+// 10. One gas main is one gas main however many sizes it is drawn in.
 //
-//     A main stepping from 180mm down to 90mm along a trench is one
-//     pipe across it, but the hole has to take the 180mm.
+//     A build cuts a run wherever the calculated size steps, so a single
+//     pipe comes back as 180mm for most of a run and 90mm past the point
+//     the load drops. Grouping by size as well as by utility reported
+//     both and dug the trench wide enough for both — which is how a
+//     trench carrying one gas, one water and one LV came back listing
+//     five things.
 {
   const stepped = trenchSize([
     { utility: "gas", outsideDiameterMM: 180, withinM: 60 },
     { utility: "gas", outsideDiameterMM: 90, withinM: 41.8 },
   ], { trenchM: 101.8 });
-  if (stepped.items !== 2) {
-    fail(`a main stepping size counted as ${stepped.items}, wanted both sizes kept`);
+  if (stepped.items !== 1) {
+    fail(`a main stepping size counted as ${stepped.items} pipes, wanted 1`);
   }
+
+  /* And it is dug for the wider of them: over-digging a length is
+     money, under-digging it is a pipe that will not fit. */
+  const wide = trenchSize([{ utility: "gas", outsideDiameterMM: 180, withinM: 101.8 }],
+    { trenchM: 101.8 });
+  const narrow = trenchSize([{ utility: "gas", outsideDiameterMM: 90, withinM: 101.8 }],
+    { trenchM: 101.8 });
+  if (stepped.widthM !== wide.widthM) {
+    fail("a stepped main was not dug for its widest size");
+  }
+  if (stepped.widthM === narrow.widthM) fail("a stepped main was dug for its narrowest size");
+
+  /* One of each utility, each drawn in two sizes, is three things
+     across the trench — the case from the drawing that found this. */
+  const real = trenchSize([
+    { utility: "gas", outsideDiameterMM: 180, withinM: 145.6 },
+    { utility: "gas", outsideDiameterMM: 90, withinM: 40 },
+    { utility: "water", outsideDiameterMM: 110, withinM: 145.6 },
+    { utility: "water", outsideDiameterMM: 90, withinM: 45 },
+    { utility: "electric", withinM: 145.6 },
+  ], { trenchM: 145.6 });
+  if (real.items !== 3) fail(`one of each counted as ${real.items} across the trench`);
+  if (real.runs !== 5) fail("the five runs along it were not reported");
+
+  /* The dominant run is what a panel names: what is mostly in the
+     ground, not a short length of larger pipe at the head of a run. */
+  const main = dominantOf([
+    { utility: "gas", outsideDiameterMM: 180, withinM: 10 },
+    { utility: "gas", outsideDiameterMM: 90, withinM: 135 },
+  ]);
+  if (main.outsideDiameterMM !== 90) fail("the run covering most of the trench was not named");
 }
 
 // 11. Items with no coverage are treated as running the whole length.
@@ -188,6 +223,12 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   if (r.consecutive !== 0) fail("items with no coverage were called consecutive");
 
   if (concurrentCount([{}, {}], 100) !== 2) fail("items with no coverage were not counted");
+  /* And with no trench length either, which is what a caller knowing
+     only what is in a trench passes. Everything is then assumed laid
+     together — the reading that keeps them all in the cross-section. */
+  if (concurrentCount([{}, {}], null) !== 2) {
+    fail("with no trench length, two items were not both counted");
+  }
   if (concurrentCount([{ withinM: 50 }], 50) !== 1) fail("a single run counted as none");
   if (concurrentCount([], 50) !== 0) fail("nothing counted as something");
 }

@@ -146,8 +146,12 @@ export function itemWidthM(item) {
    Never less than one, and never more than there are features. A group
    covering half the trench is still one pipe, not half of one. */
 export function concurrentCount(items = [], trenchM = null) {
-  if (!items.length) return 0;
-  if (!trenchM || items.length === 1) return items.length ? 1 : 0;
+  if (items.length < 2) return items.length;
+  /* No trench length is no way to tell consecutive from parallel, so
+     everything is assumed to be laid together. The cautious reading:
+     it is the one that keeps them all in the cross-section, and it is
+     what a caller knowing only what is in a trench should get. */
+  if (!trenchM) return items.length;
 
   /* An item with no measured length is assumed to run the whole way,
      which is the cautious reading — it is the one that keeps it in the
@@ -159,24 +163,33 @@ export function concurrentCount(items = [], trenchM = null) {
   return Math.min(items.length, Math.max(1, n));
 }
 
-/* What a thing in the trench is grouped with: the same utility at the
-   same size. Two 125mm gas runs are one pipe cut in two; a 125mm and a
-   180mm beside it are two pipes. */
-const groupKey = (x) =>
-  `${x.utility}|${Number(x.outsideDiameterMM) > 0 ? x.outsideDiameterMM : "?"}`;
-
 /* The things laid side by side at any one point.
 
-   Each group of alike runs collapses to however many of it are actually
-   laid together. Sizes are kept apart, so a trench where the main steps
-   from 180mm down to 90mm still reports both — they are one pipe across
-   it, and the wider is what it has to be dug for. */
+   ── Grouped by utility, not by utility and size ──
+
+   One gas main is one gas main however many sizes it is drawn in. A
+   build cuts a run wherever the calculated size steps, so a single pipe
+   from the governor to the far end of a site comes back as 180mm for
+   most of it and 90mm past the point the load drops — two features, one
+   pipe, one slot in the cross-section.
+
+   Grouping by size as well reported both and dug the trench wide enough
+   for both, which is how a trench carrying one gas, one water and one
+   LV came back listing five things. Nothing joins a trench part way
+   along its length, so the question a cross-section asks is "how many
+   gas pipes", never "how many gas pipes of each size".
+
+   ── Represented by the widest ──
+
+   The trench has to take the largest thing that goes in it, so a
+   stepped main is dug for its 180mm rather than its 90mm. Over-digging
+   a length is money; under-digging it is a pipe that will not fit. */
 export function crossSection(items = [], trenchM = null) {
   if (items.length < 2) return items;
 
   const groups = new Map();
   for (const x of items) {
-    const k = groupKey(x);
+    const k = x.utility;
     if (groups.has(k)) groups.get(k).push(x);
     else groups.set(k, [x]);
   }
@@ -184,13 +197,23 @@ export function crossSection(items = [], trenchM = null) {
   const out = [];
   for (const set of groups.values()) {
     const n = concurrentCount(set, trenchM);
-    /* The widest of the group, repeated. Where a group is one pipe cut
-       into runs of one size this is that size; the repeat only matters
-       where several genuinely run together. */
     const widest = set.reduce((a, b) => (itemWidthM(b) > itemWidthM(a) ? b : a));
     for (let i = 0; i < n; i++) out.push(widest);
   }
   return out;
+}
+
+/* The run that best represents a utility in the trench: the one that
+   covers most of it.
+
+   What a panel should name. The widest is what the hole is dug for, but
+   it is not always what is mostly in the ground — a short length of
+   larger pipe at the head of a run would otherwise label the whole
+   trench with a size that covers ten metres of a hundred and fifty. */
+export function dominantOf(items = []) {
+  if (!items.length) return null;
+  return items.reduce((a, b) =>
+    ((Number(b.withinM) || 0) > (Number(a.withinM) || 0) ? b : a));
 }
 
 /* The trench for these contents.

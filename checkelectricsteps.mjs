@@ -8,6 +8,7 @@
    The state is read from the drawing, never recorded when somebody
    presses a button: stored state says a step is done for ever,
    including after the trench it drew has been deleted. */
+import { readFileSync } from "node:fs";
 import { electricSteps, ELECTRIC_STEP_KEYS } from "./src/features/gis/electricSteps.js";
 
 let bad = 0;
@@ -182,6 +183,54 @@ const pt = (role, attrs = {}, id = 1) => ({
     lineTypes: LT,
   });
   if (!withAreas.steps[1].done) fail("two developers with an area each was not done");
+}
+
+/* ── A plot is set when the plots endpoint says it is ──
+
+   The checks above use `config_code`, which is what a joined view calls
+   the house type. The plots endpoint returns `Property_Config_ID`, and
+   that name was not in the list — so a site with every plot set read as
+   "0 of 129 have a house type and heat source" and every build refused
+   to start.
+
+   Nothing caught it because the fixtures were written in the shape the
+   check happened to accept. So the real shape is tested here, taken
+   from PLOT_COLUMNS in netlify/functions/plots.js rather than from
+   memory. */
+{
+  const real = Array.from({ length: 129 }, (_, i) => ({
+    Plot_ID: i + 1, Project_ID: 1, Plot_Number: String(i + 1),
+    Property_Config_ID: 7, Heat_Source_ID: 2, KVA_Load: null,
+  }));
+  const r = electricSteps({ features: [], plots: real, developers: [], lineTypes: [] });
+  const step = r.steps.find((x) => x.key === "plots");
+  if (!step.done) fail(`plots set through the endpoint read as: ${step.detail}`);
+  if (!/129 of 129/.test(step.detail)) fail(`the count read "${step.detail}"`);
+
+  /* Both halves still required. A plot with a house type and no heat
+     source is not sized — the load would be a guess. */
+  const half = electricSteps({
+    features: [],
+    plots: [{ Plot_ID: 1, Property_Config_ID: 7 }],
+    developers: [], lineTypes: [],
+  }).steps.find((x) => x.key === "plots");
+  if (half.done) fail("a plot with no heat source counted as set");
+
+  const other = electricSteps({
+    features: [],
+    plots: [{ Plot_ID: 1, Heat_Source_ID: 2 }],
+    developers: [], lineTypes: [],
+  }).steps.find((x) => x.key === "plots");
+  if (other.done) fail("a plot with no house type counted as set");
+
+  /* And the field names really do come from the endpoint, rather than
+     from what this file remembers of it. */
+  const cols = readFileSync("./netlify/functions/plots.js", "utf8");
+  for (const c of ["Property_Config_ID", "Heat_Source_ID"]) {
+    if (!cols.includes(`"${c}"`)) {
+      fail(`${c} is not returned by the plots endpoint any more`);
+    }
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

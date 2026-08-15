@@ -71,9 +71,30 @@ export function electricSteps({
 
   /* A plot needs both to be sized: the house type says how big it is
      and the heat source says what it draws. Either missing and the
-     load is a guess. */
-  const sized = plots.filter((p) => (p.config_code ?? p.Config_Code ?? p.Code)
-    && (p.heat_source_id ?? p.Heat_Source_ID));
+     load is a guess.
+
+     ── Which field says a house type is set ──
+
+     Property_Config_ID, which is what the plots endpoint returns and
+     what the Plots screen writes. It was not in this list, so a site
+     with all 129 plots set read as "0 of 129 have a house type and heat
+     source" and every build refused to start.
+
+     The names below it are the same fact under the names a joined view
+     gives it — a code rather than an id. They stay because more than
+     one shape reaches this, and dropping them would move the fault
+     rather than fix it. Any of them is a house type; none of them is
+     not.
+
+     Nothing is checked here beyond presence. Whether the id points at a
+     house type that still exists is the Plots screen's business, and a
+     build refusing to start over it would be refusing over something
+     nobody could see from here. */
+  const hasHouseType = (p) => p.Property_Config_ID ?? p.property_config_id
+    ?? p.config_code ?? p.Config_Code ?? p.Code;
+  const hasHeatSource = (p) => p.heat_source_id ?? p.Heat_Source_ID;
+
+  const sized = plots.filter((p) => hasHouseType(p) && hasHeatSource(p));
 
   const steps = [
     {

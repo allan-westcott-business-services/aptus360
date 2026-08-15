@@ -167,7 +167,56 @@ const modal = readFileSync("./src/features/gis/BomModal.jsx", "utf8");
     if (at("Water") < at("Gas") || at("Gas") < at("Electric")) {
       fail(`the utilities read ${names.join(", ")}`);
     }
-    if (at("Labour") !== names.length - 1) fail("Labour is not last");
+    if (at("Labour") !== names.length - 1) fail("Labour is not last in the order");
+  }
+
+  /* And last on the page, which the order alone does not achieve.
+
+     A labour row carries the site of the trench it was worked out from;
+     a pipe row carries none. Ranking by site first put labour up with
+     the trench sections and left it in the middle of the bill, however
+     far down the list it was written — so labour is asked about before
+     the site. */
+  {
+    const secs = [
+      { site: "On-site", utility: "Labour" },
+      { site: "", utility: "Water" },
+      { site: "", utility: "Electric" },
+      { site: "Off-site", utility: "Labour" },
+      { site: "Off-site", utility: "Trench" },
+    ];
+    const SITE_ORDER = ["Off-site", "On-site", "Unclassified", ""];
+    const UTILITY_ORDER = ["Electric", "Gas", "Water", "Street Lighting", "Labour"];
+    const n = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+    const siteRank = (x) => {
+      const i = SITE_ORDER.indexOf(x);
+      return i < 0 ? SITE_ORDER.length : i;
+    };
+    const utilRank = (x) => {
+      const i = UTILITY_ORDER.findIndex((u) => n(u) === n(x));
+      return i < 0 ? UTILITY_ORDER.length : i;
+    };
+    const lab = (x) => (n(x) === "labour" ? 1 : 0);
+
+    const sorted = [...secs].sort((a, b) => lab(a.utility) - lab(b.utility)
+      || siteRank(a.site) - siteRank(b.site)
+      || utilRank(a.utility) - utilRank(b.utility)
+      || a.utility.localeCompare(b.utility));
+
+    const tail = sorted.slice(-2).map((x) => x.utility);
+    if (tail.some((u) => n(u) !== "labour")) {
+      fail(`the bill ends with ${tail.join(", ")} rather than the labour`);
+    }
+    /* Off-site labour before on-site, the same way round as everything
+       else — the site still orders them among themselves. */
+    if (sorted.at(-2).site !== "Off-site") {
+      fail("the labour sections are not in site order among themselves");
+    }
+
+    /* And the modal sorts that way, on the page and in the workbook. */
+    if ((modal.match(/isLabour\(a\.utility\) \? 1 : 0/g) || []).length < 2) {
+      fail("labour is not ranked before the site on both the page and the sheet");
+    }
   }
 
   /* Ranked rather than compared by name, or the order above would be

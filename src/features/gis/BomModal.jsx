@@ -70,11 +70,24 @@ const siteRank = (site) => {
   return at < 0 ? SITE_ORDER.length : at;
 };
 
+const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+
 const utilityRank = (name) => {
-  const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
   const at = UTILITY_ORDER.findIndex((u) => norm(u) === norm(name));
   return at < 0 ? UTILITY_ORDER.length : at;
 };
+
+/* Labour after every material, whatever site it is on.
+
+   Asked before the site, which is the only way it can be last. A labour
+   row carries the site of the trench it was worked out from, and the
+   pipe and cable rows carry none — so ranking by site first put labour
+   up with the trench sections and left it in the middle of the bill,
+   however far down UTILITY_ORDER it was written.
+
+   The site still orders the labour sections among themselves: off-site
+   digging before on-site, the same way round as everything else. */
+const isLabour = (utility) => norm(utility) === norm("Labour");
 
 /* ── The one colour with nowhere to live ──
 
@@ -408,7 +421,8 @@ export default function BomModal({
       out.get(key).items.push(r);
     }
     return [...out.values()].sort((a, b) =>
-      siteRank(a.site) - siteRank(b.site)
+      (isLabour(a.utility) ? 1 : 0) - (isLabour(b.utility) ? 1 : 0)
+      || siteRank(a.site) - siteRank(b.site)
       || utilityRank(a.utility) - utilityRank(b.utility)
       || a.utility.localeCompare(b.utility));
   }, [shown]);
@@ -491,7 +505,8 @@ export default function BomModal({
          workbook that reads differently from the panel it was exported
          from is the kind of difference nobody notices until they are
          comparing two printouts. */
-      .sort((a, b) => siteRank(a.site) - siteRank(b.site)
+      .sort((a, b) => (isLabour(a.utility) ? 1 : 0) - (isLabour(b.utility) ? 1 : 0)
+        || siteRank(a.site) - siteRank(b.site)
         || String(a.site ?? "").localeCompare(String(b.site ?? ""))
         || utilityRank(a.utility) - utilityRank(b.utility)
         || String(a.utility ?? "").localeCompare(String(b.utility ?? ""))

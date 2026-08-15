@@ -12837,90 +12837,20 @@ export default function GISCanvasPage() {
                        needs to know, and it cannot be mistaken for a
                        drawing of anything else. */
                     onOpen={() => soloClass("electric", true)}>
-                    {/* As on Gas and Water: which of the two recorded
-                        sizes is in force. */}
-                    <MenuGroup label="Sizes" />
-                    <MenuItem label="System calculated" indent
-                      active={(sizeMode.electric ?? "system") === "system"}
-                      keepOpen
-                      hint="What the build worked out from the load"
-                      onClick={() => setSizeModeFor("electric", "system")} />
-                    <MenuItem label="Manually set" indent
-                      active={sizeMode.electric === "manual"}
-                      keepOpen
-                      hint="Overrides where set, calculated elsewhere"
-                      onClick={() => setSizeModeFor("electric", "manual")} />
-                    <div className="gm-sep" />
-                    <MenuGroup label="Show or Hide" />
-                    {/* Labels, on every utility menu.
+                    {/* ── Network first ──
 
-                        Whether the drawing is readable is a question
-                        somebody asks while working on one utility, and
-                        the answer used to be in the Layers menu — a
-                        different menu from the one they are in. The same
-                        switch, offered where it is wanted. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(false)}
-                      onShow={() => setShowLabels(true)} />
-                    {/* POC and substation first: they are the two fixed
-                        points a designer orients by, and everything else
-                        is described relative to them. */}
-                    {[["poc", "POCs"], ["substation", "Substations"]].map(([role, label]) => (
-                      <MenuLayer key={role} label={label}
-                        count={classCount[`role:${role}`] || 0}
-                        hidden={hidden.includes(`role:${role}`)}
-                        solo={solo === `role:${role}`}
-                        onHide={() => hideClass(`role:${role}`)}
-                      onShow={() => showClass(`role:${role}`)}
-                      shown={shownOnly.includes(`role:${role}`)}
-                        onSolo={() => soloClass(`role:${role}`)} />
-                    ))}
-                    {typesOn("electric").map((t) => (
-                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
-                        count={classCount[`lt:${t.Type_Key}`] || 0}
-                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
-                        solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
-                      onShow={() => showClass(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
-                    ))}
-                    <MenuLayer label="Electric Meters"
-                      count={classCount["electric:role:meter"] || 0}
-                      hidden={hidden.includes("electric:role:meter")}
-                      solo={solo === "electric:role:meter"}
-                      onHide={() => hideClass("electric:role:meter")}
-                      onShow={() => showClass("electric:role:meter")}
-                      shown={shownOnly.includes("electric:role:meter")}
-                      onSolo={() => soloClass("electric:role:meter")} />
-                    {[["joint", "Joints"], ["linkbox", "Link boxes"],
-                      ["spannode", "Span nodes"]].map(([role, label]) => (
-                        <MenuLayer key={role} label={label}
-                          count={classCount[`role:${role}`] || 0}
-                          hidden={hidden.includes(`role:${role}`)}
-                          solo={solo === `role:${role}`}
-                          onHide={() => hideClass(`role:${role}`)}
-                      onShow={() => showClass(`role:${role}`)}
-                      shown={shownOnly.includes(`role:${role}`)}
-                          onSolo={() => soloClass(`role:${role}`)} />
-                      ))}
-                    {/* The layer as a whole, matching the row the gas and
-                        water menus end with. Hiding it takes everything
-                        electric with it, including anything above that is
-                        currently shown. */}
-                    <div className="gm-sep" />
-                    <MenuLayer label="Whole Electric layer"
-                      colour={layers.find((l) => l.Layer_Key === "electric")?.Colour}
-                      count={classCount.electric || 0}
-                      hidden={hidden.includes("electric")}
-                      solo={solo === "electric"}
-                      onHide={() => hideClass("electric")}
-                      onShow={() => showClass("electric")}
-                      shown={shownOnly.includes("electric")}
-                      onSolo={() => soloClass("electric")} />
+                        The order somebody works in: plant down, cable
+                        drawn, network built, then checked. Sizes and
+                        visibility are settings, and settings belong
+                        beside the work rather than in front of it.
 
-                    <MenuGroup label="Network" newColumn />
+                        The drawing items sit here rather than under a
+                        Draw heading of their own: drawing a main is
+                        building the network, and a heading between them
+                        separated two halves of one job. The same shape
+                        as the Gas and Water menus, so three utilities
+                        read the same way round. */}
+                    <MenuGroup label="Network" />
                     <MenuItem label="+ POC" hint="Snaps to the nearest main"
                       disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
                     <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
@@ -12929,9 +12859,6 @@ export default function GISCanvasPage() {
                       hint="Shortest path along the trenches, as HV feeder"
                       disabled={!!busy || !projectId}
                       onClick={routeSupply} />
-
-                    <div className="gm-sep" />
-                    <MenuGroup label="Draw" />
                     {/* Under Draw, because that is what it does: the
                         cable is drawn along a trench rather than by
                         hand, but it is still drawing. */}
@@ -13024,6 +12951,92 @@ export default function GISCanvasPage() {
                       hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
                       disabled={!!busy}
                       onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
+
+                    {/* The column breaks here. Everything before it is the
+                        work; everything after is how the drawing is
+                        read. */}
+                    <MenuGroup label="Sizes" newColumn />
+                    <MenuItem label="System calculated" indent
+                      active={(sizeMode.electric ?? "system") === "system"}
+                      keepOpen
+                      hint="What the build worked out from the load"
+                      onClick={() => setSizeModeFor("electric", "system")} />
+                    <MenuItem label="Manually set" indent
+                      active={sizeMode.electric === "manual"}
+                      keepOpen
+                      hint="Overrides where set, calculated elsewhere"
+                      onClick={() => setSizeModeFor("electric", "manual")} />
+
+                    <div className="gm-sep" />
+                    <MenuGroup label="Show or Hide" />
+                    {/* Labels, on every utility menu.
+
+                        Whether the drawing is readable is a question
+                        somebody asks while working on one utility, and
+                        the answer used to be in the Layers menu — a
+                        different menu from the one they are in. The same
+                        switch, offered where it is wanted. */}
+                    <MenuLayer label="Labels" colour="#64748b"
+                      hidden={!showLabels}
+                      onHide={() => setShowLabels(false)}
+                      onShow={() => setShowLabels(true)} />
+                    {/* POC and substation first: they are the two fixed
+                        points a designer orients by, and everything else
+                        is described relative to them. */}
+                    {[["poc", "POCs"], ["substation", "Substations"]].map(([role, label]) => (
+                      <MenuLayer key={role} label={label}
+                        count={classCount[`role:${role}`] || 0}
+                        hidden={hidden.includes(`role:${role}`)}
+                        solo={solo === `role:${role}`}
+                        onHide={() => hideClass(`role:${role}`)}
+                      onShow={() => showClass(`role:${role}`)}
+                      shown={shownOnly.includes(`role:${role}`)}
+                        onSolo={() => soloClass(`role:${role}`)} />
+                    ))}
+                    {typesOn("electric").map((t) => (
+                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
+                        count={classCount[`lt:${t.Type_Key}`] || 0}
+                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                        solo={solo === `lt:${t.Type_Key}`}
+                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                      onShow={() => showClass(`lt:${t.Type_Key}`)}
+                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
+                    ))}
+                    <MenuLayer label="Electric Meters"
+                      count={classCount["electric:role:meter"] || 0}
+                      hidden={hidden.includes("electric:role:meter")}
+                      solo={solo === "electric:role:meter"}
+                      onHide={() => hideClass("electric:role:meter")}
+                      onShow={() => showClass("electric:role:meter")}
+                      shown={shownOnly.includes("electric:role:meter")}
+                      onSolo={() => soloClass("electric:role:meter")} />
+                    {[["joint", "Joints"], ["linkbox", "Link boxes"],
+                      ["spannode", "Span nodes"]].map(([role, label]) => (
+                        <MenuLayer key={role} label={label}
+                          count={classCount[`role:${role}`] || 0}
+                          hidden={hidden.includes(`role:${role}`)}
+                          solo={solo === `role:${role}`}
+                          onHide={() => hideClass(`role:${role}`)}
+                      onShow={() => showClass(`role:${role}`)}
+                      shown={shownOnly.includes(`role:${role}`)}
+                          onSolo={() => soloClass(`role:${role}`)} />
+                      ))}
+                    {/* The layer as a whole, matching the row the gas and
+                        water menus end with. Hiding it takes everything
+                        electric with it, including anything above that is
+                        currently shown. */}
+                    <div className="gm-sep" />
+                    <MenuLayer label="Whole Electric layer"
+                      colour={layers.find((l) => l.Layer_Key === "electric")?.Colour}
+                      count={classCount.electric || 0}
+                      hidden={hidden.includes("electric")}
+                      solo={solo === "electric"}
+                      onHide={() => hideClass("electric")}
+                      onShow={() => showClass("electric")}
+                      shown={shownOnly.includes("electric")}
+                      onSolo={() => soloClass("electric")} />
+
                   </Menu>
 
                   {/* Gas and Water, the two menus built from the layer

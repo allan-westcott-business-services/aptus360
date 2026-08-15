@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /* Bottle ends go where the feeder stops, and nowhere else.
 
    The failure this is really guarding against: the feeder model is built
@@ -313,6 +314,37 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
     };
     if (bottleEndAngle(joint, [far], { reach: 10 }) !== null) {
       fail("a bottle end far from any feeder was given an angle anyway");
+    }
+  }
+}
+
+
+/* ── The bill calls a bottle end a Bottle End ──
+
+   The names live twice: JOINT_KINDS here, and a CASE in the bill's own
+   function, because SQL cannot read a JavaScript object. Two copies
+   drift, and the way this one drifted was a bill that read "Bottleend"
+   — initcap turning a key into a word, which works for 'straight' and
+   fails for anything written as one.
+
+   So the copies are checked against each other rather than trusted. */
+{
+  const sql = readFileSync(
+    new URL("./supabase/migrations/0163_bom_bottle_end_name.sql", import.meta.url),
+    "utf8",
+  );
+
+  for (const [key, spec] of Object.entries(JOINT_KINDS)) {
+    /* Named in the bill exactly as joints.js names it. */
+    const named = new RegExp(`WHEN '${key}'\\s+THEN '${spec.label}'`);
+    if (!named.test(sql)) {
+      fail(`the bill does not name ${key} as "${spec.label}"`);
+    }
+    /* And never assembled by capitalising the key, which is what
+       produced "Bottleend". */
+    const squashed = key.charAt(0).toUpperCase() + key.slice(1);
+    if (spec.label !== squashed && sql.includes(`'${squashed}'`)) {
+      fail(`the bill still has "${squashed}" written into it`);
     }
   }
 }

@@ -13662,6 +13662,10 @@ export default function GISCanvasPage() {
           labour={bomLabour(features, {
             lineTypes, surfaceTypes, lookups,
             utilities: lookups?.utilities || [],
+            /* So a labour row lands under the same developer heading as
+               the pipe it is laying, rather than in every one of them
+               as shared plant. */
+            developers,
             rates: digRates, depthBands: digDepthFactors, layRates: digLayRates,
           })}
           /* The layers carry the colour, resolved the same way the

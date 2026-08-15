@@ -33,6 +33,21 @@
    it: how long the gas takes as against the electric. A joint trench
    carrying three mains is one dig and three lays.
 
+   ── Split by developer, like every other row ──
+
+   gis_bom attributes a line to a developer from Project_Developer_ID on
+   the feature, and the modal treats a row with none as shared plant —
+   shown in every developer's tab.
+
+   These rows had none, so every developer's tab showed the whole site's
+   labour. That is the worst way for it to be wrong: not missing, and
+   not obviously too large, but exactly the total somebody would expect
+   to see if they had not thought about it.
+
+   So the dig and the lay follow the trench's own developer, and a
+   trench with none stays genuinely shared — which it is, since nobody
+   has said whose it is.
+
    ── Existing trench ──
 
    Left out of the excavation and kept in the laying, matching the
@@ -73,8 +88,20 @@ const round1 = (v) => Math.round(v * 10) / 10;
 export function bomLabour(features = [], opts = {}) {
   const {
     lineTypes = [], surfaceTypes = [], lookups = null, utilities = [],
+    developers = [],
     rates, depthBands, layRates,
   } = opts;
+
+  /* What a developer is called on the bill. Matched the way gis_bom
+     matches it — on Project_Developer_ID — and named from the same
+     branch label the canvas uses, so a labour row and a pipe row for
+     the same developer land under one heading rather than two. */
+  const developerName = (id) => {
+    if (id == null || id === "") return null;
+    const d = developers.find((x) =>
+      String(x.Project_Developer_ID ?? x.id) === String(id));
+    return d?.label ?? d?.name ?? `Developer ${id}`;
+  };
 
   const co = contentsOptions(lineTypes, lookups);
   const trenches = features.filter((f) => f.Feature_Type === "line"
@@ -111,6 +138,10 @@ export function bomLabour(features = [], opts = {}) {
     if (!est.ok) continue;
 
     const site = trench.Attributes?.Site || "Unclassified";
+    /* Null where the trench has no developer, which the modal reads as
+       shared plant — correct, because nobody has said whose it is. */
+    const devId = trench.Attributes?.Project_Developer_ID ?? null;
+    const devName = developerName(devId);
 
     /* Excavation, with the setup that goes with it — the machine being
        moved and matted is part of digging and not of laying. Nothing
@@ -121,7 +152,7 @@ export function bomLabour(features = [], opts = {}) {
     if (digHours > 0) {
       const label = surfaceTypes.find((s) => s.Surface_Key === surfaceKey)?.Label
         ?? est.surfaceLabel ?? "";
-      const k = `${site}\u0000${label}`;
+      const k = `${site}\u0000${label}\u0000${devId ?? ""}`;
       const held = dig.get(k);
       if (held) { held.quantity += digHours; held.features += 1; }
       else {
@@ -133,6 +164,8 @@ export function bomLabour(features = [], opts = {}) {
           unit: "hr",
           quantity: digHours,
           features: 1,
+          developer_id: devId,
+          developer_name: devName,
         });
       }
     }
@@ -146,7 +179,7 @@ export function bomLabour(features = [], opts = {}) {
     const scale = raw > 0 ? est.layHours / raw : 1;
     for (const l of est.lays) {
       const name = utilityName(l.utility, utilities);
-      const k = `${site}\u0000${name}`;
+      const k = `${site}\u0000${name}\u0000${devId ?? ""}`;
       const hours = l.hours * scale;
       const held = lay.get(k);
       if (held) { held.quantity += hours; held.features += 1; }
@@ -159,6 +192,8 @@ export function bomLabour(features = [], opts = {}) {
           unit: "hr",
           quantity: hours,
           features: 1,
+          developer_id: devId,
+          developer_name: devName,
         });
       }
     }

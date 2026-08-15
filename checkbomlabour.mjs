@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /* Dig and lay time as rows on the bill.
 
    The hours themselves are digRate.js and are checked there. What is
@@ -206,6 +207,83 @@ const lays = rows.filter((r) => r.item.startsWith("Laying"));
     }
     if (typeof r.surface !== "string") fail("a labour row's surface is not text");
     if (typeof r.quantity !== "number") fail("a labour row's quantity is not a number");
+  }
+}
+
+// 8. Labour splits by developer, like every other row.
+//
+//    gis_bom attributes a line from Project_Developer_ID on the feature,
+//    and the modal treats a row with none as shared plant — shown in
+//    every developer's tab. These rows carried none, so every tab showed
+//    the whole site's labour.
+//
+//    That is the worst way for it to be wrong: not missing, and not
+//    obviously too large, but exactly the total somebody would expect if
+//    they had not thought about it.
+{
+  const withDev = (f, dev) => ({
+    ...f, Attributes: { ...f.Attributes, Project_Developer_ID: dev },
+  });
+  const split = SITE.map((f) => {
+    if (f.Layer_Key !== "trench") return f;
+    if (f.Feature_ID === 1) return withDev(f, 1);
+    if (f.Feature_ID === 2) return withDev(f, 2);
+    return f;                       // the third is nobody's yet
+  });
+  const developers = [
+    { Project_Developer_ID: 1, label: "Barratt" },
+    { Project_Developer_ID: 2, label: "Anwyl" },
+  ];
+  const rows = bomLabour(split, { ...opts, developers });
+
+  const named = rows.filter((r) => r.developer_name);
+  if (!named.length) fail("no labour row is attributed to a developer");
+  for (const d of ["Barratt", "Anwyl"]) {
+    if (!rows.some((r) => r.developer_name === d)) {
+      fail(`${d} has no labour of their own`);
+    }
+  }
+
+  /* A trench nobody has assigned stays shared, which is what it is —
+     nobody has said whose it is. */
+  const shared = rows.filter((r) => r.developer_id == null);
+  if (!shared.length) fail("an unassigned trench was given to a developer");
+  /* And reads as shared. A row with no developer but somebody's name on
+     it shows their name against work that is not theirs, which is worse
+     than a blank. */
+  for (const r of shared) {
+    if (r.developer_name != null) {
+      fail(`a shared row is labelled "${r.developer_name}"`);
+    }
+  }
+
+  /* The canvas hands the developers in. Without them every row falls
+     back to "Developer 3", which is not what any heading on the bill
+     says — so the labour would sit under a heading of its own beside
+     the pipe it lays. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const call = canvas.slice(canvas.indexOf("labour={bomLabour("));
+  if (!/developers,/.test(call.slice(0, call.indexOf("})}")))) {
+    fail("the canvas does not pass the developers to bomLabour");
+  }
+  if (rows.some((r) => /^Developer \d+$/.test(r.developer_name || ""))) {
+    fail("a developer is numbered rather than named");
+  }
+
+  /* And the split is a split: one developer's excavation is less than
+     the whole site's. Before this, each tab showed all of it. */
+  const all = bomLabour(SITE, opts)
+    .filter((r) => r.item === "Excavation").reduce((t, r) => t + r.quantity, 0);
+  const theirs = rows.filter((r) => r.item === "Excavation"
+    && r.developer_name === "Barratt").reduce((t, r) => t + r.quantity, 0);
+  if (!(theirs > 0)) fail("a developer has no excavation at all");
+  if (!(theirs < all)) fail("one developer carries the whole site's excavation");
+
+  /* Nothing is lost in the split: the parts still come to the whole. */
+  const parts = rows.filter((r) => r.item === "Excavation")
+    .reduce((t, r) => t + r.quantity, 0);
+  if (Math.abs(parts - all) > 0.31) {
+    fail(`split by developer the excavation comes to ${parts}, whole it is ${all}`);
   }
 }
 

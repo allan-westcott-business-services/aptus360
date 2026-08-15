@@ -576,9 +576,27 @@ const CSS = `
 .dr-example-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
   margin-bottom: 9px; }
 .dr-example-head span { font-size: 11.5px; color: var(--muted); }
-.dr-example-rows { display: flex; flex-wrap: wrap; gap: 8px; }
-.dr-ex { flex: 1 1 150px; background: var(--white); border: 1px solid var(--border);
-  border-radius: 8px; padding: 7px 10px; }
+/* Three across, so the six surfaces read as two rows of three.
+
+   A grid rather than wrapped flex: flex sized each card to its content
+   and fitted five on the first row, leaving the sixth stretched across
+   the width on its own — which made Agricultural look like a different
+   kind of thing from the five above it. Fixed columns keep every card
+   the same size, so the only thing varying between them is the number,
+   which is what they are there to be compared on.
+
+   Two across on a narrow panel, then one. Squeezing three columns into
+   a sidebar-width panel would wrap "Carriageway 3/4" onto two lines and
+   push the durations out of alignment. */
+.dr-example-rows { display: grid; grid-template-columns: repeat(3, 1fr); gap: 8px; }
+@media (max-width: 900px) {
+  .dr-example-rows { grid-template-columns: repeat(2, 1fr); }
+}
+@media (max-width: 560px) {
+  .dr-example-rows { grid-template-columns: 1fr; }
+}
+.dr-ex { background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; padding: 7px 10px; min-width: 0; }
 .dr-ex-surface { display: block; font-size: 10.5px; text-transform: uppercase;
   letter-spacing: .04em; color: var(--muted); font-weight: 700; }
 .dr-ex-total { display: block; font: 700 15px inherit; margin: 2px 0 1px; }

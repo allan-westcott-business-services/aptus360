@@ -263,11 +263,14 @@ const onScreen = (keys) => {
   const at = canvas.indexOf("const boundaryShown = useMemo(");
   if (at < 0) fail("nothing decides whether the boundary point is drawn");
   else {
-    const body = canvas.slice(at, canvas.indexOf("[hidden", at) + 40);
+    /* To the end of the useMemo rather than a fixed number of
+       characters past its dependency list — that list has grown once
+       already and the check went red for it. */
+    const body = canvas.slice(at, canvas.indexOf("boundaryStyle]", at) + 20);
     if (!/!lightingView/.test(body)) {
       fail("the boundary point is still drawn on the lighting drawing");
     }
-    if (!/lightingView\]/.test(body)) {
+    if (!/\blightingView\b(?=[^[]*\])/.test(body) && !/lightingView[,\]]/.test(body)) {
       fail("the boundary point does not re-read when the drawing changes");
     }
     /* And still shown everywhere else — a boundary point is worth

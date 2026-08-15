@@ -53,9 +53,33 @@ const lighting = readFileSync("./src/features/gis/lightingView.js", "utf8");
     const used = new Set(["shape"]);
     for (const f of src) {
       const t = readFileSync(f, "utf8");
-      for (const m of t.matchAll(/Feature_Role:\s*"([a-z]+)"/g)) used.add(m[1]);
-      for (const m of t.matchAll(/Feature_Role === "([a-z]+)"/g)) used.add(m[1]);
+      /* Only roles written onto a feature.
+
+         Scanning every `Feature_Role: "x"` in the source was too broad:
+         the boundary point presents a style subject shaped like a
+         feature — { Layer_Key: "plot", Feature_Role: "boundary" } — to
+         get at the style cascade, and nothing of that role is ever
+         written. The check read it as a role the app creates and
+         demanded it in the constraint.
+
+         So the scan walks createFeature calls, which is where a role
+         reaches the table. A role that only ever appears in a
+         comparison is one the app reads and something else wrote, and
+         that something else is a createFeature somewhere. */
+      for (const m of t.matchAll(/createFeature\(/g)) {
+        const open = t.indexOf("{", m.index);
+        if (open < 0) continue;
+        let depth = 0;
+        let end = open;
+        for (let i = open; i < t.length; i++) {
+          if (t[i] === "{") depth += 1;
+          else if (t[i] === "}") { depth -= 1; if (!depth) { end = i; break; } }
+        }
+        const block = t.slice(open, end + 1);
+        for (const r of block.matchAll(/Feature_Role:\s*"([a-z]+)"/g)) used.add(r[1]);
+      }
     }
+    if (used.size < 5) fail(`only ${used.size} role(s) found in the source — the scan is broken`);
     for (const role of [...used].sort()) {
       if (!check[1].includes(`'${role}'`)) {
         fail(`${role} is written by the app but missing from the role constraint`);

@@ -1562,6 +1562,43 @@ export default function GISCanvasPage() {
 
      A boundary point is a fact about the plot. It goes when it is
      hidden, and not otherwise. */
+  /* How the property boundary point is drawn.
+
+     A style row like anything else, scoped Layer_Key 'plot' with
+     Feature_Role 'boundary' (0166). It is not a feature — it is
+     Boundary_At on the plot seed, painted in a pass of its own — so
+     there is nothing for the cascade to resolve against, and a subject
+     is presented for it instead.
+
+     Nothing else can present that subject: a plot seed carries the role
+     'plot', so a real feature never reaches this row and this lookup
+     never reaches theirs.
+
+     Falling back to what the canvas drew before the row existed, so a
+     project whose database has not had 0166 applied looks exactly as it
+     did. */
+  const boundaryStyle = useMemo(() => {
+    const resolved = resolveStyle(
+      { Layer_Key: "plot", Feature_Role: "boundary" }, styles,
+      { organisationId: standard || null },
+    );
+    return {
+      radiusPx: Number(resolved.Symbol_Size_Px) > 0
+        ? Number(resolved.Symbol_Size_Px) : 9,
+      /* The zoom the lettered ring appears at. Below it the point is
+         still marked, with a tick — that is legibility rather than a
+         setting, so it is not on the row. */
+      minScale: Number.isFinite(Number(resolved.Min_Scale))
+        ? Number(resolved.Min_Scale) : 3,
+      ink: resolved.Colour || BOUNDARY_INK,
+      /* An inactive row resolves to nothing at all, so an empty result
+         is either "turned off" or "never seeded". Told apart by asking
+         the styles directly: a row that exists and is off means off. */
+      off: styles.some((x) => x.Layer_Key === "plot"
+        && x.Feature_Role === "boundary" && x.Is_Active === false),
+    };
+  }, [styles, standard]);
+
   const boundaryShown = useMemo(
     /* Not on the street lighting drawing.
 
@@ -1578,8 +1615,9 @@ export default function GISCanvasPage() {
        And it cannot be hidden by the isolate either: it answers to the
        key "plot:boundary", which no feature carries, so the sweep that
        builds the hidden set never sees it. */
-    () => !lightingView && !hidden.includes("plot:boundary"),
-    [hidden, lightingView]);
+    () => !lightingView && !boundaryStyle.off
+      && !hidden.includes("plot:boundary"),
+    [hidden, lightingView, boundaryStyle]);
 
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */
@@ -3706,8 +3744,8 @@ export default function GISCanvasPage() {
            field of identical rings, and the boundary point is a detail
            worth seeing only when the detail is what is being looked
            at. */
-        if (view.scale > 3) {
-          const r = 9;
+        if (view.scale > boundaryStyle.minScale) {
+          const r = boundaryStyle.radiusPx;
           ctx.globalAlpha = 1;
           ctx.beginPath();
           ctx.arc(b.x, b.y, r, 0, Math.PI * 2);
@@ -3715,11 +3753,11 @@ export default function GISCanvasPage() {
              basemap line running under it. */
           ctx.fillStyle = "#fff";
           ctx.fill();
-          ctx.strokeStyle = BOUNDARY_INK;
+          ctx.strokeStyle = boundaryStyle.ink;
           ctx.lineWidth = 2.5;
           ctx.stroke();
 
-          ctx.fillStyle = BOUNDARY_INK;
+          ctx.fillStyle = boundaryStyle.ink;
           ctx.font = `700 ${Math.round(r * 1.5)}px ui-sans-serif, system-ui, sans-serif`;
           ctx.textAlign = "center";
           ctx.textBaseline = "middle";
@@ -4369,7 +4407,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

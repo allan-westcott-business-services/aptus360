@@ -13004,10 +13004,6 @@ export default function GISCanvasPage() {
 
                     <div className="gm-sep" />
                     <MenuGroup label="Tools & Reporting" />
-                    <MenuItem label="Suggest Circuit Groups"
-                      hint="Rings the meters by proposed group. Nothing is created until you accept."
-                      disabled={!!busy || !projectId}
-                      onClick={suggestGroups} />
                     <MenuItem label="Circuit Report"
                       hint="Meters by feeder, with distances from the substation"
                       disabled={!features.some((f) => f.Feature_Role === "substation")}
@@ -13024,15 +13020,6 @@ export default function GISCanvasPage() {
                       hint="Loop impedance and volt drop on every circuit, from the substation"
                       disabled={!circuitsFrom(features).length}
                       onClick={() => runLevelsCheck()} />
-                    {/* The same figures, reported at every place the
-                        network does something rather than only where a
-                        span node was placed — so a service joint has a
-                        row of its own. Same walk and the same sums; only
-                        where a leg ends differs. */}
-                    <MenuItem label="Advanced Levels Check"
-                      hint="Every junction, including each service joint"
-                      disabled={!circuitsFrom(features).length}
-                      onClick={() => runLevelsCheck({ stopAt: "junctions" })} />
                     <MenuItem label="Apply Cable Sizes to Span Nodes"
                       hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
                       disabled={!!busy}
@@ -13072,6 +13059,13 @@ export default function GISCanvasPage() {
                     return (
                       <Menu key={key} id={key} label={layer?.Label ?? name}
                         open={open} setOpen={setOpen}
+                        /* Two columns, as Electric and Trench already
+                           have. These two had grown to the same length
+                           and were the only ones left scrolling — and a
+                           menu that scrolls hides its own bottom, so the
+                           reporting tools at the foot of gas and water
+                           were the least-found things on the drawing. */
+                        columns={2}
                         /* Isolated whether or not there is any of it —
                            see the note on Electric above. */
                         onOpen={() => soloClass(key, true)}>
@@ -13127,8 +13121,17 @@ export default function GISCanvasPage() {
                             onClick={() => drawAs(t.Type_Key)} />
                         ))}
 
-                        <div className="gm-sep" />
-                        <MenuGroup label="Show or Hide" />
+                        {/* The column breaks here.
+
+                            Named rather than left to the browser, which
+                            splits by height and would put half the draw
+                            list at the foot of one column and the rest
+                            at the head of the next. Sizes and Draw are
+                            what somebody opens this to do; showing,
+                            hiding and the network tools are what they
+                            do afterwards, so the break falls where the
+                            reading changes. */}
+                        <MenuGroup label="Show or Hide" newColumn />
                         {/* Labels, on every utility menu.
 
                             Whether the drawing is readable is a

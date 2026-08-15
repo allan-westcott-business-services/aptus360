@@ -11,7 +11,7 @@
    for it — which is fine so long as nothing else can present the same
    one, and that is most of what is checked here. */
 import { readFileSync } from "node:fs";
-import { resolveStyle } from "./src/lib/gisStyle.js";
+import { resolveStyle, appearance } from "./src/lib/gisStyle.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -178,6 +178,65 @@ const resolve = (styles, ctx = {}) => resolveStyle(SUBJECT, styles, ctx);
         fail(`${m[1]} can be drawn but not styled — missing from the GIS Styles list`);
       }
     }
+  }
+}
+
+// 9. Given a span node's settings, it behaves like a span node.
+//
+//    Symbol_Size_Px is one of five fields the sizing uses, and it is the
+//    one that applies only when Draw to scale is off. With it on, the
+//    size is Symbol_Size_M times the zoom, held between Min_Symbol_Px
+//    and Max_Symbol_Px.
+//
+//    Reading Symbol_Size_Px straight off the row ignored four of them,
+//    so a boundary point set up exactly like a span node stayed one
+//    fixed size at every zoom. appearance is the function that knows all
+//    five, and using it is what makes the two agree.
+{
+  const settings = {
+    Scale_Symbol: true, Symbol_Size_M: 1.5,
+    Min_Symbol_Px: 3, Max_Symbol_Px: 20, Symbol_Size_Px: 16,
+  };
+  const node = { GIS_Style_ID: 1, Feature_Role: "spannode", ...settings };
+  const point = {
+    GIS_Style_ID: 2, Layer_Key: "plot", Feature_Role: "boundary", ...settings,
+  };
+
+  for (const scale of [0.5, 1, 3, 6, 12, 20, 40]) {
+    const a = appearance(resolveStyle({ Feature_Role: "spannode" }, [node]),
+      scale, { symbolPx: 6 });
+    const b = appearance(
+      resolveStyle({ Layer_Key: "plot", Feature_Role: "boundary" }, [point]),
+      scale, { symbolPx: 9 });
+    if (Number(a.symbolPx) !== Number(b.symbolPx)) {
+      fail(`at zoom ${scale} a span node is ${a.symbolPx}px `
+        + `and a boundary point on the same settings is ${b.symbolPx}px`);
+    }
+  }
+
+  /* The clamps do their work at the ends, or the comparison above would
+     pass on a size that never changes. */
+  const small = appearance(
+    resolveStyle({ Layer_Key: "plot", Feature_Role: "boundary" }, [point]),
+    0.5, { symbolPx: 9 });
+  const large = appearance(
+    resolveStyle({ Layer_Key: "plot", Feature_Role: "boundary" }, [point]),
+    40, { symbolPx: 9 });
+  if (Number(small.symbolPx) !== 3) fail(`the lower clamp gave ${small.symbolPx}px, wanted 3`);
+  if (Number(large.symbolPx) !== 20) fail(`the upper clamp gave ${large.symbolPx}px, wanted 20`);
+
+  /* And the canvas goes through appearance rather than reading the field
+     itself, which is the whole of the fix. */
+  if (!/const look = appearance\(resolved, view\.scale/.test(canvas)) {
+    fail("the boundary point is not sized through appearance");
+  }
+  if (/radiusPx: Number\(resolved\.Symbol_Size_Px\)/.test(canvas)) {
+    fail("the boundary point still reads Symbol_Size_Px directly");
+  }
+  /* Re-resolved as the zoom changes, or a scaled symbol would size
+     itself once and stay there. */
+  if (!/\[styles, standard, view\.scale\]/.test(canvas)) {
+    fail("the boundary point does not re-size when the zoom changes");
   }
 }
 

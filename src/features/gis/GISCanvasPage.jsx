@@ -1582,22 +1582,37 @@ export default function GISCanvasPage() {
       { Layer_Key: "plot", Feature_Role: "boundary" }, styles,
       { organisationId: standard || null },
     );
+    /* Sized through appearance, like every other point.
+
+       Reading Symbol_Size_Px straight off the row was wrong: that is one
+       of five fields the sizing uses, and it is the one that applies
+       only when Draw to scale is off. With it on, the size comes from
+       Symbol_Size_M multiplied by the zoom and held between
+       Min_Symbol_Px and Max_Symbol_Px — which is why a boundary point
+       given a span node's settings did not behave like one. It ignored
+       four of them.
+
+       appearance is the function that knows all five, and it is what
+       styleFor hands every other point. Using it means the boundary
+       point grows and shrinks on the same rules as everything else,
+       rather than on a copy of part of them. */
+    const look = appearance(resolved, view.scale, { symbolPx: 9 });
+
     return {
-      radiusPx: Number(resolved.Symbol_Size_Px) > 0
-        ? Number(resolved.Symbol_Size_Px) : 9,
+      radiusPx: Number(look.symbolPx) > 0 ? Number(look.symbolPx) : 9,
       /* The zoom the lettered ring appears at. Below it the point is
          still marked, with a tick — that is legibility rather than a
          setting, so it is not on the row. */
       minScale: Number.isFinite(Number(resolved.Min_Scale))
         ? Number(resolved.Min_Scale) : 3,
-      ink: resolved.Colour || BOUNDARY_INK,
+      ink: look.colour || resolved.Colour || BOUNDARY_INK,
       /* An inactive row resolves to nothing at all, so an empty result
          is either "turned off" or "never seeded". Told apart by asking
          the styles directly: a row that exists and is off means off. */
       off: styles.some((x) => x.Layer_Key === "plot"
         && x.Feature_Role === "boundary" && x.Is_Active === false),
     };
-  }, [styles, standard]);
+  }, [styles, standard, view.scale]);
 
   const boundaryShown = useMemo(
     /* Not on the street lighting drawing.

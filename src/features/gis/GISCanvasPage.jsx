@@ -13069,31 +13069,100 @@ export default function GISCanvasPage() {
                         /* Isolated whether or not there is any of it —
                            see the note on Electric above. */
                         onOpen={() => soloClass(key, true)}>
-                        {/* Drawing first, because it is what somebody
-                            opens this menu to do. The Electric and
-                            Trench menus already lead with theirs; gas
-                            and water were the two without, so a pipe
-                            had to be drawn from the Trench menu's list
-                            and its utility guessed from the type name. */}
-                        {/* Which sizes are in force.
+                        {/* ── Network first ──
 
-                            The build's answer and the designer's are
-                            both kept; this says which is read \u2014 by the
-                            drawing, by the editor and by the levels
-                            check. Switching discards nothing and
-                            recalculates nothing. */}
-                        {/* Putting back an origin that was deleted.
-                            Place Span Nodes does it too, but renumbers
-                            every span on the way \u2014 too large a change
-                            to make to fix one deletion. */}
-                        <MenuItem label={busy === "origins"
-                          ? "Placing\u2026" : `Place ${key === "gas" ? "G0" : "W0"}`}
-                          hint="The origin the network is measured from"
+                            The order somebody works in: put the origin
+                            and the point of connection down, draw the
+                            pipe, then build it, then check it. Sizes
+                            and visibility are settings, and settings
+                            belong beside the work rather than in front
+                            of it — they were first because the menu
+                            grew that way, not because anybody reaches
+                            for them first.
+
+                            The drawing items sit here rather than under
+                            a Draw heading of their own: drawing a main
+                            is building the network, and a heading
+                            between them separated two halves of one
+                            job. */}
+                        <MenuGroup label="Network" />
+                        <MenuItem label="+ POC" hint="Snaps to the nearest main"
+                          disabled={!projectId}
+                          onClick={() => placeNode("poc", key)} />
+                        {key === "gas" && (
+                          <MenuItem label="+ Gas Governor" hint="Snaps to the nearest trench"
+                            disabled={!projectId}
+                            onClick={() => placeNode("governor", key)} />
+                        )}
+                        {key === "water" && (
+                          <MenuItem label="+ Service Valve"
+                            hint="Snaps to the nearest water main and takes its angle"
+                            disabled={!projectId}
+                            onClick={() => placeNode("servicevalve", "water")} />
+                        )}
+                        {typesOn(key).map((t) => (
+                          <MenuItem key={t.Type_Key} label={t.Label} indent
+                            active={isDrawing(t.Type_Key)}
+                            onClick={() => drawAs(t.Type_Key)} />
+                        ))}
+                        {/* Under Draw, because that is what it does:
+                            the service is drawn along a trench rather
+                            than by hand, but it is still drawing. */}
+                        <MenuItem label={busy === "laysvc"
+                          ? "Laying\u2026" : "Auto Lay Services"} indent
+                          hint="Runs the pipe along service trenches already drawn"
                           disabled={!!busy}
-                          onClick={() => placeOriginNodes(key)} />
-                        <div className="gm-sep" />
+                          onClick={() => autoLayServices(key)} />
+                        {/* Gas and water each build their own.
 
-                        <MenuGroup label="Sizes" />
+                            They looked like one routine with a layer
+                            argument, and stopped looking like it the
+                            moment water needed sizing: gas covers the
+                            trench, water covers it and works out what
+                            diameter each length is from the plots
+                            beyond. Two modules sharing their walk
+                            rather than one with a flag deciding
+                            whether half of it runs. */}
+                        {key === "gas" && (
+                          <MenuItem
+                            label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
+                            hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
+                            disabled={!projectId || !!busy}
+                            onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
+                        )}
+
+                        {key === "water" && (
+                          <MenuItem
+                            label={busy === "waternet" ? "Building\u2026" : "Build Water Network"}
+                            hint="Lays water main from the POC along mains trench, sized by the plots each length feeds. Needs a water outline design and a Water NAV Clean agreement"
+                            disabled={!projectId || !!busy}
+                            onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
+                        )}
+                        <div className="gm-sep" />
+                        {/* Beside the build, because it reads what the
+                            build laid: the sizes on the drawing are
+                            what each length's drop is worked out from.
+                            It was under Electric with the volt drop
+                            check, which put a gas answer behind an
+                            electric heading. */}
+                        {key === "gas" && (
+                          <MenuItem label={busy === "gaslevels"
+                            ? "Checking\u2026" : "Run Gas Levels Check"}
+                            hint="Pressure at every span node, from the gas POC's output pressure"
+                            disabled={!!busy || !features.some((f) =>
+                              f.Feature_Role === "poc" && f.Layer_Key === "gas")}
+                            onClick={() => runGasLevelsCheck()} />
+                        )}
+
+                        {/* The column breaks here.
+
+                            Named rather than left to the browser, which
+                            splits by height and would put half the
+                            network list at the foot of one column and
+                            the rest at the head of the next. Everything
+                            before the break is the work; everything
+                            after it is how the drawing is read. */}
+                        <MenuGroup label="Sizes" newColumn />
                         <MenuItem label="System calculated" indent
                           active={(sizeMode[key] ?? "system") === "system"}
                           keepOpen
@@ -13106,32 +13175,7 @@ export default function GISCanvasPage() {
                           onClick={() => setSizeModeFor(key, "manual")} />
 
                         <div className="gm-sep" />
-                        <MenuGroup label="Draw" />
-                        {/* Under Draw, because that is what it does:
-                            the service is drawn along a trench rather
-                            than by hand, but it is still drawing. */}
-                        <MenuItem label={busy === "laysvc"
-                          ? "Laying\u2026" : "Auto Lay Services"} indent
-                          hint="Runs the pipe along service trenches already drawn"
-                          disabled={!!busy}
-                          onClick={() => autoLayServices(key)} />
-                        {typesOn(key).map((t) => (
-                          <MenuItem key={t.Type_Key} label={t.Label} indent
-                            active={isDrawing(t.Type_Key)}
-                            onClick={() => drawAs(t.Type_Key)} />
-                        ))}
-
-                        {/* The column breaks here.
-
-                            Named rather than left to the browser, which
-                            splits by height and would put half the draw
-                            list at the foot of one column and the rest
-                            at the head of the next. Sizes and Draw are
-                            what somebody opens this to do; showing,
-                            hiding and the network tools are what they
-                            do afterwards, so the break falls where the
-                            reading changes. */}
-                        <MenuGroup label="Show or Hide" newColumn />
+                        <MenuGroup label="Show or Hide" />
                         {/* Labels, on every utility menu.
 
                             Whether the drawing is readable is a
@@ -13171,60 +13215,6 @@ export default function GISCanvasPage() {
                             the point the incoming supply is reduced and
                             metered before it feeds the site. Offered on
                             gas alone, since nothing else has one. */}
-                        <div className="gm-sep" />
-                        <MenuGroup label="Network" />
-                        <MenuItem label="+ POC" hint="Snaps to the nearest main"
-                          disabled={!projectId}
-                          onClick={() => placeNode("poc", key)} />
-                        {key === "gas" && (
-                          <MenuItem label="+ Gas Governor" hint="Snaps to the nearest trench"
-                            disabled={!projectId}
-                            onClick={() => placeNode("governor", key)} />
-                        )}
-{/* Gas and water each build their own.
-
-                            They looked like one routine with a layer
-                            argument, and stopped looking like it the
-                            moment water needed sizing: gas covers the
-                            trench, water covers it and works out what
-                            diameter each length is from the plots
-                            beyond. Two modules sharing their walk
-                            rather than one with a flag deciding
-                            whether half of it runs. */}
-                        {key === "gas" && (
-                          <MenuItem
-                            label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
-                            hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
-                            disabled={!projectId || !!busy}
-                            onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
-                        )}
-                        {/* Beside the build, because it reads what the
-                            build laid: the sizes on the drawing are
-                            what each length's drop is worked out from.
-                            It was under Electric with the volt drop
-                            check, which put a gas answer behind an
-                            electric heading. */}
-                        {key === "gas" && (
-                          <MenuItem label={busy === "gaslevels"
-                            ? "Checking\u2026" : "Run Gas Levels Check"}
-                            hint="Pressure at every span node, from the gas POC's output pressure"
-                            disabled={!!busy || !features.some((f) =>
-                              f.Feature_Role === "poc" && f.Layer_Key === "gas")}
-                            onClick={() => runGasLevelsCheck()} />
-                        )}
-                        {key === "water" && (
-                          <MenuItem label="+ Service Valve"
-                            hint="Snaps to the nearest water main and takes its angle"
-                            disabled={!projectId}
-                            onClick={() => placeNode("servicevalve", "water")} />
-                        )}
-                        {key === "water" && (
-                          <MenuItem
-                            label={busy === "waternet" ? "Building\u2026" : "Build Water Network"}
-                            hint="Lays water main from the POC along mains trench, sized by the plots each length feeds. Needs a water outline design and a Water NAV Clean agreement"
-                            disabled={!projectId || !!busy}
-                            onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
-                        )}
 
                         <div className="gm-sep" />
                         <MenuLayer label={`Whole ${layer?.Label ?? key} layer`}

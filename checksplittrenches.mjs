@@ -177,6 +177,35 @@ const straight = trench([[0, 0], [100, 0]]);
   if (planTrenchSplit(straight, [])) fail("a trench with no nodes on it was cut");
 }
 
+// 10. Every piece has a build status.
+//
+//     Existing is the one status the estimate treats differently — an
+//     existing trench is laid but not dug — so a piece with none looked
+//     the same as one somebody had marked. A trench somebody has drawn
+//     is a trench somebody intends to dig, and that is what planned
+//     means.
+{
+  /* Carried where the original had one. Cutting an existing trench
+     gives three existing pieces, not three to be dug again. */
+  const wasExisting = planTrenchSplit(
+    trench([[0, 0], [100, 0]], { Build_Status: "existing" }), [[50, 0]],
+  );
+  for (const p of wasExisting.pieces) {
+    if (p.Attributes.Build_Status !== "existing") {
+      fail("a piece of an existing trench was not existing");
+    }
+  }
+
+  /* And filled in where it had none — a trench drawn before the default
+     existed. */
+  const hadNone = planTrenchSplit(trench([[0, 0], [100, 0]]), [[50, 0]]);
+  for (const p of hadNone.pieces) {
+    if (p.Attributes.Build_Status !== "planned") {
+      fail(`a piece of an unmarked trench came out as ${p.Attributes.Build_Status}`);
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Trench splitting behaves (shape and attributes kept, second run does nothing).");
 process.exit(bad ? 1 : 0);

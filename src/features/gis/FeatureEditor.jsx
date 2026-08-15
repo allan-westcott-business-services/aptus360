@@ -2000,14 +2000,18 @@ export default function FeatureEditor({
                     canvas marks with, so the two cannot drift. */}
                 <div className="fld">
                   <label htmlFor="fe-build">Build status</label>
-                  <select id="fe-build" value={f.Attributes.Build_Status ?? ""}
+                  {/* Planned where nothing is set, matching what a
+                      trench is created as. A blank here read as a
+                      question nobody had answered, when the answer for
+                      a trench on a drawing is nearly always the same
+                      one. */}
+                  <select id="fe-build" value={f.Attributes.Build_Status ?? "planned"}
                     /* Null rather than undefined for "not set".
                        undefined survives in state and then vanishes
                        when the row is serialised, so what is stored
                        depends on a JSON quirk rather than on what was
                        chosen. */
                     onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
-                    <option value="">&mdash; Not set &mdash;</option>
                     {BUILD_STATUSES.map((bs) => (
                       <option key={bs.key} value={bs.key}>{bs.label}</option>
                     ))}

@@ -5507,6 +5507,17 @@ export default function GISCanvasPage() {
               : (size || defaultsFor(lineType).Size || null),
             Surface_Type: isTrenchType(lineType, lineTypes)
               ? surfaceFor(run.site, surface, surfaceTypes) : null,
+            /* A trench somebody has just drawn is trench somebody
+               intends to dig. Planned is what that is called, and it is
+               true of every trench on a drawing until told otherwise —
+               so it is the default rather than a question.
+
+               It matters to the estimate: an existing trench is laid
+               but not dug, and leaving the status blank made "nobody
+               said" and "it is already there" look the same to anyone
+               reading the drawing. Only trenches — a cable has no build
+               status of its own. */
+            Build_Status: isTrenchType(lineType, lineTypes) ? "planned" : undefined,
             Site: run.site,
             // Recorded at draw time using the metre tolerance, not the
             // pixel one — what it touches, not what it looked near.
@@ -7668,9 +7679,12 @@ export default function GISCanvasPage() {
           Geometry: piece.geometry,
           Attributes: {
             ...trench.Attributes,
-            ...(piece.status
-              ? { Build_Status: piece.status }
-              : { Build_Status: undefined }),
+            /* An offcut keeps what it had, or falls back to planned —
+               never to nothing. A length of trench with no status looks
+               the same as one somebody has said is already there, and
+               the estimate reads the difference: existing is laid but
+               not dug. */
+            Build_Status: piece.status ?? trench.Attributes?.Build_Status ?? "planned",
           },
         });
       }

@@ -158,6 +158,13 @@ export function planTrenchSplit(trench, points = [], opts = {}) {
      came from, so the old list is wrong for every one of them. */
   const { Connects, ...carried } = trench.Attributes ?? {};
 
+  /* Every piece is a length of trench, and every length of trench has a
+     build status. Planned where the original carried none — a trench
+     drawn before the default existed — because "nobody said" and "it is
+     already there" are not the same thing and the estimate reads the
+     difference: an existing trench is laid but not dug. */
+  if (!carried.Build_Status) carried.Build_Status = "planned";
+
   const pieces = [];
   for (let i = 0; i + 1 < bounds.length; i++) {
     pieces.push({

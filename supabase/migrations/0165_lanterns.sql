@@ -43,13 +43,30 @@
 -- how a drift would be found.
 -- ════════════════════════════════════════════════════════════════
 
+-- ── The whole list, not the last one written down ──
+--
+-- This constraint is restated in full every time a role is added, so
+-- each new migration carries a copy of every role that came before it.
+-- The copy is only as good as the migration it was taken from, and the
+-- one before this was 0105 — which predates servicevalve and pumping.
+-- Taking its list dropped both, and the add failed against rows that
+-- had been perfectly legal for months.
+--
+-- So this is built from what the application actually writes rather
+-- than from the previous statement of it. If it still fails, one more
+-- role exists that nothing in the source names, and the first check
+-- query below will say which.
 ALTER TABLE "GIS_Feature" DROP CONSTRAINT IF EXISTS "GIS_Feature_Feature_Role_check";
 
 ALTER TABLE "GIS_Feature"
   ADD CONSTRAINT "GIS_Feature_Feature_Role_check"
   CHECK ("Feature_Role" IN
     ('shape','plot','meter','poc','substation','joint','source','spannode',
-     'linkbox','column','governor','lantern'));
+     'linkbox','column','governor',
+     -- Added after 0105 and never added to the constraint, which is how
+     -- they came to be missing from it here.
+     'servicevalve','pumping',
+     'lantern'));
 
 
 -- The symbol. A diamond rather than the column's circle, and smaller:
@@ -64,6 +81,13 @@ ON CONFLICT DO NOTHING;
 
 
 -- ── Check ───────────────────────────────────────────────────────
+--
+-- ** Run this one first. ** Every role in the table. Anything here that
+-- is not in the constraint above will fail the ALTER, and this is the
+-- only way to know before running it:
+--
+--   SELECT "Feature_Role", count(*) FROM "GIS_Feature"
+--    GROUP BY 1 ORDER BY 2 DESC;
 --
 -- What has been placed, by role:
 --

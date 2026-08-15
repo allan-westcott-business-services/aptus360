@@ -8,7 +8,19 @@
    about it: a lantern must have a column, a column need not have a
    lantern, and the lantern sits on top rather than being connected to
    it. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync, statSync } from "node:fs";
+import { join } from "node:path";
+
+const filesUnder = (dir) => {
+  const out = [];
+  for (const name of readdirSync(dir)) {
+    if (name === "node_modules") continue;
+    const p = join(dir, name);
+    if (statSync(p).isDirectory()) out.push(...filesUnder(p));
+    else if (/\.(js|jsx)$/.test(name)) out.push(p);
+  }
+  return out;
+};
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -25,11 +37,31 @@ const lighting = readFileSync("./src/features/gis/lightingView.js", "utf8");
   const check = sql.match(/CHECK \("Feature_Role" IN\s*\(([^)]*)\)/s);
   if (!check) fail("the migration does not restate the role constraint");
   else {
-    for (const role of ["lantern", "column", "meter", "spannode", "substation"]) {
+    /* Every role the application writes, read out of the source rather
+       than listed here.
+
+       The constraint is restated in full each time a role is added, so
+       each migration carries a copy of every role before it — and the
+       copy is only as good as the one it was taken from. This one was
+       taken from 0105, which predates servicevalve and pumping, and
+       dropping them failed the ALTER against rows that had been legal
+       for months.
+
+       Reading the roles from the code is what makes that a test rather
+       than a second list to keep in step. */
+    const src = ["src", "netlify"].flatMap((d) => filesUnder(d));
+    const used = new Set(["shape"]);
+    for (const f of src) {
+      const t = readFileSync(f, "utf8");
+      for (const m of t.matchAll(/Feature_Role:\s*"([a-z]+)"/g)) used.add(m[1]);
+      for (const m of t.matchAll(/Feature_Role === "([a-z]+)"/g)) used.add(m[1]);
+    }
+    for (const role of [...used].sort()) {
       if (!check[1].includes(`'${role}'`)) {
-        fail(`${role} was dropped from the role constraint`);
+        fail(`${role} is written by the app but missing from the role constraint`);
       }
     }
+    if (!check[1].includes("'lantern'")) fail("lantern is missing from the role constraint");
   }
   /* And a symbol of its own. A lantern is drawn at its column's point,
      so one taking the column's circle would be invisible under it. */

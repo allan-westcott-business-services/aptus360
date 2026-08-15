@@ -18,7 +18,7 @@ import {
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
   bookedParts, partIsFree,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
-  splitsByUtility, endAfterHalves,
+  splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
@@ -1216,11 +1216,38 @@ function Assignments({ row }) {
     if (!draft.Start_Date || !draft.End_Date) {
       return { days: [], end: null, pushed: 0, weekend };
     }
+    /* Where the estimate put the dates there, lay it out in halves.
+
+       The two measures below both work in whole days, which is right
+       for dates somebody typed and wrong for dates derived from an
+       estimate. A day and a half of work from a Saturday finishes on
+       the Tuesday morning; measured as a calendar span that is four
+       days, and laying four worked days from the Saturday gave Monday
+       to Thursday — four full days against an estimate of one and a
+       half.
+
+       Laid half by half instead, so the odd half shows as an AM on its
+       last day rather than rounding up to a whole one. The same
+       layHalves the end date came from, so the rows and the date cannot
+       disagree.
+
+       Only while the defaulted dates are still standing. Once somebody
+       has typed an end date they mean those dates, and the calendar
+       span is the right reading of them again. */
+    if (editing == null && draft.autoHalves > 0 && draft.End_Date === draft.autoEnd) {
+      const laid = layHalves(
+        draft.Start_Date, false,
+        Array.from({ length: draft.autoHalves }, () => ({})), weekend,
+      );
+      return { ...laid, pushed: 0, weekend };
+    }
+
     const length = editing != null
       ? workedDaysIn(draft.Start_Date, draft.End_Date, weekend).length
       : daysBetween(draft.Start_Date, draft.End_Date).length;
     return { ...laySchedule(draft.Start_Date, length, weekend), weekend };
-  }, [draft.Start_Date, draft.End_Date, draft.weekend, editing]);
+  }, [draft.Start_Date, draft.End_Date, draft.autoHalves, draft.autoEnd,
+    draft.weekend, editing]);
 
   /* Moving one assignment along.
 
@@ -1307,19 +1334,24 @@ function Assignments({ row }) {
      Only for the excavation and lay: a jointing booking is not the
      trenching, and giving it the trenching's length would put a
      fortnight against half a day's work. */
-  const endForSpan = useCallback((d, spanId) => {
-    const start = d?.Start_Date;
+  const halvesForSpan = useCallback((d, spanId) => {
     const phaseType = (phases || [])
       .find((t) => Number(t.Task_Type_ID) === Number(d?.Task_Type_ID));
-    if (!start || !isDigTask(phaseType)) return null;
+    if (!isDigTask(phaseType)) return null;
 
     const halves = spanId
       ? (row.items || [])
         .find((it) => Number(it.Span_ID) === Number(spanId))?.Estimated_Half_Days
       : row.Estimated_Half_Days;
 
-    return endAfterHalves(start, halves, {});
+    return Number(halves) > 0 ? Math.ceil(Number(halves)) : null;
   }, [phases, row]);
+
+  const endForSpan = useCallback((d, spanId) => {
+    const start = d?.Start_Date;
+    if (!start) return null;
+    return endAfterHalves(start, halvesForSpan(d, spanId), {});
+  }, [halvesForSpan]);
 
   function openFor(phase) {
     const floor = floorFor(phase.Task_Type_ID, mine, plotUniverse);
@@ -1376,9 +1408,15 @@ function Assignments({ row }) {
          and the planner changes it where the estimate is wrong. */
       End_Date: defaultEnd,
       /* What was defaulted, so changing the run can tell a date the
-         form put there from one somebody typed. Not saved — it exists
+         form put there from one somebody typed. Not saved — both exist
          for as long as the form is open. */
       autoEnd: defaultEnd,
+      /* And in halves, which is what the day rows are laid from. A day
+         and a half is two rows, the second of them an AM — a length the
+         end date alone cannot express. */
+      autoHalves: halvesForSpan(
+        { Start_Date: start, Task_Type_ID: phase.Task_Type_ID }, openSpan,
+      ),
       /* The plots not already taken by another team on this phase.
 
          A call-off split three and three should open the second
@@ -2056,6 +2094,7 @@ function Assignments({ row }) {
                           ? d2.End_Date
                           : (endForSpan(d2, e.target.value) ?? ""),
                         autoEnd: endForSpan(d2, e.target.value) ?? "",
+                        autoHalves: halvesForSpan(d2, e.target.value),
                       }))}>
                       {/* Spans nobody is on yet.
 

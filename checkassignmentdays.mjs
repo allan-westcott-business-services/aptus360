@@ -4,7 +4,9 @@
    checks what Planning does with it: that a length of work becomes an
    end date the calendar agrees with, that only the trenching phases get
    one, and that not knowing produces no date rather than a wrong one. */
-import { endAfterHalves, workedDaysIn } from "./src/features/calloffs/assignments.js";
+import {
+  endAfterHalves, workedDaysIn, layHalves, laySchedule, daysBetween,
+} from "./src/features/calloffs/assignments.js";
 import { isDigTask, digTaskIds, toItems } from "./src/features/calloffs/rules.js";
 
 let bad = 0;
@@ -155,6 +157,55 @@ const MON = "2026-08-17";
      the total would book one run for the length of six. */
   if (endAfterHalves(MON, halvesFor(3)) !== null) {
     fail("a run with no estimate borrowed a date from somewhere");
+  }
+}
+
+// 10. The day rows match the estimate, half for half.
+//
+//     The form lays the booking out day by day under the dates. Those
+//     rows measured a new booking in calendar days, which is right for
+//     dates somebody typed and wrong for dates derived from an estimate:
+//     a day and a half from a Saturday finishes Tuesday morning, and the
+//     calendar span of that is four days. Laying four worked days from
+//     the Saturday gave Monday to Thursday — four full days against an
+//     estimate of one and a half.
+{
+  const laid = (start, n) =>
+    layHalves(start, false, Array.from({ length: n }, () => ({})), {});
+
+  /* Three halves from a Saturday: Monday whole, Tuesday morning. */
+  const r = laid("2026-08-15", 3);
+  if (r.days.length !== 2) fail(`three halves laid over ${r.days.length} days, wanted 2`);
+  if (r.days[0].part !== "Full") fail("the first day of three halves was not a full day");
+  if (r.days[1].part !== "AM") fail(`the odd half showed as ${r.days[1].part}, wanted AM`);
+  if (r.end !== "2026-08-18") fail(`three halves from Saturday ended ${r.end}`);
+
+  /* One half is one morning, not a whole day. */
+  const one = laid("2026-08-15", 1);
+  if (one.days.length !== 1 || one.days[0].part !== "AM") {
+    fail("half a day was not laid as a single morning");
+  }
+
+  /* The rows and the end date come from the same walk, so they cannot
+     disagree about where a booking finishes. */
+  for (const [start, n] of [["2026-08-15", 3], ["2026-08-14", 3],
+    ["2026-08-17", 8], ["2026-08-17", 1], ["2026-08-21", 5]]) {
+    const rows = laid(start, n);
+    if (rows.end !== endAfterHalves(start, n)) {
+      fail(`${n} halves from ${start}: rows end ${rows.end}, date says ` +
+        `${endAfterHalves(start, n)}`);
+    }
+    /* And the rows hold exactly the halves asked for. */
+    const halves = rows.days.reduce((t, d) => t + (d.part === "Full" ? 2 : 1), 0);
+    if (halves !== n) fail(`${n} halves from ${start} were laid as ${halves}`);
+  }
+
+  /* The old measure is what went wrong, and it is still right for dates
+     somebody typed — so this pins the difference rather than the bug. */
+  const typed = laySchedule("2026-08-15",
+    daysBetween("2026-08-15", "2026-08-18").length, {});
+  if (typed.days.length !== 4) {
+    fail("a typed date range no longer lays out by calendar span");
   }
 }
 

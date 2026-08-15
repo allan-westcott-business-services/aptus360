@@ -222,6 +222,11 @@ export function spanDigEstimate(span, features = [], opts = {}) {
       lengthM: (res.trenchM || 0) * scale,
       size: trenchSize(items, { trenchM: res.trenchM }),
       surfaceKey: trench?.Attributes?.Surface_Type ?? null,
+      /* An existing section is not this call-off's to dig, but its
+         pipes and cables still have to be laid. Per section, so a run
+         reusing one length and opening another is charged for the one
+         it opens. */
+      existing: trench?.Attributes?.Build_Status === "existing",
       utilities: items.map((x) => x.utility),
       rates, depthBands, layRates, surfaceTypes,
     });

@@ -544,6 +544,11 @@ export default function FeatureEditor({
       lengthM: length,
       size: trenchDims,
       surfaceKey: f.Attributes?.Surface_Type ?? null,
+      /* An existing trench is not this job's to dig, but its pipes and
+         cables still have to be laid. Read from the live field rather
+         than the saved feature, so changing the status moves the
+         duration while the panel is open. */
+      existing: f.Attributes?.Build_Status === "existing",
       utilities: trenchDims.utilityKeys ?? [],
       rates: digRates,
       depthBands: digDepthFactors,

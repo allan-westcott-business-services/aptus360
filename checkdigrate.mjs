@@ -304,6 +304,47 @@ const base = { lengthM: 10, size: size(0.45, 0.45), surfaceKey: "unmade" };
   }
 }
 
+// 20. An existing trench is laid but not dug.
+//
+//     A run reusing a length somebody else opened is ordinary — a duct
+//     through an existing route, a section shared with an earlier phase
+//     — and charging the excavation twice puts days against a hole
+//     nobody digs. The laying is untouched: the pipe goes in whether or
+//     not this job made the trench.
+{
+  const args = { ...base, size: size(0.45, 0.90), utilities: ["gas", "electric"] };
+  const fresh = digEstimate(args);
+  const old = digEstimate({ ...args, existing: true });
+
+  if (old.digHours !== 0) fail(`an existing trench was charged ${old.digHours}hr of digging`);
+  if (old.layHours !== fresh.layHours) fail("an existing trench changed the laying");
+  if (!(old.totalHours < fresh.totalHours)) {
+    fail("an existing trench took as long as digging a new one");
+  }
+  if (Math.abs(old.totalHours - fresh.layHours) > 0.021) {
+    fail("an existing trench came to something other than its laying");
+  }
+
+  /* Setup goes with the dig, not the lay: it is the machine being moved
+     and matted, and there is no machine. */
+  if (old.setupHours !== 0) fail("an existing trench was charged for setting up a machine");
+
+  /* The hole is still that size — it just is not this job's to make.
+     Dropping the volume would make an existing section look like an
+     empty one. */
+  if (old.volumeM3 !== fresh.volumeM3) fail("an existing trench lost its volume");
+  if (!old.existing) fail("an existing trench did not report itself as one");
+  if (!/existing/i.test(old.basis)) {
+    fail(`an existing trench reported "${old.basis}" rather than saying why`);
+  }
+
+  /* And a trench with nothing laid in it is still no estimate, existing
+     or not — "0 hours" would read as a finished job. */
+  if (digEstimate({ ...base, size: { widthM: 0, depthM: 0 }, existing: true }).ok) {
+    fail("an existing trench with nothing in it was given a duration");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Dig and lay estimates behave "
     + `(${DEFAULT_DIG_RATES.length} machines, ${DEFAULT_DEPTH_FACTORS.length} depth bands, `

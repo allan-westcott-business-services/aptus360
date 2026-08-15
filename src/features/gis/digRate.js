@@ -218,6 +218,18 @@ export function digEstimate({
   surfaceKey = null,
   utilities = [],
   machineKey = null,
+  /* An existing trench: already open, or already there. Nothing to dig,
+     but everything still to lay.
+
+     A run that reuses a length of trench somebody else opened is
+     ordinary — a duct laid through an existing route, a section shared
+     with an earlier phase — and charging the excavation twice would put
+     days against a hole nobody digs. The laying is untouched: the pipe
+     goes in whether or not this job made the trench.
+
+     Setup goes with the dig rather than the lay, because it is the
+     machine being moved and matted. No dig, no machine. */
+  existing = false,
   rates = DEFAULT_DIG_RATES,
   depthBands = DEFAULT_DEPTH_FACTORS,
   layRates = DEFAULT_LAY_RATES,
@@ -244,8 +256,10 @@ export function digEstimate({
   const surface = surfaceFactorFor(surfaceKey, surfaceTypes);
 
   const volumeM3 = L * W * D;
-  const digHours = (volumeM3 / rate.baseRateM3Hr) * band.factor * surface.factor;
-  const setupHours = (rate.setupMinutes ?? 0) / 60;
+  const digHours = existing
+    ? 0
+    : (volumeM3 / rate.baseRateM3Hr) * band.factor * surface.factor;
+  const setupHours = existing ? 0 : (rate.setupMinutes ?? 0) / 60;
 
   /* One lay per thing in the trench, at that utility's rate. */
   const laid = (utilities || []).filter(Boolean);
@@ -273,6 +287,10 @@ export function digEstimate({
     lengthM: round(L, 1),
     widthM: round(W),
     depthM: round(D),
+    /* Said on the answer, because a duration with no dig in it looks
+       wrong until you know why. The volume is still reported: the hole
+       is that size, it just is not this job's to make. */
+    existing: !!existing,
     machine: rate.label,
     machineKey: rate.key,
     baseRateM3Hr: rate.baseRateM3Hr,
@@ -287,7 +305,9 @@ export function digEstimate({
     /* Said on every screen that shows the figure, because the figure
        looks like the NJUG ones beside it and is not the same kind of
        thing at all. */
-    basis: rate.sampleSize > 0
+    basis: existing
+      ? "Existing trench \u2014 laying only, nothing to dig"
+      : rate.sampleSize > 0
       ? `From ${rate.sampleSize} recorded job${rate.sampleSize === 1 ? "" : "s"}`
       : "Planning estimate — not measured",
   };

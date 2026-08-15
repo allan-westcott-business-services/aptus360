@@ -7829,6 +7829,9 @@ export default function GISCanvasPage() {
       lengthM: stretch && !stretch.wholeRun ? stretch.lengthM : res.trenchM,
       size: njug,
       surfaceKey: res.trench?.Attributes?.Surface_Type ?? null,
+      /* An existing trench is not this job's to dig, but its pipes and
+         cables still have to be laid. */
+      existing: res.trench?.Attributes?.Build_Status === "existing",
       utilities: (res.contents || []).map((c) => c.utility),
       rates: digRates,
       depthBands: digDepthFactors,

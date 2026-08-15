@@ -160,6 +160,39 @@ function runOf(features, from, to) {
   }
 }
 
+// 9. An existing section is laid but not dug, and only that section.
+//
+//    A run reusing one length and opening another is charged for the one
+//    it opens. Marking the whole run existing leaves only the laying.
+{
+  const f = site();
+  const asExisting = (ids) => f.map((x) => (ids.includes(x.Feature_ID)
+    ? { ...x, Attributes: { ...x.Attributes, Build_Status: "existing" } } : x));
+
+  const run = (feats) => sectionEstimate(runOf(feats, [0, 0], [200, 0]), opts(feats));
+
+  const all = run(f);
+  const firstOld = run(asExisting([1]));
+  const bothOld = run(asExisting([1, 2]));
+
+  if (!(firstOld.hours < all.hours)) {
+    fail("marking one section existing did not shorten the run");
+  }
+  if (!(bothOld.hours < firstOld.hours)) {
+    fail("marking the second section existing did not shorten it further");
+  }
+  if (bothOld.digHours !== 0) {
+    fail(`a wholly existing run was charged ${bothOld.digHours}hr of digging`);
+  }
+  /* The laying is the same however much of it already exists. */
+  if (Math.abs(bothOld.layHours - all.layHours) > 0.021) {
+    fail("an existing run changed the laying");
+  }
+  /* And it is still a run with a duration, not a blank. */
+  if (!bothOld.ok) fail("a wholly existing run produced no estimate");
+  if (!(bothOld.halfDays >= 1)) fail("a wholly existing run came to no half-days");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : `Call-off dig estimates behave (${HALF_DAY_HOURS}hr half-days, `
     + "priced per trench crossed).");

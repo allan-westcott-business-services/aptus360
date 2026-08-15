@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo } from "react";
+import { useState, useEffect, useMemo, Fragment } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import * as XLSX from "xlsx";
+import { isMainRun, mainName } from "./bomSubtotals.js";
 import { byItemSize } from "./bomSort.js";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
@@ -685,17 +686,50 @@ export default function BomModal({
                         </tr>
                       </thead>
                       <tbody>
-                        {[...g.items].sort((a, b) => byItemSize(a.item, b.item))
-                          .map((r, i) => (
-                          <tr key={i}>
-                            <td>{r.item}</td>
-                            <td className="bom-surf">{r.surface || "\u2014"}</td>
-                            <td className="num">
-                              {Number(r.quantity).toFixed(r.unit === "m" ? 1 : 0)} {r.unit}
-                            </td>
-                            <td className="num bom-count">{r.features}</td>
-                          </tr>
-                        ))}
+                        {(() => {
+                          const rows = [...g.items]
+                            .sort((a, b) => byItemSize(a.item, b.item));
+                          /* Where the main rows end, so a subtotal can go
+                             under them rather than under the section. */
+                          const lastMain = rows.reduce(
+                            (at, r, i) => (isMainRun(r) ? i : at), -1);
+                          const total = rows.filter(isMainRun)
+                            .reduce((t, r) => t + Number(r.quantity), 0);
+                          const count = rows.filter(isMainRun).length;
+
+                          return rows.map((r, i) => (
+                            <Fragment key={i}>
+                              <tr>
+                                <td>{r.item}</td>
+                                <td className="bom-surf">{r.surface || "\u2014"}</td>
+                                <td className="num">
+                                  {Number(r.quantity).toFixed(r.unit === "m" ? 1 : 0)} {r.unit}
+                                </td>
+                                <td className="num bom-count">{r.features}</td>
+                              </tr>
+                              {/* The main, totalled.
+
+                                  A main split across three sizes is three
+                                  rows, and how much main there is takes
+                                  adding them up by hand — which is the
+                                  first thing anybody does with this
+                                  sheet.
+
+                                  Only where there is more than one size
+                                  to add: a subtotal under a single row
+                                  repeating that row's own figure is
+                                  noise. */}
+                              {i === lastMain && count > 1 && (
+                                <tr className="bom-sub">
+                                  <td>{`${mainName(g.utility)} total`}</td>
+                                  <td />
+                                  <td className="num">{`${total.toFixed(1)} m`}</td>
+                                  <td />
+                                </tr>
+                              )}
+                            </Fragment>
+                          ));
+                        })()}
                       </tbody>
                     </table>
                   </div>
@@ -742,6 +776,11 @@ const CSS = `
 .bom-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
 .bom-cmp { padding: 4px 0 2px; }
+/* A subtotal under the rows it adds up. Ruled above rather than
+   shaded, so it reads as the end of those rows rather than as another
+   one of them. */
+.bom-sub td { font-weight: 700; border-top: 1.5px solid var(--border);
+  background: var(--bg); }
 .bom-tbl { width: 100%; border-collapse: collapse; font-size: 13px; }
 .bom-tbl th, .bom-tbl td { padding: 7px 10px; border-bottom: 1px solid var(--border);
   text-align: left; }

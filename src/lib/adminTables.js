@@ -205,6 +205,18 @@ export const ADMIN_TABLES = [
      screen in Admin whose emptiness has a consequence elsewhere. */
   { key: "Gas_Pipe_Size", label: "Gas Pipe Sizes", special: "gaspipes" },
   { key: "Gas_Diversity", label: "Gas Diversity", special: "gasdiversity" },
+  { key: "Dig_Rate", label: "Dig & Lay Rates", special: "digrates" },
+  /* The surfaces themselves, with the multiplier the dig estimate
+     reads. Generic rather than special: they are five plain columns,
+     and the Dig & Lay Rates screen shows them read-only so the whole
+     calculation can be read in one place. */
+  { key: "GIS_Surface_Type", label: "Surface Types", pk: "Surface_Key", fields: [
+      { col: "Surface_Key", label: "Key", type: "text", required: true },
+      { col: "Label", label: "Surface", type: "text", required: true },
+      { col: "Dig_Factor", label: "Dig Factor (unmade = 1.00)", type: "number" },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
   { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
       { col: "Craft_Name", label: "Craft", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },

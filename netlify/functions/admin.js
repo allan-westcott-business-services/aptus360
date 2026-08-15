@@ -6,6 +6,19 @@ import { supabase, json, fail } from "./_supabase.js";
    name in the URL would let anyone read or write anything the service
    key can reach. */
 const TABLES = {
+  /* Dig and lay rates (0158). Everything that estimates a trench reads
+     these, so they are edited here rather than in SQL — the reason they
+     were put in the database at all was that a rate needing a deploy to
+     correct would never get corrected, and a rate needing a DBA is not
+     much better. */
+  Dig_Rate:         { pk: "Dig_Rate_ID",         order: "Sort_Order" },
+  Dig_Depth_Factor: { pk: "Dig_Depth_Factor_ID", order: "Depth_From_M" },
+  Dig_Lay_Rate:     { pk: "Dig_Lay_Rate_ID",     order: "Utility_Key" },
+  /* The six surfaces, and how much slower each is to dig than unmade
+     ground. The factor lives here rather than beside the rates because
+     the trench already records its surface — a second list keyed by the
+     same six values is a second place to remember them. */
+  GIS_Surface_Type: { pk: "Surface_Key",         order: "Sort_Order" },
   Property_Type:   { pk: "Property_Type_ID",   order: "Sort_Order" },
   Property_Config: { pk: "Property_Config_ID", order: "Bedrooms" },
   Quote_Type:      { pk: "Quote_Type_ID",      order: "Sort_Order" },

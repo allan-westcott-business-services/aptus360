@@ -2820,7 +2820,13 @@ const CSS = `
 /* What is laid along a section. Kept from stretching the table when a
    joint trench carries three sizes — the column can wrap, the section
    name beside it should not. */
-.co-contents { color: var(--muted); max-width: 260px; }
+/* What is laid along a section, with each utility's own mark in front
+   of its size. Slightly larger than the text around it so the marks
+   read as marks rather than as punctuation, and kept from stretching
+   the table when a joint trench carries three sizes — this column can
+   wrap, the section name beside it should not. */
+.co-contents { color: var(--muted); max-width: 260px; font-size: 12px;
+  line-height: 1.6; white-space: normal; }
 .co-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px;
   background: var(--white); border: 1px solid var(--border); border-radius: 9px;
   overflow: hidden; }

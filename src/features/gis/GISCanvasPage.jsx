@@ -13802,9 +13802,15 @@ export default function GISCanvasPage() {
                               const inIt = spanContents(sp.trenchIds, features,
                                 { lineTypes, lookups });
                               if (!inIt.length) return "nothing routed yet";
-                              return inIt.map((c) =>
-                                (c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label))
-                                .join(" \u00b7 ");
+                              /* With the utility's mark, as the
+                                 call-off will carry it. "95" and "63mm"
+                                 read as two numbers until the bolt and
+                                 the droplet are in front of them. */
+                              return inIt.map((c) => {
+                                const size = c.count > 1
+                                  ? `${c.count} \u00d7 ${c.label}` : c.label;
+                                return c.icon ? `${c.icon} ${size}` : size;
+                              }).join("  \u00b7  ");
                             })()}
                           </span>
                         </div>

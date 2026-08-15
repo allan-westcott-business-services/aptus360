@@ -34,6 +34,7 @@ import { contentsOf } from "./trenchContents.js";
 import { concurrentCount, dominantOf, trenchSize } from "./trenchSize.js";
 import { digEstimate } from "./digRate.js";
 import { isTrenchType } from "./snapping.js";
+import { UTILITIES } from "../../lib/utilities.js";
 
 /* The options contentsOf needs, worked out once for a drawing.
 
@@ -113,6 +114,12 @@ export function spanContents(trenchIds = [], features = [], opts = {}) {
     const main = dominantOf(runs);
     out.push({
       utility,
+      /* The utility's own mark, from the one list of them. A size on its
+         own says nothing about what it is — "95" and "63mm" read as two
+         numbers until the bolt and the droplet are in front of them. */
+      icon: UTILITIES.find((u) =>
+        u.name.toLowerCase().replace(/[^a-z]/g, "")
+          === String(utility).toLowerCase().replace(/[^a-z]/g, ""))?.icon ?? null,
       label: main?.label ?? null,
       count: concurrentCount(runs, trenchM || null),
       /* The other sizes it is drawn in along the span. Not separate
@@ -263,7 +270,15 @@ export function rangeDigEstimate(range, features = [], opts = {}) {
 export function contentsText(trenchIds = [], features = [], opts = {}) {
   const inIt = spanContents(trenchIds, features, opts);
   if (!inIt.length) return null;
+  /* Written with the icons in, so what is stored is what a gang reads
+     and the table needs no key to the sizes. The scheduling side holds
+     none of the drawing and cannot work out which utility a "63mm" is;
+     putting it in the text is what lets the column be read at a glance
+     without a second column to carry it. */
   return inIt
-    .map((c) => (c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label))
-    .join(" \u00b7 ");
+    .map((c) => {
+      const size = c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label;
+      return c.icon ? `${c.icon} ${size}` : size;
+    })
+    .join("  \u00b7  ");
 }

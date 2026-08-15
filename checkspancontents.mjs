@@ -16,6 +16,7 @@ import {
   spanDigEstimate, rangeDigEstimate, contentsText,
 } from "./src/features/gis/spanContents.js";
 import { toCallOffRows } from "./src/features/gis/mainsCallOff.js";
+import { UTILITIES } from "./src/lib/utilities.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -211,6 +212,23 @@ const SITE = [
   const text = contentsText([1], SITE, opts);
   if (!/95/.test(text) || !/180mm PE/.test(text)) {
     fail(`the contents line read "${text}"`);
+  }
+
+  /* Each size behind its own utility's mark. A size on its own says
+     nothing about what it is — "95" and "63mm" read as two numbers
+     until the bolt and the droplet are in front of them, and the
+     scheduling side holds none of the drawing to work it out from. */
+  const gas = UTILITIES.find((u) => u.name === "Gas").icon;
+  const elec = UTILITIES.find((u) => u.name === "Electric").icon;
+  if (!text.includes(`${elec} 95`)) fail(`the electric had no mark: "${text}"`);
+  if (!text.includes(`${gas} 180mm PE`)) fail(`the gas had no mark: "${text}"`);
+
+  /* And the marks come from the one list of utilities, not from a
+     second copy here — a utility renamed in one place and not the other
+     is a size with no mark rather than a crash, which is the kind of
+     thing nobody notices. */
+  for (const c of spanContents([1], SITE, opts)) {
+    if (!c.icon) fail(`${c.utility} came back with no mark`);
   }
   /* Null, not an empty string: "nothing is laid here" and "nobody
      recorded it" are different, and the table says them differently. */

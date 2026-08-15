@@ -248,6 +248,11 @@ export function toItems(rows, mode) {
       && Number(r.Estimated_Half_Days) > 0
       ? Math.round(Number(r.Estimated_Half_Days))
       : null,
+    /* What is laid along this section (0160). Null rather than an empty
+       string where the drawing could not answer: "nothing is laid here"
+       and "nobody recorded it" are different things, and the table says
+       them differently. */
+    Contents: clean(r.Contents) || null,
     Energisation_Date: clean(r.Energisation_Date),
     Estimated_Length_m: r.Estimated_Length_m === "" || r.Estimated_Length_m == null
       ? null : Number(r.Estimated_Length_m),

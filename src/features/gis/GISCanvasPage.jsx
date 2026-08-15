@@ -64,7 +64,10 @@ import {
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
-import { spanContents, callOffUtilities, utilityIdsFor } from "./spanContents.js";
+import {
+  spanContents, callOffUtilities, utilityIdsFor,
+  rangeDigEstimate, contentsText,
+} from "./spanContents.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isOffSite,
@@ -338,13 +341,6 @@ export default function GISCanvasPage() {
      the same as from the project screen: a gang sent to an E/G dig
      needs to know it is electric and gas before they load the van, and
      the drawing is where somebody knows that. */
-  const [callOffUtils, setCallOffUtils] = useState([]);
-  /* Whether the ticks have been touched. Until they have, they follow
-     the drawing — adding a second run to a call-off should bring its
-     utilities with it. Once somebody has chosen, the choice stands: a
-     tick that reset itself as the runs changed would be a form
-     arguing. */
-  const [utilsTouched, setUtilsTouched] = useState(false);
   const [pick, setPick] = useState(null);
   /* Whether to ask for another run. See where a range is added. */
   const [askAnother, setAskAnother] = useState(false);
@@ -463,6 +459,17 @@ export default function GISCanvasPage() {
      drawing already holds that — asking somebody to tick them was
      asking them to retype it, and a hand can tick gas on a run with no
      gas in it where the drawing cannot. */
+  /* What the dig model needs, in one place. Three callers want the same
+     tables, and three copies is three chances for one of them to be
+     estimating against different rates from the panel beside it. */
+  const digOpts = useMemo(
+    () => ({
+      lineTypes, lookups, surfaceTypes,
+      rates: digRates, depthBands: digDepthFactors, layRates: digLayRates,
+    }),
+    [lineTypes, lookups, surfaceTypes, digRates, digDepthFactors, digLayRates],
+  );
+
   const callOffFound = useMemo(
     () => (callOff?.spans?.length
       ? callOffUtilities(callOff.spans, features, { lineTypes, lookups })
@@ -470,18 +477,6 @@ export default function GISCanvasPage() {
     [callOff, features, lineTypes, lookups],
   );
 
-  /* Ticked to match, until somebody says otherwise.
-
-     Following the drawing rather than replacing the ticks outright: a
-     call-off is a request, and somebody may want only the gas laid on a
-     run that carries three. What changed is the starting point — what
-     is there, rather than nothing. */
-  useEffect(() => {
-    if (utilsTouched) return;
-    const ids = utilityIdsFor(callOffFound, lookups?.utilities || []);
-    setCallOffUtils((cur) => ([...cur].sort().join(",") === [...ids].sort().join(",")
-      ? cur : ids));
-  }, [callOffFound, lookups, utilsTouched]);
 
 
   /* A proposed trench route, before anything is written.
@@ -7553,15 +7548,34 @@ export default function GISCanvasPage() {
         Created_By: raisedByName || user?.email || null,
         /* The ranges, not the spans — a row per run as it was asked
            for, named "Span Node A1 to A5". */
-        items: toCallOffRows(callOff.ranges),
-        utility_ids: callOffUtils,
+        /* How long each run takes and what is in it, worked out from
+           the drawing as the call-off is raised (0159, 0160).
+
+           Done here rather than left to the scheduling side, which
+           holds none of the drawing — and which had nothing to default
+           an assignment's end date from, so the To box came up empty on
+           every call-off raised from the canvas. */
+        items: toCallOffRows(callOff.ranges, {
+          estimateFor: (r) => rangeDigEstimate(r, features, digOpts),
+          contentsFor: (r) => contentsText(
+            [...new Set((r.spans || [r]).flatMap((sp) => sp.trenchIds || []))],
+            features, { lineTypes, lookups },
+          ),
+        }),
+        /* Read off the drawing rather than ticked. The mains on a run
+           are the pipes and cables routed along it, and a hand can tick
+           gas on a run with no gas in it where the drawing cannot. */
+        utility_ids: utilityIdsFor(callOffFound, lookups?.utilities || []),
+        /* The whole call-off, for an assignment covering all of it. */
+        Estimated_Half_Days: callOff.ranges
+          .map((r) => rangeDigEstimate(r, features, digOpts))
+          .filter((e) => e.ok)
+          .reduce((t, e) => t + e.halfDays, 0) || null,
       });
 
       setRanges([]);
       setPick(null);
       setAskAnother(false);
-      setCallOffUtils([]);
-      setUtilsTouched(false);
       /* Straight into finishing it, rather than closing and leaving it
          to be found later. */
       setRaised({
@@ -13817,44 +13831,28 @@ export default function GISCanvasPage() {
 
                 {/* What is being laid, read off the drawing.
 
-                    The trench knows: the mains on a run are the pipes
-                    and cables routed along the sections it crosses.
-                    Ticking them by hand was asking somebody to retype
-                    that, and a hand can tick gas on a run with no gas in
-                    it where the drawing cannot.
+                    Ticking these by hand was asking somebody to retype
+                    what the application already knew: the mains on a run
+                    are the pipes and cables routed along the trench
+                    sections it crosses. A hand can tick gas on a run
+                    with no gas in it; the drawing cannot.
 
-                    Still tickable, because a call-off is a request and
-                    somebody may want only the gas laid on a run that
-                    carries three. What changed is the starting point:
-                    what is there, rather than nothing. */}
+                    So it is shown rather than chosen. Each span lists
+                    its own contents above, and this is the union across
+                    them — what one visit has to carry. */}
                 {callOff?.spans?.length > 0 && (
                   <div className="gco-utils">
                     <span className="gco-utils-label">Utilities</span>
-                    {(lookups?.utilities || [])
-                      .filter((u) => !u.Is_Lighting)
-                      .map((u) => {
-                        const onDrawing = utilityIdsFor(
-                          callOffFound, lookups?.utilities || [],
-                        ).includes(Number(u.Utility_ID));
-                        return (
-                          <label
-                            className={`gco-util${onDrawing ? "" : " absent"}`}
-                            key={u.Utility_ID}
-                            title={onDrawing
-                              ? "On the drawing along this call-off"
-                              : "Nothing of this kind is drawn along these runs"}>
-                            <input type="checkbox"
-                              checked={callOffUtils.includes(Number(u.Utility_ID))}
-                              onChange={(e) => {
-                                setUtilsTouched(true);
-                                setCallOffUtils((cur) => (e.target.checked
-                                  ? [...cur, Number(u.Utility_ID)]
-                                  : cur.filter((x) => x !== Number(u.Utility_ID))));
-                              }} />
-                            {u.Utility}
-                          </label>
-                        );
-                      })}
+                    <span className="gco-utils-found">
+                      {callOffFound.length
+                        ? callOffFound
+                          .map((k) => (lookups?.utilities || [])
+                            .find((u) => String(u.Utility).toLowerCase()
+                              .replace(/[^a-z]/g, "") === String(k).toLowerCase()
+                              .replace(/[^a-z]/g, ""))?.Utility ?? k)
+                          .join(" \u00b7 ")
+                        : "Nothing routed along these runs yet"}
+                    </span>
                   </div>
                 )}
 
@@ -15197,7 +15195,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    meter to meter. */
 /* The call-off panel, floating like the others: the point is picking
    nodes on the drawing, so it must not cover it. */
-.gis-co { position: absolute; right: 16px; top: 70px; z-index: 40; width: 320px;
+/* Half again as wide as it was. At 320px a run's plots wrapped onto
+   five lines and its contents onto two, which turned a four-line panel
+   into a scrolling one — and the wrapping fell in the middle of the
+   plot list, so "23, 24, 25" read as three separate things. Capped
+   against the viewport so it stays on screen on a laptop. */
+.gis-co { position: absolute; right: 16px; top: 70px; z-index: 40;
+  width: min(480px, calc(100vw - 32px));
   max-height: 70vh; overflow-y: auto; background: var(--white);
   border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
   box-shadow: 0 4px 18px rgba(0,0,0,.13); font-size: 12px; }
@@ -15239,7 +15243,7 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   margin-top: 3px; }
 .gco-sp { font-weight: 700; width: 62px; }
 .gco-m { width: 52px; color: var(--muted); }
-.gco-p { flex: 1; color: var(--muted); }
+.gco-p { flex: 1 1 90px; min-width: 0; color: var(--muted); }
 .gco-err { color: #b91c1c; font-weight: 600; font-size: 11px; margin: 4px 0; }
 .gco-warn { color: #b45309; font-weight: 600; font-size: 11px; margin: 4px 0; }
 .gl-panel { position: absolute; right: 16px; bottom: 16px; z-index: 40;
@@ -15290,6 +15294,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* What a span carries, under its plots. */
 .gco-in { flex-basis: 100%; font-size: 10.5px; color: var(--muted);
   margin-top: 2px; }
+/* What the drawing says is on the call-off. Read, not chosen. */
+.gco-utils-found { font-weight: 600; color: var(--text); }
 .gco-utils-label { font: 700 10px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
 .gco-util { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;

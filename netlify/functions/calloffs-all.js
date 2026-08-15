@@ -19,6 +19,13 @@ const COLS = [
   "Preferred_Date", "Alternative_Date",
   "Obstruction_Free", "Ground_Unmade", "Line_Level_Required",
   "Notes", "Created_By", "Created_At",
+  /* Half-days to dig and lay the whole call-off (0159). Read here as
+     well as on the project's own tab: this is the endpoint the
+     Call-offs page uses, and it is where an assignment's end date is
+     defaulted from — without it the To box stays empty however
+     carefully the estimate was worked out when the call-off was
+     raised. */
+  "Estimated_Half_Days",
 ].join(",");
 
 export default async function handler(req) {
@@ -52,7 +59,13 @@ export default async function handler(req) {
       const [spans, plots, cols] = await Promise.all([
         db.from("Mains_Call_Off_Span")
           .select("Span_ID,Submission_ID,Plots,D_or_P,Energisation_Date,"
-            + "Estimated_Length_m,Sort_Order,From_Node_ID,To_Node_ID,Off_Site")
+            + "Estimated_Length_m,Sort_Order,From_Node_ID,To_Node_ID,Off_Site,"
+            /* Per section: how long it takes (0159) and what is laid
+               along it (0160). The section table shows both, and the
+               assignment picker defaults its end date from the first —
+               a run chosen out of six should not be booked for the
+               length of all six. */
+            + "Estimated_Half_Days,Contents")
           .in("Submission_ID", ids).order("Sort_Order"),
         db.from("Service_Call_Off_Plot")
           .select("Service_Plot_ID,Submission_ID,Plot,Energisation_Date,Sort_Order")

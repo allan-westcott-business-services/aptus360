@@ -649,7 +649,15 @@ export function rangesToSpans(features = [], ranges = [], opts = {}) {
 
    One per span, matching Mains_Call_Off_Span: the plots as written, the
    estimated length, and the order they were named in. */
-export function toCallOffRows(ranges = []) {
+export function toCallOffRows(ranges = [], opts = {}) {
+  /* How long each run takes and what is in it, where the caller can
+     work it out.
+
+     Passed in rather than computed here, because both need the drawing
+     and this file's job is the shape of the rows. The canvas has the
+     drawing and supplies them; anything else leaves them out and the
+     rows say nothing rather than something invented. */
+  const { estimateFor = null, contentsFor = null } = opts;
   /* One row per range, named by the two nodes it runs between.
 
      A row per span was written first — A1–A2, A2–A3, A3–A4 — which is
@@ -681,8 +689,16 @@ export function toCallOffRows(ranges = []) {
        assignment can be ticked without going back to the drawing. */
     const offSite = spans.some((sp) => sp.offSite);
 
+    const est = estimateFor ? estimateFor(r) : null;
+
     return {
       Off_Site: offSite || null,
+      /* Half-days to dig and lay this run (0159), so Planning can
+         default an assignment's end date from its start. Null where the
+         drawing could not answer. */
+      Estimated_Half_Days: est?.ok ? est.halfDays : null,
+      /* And what is being laid, as one line (0160). */
+      Contents: contentsFor ? contentsFor(r) : null,
       Plots: plots.length
         ? `Span Node ${from} to ${to} (plots ${plots.join(", ")})`
         : `Span Node ${from} to ${to}`,

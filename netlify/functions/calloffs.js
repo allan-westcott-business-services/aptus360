@@ -43,7 +43,12 @@ export const CHILD = {
          each the length of what it covers rather than the whole job.
          Nothing reads it yet — stored because it is free to keep now
          and impossible to recover once the drawing has moved on. */
-      "Estimated_Half_Days"],
+      "Estimated_Half_Days",
+      /* What is laid along this section, as one line, from the drawing
+         when the call-off was raised (0160). Display only: the sizes a
+         gang needs to read. Which utilities the call-off covers is
+         recorded properly elsewhere and this is not that. */
+      "Contents"],
   },
   PlotList: {
     table: "Service_Call_Off_Plot",

@@ -920,7 +920,22 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
             <thead>
               <tr>
                 <th>{mode === "ColumnList" ? "Column" : "Section"}</th>
-                {mode === "Span" && <><th>D/P</th><th>Length</th></>}
+                {mode === "Span" && (
+                  <>
+                    <th>D/P</th>
+                    <th>Length</th>
+                    {/* What is laid along the section, from the drawing
+                        as the call-off was raised (0160). A gang needs
+                        the sizes as well as the kinds, and the
+                        utilities on the request only say which kinds. */}
+                    <th>Pipes and cables</th>
+                    {/* And how long it takes, which is what an
+                        assignment's end date is defaulted from. Here
+                        too, so the two can be read against each
+                        other. */}
+                    <th>Dig &amp; lay</th>
+                  </>
+                )}
                 <th>Energisation date</th>
               </tr>
             </thead>
@@ -936,6 +951,15 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
                     <>
                       <td>{it.D_or_P || "\u2014"}</td>
                       <td>{it.Estimated_Length_m ? `${it.Estimated_Length_m} m` : "\u2014"}</td>
+                      {/* A dash for a section nothing was recorded for
+                          — a call-off raised before this was kept, or
+                          one whose trench had nothing routed in it. Not
+                          an empty cell: "nothing is laid here" and
+                          "nobody wrote it down" look the same when both
+                          are blank. */}
+                      <td className="co-contents">{it.Contents || "\u2014"}</td>
+                      <td>{it.Estimated_Half_Days
+                        ? halfDaysText(it.Estimated_Half_Days) : "\u2014"}</td>
                     </>
                   )}
                   {/* A span still carries one date and a lighting column
@@ -2793,6 +2817,10 @@ const CSS = `
   background: var(--white); }
 .co-err { color: #b91c1c; font: 600 12.5px inherit; margin: 0 0 12px; }
 .co-none { margin: 24px 0; }
+/* What is laid along a section. Kept from stretching the table when a
+   joint trench carries three sizes — the column can wrap, the section
+   name beside it should not. */
+.co-contents { color: var(--muted); max-width: 260px; }
 .co-tbl { width: 100%; border-collapse: collapse; font-size: 12.5px;
   background: var(--white); border: 1px solid var(--border); border-radius: 9px;
   overflow: hidden; }

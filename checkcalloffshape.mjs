@@ -31,6 +31,28 @@ const SHARED = [
   ["its plots", /Service_Call_Off_Plot/, /items/],
 ];
 
+/* Columns both endpoints must select.
+
+   The same failure as utility_ids and caught the same way: the
+   Call-offs page reads calloffs-all.js, so an estimate saved by one
+   endpoint and not selected by the other is an end date that never
+   defaults — with nothing failing anywhere to say why. Added when
+   0159 and 0160 went in, because that is exactly what happened. */
+const COLUMNS = [
+  ["how long the dig takes (0159)", "Estimated_Half_Days"],
+  ["what is laid along a section (0160)", "Contents"],
+];
+
+for (const [what, col] of COLUMNS) {
+  for (const [name, src] of [["calloffs.js", ONE], ["calloffs-all.js", ALL]]) {
+    /* Named anywhere in the select, however the string is broken up —
+       both endpoints build their column lists differently. */
+    if (!new RegExp(`\\b${col}\\b`).test(src)) {
+      fail(`${name} does not select ${what}`);
+    }
+  }
+}
+
 for (const [what, fetches, attaches] of SHARED) {
   for (const [name, src] of [["calloffs.js", ONE], ["calloffs-all.js", ALL]]) {
     if (!fetches.test(src)) fail(`${name} does not fetch ${what}`);
@@ -50,5 +72,6 @@ for (const [name, src] of [["calloffs.js", ONE], ["calloffs-all.js", ALL]]) {
 }
 
 console.log(bad ? `\n${bad} problem(s)`
-  : `Call-off endpoints agree (${SHARED.length} shared fields, both readers).`);
+  : `Call-off endpoints agree (${SHARED.length} shared fields, `
+    + `${COLUMNS.length} shared columns, both readers).`);
 process.exit(bad ? 1 : 0);

@@ -11,8 +11,11 @@
    satisfied the spans on both sides of it, so plot 16 appeared on
    A8-A14 and again on A14-A16 — on a call-off whose own total counted
    it once. */
-import { spanContents, callOffUtilities, utilityIdsFor }
-  from "./src/features/gis/spanContents.js";
+import {
+  spanContents, callOffUtilities, utilityIdsFor,
+  spanDigEstimate, rangeDigEstimate, contentsText,
+} from "./src/features/gis/spanContents.js";
+import { toCallOffRows } from "./src/features/gis/mainsCallOff.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -140,6 +143,80 @@ const SITE = [
   /* Never twice, however many spans carried it. */
   if (utilityIdsFor(["gas", "gas"], utilities).length !== 1) {
     fail("a utility on two runs was listed twice");
+  }
+}
+
+// 7. A span is estimated from the sections it crosses.
+//
+//    The canvas raises call-offs by its own path, and that path saved no
+//    estimate at all — so Planning had nothing to default an end date
+//    from and the To box came up empty on every call-off raised from the
+//    drawing.
+{
+  const span = { trenchIds: [1, 2], lengthM: 200 };
+  const e = spanDigEstimate(span, SITE, opts);
+  if (!e.ok) fail("a span across two drawn sections was not estimated");
+  if (!(e.halfDays >= 1)) fail(`a 200m span came to ${e.halfDays} half-days`);
+  if (e.sections !== 2) fail(`the span was estimated over ${e.sections} sections`);
+
+  /* Longer takes longer. */
+  const half = spanDigEstimate({ trenchIds: [1], lengthM: 100 }, SITE, opts);
+  if (!(half.hours < e.hours)) fail("half the span took as long as all of it");
+
+  /* A span with no drawn section gets no estimate rather than a zero. */
+  if (spanDigEstimate({ trenchIds: [], lengthM: 50 }, SITE, opts).ok) {
+    fail("a span crossing nothing was given a duration");
+  }
+}
+
+// 8. A run is the sum of its spans, and the rows carry both.
+//
+//    Summed rather than pooled: each span is its own length of dig with
+//    its own setup, and the half-days on a run should be what a planner
+//    would get booking its spans one at a time.
+{
+  const range = {
+    spans: [
+      { from: "A1", to: "A5", trenchIds: [1], lengthM: 100, plots: ["23"] },
+      { from: "A5", to: "A7", trenchIds: [2], lengthM: 100, plots: ["24"] },
+    ],
+  };
+  const r = rangeDigEstimate(range, SITE, opts);
+  if (!r.ok) fail("a run of two spans was not estimated");
+  if (r.spans !== 2) fail(`the run was estimated over ${r.spans} spans`);
+
+  const rows = toCallOffRows([range], {
+    estimateFor: (x) => rangeDigEstimate(x, SITE, opts),
+    contentsFor: (x) => contentsText(
+      [...new Set(x.spans.flatMap((sp) => sp.trenchIds))], SITE, opts,
+    ),
+  });
+  if (rows[0].Estimated_Half_Days !== r.halfDays) {
+    fail("the saved row did not carry the run's estimate");
+  }
+  if (!/180mm PE/.test(rows[0].Contents || "")) {
+    fail(`the saved row's contents read "${rows[0].Contents}"`);
+  }
+
+  /* And without the callbacks, the rows say nothing rather than
+     something invented — anything not holding the drawing cannot work
+     these out. */
+  const bare = toCallOffRows([range]);
+  if (bare[0].Estimated_Half_Days !== null) fail("a row invented an estimate");
+  if (bare[0].Contents !== null) fail("a row invented its contents");
+}
+
+// 9. Contents as one line, or nothing at all.
+{
+  const text = contentsText([1], SITE, opts);
+  if (!/95/.test(text) || !/180mm PE/.test(text)) {
+    fail(`the contents line read "${text}"`);
+  }
+  /* Null, not an empty string: "nothing is laid here" and "nobody
+     recorded it" are different, and the table says them differently. */
+  const bare = [line(1, [[0, 0], [100, 0]], { lk: "trench", lt: "trench_main" })];
+  if (contentsText([1], bare, opts) !== null) {
+    fail("an empty trench produced a contents line");
   }
 }
 

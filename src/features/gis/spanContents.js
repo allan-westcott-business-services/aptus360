@@ -31,7 +31,8 @@
    rather than added up section by section. */
 
 import { contentsOf } from "./trenchContents.js";
-import { concurrentCount, dominantOf } from "./trenchSize.js";
+import { concurrentCount, dominantOf, trenchSize } from "./trenchSize.js";
+import { digEstimate } from "./digRate.js";
 import { isTrenchType } from "./snapping.js";
 
 /* The options contentsOf needs, worked out once for a drawing.
@@ -153,4 +154,116 @@ export function utilityIdsFor(keys = [], utilities = []) {
     if (u && !out.includes(Number(u.Utility_ID))) out.push(Number(u.Utility_ID));
   }
   return out;
+}
+
+
+/* How long a span takes to dig and lay.
+
+   ── Why this is here and not only in digDays.js ──
+
+   There are two ways a mains call-off gets raised. The scheduling form
+   works from span rows and walks the trench graph between their ends;
+   the canvas works from the runs somebody clicked, which already know
+   the trench sections they cross. Both need the same answer, and the
+   canvas one was missing — a call-off raised from the drawing saved no
+   estimate at all, so Planning had nothing to default an end date from
+   and the To box came up empty.
+
+   Same model either way: digRate.js does the arithmetic, and the
+   difference is only in how the trench sections are arrived at.
+
+   ── Section by section ──
+
+   A span crosses whatever sections lie between its two nodes, and each
+   is sized and surfaced on its own. Scaled where the span covers only
+   part of them, which is the ordinary case only until span nodes have
+   been placed — once the trenches are cut at the nodes, a span is its
+   sections and the scale is one. */
+export function spanDigEstimate(span, features = [], opts = {}) {
+  const { lineTypes = [], lookups = null, surfaceTypes = [],
+    rates, depthBands, layRates } = opts;
+  const co = contentsOptions(lineTypes, lookups);
+
+  const legs = [];
+  let drawnM = 0;
+
+  for (const id of span?.trenchIds || []) {
+    const trench = features.find((f) => Number(f.Feature_ID) === Number(id));
+    if (!trench) continue;
+    const res = contentsOf(trench, features, co);
+    if (res.error) continue;
+    legs.push({ trench, res });
+    drawnM += res.trenchM || 0;
+  }
+  if (!legs.length) return { ok: false, halfDays: 0 };
+
+  /* The span's own length against what its sections come to. One where
+     the sections are the span, which is what splitting at the nodes
+     makes true — and below one where a span clips the end of a longer
+     section, so the metres nobody is digging are not charged. */
+  const scale = drawnM > 0 && span?.lengthM > 0
+    ? Math.min(1, span.lengthM / drawnM) : 1;
+
+  const out = legs.map(({ trench, res }) => {
+    const items = (res.contents || []).map((c) => ({
+      utility: c.utility,
+      withinM: c.withinM,
+      outsideDiameterMM: Number(String(c.feature?.Attributes?.Size ?? "")
+        .replace(/[^0-9.]/g, "")) || null,
+    }));
+    return digEstimate({
+      lengthM: (res.trenchM || 0) * scale,
+      size: trenchSize(items, { trenchM: res.trenchM }),
+      surfaceKey: trench?.Attributes?.Surface_Type ?? null,
+      utilities: items.map((x) => x.utility),
+      rates, depthBands, layRates, surfaceTypes,
+    });
+  }).filter((e) => e.ok);
+
+  if (!out.length) return { ok: false, halfDays: 0 };
+
+  const hours = out.reduce((t, e) => t + e.totalHours, 0);
+  return {
+    ok: true,
+    hours: Math.round(hours * 100) / 100,
+    /* Rounded up, because a gang cannot be sent for part of a half-day.
+       Four hours to the half, as digDays.js has it. */
+    halfDays: Math.max(1, Math.ceil(hours / 4)),
+    volumeM3: Math.round(out.reduce((t, e) => t + e.volumeM3, 0) * 100) / 100,
+    sections: out.length,
+  };
+}
+
+/* The same for a run of several spans, as the canvas records them.
+
+   Summed from the spans rather than pooled, because each is its own
+   length of dig with its own setup — and because the half-days on a
+   run should be the half-days a planner would get by booking its spans
+   one at a time. */
+export function rangeDigEstimate(range, features = [], opts = {}) {
+  const spans = range?.spans || [range];
+  const each = spans.map((sp) => spanDigEstimate(sp, features, opts));
+  const ok = each.filter((e) => e.ok);
+  if (!ok.length) return { ok: false, halfDays: 0 };
+  return {
+    ok: true,
+    halfDays: ok.reduce((t, e) => t + e.halfDays, 0),
+    hours: Math.round(ok.reduce((t, e) => t + e.hours, 0) * 100) / 100,
+    spans: ok.length,
+    unestimated: each.length - ok.length,
+  };
+}
+
+/* What is in a run, as one line of text.
+
+   Saved on the call-off row so the scheduling side can show it without
+   the drawing. It holds none of the GIS and has no way to work this out
+   — and recomputing it later would be answering about the drawing as it
+   is now rather than as the call-off was raised. */
+export function contentsText(trenchIds = [], features = [], opts = {}) {
+  const inIt = spanContents(trenchIds, features, opts);
+  if (!inIt.length) return null;
+  return inIt
+    .map((c) => (c.count > 1 ? `${c.count} \u00d7 ${c.label}` : c.label))
+    .join(" \u00b7 ");
 }

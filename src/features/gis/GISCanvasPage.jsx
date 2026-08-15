@@ -65,7 +65,7 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
 import { bomLabour } from "./bomLabour.js";
-import { serviceSizeFor } from "./serviceDefaults.js";
+import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
   spanContents, callOffUtilities, utilityIdsFor,
   rangeDigEstimate, contentsText,
@@ -189,6 +189,19 @@ export default function GISCanvasPage() {
   const [utilities, setUtilities] = useState([]);
   const [queue, setQueue] = useState([]);          // plots being placed, in order
   const [meterFor, setMeterFor] = useState(null);  // { plot, seedPoint, utility, all, placed }
+  /* Filling in meters on plots that were seeded before a utility was on
+     the project.
+
+     A utility added to a project after its plots were placed has no
+     meters anywhere: the seeding flow asks for one per utility as each
+     plot goes down, and a utility that did not exist then was never
+     asked about. Re-seeding is not an option — the plots are placed, and
+     the flow only offers plots that are not.
+
+     So this is the same flow entered from the other end: pick a seed
+     already on the drawing, and it asks for whatever that plot is
+     missing. Null when not in the mode. */
+  const [meterCatchUp, setMeterCatchUp] = useState(null);
   /* The click between the seed and the meters: where the property
      boundary is. { plot, seedPoint, tempId } */
   const [boundaryFor, setBoundaryFor] = useState(null);
@@ -1734,6 +1747,31 @@ export default function GISCanvasPage() {
      Electric returns a cable id, the rest return free text, matching how
      each is held on the feature itself. Nothing here invents a size for
      a utility that has no catalogue. */
+  /* The catalogue row a size names, written beside the text.
+
+     The panel's System calculated box reads the id, and the pressure
+     and bill calculations read the row it points at — so a service laid
+     with only its text left that box empty on every plot and gave the
+     bill a pipe it could not look up.
+
+     Both are written together, here, so nothing has to remember to do
+     the second one. Where the catalogue has no such row the text stands
+     alone: a size somebody uses that is not in the table is still a real
+     size, and pointing it at the nearest row would be inventing a pipe.
+
+     Note this is the same argument the water build already makes about
+     writing Water_Pipe_Size_ID and Size together — it just was not being
+     applied to services, because nothing sized them. */
+  const withPipeId = useCallback((layerKey, attrs) => {
+    if (!attrs?.Size) return attrs;
+    const idKey = layerKey === "gas" ? "Gas_Pipe_Size_ID"
+      : layerKey === "water" ? "Water_Pipe_Size_ID" : null;
+    if (!idKey) return attrs;
+
+    const row = pipeRowFor(attrs.Size, sizeCatalogues[layerKey] || []);
+    return row ? { ...attrs, [idKey]: Number(row[idKey]) } : attrs;
+  }, [sizeCatalogues]);
+
   const defaultsFor = useCallback((lineTypeKey) => {
     const t = lineTypes.find((x) => x.Type_Key === lineTypeKey);
     const layerKey = t?.Layer_Key ?? null;
@@ -1755,10 +1793,10 @@ export default function GISCanvasPage() {
       ? { Size: serviceSizeFor(layerKey) } : {};
 
     const layer = layers.find((l) => l.Layer_Key === layerKey);
-    if (!layer?.Utility_ID) return floor;
+    if (!layer?.Utility_ID) return withPipeId(layerKey, floor);
 
     const scope = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(layer.Utility_ID));
-    if (!scope) return floor;
+    if (!scope) return withPipeId(layerKey, floor);
 
     if (layerKey === "electric") {
       const id = isService
@@ -1767,8 +1805,8 @@ export default function GISCanvasPage() {
       return id != null ? { VD_Cable_Size_ID: Number(id) } : {};
     }
     const size = isService ? scope.Default_Service_Size : scope.Default_Main_Size;
-    return size ? { Size: size } : floor;
-  }, [lineTypes, layers, scopeDefaults]);
+    return withPipeId(layerKey, size ? { Size: size } : floor);
+  }, [lineTypes, layers, scopeDefaults, withPipeId]);
 
   /* Every line type on one layer, for that utility's menu. */
   const typesOn = useCallback(
@@ -3740,7 +3778,9 @@ export default function GISCanvasPage() {
     }
 
     // What the next click will do
-    if (placing && cursor) {
+    /* The same guide when catching up on an old plot: the flow is the
+       one thing that changed, not the drawing. */
+    if ((placing || meterFor) && cursor) {
       ctx.save();
 
       if (boundaryFor) {
@@ -4557,7 +4597,47 @@ export default function GISCanvasPage() {
       return;
     }
 
-    if (placing) {
+    /* Filling in meters on a plot already seeded.
+
+       Two clicks per meter: the seed says which plot, then where the
+       meter goes. Selecting the seed rather than working outward from
+       an existing meter is deliberate — a plot that is short of two
+       utilities has nothing to work outward from, and the seed is the
+       one thing every placed plot has.
+
+       Checked before `placing` below, so catching up on an old plot is
+       not mistaken for seeding a new one. */
+    if (meterCatchUp && !meterFor) {
+      const hit = featureAt(px, py);
+      if (hit?.Feature_Role === "plot" && hit.Plot_ID != null) {
+        const missing = missingMetersFor(hit.Plot_ID);
+        if (!missing.length) {
+          setStatus(`Plot ${hit.Label ?? hit.Plot_ID} has every meter already`);
+          setTimeout(() => setStatus(""), 3000);
+          return;
+        }
+        const plot = plotList.find((x) =>
+          Number(x.plot_id ?? x.Plot_ID) === Number(hit.Plot_ID));
+        setMeterFor({
+          /* Enough of a plot for the flow: the number for the label it
+             writes, and the id for the link that matters. */
+          plot: {
+            plot_id: Number(hit.Plot_ID),
+            plot_number: plot?.plot_number ?? hit.Label ?? String(hit.Plot_ID),
+          },
+          seedPoint: (hit.Geometry || [])[0],
+          utility: missing[0],
+          all: missing,
+          placed: [],
+        });
+        return;
+      }
+      setStatus("Click a plot seed to add its missing meters");
+      setTimeout(() => setStatus(""), 3000);
+      return;
+    }
+
+    if (placing || meterFor) {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
       placeAt(point);
@@ -5274,6 +5354,30 @@ export default function GISCanvasPage() {
       setTimeout(() => setStatus(""), 4000);
     }
   }
+
+  /* The utilities this plot has no meter for.
+
+     By Plot_ID rather than by proximity: a meter belongs to the plot it
+     was placed for, and two plots' meters can sit closer to each other
+     than either does to its own seed. That link is what Auto Service
+     reads to know a plot has been served, and what a mains call-off
+     reads to list the plots on a span. */
+  const missingMetersFor = useCallback((plotId) => {
+    const has = new Set(features
+      .filter((f) => f.Feature_Role === "meter"
+        && Number(f.Plot_ID) === Number(plotId))
+      .map((f) => f.Layer_Key));
+    return utilities.filter((u) => !has.has(u.layer_key));
+  }, [features, utilities]);
+
+  /* How many plots are still short of one, for the line the mode shows.
+     Counted over the seeds on the drawing rather than the plot list, so
+     it says what can actually be clicked. */
+  const plotsMissingMeters = useMemo(() => {
+    if (!meterCatchUp) return 0;
+    return features.filter((f) => f.Feature_Role === "plot" && f.Plot_ID != null
+      && missingMetersFor(f.Plot_ID).length).length;
+  }, [meterCatchUp, features, missingMetersFor]);
 
   /* Seed first, then one click per meter — each landing exactly where
      it's clicked rather than being spaced automatically. Meters on a
@@ -11668,6 +11772,12 @@ export default function GISCanvasPage() {
 
       if (e.key === "Escape" && historyOpen) { setHistoryOpen(false); return; }
       if (e.key === "Escape" && picker) { setPicker(null); return; }
+      /* Out of the meter catch-up before anything else Escape does, so
+         a half-finished plot does not leave the mode on with a meter
+         still waiting for a click. */
+      if (e.key === "Escape" && (meterCatchUp || meterFor)) {
+        setMeterCatchUp(null); setMeterFor(null); return;
+      }
       if (e.key === "Escape") { setDraft([]); setTool("select"); setSelected([]); stopPlacing(); }
       if (e.key === "Enter" && drawing) finishDrawing();
       if (e.key === "Backspace" && drawing && draft.length) {
@@ -11928,6 +12038,44 @@ export default function GISCanvasPage() {
                       hint={`${plotList.filter((p) => !p.placed).length} still to place`}
                       active={placeOpen || queue.length > 0}
                       onClick={() => setPlaceOpen(true)} />
+                    {/* Meters for plots that were seeded before a
+                        utility was on the project.
+
+                        The seeding flow asks for one meter per utility
+                        as each plot goes down, so a utility added later
+                        has none anywhere — and re-seeding is no help,
+                        because it only offers plots that are not placed.
+                        This is the same flow entered from the other end.
+
+                        Offered only when something is actually short of
+                        one, so it is not a permanent item for a job most
+                        projects never need. */}
+                    {plotsMissingMeters > 0 || meterCatchUp ? (
+                      <MenuItem label="Add missing meters" indent
+                        hint={meterCatchUp
+                          ? "Click a plot seed \u00b7 Esc to stop"
+                          : `${plotsMissingMeters} plot(s) short of a meter`}
+                        active={!!meterCatchUp}
+                        onClick={() => {
+                          if (meterCatchUp) {
+                            setMeterCatchUp(null); setMeterFor(null); setStatus("");
+                            return;
+                          }
+                          /* Clear of anything else that wants clicks —
+                             two placement modes at once is a click that
+                             does whichever was checked first. */
+                          stopPlacing();
+                          setPlaceOpen(false);
+                          setTool("select");
+                          setSelected([]);
+                          setMeterCatchUp({ started: Date.now() });
+                          /* Said on entry, because the mode changes what
+                             a click does and nothing else on screen
+                             would announce that. */
+                          setStatus(`Click a plot seed to add its missing meters `
+                            + `\u00b7 ${plotsMissingMeters} plot(s) short \u00b7 Esc to stop`);
+                        }} />
+                    ) : null}
                     <div className="gm-sep" />
                     <MenuGroup label="Drawing Standard" />
                     <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
@@ -13097,6 +13245,13 @@ export default function GISCanvasPage() {
           digRates={digRates}
           digDepthFactors={digDepthFactors}
           digLayRates={digLayRates}
+          /* What a new run of this line type would be drawn as — the
+             project's outline design where it says, the standing service
+             size where it does not. Resolved here because the scope rows
+             live here, and by the same function that draws them, so the
+             panel and the drawing cannot disagree about what a service
+             is. */
+          defaultSize={defaultsFor(editing?.Attributes?.Line_Type).Size ?? null}
           plotList={plotList}
           lookups={lookups}
           allFeatures={features}

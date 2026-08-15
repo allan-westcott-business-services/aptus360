@@ -203,6 +203,18 @@ export default function GISCanvasPage() {
      already on the drawing, and it asks for whatever that plot is
      missing. Null when not in the mode. */
   const [meterCatchUp, setMeterCatchUp] = useState(null);
+
+  /* Placing street lighting: "column" or "lantern", or null.
+
+     A mode rather than a button, because a lighting design is a hundred
+     columns at positions that matter — placeNode puts one thing in the
+     middle of the view, which is right for the substation and wrong
+     here.
+
+     One piece of state for both, so the two cannot be on at once: a
+     click that might place either is a click that does whichever was
+     checked first. */
+  const [lightingPlace, setLightingPlace] = useState(null);
   /* The click between the seed and the meters: where the property
      boundary is. { plot, seedPoint, tempId } */
   const [boundaryFor, setBoundaryFor] = useState(null);
@@ -4649,6 +4661,34 @@ export default function GISCanvasPage() {
 
        Checked before `placing` below, so catching up on an old plot is
        not mistaken for seeding a new one. */
+    /* ── Columns and lanterns ──
+
+       A column goes where it is clicked. A lantern goes on a column,
+       and is placed by clicking the column rather than by clicking the
+       ground: a lantern must have a column, so the click that says
+       which one is the click that places it. There is no way to make an
+       orphan and no field to forget.
+
+       The lantern takes the column's own point. There is one thing on
+       the ground and it has one position — two would be two answers to
+       where the light is, and the drawing would show a lantern drifting
+       off its column the moment either moved. */
+    if (lightingPlace) {
+      const raw = toM(px, py);
+      const { point } = resolve(raw[0], raw[1]);
+
+      if (lightingPlace === "column") {
+        placeLightingColumn(point);
+        return;
+      }
+
+      const hit = featureAt(px, py);
+      if (hit?.Feature_Role === "column") { placeLantern(hit); return; }
+      setStatus("Click a lighting column to put a lantern on it");
+      setTimeout(() => setStatus(""), 3000);
+      return;
+    }
+
     if (meterCatchUp && !meterFor) {
       const hit = featureAt(px, py);
       if (hit?.Feature_Role === "plot" && hit.Plot_ID != null) {
@@ -6409,6 +6449,85 @@ export default function GISCanvasPage() {
      already leaves an unmatched joint alone and reports it rather than
      deleting it, so a hand-placed joint survives; this says plainly which
      ones were somebody's decision. */
+  /* A lighting column, where it was clicked.
+
+     Numbered from what is already on the drawing rather than from a
+     running count, so deleting one and placing another does not give
+     two columns the same name. */
+  async function placeLightingColumn(point) {
+    const n = features.filter((f) => f.Feature_Role === "column").length + 1;
+    try {
+      await createFeature(projectId, {
+        Layer_Key: "lighting",
+        Feature_Type: "point",
+        Feature_Role: "column",
+        Geometry: [point],
+        Label: `Column ${n}`,
+        /* Somewhere to record what the column is. Blank rather than
+           guessed: a height nobody entered is not 6m, and a drawing
+           that invents one is worse than one that admits it does not
+           know. */
+        Attributes: {
+          Column_Ref: null,
+          Height_m: null,
+          Material: null,
+          Bracket_Length_m: null,
+        },
+      });
+      await load(projectId);
+      setStatus(`Column ${n} placed \u00b7 Esc to stop`);
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
+  /* A lantern, on the column that was clicked.
+
+     Takes the column's point, not the click's: a lantern sits on top of
+     its column, and placing it a few centimetres off because that is
+     where the mouse was would put two answers on the drawing for where
+     one light is.
+
+     Column_Feature_ID on the lantern rather than a list on the column,
+     because that is how the rule reads — a lantern must have a column,
+     a column need not have a lantern, and a column carrying a twin head
+     does not have to change to gain the second one.
+
+     Deliberately not Connects. That is the network graph, and a lantern
+     sitting on a column is not an electrical junction; putting it there
+     would send the circuit trace up the column and back down. */
+  async function placeLantern(column) {
+    const at = (column.Geometry || [])[0];
+    if (!at) { setError("That column has no position to sit on."); return; }
+
+    const on = features.filter((f) => f.Feature_Role === "lantern"
+      && Number(f.Attributes?.Column_Feature_ID) === Number(column.Feature_ID));
+    const n = features.filter((f) => f.Feature_Role === "lantern").length + 1;
+
+    try {
+      await createFeature(projectId, {
+        Layer_Key: "lighting",
+        Feature_Type: "point",
+        Feature_Role: "lantern",
+        Geometry: [at],
+        Label: `Lantern ${n}`,
+        Attributes: {
+          Column_Feature_ID: Number(column.Feature_ID),
+          Lantern_Type: null,
+          Wattage_W: null,
+          Mounting: null,
+        },
+      });
+      await load(projectId);
+      /* Said when it is the second, because a twin head is ordinary and
+         a second lantern on the wrong column is not — and the two look
+         identical on screen, being at the same point. */
+      setStatus(`Lantern ${n} on ${column.Label ?? "the column"}`
+        + (on.length ? ` \u00b7 that column now carries ${on.length + 1}` : "")
+        + " \u00b7 Esc to stop");
+      setError("");
+    } catch (e) { setError(e.message); }
+  }
+
   async function placeJoint(kind) {
     if (!projectId) return;
     const spec = JOINT_KINDS[kind];
@@ -11769,9 +11888,31 @@ export default function GISCanvasPage() {
     if (withPlots.length && !window.confirm(
       `${withPlots.length} of these are plot markers. Deleting removes the marker, not the plot. Continue?`
     )) return;
-    const rows = features.filter((f) => selected.includes(f.Feature_ID));
+    /* A lantern cannot exist without its column.
+
+       Deleting a column and leaving its lanterns behind would break
+       that in the one place it is easiest to break: they sit at the
+       same point, so an orphaned lantern looks exactly like the column
+       that is no longer there. Said out loud rather than done quietly —
+       taking something the person did not select is worth a sentence,
+       even when it is the only sensible thing to do. */
+    const goneColumns = new Set(features
+      .filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "column")
+      .map((f) => Number(f.Feature_ID)));
+    const orphaned = goneColumns.size
+      ? features.filter((f) => f.Feature_Role === "lantern"
+        && goneColumns.has(Number(f.Attributes?.Column_Feature_ID))
+        && !selected.includes(f.Feature_ID))
+      : [];
+    if (orphaned.length && !window.confirm(
+      `${orphaned.length} lantern(s) sit on the column(s) being deleted. `
+      + "A lantern cannot exist without its column, so they go too. Continue?"
+    )) return;
+
+    const ids = [...selected, ...orphaned.map((f) => f.Feature_ID)];
+    const rows = features.filter((f) => ids.includes(f.Feature_ID));
     try {
-      await deleteFeatures(projectId, selected);
+      await deleteFeatures(projectId, ids);
       await recordAction(`Delete ${rows.length} feature(s)`, rows, []);
       setSelected([]);
       await load(projectId);
@@ -11823,6 +11964,9 @@ export default function GISCanvasPage() {
       /* Out of the meter catch-up before anything else Escape does, so
          a half-finished plot does not leave the mode on with a meter
          still waiting for a click. */
+      if (e.key === "Escape" && lightingPlace) {
+        setLightingPlace(null); setStatus(""); return;
+      }
       if (e.key === "Escape" && (meterCatchUp || meterFor)) {
         setMeterCatchUp(null); setMeterFor(null); return;
       }
@@ -13007,6 +13151,42 @@ export default function GISCanvasPage() {
                        no version of that which depends on how much of it
                        has been drawn. */
                     onOpen={() => soloClass("lighting", true)}>
+                    {/* Drawing first, as on the other utility menus:
+                        it is what somebody opens this to do. */}
+                    <MenuGroup label="Draw" />
+                    <MenuItem label={lightingPlace === "column"
+                      ? "Placing Columns\u2026" : "Place Lighting Columns"}
+                      hint="Click where each column goes \u00b7 Esc to stop"
+                      active={lightingPlace === "column"}
+                      disabled={!projectId}
+                      keepOpen
+                      onClick={() => {
+                        setLightingPlace(lightingPlace === "column" ? null : "column");
+                        setMeterCatchUp(null); setMeterFor(null);
+                        setTool("select"); setSelected([]);
+                        setStatus(lightingPlace === "column" ? ""
+                          : "Click where each column goes \u00b7 Esc to stop");
+                      }} />
+                    {/* Lanterns are placed onto columns, so the item is
+                        absent until there is a column to place one on.
+                        A mode that can only say "click a column" is not
+                        worth entering. */}
+                    <MenuItem label={lightingPlace === "lantern"
+                      ? "Placing Lanterns\u2026" : "Place Lanterns"}
+                      hint={classCount["role:column"]
+                        ? "Click a column to put a lantern on it \u00b7 Esc to stop"
+                        : "No columns to put one on yet"}
+                      active={lightingPlace === "lantern"}
+                      disabled={!projectId || !classCount["role:column"]}
+                      keepOpen
+                      onClick={() => {
+                        setLightingPlace(lightingPlace === "lantern" ? null : "lantern");
+                        setMeterCatchUp(null); setMeterFor(null);
+                        setTool("select"); setSelected([]);
+                        setStatus(lightingPlace === "lantern" ? ""
+                          : "Click a column to put a lantern on it \u00b7 Esc to stop");
+                      }} />
+                    <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
                     {/* Labels, on every utility menu.
 
@@ -13029,6 +13209,13 @@ export default function GISCanvasPage() {
                       shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
+                    <MenuLayer label="Lanterns" count={classCount["role:lantern"] || 0}
+                      hidden={hidden.includes("role:lantern")}
+                      solo={solo === "role:lantern"}
+                      onHide={() => hideClass("role:lantern")}
+                      onShow={() => showClass("role:lantern")}
+                      shown={shownOnly.includes("role:lantern")}
+                      onSolo={() => soloClass("role:lantern")} />
                     <MenuLayer label="Columns" count={classCount["role:column"] || 0}
                       hidden={hidden.includes("role:column")}
                       solo={solo === "role:column"}

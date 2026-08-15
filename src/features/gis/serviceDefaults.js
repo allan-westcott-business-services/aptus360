@@ -52,3 +52,35 @@ export const SERVICE_SIZES = {
 export function serviceSizeFor(layerKey) {
   return SERVICE_SIZES[layerKey] ?? null;
 }
+
+/* The catalogue row a default service size names.
+
+   The size on a feature is text, and the panel's System calculated box
+   reads the id — so a service laid with only the text left that box
+   empty on every plot, which is what it was doing before this.
+
+   Matched on the label first and the bore second, because a catalogue
+   row is written either way: "25mm" as a label, or 25 as a diameter
+   with the label left blank. Both are the same pipe, and a service that
+   found neither is left with its text alone rather than pointed at a
+   row that does not mean it.
+
+   Not the reverse of trenchSize's argument about storing things: this
+   is not a derived figure that goes stale, it is which row of a
+   catalogue a pipe is, and the catalogue is what the pressure and bill
+   calculations read. */
+export function pipeRowFor(size, catalogue = [], idKey) {
+  if (!size) return null;
+  const want = String(size).toLowerCase().replace(/\s/g, "");
+  const mm = Number(String(size).replace(/[^0-9.]/g, ""));
+
+  const byLabel = catalogue.find((r) =>
+    String(r.Size_Label ?? "").toLowerCase().replace(/\s/g, "") === want);
+  if (byLabel) return byLabel;
+
+  if (mm > 0) {
+    const byBore = catalogue.find((r) => Number(r.Diameter_mm) === mm);
+    if (byBore) return byBore;
+  }
+  return null;
+}

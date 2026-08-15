@@ -64,6 +64,7 @@ import {
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
+import { bomLabour } from "./bomLabour.js";
 import {
   spanContents, callOffUtilities, utilityIdsFor,
   rangeDigEstimate, contentsText,
@@ -13152,6 +13153,15 @@ export default function GISCanvasPage() {
         <BomModal
           projectId={projectId}
           projectName={project?.Project_Name ?? project?.Project_Ref}
+          /* Dig and lay time, worked out here because the model that
+             produces it lives here. gis_bom counts what is drawn; the
+             hours follow from how big the trench is, which is
+             trenchSize.js and not something SQL can be asked. */
+          labour={bomLabour(features, {
+            lineTypes, surfaceTypes, lookups,
+            utilities: lookups?.utilities || [],
+            rates: digRates, depthBands: digDepthFactors, layRates: digLayRates,
+          })}
           /* The layers carry the colour, resolved the same way the
              canvas resolves it; the Utility rows are only what turns a
              section's name into the layer it belongs to. */

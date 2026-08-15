@@ -170,6 +170,20 @@ export function utilitySkin(colour) {
 export default function BomModal({
   projectId, projectName,
   utilities = [], layers = [], styles = [], standard = null,
+  /* Dig and lay time, worked out from the drawing rather than counted
+     in SQL.
+
+     Every other row comes from gis_bom. These cannot: the hours follow
+     from the size of the trench, and that comes from trenchSize.js —
+     the NJUG separations, the cross-section rule, the coverage ratio.
+     Writing that again in SQL would be a second implementation kept in
+     step by hand, and the first thing to go wrong would be a bill
+     quietly disagreeing with the panel that produced it.
+
+     Merged in as ordinary rows, in the same shape, so the grouping,
+     the totals, the sorting and the Excel export handle them without
+     knowing where they came from. */
+  labour = [],
   onClose,
 }) {
   const [rows, setRows] = useState([]);
@@ -307,10 +321,16 @@ export default function BomModal({
   useEffect(() => {
     let live = true;
     getGisBom(projectId)
-      .then((r) => { if (live) { setRows(r.rows || []); setError(""); } })
+      .then((r) => { if (live) { setRows([...(r.rows || []), ...labour]); setError(""); } })
       .catch((e) => { if (live) setError(e.message); })
       .finally(() => { if (live) setLoading(false); });
     return () => { live = false; };
+    /* Not on `labour`: it is worked out fresh from the drawing on every
+       render of the page behind this, so depending on it would refetch
+       the bill in a loop. The modal is opened on a drawing that is not
+       changing underneath it, so what arrived when it opened is what
+       the drawing said. */
+    // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [projectId]);
 
   /* The developers with anything on this drawing, in the order the bill

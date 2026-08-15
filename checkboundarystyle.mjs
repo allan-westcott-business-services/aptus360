@@ -150,6 +150,37 @@ const resolve = (styles, ctx = {}) => resolveStyle(SUBJECT, styles, ctx);
   }
 }
 
+// 8. It can be found on the GIS Styles screen.
+//
+//    The scope dropdown there is a fixed list, so a row whose role is
+//    not in it lists but cannot be created or properly edited. That list
+//    had already fallen behind the drawing three times — the service
+//    valve, the pumping station and the lantern were all placeable and
+//    unstylable.
+{
+  const admin = readFileSync("./src/features/admin/GisStylesAdmin.jsx", "utf8");
+  const roles = admin.slice(admin.indexOf("const ROLES = ["));
+  const list = roles.slice(0, roles.indexOf("];"));
+
+  if (!/\["boundary", "Property boundary point"\]/.test(list)) {
+    fail("the boundary point is not offered on the GIS Styles screen");
+  }
+
+  /* And every role the constraint allows, so the list cannot fall
+     behind again. Read from the migration rather than written out
+     twice. */
+  const lanterns = readFileSync("./supabase/migrations/0165_lanterns.sql", "utf8");
+  const check = lanterns.match(/CHECK \("Feature_Role" IN\s*\(([^)]*)\)/s);
+  if (!check) fail("cannot read the role constraint to compare against");
+  else {
+    for (const m of check[1].matchAll(/'([a-z]+)'/g)) {
+      if (!new RegExp(`\\["${m[1]}",`).test(list)) {
+        fail(`${m[1]} can be drawn but not styled — missing from the GIS Styles list`);
+      }
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The boundary point is styled (size, zoom, ink and off, and it touches "
     + "nothing else).");

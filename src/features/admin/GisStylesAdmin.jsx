@@ -51,11 +51,26 @@ const BLANK = {
    say otherwise.
 
    The list matches the CHECK constraint on GIS_Feature."Feature_Role",
-   last set by migration 0124. A role added there wants adding here too,
-   or it arrives on the drawing with no way to style it. */
+   last set by migration 0165. A role added there wants adding here too,
+   or it arrives on the drawing with no way to style it — which is
+   exactly what happened to the service valve, the pumping station and
+   the lantern, each added to the drawing and left unstylable until
+   somebody noticed.
+
+   ── One entry that is not a role ──
+
+   The property boundary point. It is not a feature at all: it is
+   Boundary_At on the plot seed, painted in a pass of its own, and it
+   presents this scope to the style cascade so it can be sized, coloured
+   and switched off like everything else (0166).
+
+   It is here because this is where somebody looks for it. A screen that
+   styles every symbol except one, for a reason about how that symbol
+   happens to be stored, is a screen that is wrong about its own job. */
 const ROLES = [
   ["", "Any"],
   ["plot", "Plot seed"],
+  ["boundary", "Property boundary point"],
   ["meter", "Meter"],
   ["joint", "Joint"],
   ["source", "Source"],
@@ -63,9 +78,11 @@ const ROLES = [
   ["substation", "Substation"],
   ["governor", "Gas governor"],
   ["servicevalve", "Service valve"],
+  ["pumping", "Pumping station"],
   ["spannode", "Span node"],
   ["linkbox", "Link box"],
   ["column", "Lighting column"],
+  ["lantern", "Lantern"],
   ["shape", "Shape"],
 ];
 

@@ -15,7 +15,7 @@ import {
   spanContents, callOffUtilities, utilityIdsFor,
   spanDigEstimate, rangeDigEstimate, contentsText,
 } from "./src/features/gis/spanContents.js";
-import { toCallOffRows } from "./src/features/gis/mainsCallOff.js";
+import { toCallOffRows, spansBetween } from "./src/features/gis/mainsCallOff.js";
 import { UTILITIES } from "./src/lib/utilities.js";
 
 let bad = 0;
@@ -235,6 +235,68 @@ const SITE = [
   const bare = [line(1, [[0, 0], [100, 0]], { lk: "trench", lt: "trench_main" })];
   if (contentsText([1], bare, opts) !== null) {
     fail("an empty trench produced a contents line");
+  }
+}
+
+// 10. A span is drawn all the way to its far node, whichever way the
+//     trench sections were drawn.
+//
+//     clipBetween returns points in the order they lie along the trench,
+//     which is the order somebody drew it — not the order the route
+//     crosses it. A section drawn back towards the previous node came
+//     out reversed, and joining it dropped the point at the far node
+//     instead of the duplicated corner: the last few metres of the span
+//     were never drawn.
+//
+//     It showed on some runs and not others because it depends on which
+//     way that section happened to be drawn, and it got likelier as
+//     splitting at span nodes turned long trenches into more sections.
+{
+  const node = (id, at, label) => ({
+    Feature_ID: id, Feature_Type: "point", Feature_Role: "spannode",
+    Geometry: [at], Attributes: { Span_Label: label, Span_Anchor: at },
+  });
+  const trench = (id, g) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: g, Attributes: { Line_Type: "trench_main" },
+  });
+
+  /* Two sections meeting at a corner 77m along an 84m run. The second
+     is drawn each way round; the span must reach A7 either way. */
+  for (const [how, second] of [
+    ["drawn forwards", [[77, 0], [84, 0]]],
+    ["drawn backwards", [[84, 0], [77, 0]]],
+  ]) {
+    const feats = [
+      trench(1, [[0, 0], [77, 0]]), trench(2, second),
+      node(10, [0, 0], "A5"), node(11, [84, 0], "A7"),
+    ];
+    const sp = spansBetween(feats, { fromId: 10, toId: 11 }).spans[0];
+    if (!sp) { fail(`no span found with the second section ${how}`); continue; }
+
+    const end = sp.geometry[sp.geometry.length - 1];
+    if (Math.abs(end[0] - 84) > 0.01) {
+      fail(`with the second section ${how}, the span stops `
+        + `${(84 - end[0]).toFixed(1)}m short of A7`);
+    }
+    if (Math.abs(sp.geometry[0][0]) > 0.01) {
+      fail(`with the second section ${how}, the span does not start at A5`);
+    }
+
+    /* And it runs one way throughout — a piece joined backwards doubles
+       back on itself, which draws as a spike rather than a run. */
+    for (let i = 1; i < sp.geometry.length; i++) {
+      if (sp.geometry[i][0] < sp.geometry[i - 1][0] - 0.01) {
+        fail(`with the second section ${how}, the drawn span doubles back`);
+        break;
+      }
+    }
+
+    /* The length was always right — only the drawing was short, which
+       is why nothing else complained. */
+    if (Math.abs(sp.lengthM - 84) > 0.1) {
+      fail(`with the second section ${how}, the span measured ${sp.lengthM}m`);
+    }
   }
 }
 

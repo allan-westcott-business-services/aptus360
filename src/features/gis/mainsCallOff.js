@@ -552,8 +552,30 @@ export function spansBetween(features = [], opts = {}) {
         /* The trench under this span, piece by piece — one clip per
            trench it crosses, joined end to end. */
         geometry: sp.parts.flatMap((part, i) => {
-          const g = clipBetween(part.trench?.Geometry || [],
-            adj.points[part.from].at, adj.points[part.to].at);
+          const fromAt = adj.points[part.from].at;
+          const raw = clipBetween(part.trench?.Geometry || [],
+            fromAt, adj.points[part.to].at);
+
+          /* Turned to face the way the route is walked.
+
+             clipBetween returns its points in the order they lie along
+             the trench, which is the order that trench was drawn in —
+             not the order this route crosses it. A section drawn from
+             A7 back towards the corner is walked the other way, and its
+             clip comes back reversed.
+
+             Joining a reversed piece put its far end first, so the
+             slice below dropped the point at A7 instead of the
+             duplicated corner — and the last seven metres of the span
+             simply were not drawn. It showed on some runs and not
+             others because it depends on which way somebody happened to
+             draw that section, and it got more likely as splitting at
+             span nodes turned long trenches into more sections. */
+          const g = raw.length > 1
+            && dist(raw[0], fromAt) > dist(raw[raw.length - 1], fromAt)
+            ? [...raw].reverse()
+            : raw;
+
           /* The join between two pieces would otherwise be drawn twice,
              which shows as a blob at every corner. */
           return i === 0 ? g : g.slice(1);

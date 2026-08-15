@@ -10,7 +10,7 @@
    nothing for the cascade to resolve against and a subject is presented
    for it — which is fine so long as nothing else can present the same
    one, and that is most of what is checked here. */
-import { readFileSync } from "node:fs";
+import { readFileSync, readdirSync } from "node:fs";
 import { resolveStyle, appearance } from "./src/lib/gisStyle.js";
 
 let bad = 0;
@@ -169,8 +169,19 @@ const resolve = (styles, ctx = {}) => resolveStyle(SUBJECT, styles, ctx);
   /* And every role the constraint allows, so the list cannot fall
      behind again. Read from the migration rather than written out
      twice. */
-  const lanterns = readFileSync("./supabase/migrations/0165_lanterns.sql", "utf8");
-  const check = lanterns.match(/CHECK \("Feature_Role" IN\s*\(([^)]*)\)/s);
+  /* Read from the newest migration that states the constraint, not a
+     named one: 0165 stated it, 0168 restated it, and a check pinned to
+     the older file would compare the screen against a list that is no
+     longer in force. */
+  const latest = readdirSync("./supabase/migrations")
+    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => readFileSync(`./supabase/migrations/${f}`, "utf8")
+      .includes('CHECK ("Feature_Role" IN'))
+    .sort()
+    .at(-1);
+  if (!latest) fail("no migration states the role constraint");
+  const constraintSql = readFileSync(`./supabase/migrations/${latest}`, "utf8");
+  const check = constraintSql.match(/CHECK \("Feature_Role" IN\s*\(([^)]*)\)/s);
   if (!check) fail("cannot read the role constraint to compare against");
   else {
     for (const m of check[1].matchAll(/'([a-z]+)'/g)) {

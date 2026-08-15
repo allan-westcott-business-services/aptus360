@@ -1,15 +1,29 @@
-/* Columns and lanterns.
+/* Lighting columns.
 
-   A street lighting design is two objects. They are bought, installed
-   and replaced separately — a lantern is changed on a column that stays
-   where it is — so they are two features and two rows on the bill.
+   A street lighting design is columns. The lantern was briefly an object
+   of its own — placed onto a column and linked back to it — and is now
+   fields on the column instead.
 
-   The rule between them is one-directional and this file is mostly
-   about it: a lantern must have a column, a column need not have a
-   lantern, and the lantern sits on top rather than being connected to
-   it. */
+   The argument for two objects was that a lantern is changed on a
+   column that stays where it is. True, and not worth what it cost: a
+   lantern sits at its column's point, is placed at the same moment and
+   is read on the same row, so the second object bought an association
+   to keep honest and little else.
+
+   So much of this file is about the lantern staying gone. A removed
+   object leaves a shape behind, and half-removing one — a role nothing
+   can place, a style nothing wears, a menu item that does nothing — is
+   worse than either keeping it or being rid of it. */
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+
+let bad = 0;
+const fail = (m) => { console.log("  FAIL " + m); bad++; };
+
+const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+const sql = readFileSync(
+  "./supabase/migrations/0168_lantern_fields_on_column.sql", "utf8");
+const admin = readFileSync("./src/features/admin/GisStylesAdmin.jsx", "utf8");
 
 const filesUnder = (dir) => {
   const out = [];
@@ -22,50 +36,97 @@ const filesUnder = (dir) => {
   return out;
 };
 
-let bad = 0;
-const fail = (m) => { console.log("  FAIL " + m); bad++; };
-
-const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-const sql = readFileSync("./supabase/migrations/0165_lanterns.sql", "utf8");
-const lighting = readFileSync("./src/features/gis/lightingView.js", "utf8");
-
-// 1. The role exists in the database.
+// 1. A column is placed where it is clicked.
 //
-//    Feature_Role is constrained, so a lantern written without this
-//    fails on insert rather than appearing and behaving oddly.
+//    placeNode puts a thing in the middle of the view, which is right
+//    for one substation and wrong for a hundred columns.
 {
-  const check = sql.match(/CHECK \("Feature_Role" IN\s*\(([^)]*)\)/s);
-  if (!check) fail("the migration does not restate the role constraint");
+  const at = canvas.indexOf("async function placeLightingColumn");
+  if (at < 0) fail("nothing places a lighting column");
   else {
-    /* Every role the application writes, read out of the source rather
-       than listed here.
+    const body = canvas.slice(at, canvas.indexOf("\n  async function", at + 10));
+    if (!/Geometry: \[point\]/.test(body)) fail("a column is not placed where it is clicked");
+    if (!/Feature_Role: "column"/.test(body)) fail("a column is not written as a column");
+    if (!/Layer_Key: "lighting"/.test(body)) fail("a column is not on the lighting layer");
 
-       The constraint is restated in full each time a role is added, so
-       each migration carries a copy of every role before it — and the
-       copy is only as good as the one it was taken from. This one was
-       taken from 0105, which predates servicevalve and pumping, and
-       dropping them failed the ALTER against rows that had been legal
-       for months.
+    /* The column's own fields, and the lantern's, on one object. */
+    for (const attr of ["Column_Ref", "Height_m", "Material", "Bracket_Length_m",
+      "Lantern_Type", "Wattage_W", "Mounting"]) {
+      if (!body.includes(attr)) fail(`a column has nowhere to record ${attr}`);
+    }
+    /* Blank, not guessed. A height nobody entered is not 6m, and a
+       drawing that invents one is worse than one admitting it does not
+       know. */
+    if (/(Height_m|Wattage_W): [0-9]/.test(body)) {
+      fail("a column's measurements are guessed rather than left blank");
+    }
+  }
+}
 
-       Reading the roles from the code is what makes that a test rather
-       than a second list to keep in step. */
-    const src = ["src", "netlify"].flatMap((d) => filesUnder(d));
+// 2. The lantern is gone from the drawing.
+{
+  /* Comments explaining why the lantern went are fine, and worth
+     keeping — so they are stripped before the scan rather than filtered
+     out line by line. Filtering by line missed the middle of a block
+     comment, whose lines start with ordinary text, and the check went
+     red over its own explanation. */
+  const code = canvas
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  const live = code.split("\n")
+    .filter((l) => /lantern/i.test(l))
+    .filter((l) => !/Lantern_Type/.test(l));
+  if (live.length) {
+    fail(`the canvas still does something with lanterns: ${live[0].trim().slice(0, 60)}`);
+  }
+  if (/placeLantern/.test(code)) fail("the lantern placer is still there");
+  if (/Column_Feature_ID/.test(code)) fail("the lantern's link to its column survives");
+  if (/role:lantern/.test(code)) fail("the Layers menu still lists lanterns");
+  if (/lantern/i.test(admin)) fail("the GIS Styles screen still offers a lantern");
+}
+
+// 3. And gone from the database.
+{
+  if (!/DELETE FROM "GIS_Feature" WHERE "Feature_Role" = 'lantern'/.test(sql)) {
+    fail("existing lanterns are left on the drawing");
+  }
+  if (!/DELETE FROM "GIS_Style" WHERE "Feature_Role" = 'lantern'/.test(sql)) {
+    fail("the lantern style row is left behind");
+  }
+  /* Deleted before the constraint is restated, or the ALTER refuses a
+     role that rows still carry. */
+  const del = sql.indexOf('DELETE FROM "GIS_Feature"');
+  const alter = sql.indexOf("ADD CONSTRAINT");
+  if (del < 0 || alter < 0 || del > alter) {
+    fail("the constraint is restated before the lanterns are deleted");
+  }
+}
+
+// 4. The role constraint still allows everything the app writes.
+//
+//    Restated in full each time a role changes, so each migration
+//    carries a copy of every role before it — and the copy is only as
+//    good as the one it was taken from. 0165 took its list from 0105 and
+//    dropped servicevalve and pumping, which had been writing rows for
+//    months.
+{
+  const latest = readdirSync("./supabase/migrations")
+    .filter((f) => f.endsWith(".sql"))
+    .filter((f) => readFileSync(join("./supabase/migrations", f), "utf8")
+      .includes('CHECK ("Feature_Role" IN'))
+    .sort()
+    .at(-1);
+  const check = readFileSync(join("./supabase/migrations", latest), "utf8")
+    .match(/CHECK \("Feature_Role" IN\s*\(([^)]*)\)/s);
+
+  if (!check) fail("the newest migration does not state the role constraint");
+  else {
+    /* Read from the source: every role written onto a feature. Scanning
+       every mention would be too broad — the boundary point presents a
+       style subject shaped like a feature and writes nothing. */
     const used = new Set(["shape"]);
-    for (const f of src) {
+    for (const f of ["src", "netlify"].flatMap(filesUnder)) {
       const t = readFileSync(f, "utf8");
-      /* Only roles written onto a feature.
-
-         Scanning every `Feature_Role: "x"` in the source was too broad:
-         the boundary point presents a style subject shaped like a
-         feature — { Layer_Key: "plot", Feature_Role: "boundary" } — to
-         get at the style cascade, and nothing of that role is ever
-         written. The check read it as a role the app creates and
-         demanded it in the constraint.
-
-         So the scan walks createFeature calls, which is where a role
-         reaches the table. A role that only ever appears in a
-         comparison is one the app reads and something else wrote, and
-         that something else is a createFeature somewhere. */
       for (const m of t.matchAll(/createFeature\(/g)) {
         const open = t.indexOf("{", m.index);
         if (open < 0) continue;
@@ -75,137 +136,42 @@ const lighting = readFileSync("./src/features/gis/lightingView.js", "utf8");
           if (t[i] === "{") depth += 1;
           else if (t[i] === "}") { depth -= 1; if (!depth) { end = i; break; } }
         }
-        const block = t.slice(open, end + 1);
-        for (const r of block.matchAll(/Feature_Role:\s*"([a-z]+)"/g)) used.add(r[1]);
+        for (const r of t.slice(open, end + 1).matchAll(/Feature_Role:\s*"([a-z]+)"/g)) {
+          used.add(r[1]);
+        }
       }
     }
-    if (used.size < 5) fail(`only ${used.size} role(s) found in the source — the scan is broken`);
+    if (used.size < 5) {
+      fail(`only ${used.size} role(s) found in the source — the scan is broken`);
+    }
     for (const role of [...used].sort()) {
       if (!check[1].includes(`'${role}'`)) {
         fail(`${role} is written by the app but missing from the role constraint`);
       }
     }
-    if (!check[1].includes("'lantern'")) fail("lantern is missing from the role constraint");
-  }
-  /* And a symbol of its own. A lantern is drawn at its column's point,
-     so one taking the column's circle would be invisible under it. */
-  if (!/'lantern'/.test(sql) || !/GIS_Style/.test(sql)) {
-    fail("the lantern has no symbol of its own");
-  }
-}
-
-// 2. A lantern is placed onto a column, and cannot be placed anywhere
-//    else.
-//
-//    The click that says which column is the click that places it, so
-//    there is no way to make an orphan and no field to forget.
-{
-  const fn = canvas.slice(canvas.indexOf("async function placeLantern"));
-  const body = fn.slice(0, fn.indexOf("\n  async function"));
-
-  if (!/Column_Feature_ID: Number\(column\.Feature_ID\)/.test(body)) {
-    fail("a lantern is not linked to the column it was placed on");
-  }
-  /* The column's point, not the click's. One thing on the ground has
-     one position. */
-  if (!/const at = \(column\.Geometry \|\| \[\]\)\[0\]/.test(body)
-    || !/Geometry: \[at\]/.test(body)) {
-    fail("a lantern does not take its column's position");
-  }
-  /* Deliberately not the network graph. A lantern on a column is not an
-     electrical junction, and putting it in Connects would send the
-     circuit trace up the column and back down. */
-  if (/Connects/.test(body)) {
-    fail("a lantern writes into Connects, which is the network graph");
-  }
-
-  /* The click handler refuses anything that is not a column. */
-  const click = canvas.slice(canvas.indexOf("if (lightingPlace) {"));
-  const branch = click.slice(0, click.indexOf("if (meterCatchUp"));
-  if (!/hit\?\.Feature_Role === "column"/.test(branch)) {
-    fail("a lantern can be placed on something that is not a column");
-  }
-  if (!/Click a lighting column/.test(branch)) {
-    fail("clicking the wrong thing in lantern mode says nothing");
+    /* The two that 0165 restored are still in it. */
+    for (const role of ["servicevalve", "pumping"]) {
+      if (!check[1].includes(`'${role}'`)) fail(`${role} was dropped again`);
+    }
+    if (check[1].includes("'lantern'")) fail("the lantern role is still allowed");
   }
 }
 
-// 3. A column is placed where it is clicked.
-//
-//    placeNode puts a thing in the middle of the view, which is right
-//    for one substation and wrong for a hundred columns.
-{
-  const fn = canvas.slice(canvas.indexOf("async function placeLightingColumn"));
-  const body = fn.slice(0, fn.indexOf("\n  async function"));
-  if (!/Geometry: \[point\]/.test(body)) fail("a column is not placed where it is clicked");
-  if (!/Feature_Role: "column"/.test(body)) fail("a column is not written as a column");
-  if (!/Layer_Key: "lighting"/.test(body)) fail("a column is not on the lighting layer");
-
-  /* Something to record against each, left blank. A height nobody
-     entered is not 6m, and a drawing that invents one is worse than one
-     admitting it does not know. */
-  for (const attr of ["Height_m", "Material", "Column_Ref"]) {
-    if (!body.includes(attr)) fail(`a column has nowhere to record ${attr}`);
-  }
-  if (/Height_m: [0-9]/.test(body)) fail("a column's height is guessed rather than left blank");
-}
-
-// 4. Deleting a column takes its lanterns.
-//
-//    The one place the rule is easiest to break: they sit at the same
-//    point, so an orphaned lantern looks exactly like the column that is
-//    no longer there.
-{
-  const fn = canvas.slice(canvas.indexOf("async function removeSelected"));
-  const body = fn.slice(0, fn.indexOf("\n  // keyboard"));
-
-  if (!/Feature_Role === "lantern"/.test(body) || !/goneColumns/.test(body)) {
-    fail("deleting a column leaves its lanterns behind");
-  }
-  /* Said out loud. Taking something the person did not select is worth
-     a sentence, even when it is the only sensible thing to do. */
-  if (!/window\.confirm/.test(body) || !/lantern\(s\) sit on the column/.test(body)) {
-    fail("lanterns are deleted with their column without saying so");
-  }
-  /* And the extra ids actually reach the delete, rather than only the
-     selection. */
-  if (!/deleteFeatures\(projectId, ids\)/.test(body)) {
-    fail("the orphaned lanterns are named but not deleted");
-  }
-  /* The undo record covers them too, or they cannot come back. */
-  if (!/const rows = features\.filter\((\(f\)) => ids\.includes/.test(body)) {
-    fail("the undo record does not cover the lanterns taken with the column");
-  }
-}
-
-// 5. Both show on the street lighting drawing.
-//
-//    They are on the lighting layer, which that view keeps whole — but
-//    it is the drawing they exist for, so it is worth pinning.
-{
-  if (!/f\?\.Layer_Key === "lighting"\) return true/.test(lighting)) {
-    fail("the lighting drawing no longer keeps its own layer");
-  }
-}
-
-// 6. The modes cannot both be on, and Escape leaves them.
+// 5. The mode can be left, and does not fight the other one.
 {
   if (!/const \[lightingPlace, setLightingPlace\] = useState\(null\)/.test(canvas)) {
-    fail("column and lantern placement are not one mode");
-  }
-  /* Entering either clears the meter mode, or a click would do whichever
-     was checked first. */
-  const menu = canvas.slice(canvas.indexOf('label="Street Lighting"'));
-  const head = menu.slice(0, menu.indexOf('<MenuGroup label="Show or Hide" />'));
-  if ((head.match(/setMeterCatchUp\(null\)/g) || []).length < 2) {
-    fail("entering a lighting mode does not clear the meter mode");
+    fail("there is no column placement mode");
   }
   if (!/e\.key === "Escape" && lightingPlace/.test(canvas)) {
-    fail("Escape does not leave the lighting placement mode");
+    fail("Escape does not leave the column placement mode");
+  }
+  const menu = canvas.slice(canvas.indexOf('label="Street Lighting"'));
+  const head = menu.slice(0, menu.indexOf('<MenuGroup label="Show or Hide" />'));
+  if (!/setMeterCatchUp\(null\)/.test(head)) {
+    fail("entering column placement does not clear the meter mode");
   }
 }
 
 console.log(bad ? `\n${bad} problem(s)`
-  : "Columns and lanterns behave (a lantern has a column, takes its point, "
-    + "and goes with it).");
+  : "Lighting columns behave (placed where clicked, lantern fields on them).");
 process.exit(bad ? 1 : 0);

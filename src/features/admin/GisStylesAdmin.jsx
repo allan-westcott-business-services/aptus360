@@ -53,9 +53,9 @@ const BLANK = {
    The list matches the CHECK constraint on GIS_Feature."Feature_Role",
    last set by migration 0165. A role added there wants adding here too,
    or it arrives on the drawing with no way to style it — which is
-   exactly what happened to the service valve, the pumping station and
-   the lantern, each added to the drawing and left unstylable until
-   somebody noticed.
+   exactly what happened to the service valve and the pumping station,
+   both added to the drawing and left unstylable until somebody
+   noticed.
 
    ── One entry that is not a role ──
 
@@ -82,7 +82,6 @@ const ROLES = [
   ["spannode", "Span node"],
   ["linkbox", "Link box"],
   ["column", "Lighting column"],
-  ["lantern", "Lantern"],
   ["shape", "Shape"],
 ];
 

@@ -204,16 +204,15 @@ export default function GISCanvasPage() {
      missing. Null when not in the mode. */
   const [meterCatchUp, setMeterCatchUp] = useState(null);
 
-  /* Placing street lighting: "column" or "lantern", or null.
+  /* Placing lighting columns: "column", or null.
 
      A mode rather than a button, because a lighting design is a hundred
      columns at positions that matter — placeNode puts one thing in the
      middle of the view, which is right for the substation and wrong
      here.
 
-     One piece of state for both, so the two cannot be on at once: a
-     click that might place either is a click that does whichever was
-     checked first. */
+     Named rather than a boolean because a mode with a name reads the
+     same whether there is one of them or three. */
   const [lightingPlace, setLightingPlace] = useState(null);
   /* The click between the seed and the meters: where the property
      boundary is. { plot, seedPoint, tempId } */
@@ -1485,17 +1484,14 @@ export default function GISCanvasPage() {
 
      It lives there rather than here because it is a plain function of
      one feature, and a plain function of one feature can be checked
-     without a browser. The check that covered it while it was inline
-     had to keep its own copy, and that copy passed twice while the real
-     one was broken.
+     without a browser.
 
      ── How it turns on ──
 
      Off `solo`, so there is no second piece of state to disagree with
      the first. Opening the lighting menu isolates lighting, which sets
      solo; opening any other utility menu sets it to that one, and Show
-     all layers clears it. Isolating lighting from the Layers menu gets
-     the same drawing, which is right — it is the same request. */
+     all layers clears it. */
   const lightingView = solo === "lighting" && shownOnly.length === 1;
 
   const visible = useMemo(
@@ -1519,10 +1515,7 @@ export default function GISCanvasPage() {
          Asked before the hidden keys rather than after, because the
          isolate that turned it on hid the electric layer wholesale — so
          honouring that here would take the LV mains and the substation
-         with it, which are the whole point of this view.
-
-         It is a complete answer for the same reason: while this drawing
-         is up, what is on screen is the list above and nothing else. */
+         with it, which are the whole point of this view. */
       if (lightingView) return inLightingView(f);
 
       const keys = f.Feature_Role === "spannode"
@@ -1570,66 +1563,43 @@ export default function GISCanvasPage() {
      there is nothing for the cascade to resolve against, and a subject
      is presented for it instead.
 
-     Nothing else can present that subject: a plot seed carries the role
-     'plot', so a real feature never reaches this row and this lookup
-     never reaches theirs.
+     Sized through appearance, like every other point: Symbol_Size_Px is
+     one of five fields the sizing uses, and reading it alone ignored
+     Draw to scale entirely — which is why a boundary point given a span
+     node's settings did not behave like one.
 
      Falling back to what the canvas drew before the row existed, so a
-     project whose database has not had 0166 applied looks exactly as it
-     did. */
+     project whose database has not had 0166 applied looks as it did. */
   const boundaryStyle = useMemo(() => {
     const resolved = resolveStyle(
       { Layer_Key: "plot", Feature_Role: "boundary" }, styles,
       { organisationId: standard || null },
     );
-    /* Sized through appearance, like every other point.
-
-       Reading Symbol_Size_Px straight off the row was wrong: that is one
-       of five fields the sizing uses, and it is the one that applies
-       only when Draw to scale is off. With it on, the size comes from
-       Symbol_Size_M multiplied by the zoom and held between
-       Min_Symbol_Px and Max_Symbol_Px — which is why a boundary point
-       given a span node's settings did not behave like one. It ignored
-       four of them.
-
-       appearance is the function that knows all five, and it is what
-       styleFor hands every other point. Using it means the boundary
-       point grows and shrinks on the same rules as everything else,
-       rather than on a copy of part of them. */
     const look = appearance(resolved, view.scale, { symbolPx: 9 });
-
     return {
       radiusPx: Number(look.symbolPx) > 0 ? Number(look.symbolPx) : 9,
       /* The zoom the lettered ring appears at. Below it the point is
-         still marked, with a tick — that is legibility rather than a
-         setting, so it is not on the row. */
+         still marked, with a tick — legibility rather than a setting. */
       minScale: Number.isFinite(Number(resolved.Min_Scale))
         ? Number(resolved.Min_Scale) : 3,
       ink: look.colour || resolved.Colour || BOUNDARY_INK,
       /* An inactive row resolves to nothing at all, so an empty result
          is either "turned off" or "never seeded". Told apart by asking
-         the styles directly: a row that exists and is off means off. */
+         the styles directly. */
       off: styles.some((x) => x.Layer_Key === "plot"
         && x.Feature_Role === "boundary" && x.Is_Active === false),
     };
   }, [styles, standard, view.scale]);
 
   const boundaryShown = useMemo(
-    /* Not on the street lighting drawing.
+    /* Not on the street lighting drawing. The boundary point is where a
+       plot's supplies enter it — a house connection, like the services
+       and meters already left off.
 
-       The boundary point is where a plot's supplies enter it, which is
-       a fact about a house connection — the same reason the services,
-       service joints and meters are left off that drawing.
-
-       Gated here rather than in inLightingView because this is not
-       drawn from a feature of its own. It is an attribute of the plot
-       seed, painted in a pass of its own over every plot, so hiding the
-       seeds does not take it with them — deliberately, since a boundary
-       point is worth reading on a drawing with the seeds turned off.
-
-       And it cannot be hidden by the isolate either: it answers to the
-       key "plot:boundary", which no feature carries, so the sweep that
-       builds the hidden set never sees it. */
+       Gated here rather than in inLightingView because it is not drawn
+       from a feature of its own, and it cannot be hidden by the isolate
+       either: it answers to the key "plot:boundary", which no feature
+       carries, so the sweep that builds the hidden set never sees it. */
     () => !lightingView && !boundaryStyle.off
       && !hidden.includes("plot:boundary"),
     [hidden, lightingView, boundaryStyle]);
@@ -4730,31 +4700,11 @@ export default function GISCanvasPage() {
 
        Checked before `placing` below, so catching up on an old plot is
        not mistaken for seeding a new one. */
-    /* ── Columns and lanterns ──
-
-       A column goes where it is clicked. A lantern goes on a column,
-       and is placed by clicking the column rather than by clicking the
-       ground: a lantern must have a column, so the click that says
-       which one is the click that places it. There is no way to make an
-       orphan and no field to forget.
-
-       The lantern takes the column's own point. There is one thing on
-       the ground and it has one position — two would be two answers to
-       where the light is, and the drawing would show a lantern drifting
-       off its column the moment either moved. */
-    if (lightingPlace) {
+    /* A column goes where it is clicked. */
+    if (lightingPlace === "column") {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
-
-      if (lightingPlace === "column") {
-        placeLightingColumn(point);
-        return;
-      }
-
-      const hit = featureAt(px, py);
-      if (hit?.Feature_Role === "column") { placeLantern(hit); return; }
-      setStatus("Click a lighting column to put a lantern on it");
-      setTimeout(() => setStatus(""), 3000);
+      placeLightingColumn(point);
       return;
     }
 
@@ -6532,67 +6482,29 @@ export default function GISCanvasPage() {
         Feature_Role: "column",
         Geometry: [point],
         Label: `Column ${n}`,
-        /* Somewhere to record what the column is. Blank rather than
-           guessed: a height nobody entered is not 6m, and a drawing
-           that invents one is worse than one that admits it does not
-           know. */
+        /* The column, and the lantern on it.
+
+           One object rather than two. A lantern is changed on a column
+           that stays where it is, which is an argument for modelling it
+           separately — but it sits at the same point, is placed at the
+           same moment and is read on the same row, so a second object
+           buys an association to keep honest and little else.
+
+           Blank rather than guessed: a height nobody entered is not 6m,
+           and a drawing that invents one is worse than one that admits
+           it does not know. */
         Attributes: {
           Column_Ref: null,
           Height_m: null,
           Material: null,
           Bracket_Length_m: null,
-        },
-      });
-      await load(projectId);
-      setStatus(`Column ${n} placed \u00b7 Esc to stop`);
-      setError("");
-    } catch (e) { setError(e.message); }
-  }
-
-  /* A lantern, on the column that was clicked.
-
-     Takes the column's point, not the click's: a lantern sits on top of
-     its column, and placing it a few centimetres off because that is
-     where the mouse was would put two answers on the drawing for where
-     one light is.
-
-     Column_Feature_ID on the lantern rather than a list on the column,
-     because that is how the rule reads — a lantern must have a column,
-     a column need not have a lantern, and a column carrying a twin head
-     does not have to change to gain the second one.
-
-     Deliberately not Connects. That is the network graph, and a lantern
-     sitting on a column is not an electrical junction; putting it there
-     would send the circuit trace up the column and back down. */
-  async function placeLantern(column) {
-    const at = (column.Geometry || [])[0];
-    if (!at) { setError("That column has no position to sit on."); return; }
-
-    const on = features.filter((f) => f.Feature_Role === "lantern"
-      && Number(f.Attributes?.Column_Feature_ID) === Number(column.Feature_ID));
-    const n = features.filter((f) => f.Feature_Role === "lantern").length + 1;
-
-    try {
-      await createFeature(projectId, {
-        Layer_Key: "lighting",
-        Feature_Type: "point",
-        Feature_Role: "lantern",
-        Geometry: [at],
-        Label: `Lantern ${n}`,
-        Attributes: {
-          Column_Feature_ID: Number(column.Feature_ID),
           Lantern_Type: null,
           Wattage_W: null,
           Mounting: null,
         },
       });
       await load(projectId);
-      /* Said when it is the second, because a twin head is ordinary and
-         a second lantern on the wrong column is not — and the two look
-         identical on screen, being at the same point. */
-      setStatus(`Lantern ${n} on ${column.Label ?? "the column"}`
-        + (on.length ? ` \u00b7 that column now carries ${on.length + 1}` : "")
-        + " \u00b7 Esc to stop");
+      setStatus(`Column ${n} placed \u00b7 Esc to stop`);
       setError("");
     } catch (e) { setError(e.message); }
   }
@@ -11957,31 +11869,9 @@ export default function GISCanvasPage() {
     if (withPlots.length && !window.confirm(
       `${withPlots.length} of these are plot markers. Deleting removes the marker, not the plot. Continue?`
     )) return;
-    /* A lantern cannot exist without its column.
-
-       Deleting a column and leaving its lanterns behind would break
-       that in the one place it is easiest to break: they sit at the
-       same point, so an orphaned lantern looks exactly like the column
-       that is no longer there. Said out loud rather than done quietly —
-       taking something the person did not select is worth a sentence,
-       even when it is the only sensible thing to do. */
-    const goneColumns = new Set(features
-      .filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "column")
-      .map((f) => Number(f.Feature_ID)));
-    const orphaned = goneColumns.size
-      ? features.filter((f) => f.Feature_Role === "lantern"
-        && goneColumns.has(Number(f.Attributes?.Column_Feature_ID))
-        && !selected.includes(f.Feature_ID))
-      : [];
-    if (orphaned.length && !window.confirm(
-      `${orphaned.length} lantern(s) sit on the column(s) being deleted. `
-      + "A lantern cannot exist without its column, so they go too. Continue?"
-    )) return;
-
-    const ids = [...selected, ...orphaned.map((f) => f.Feature_ID)];
-    const rows = features.filter((f) => ids.includes(f.Feature_ID));
+    const rows = features.filter((f) => selected.includes(f.Feature_ID));
     try {
-      await deleteFeatures(projectId, ids);
+      await deleteFeatures(projectId, selected);
       await recordAction(`Delete ${rows.length} feature(s)`, rows, []);
       setSelected([]);
       await load(projectId);
@@ -13042,10 +12932,7 @@ export default function GISCanvasPage() {
                       <Menu key={key} id={key} label={layer?.Label ?? name}
                         open={open} setOpen={setOpen}
                         /* Isolated whether or not there is any of it —
-                           see the note on Electric above. Opening Water
-                           on a site with no water used to leave the
-                           previous utility on screen, which answered a
-                           question nobody asked. */
+                           see the note on Electric above. */
                         onOpen={() => soloClass(key, true)}>
                         {/* Drawing first, because it is what somebody
                             opens this menu to do. The Electric and
@@ -13212,16 +13099,10 @@ export default function GISCanvasPage() {
                     /* Isolated on opening, as the other utility menus
                        are. It had no isolate at all rather than a
                        guarded one, so opening it left whatever was on
-                       screen exactly where it was — the same wrong
-                       answer the guard gave elsewhere, arrived at by
-                       doing nothing instead of by checking first.
-
-                       A utility menu should show that utility. There is
-                       no version of that which depends on how much of it
-                       has been drawn. */
+                       screen exactly where it was. */
                     onOpen={() => soloClass("lighting", true)}>
-                    {/* Drawing first, as on the other utility menus:
-                        it is what somebody opens this to do. */}
+                    {/* Drawing first, as on the other utility menus: it
+                        is what somebody opens this to do. */}
                     <MenuGroup label="Draw" />
                     <MenuItem label={lightingPlace === "column"
                       ? "Placing Columns\u2026" : "Place Lighting Columns"}
@@ -13231,29 +13112,13 @@ export default function GISCanvasPage() {
                       keepOpen
                       onClick={() => {
                         setLightingPlace(lightingPlace === "column" ? null : "column");
+                        /* Clear of anything else that wants clicks — two
+                           placement modes at once is a click that does
+                           whichever was checked first. */
                         setMeterCatchUp(null); setMeterFor(null);
                         setTool("select"); setSelected([]);
                         setStatus(lightingPlace === "column" ? ""
                           : "Click where each column goes \u00b7 Esc to stop");
-                      }} />
-                    {/* Lanterns are placed onto columns, so the item is
-                        absent until there is a column to place one on.
-                        A mode that can only say "click a column" is not
-                        worth entering. */}
-                    <MenuItem label={lightingPlace === "lantern"
-                      ? "Placing Lanterns\u2026" : "Place Lanterns"}
-                      hint={classCount["role:column"]
-                        ? "Click a column to put a lantern on it \u00b7 Esc to stop"
-                        : "No columns to put one on yet"}
-                      active={lightingPlace === "lantern"}
-                      disabled={!projectId || !classCount["role:column"]}
-                      keepOpen
-                      onClick={() => {
-                        setLightingPlace(lightingPlace === "lantern" ? null : "lantern");
-                        setMeterCatchUp(null); setMeterFor(null);
-                        setTool("select"); setSelected([]);
-                        setStatus(lightingPlace === "lantern" ? ""
-                          : "Click a column to put a lantern on it \u00b7 Esc to stop");
                       }} />
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />
@@ -13278,13 +13143,6 @@ export default function GISCanvasPage() {
                       shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                         onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                     ))}
-                    <MenuLayer label="Lanterns" count={classCount["role:lantern"] || 0}
-                      hidden={hidden.includes("role:lantern")}
-                      solo={solo === "role:lantern"}
-                      onHide={() => hideClass("role:lantern")}
-                      onShow={() => showClass("role:lantern")}
-                      shown={shownOnly.includes("role:lantern")}
-                      onSolo={() => soloClass("role:lantern")} />
                     <MenuLayer label="Columns" count={classCount["role:column"] || 0}
                       hidden={hidden.includes("role:column")}
                       solo={solo === "role:column"}
@@ -13663,8 +13521,8 @@ export default function GISCanvasPage() {
             lineTypes, surfaceTypes, lookups,
             utilities: lookups?.utilities || [],
             /* So a labour row lands under the same developer heading as
-               the pipe it is laying, rather than in every one of them
-               as shared plant. */
+               the pipe it is laying, rather than in every one of them as
+               shared plant. */
             developers,
             rates: digRates, depthBands: digDepthFactors, layRates: digLayRates,
           })}

@@ -470,11 +470,67 @@ export function spansBetween(features = [], opts = {}) {
       const near = Math.min(dStart, dEnd);
       if (near > attachM) continue;
       if (!svc || near < svc.near) {
-        svc = { near, far: dStart <= dEnd ? g[g.length - 1] : g[0] };
+        svc = {
+          near,
+          far: dStart <= dEnd ? g[g.length - 1] : g[0],
+          /* Kept, because what it is joined to is recorded on it. */
+          feature: t,
+        };
       }
     }
     if (!svc) continue;
-    tees.push({ meter: m, at: svc.far });
+
+    /* Which main it actually tees into.
+
+       Asked of the drawing rather than measured. Connects records what
+       a feature is joined to, worked out from the geometry and kept up
+       to date as things move — so the service trench already names the
+       main it runs into, and there is no need to guess from distance
+       which of several nearby mains that is.
+
+       Which matters, because near is not the same as connected. Two
+       mains meeting at a junction run within a metre or two of each
+       other either side of it, so a service joining one sits close to
+       both, and a call-off that took the first main it was near
+       collected plots off the branch nobody had selected — plot 16, fed
+       from past A14, turning up on a run that came within a metre and a
+       half of its joint.
+
+       Nearest is the fallback and only that: a service drawn before
+       links were recorded, or one whose links have not been recomputed
+       since it moved. It is a guess where the first is an answer, so it
+       is the second thing tried and not the first. */
+    let on = null;
+
+    const linked = (svc.feature?.Attributes?.Connects || []).map(Number);
+    if (linked.length) {
+      const joined = trenches.filter((t) => linked.includes(Number(t.Feature_ID)));
+      /* More than one where the service runs into a junction, which is
+         a real drawing and not a fault. The nearer of them is the one
+         it tees into; both are the same run to a gang either way. */
+      for (const t of joined) {
+        const d = along(svc.far, t.Geometry || []).d;
+        if (d == null) continue;
+        if (!on || d < on.d) on = { d, trench: t };
+      }
+    }
+
+    if (!on) {
+      for (const t of trenches) {
+        const g = t.Geometry || [];
+        if (g.length < 2) continue;
+        const d = along(svc.far, g).d;
+        if (d == null) continue;
+        if (!on || d < on.d) on = { d, trench: t };
+      }
+    }
+
+    tees.push({
+      meter: m,
+      at: svc.far,
+      onId: on?.trench?.Feature_ID ?? null,
+      onD: on?.d ?? null,
+    });
   }
 
   /* Each piece of the span, taken in turn — a plot tees into one of
@@ -508,6 +564,15 @@ export function spansBetween(features = [], opts = {}) {
 
       for (const t of tees) {
         if (claimed.has(t.meter.Feature_ID)) continue;
+
+        /* The main this service actually tees into, not one that
+           happens to pass nearby. Within a whisker of the nearest is
+           still this one — a joint on a junction is the same distance
+           from both mains that meet there, and floating point is not
+           going to make them equal. */
+        if (t.onId != null && part.trench.Feature_ID !== t.onId
+          && !(t.onD != null && Math.abs(along(t.at, g).d - t.onD) < 0.25)) continue;
+
         const hit = along(t.at, g);
         /* On this trench, not merely near it — a service teeing into
            the road behind lands within a metre or two of nothing on

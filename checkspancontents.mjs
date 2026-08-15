@@ -300,6 +300,75 @@ const SITE = [
   }
 }
 
+// 11. A plot belongs to the main it tees into, not one passing nearby.
+//
+//     Two mains meeting at a junction run within a metre or two of each
+//     other either side of it, so a service joining one sits close to
+//     both. Taking any main within reach collected plots off the branch
+//     nobody had selected — plot 16, fed from past A14, turned up on a
+//     run that only came within a metre and a half of its joint.
+{
+  const node = (id, at, l) => ({
+    Feature_ID: id, Feature_Type: "point", Feature_Role: "spannode",
+    Geometry: [at], Attributes: { Span_Label: l, Span_Anchor: at },
+  });
+  const tr = (id, g, lt, conn) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: g, Attributes: { Line_Type: lt || "trench_main", Connects: conn },
+  });
+  const meter = (id, at, label) => ({
+    Feature_ID: id, Feature_Type: "point", Feature_Role: "meter",
+    Geometry: [at], Plot_ID: id, Label: label,
+  });
+
+  /* A run along y=0, with a branch main heading north from a junction
+     halfway along it. Plot 16 tees into the branch, one and a half
+     metres from the run. */
+  const serviceTypes = new Set(["trench_service"]);
+  const site = (svcConnects) => [
+    tr(1, [[0, 0], [100, 0]]),
+    tr(2, [[50, 0], [50, 60]]),
+    tr(3, [[50, 1.5], [52, 6]], "trench_service", svcConnects),
+    meter(16, [52, 6], "16"),
+    node(10, [0, 0], "A5"), node(11, [100, 0], "A7"), node(12, [50, 60], "A14"),
+  ];
+  const plotsOn = (feats, fromId, toId) => spansBetween(feats,
+    { fromId, toId, serviceTypes, plotOf: (f) => f.Label })
+    .spans.flatMap((sp) => sp.plots);
+
+  /* The service records that it runs into the branch, so the run past
+     its joint does not get the plot. */
+  const joined = site([2]);
+  if (plotsOn(joined, 10, 11).includes("16")) {
+    fail("a plot fed from a branch was collected by the run passing its joint");
+  }
+  /* And it is still collected by the run that does feed it — the fix is
+     not "drop anything near a junction". */
+  if (!plotsOn(joined, 10, 12).includes("16")) {
+    fail("the plot was lost from the run that feeds it");
+  }
+
+  /* What is recorded wins over what is near. Same drawing, the service
+     joined to the run instead: now the run gets it, though nothing
+     about the distances changed. */
+  const other = site([1]);
+  if (!plotsOn(other, 10, 11).includes("16")) {
+    fail("a plot joined to the run was not collected by it");
+  }
+
+  /* And where nothing is recorded — a service drawn before links were
+     kept, or one whose links have not been recomputed since it moved —
+     the nearest main is the fallback. A guess, but the right one here,
+     and better than dropping the plot entirely. */
+  const unlinked = site(undefined);
+  if (plotsOn(unlinked, 10, 11).includes("16")) {
+    fail("with no recorded link, the nearest main did not decide");
+  }
+  if (!plotsOn(unlinked, 10, 12).includes("16")) {
+    fail("with no recorded link, the plot was lost altogether");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span contents behave (read off the trench, one entry per utility).");
 process.exit(bad ? 1 : 0);

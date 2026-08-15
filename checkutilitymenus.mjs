@@ -250,6 +250,35 @@ const onScreen = (keys) => {
   }
 }
 
+// 9. The property boundary point is off the lighting drawing.
+//
+//    It marks where a plot's supplies enter it — a house connection,
+//    like the services and meters already left off. It needs its own
+//    rule because it is not a feature: it is an attribute of the plot
+//    seed, painted in a pass of its own, so hiding the seeds does not
+//    take it with them and the isolate cannot see it at all. Its key,
+//    "plot:boundary", is carried by nothing, so the sweep that builds
+//    the hidden set never touches it.
+{
+  const at = canvas.indexOf("const boundaryShown = useMemo(");
+  if (at < 0) fail("nothing decides whether the boundary point is drawn");
+  else {
+    const body = canvas.slice(at, canvas.indexOf("[hidden", at) + 40);
+    if (!/!lightingView/.test(body)) {
+      fail("the boundary point is still drawn on the lighting drawing");
+    }
+    if (!/lightingView\]/.test(body)) {
+      fail("the boundary point does not re-read when the drawing changes");
+    }
+    /* And still shown everywhere else — a boundary point is worth
+       reading on a drawing with the plot seeds turned off, which is why
+       it does not simply follow them. */
+    if (!/!hidden\.includes\("plot:boundary"\)/.test(body)) {
+      fail("the boundary point no longer answers to its own switch");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility menus behave (an empty utility is shown as empty, not skipped).");
 process.exit(bad ? 1 : 0);

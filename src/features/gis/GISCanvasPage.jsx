@@ -1563,7 +1563,23 @@ export default function GISCanvasPage() {
      A boundary point is a fact about the plot. It goes when it is
      hidden, and not otherwise. */
   const boundaryShown = useMemo(
-    () => !hidden.includes("plot:boundary"), [hidden]);
+    /* Not on the street lighting drawing.
+
+       The boundary point is where a plot's supplies enter it, which is
+       a fact about a house connection — the same reason the services,
+       service joints and meters are left off that drawing.
+
+       Gated here rather than in inLightingView because this is not
+       drawn from a feature of its own. It is an attribute of the plot
+       seed, painted in a pass of its own over every plot, so hiding the
+       seeds does not take it with them — deliberately, since a boundary
+       point is worth reading on a drawing with the seeds turned off.
+
+       And it cannot be hidden by the isolate either: it answers to the
+       key "plot:boundary", which no feature carries, so the sweep that
+       builds the hidden set never sees it. */
+    () => !lightingView && !hidden.includes("plot:boundary"),
+    [hidden, lightingView]);
 
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */

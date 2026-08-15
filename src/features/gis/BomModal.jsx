@@ -310,12 +310,14 @@ export default function BomModal({
 
   /* Whose bill is on screen. "" is the whole site — the same rows added
      up without the split, so the parts always reconcile against it. */
-  /* "" is the whole site, a developer id is that developer's bill, and
-     "compare" is every developer's totals side by side. One piece of
-     state rather than a tab and a filter, because they are one choice:
-     what the panel is showing. */
+  /* "" is the whole site, a developer id is that developer's bill. One
+     piece of state rather than a tab and a filter, because they are one
+     choice: what the panel is showing.
+
+     There was a third, "compare", showing every developer's totals side
+     by side. Removed from the screen; the same table is still written
+     to the workbook, where a summary sheet costs nobody a click. */
   const [whose, setWhose] = useState("");
-  const comparing = whose === "compare";
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
 
@@ -357,11 +359,8 @@ export default function BomModal({
      total, and the whole point of splitting is that the parts add up. */
   const shown = useMemo(() => {
     /* Comparing is not a filter \u2014 that view totals every developer
-       and does not read this. Left as the whole site so the row count
-       and the empty state behind it stay truthful; treating "compare"
-       as a developer id would match nothing and quietly reduce this to
-       the shared plant alone. */
-    if (!whose || whose === "compare") return mergeRows(rows);
+       and does not read this. */
+    if (!whose) return mergeRows(rows);
     return mergeRows(rows.filter((r) =>
       String(r.developer_id ?? "") === whose || r.developer_id == null));
   }, [rows, whose]);
@@ -418,7 +417,11 @@ export default function BomModal({
       false,
     ));
     out.push(line("The whole site", rows, true));
-    return { rows: out, sharedLines: mergeRows(shared).length };
+    /* sharedLines went with the comparison table: it counted the shared
+       rows for a sentence explaining why the developer figures add up to
+       more than the site, and that sentence was on the tab now removed.
+       The rows themselves are still built, for the workbook. */
+    return { rows: out };
   }, [rows, developers]);
 
   /* ── No totals row ──
@@ -568,10 +571,7 @@ export default function BomModal({
                     className={`bom-tab${whose === d.id ? " on" : ""}`}
                     onClick={() => setWhose(d.id)}>{d.name}</button>
                 ))}
-                <button role="tab" aria-selected={comparing}
-                  className={`bom-tab${comparing ? " on" : ""}`}
-                  onClick={() => setWhose("compare")}>By developer</button>
-                {whose && !comparing && (
+                {whose && (
                   <span className="bom-who-n">
                     with the shared substation, POC and incomer
                   </span>
@@ -603,41 +603,7 @@ export default function BomModal({
                 </p>
               )}
 
-              {comparing && (
-                <div className="bom-cmp">
-                  <table className="bom-tbl">
-                    <thead>
-                      <tr>
-                        <th>Developer</th>
-                        <th className="num">Length (m)</th>
-                        <th className="num">Objects (no.)</th>
-                        <th className="num">Lines of detail</th>
-                      </tr>
-                    </thead>
-                    <tbody>
-                      {byDeveloper.rows.map((d) => (
-                        <tr key={d.key} className={d.isSite ? "site" : ""}>
-                          <td>{d.name}</td>
-                          <td className="num">{d.metres.toLocaleString()}</td>
-                          <td className="num">{d.objects.toLocaleString()}</td>
-                          <td className="num">{d.lines.toLocaleString()}</td>
-                        </tr>
-                      ))}
-                    </tbody>
-                  </table>
-                  {byDeveloper.sharedLines > 0 && (
-                    <p className="bom-cmp-note">
-                      {`Each developer's row includes the ${byDeveloper.sharedLines} `}
-                      {byDeveloper.sharedLines === 1 ? "line" : "lines"} of shared plant
-                      &mdash; the substation, POC and incomer &mdash; so a developer&rsquo;s
-                      bill can be read on its own. The site counts them once, so the
-                      developer rows add up to more than it.
-                    </p>
-                  )}
-                </div>
-              )}
-
-              {!comparing && groups.map((g) => {
+              {groups.map((g) => {
                 /* Null for a section with no colour behind it, and the
                    class goes with it — so the tinted rules never apply
                    with the variables they read left undefined, which
@@ -775,7 +741,6 @@ const CSS = `
 .bom-tab:hover { border-color: var(--accent); color: var(--text); }
 .bom-tab.on { background: var(--accent); border-color: var(--accent); color: #fff; }
 
-.bom-cmp { padding: 4px 0 2px; }
 /* A subtotal under the rows it adds up. Ruled above rather than
    shaded, so it reads as the end of those rows rather than as another
    one of them. */
@@ -787,11 +752,6 @@ const CSS = `
 .bom-tbl th { font: 700 10.5px inherit; color: var(--muted);
   text-transform: uppercase; letter-spacing: .04em; }
 .bom-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
-/* The site last and set apart: it is the total, not another developer. */
-.bom-tbl tr.site td { font-weight: 700; border-top: 2px solid var(--border);
-  border-bottom: 0; }
-.bom-cmp-note { font-size: 12px; color: var(--muted); line-height: 1.6;
-  margin: 10px 0 0; max-width: 78ch; }
 .bom-who label { font-size: 11px; color: var(--muted); }
 .bom-who select { border: 1px solid var(--border); border-radius: 6px; font: 600 12px inherit;
   padding: 4px 9px; }

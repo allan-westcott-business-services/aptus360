@@ -65,6 +65,7 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
 import { bomLabour } from "./bomLabour.js";
+import { serviceSizeFor } from "./serviceDefaults.js";
 import {
   spanContents, callOffUtilities, utilityIdsFor,
   rangeDigEstimate, contentsText,
@@ -1738,13 +1739,26 @@ export default function GISCanvasPage() {
     const layerKey = t?.Layer_Key ?? null;
     if (!layerKey) return {};
 
+    const isService = String(lineTypeKey).includes("service");
+
+    /* What a service is when nothing more specific has been said.
+
+       Asked last and answered first, so the scope below can overwrite
+       it. A project that wants 32mm water sets it on the outline design
+       and this never comes up.
+
+       Only for services, and only where the scope has not spoken. A
+       main is sized by the load it carries — leaving one unset is
+       honest when the calculation cannot run, and guessing at it would
+       put a number on a drawing that nothing had worked out. */
+    const floor = isService && serviceSizeFor(layerKey)
+      ? { Size: serviceSizeFor(layerKey) } : {};
+
     const layer = layers.find((l) => l.Layer_Key === layerKey);
-    if (!layer?.Utility_ID) return {};
+    if (!layer?.Utility_ID) return floor;
 
     const scope = scopeDefaults.find((sc) => Number(sc.Utility_ID) === Number(layer.Utility_ID));
-    if (!scope) return {};
-
-    const isService = String(lineTypeKey).includes("service");
+    if (!scope) return floor;
 
     if (layerKey === "electric") {
       const id = isService
@@ -1753,7 +1767,7 @@ export default function GISCanvasPage() {
       return id != null ? { VD_Cable_Size_ID: Number(id) } : {};
     }
     const size = isService ? scope.Default_Service_Size : scope.Default_Main_Size;
-    return size ? { Size: size } : {};
+    return size ? { Size: size } : floor;
   }, [lineTypes, layers, scopeDefaults]);
 
   /* Every line type on one layer, for that utility's menu. */

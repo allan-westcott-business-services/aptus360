@@ -43,6 +43,39 @@ import { ON_SITE, OFF_SITE } from "./boundary.js";
    the export reading differently from the modal it was taken from. */
 const SITE_ORDER = ["Off-site", "On-site", "Unclassified", ""];
 
+/* The order the utilities read in.
+
+   Alphabetical put Street Lighting between Gas and Water, which is an
+   order nobody thinks in. These are the trades in the order they are
+   spoken about — and lighting after water because it is the one that
+   hangs off another utility's network rather than having a main of its
+   own.
+
+   Labour last, after every material. It is not something to order, and
+   a bill reads as what is being bought followed by what it costs to put
+   in, not with the hours in the middle of the pipe.
+
+   Matched loosely, on letters alone, because the names come from the
+   Utility table and are somebody's to edit: "Street Lighting" and
+   "Street lighting" are the same trade, and a rename that added a
+   hyphen should not drop a section to the bottom. Anything not named
+   here sorts after those that are, alphabetically among themselves —
+   so a new utility appears in a sensible place rather than at the top. */
+const UTILITY_ORDER = ["Electric", "Gas", "Water", "Street Lighting", "Labour"];
+
+/* The site's place in the order, for the sheet as well as the screen.
+   The sections had this inline; the export was sorting sites by name. */
+const siteRank = (site) => {
+  const at = SITE_ORDER.indexOf(site);
+  return at < 0 ? SITE_ORDER.length : at;
+};
+
+const utilityRank = (name) => {
+  const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  const at = UTILITY_ORDER.findIndex((u) => norm(u) === norm(name));
+  return at < 0 ? UTILITY_ORDER.length : at;
+};
+
 /* ── The one colour with nowhere to live ──
 
    On-site trench is drawn in the trench layer's colour, and the bill
@@ -374,12 +407,10 @@ export default function BomModal({
       if (!out.has(key)) out.set(key, { site: r.site, utility: r.utility, items: [] });
       out.get(key).items.push(r);
     }
-    const rank = (x) => {
-      const i = SITE_ORDER.indexOf(x.site);
-      return i < 0 ? SITE_ORDER.length : i;
-    };
     return [...out.values()].sort((a, b) =>
-      rank(a) - rank(b) || a.utility.localeCompare(b.utility));
+      siteRank(a.site) - siteRank(b.site)
+      || utilityRank(a.utility) - utilityRank(b.utility)
+      || a.utility.localeCompare(b.utility));
   }, [shown]);
 
   const totalsFor = (items, unit) =>
@@ -452,8 +483,17 @@ export default function BomModal({
     const detailOf = (list) => [...list]
       /* Grouped as the bill groups them, then by size within each
          group: a sheet sorted by size alone would interleave the
-         electric and the water. */
-      .sort((a, b) => String(a.site ?? "").localeCompare(String(b.site ?? ""))
+         electric and the water.
+
+         Site and utility ranked the same way the sections are, not
+         alphabetically. Sorting the sheet by name put Street Lighting
+         between Gas and Water while the screen had it after — and a
+         workbook that reads differently from the panel it was exported
+         from is the kind of difference nobody notices until they are
+         comparing two printouts. */
+      .sort((a, b) => siteRank(a.site) - siteRank(b.site)
+        || String(a.site ?? "").localeCompare(String(b.site ?? ""))
+        || utilityRank(a.utility) - utilityRank(b.utility)
         || String(a.utility ?? "").localeCompare(String(b.utility ?? ""))
         || byItemSize(a.item, b.item))
       .map((r) => ({

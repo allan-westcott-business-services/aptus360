@@ -149,6 +149,57 @@ const modal = readFileSync("./src/features/gis/BomModal.jsx", "utf8");
   }
 }
 
+// 6. The sections read in trade order, not alphabetical order.
+//
+//    Alphabetical put Street Lighting between Gas and Water, which is an
+//    order nobody thinks in. Lighting goes after water because it hangs
+//    off another utility's network rather than having a main of its own,
+//    and Labour last because it is not something to order.
+{
+  const order = modal.match(/const UTILITY_ORDER = \[([^\]]*)\]/);
+  if (!order) fail("the sections have no stated order");
+  else {
+    const names = [...order[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    const at = (n) => names.indexOf(n);
+    if (at("Street Lighting") < at("Water")) {
+      fail("Street Lighting still comes before Water");
+    }
+    if (at("Water") < at("Gas") || at("Gas") < at("Electric")) {
+      fail(`the utilities read ${names.join(", ")}`);
+    }
+    if (at("Labour") !== names.length - 1) fail("Labour is not last");
+  }
+
+  /* Ranked rather than compared by name, or the order above would be
+     decoration.
+
+     Looked for inside the sections memo, not anywhere in the file: the
+     export sorts with the same expression, so a search across the whole
+     modal passed while the sections had lost it. */
+  const memo = modal.slice(modal.indexOf("const groups = useMemo("));
+  const sort = memo.slice(0, memo.indexOf("}, [shown]);"));
+  if (!/utilityRank\(a\.utility\) - utilityRank\(b\.utility\)/.test(sort)) {
+    fail("the sections are not sorted by the stated order");
+  }
+  if (!/siteRank\(a\.site\) - siteRank\(b\.site\)/.test(sort)) {
+    fail("the sections are not sorted by the site order");
+  }
+
+  /* And the workbook sorts the same way. A sheet that reads differently
+     from the panel it was exported from is the kind of difference nobody
+     notices until they are comparing two printouts. */
+  const detail = modal.slice(modal.indexOf("const detailOf ="));
+  const body = detail.slice(0, detail.indexOf(".map("));
+  if (!/utilityRank/.test(body)) fail("the Excel detail sheet ignores the section order");
+  if (!/siteRank/.test(body)) fail("the Excel detail sheet sorts sites by name");
+
+  /* Matched on letters alone, so a rename that adds a hyphen or a case
+     does not drop a section to the bottom. */
+  if (!/replace\(\/\[\^a-z\]\/g, ""\)/.test(modal)) {
+    fail("the utility order is matched too strictly to survive a rename");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Bill subtotals behave (mains only, in metres, at the size in force).");
 process.exit(bad ? 1 : 0);

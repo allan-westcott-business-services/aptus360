@@ -5370,14 +5370,20 @@ export default function GISCanvasPage() {
     return utilities.filter((u) => !has.has(u.layer_key));
   }, [features, utilities]);
 
-  /* How many plots are still short of one, for the line the mode shows.
+  /* How many plots are still short of a meter.
+
      Counted over the seeds on the drawing rather than the plot list, so
-     it says what can actually be clicked. */
-  const plotsMissingMeters = useMemo(() => {
-    if (!meterCatchUp) return 0;
-    return features.filter((f) => f.Feature_Role === "plot" && f.Plot_ID != null
-      && missingMetersFor(f.Plot_ID).length).length;
-  }, [meterCatchUp, features, missingMetersFor]);
+     it says what can actually be clicked.
+
+     Counted always, not only while the mode is on. It was skipped when
+     the mode was off, as a saving — and since the menu item that turns
+     the mode on only appears when this is above zero, the item could
+     never appear and the mode could never be reached. The saving was
+     one pass over the features; the cost was the whole feature. */
+  const plotsMissingMeters = useMemo(() =>
+    features.filter((f) => f.Feature_Role === "plot" && f.Plot_ID != null
+      && missingMetersFor(f.Plot_ID).length).length,
+  [features, missingMetersFor]);
 
   /* Seed first, then one click per meter — each landing exactly where
      it's clicked rather than being spaced automatically. Meters on a

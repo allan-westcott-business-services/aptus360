@@ -1249,6 +1249,32 @@ function Assignments({ row }) {
   }, [draft.Start_Date, draft.End_Date, draft.autoHalves, draft.autoEnd,
     draft.weekend, editing]);
 
+  /* The end date follows the day rows, while the rows are the form's.
+
+     Everything that changes the shape of a booking — the run it covers,
+     the start it moves to, whether the weekend is worked — changes
+     where the work finishes. Each of those was correcting the end date
+     its own way, and each got it wrong differently: moving a start from
+     the Saturday to the Monday slid the end two days as well, so two
+     days of work read as the 17th to the 20th while the rows
+     underneath, correctly, showed only the 17th and 18th.
+
+     So there is one rule instead of four. The rows are laid from the
+     estimate and the calendar; the field says where they end. It cannot
+     disagree with them because it is not worked out separately.
+
+     Only while the dates are still the ones the form put there. A date
+     somebody typed is theirs, and this stops following the moment it
+     stops matching. */
+  useEffect(() => {
+    if (editing != null) return;
+    if (!(draft.autoHalves > 0)) return;
+    if (draft.End_Date !== draft.autoEnd) return;
+    const end = schedule.end;
+    if (!end || end === draft.End_Date) return;
+    setDraft((d) => ({ ...d, End_Date: end, autoEnd: end }));
+  }, [schedule.end, draft.autoHalves, draft.End_Date, draft.autoEnd, editing]);
+
   /* Moving one assignment along.
 
      Written on the spot rather than through the edit form: a gang
@@ -2191,11 +2217,11 @@ function Assignments({ row }) {
                       Start_Date: e.target.value,
                       End_Date: slideEnd(d.Start_Date, d.End_Date, e.target.value),
                       /* Slid with it, so a booking moved a week later is
-                         still recognised as the length the estimate
-                         gave it. Without this, moving the start once
-                         would make every later change to the run leave
-                         the dates alone, on the grounds that somebody
-                         had typed them. */
+                         still recognised as one the form put there
+                         rather than one somebody typed. Where the
+                         estimate is driving, the effect below then
+                         corrects both to the day the work actually
+                         finishes. */
                       autoEnd: d.autoEnd
                         ? slideEnd(d.Start_Date, d.autoEnd, e.target.value)
                         : d.autoEnd,

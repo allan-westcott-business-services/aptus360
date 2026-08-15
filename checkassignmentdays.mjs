@@ -209,6 +209,53 @@ const MON = "2026-08-17";
   }
 }
 
+// 11. The end date is where the day rows end, however the form got
+//     there.
+//
+//     Moving the start, changing the run, working the weekend: each
+//     changes where the work finishes, and each was correcting the date
+//     its own way. Sliding the end by the same calendar days the start
+//     moved kept the span and lost the length — two days of work read as
+//     the 17th to the 20th while the rows showed the 17th and 18th.
+//
+//     One rule now: the rows are laid from the estimate, and the field
+//     says where they end. This checks the two can never part company.
+{
+  const laid = (start, n, weekend = {}) =>
+    layHalves(start, false, Array.from({ length: n }, () => ({})), weekend);
+
+  const starts = ["2026-08-14", "2026-08-15", "2026-08-16", "2026-08-17", "2026-08-21"];
+  for (const start of starts) {
+    for (let n = 1; n <= 12; n++) {
+      const rows = laid(start, n);
+      if (rows.end !== endAfterHalves(start, n)) {
+        fail(`${n} halves from ${start}: rows end ${rows.end}, `
+          + `field would say ${endAfterHalves(start, n)}`);
+      }
+    }
+  }
+
+  /* Moving the start does not stretch the booking. Two days of work is
+     two days of work wherever it begins. */
+  for (const start of starts) {
+    const rows = laid(start, 4);
+    const halves = rows.days.reduce((t, d) => t + (d.part === "Full" ? 2 : 1), 0);
+    if (halves !== 4) fail(`two days from ${start} was laid as ${halves / 2}`);
+    if (rows.days.length > 2) {
+      fail(`two days from ${start} spread over ${rows.days.length} days`);
+    }
+  }
+
+  /* And working the weekend shortens it rather than leaving the field
+     behind — the case that made one rule worth having instead of four. */
+  const weekend = { Sat: "Full", Sun: "Full" };
+  const overWeekend = laid("2026-08-15", 4, weekend);
+  const noWeekend = laid("2026-08-15", 4);
+  if (!(overWeekend.end <= noWeekend.end)) {
+    fail("working the weekend did not finish the booking sooner");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assignment end dates behave (per run, laid around weekends, dig phases only).");
 process.exit(bad ? 1 : 0);

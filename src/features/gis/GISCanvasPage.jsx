@@ -214,6 +214,15 @@ export default function GISCanvasPage() {
      Named rather than a boolean because a mode with a name reads the
      same whether there is one of them or three. */
   const [lightingPlace, setLightingPlace] = useState(null);
+
+  /* Connecting a column to a feeder: the column waiting for one, or
+     null.
+
+     Two clicks — the column, then the feeder it comes off. Kept as the
+     column rather than a boolean because the second click needs to know
+     which one it is connecting, and a mode that remembers nothing would
+     need the two clicks to be adjacent in time as well as in intent. */
+  const [connectColumn, setConnectColumn] = useState(null);
   /* The click between the seed and the meters: where the property
      boundary is. { plot, seedPoint, tempId } */
   const [boundaryFor, setBoundaryFor] = useState(null);
@@ -4700,6 +4709,41 @@ export default function GISCanvasPage() {
 
        Checked before `placing` below, so catching up on an old plot is
        not mistaken for seeding a new one. */
+    /* ── Connecting a column to a feeder ──
+
+       The column, then the feeder. Two clicks because there is a choice
+       to make: where two feeders run close together, the nearer one is
+       not always the one the column comes off, and a drawing that
+       decided for you would be wrong quietly.
+
+       The tee is the nearest point on the feeder to the column, not
+       where the second click landed. A service leaves the main at right
+       angles to it, and asking somebody to click that spot accurately
+       is asking them to do arithmetic with a mouse. */
+    if (lightingPlace === "connect") {
+      const hit = featureAt(px, py);
+
+      if (!connectColumn) {
+        if (hit?.Feature_Role === "column") {
+          setConnectColumn(hit);
+          setStatus(`${hit.Label ?? "Column"} \u00b7 now click the feeder it comes off`);
+          return;
+        }
+        setStatus("Click a lighting column to connect");
+        setTimeout(() => setStatus(""), 3000);
+        return;
+      }
+
+      if (hit?.Feature_Type === "line"
+        && hit.Attributes?.Line_Type === "elec_main") {
+        connectColumnToFeeder(connectColumn, hit);
+        return;
+      }
+      setStatus("Click an LV feeder \u00b7 Esc to stop");
+      setTimeout(() => setStatus(""), 3000);
+      return;
+    }
+
     /* A column goes where it is clicked. */
     if (lightingPlace === "column") {
       const raw = toM(px, py);
@@ -6507,6 +6551,103 @@ export default function GISCanvasPage() {
       setStatus(`Column ${n} placed \u00b7 Esc to stop`);
       setError("");
     } catch (e) { setError(e.message); }
+  }
+
+  /* A service cable from a feeder to a column, and the joint it tees
+     off at.
+
+     ── Two features, because there are two things ──
+
+     A cable in the ground and a joint on the main. Both are ordered,
+     both are installed, and both belong on the bill — the joint is not
+     a property of the cable any more than a tee is a property of a
+     pipe.
+
+     ── The tee is a perpendicular drop ──
+
+     Nearest point on the feeder to the column, worked out rather than
+     clicked. A service leaves the main at right angles, and asking
+     somebody to click that spot accurately is asking them to do
+     arithmetic with a mouse.
+
+     ── Connected, and this time meaning it ──
+
+     Nothing is written to say which feeder feeds this column. It does
+     not need to be: the service is drawn from a point on the feeder to
+     the column, and Connects is computed from geometry — so the link is
+     a fact about where the cable ends, kept true by the same pass that
+     keeps every other link true.
+
+     That is the opposite of the lantern, which sat on a column without
+     being joined to it. This is an electrical connection and the trace
+     should walk it. */
+  async function connectColumnToFeeder(column, feeder) {
+    const at = (column.Geometry || [])[0];
+    const g = feeder.Geometry || [];
+    if (!at || g.length < 2) {
+      setError("That column or feeder has no position to connect.");
+      return;
+    }
+
+    const foot = nearestOnPolyline(at, g);
+    if (!foot) { setError("Could not find a point on that feeder."); return; }
+
+    /* Already connected — said rather than silently drawn twice. Two
+       services to one column is a second cable somebody has to explain,
+       and the drawing would look identical. */
+    const already = features.some((f) => f.Feature_Type === "line"
+      && f.Attributes?.Line_Type === "light_service"
+      && (f.Geometry || []).some((p) =>
+        Math.hypot(p[0] - at[0], p[1] - at[1]) < 0.25));
+    if (already) {
+      setStatus(`${column.Label ?? "That column"} is already connected`);
+      setConnectColumn(null);
+      setTimeout(() => setStatus(""), 3000);
+      return;
+    }
+
+    setBusy("connect");
+    try {
+      /* The joint first. If the cable fails after it, the drawing has a
+         joint on a main with nothing coming off it — visible, and
+         somebody can delete it. The other order leaves a cable running
+         to a main it is not jointed into, which looks finished. */
+      await createFeature(projectId, {
+        Layer_Key: "electric",
+        Feature_Type: "point",
+        Feature_Role: "joint",
+        Geometry: [foot.q],
+        Attributes: {
+          Joint_Type: "service",
+          Joint_Code: JOINT_KINDS.service.code,
+          /* Marked as the lighting one. A service joint on a feeder is
+             a service joint whoever it feeds, but a bill that cannot
+             tell the street lighting from the houses cannot be split by
+             who is paying for it. */
+          For_Lighting: true,
+        },
+      });
+
+      await createFeature(projectId, {
+        Layer_Key: "lighting",
+        Feature_Type: "line",
+        Geometry: [foot.q, at],
+        Attributes: {
+          Line_Type: "light_service",
+          /* Sized when somebody sizes it. A lighting service is not
+             worked out from a load the way a feeder is, and a number
+             here would be one nothing had calculated. */
+          Size: null,
+        },
+      });
+
+      await load(projectId);
+      setConnectColumn(null);
+      setStatus(`${column.Label ?? "Column"} connected \u00b7 `
+        + "click the next column, or Esc to stop");
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(null); }
   }
 
   async function placeJoint(kind) {
@@ -11924,7 +12065,7 @@ export default function GISCanvasPage() {
          a half-finished plot does not leave the mode on with a meter
          still waiting for a click. */
       if (e.key === "Escape" && lightingPlace) {
-        setLightingPlace(null); setStatus(""); return;
+        setLightingPlace(null); setConnectColumn(null); setStatus(""); return;
       }
       if (e.key === "Escape" && (meterCatchUp || meterFor)) {
         setMeterCatchUp(null); setMeterFor(null); return;
@@ -13119,6 +13260,27 @@ export default function GISCanvasPage() {
                         setTool("select"); setSelected([]);
                         setStatus(lightingPlace === "column" ? ""
                           : "Click where each column goes \u00b7 Esc to stop");
+                      }} />
+                    {/* Connecting a column to the feeder that supplies
+                        it. Absent until there is a column to connect —
+                        a mode that can only say "click a column" is not
+                        worth entering. */}
+                    <MenuItem label={lightingPlace === "connect"
+                      ? "Connecting\u2026" : "Connect Column to Feeder"}
+                      hint={classCount["role:column"]
+                        ? "Click a column, then its feeder \u00b7 Esc to stop"
+                        : "No columns to connect yet"}
+                      active={lightingPlace === "connect"}
+                      disabled={!projectId || !classCount["role:column"]}
+                      keepOpen
+                      onClick={() => {
+                        const on = lightingPlace === "connect";
+                        setLightingPlace(on ? null : "connect");
+                        setConnectColumn(null);
+                        setMeterCatchUp(null); setMeterFor(null);
+                        setTool("select"); setSelected([]);
+                        setStatus(on ? ""
+                          : "Click a lighting column, then the feeder it comes off");
                       }} />
                     <div className="gm-sep" />
                     <MenuGroup label="Show or Hide" />

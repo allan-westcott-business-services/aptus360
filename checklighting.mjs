@@ -157,13 +157,102 @@ const filesUnder = (dir) => {
   }
 }
 
-// 5. The mode can be left, and does not fight the other one.
+// 5. A column connects to a feeder by a service cable and a joint.
+//
+//    Two features, because there are two things: a cable in the ground
+//    and a joint on the main. Both are ordered, both are installed, and
+//    both belong on the bill — the joint is not a property of the cable
+//    any more than a tee is a property of a pipe.
+{
+  const at = canvas.indexOf("async function connectColumnToFeeder");
+  if (at < 0) fail("nothing connects a column to a feeder");
+  else {
+    const body = canvas.slice(at, canvas.indexOf("\n  async function", at + 10));
+
+    /* The joint, on the electric layer where the feeder is. */
+    if (!/Feature_Role: "joint"/.test(body)) fail("no joint is made on the feeder");
+    if (!/Joint_Type: "service"/.test(body)) fail("the joint is not a service joint");
+    if (!/Layer_Key: "electric"/.test(body)) {
+      fail("the joint is not on the electric layer");
+    }
+    /* Marked as the lighting one, so a bill can be split by who pays. */
+    if (!/For_Lighting: true/.test(body)) {
+      fail("the joint cannot be told from a house service joint");
+    }
+
+    /* The cable, on the lighting layer, as a lighting service. */
+    if (!/Line_Type: "light_service"/.test(body)) {
+      fail("the connection is not drawn as a lighting service");
+    }
+    if (!/Layer_Key: "lighting"/.test(body)) {
+      fail("the service cable is not on the lighting layer");
+    }
+
+    /* From the tee to the column, and the tee is a perpendicular drop
+       rather than wherever the second click landed. */
+    if (!/nearestOnPolyline\(at, g\)/.test(body)) {
+      fail("the tee is not the nearest point on the feeder");
+    }
+    if (!/Geometry: \[foot\.q, at\]/.test(body)) {
+      fail("the service does not run from the tee to the column");
+    }
+
+    /* The joint before the cable. A cable running to a main it is not
+       jointed into looks finished; a joint with nothing coming off it
+       is visible and can be deleted. */
+    /* Compared on the creation, not on any mention: the guard above
+       reads light_service to see whether one already exists, and
+       matching that made this fire on correct code. */
+    if (body.indexOf('Feature_Role: "joint"')
+      > body.indexOf('Line_Type: "light_service"')) {
+      fail("the cable is created before the joint it tees off");
+    }
+
+    /* Nothing written to say which feeder feeds the column: the service
+       ends on it, and Connects is computed from geometry. A second
+       record of the same fact is a second thing to keep true. */
+    if (/Feeder_Feature_ID|Column_Feature_ID/.test(body)) {
+      fail("the connection is recorded twice — in the geometry and in a field");
+    }
+
+    /* Not sized. A lighting service is not worked out from a load the
+       way a feeder is, and a number here would be one nothing had
+       calculated. */
+    if (/Size: ["0-9]/.test(body)) fail("the service cable is given a guessed size");
+
+    /* Connected twice is said, not drawn. Two services to one column
+       look identical on the drawing and are a second cable somebody has
+       to explain. */
+    if (!/already connected/i.test(body)) {
+      fail("a column can be connected twice without being told");
+    }
+  }
+
+  /* It only offers itself when there is something to connect. */
+  const menu = canvas.slice(canvas.indexOf('label="Street Lighting"'));
+  const head = menu.slice(0, menu.indexOf('<MenuGroup label="Show or Hide" />'));
+  if (!/Connect Column to Feeder/.test(head)) {
+    fail("the Street Lighting menu does not offer the connection");
+  }
+  if (!/classCount\["role:column"\]/.test(head)) {
+    fail("the connect item is offered with no columns to connect");
+  }
+}
+
+// 6. The mode can be left, and does not fight the other one.
 {
   if (!/const \[lightingPlace, setLightingPlace\] = useState\(null\)/.test(canvas)) {
     fail("there is no column placement mode");
   }
   if (!/e\.key === "Escape" && lightingPlace/.test(canvas)) {
     fail("Escape does not leave the column placement mode");
+  }
+  /* And drops a half-finished pair. A column picked but no feeder
+     chosen would otherwise be waiting the next time the mode is
+     entered, and connect itself to the first line clicked. */
+  const esc = canvas.slice(canvas.indexOf('e.key === "Escape" && lightingPlace'));
+  if (!/setConnectColumn\(null\)/.test(esc.slice(0, 200))) {
+    fail("Escape leaves a column waiting for a feeder");
   }
   const menu = canvas.slice(canvas.indexOf('label="Street Lighting"'));
   const head = menu.slice(0, menu.indexOf('<MenuGroup label="Show or Hide" />'));

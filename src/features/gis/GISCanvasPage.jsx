@@ -52,6 +52,7 @@ import {
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
 } from "./joints.js";
+import { inLightingView } from "./lightingView.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
@@ -1453,6 +1454,38 @@ export default function GISCanvasPage() {
     return marked.length ? new Set(marked.map((f) => Number(f.Feature_ID))) : null;
   }, [routePlan, features]);
 
+  /* Which classes are shown on their own, and the one-of that is an
+     isolate.
+
+     Declared here rather than beside the H, S and I handlers below,
+     because the visible list reads them — a hook cannot depend on a
+     value declared under it, and checkhooks.mjs is what says so. The
+     handlers that write them are still together further down. */
+  const [solo, setSolo] = useState(null);
+  const [shownOnly, setShownOnly] = useState(() => recall("gisShownOnly", []));
+
+  /* ── The street lighting drawing ──
+
+     What is on it is inLightingView, in its own file: lighting, the
+     substation, the LV mains, the breech joints and the span nodes —
+     and not the services, service joints or meters, which are the house
+     connections and have nothing to do with a column.
+
+     It lives there rather than here because it is a plain function of
+     one feature, and a plain function of one feature can be checked
+     without a browser. The check that covered it while it was inline
+     had to keep its own copy, and that copy passed twice while the real
+     one was broken.
+
+     ── How it turns on ──
+
+     Off `solo`, so there is no second piece of state to disagree with
+     the first. Opening the lighting menu isolates lighting, which sets
+     solo; opening any other utility menu sets it to that one, and Show
+     all layers clears it. Isolating lighting from the Layers menu gets
+     the same drawing, which is right — it is the same request. */
+  const lightingView = solo === "lighting" && shownOnly.length === 1;
+
   const visible = useMemo(
     () => features.filter((f) => {
       /* ── Span nodes answer to their own switch only ──
@@ -1469,6 +1502,17 @@ export default function GISCanvasPage() {
          Hiding the trench layer leaves the nodes standing, which is
          also right — the dig and the points along it are different
          facts about the same line. */
+      /* The lighting drawing answers on its own.
+
+         Asked before the hidden keys rather than after, because the
+         isolate that turned it on hid the electric layer wholesale — so
+         honouring that here would take the LV mains and the substation
+         with it, which are the whole point of this view.
+
+         It is a complete answer for the same reason: while this drawing
+         is up, what is on screen is the list above and nothing else. */
+      if (lightingView) return inLightingView(f);
+
       const keys = f.Feature_Role === "spannode"
         ? ["role:spannode", `${f.Layer_Key}:role:spannode`]
         : classKeys(f);
@@ -1483,7 +1527,7 @@ export default function GISCanvasPage() {
       return true;
     }),
     [features, hidden, classKeys, isolatedCircuit, outsideCircuit,
-      liveTrenchOnly, liveTrenchIds, lineTypes]
+      liveTrenchOnly, liveTrenchIds, lineTypes, lightingView]
   );
 
   /* Plots with a water supply, and whether their mark should be drawn.
@@ -1522,7 +1566,6 @@ export default function GISCanvasPage() {
      visible layer leaves the same hidden set as hiding all the others —
      and S has to know whether pressing it again means "show everything"
      or "isolate this". */
-  const [solo, setSolo] = useState(null);
 
   /* ── H, S and I ──
 
@@ -1547,7 +1590,6 @@ export default function GISCanvasPage() {
      `shownOnly` is the one to keep: `hidden` and `solo` are both worked
      out from it, so restoring it restores all three without any of them
      being able to disagree. */
-  const [shownOnly, setShownOnly] = useState(() => recall("gisShownOnly", []));
 
   /* Show only these, and work out what that hides.
 
@@ -12535,9 +12577,22 @@ export default function GISCanvasPage() {
 
                   <Menu id="electric" label="Electric" open={open} setOpen={setOpen}
                     columns={2}
-                    onOpen={() => {
-                      if (classCount.electric > 0) soloClass("electric", true);
-                    }}>
+                    /* Isolated whether or not there is any of it.
+
+                       This used to isolate only where the utility had
+                       something on the drawing. The intent was kindness
+                       — do not blank the canvas over nothing — and the
+                       effect was the opposite: opening Water on a site
+                       with no water left the electric drawing on screen,
+                       so the answer to "show me the water" was somebody
+                       else's design. Nothing said it had been refused.
+
+                       An empty utility is a real answer. A blank canvas
+                       over the site plan says there is no water design
+                       here, which is what somebody opening the menu
+                       needs to know, and it cannot be mistaken for a
+                       drawing of anything else. */
+                    onOpen={() => soloClass("electric", true)}>
                     {/* As on Gas and Water: which of the two recorded
                         sizes is in force. */}
                     <MenuGroup label="Sizes" />
@@ -12773,7 +12828,12 @@ export default function GISCanvasPage() {
                     return (
                       <Menu key={key} id={key} label={layer?.Label ?? name}
                         open={open} setOpen={setOpen}
-                        onOpen={() => { if (classCount[key] > 0) soloClass(key, true); }}>
+                        /* Isolated whether or not there is any of it —
+                           see the note on Electric above. Opening Water
+                           on a site with no water used to leave the
+                           previous utility on screen, which answered a
+                           question nobody asked. */
+                        onOpen={() => soloClass(key, true)}>
                         {/* Drawing first, because it is what somebody
                             opens this menu to do. The Electric and
                             Trench menus already lead with theirs; gas
@@ -12935,7 +12995,18 @@ export default function GISCanvasPage() {
                     );
                   })}
 
-                  <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}>
+                  <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}
+                    /* Isolated on opening, as the other utility menus
+                       are. It had no isolate at all rather than a
+                       guarded one, so opening it left whatever was on
+                       screen exactly where it was — the same wrong
+                       answer the guard gave elsewhere, arrived at by
+                       doing nothing instead of by checking first.
+
+                       A utility menu should show that utility. There is
+                       no version of that which depends on how much of it
+                       has been drawn. */
+                    onOpen={() => soloClass("lighting", true)}>
                     <MenuGroup label="Show or Hide" />
                     {/* Labels, on every utility menu.
 

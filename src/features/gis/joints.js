@@ -110,6 +110,22 @@ export function isBottleEnd(feature) {
     && String(feature?.Attributes?.Joint_Type ?? "") === "bottleend";
 }
 
+/* Whether a joint is a breech.
+
+   Beside isBottleEnd and for its reason: a test on Attributes.Joint_Type
+   written out where it is wanted is a chance to compare against the
+   label rather than the key.
+
+   The code as well as the kind, because a joint placed from the
+   catalogue carries Joint_Code and one placed from the menu carries
+   Joint_Type, and both are the same fitting. */
+export function isBreechJoint(feature) {
+  if (feature?.Feature_Role !== "joint") return false;
+  const kind = String(feature?.Attributes?.Joint_Type ?? "");
+  const code = String(feature?.Attributes?.Joint_Code ?? "");
+  return kind === "breech" || code === JOINT_KINDS.breech.code;
+}
+
 /* Which wins where more than one cause meets at a point.
 
    A feeder can divide at the same place a service leaves it, and the

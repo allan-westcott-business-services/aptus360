@@ -543,6 +543,23 @@ body.resizing { cursor: col-resize; user-select: none; }
   display: flex; align-items: center; justify-content: center; padding: 24px;
 }
 
+/* Modal chrome. Shared for the same reason the backdrop above is.
+
+   .fe-foot, .fe-spacer and .fe-x were defined inside FeatureEditor's own
+   style block, injected only while that modal is mounted — and fifteen
+   other components use them. Opening the bill of materials on its own
+   left its footer with no padding, no rule above it and no spacer, so
+   the buttons fell into the bottom left corner. It read as a layout
+   choice and was a missing stylesheet.
+
+   The bill now styles its own footer, because it wants a different one.
+   These stay for everything that does not. */
+.fe-foot { display: flex; align-items: center; gap: 8px; padding: 13px 18px;
+  border-top: 1px solid var(--border); }
+.fe-spacer { flex: 1; }
+.fe-x { border: none; background: none; font-size: 21px; cursor: pointer; color: var(--muted);
+  line-height: 1; padding: 0 3px; }
+
 /* Admin screen heading. Shared: Organisations, Teams and the generic
    editors all use it, and two of those can be opened from outside the
    Admin suite. It was defined inside PropertyConfigAdmin's style block,

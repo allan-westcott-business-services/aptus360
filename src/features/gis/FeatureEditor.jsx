@@ -2172,8 +2172,7 @@ const CSS = `
   border-top: 3px solid var(--muted); border-radius: 12px 12px 0 0; }
 .fe-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
 .fe-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
-.fe-x { border: none; background: none; font-size: 21px; cursor: pointer; color: var(--muted);
-  line-height: 1; padding: 0 3px; }
+/* .fe-x lives in src/styles.css. */
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
 /* The one tick box in this editor, so it gets a rule of its own rather
    than borrowing a field's. */
@@ -2308,9 +2307,8 @@ const CSS = `
   background: var(--bg); border: 1px solid var(--border); border-radius: 20px; padding: 2px 10px;
   color: var(--muted); }
 .fe-way strong { color: var(--accent); font-size: 12px; }
-.fe-foot { display: flex; align-items: center; gap: 8px; padding: 13px 18px;
-  border-top: 1px solid var(--border); }
-.fe-spacer { flex: 1; }
+/* .fe-foot and .fe-spacer live in src/styles.css, with .fe-x and
+   .fe-backdrop, for the reason given there. */
 .btn.ghost.danger { color: #b91c1c; }
 .mono { font-family: ui-monospace, Menlo, monospace; }
 `;

@@ -705,8 +705,16 @@ export default function BomModal({
           )}
         </div>
 
-        <div className="fe-foot">
-          <span className="fe-spacer" />
+        {/* The footer, styled here rather than borrowed.
+
+            It was using fe-foot and fe-spacer, which live in
+            FeatureEditor's stylesheet — injected only while that modal
+            is mounted. Opening the bill on its own left both classes
+            undefined, so the buttons fell to the bottom left corner
+            with no padding round them and no spacer pushing them
+            across. It looked like a layout choice and was a missing
+            stylesheet. */}
+        <div className="bom-foot">
           <button className="btn ghost" onClick={onClose}>Close</button>
           <button className="btn accent" disabled={!rows.length} onClick={exportXlsx}>
             Export to Excel
@@ -751,6 +759,17 @@ const CSS = `
 .bom-who-n { font-size: 11px; color: var(--muted); }
 .bom-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
 .bom-body { padding: 15px 18px; overflow-y: auto; flex: 1; }
+/* The footer. Its own class rather than the feature editor's, so the
+   bill does not depend on another modal being open to look right.
+
+   Buttons to the right, and clear of both edges: the rule above them
+   separates them from the last row of a bill that scrolls, and the
+   padding keeps them off the corner. Ordered with the way out first and
+   the thing most people came for last, which is where the eye finishes. */
+.bom-foot { display: flex; align-items: center; justify-content: flex-end;
+  gap: 10px; padding: 14px 20px 16px;
+  border-top: 1px solid var(--border); background: var(--white);
+  border-radius: 0 0 12px 12px; }
 .bom-empty { color: var(--muted); font-size: 13px; text-align: center; padding: 50px 20px; }
 .bom-warn { font-size: 11.5px; color: #92400e; background: #fffbeb; border: 1px solid #fde68a;
   border-radius: 6px; padding: 7px 10px; margin: 0 0 14px; }

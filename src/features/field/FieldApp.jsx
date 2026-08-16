@@ -105,6 +105,7 @@ export default function FieldApp() {
   useEffect(() => { load(); }, [load]);
 
   const current = data?.current ?? null;
+  const spans = data?.spans ?? [];
   const queue = data?.queue ?? [];
 
   /* Today's run: everything sharing the open job's start date. Not
@@ -260,6 +261,61 @@ export default function FieldApp() {
                 </div>
               </section>
 
+              {/* ── What is being dug ──
+
+                  One entry per span: where it starts and ends, the
+                  plots it serves, how long it is, what is in it, and a
+                  picture.
+
+                  Reference, not record — so it sits on the job card and
+                  stays there while the work instruction is filled in,
+                  rather than being buried inside a form somebody has to
+                  open to check where they are.
+
+                  The picture is what a gang standing on a road actually
+                  uses: "A18 to A16" names the run and does not say
+                  which length of tarmac it is. */}
+              {!!spans.length && (
+                <section className="fq-spans">
+                  <h2>What you are digging</h2>
+                  {spans.map((sp) => (
+                    <div className="fq-span" key={sp.spanId}>
+                      <div className="fq-span-head">
+                        <strong>{[sp.from, sp.to].filter(Boolean).join(" to ")
+                          || "This section"}</strong>
+                        {sp.lengthM != null && (
+                          <span className="fq-span-m">{`${sp.lengthM} m`}</span>
+                        )}
+                      </div>
+
+                      {sp.plots && (
+                        <div className="fq-span-line">Plots {sp.plots}</div>
+                      )}
+                      {sp.contents && (
+                        <div className="fq-span-line">{sp.contents}</div>
+                      )}
+                      {sp.offSite && (
+                        <div className="fq-span-line">Off site</div>
+                      )}
+
+                      {sp.imageUrl ? (
+                        /* Loaded lazily: a job with six spans is six
+                           pictures, and the first is the one somebody
+                           is looking at. */
+                        <img className="fq-span-img" src={sp.imageUrl} loading="lazy"
+                          alt={`Plan of ${[sp.from, sp.to].filter(Boolean).join(" to ")}`} />
+                      ) : (
+                        /* Said rather than left blank. A missing picture
+                           is a call-off raised from the form, or a
+                           capture that failed — and a gap with no
+                           explanation reads as the app being broken. */
+                        <p className="fq-span-none">No plan for this section.</p>
+                      )}
+                    </div>
+                  ))}
+                </section>
+              )}
+
               {!!todays.length && (
                 <div className="fq-list">
                   {todays.map((j) => <Waiting job={j} key={j.assignmentId} />)}
@@ -347,6 +403,22 @@ const CSS = `
 .fq-btn.primary { background: #39467B; color: #fff; }
 .fq-btn.ghost { border-color: #d7dee6; color: #5a6b7b; font-weight: 500;
   min-height: 44px; }
+
+/* What is being dug, with a picture of each length. */
+.fq-spans { margin-top: 18px; }
+.fq-spans h2 { font-size: 15px; font-weight: 600; margin: 0 0 10px; }
+.fq-span { background: #fff; border: 1px solid #e6eaf0; border-radius: 12px;
+  padding: 14px; margin-bottom: 10px; }
+.fq-span-head { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; }
+.fq-span-head strong { font-size: 16px; }
+.fq-span-m { font-size: 14px; color: #5a6b7b; }
+.fq-span-line { font-size: 14px; color: #5a6b7b; margin-top: 4px; }
+/* Full width, and its own height: the picture is 640x420 and squashing
+   it to a fixed box would put the trench off the frame. */
+.fq-span-img { display: block; width: 100%; height: auto; margin-top: 10px;
+  border: 1px solid #e6eaf0; border-radius: 8px; background: #fff; }
+.fq-span-none { font-size: 13px; color: #97a3b0; margin: 10px 0 0; }
 
 .fq-list { display: grid; gap: 8px; margin-top: 12px; }
 .fq-row { display: flex; align-items: center; gap: 12px; background: #fff;

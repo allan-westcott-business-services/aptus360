@@ -789,6 +789,20 @@ export function toCallOffRows(ranges = [], opts = {}) {
       Plots: plots.length
         ? `Span Node ${from} to ${to} (plots ${plots.join(", ")})`
         : `Span Node ${from} to ${to}`,
+      /* The same three facts as fields.
+
+         Plots above is the sentence a call-off prints. A tablet showing
+         each span separately — where it starts, where it ends, which
+         plots it serves — needs them apart, and reading them back out
+         of the sentence means a regular expression over prose that
+         somebody may reword.
+
+         Held rather than looked up from the node ids, because a span
+         node can be renumbered and the drawing can move. A work
+         instruction is a record of what was asked for. */
+      From_Label: from ?? null,
+      To_Label: to ?? null,
+      Plot_List: plots.length ? plots.join(", ") : null,
       /* The nodes as well as their labels.
 
          The text is what somebody reads; these are what the drawing

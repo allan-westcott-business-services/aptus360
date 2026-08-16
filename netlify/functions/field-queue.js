@@ -187,6 +187,57 @@ export default withAuth(async function handler(req, context, user) {
       };
     });
 
+    /* ── The spans on the job that is open ──
+
+       What the gang is being asked to dig, one entry each: where it
+       starts and ends, the plots it serves, how long it is, what is in
+       it, and a picture of it.
+
+       Only for the released job. The queue withholds the address of a
+       waiting job so it cannot be worked from on paper, and its spans
+       would give the same thing away in more detail.
+
+       An assignment covering one span shows that span; one covering the
+       whole call-off shows all of them, in the order they were raised.
+       Span_ID null on the assignment means the whole thing, which is
+       the ordinary case. */
+    let spans = [];
+    if (current?.assignmentId) {
+      const job = assignments.find((a) =>
+        Number(a.Assignment_ID) === Number(current.assignmentId));
+
+      if (job?.Submission_ID) {
+        const { data: rows } = await db
+          .from("Mains_Call_Off_Span")
+          .select("Span_ID,Submission_ID,From_Label,To_Label,Plot_List,"
+            + "Estimated_Length_m,Contents,Span_Image_Path,Sort_Order,Off_Site")
+          .eq("Submission_ID", job.Submission_ID)
+          .order("Sort_Order")
+          .then((r) => r, () => ({ data: [] }));
+
+        spans = (rows || [])
+          .filter((r) => job.Span_ID == null
+            || Number(r.Span_ID) === Number(job.Span_ID))
+          .map((r) => ({
+            spanId: r.Span_ID,
+            from: r.From_Label,
+            to: r.To_Label,
+            plots: r.Plot_List,
+            lengthM: r.Estimated_Length_m,
+            contents: r.Contents,
+            offSite: r.Off_Site,
+            /* The public URL, derived rather than stored, so moving or
+               renaming the bucket does not strand every row. Null where
+               no picture was taken — a call-off raised from the form
+               has none and never will. */
+            imageUrl: r.Span_Image_Path
+              ? db.storage.from("call-off-spans")
+                .getPublicUrl(r.Span_Image_Path).data.publicUrl
+              : null,
+          }));
+      }
+    }
+
     return json({
       teamId,
       teamName: (teams.data || [])[0]?.Team_Name ?? null,
@@ -194,6 +245,9 @@ export default withAuth(async function handler(req, context, user) {
       /* The one to do now, or null when the queue is empty or every job
          is with the office. */
       current: queue.find((q) => q.released) ?? null,
+      /* Beside the job rather than inside it, so the tablet can show
+         them as their own section without unpacking the job card. */
+      spans,
       queue,
       corrections,
       /* Said rather than left to be counted, because "nothing to do" and

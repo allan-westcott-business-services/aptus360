@@ -44,6 +44,10 @@ export const CHILD = {
          Nothing reads it yet — stored because it is free to keep now
          and impossible to recover once the drawing has moved on. */
       "Estimated_Half_Days",
+      /* Where the run starts and ends, and the plots it serves, as
+         fields rather than inside the sentence Plots holds (0174). The
+         work instruction shows each separately. */
+      "From_Label", "To_Label", "Plot_List",
       /* What is laid along this section, as one line, from the drawing
          when the call-off was raised (0160). Display only: the sizes a
          gang needs to read. Which utilities the call-off covers is

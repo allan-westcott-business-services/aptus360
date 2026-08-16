@@ -408,6 +408,61 @@ const reasonsSql = readFileSync("./supabase/migrations/0170_abort_reasons.sql", 
   if (!/Aborted_By/.test(abort)) fail("nothing records who refused the job");
 }
 
+// 14. The spans on the open job, with their pictures.
+//
+//     "A18 to A16" names the run and does not say which length of
+//     tarmac it is. The picture is what a gang standing on a road
+//     actually uses.
+{
+  const app = readFileSync("./src/features/field/FieldApp.jsx", "utf8");
+
+  /* Only for the released job. The queue withholds a waiting job's
+     address so it cannot be worked from on paper, and its spans would
+     give the same thing away in more detail. */
+  if (!/current\?\.assignmentId/.test(src)) {
+    fail("the spans are not tied to the job that is open");
+  }
+  const at = src.indexOf("let spans = []");
+  const block = at < 0 ? "" : src.slice(at, src.indexOf("return json({", at));
+  if (!/Mains_Call_Off_Span/.test(block)) fail("the spans are never read");
+
+  /* An assignment covering one span shows that span; one covering the
+     whole call-off shows all of them. */
+  if (!/job\.Span_ID == null/.test(block)) {
+    fail("an assignment for one span shows the whole call-off");
+  }
+
+  /* Everything the job card lists. */
+  for (const f of ["From_Label", "To_Label", "Plot_List",
+    "Estimated_Length_m", "Contents", "Span_Image_Path"]) {
+    if (!block.includes(f)) fail(`the spans do not carry ${f}`);
+  }
+
+  /* The URL derived, not stored: moving or renaming the bucket must not
+     strand every row. */
+  if (!/getPublicUrl/.test(block)) fail("the picture's address is not derived");
+  /* And reaches the tablet under the name it reads. Selecting the
+     column and not sending it passed the check above while the job
+     card showed no pictures at all. */
+  if (!/imageUrl:/.test(block)) fail("the picture's address is never sent");
+  for (const f of ["from:", "to:", "plots:", "lengthM:", "contents:"]) {
+    if (!block.includes(f)) fail(`the spans are read but ${f} is not sent`);
+  }
+  if (/Span_Image_Url|imageUrl.*from\("Mains/.test(src)) {
+    fail("a URL is stored rather than derived");
+  }
+
+  /* And the screen shows them, with a missing picture said rather than
+     left as a gap — a hole with no explanation reads as a broken app. */
+  if (!/fq-span-img/.test(app)) fail("the job card does not show the pictures");
+  if (!/No plan for this section/.test(app)) {
+    fail("a span with no picture shows an unexplained gap");
+  }
+  if (!/loading="lazy"/.test(app)) {
+    fail("six pictures all load at once on a tablet");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The field queue behaves (one job open, today visible, the rest a tap away).");
 process.exit(bad ? 1 : 0);

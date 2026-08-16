@@ -11,6 +11,11 @@ import { setPlotEnergisation } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
 import { halfDaysText } from "./digDays.js";
 import { phaseCover, COVER_LABEL, isListedPhase } from "./assignmentCover.js";
+import { useTableLayout } from "../../lib/useTableLayout.js";
+import ColumnsMenu from "../../components/ColumnsMenu.jsx";
+import FilterCell, {
+  blankFilter, rowPasses, FILTER_CSS,
+} from "../../components/FilterCell.jsx";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
@@ -142,6 +147,60 @@ function shortPhase(name) {
   return n;
 }
 
+/* The columns, as every other table in the app describes them.
+
+   The call-off list was hand-written markup: a fixed run of th and td
+   in one order, with no filters and no sort. Every other list — plots,
+   connections, outline designs, non-residential — is driven by a column
+   list like this one, and gets moving, resizing, hiding, filtering and
+   sorting from useTableLayout and FilterCell without asking.
+
+   `raw` is what the column is filtered and sorted on, and it is
+   deliberately not what is drawn. Status sorts on its text; Assigned
+   sorts on how much is outstanding, because "which of these is least
+   ready" is the question somebody is asking when they click it.
+
+   `type` picks the filter: text is a contains-box, multi is a list of
+   the values present, date is a range, none means the column is not
+   filtered at all. */
+const COLS = [
+  { key: "created", label: "Submitted", width: 110, type: "date",
+    raw: (r) => String(r.Created_At || "").slice(0, 10) },
+  { key: "ref", label: "Reference", width: 110, type: "text",
+    raw: (r) => r.AP_Number || `#${r.Submission_ID}` },
+  { key: "site", label: "Site", width: 190, type: "text",
+    raw: (r) => r.Site_Name || "" },
+  { key: "customer", label: "Customer", width: 150, type: "multi",
+    raw: (r) => r.Customer_Name || "" },
+  { key: "worktype", label: "Work Type", width: 140, type: "multi",
+    raw: (r) => r.Work_Type?.Work_Type_Name || "" },
+  { key: "contact", label: "Contact", width: 140, type: "text",
+    raw: (r) => r.Contact_Name || "" },
+  { key: "preferred", label: "Preferred", width: 110, type: "date",
+    raw: (r) => r.Preferred_Date || "" },
+  { key: "assigned", label: "Assigned", width: 210, type: "multi",
+    /* The worst state on the row, so filtering on "Unassigned" finds
+       every call-off with anything outstanding rather than only those
+       with nothing booked at all. Sorting puts those first for the same
+       reason. */
+    raw: (r) => r._cover?.worst ?? "" },
+  { key: "status", label: "Status", width: 130, type: "multi",
+    raw: (r) => r.Status || "" },
+  { key: "act", label: "", width: 130, type: "none", align: "center",
+    raw: () => "" },
+];
+
+/* How much of a call-off is booked, and the worst of it.
+
+   Worked out once per row rather than in the cell, because the filter
+   and the sort need the same answer and a second calculation would let
+   the column disagree with the list it is in. */
+const COVER_RANK = { unassigned: 0, part: 1, assigned: 2 };
+
+/* An em dash for nothing, so an empty cell reads as empty rather than
+   as a column that failed to render. */
+const col_text = (v) => (v === "" || v == null ? "\u2014" : v);
+
 export default function CallOffsPage() {
   const [rows, setRows] = useState([]);
   /* Sent alongside the rows so the list can say how much of each
@@ -196,11 +255,63 @@ export default function CallOffsPage() {
   }
   useEffect(() => { load(); }, []);
 
+  /* ── The table ── */
+  const layout = useTableLayout("calloffs", COLS);
+  const [filters, setFilters] = useState({});
+  const [openFilter, setOpenFilter] = useState(null);
+  const [sort, setSort] = useState({ key: "created", dir: "desc" });
+
+  const toggleSort = (key) => setSort((sc) => (sc.key === key
+    ? { key, dir: sc.dir === "asc" ? "desc" : "asc" }
+    : { key, dir: "asc" }));
+
+  /* Each row's cover worked out once. The Assigned column filters and
+     sorts on it, and the cell draws from it — three readings of one
+     calculation would eventually disagree. */
+  const coverFor = useMemo(() => {
+    const out = new Map();
+    for (const r of rows) {
+      const asg = r.assignments || [];
+      const phases = allTaskTypes
+        .filter((t) => isListedPhase(t.Task_Type_Name))
+        .filter((t) => asg.some((a) =>
+          Number(a.Task_Type_ID) === Number(t.Task_Type_ID))
+          || r.Work_Type?.Selection_Mode === "Span");
+      const states = phases.map((t) => ({
+        taskTypeId: t.Task_Type_ID,
+        name: t.Task_Type_Name,
+        state: phaseCover(r.items || [],
+          asg.filter((a) => Number(a.Task_Type_ID) === Number(t.Task_Type_ID)),
+          allWorkDays),
+      }));
+      /* The worst of them, so filtering on Unassigned finds every
+         call-off with anything outstanding rather than only the
+         untouched ones. */
+      const worst = states.length
+        ? COVER_LABEL[states.reduce((w, x) =>
+          (COVER_RANK[x.state] < COVER_RANK[w] ? x.state : w), "assigned")]
+        : "";
+      out.set(Number(r.Submission_ID), { states, worst });
+    }
+    return out;
+  }, [rows, allTaskTypes, allWorkDays]);
+
+  /* Named so the column list can reach it. COLS is declared outside the
+     component and cannot close over state, so the row carries the
+     answer to it. */
+  const withCover = useMemo(() => rows.map((r) => ({
+    ...r, _cover: coverFor.get(Number(r.Submission_ID)) ?? { states: [], worst: "" },
+  })), [rows, coverFor]);
+
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
-    return rows.filter((r) => {
+    const list = withCover.filter((r) => {
       if (status === "open" && CLOSED.has(r.Status)) return false;
       if (status !== "open" && status !== "all" && r.Status !== status) return false;
+      /* The column filters, on top of the search box and the status
+         dropdown above the table. All three narrow: none of them
+         replaces another. */
+      if (!COLS.every((c) => rowPasses(r, c, filters[c.key]))) return false;
       if (!t) return true;
       /* Everything somebody might have in front of them: the reference
          off an email, the site off a drawing, the name of whoever rang. */
@@ -208,7 +319,30 @@ export default function CallOffsPage() {
         r.Contact_Name, r.Project_Ref, r.Work_Type?.Work_Type_Name]
         .some((v) => String(v ?? "").toLowerCase().includes(t));
     });
-  }, [rows, q, status]);
+
+    const col = COLS.find((c) => c.key === sort.key);
+    if (!col) return list;
+    const dir = sort.dir === "asc" ? 1 : -1;
+    return [...list].sort((a, b) => {
+      const x = col.raw(a);
+      const y = col.raw(b);
+      /* Numbers compare as numbers, everything else as text — a date
+         held as yyyy-mm-dd sorts correctly either way. */
+      if (typeof x === "number" && typeof y === "number") return (x - y) * dir;
+      return String(x ?? "").localeCompare(String(y ?? "")) * dir;
+    });
+  }, [withCover, q, status, filters, sort]);
+
+  /* The values present in a column, for its filter list. Taken from what
+     survives the other filters, so a list never offers a value that
+     would show nothing. */
+  const filterOptions = (key) => {
+    const col = COLS.find((c) => c.key === key);
+    if (!col) return [];
+    return [...new Set(withCover.map((r) => col.raw(r)).filter((v) => v !== ""))]
+      .sort((a, b) => String(a).localeCompare(String(b)))
+      .map((v) => ({ value: v, label: String(v) }));
+  };
 
   const open = openId != null
     ? rows.find((r) => Number(r.Submission_ID) === Number(openId))
@@ -326,6 +460,18 @@ export default function CallOffsPage() {
             a second place for the plot list, the work type rules and
             the service-plot penalty to be got slightly wrong, and the
             two would drift the first time either changed. */}
+        {/* Which columns are shown, and a way back to the default.
+
+            Beside the new-call-off button, as on every other list: a
+            table that can hide columns needs somewhere to unhide them,
+            and somewhere obvious enough that nobody has to be told the
+            preference is remembered. */}
+        <ColumnsMenu
+          columns={COLS}
+          hidden={layout.hidden}
+          onToggle={layout.toggleColumn}
+          onReset={layout.reset}
+        />
         <button className="btn accent sm" onClick={() => setPicking(true)}>
           + New call-off
         </button>
@@ -350,100 +496,130 @@ export default function CallOffsPage() {
       )}
 
       {!!shown.length && (
-        <table className="co-tbl">
-          <thead>
-            <tr>
-              <th>Submitted</th><th>Reference</th><th>Site</th>
-              <th>Customer</th><th>Work Type</th><th>Contact</th>
-              <th>Preferred</th>
-              {/* How much of the work is booked, phase by phase.
-
-                  A call-off with a team against it looks dealt with, and
-                  may be a morning booked against a day's dig or one span
-                  of four. Nothing on this list said so, so it had to be
-                  opened to find out — and a thing you open to check is a
-                  thing that gets missed. */}
-              <th>Assigned</th>
-              <th>Status</th>
-              {/* Edit and delete on the row itself.
-
-                  They were on the detail page, which meant opening a
-                  call-off to delete it — three clicks to remove
-                  something raised by mistake, and no way to see at a
-                  glance that removing it was even possible. */}
-              <th className="co-act-h">&nbsp;</th>
-            </tr>
-          </thead>
-          <tbody>
-            {shown.map((r) => (
-              /* The whole row opens it: the target is bigger and there is
-                 nothing else on a row to click. */
-              <tr key={r.Submission_ID} onClick={() => setOpenId(r.Submission_ID)}>
-                <td className="co-dim">{fmt(String(r.Created_At || "").slice(0, 10))}</td>
-                <td><strong>{r.AP_Number || `#${r.Submission_ID}`}</strong></td>
-                <td>{r.Site_Name || "\u2014"}</td>
-                <td>{r.Customer_Name || "\u2014"}</td>
-                <td>
-                  <span className="co-wt-pill">
-                    {r.Work_Type?.Work_Type_Name || "\u2014"}
-                  </span>
-                </td>
-                <td>{r.Contact_Name || "\u2014"}</td>
-                <td>{fmt(r.Preferred_Date)}</td>
-                <td className="co-cover">
-                  {(() => {
-                    const asg = r.assignments || [];
-                    const phases = allTaskTypes
-                      .filter((t) => isListedPhase(t.Task_Type_Name))
-                      /* Only the phases this call-off actually has work
-                         booked or bookable for. A pill reading
-                         "Unassigned" against a phase the work type does
-                         not include is a warning about nothing. */
-                      .filter((t) => asg.some((a) =>
-                        Number(a.Task_Type_ID) === Number(t.Task_Type_ID))
-                        || (r.Work_Type?.Selection_Mode === "Span"
-                          && isListedPhase(t.Task_Type_Name)));
-                    if (!phases.length) return <span className="co-dim">&mdash;</span>;
-                    return phases.map((t) => {
-                      const mine = asg.filter((a) =>
-                        Number(a.Task_Type_ID) === Number(t.Task_Type_ID));
-                      const state = phaseCover(r.items || [], mine, allWorkDays);
-                      /* Named as well as coloured. Three shades of pill
-                         is a legend somebody has to learn, and the one
-                         that matters — part assigned — is the one a
-                         colour alone would not distinguish from done. */
-                      return (
-                        <span className={`co-cov c-${state}`} key={t.Task_Type_ID}
-                          title={`${t.Task_Type_Name}: ${COVER_LABEL[state]}`}>
-                          {shortPhase(t.Task_Type_Name)}
-                          <b>{COVER_LABEL[state]}</b>
-                        </span>
-                      );
-                    });
-                  })()}
-                </td>
-                <td>
-                  <span className={`co-st s-${String(r.Status || "").replace(/\W+/g, "").toLowerCase()}`}>
-                    {r.Status}
-                  </span>
-                </td>
-                {/* stopPropagation on both: the row opens the call-off,
-                    and without it Delete would open the one it had just
-                    removed. */}
-                <td className="co-act">
-                  <button className="btn edit sm"
-                    onClick={(e) => { e.stopPropagation(); setOpenId(r.Submission_ID); }}>
-                    Edit
-                  </button>
-                  <button className="btn delete sm"
-                    onClick={(e) => { e.stopPropagation(); remove(r.Submission_ID, r.Project_ID); }}>
-                    Delete
-                  </button>
-                </td>
+        <div className="dt-wrap">
+          <table className="dt co-tbl">
+            <colgroup>
+              {layout.visible.map((c) =>
+                <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
+            </colgroup>
+            <thead>
+              <tr className="head-row">
+                {layout.visible.map((c) => (
+                  <th key={c.key} {...layout.reorderProps(c.key)}
+                      className={c.align === "center" ? "ta-c" : undefined}
+                      onClick={() => c.type !== "none" && toggleSort(c.key)}>
+                    {c.label}
+                    {sort.key === c.key && (
+                      <span className="arrow">
+                        {sort.dir === "asc" ? "\u25B2" : "\u25BC"}
+                      </span>
+                    )}
+                    {/* draggable={false} on the handle: without it the
+                        column drag starts the moment somebody grabs the
+                        edge to resize, and the two fight. */}
+                    <span className="resizer" draggable={false}
+                        onDragStart={(e) => e.preventDefault()}
+                        onMouseDown={(e) => layout.startResize(e, c.key)} />
+                  </th>
+                ))}
               </tr>
-            ))}
-          </tbody>
-        </table>
+              <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
+                {layout.visible.map((c) => (
+                  <th key={c.key}>
+                    {c.type !== "none" && (
+                      <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
+                        onChange={(v) => setFilters((x) => ({ ...x, [c.key]: v }))}
+                        options={c.type === "multi" ? filterOptions(c.key) : null}
+                        open={openFilter === c.key}
+                        setOpen={(o) => setOpenFilter(o ? c.key : null)} />
+                    )}
+                  </th>
+                ))}
+              </tr>
+            </thead>
+            <tbody>
+              {shown.map((r) => (
+                /* The whole row opens it: the target is bigger and there
+                   is nothing else on a row to click. */
+                <tr key={r.Submission_ID} onClick={() => setOpenId(r.Submission_ID)}>
+                  {layout.visible.map((c) => {
+                    if (c.key === "act") {
+                      /* stopPropagation on both: the row opens the
+                         call-off, and without it Delete would open the
+                         one it had just removed. */
+                      return (
+                        <td key={c.key} className="co-act">
+                          <button className="btn edit sm"
+                            onClick={(e) => {
+                              e.stopPropagation(); setOpenId(r.Submission_ID);
+                            }}>Edit</button>
+                          <button className="btn delete sm"
+                            onClick={(e) => {
+                              e.stopPropagation(); remove(r.Submission_ID, r.Project_ID);
+                            }}>Delete</button>
+                        </td>
+                      );
+                    }
+                    if (c.key === "created") {
+                      return (
+                        <td key={c.key} className="co-dim">
+                          {fmt(String(r.Created_At || "").slice(0, 10))}
+                        </td>
+                      );
+                    }
+                    if (c.key === "ref") {
+                      return (
+                        <td key={c.key}>
+                          <strong>{r.AP_Number || `#${r.Submission_ID}`}</strong>
+                        </td>
+                      );
+                    }
+                    if (c.key === "worktype") {
+                      return (
+                        <td key={c.key}>
+                          <span className="co-wt-pill">
+                            {r.Work_Type?.Work_Type_Name || "\u2014"}
+                          </span>
+                        </td>
+                      );
+                    }
+                    if (c.key === "preferred") {
+                      return <td key={c.key}>{fmt(r.Preferred_Date)}</td>;
+                    }
+                    if (c.key === "status") {
+                      return (
+                        <td key={c.key}>
+                          <span className={`co-st s-${String(r.Status || "")
+                            .replace(/\W+/g, "").toLowerCase()}`}>
+                            {r.Status}
+                          </span>
+                        </td>
+                      );
+                    }
+                    if (c.key === "assigned") {
+                      const states = r._cover?.states ?? [];
+                      return (
+                        <td key={c.key} className="co-cover">
+                          {states.length ? states.map((x) => (
+                            <span className={`co-cov c-${x.state}`} key={x.taskTypeId}
+                              title={`${x.name}: ${COVER_LABEL[x.state]}`}>
+                              {shortPhase(x.name)}
+                              <b>{COVER_LABEL[x.state]}</b>
+                            </span>
+                          )) : <span className="co-dim">&mdash;</span>}
+                        </td>
+                      );
+                    }
+                    /* Everything else is its own raw value, which is
+                       also what it filters and sorts on — so the column
+                       cannot show one thing and be ordered by another. */
+                    return <td key={c.key}>{col_text(c.raw(r))}</td>;
+                  })}
+                </tr>
+              ))}
+            </tbody>
+          </table>
+        </div>
       )}
     </div>
   );
@@ -2789,7 +2965,7 @@ function Assignments({ row }) {
   );
 }
 
-const CSS = `
+const CSS = FILTER_CSS + `
 .asg-phase { border: 1px solid var(--border); border-radius: 9px; padding: 11px 13px;
   margin-bottom: 9px; }
 .asg-head { display: flex; align-items: center; gap: 9px; }

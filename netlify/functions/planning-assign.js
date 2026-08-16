@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Giving an unassigned phase to a gang.
 
@@ -45,7 +45,7 @@ const nextDay = (date, n) => {
   return x.toISOString().slice(0, 10);
 };
 
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   try {
     if (req.method !== "POST") return json({ error: "Not found" }, 404);
@@ -167,6 +167,6 @@ export default async function handler(req) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/planning/assignments" };

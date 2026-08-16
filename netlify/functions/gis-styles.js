@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Styles are admin data, so they get their own endpoint rather than
    riding on the canvas one — a separate file per endpoint, as the rest
@@ -14,7 +14,7 @@ const pick = (o) => Object.fromEntries(
     .map(([k, v]) => [k, v === "" ? null : v])
 );
 
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   const url = new URL(req.url);
   const id = url.searchParams.get("id");
@@ -56,6 +56,6 @@ export default async function handler(req) {
     }
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/gis-styles" };

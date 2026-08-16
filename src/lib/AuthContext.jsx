@@ -22,6 +22,29 @@ export function AuthProvider({ children }) {
     setIdleOut(wasIdle);
   }, []);
 
+  /* A refused request ends the session here.
+
+     Every endpoint requires a signed-in caller now, so a 401 means the
+     session has gone — expired, revoked, or signed out in another tab.
+     The api client cannot act on that itself: it knows nothing about
+     React or routing, and a module that reached in to change auth state
+     would be a second owner of it.
+
+     So it announces, and this listens. The person lands on the login
+     screen once, rather than watching every panel on the page fail with
+     "Sign in to use this." */
+  useEffect(() => {
+    const onRefused = () => {
+      /* Not signOut(): that calls Supabase to end a session the server
+         has already refused, and would fail on the way out. Clearing
+         what this holds is the whole of it. */
+      setSession(null);
+      localStorage.removeItem(LAST_ACTIVE_KEY);
+    };
+    window.addEventListener("aptus:signed-out", onRefused);
+    return () => window.removeEventListener("aptus:signed-out", onRefused);
+  }, []);
+
   useEffect(() => {
     if (!authEnabled) { setLoading(false); return; }
     /* The client arrives a moment after first paint now, so the session

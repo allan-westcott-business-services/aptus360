@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Adding a utility to a project.
  *
@@ -21,7 +21,7 @@ import { supabase, json, fail } from "./_supabase.js";
  * commercial fact, which is the Details tab's to decide.
  */
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = Number(context?.params?.projectId);
 
@@ -64,6 +64,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/scopes" };

@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Setting when each utility on a plot is wanted live.
 
@@ -27,7 +27,7 @@ import { supabase, json, fail } from "./_supabase.js";
 
 const isoDay = (d) => /^\d{4}-\d{2}-\d{2}$/.test(String(d || "").slice(0, 10));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const plotId = Number(context?.params?.plotId);
 
@@ -118,6 +118,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/calloffs/plots/:plotId/energisation" };

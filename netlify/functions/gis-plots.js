@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Which plots are still to place, and which utilities need meters.
 
@@ -6,7 +6,7 @@ import { supabase, json, fail } from "./_supabase.js";
    branch below an unconditional one for the same method is invisible
    until something silently returns the wrong shape, which is exactly
    what happened here. A distinct route can't be shadowed. */
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
@@ -24,6 +24,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/gis-plots" };

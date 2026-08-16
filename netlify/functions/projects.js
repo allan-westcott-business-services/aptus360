@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Columns are listed explicitly and in one place. If the schema moves, the
    query fails loudly at this boundary instead of being swallowed by a
@@ -78,7 +78,7 @@ function nullEmpty(obj) {
   return out;
 }
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
 
@@ -195,6 +195,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects{/:id}?" };

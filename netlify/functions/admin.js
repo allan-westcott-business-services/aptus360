@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Generic reference-data CRUD, driven by an allow-list.
 
@@ -245,7 +245,7 @@ const TABLES = {
 const nullEmpty = (o) =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const table = context?.params?.table;
   const meta = TABLES[table];
   if (!meta) return json({ error: `Table "${table}" is not editable here.` }, 404);
@@ -326,6 +326,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/admin/:table" };

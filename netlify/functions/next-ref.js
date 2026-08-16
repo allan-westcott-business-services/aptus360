@@ -1,8 +1,8 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Reference generation belongs on the server: two estimators creating a
    project at the same moment must not be handed the same ref. */
-export default async function handler() {
+export default withAuth(async function handler() {
   try {
     const db = supabase();
     const now = new Date();
@@ -27,6 +27,6 @@ export default async function handler() {
   } catch (e) {
     return fail(e);
   }
-}
+});
 
 export const config = { path: "/api/next-project-ref" };

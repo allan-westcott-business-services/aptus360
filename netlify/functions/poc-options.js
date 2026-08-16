@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const OPT = "Option_ID,POC_Application_ID,Option_Name,Interactive,Date_Received,Consumption_kVA,Selected,Notes";
 const QUOT = "Quotation_ID,Option_ID,Quotation_Ref,Quotation_Status_ID,Estimated_Cost,Date_Received,Valid_Until_Date,Voltage_Rating_ID,Distance_m,Notes";
@@ -6,7 +6,7 @@ const QUOT = "Quotation_ID,Option_ID,Quotation_Ref,Quotation_Status_ID,Estimated
 const nullEmpty = (o) =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const appId = context?.params?.appId;
   const url = new URL(req.url);
@@ -63,6 +63,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/poc/:appId/options" };

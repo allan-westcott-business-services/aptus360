@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Every call-off across every project, for the operations list.
 
@@ -28,7 +28,7 @@ const COLS = [
   "Estimated_Half_Days",
 ].join(",");
 
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   try {
     if (req.method !== "GET") return json({ error: "Not found" }, 404);
@@ -140,6 +140,6 @@ export default async function handler(req) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/calloffs" };

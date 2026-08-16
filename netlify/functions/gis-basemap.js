@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const B = [
   "Basemap_ID","Project_ID","File_Name","Storage_Path","Image_Url",
@@ -13,7 +13,7 @@ const W = new Set(B.split(",").filter((x) => !["Basemap_ID", "Project_ID"].inclu
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
@@ -74,6 +74,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/basemap" };

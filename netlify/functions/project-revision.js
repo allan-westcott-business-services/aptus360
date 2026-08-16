@@ -1,8 +1,8 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const PROJECT_COLUMNS = "Project_ID,Project_Ref,Revision,Project_Status_ID,Site_Name";
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
 
@@ -29,6 +29,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:id/revision" };

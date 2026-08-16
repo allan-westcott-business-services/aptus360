@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const COLS = [
   "NRS_ID","Project_ID","Utility_ID","NRS_Sub_Type_ID","Supply_Ref","Description",
@@ -9,7 +9,7 @@ const WRITABLE = new Set(COLS.split(",").filter((c) => c !== "NRS_ID"));
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => WRITABLE.has(k)).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const id = new URL(req.url).searchParams.get("id");
@@ -46,6 +46,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/nrs" };

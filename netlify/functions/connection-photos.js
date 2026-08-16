@@ -1,10 +1,10 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Photographs against a connection. The file itself lives in Supabase
    storage; these rows hold the path and who put it there. */
 const BUCKET = "connection-photos";
 
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   const url = new URL(req.url);
 
@@ -62,6 +62,6 @@ export default async function handler(req) {
 
     return json({ error: "Method not allowed" }, 405);
   } catch (e) { return fail(e, 400); }
-}
+});
 
 export const config = { path: "/api/connection-photos" };

@@ -1,10 +1,10 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const F = "Feature_ID,Project_ID,Layer_Key,Feature_Type,Geometry,Label,Attributes,Plot_ID,Feature_Role";
 const W = new Set(F.split(",").filter((x) => x !== "Feature_ID"));
 const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const url = new URL(req.url);
@@ -178,6 +178,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/gis" };

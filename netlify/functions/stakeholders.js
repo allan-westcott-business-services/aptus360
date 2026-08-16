@@ -1,11 +1,11 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const C = "Project_Contact_ID,Project_ID,Contact_Name,Job_Title,Telephone,Email,Is_Primary,Notes";
 const W = new Set(C.split(",").filter((x) => x !== "Project_Contact_ID"));
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const id = new URL(req.url).searchParams.get("id");
@@ -39,6 +39,6 @@ export default async function handler(req, context) {
     }
     return json({ error: "Method not allowed" }, 405);
   } catch (e) { return fail(e, 400); }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/contacts" };

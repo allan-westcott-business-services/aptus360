@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const COLS = [
   "Plot_Utility_ID","Plot_ID","Utility_ID","Programmed_Date","As_Laid_Date","Connection_Date",
@@ -11,7 +11,7 @@ const COLS = [
 /* Every connection across every project. Embeds the plot and its project
    so the table can show which site a row belongs to — the whole point of
    a cross-project view. */
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   const url = new URL(req.url);
   const limit = Math.min(Number(url.searchParams.get("limit") || 2000), 5000);
@@ -76,6 +76,6 @@ export default async function handler(req) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/connections" };

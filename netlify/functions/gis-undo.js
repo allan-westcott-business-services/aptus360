@@ -1,4 +1,4 @@
-import { supabase, currentUser, json, fail } from "./_supabase.js";
+import { supabase, currentUser, json, fail, withAuth } from "./_supabase.js";
 
 /* The undo journal: reading the history back, adding to it, and moving
    the pointer.
@@ -18,7 +18,7 @@ import { supabase, currentUser, json, fail } from "./_supabase.js";
 const C = "Undo_ID,Project_ID,User_ID,Seq,Label,Delta,Undone,Created_At";
 const LIMIT = 25;
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = Number(context?.params?.projectId);
   const user = await currentUser(req);
@@ -109,6 +109,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/gis-undo" };

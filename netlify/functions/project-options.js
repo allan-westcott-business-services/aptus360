@@ -1,10 +1,10 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Options on a project: parallel versions of the same enquiry, quoted
    differently. Its own endpoint rather than a branch on /projects,
    because that one already has an unconditional GET and a conditional
    one below it could never run. */
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   const url = new URL(req.url);
   const projectId = Number(url.searchParams.get("project"));
@@ -73,6 +73,6 @@ export default async function handler(req) {
 
     return json({ error: "Method not allowed" }, 405);
   } catch (e) { return fail(e, 400); }
-}
+});
 
 export const config = { path: "/api/project-options" };

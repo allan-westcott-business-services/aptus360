@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Putting feature rows back exactly as they were.
 
@@ -23,7 +23,7 @@ const F = "Feature_ID,Project_ID,Layer_Key,Feature_Type,Geometry,Label,Attribute
 const W = new Set(F.split(","));
 const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
@@ -69,6 +69,6 @@ export default async function handler(req, context) {
     }
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/gis-restore" };

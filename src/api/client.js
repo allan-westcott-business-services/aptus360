@@ -56,6 +56,21 @@ async function request(path, { method = "GET", body, signal } = {}) {
   }
 
   if (!res.ok) {
+    /* A refused request ends the session rather than surfacing as an
+       error on whatever screen asked.
+
+       Every endpoint now requires a signed-in caller, so a 401 means the
+       session has gone — expired, revoked, or signed out in another tab.
+       Left as an ordinary failure it would read as "Sign in to use
+       this." on a screen the person is already looking at, with no way
+       to act on it, and every subsequent request would say the same.
+
+       Announced rather than acted on directly: this module knows nothing
+       about routing or React, and AuthContext is what owns the session.
+       It listens for this and clears it. */
+    if (res.status === 401 && typeof window !== "undefined") {
+      window.dispatchEvent(new CustomEvent("aptus:signed-out"));
+    }
     throw new ApiError(data?.error || `Request failed (${res.status})`, res.status, data);
   }
   return data;

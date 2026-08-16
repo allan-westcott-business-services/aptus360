@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Dragging an assignment along the schedule.
 
@@ -263,7 +263,7 @@ async function applyMove(db, id, { startShift, endShift, asked, toTeam }) {
   };
 }
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
   try {
@@ -425,6 +425,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/planning/assignments/:id/move" };

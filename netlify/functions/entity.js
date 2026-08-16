@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Comments, attachments and history for any entity. The allow-list is the
    security boundary: without it an arbitrary Entity_Type in the URL could
@@ -8,7 +8,7 @@ const ALLOWED = new Set([
   "AV_Application", "AV_Quotation", "Project_Scope", "Plot_Utility",
 ]);
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const { type, id } = context?.params || {};
   if (!ALLOWED.has(type)) return json({ error: `Unknown entity type "${type}"` }, 404);
@@ -53,6 +53,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/entity/:type/:id" };

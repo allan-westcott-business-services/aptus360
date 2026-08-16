@@ -1,9 +1,9 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Create any plots in the range that don't exist yet, then hand the whole
    range back ready to place. Its own path for the same reason as
    gis-plots: no ordering to get wrong. */
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
 
@@ -47,6 +47,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/gis-ensure-plots" };

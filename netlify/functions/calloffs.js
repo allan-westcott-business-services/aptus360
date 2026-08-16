@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Call-offs: a request to come and do a piece of work on a site.
 
@@ -74,7 +74,7 @@ export const CHILD = {
   },
 };
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const id = new URL(req.url).searchParams.get("id");
@@ -371,6 +371,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/calloffs" };

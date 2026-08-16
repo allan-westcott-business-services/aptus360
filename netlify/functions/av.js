@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const APP = "AV_Application_ID,Project_ID,Utility_ID,AV_Status_ID,Application_Ref,Submitted_Date,Plot_Count,Notes";
 const QUOT = "AV_Quotation_ID,AV_Application_ID,IDNO_ID,Quotation_Status_ID,Asset_Value,Quotation_Ref,Date_Received,Valid_Until_Date,Accepted,Notes";
@@ -6,7 +6,7 @@ const QUOT = "AV_Quotation_ID,AV_Application_ID,IDNO_ID,Quotation_Status_ID,Asse
 const clean = (o) =>
   Object.fromEntries(Object.entries(o).map(([k, v]) => [k, v === "" ? null : v]));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const url = new URL(req.url);
@@ -93,6 +93,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/av" };

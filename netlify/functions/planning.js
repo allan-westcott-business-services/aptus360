@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Everything the Planning board draws, in one request.
 
@@ -59,7 +59,7 @@ const ASGN_COLS = [
    calloff-status.js so this endpoint states the rule it applies. */
 const CLOSED = ["Complete", "Withdrawn (Customer)", "Withdrawn (Aptus)"];
 
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   try {
     if (req.method !== "GET") return json({ error: "Not found" }, 404);
@@ -204,6 +204,6 @@ export default async function handler(req) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/planning" };

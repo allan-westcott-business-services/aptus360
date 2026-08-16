@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* The AV register: every plot that has earned an asset value payment,
    next to the invoice line that claimed it. Reads the 0060 view, so the
@@ -6,7 +6,7 @@ import { supabase, json, fail } from "./_supabase.js";
    restated by whoever asks. */
 const STATUSES = ["Draft", "Issued", "Exported", "Paid", "Cancelled"];
 
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   const url = new URL(req.url);
 
@@ -166,6 +166,6 @@ export default async function handler(req) {
 
     return json({ error: "Method not allowed" }, 405);
   } catch (e) { return fail(e, 400); }
-}
+});
 
 export const config = { path: "/api/av-register" };

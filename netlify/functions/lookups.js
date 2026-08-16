@@ -1,11 +1,11 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* One batched call for every lookup the UI needs.
 
    Status lists come from here too, deliberately. Hardcoding status IDs in
    the frontend means a reseeded or edited status table silently writes the
    wrong value — no error, just wrong data. The database owns the IDs. */
-export default async function handler() {
+export default withAuth(async function handler() {
   try {
     const db = supabase();
 
@@ -195,6 +195,6 @@ export default async function handler() {
   } catch (e) {
     return fail(e);
   }
-}
+});
 
 export const config = { path: "/api/lookups" };

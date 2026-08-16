@@ -1,9 +1,9 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Plot assignment for a quotation. Replacing the whole set in one call
    rather than adding and removing individually — the picker works on a
    selection, and a partial failure mid-way would leave it inconsistent. */
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const quotationId = context?.params?.quotationId;
 
@@ -43,6 +43,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/quotations/:quotationId/plots" };

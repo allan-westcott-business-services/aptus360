@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Invoices for one project, with the plot lines they are made of.
 
@@ -8,7 +8,7 @@ import { supabase, json, fail } from "./_supabase.js";
    instead and the invoice list came back empty, with no error to say so.
    Four previous occurrences of that are in the handover; a file per
    endpoint is the fix that was adopted, and this is why. */
-export default async function handler(req) {
+export default withAuth(async function handler(req) {
   const db = supabase();
   const url = new URL(req.url);
 
@@ -28,6 +28,6 @@ export default async function handler(req) {
       return json({ invoices: inv.data || [], lines: lines.data || [] });
 
   } catch (e) { return fail(e, 400); }
-}
+});
 
 export const config = { path: "/api/av-project-invoices" };

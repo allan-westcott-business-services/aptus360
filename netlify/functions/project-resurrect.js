@@ -1,6 +1,6 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const id = context?.params?.id;
   if (req.method !== "POST") return json({ error: "Method not allowed" }, 405);
@@ -13,6 +13,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:id/resurrect" };

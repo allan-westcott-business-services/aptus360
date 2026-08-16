@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const COLS = [
   "POC_Application_ID","Project_ID","Utility_ID","IDNO_ID","POC_Status_ID","POC_Type",
@@ -25,7 +25,7 @@ const nullEmpty = (o) =>
 const WRITABLE = new Set(COLS.split(",").filter((c) => c !== "POC_Application_ID"));
 const pick = (o) => Object.fromEntries(Object.entries(o).filter(([k]) => WRITABLE.has(k)));
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const url = new URL(req.url);
@@ -79,6 +79,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/poc" };

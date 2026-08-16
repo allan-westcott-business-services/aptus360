@@ -1,8 +1,8 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const INV = "AV_Invoice_ID,Project_ID,Utility_ID,IDNO_ID,AV_Agreement_Type_ID,Invoice_Number,Contract_Number,Invoice_Date,Due_Date,Net_Value,VAT_Rate,VAT_Value,Gross_Value,Status,Source_File,Raised_By,Notes";
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const url = new URL(req.url);
   const op = url.searchParams.get("op");
@@ -167,6 +167,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/av-invoices" };

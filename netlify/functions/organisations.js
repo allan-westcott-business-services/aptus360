@@ -1,4 +1,4 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 const ORG = "Organisation_ID,Name,Trading_Name,Code,Registration_Number,Address_1,Address_2,Town,County,Postcode,Phone,Email,Website,VAT_Registered,VAT_Rate,Notes,Is_Active";
 const BRANCH = "Organisation_Branch_ID,Organisation_ID,Branch_Name,Branch_Dropdown,Region_ID,Address_1,Town,Postcode,Phone,Is_Active";
@@ -32,7 +32,7 @@ const DUPLICATE = {
   role: "This organisation already holds that role.",
 };
 
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const url = new URL(req.url);
   const what = url.searchParams.get("what") || "organisations";
@@ -182,6 +182,6 @@ export default async function handler(req, context) {
     }
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/organisations" };

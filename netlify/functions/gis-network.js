@@ -1,9 +1,9 @@
-import { supabase, json, fail } from "./_supabase.js";
+import { supabase, json, fail, withAuth } from "./_supabase.js";
 
 /* Network operations. Each is a graph walk or a distance search across
    the whole drawing, so they run in the database rather than as a
    sequence of calls over HTTP. */
-export default async function handler(req, context) {
+export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
   const op = new URL(req.url).searchParams.get("op");
@@ -50,6 +50,6 @@ export default async function handler(req, context) {
   } catch (e) {
     return fail(e, 400);
   }
-}
+});
 
 export const config = { path: "/api/projects/:projectId/gis-network" };

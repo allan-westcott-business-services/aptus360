@@ -194,6 +194,100 @@ const openIndexOf = (statuses) =>
   }
 }
 
+/* ── The tablet screen ── */
+const app = readFileSync("./src/features/field/FieldApp.jsx", "utf8");
+const shell = readFileSync("./src/App.jsx", "utf8");
+
+// 10. Today's run is shown, the rest is behind a tap.
+//
+//     The whole queue visible invites arguing with the order, and a lock
+//     on every one of seven rows makes the app's main message "no". One
+//     job alone tells somebody nothing about their day — they cannot see
+//     that tomorrow is on a site they will drive past this afternoon.
+{
+  const FIN = ["Submitted", "Complete", "Aborted"];
+  const q = (p, status, startDate, released) => ({ position: p, status, startDate, released: !!released });
+  const split = (queue) => {
+    const current = queue.find((x) => x.released) ?? null;
+    const todays = current
+      ? queue.filter((x) => !x.released && !FIN.includes(x.status)
+        && x.startDate === current.startDate) : [];
+    const later = queue.filter((x) => !x.released && !FIN.includes(x.status)
+      && !todays.includes(x));
+    return { today: todays.map((x) => x.position), later: later.map((x) => x.position) };
+  };
+
+  const week = [q(1, "Scheduled", "2026-08-17", true), q(2, "Scheduled", "2026-08-17"),
+    q(3, "Scheduled", "2026-08-19"), q(4, "Scheduled", "2026-08-20")];
+  const r = split(week);
+  if (r.today.join() !== "2") fail(`today's run came out as ${r.today.join()}`);
+  if (r.later.join() !== "3,4") fail(`the rest came out as ${r.later.join()}`);
+
+  /* Anchored on the open job's date, not the actual date. A queue that
+     has slipped a day would otherwise show nothing at all, which is the
+     moment somebody most needs to see what is next. */
+  const slipped = [q(1, "Submitted", "2026-08-17"), q(2, "Aborted", "2026-08-17"),
+    q(3, "Scheduled", "2026-08-19", true), q(4, "Scheduled", "2026-08-20")];
+  if (split(slipped).later.join() !== "4") {
+    fail("a slipped queue does not show what is still to come");
+  }
+  if (!/q\.startDate === current\.startDate/.test(app)) {
+    fail("the screen does not group today's run by the open job's date");
+  }
+  if (/new Date\(\)[^;]*startDate|startDate === today/.test(app)) {
+    fail("the screen groups by the actual date, so a slipped queue shows nothing");
+  }
+}
+
+// 11. Nothing on screen can be worked from out of order.
+//
+//     A waiting job shows its task, site and date. The address, plots
+//     and AP number are withheld by the endpoint — so a queue cannot be
+//     photographed and worked through in whatever order suits.
+{
+  const waiting = app.slice(app.indexOf("function Waiting"), app.indexOf("function dateText"));
+  for (const field of ["siteAddress", "plots", "apNumber"]) {
+    if (waiting.includes(field)) fail(`a locked job shows its ${field}`);
+  }
+  /* And says it is locked in words. A padlock alone reads as an error to
+     somebody who has not been told the rule. */
+  if (!/Locked/.test(waiting)) fail("a locked job is not said to be locked");
+}
+
+// 12. Nothing open is three situations, not one.
+//
+//     Everything submitted and waiting on the office, and nothing booked
+//     at all, mean different things — and only one of them means go
+//     home.
+{
+  if (!/awaitingReview > 0/.test(app)) {
+    fail("submitted-and-waiting reads the same as no work at all");
+  }
+  if (!/No work assigned/.test(app)) fail("an empty queue says nothing");
+  /* The endpoint's own refusals are shown as written — they are the ones
+     that tell somebody to ring the office. */
+  if (!/setError\(e\.message\)/.test(app)) {
+    fail("the screen replaces the endpoint's refusals with something general");
+  }
+}
+
+// 13. The field app is its own surface, always behind a login.
+{
+  if (!/pathname[^;]*"\/field"/.test(shell)) fail("/field does not reach the field app");
+  if (!/field \? <FieldApp \/> : <Shell \/>/.test(shell)) {
+    fail("the field app renders inside the office shell");
+  }
+  /* The sample-data escape lets the office app run with no backend. A
+     field queue with no backend is an empty screen either way, and
+     leaving the door open on the surface that will be on the most
+     devices is not worth the convenience. */
+  const gate = shell.slice(shell.indexOf("function Gate()"));
+  const body = gate.slice(0, gate.indexOf("\n}"));
+  if (body.indexOf("field && !authEnabled") > body.indexOf("if (!authEnabled) return <Shell")) {
+    fail("the field app runs without auth when the backend is unconfigured");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
-  : "The field queue behaves (one job open, released by submit or abort).");
+  : "The field queue behaves (one job open, today visible, the rest a tap away).");
 process.exit(bad ? 1 : 0);

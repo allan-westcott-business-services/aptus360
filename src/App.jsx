@@ -39,6 +39,7 @@ import { USE_MOCKS } from "./api/client.js";
 /* Not lazy: it is the first thing most sessions see, and a spinner in
    front of eight buttons would be slower than the buttons. */
 import HomePage from "./features/home/HomePage.jsx";
+import FieldApp from "./features/field/FieldApp.jsx";
 import {
   findNavItem, builtCount, totalCount,
   isHrView, hrModuleFor, hrViewFor,
@@ -223,11 +224,38 @@ export default function App() {
 }
 
 /* Auth is optional until it's configured: without VITE_SUPABASE_ANON_KEY
-   the app runs open, so sample-data mode still works with no backend. */
+   the app runs open, so sample-data mode still works with no backend.
+
+   ── Except on the tablet ──
+
+   /field is the field app: a team leader's queue, and nothing else. It
+   goes through the same login and the same session — one account, one
+   place to disable somebody — but not the same shell. The office
+   navigation is eight sections of things an operative cannot do, on a
+   screen held in one hand in the rain.
+
+   Read from the path rather than the view state the office app keeps,
+   because it is not one of those views: somebody arriving at /field has
+   said which application they want before the app has loaded.
+
+   Auth is never optional here. The sample-data escape above exists so
+   the office app runs with no backend; a field queue with no backend is
+   an empty screen either way, and leaving the door open on the surface
+   that will be on the most devices is not worth the convenience. */
+function isFieldApp() {
+  if (typeof window === "undefined") return false;
+  return window.location.pathname.replace(/\/+$/, "") === "/field";
+}
+
 function Gate() {
   const { session, loading, authEnabled } = useAuth();
+  const field = isFieldApp();
+
+  if (field && !authEnabled) {
+    return <div className="boot">The field app needs an account. Ask the office.</div>;
+  }
   if (!authEnabled) return <Shell />;
   if (loading) return <div className="boot">Loading&hellip;</div>;
   if (!session) return <LoginPage />;
-  return <Shell />;
+  return field ? <FieldApp /> : <Shell />;
 }

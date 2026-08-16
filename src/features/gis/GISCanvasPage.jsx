@@ -7957,6 +7957,46 @@ export default function GISCanvasPage() {
         Project_ID: projectId,
         Work_Type_ID: workType.Work_Type_ID,
         Selection_Mode: "Span",
+        /* Whose work this is.
+
+           The column was empty on every call-off raised here, because
+           nothing set it — and a list with a blank customer on every row
+           is a column nobody reads.
+
+           Worked out from the drawing: a developer area owns the plots
+           the runs pass, a Project_Developer points at a Customer_Branch,
+           and a branch belongs to a customer. All three are already
+           loaded, so this is a lookup rather than a fetch.
+
+           Only where the answer is one customer. A call-off crossing two
+           developers has two, and picking the first would put a name on
+           it that is wrong for half the work — worse than the blank it
+           replaces, because a blank invites the question and a wrong
+           name does not. */
+        ...(() => {
+          const branchOf = (d) => (lookups?.branches || [])
+            .find((b) => Number(b.Branch_ID) === Number(d?.Branch_ID));
+          const ids = [...new Set(developers
+            .map((d) => branchOf(d)?.Customer_ID)
+            .filter((x) => x != null)
+            .map(Number))];
+          if (ids.length !== 1) return {};
+
+          const customer = (lookups?.customers || [])
+            .find((c) => Number(c.Customer_ID) === ids[0]);
+          const dev = developers.find((d) =>
+            Number(branchOf(d)?.Customer_ID) === ids[0]);
+          const branch = branchOf(dev);
+          return {
+            Customer_ID: ids[0],
+            Customer_Name: customer?.Customer_Name ?? null,
+            /* The branch too. A customer with three regional offices is
+               three different people to send a call-off to, and the
+               branch is what says which. */
+            Branch_ID: branch?.Branch_ID ?? null,
+            Branch_Name: branch?.Branch_Dropdown || branch?.Branch_Name || null,
+          };
+        })(),
         Contact_Name: raisedByName || "Site",
         Contact_Phone: "N/A",
         /* Today, as the earliest anybody could turn up. Changed on the

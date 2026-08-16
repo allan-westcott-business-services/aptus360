@@ -125,14 +125,21 @@ const fmt = (d) => {
   return M && dd ? `${dd}-${M}-${y}` : d;
 };
 
-/* A phase, short enough for a pill. "Excavation and Lay" is the width
-   of the column on its own. */
+/* A phase, as it is said rather than as the task type spells it.
+
+   "Dig" and "Reinstate" were shorter and were not what anybody calls
+   them. A pill on a list is read in passing, and a word somebody has to
+   translate is worse than one that takes a little more room.
+
+   The task type's own name is the fallback, so a phase nobody has named
+   here appears as itself rather than as its first word — which turned
+   "Traffic Management" into "Traffic". */
 function shortPhase(name) {
   const n = String(name || "");
-  if (/^excav/i.test(n)) return "Dig";
+  if (/^excav/i.test(n)) return "Excavate & Lay";
   if (/^lay/i.test(n)) return "Lay";
-  if (/^reinstat/i.test(n)) return "Reinstate";
-  return n.split(/\s+/)[0];
+  if (/^reinstat/i.test(n)) return "Reinstatement";
+  return n;
 }
 
 export default function CallOffsPage() {

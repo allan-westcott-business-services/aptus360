@@ -186,6 +186,68 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   }
 }
 
+// 11. The pills are named as the trade names them.
+//
+//     "Dig" and "Reinstate" were shorter and were not what anybody calls
+//     them. A pill on a list is read in passing, and a word somebody has
+//     to translate is worse than one taking a little more room.
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  const fn = page.slice(page.indexOf("function shortPhase"));
+  const body = fn.slice(0, fn.indexOf("\n}"));
+
+  if (!/"Excavate & Lay"/.test(body)) fail("the excavation pill is not named Excavate & Lay");
+  if (!/"Reinstatement"/.test(body)) fail("the reinstatement pill is not named Reinstatement");
+  if (/"Dig"|"Reinstate"(?!ment)/.test(body)) {
+    fail("a pill still uses the old short name");
+  }
+  /* A phase nobody has named appears as itself rather than as its first
+     word — which turned "Traffic Management" into "Traffic". */
+  if (/split\(\/\\s\+\/\)\[0\]/.test(body)) {
+    fail("an unnamed phase is cut to its first word");
+  }
+}
+
+// 12. A call-off raised from the drawing knows whose work it is.
+//
+//     The customer column was empty on every one, because nothing set
+//     it — and a list with a blank on every row is a column nobody
+//     reads.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const call = canvas.slice(canvas.indexOf("const created = await createCallOff("));
+  const payload = call.slice(0, call.indexOf("items:"));
+
+  /* The fields being written, not merely mentioned. The resolver reads
+     b.Customer_ID on the way to the answer, so a search for the name
+     passed while nothing was being set with it. */
+  for (const f of ["Customer_ID", "Customer_Name", "Branch_ID", "Branch_Name"]) {
+    if (!new RegExp(`\\b${f}:`).test(payload)) {
+      fail(`a call-off raised from the drawing does not set ${f}`);
+    }
+  }
+  /* Resolved through the branch, which is what links a developer to a
+     customer. */
+  if (!/branchOf\(/.test(payload)) {
+    fail("the customer is not resolved through the developer's branch");
+  }
+  /* Only where the answer is one customer. A call-off crossing two
+     developers has two, and picking the first would put a name on it
+     that is wrong for half the work — worse than the blank, because a
+     blank invites the question and a wrong name does not. */
+  if (!/ids\.length !== 1/.test(payload)) {
+    fail("a call-off crossing two customers is given one of them");
+  }
+
+  /* And the endpoint accepts them: a payload writing columns the
+     endpoint drops is a change that looks made and is not. */
+  const api = readFileSync("./netlify/functions/calloffs.js", "utf8");
+  const cols = api.slice(api.indexOf("const SUB_COLS"), api.indexOf("].join"));
+  for (const f of ["Customer_ID", "Customer_Name", "Branch_ID", "Branch_Name"]) {
+    if (!cols.includes(`"${f}"`)) fail(`${f} is not writable on a call-off`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assignment coverage behaves (spans and time, per phase).");
 process.exit(bad ? 1 : 0);

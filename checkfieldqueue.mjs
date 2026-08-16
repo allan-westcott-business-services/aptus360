@@ -307,6 +307,107 @@ const shell = readFileSync("./src/App.jsx", "utf8");
   }
 }
 
+/* ── Refusing a job ── */
+const abort = readFileSync("./netlify/functions/field-abort.js", "utf8");
+const reasonsSql = readFileSync("./supabase/migrations/0170_abort_reasons.sql", "utf8");
+
+// 14. Only your own released job can be refused.
+//
+//     Two rules, and both matter. Without the first, anybody with an
+//     account could abort anybody's work by guessing an id. Without the
+//     second, a leader could clear four jobs at once and the ordering
+//     would be decoration.
+{
+  /* Scoped where the queue is read, not merely somewhere in the file:
+     the update below carries the same text, so a search across the
+     whole function passed while the query that finds the job had lost
+     its filter — and an unfiltered query finds anybody's job. */
+  const query = abort.slice(abort.indexOf('from("Call_Off_Assignment")'));
+  if (!/eq\("Team_ID", teamId\)/.test(query.slice(0, 300))) {
+    fail("a job belonging to another team can be aborted");
+  }
+  if (!/That job is not yours/.test(abort)) {
+    fail("nothing refuses a job on somebody else's team");
+  }
+  /* Not found on this team reads the same as not existing — telling
+     somebody an id belongs to another team is telling them the ids are
+     worth guessing. */
+  const abortCode = abort
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/^\s*\/\/.*$/gm, "");
+  if (/belongs to (another|a different) team/i.test(abortCode)) {
+    fail("the refusal says the id exists on another team");
+  }
+
+  if (!/Number\(open\?\.Assignment_ID\) !== assignmentId/.test(abort)) {
+    fail("a job further down the queue can be aborted");
+  }
+  if (!/already finished/.test(abort)) {
+    fail("a finished job can be aborted again");
+  }
+  /* And the update is scoped to the team as well as the id, so a race
+     cannot write to somebody else's row. */
+  const update = abort.slice(abort.indexOf('update({ Status: "Aborted" })'));
+  if (!/eq\("Team_ID", teamId\)/.test(update.slice(0, 260))) {
+    fail("the status change is not scoped to the caller's team");
+  }
+}
+
+// 15. The reason is from the list, and the list has rules of its own.
+{
+  if (!/from\("Field_Abort_Reason"\)/.test(abort)) {
+    fail("any reason string is accepted");
+  }
+  /* Office-only reasons are the office's to give: a gang on a doorstep
+     does not discover that a call-off has been withdrawn. */
+  if (!/reason\.Office_Only/.test(abort)) {
+    fail("an operative can record a reason meant for the office");
+  }
+  /* "Other" without a note looks like an answer and says nothing. */
+  if (!/reason\.Needs_Note && !note/.test(abort)) {
+    fail("a reason that needs a note can be given without one");
+  }
+  /* Enforced on the server, not only on the tablet — a screen is not a
+     permission. */
+  const list = readFileSync("./netlify/functions/field-reasons.js", "utf8");
+  if (!/eq\("Office_Only", false\)/.test(list)) {
+    fail("the tablet is offered reasons it is not allowed to use");
+  }
+
+  /* The list is a table, so the office can change it without a deploy —
+     the same argument 0116 makes about the statuses. */
+  if (!/CREATE TABLE IF NOT EXISTS "Field_Abort_Reason"/.test(reasonsSql)) {
+    fail("the reasons are not a table");
+  }
+  if (!/ON UPDATE CASCADE/.test(reasonsSql)) {
+    fail("renaming a reason code would orphan the aborts holding it");
+  }
+  /* At least one reason demands a note, or Needs_Note is decoration. */
+  if (!/'other',\s*'Something else',\s*false,\s*true/.test(reasonsSql)) {
+    fail("the vaguest reason does not require a note");
+  }
+}
+
+// 16. It is written as one thing, and says who called it.
+{
+  /* The reason before the status. A job aborted with no reason is one
+     nobody can act on; a reason attached to a job still open is visible
+     and the next attempt says so. */
+  if (abort.indexOf('from("Field_Abort").insert')
+    > abort.indexOf('update({ Status: "Aborted" })')) {
+    fail("the job is aborted before the reason is recorded");
+  }
+  /* A second tap on a slow connection is not an error: the job is in
+     the state they asked for. */
+  if (!/duplicate key/i.test(abort)) {
+    fail("aborting twice reports a failure for something that worked");
+  }
+  if (!/By_Office: false/.test(abort)) {
+    fail("a self-abort is not distinguished from an office one");
+  }
+  if (!/Aborted_By/.test(abort)) fail("nothing records who refused the job");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The field queue behaves (one job open, today visible, the rest a tap away).");
 process.exit(bad ? 1 : 0);

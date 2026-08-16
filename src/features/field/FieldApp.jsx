@@ -1,5 +1,5 @@
 import { useState, useEffect, useCallback } from "react";
-import { fieldQueue } from "../../api/field.js";
+import { fieldQueue, abortReasons, abortJob } from "../../api/field.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
 
 /* The tablet screen: a team leader's work, in order.
@@ -68,11 +68,30 @@ export default function FieldApp() {
   const [loading, setLoading] = useState(true);
   const [showAll, setShowAll] = useState(false);
 
+  /* The abort sheet: null when closed, otherwise the job being refused.
+
+     A step of its own rather than a confirm dialog. An abort ends a job
+     that cannot be returned to, and the reason is the whole point of
+     recording it — a yes/no box would get a shrug and "other". */
+  const [refusing, setRefusing] = useState(null);
+  const [reasons, setReasons] = useState([]);
+  const [chosen, setChosen] = useState("");
+  const [note, setNote] = useState("");
+  const [saving, setSaving] = useState(false);
+  const [sheetError, setSheetError] = useState("");
+
   const load = useCallback(async () => {
     setLoading(true);
     try {
       setData(await fieldQueue());
       setError("");
+      /* Fetched with the queue rather than when the sheet opens: the
+         moment somebody needs this list is the moment they are standing
+         somewhere with no signal. */
+      if (!reasons.length) {
+        try { setReasons((await abortReasons()).reasons ?? []); } catch { /* the
+          sheet says so if it is empty */ }
+      }
     } catch (e) {
       /* The endpoint's refusals are written to be read on site — not
          linked to anybody, not a team leader, leading two teams — so
@@ -81,7 +100,7 @@ export default function FieldApp() {
       setError(e.message);
       setData(null);
     } finally { setLoading(false); }
-  }, []);
+  }, [reasons.length]);
 
   useEffect(() => { load(); }, [load]);
 
@@ -122,6 +141,85 @@ export default function FieldApp() {
         </div>
       )}
 
+      {/* Refusing the job.
+
+          Over the queue rather than beside it: this ends a job that
+          cannot be returned to, and the screen should say so by being
+          the only thing on it. */}
+      {refusing && (
+        <div className="fq-sheet">
+          <div className="fq-sheet-box">
+            <h2>Why can&rsquo;t this job be done?</h2>
+            <p className="fq-sheet-sub">
+              {refusing.task} at {refusing.siteName}. The office will need to
+              book this again — you won&rsquo;t be able to come back to it.
+            </p>
+
+            {reasons.length ? (
+              <div className="fq-reasons">
+                {reasons.map((r) => (
+                  <button
+                    key={r.Reason_Code}
+                    className={`fq-reason${chosen === r.Reason_Code ? " on" : ""}`}
+                    onClick={() => { setChosen(r.Reason_Code); setSheetError(""); }}>
+                    {r.Label}
+                  </button>
+                ))}
+              </div>
+            ) : (
+              <p className="fq-sheet-sub">
+                The list of reasons didn&rsquo;t load. Ring the office and they
+                can record it.
+              </p>
+            )}
+
+            {/* Asked for always, required only where the reason says so.
+                Somebody who wants to add a line should not have to pick
+                the vague reason to get a box. */}
+            <label className="fq-note-label" htmlFor="fq-note">
+              What happened
+              {reasons.find((r) => r.Reason_Code === chosen)?.Needs_Note
+                ? "" : " (optional)"}
+            </label>
+            <textarea id="fq-note" rows={3} value={note}
+              onChange={(e) => { setNote(e.target.value); setSheetError(""); }} />
+
+            {sheetError && <p className="fq-sheet-error">{sheetError}</p>}
+
+            <div className="fq-sheet-actions">
+              <button className="fq-btn primary" disabled={saving}
+                onClick={async () => {
+                  if (!chosen) { setSheetError("Pick a reason first."); return; }
+                  const r = reasons.find((x) => x.Reason_Code === chosen);
+                  if (r?.Needs_Note && !note.trim()) {
+                    setSheetError("Say briefly what happened.");
+                    return;
+                  }
+                  setSaving(true);
+                  try {
+                    await abortJob({
+                      assignmentId: refusing.assignmentId,
+                      reasonCode: chosen,
+                      note: note.trim() || null,
+                    });
+                    setRefusing(null);
+                    /* Reloaded rather than patched: the next job is
+                       released by the server, and guessing which one
+                       would be a second opinion about the order. */
+                    await load();
+                  } catch (e) {
+                    setSheetError(e.message);
+                  } finally { setSaving(false); }
+                }}>
+                {saving ? "Saving\u2026" : "Confirm"}
+              </button>
+              <button className="fq-btn ghost" disabled={saving}
+                onClick={() => setRefusing(null)}>Go back</button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {!loading && !error && data && (
         <>
           {/* A returned form, which is the only thing that interrupts
@@ -154,7 +252,11 @@ export default function FieldApp() {
                   <button className="fq-btn primary">Start work instruction</button>
                   {/* Not "Abort". Nobody arriving at a locked site thinks
                       of it as aborting; they think they cannot get on. */}
-                  <button className="fq-btn ghost">Can&rsquo;t do this job</button>
+                  <button className="fq-btn ghost"
+                    onClick={() => {
+                      setRefusing(current);
+                      setChosen(""); setNote(""); setSheetError("");
+                    }}>Can&rsquo;t do this job</button>
                 </div>
               </section>
 
@@ -205,7 +307,7 @@ export default function FieldApp() {
 }
 
 const CSS = `
-.fq { max-width: 560px; margin: 0 auto; padding: 0 14px 40px;
+.fq { position: relative; min-height: 100vh; max-width: 560px; margin: 0 auto; padding: 0 14px 40px;
   font: 400 16px/1.5 system-ui, -apple-system, "Segoe UI", Roboto, sans-serif;
   color: #1c2430; }
 .fq-top { display: flex; align-items: center; justify-content: space-between;
@@ -262,4 +364,28 @@ const CSS = `
   padding: 28px 20px; text-align: center; }
 .fq-empty h1 { font-size: 20px; font-weight: 600; margin: 0 0 6px; }
 .fq-empty p { color: #5a6b7b; margin: 0 0 18px; }
+
+/* The abort sheet. Not a dialog over the queue — the queue is gone
+   while this is up, because the decision it asks for is not a small
+   one. */
+.fq-sheet { position: absolute; inset: 0; background: #f2f4f7; z-index: 10;
+  padding: 14px; overflow-y: auto; }
+.fq-sheet-box { max-width: 560px; margin: 0 auto; background: #fff;
+  border: 1px solid #e6eaf0; border-radius: 12px; padding: 18px 16px; }
+.fq-sheet-box h2 { font-size: 19px; font-weight: 600; margin: 0 0 6px; }
+.fq-sheet-sub { font-size: 15px; color: #5a6b7b; margin: 0 0 16px; }
+.fq-reasons { display: grid; gap: 8px; margin-bottom: 18px; }
+/* Full-width rows, not a dropdown. A select on a tablet is a small
+   target that hides its own options behind a tap. */
+.fq-reason { width: 100%; min-height: 50px; text-align: left; padding: 12px 14px;
+  font-size: 16px; border: 1px solid #d7dee6; border-radius: 10px;
+  background: #fff; color: #1c2430; }
+.fq-reason.on { border-color: #39467B; border-width: 2px; background: #eef1f8;
+  font-weight: 600; }
+.fq-note-label { display: block; font-size: 14px; color: #5a6b7b;
+  margin-bottom: 6px; }
+#fq-note { width: 100%; font: inherit; font-size: 16px; padding: 10px 12px;
+  border: 1px solid #d7dee6; border-radius: 10px; resize: vertical; }
+.fq-sheet-error { color: #991b1b; font-size: 15px; margin: 12px 0 0; }
+.fq-sheet-actions { display: grid; gap: 10px; margin-top: 18px; }
 `;

@@ -403,6 +403,45 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   }
 }
 
+// 15. The Customer column shows the branch.
+//
+//     A customer with three regional offices is three different people
+//     to send a call-off to. "Barratt Homes" on a row is true of half
+//     the list and tells nobody which office.
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  const cols = page.slice(page.indexOf("const COLS = ["));
+  const col = cols.slice(cols.indexOf('key: "customer"'));
+  const entry = col.slice(0, col.indexOf("},"));
+
+  if (!/r\.Branch_Name/.test(entry)) fail("the Customer column does not show the branch");
+  if (!/r\.Branch_Name \|\| r\.Customer_Name/.test(entry)) {
+    fail("the branch does not fall back to the customer");
+  }
+  /* The heading stays short: the column is narrow and "Customer Branch"
+     would wrap. The branch name already contains the customer. */
+  if (!/label: "Customer"/.test(entry)) {
+    fail("the Customer heading changed with the value under it");
+  }
+
+  /* And the endpoint sends it, or the column is blank on every row. */
+  const api = readFileSync("./netlify/functions/calloffs-all.js", "utf8");
+  if (!/"Branch_Name"/.test(api)) {
+    fail("the list endpoint does not return the branch name");
+  }
+
+  /* An older call-off has a customer and no branch. Losing what is
+     known would be worse than the ambiguity it replaces. */
+  const raw = (r) => r.Branch_Name || r.Customer_Name || "";
+  if (raw({ Customer_Name: "Barratt Homes" }) !== "Barratt Homes") {
+    fail("a call-off with no branch shows nothing at all");
+  }
+  if (raw({ Branch_Name: "Barratt Homes (Yorkshire East)", Customer_Name: "Barratt Homes" })
+    !== "Barratt Homes (Yorkshire East)") {
+    fail("the customer wins over the branch");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assignment coverage behaves (spans and time, per phase).");
 process.exit(bad ? 1 : 0);

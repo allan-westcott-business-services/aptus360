@@ -170,8 +170,22 @@ const COLS = [
     raw: (r) => r.AP_Number || `#${r.Submission_ID}` },
   { key: "site", label: "Site", width: 190, type: "text",
     raw: (r) => r.Site_Name || "" },
+  /* The branch, under a heading that says Customer.
+
+     A customer with three regional offices is three different people to
+     send a call-off to, and the branch is what says which — "Barratt
+     Homes" on a row is true of half the list and tells nobody anything.
+
+     The heading stays short because the column is narrow and "Customer
+     Branch" would wrap. The name it carries already contains the
+     customer: the branch dropdowns read "Barratt Homes (Yorkshire
+     East)".
+
+     Falls back to the customer where no branch was recorded — call-offs
+     raised before the branch was captured have one and not the other,
+     and an em dash there would lose what is known. */
   { key: "customer", label: "Customer", width: 150, type: "multi",
-    raw: (r) => r.Customer_Name || "" },
+    raw: (r) => r.Branch_Name || r.Customer_Name || "" },
   { key: "worktype", label: "Work Type", width: 140, type: "multi",
     raw: (r) => r.Work_Type?.Work_Type_Name || "" },
   { key: "contact", label: "Contact", width: 140, type: "text",

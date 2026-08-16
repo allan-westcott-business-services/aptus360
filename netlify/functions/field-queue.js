@@ -9,10 +9,19 @@ import { supabase, withAuth, json, fail } from "./_supabase.js";
    let anybody with an account read anybody's work, and the whole reason
    the wrapper exists is that a tablet is a thing that gets lost.
 
-   The chain is Work_Email → Person → Team_Member where Is_Team_Leader →
-   Team → the assignments against it. Work rather than personal email
-   because the login is a work account, and a person's private address
-   is not a credential.
+   The chain is Email → Person → Team_Member where Is_Team_Leader → Team
+   → the assignments against it.
+
+   Matched the way connection-photos.js and av-register.js already match
+   it: ilike on Email, and active people only. This first read
+   Work_Email, a column added by migration 0141 that has not been
+   applied here — found by reading a migration instead of reading the
+   two endpoints that had already answered the same question.
+
+   Active only, because that is what disables somebody. A leaver keeps
+   their login until an administrator gets to it; the flag is what says
+   they no longer work here, and a queue is exactly the thing they
+   should stop seeing.
 
    ── One job open at a time ──
 
@@ -54,13 +63,14 @@ export default withAuth(async function handler(req, context, user) {
     if (!email) return json({ error: "That account has no email." }, 403);
 
     /* ── The team this person leads ── */
-    const { data: people, error: pErr } = await db
+    const { data: person, error: pErr } = await db
       .from("Person")
-      .select("Person_ID,Person_Name,Work_Email");
+      .select("Person_ID,Person_Name,Email")
+      .ilike("Email", email)
+      .eq("Is_Active", true)
+      .maybeSingle();
     if (pErr) throw pErr;
 
-    const person = (people || []).find((p) =>
-      String(p.Work_Email ?? "").trim().toLowerCase() === email);
     if (!person) {
       /* Said plainly rather than returned as an empty queue. "No work
          today" and "this account is not linked to anybody" look

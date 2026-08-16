@@ -98,10 +98,29 @@ const openIndexOf = (statuses) =>
   if (/context\?\.params|req\.url.*[Tt]eam|searchParams/.test(src)) {
     fail("the queue reads a team from the request");
   }
-  /* The work email, not the personal one: the login is a work account
-     and a private address is not a credential. */
-  if (!/Work_Email/.test(src)) fail("the queue does not match on the work email");
-  if (/Personal_Email/.test(src)) fail("the queue accepts a personal email as a login");
+  /* The column the Person table actually has, matched the way the rest
+     of the app matches it.
+
+     This first read Work_Email — a column added by a migration that had
+     never been applied — because I read the migration rather than the
+     two endpoints already answering the same question. So the check now
+     asks those endpoints what the column is called, instead of holding
+     an opinion of its own. */
+  const others = ["connection-photos.js", "av-register.js"]
+    .map((f) => readFileSync(`./netlify/functions/${f}`, "utf8"))
+    .join("\n");
+  const column = others.match(/\.ilike\("([A-Za-z_]+)", email\)/);
+  if (!column) fail("nothing else in the app looks a person up by email any more");
+  else if (!new RegExp(`ilike\\("${column[1]}", email\\)`).test(src)) {
+    fail(`the queue does not match on ${column[1]}, which is what the rest of the app uses`);
+  }
+
+  /* Active people only. A leaver keeps their login until an
+     administrator gets to it, and the flag is what says they no longer
+     work here — a queue is exactly the thing they should stop seeing. */
+  if (!/eq\("Is_Active", true\)/.test(src)) {
+    fail("a leaver still gets a queue until their login is removed");
+  }
 }
 
 // 5. Only a leader gets a queue, and only of one team.

@@ -197,6 +197,11 @@ const COLS = [
    the column disagree with the list it is in. */
 const COVER_RANK = { unassigned: 0, part: 1, assigned: 2 };
 
+/* The columns a filter can be set on. Worked out once: the actions
+   column has no value to match and rowPasses would call raw() on it for
+   every row. */
+const FILTERABLE = COLS.filter((c) => c.type !== "none");
+
 /* An em dash for nothing, so an empty cell reads as empty rather than
    as a column that failed to render. */
 const col_text = (v) => (v === "" || v == null ? "\u2014" : v);
@@ -310,8 +315,14 @@ export default function CallOffsPage() {
       if (status !== "open" && status !== "all" && r.Status !== status) return false;
       /* The column filters, on top of the search box and the status
          dropdown above the table. All three narrow: none of them
-         replaces another. */
-      if (!COLS.every((c) => rowPasses(r, c, filters[c.key]))) return false;
+         replaces another.
+
+         rowPasses takes the whole column list and the whole filter
+         object and walks them itself — called once per column with one
+         of each, it tried to iterate a single column and threw "e is
+         not iterable". The other tables call it the same way this now
+         does. */
+      if (!rowPasses(r, FILTERABLE, filters)) return false;
       if (!t) return true;
       /* Everything somebody might have in front of them: the reference
          off an email, the site off a drawing, the name of whoever rang. */

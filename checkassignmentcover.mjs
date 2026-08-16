@@ -358,8 +358,22 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
 
   /* The column filters narrow on top of the search box and the status
      dropdown rather than replacing either. */
-  if (!/COLS\.every\(\(c\) => rowPasses\(r, c, filters\[c\.key\]\)\)/.test(page)) {
-    fail("the column filters are not applied to the rows");
+  /* Called with the whole column list and the whole filter object.
+
+     rowPasses walks both itself. Called once per column with one of
+     each it threw "e is not iterable" on the first render, because a
+     single column is not a list — and the page would not load at all.
+     Every other table calls it this way. */
+  if (!/rowPasses\(r, FILTERABLE, filters\)/.test(page)) {
+    fail("the column filters are not applied the way rowPasses expects");
+  }
+  if (/rowPasses\([^)]*filters\[c\.key\]\)/.test(page)) {
+    fail("rowPasses is called per column, which throws before the page renders");
+  }
+  /* And the actions column is left out, since it has no value to match
+     and raw() would be called on it for every row. */
+  if (!/const FILTERABLE = COLS\.filter\(\(c\) => c\.type !== "none"\)/.test(page)) {
+    fail("a column with nothing to filter on is passed to the filter");
   }
   if (!/status === "open" && CLOSED\.has/.test(page)) {
     fail("adding column filters dropped the open/closed filter");

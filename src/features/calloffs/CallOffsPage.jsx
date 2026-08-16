@@ -230,6 +230,9 @@ export default function CallOffsPage() {
      that touches them. */
   const [allWorkDays, setAllWorkDays] = useState([]);
   const [allTaskTypes, setAllTaskTypes] = useState([]);
+  /* Which phases each work type has, so a call-off with nothing booked
+     can still say what is outstanding. */
+  const [workTypePhases, setWorkTypePhases] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -282,6 +285,7 @@ export default function CallOffsPage() {
       setRows(res.rows || []);
       setAllWorkDays(res.workDays || []);
       setAllTaskTypes(res.taskTypes || []);
+      setWorkTypePhases(res.workTypePhases || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -305,11 +309,24 @@ export default function CallOffsPage() {
     const out = new Map();
     for (const r of rows) {
       const asg = r.assignments || [];
-      const phases = allTaskTypes
-        .filter((t) => isListedPhase(t.Task_Type_Name))
-        .filter((t) => asg.some((a) =>
-          Number(a.Task_Type_ID) === Number(t.Task_Type_ID))
-          || r.Work_Type?.Selection_Mode === "Span");
+      /* The phases this work type has, whether or not anything is
+         booked on them.
+
+         It used to show only phases with an assignment against them, so
+         a call-off with nothing booked showed nothing — and "nothing
+         booked" is the state this column exists to flag. A service
+         call-off showed one green pill and no sign of the two phases
+         nobody had touched.
+
+         From the mapping rather than from the task type names: a work
+         type with no reinstatement should not be asked about
+         reinstatement. */
+      const phases = workTypePhases
+        .filter((m) => Number(m.Work_Type_ID) === Number(r.Work_Type?.Work_Type_ID))
+        .map((m) => allTaskTypes
+          .find((t) => Number(t.Task_Type_ID) === Number(m.Task_Type_ID)))
+        .filter(Boolean)
+        .filter((t) => isListedPhase(t.Task_Type_Name));
       const states = phases.map((t) => ({
         taskTypeId: t.Task_Type_ID,
         name: t.Task_Type_Name,

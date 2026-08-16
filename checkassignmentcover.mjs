@@ -134,11 +134,26 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
 //    A work type may have half a dozen, and a row carrying six says less
 //    than one carrying two.
 {
-  for (const n of ["Excavation and Lay", "Lay", "Reinstatement", "reinstate"]) {
+  for (const n of ["Excavation and Lay", "Lay", "Reinstatement", "reinstate",
+    /* Jointing is real work on a service call-off: a plot takes about
+       two hours to connect, so twelve plots is three days. It costs
+       mains nothing, because no jointing phase is mapped against that
+       work type. */
+    "Jointing"]) {
     if (!isListedPhase(n)) fail(`${n} is not shown on the list`);
   }
-  for (const n of ["Jointing", "Survey", "Energise", ""]) {
+  for (const n of ["Survey", "Energise", "Traffic Management", ""]) {
     if (isListedPhase(n)) fail(`${n} is shown on the list`);
+  }
+
+  /* The pill says the phase's own name where nothing shorter has been
+     chosen for it — "Jointing" needs no abbreviating, and falling
+     through to the first word would have made it "Jointing" by luck
+     rather than by rule. */
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  const fn = page.slice(page.indexOf("function shortPhase"));
+  if (!/return n;/.test(fn.slice(0, fn.indexOf("\n}")))) {
+    fail("a phase with no short name is not shown as itself");
   }
 }
 
@@ -183,8 +198,13 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   for (const t of ["Call_Off_Assignment", "Call_Off_Work_Day", "Task_Type"]) {
     if (!api.includes(t)) fail(`the list endpoint does not fetch ${t}`);
   }
-  if (!/json\(\{ rows, workDays, taskTypes \}\)/.test(api)) {
-    fail("the days and phases are fetched but not sent");
+  /* Named, not matched as a whole object — the response has gained a
+     field since and pinning the exact shape made adding one look like a
+     regression. */
+  for (const f of ["rows", "workDays", "taskTypes"]) {
+    if (!new RegExp(`json\\(\\{[^}]*\\b${f}\\b`).test(api)) {
+      fail(`${f} is fetched but not sent`);
+    }
   }
   /* Tolerated missing, like the utilities before them: an older
      database has no such tables, and a list that failed to load over a
@@ -450,6 +470,66 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   if (raw({ Branch_Name: "Barratt Homes (Yorkshire East)", Customer_Name: "Barratt Homes" })
     !== "Barratt Homes (Yorkshire East)") {
     fail("the customer wins over the branch");
+  }
+}
+
+// 16. A phase with nothing booked still shows.
+//
+//     The pills used to come from the assignments, so a call-off with
+//     nothing booked showed nothing at all — and "nothing booked" is
+//     the state this column exists to flag. A service call-off showed
+//     one green pill and no sign of the two phases nobody had touched.
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  const api = readFileSync("./netlify/functions/calloffs-all.js", "utf8");
+
+  /* From the work type's phases, not from what happens to be
+     assigned. */
+  if (!/const phases = workTypePhases/.test(page)) {
+    fail("the pills are built from the assignments rather than the phases");
+  }
+  if (/asg\.some\(\(a\) =>\s*\n?\s*Number\(a\.Task_Type_ID\) === Number\(t\.Task_Type_ID\)\)\s*\n?\s*\|\|/.test(page)) {
+    fail("a phase is still only listed when something is booked on it");
+  }
+  /* Matched to this call-off's work type: a work type with no
+     reinstatement should not be asked about reinstatement. */
+  if (!/Number\(m\.Work_Type_ID\) === Number\(r\.Work_Type\?\.Work_Type_ID\)/.test(page)) {
+    fail("every work type's phases are shown on every call-off");
+  }
+
+  /* And the endpoint sends the mapping, or the page has nothing to
+     build them from. */
+  if (!/from\("Work_Type_Task_Type"\)/.test(api)) {
+    fail("the list endpoint does not fetch which phases a work type has");
+  }
+  if (!/json\(\{ rows, workDays, taskTypes, workTypePhases \}\)/.test(api)) {
+    fail("the phase mapping is fetched but not sent");
+  }
+  if (!/setWorkTypePhases\(res\.workTypePhases/.test(page)) {
+    fail("the page never reads the phase mapping it is sent");
+  }
+
+  /* The behaviour: a call-off with one phase booked of three still
+     shows three. */
+  const mapping = [
+    { Work_Type_ID: 2, Task_Type_ID: 10 },
+    { Work_Type_ID: 2, Task_Type_ID: 11 },
+    { Work_Type_ID: 9, Task_Type_ID: 12 },
+  ];
+  const types = [
+    { Task_Type_ID: 10, Task_Type_Name: "Excavation and Lay" },
+    { Task_Type_ID: 11, Task_Type_Name: "Reinstatement" },
+    { Task_Type_ID: 12, Task_Type_Name: "Excavation and Lay" },
+  ];
+  const shown = mapping
+    .filter((m) => m.Work_Type_ID === 2)
+    .map((m) => types.find((t) => t.Task_Type_ID === m.Task_Type_ID))
+    .filter(Boolean);
+  if (shown.length !== 2) {
+    fail(`a work type with two phases showed ${shown.length}`);
+  }
+  if (shown.some((t) => t.Task_Type_ID === 12)) {
+    fail("another work type's phase is shown");
   }
 }
 

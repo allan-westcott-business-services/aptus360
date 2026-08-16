@@ -113,6 +113,7 @@ export default withAuth(async function handler(req) {
     let assignments = [];
     let workDays = [];
     let taskTypes = [];
+    let workTypePhases = [];
     if (ids.length) {
       const { data: asg } = await db.from("Call_Off_Assignment")
         .select("Assignment_ID,Submission_ID,Task_Type_ID,Team_ID,Span_ID,Status")
@@ -132,6 +133,22 @@ export default withAuth(async function handler(req) {
         .select("Task_Type_ID,Task_Type_Name")
         .then((r) => r, () => ({ data: [] }));
       taskTypes = tt || [];
+
+      /* Which phases each work type has.
+
+         Without this the list could only show phases that already had
+         an assignment against them — so a call-off with nothing booked
+         showed nothing in the Assigned column, and the one state the
+         column exists to flag was the one it could not display.
+
+         The mapping, not a guess from the task type names: a work type
+         with no reinstatement should not be asked about reinstatement,
+         and only this table knows which has what. */
+      const { data: wtt } = await db.from("Work_Type_Task_Type")
+        .select("Work_Type_ID,Task_Type_ID,Display_Order")
+        .order("Display_Order")
+        .then((r) => r, () => ({ data: [] }));
+      workTypePhases = wtt || [];
     }
 
     /* The site name, where the submission did not capture one.
@@ -181,7 +198,7 @@ export default withAuth(async function handler(req) {
        belongs to an assignment, not to a call-off, and copying them per
        row would send the same day several times on a call-off booked
        across phases. */
-    return json({ rows, workDays, taskTypes });
+    return json({ rows, workDays, taskTypes, workTypePhases });
   } catch (e) {
     return fail(e, 400);
   }

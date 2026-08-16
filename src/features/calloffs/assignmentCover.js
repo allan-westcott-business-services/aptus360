@@ -92,10 +92,16 @@ export const COVER_LABEL = {
    less than one carrying two. These are the ones that take days and get
    missed; the rest are visible on the call-off itself.
 
+   Jointing is here because a service call-off has one and it is real
+   work — a plot takes about two hours to connect, so twelve plots is
+   three days. Adding it costs mains nothing: no jointing phase is
+   mapped against that work type, so no pill appears there.
+
    Matched on the name because that is what a phase is identified by
    throughout — the same test energisationFloor and isDigTask use. */
 export function isListedPhase(taskTypeName) {
   const n = String(taskTypeName || "").toLowerCase().trim();
   return n.startsWith("excav") || n.startsWith("lay")
+    || n.startsWith("joint")
     || n.startsWith("reinstat");
 }

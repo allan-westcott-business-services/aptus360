@@ -10,6 +10,7 @@ import { openProject } from "../../lib/projectIntent.js";
 import { openGis } from "../../lib/gisIntent.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
+import { isJointTask, jointEstimate, jointEstimateText } from "../gis/jointRate.js";
 import { halfDaysText } from "./digDays.js";
 import { phaseCover, COVER_LABEL, isListedPhase } from "./assignmentCover.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
@@ -1685,6 +1686,23 @@ function Assignments({ row }) {
   const halvesForSpan = useCallback((d, spanId) => {
     const phaseType = (phases || [])
       .find((t) => Number(t.Task_Type_ID) === Number(d?.Task_Type_ID));
+
+    /* Jointing on a service call-off is counted, not measured: one plot
+       is one connection and a connection takes about two hours. Twelve
+       plots is three days, where the trench length says nothing about
+       it.
+
+       Service call-offs only. A mains call-off's jointing is tees and
+       live insertions, which does not follow from a plot count — a
+       mains run may serve no plots at all — and nobody has given a
+       figure for it. So nothing is estimated there and the end date
+       stays empty, which says nobody knows. */
+    if (isJointTask(phaseType)) {
+      if (row.Selection_Mode !== "PlotList") return null;
+      const est = jointEstimate({ plots: (row.items || []).length });
+      return est.ok ? est.halfDays : null;
+    }
+
     if (!isDigTask(phaseType)) return null;
 
     const halves = spanId
@@ -2297,8 +2315,15 @@ function Assignments({ row }) {
               })()}
             </div>
 
-            {/* Why a phase cannot start yet, before somebody tries. */}
-            {floor && (
+            {/* Why a phase cannot start yet — before somebody tries.
+
+                Only while nothing is booked on it. Once a team is
+                assigned the note has done its work: it is telling
+                somebody about a constraint on a decision they have
+                already made, and it sat there for the rest of the
+                call-off's life saying so. */}
+            {floor && !mine.some((a) =>
+              Number(a.Task_Type_ID) === Number(ph.Task_Type_ID)) && (
               <p className="asg-floor">
                 {/* The reason where the rules gave one — "Excavation
                     and Lay finishes on 18-Aug" — and the older
@@ -2732,6 +2757,23 @@ function Assignments({ row }) {
                         })()}
                       </span>
                     </div>
+
+                    {/* Where the jointing estimate came from.
+
+                        A number nobody can check is a number somebody
+                        overrides on a hunch. "12 plots at 2 hr each"
+                        can be argued with, which is the point: if the
+                        two hours is wrong for this site, the person
+                        reading it is the one who knows. */}
+                    {(() => {
+                      const phaseType = (phases || []).find((t) =>
+                        Number(t.Task_Type_ID) === Number(draft?.Task_Type_ID));
+                      if (!isJointTask(phaseType)) return null;
+                      if (row.Selection_Mode !== "PlotList") return null;
+                      const est = jointEstimate({ plots: (row.items || []).length });
+                      if (!est.ok) return null;
+                      return <p className="asg-est">{jointEstimateText(est)}</p>;
+                    })()}
 
                     {/* Less time booked than the work is estimated to
                         take.
@@ -3195,6 +3237,8 @@ const CSS = FILTER_CSS + `
 /* Short of the estimate. Amber rather than red: it is a thing worth
    knowing, not a thing that is wrong — booking half the work is
    ordinary when the rest is going to another team. */
+/* Where an estimate came from, under the total it explains. */
+.asg-est { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
 .asg-short { margin: 8px 0 0; padding: 9px 11px; border-radius: 8px;
   background: #fef3e2; border: 1px solid #f2d675; font-size: 12.5px;
   line-height: 1.6; max-width: 70ch; color: #7c4a03; }

@@ -5,6 +5,7 @@
    end date the calendar agrees with, that only the trenching phases get
    one, and that not knowing produces no date rather than a wrong one. */
 import { readFileSync } from "node:fs";
+import { jointEstimate } from "./src/features/gis/jointRate.js";
 import {
   endAfterHalves, workedDaysIn, layHalves, laySchedule, daysBetween,
   bookedParts, freeParts,
@@ -427,6 +428,59 @@ const MON = "2026-08-17";
   }
   if (!/!\(halves > 0\)/.test(rule)) {
     fail("a call-off with no estimate is compared against zero");
+  }
+}
+
+// 14. Jointing on a service call-off is counted, not measured.
+//
+//     One plot is one connection and a connection takes about two
+//     hours. Twelve plots is three days, where the trench length says
+//     nothing about it — which is why isDigTask left jointing blank and
+//     somebody typed a guess into the end date.
+{
+  const round = (n) => Math.max(1, Math.ceil(n * 2 / (8 / 2)));
+  for (const [plots, want] of [[1, 1], [2, 1], [3, 2], [4, 2], [12, 6], [13, 7]]) {
+    if (round(plots) !== want) {
+      fail(`${plots} plots came to ${round(plots)} half-days, wanted ${want}`);
+    }
+  }
+
+  const est = jointEstimate({ plots: 12 });
+  if (est.halfDays !== 6) fail(`12 plots estimated at ${est.halfDays} half-days`);
+  if (!/12 plots at 2 hr each/.test(est.why)) {
+    fail("the estimate does not show its working");
+  }
+  /* Rounded up to a half day, because a gang is booked in half days:
+     three plots is six hours, and you cannot send half a jointer home
+     at two o'clock. */
+  if (jointEstimate({ plots: 3 }).halfDays !== 2) {
+    fail("six hours is not rounded up to a day");
+  }
+  /* No plots is not half a day of jointing — said as not-ok, so a
+     screen shows nothing rather than "0 days", which reads as an
+     answer. */
+  if (jointEstimate({ plots: 0 }).ok) fail("no plots produced an estimate");
+
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+
+  /* Service call-offs only. A mains call-off's jointing is tees and
+     live insertions, which does not follow from a plot count — a mains
+     run may serve no plots at all. Nothing is estimated there, and an
+     empty end date says nobody knows. */
+  const at = page.indexOf("if (isJointTask(phaseType)) {");
+  const block = at < 0 ? "" : page.slice(at, at + 400);
+  if (!block) fail("jointing gets no estimate at all");
+  if (!/row\.Selection_Mode !== "PlotList"/.test(block)) {
+    fail("a mains call-off's jointing is estimated from a plot count");
+  }
+  if (!/jointEstimate\(\{ plots:/.test(block)) {
+    fail("the jointing estimate is not worked out from the plots");
+  }
+
+  /* And the working is shown. A number nobody can check is a number
+     somebody overrides on a hunch. */
+  if (!/jointEstimateText\(est\)/.test(page)) {
+    fail("the estimate is shown without saying where it came from");
   }
 }
 

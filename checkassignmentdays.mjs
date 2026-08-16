@@ -4,8 +4,10 @@
    checks what Planning does with it: that a length of work becomes an
    end date the calendar agrees with, that only the trenching phases get
    one, and that not knowing produces no date rather than a wrong one. */
+import { readFileSync } from "node:fs";
 import {
   endAfterHalves, workedDaysIn, layHalves, laySchedule, daysBetween,
+  bookedParts, freeParts,
 } from "./src/features/calloffs/assignments.js";
 import { isDigTask, digTaskIds, toItems } from "./src/features/calloffs/rules.js";
 
@@ -253,6 +255,71 @@ const MON = "2026-08-17";
   const noWeekend = laid("2026-08-15", 4);
   if (!(overWeekend.end <= noWeekend.end)) {
     fail("working the weekend did not finish the booking sooner");
+  }
+}
+
+// 12. An aborted job gives the team's time back.
+//
+//     The gang arrived, could not get on, and the rest of the day is
+//     theirs — which is the whole reason an abort exists rather than the
+//     job being marked complete.
+//
+//     Without this the office could see the abort on the assignment and
+//     still not book the team anything else, because the day was full
+//     according to a job nobody did. That is the state the field app put
+//     them in the first time somebody used it.
+{
+  const team = 1;
+  const asg = [
+    { Assignment_ID: 1, Team_ID: 1, Status: "Aborted" },
+    { Assignment_ID: 2, Team_ID: 1, Status: "Complete" },
+    { Assignment_ID: 3, Team_ID: 1, Status: "Scheduled" },
+    { Assignment_ID: 4, Team_ID: 1, Status: "Submitted" },
+  ];
+  const days = [
+    { Assignment_ID: 1, Work_Date: "2026-08-20", Part: "AM" },
+    { Assignment_ID: 2, Work_Date: "2026-08-19", Part: "Full" },
+    { Assignment_ID: 3, Work_Date: "2026-08-21", Part: "PM" },
+    { Assignment_ID: 4, Work_Date: "2026-08-18", Part: "Full" },
+  ];
+  const booked = bookedParts(team, asg, days);
+
+  if (booked.get("2026-08-20")) {
+    fail("an aborted job still holds the team's day");
+  }
+  if (!freeParts(booked.get("2026-08-20")).includes("Full")) {
+    fail("the day an abort freed cannot be booked");
+  }
+
+  /* Complete does not give time back. A finished job used the day, and a
+     planner looking at a full Tuesday should see a full Tuesday. */
+  if (!booked.get("2026-08-19")?.has("Full")) {
+    fail("a completed job stopped holding its day");
+  }
+  /* Nor does submitted — the work happened, the office simply has not
+     approved the record yet. */
+  if (!booked.get("2026-08-18")?.has("Full")) {
+    fail("a submitted job stopped holding its day");
+  }
+  /* And an ordinary booking still holds its half. */
+  if (!booked.get("2026-08-21")?.has("PM")) {
+    fail("a scheduled job stopped holding its day");
+  }
+  if (freeParts(booked.get("2026-08-21")).join() !== "AM") {
+    fail("a half-booked day no longer offers the other half");
+  }
+
+  /* Only the states that mean the work did not happen. A list that grew
+     to include Complete would empty the planner of everything finished. */
+  const src = readFileSync("./src/features/calloffs/assignments.js", "utf8");
+  const set = src.match(/const GIVES_TIME_BACK = new Set\(\[([^\]]*)\]\)/);
+  if (!set) fail("nothing says which states give a team's time back");
+  else {
+    const names = [...set[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]);
+    if (!names.includes("Aborted")) fail("Aborted does not give time back");
+    for (const n of ["Complete", "Submitted", "Scheduled", "In Progress"]) {
+      if (names.includes(n)) fail(`${n} gives the team's time back, which it should not`);
+    }
   }
 }
 

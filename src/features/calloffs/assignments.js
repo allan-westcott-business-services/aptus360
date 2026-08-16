@@ -284,17 +284,34 @@ export function earliestStart(phases = [], assignments = [], taskTypeId,
   return floor ? { date: floor, phase: why } : null;
 }
 
+/* Work that no longer takes a team's time.
+
+   An aborted job did not happen. The gang arrived, could not get on, and
+   the rest of the day is theirs — which is the whole reason an abort
+   exists rather than the job being marked complete.
+
+   Complete is not here, and should not be. A finished job did use the
+   day, and a planner looking back at a full Tuesday should see a full
+   Tuesday. Only the work that never took place gives its time back. */
+const GIVES_TIME_BACK = new Set(["Aborted"]);
+
 /* What a team already has booked, day by day.
 
    Built from the work-day rows rather than the assignment's two dates: a
    gang on site all Tuesday and free on Wednesday is not "booked Tuesday
    to Wednesday", and a check on the range would say it was.
 
+   Aborted work is left out. Without that, a gang that lost a morning to
+   a locked site stayed booked for it: the office could see the abort on
+   the assignment and still could not give them anything else, because
+   the day was full according to a job nobody did.
+
    Returns date -> the parts already taken on it. */
 export function bookedParts(teamId, assignments = [], workDays = [], exceptId = null) {
   const mine = new Set(assignments
     .filter((a) => Number(a.Team_ID) === Number(teamId))
     .filter((a) => exceptId == null || Number(a.Assignment_ID) !== Number(exceptId))
+    .filter((a) => !GIVES_TIME_BACK.has(a.Status))
     .map((a) => Number(a.Assignment_ID)));
 
   const out = new Map();

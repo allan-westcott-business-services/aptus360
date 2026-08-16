@@ -24,3 +24,23 @@ export async function abortReasons() {
 export async function abortJob({ assignmentId, reasonCode, note }) {
   return http.post("/field/abort", { assignmentId, reasonCode, note });
 }
+
+/* The work instruction: started, saved as it goes, and submitted.
+
+   One endpoint and an action, because they are three moments in the
+   life of one row rather than three things. */
+export async function startInstruction(assignmentId) {
+  return http.post("/field/instruction", { action: "start", assignmentId });
+}
+
+/* Saved as a patch, not a whole payload: the tablet sends the section
+   just filled in, and the server merges. A whole-payload write would
+   lose whatever another section had put there since this one
+   loaded. */
+export async function saveInstruction(assignmentId, payload) {
+  return http.post("/field/instruction", { action: "save", assignmentId, payload });
+}
+
+export async function submitInstruction(assignmentId, payload) {
+  return http.post("/field/instruction", { action: "submit", assignmentId, payload });
+}

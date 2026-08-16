@@ -1,6 +1,7 @@
 import { useState, useEffect, useCallback } from "react";
 import { fieldQueue, abortReasons, abortJob } from "../../api/field.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
+import WorkInstruction from "./WorkInstruction.jsx";
 
 /* The tablet screen: a team leader's work, in order.
 
@@ -73,6 +74,12 @@ export default function FieldApp() {
      A step of its own rather than a confirm dialog. An abort ends a job
      that cannot be returned to, and the reason is the whole point of
      recording it — a yes/no box would get a shrug and "other". */
+  /* The work instruction, open over the queue.
+
+     Over rather than beside: filling one in is the job, and the queue
+     behind it is not something to read at the same time. */
+  const [instruction, setInstruction] = useState(null);
+
   const [refusing, setRefusing] = useState(null);
   const [reasons, setReasons] = useState([]);
   const [chosen, setChosen] = useState("");
@@ -139,6 +146,17 @@ export default function FieldApp() {
         <div className="fq-error">
           <p>{error}</p>
           <button className="fq-btn ghost" onClick={load}>Try again</button>
+        </div>
+      )}
+
+      {/* Filling one in. Over everything, because it is the work. */}
+      {instruction && (
+        <div className="fq-sheet">
+          <WorkInstruction
+            job={instruction}
+            onCancel={() => { setInstruction(null); load(); }}
+            onDone={() => { setInstruction(null); load(); }}
+          />
         </div>
       )}
 
@@ -250,7 +268,10 @@ export default function FieldApp() {
                   <div className="fq-detail">Plots {current.plots}</div>
                 )}
                 <div className="fq-actions">
-                  <button className="fq-btn primary">Start work instruction</button>
+                  <button className="fq-btn primary"
+                    onClick={() => setInstruction(current)}>
+                    Start work instruction
+                  </button>
                   {/* Not "Abort". Nobody arriving at a locked site thinks
                       of it as aborting; they think they cannot get on. */}
                   <button className="fq-btn ghost"

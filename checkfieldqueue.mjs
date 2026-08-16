@@ -463,6 +463,91 @@ const reasonsSql = readFileSync("./supabase/migrations/0170_abort_reasons.sql", 
   }
 }
 
+// 15. The work instruction is a draft that survives being put down.
+//
+//     It is filled in across a day: some at the start, the photographs
+//     as work happens, the declaration at the end. A form that lives
+//     only between opening and submitting loses a morning when the
+//     tablet sleeps — and what happens then is somebody fills it in on
+//     paper and types it up at home.
+{
+  const api = readFileSync("./netlify/functions/field-instruction.js", "utf8");
+  const form = readFileSync("./src/features/field/WorkInstruction.jsx", "utf8");
+  const sql = readFileSync("./supabase/migrations/0175_instruction_drafts.sql", "utf8");
+
+  /* One row, not two tables: a draft is the submission, earlier.
+     Copying at the moment of submitting is a step that can
+     half-happen. */
+  if (!/Is_Draft/.test(sql)) fail("there is no draft state");
+  if (/CREATE TABLE[^;]*Draft/i.test(sql)) {
+    fail("drafts are a separate table, so submitting copies a row");
+  }
+  /* One draft per assignment. Two would be two half-filled forms with
+     no way to say which is real. */
+  if (!/UNIQUE INDEX[\s\S]{0,120}WHERE "Is_Draft"/.test(sql)) {
+    fail("a job can have two drafts open");
+  }
+  /* And the office's queue does not show them — a form somebody is
+     still writing is not waiting on anybody. */
+  /* The index itself, not the same words quoted in the check queries at
+     the foot of the migration — which is where the first version of
+     this looked, and passed while the index had lost its filter. */
+  const idxAt = sql.indexOf("CREATE INDEX IF NOT EXISTS field_submission_awaiting");
+  const idx = idxAt < 0 ? "" : sql.slice(idxAt, sql.indexOf(";", idxAt));
+  if (!/NOT "Is_Draft"/.test(idx)) {
+    fail("drafts appear in the office's review queue");
+  }
+
+  /* Starting says somebody is on site. A job In Progress since eight
+     and still open at three is visible; one that only changes state at
+     the end is not. */
+  if (!/Status: "In Progress"/.test(api)) {
+    fail("starting does not say the gang is on site");
+  }
+  /* And the draft is made before the status, or a job says work has
+     begun with no form behind it. */
+  const insAt = api.indexOf('Version: version');
+  const stAt = api.indexOf('Status: "In Progress"');
+  if (insAt < 0 || stAt < 0 || insAt > stAt) {
+    fail("the job is marked started before there is a form to fill in");
+  }
+
+  /* Saving merges rather than replaces: the tablet sends the section
+     just filled in, and a whole-payload write would lose whatever
+     another section had put there since it loaded. */
+  if (!/\.\.\.\(draft\.Payload \|\| \{\}\), \.\.\.patch/.test(api)) {
+    fail("saving one section overwrites the rest of the form");
+  }
+
+  /* Submitting releases the next job — the office review is quality
+     control on the record, not permission to carry on working. */
+  if (!/Status: "Submitted"/.test(api)) fail("submitting does not finish the job");
+  if (!/nextAssignmentId/.test(api)) fail("submitting does not release the next job");
+
+  /* The declaration is insisted on by the server as well as the
+     screen: a screen is not a rule, and the same form on a second
+     device must meet it. */
+  if (!/payload\.declaration/.test(api)) {
+    fail("the declaration can be skipped by anything but the tablet");
+  }
+  if (!/REQUIRED/.test(form)) fail("the form does not say what it insists on");
+
+  /* Typing is not lost when a save fails. */
+  const fail_ = form.slice(form.indexOf("catch {"), form.indexOf("}, 800)"));
+  if (!/pending\.current = \{ \.\.\.send/.test(fail_)) {
+    fail("a failed save throws away what was typed");
+  }
+  if (!/no signal/.test(form)) {
+    fail("a failed save says nothing, so it looks as though it went");
+  }
+  /* And whatever has not reached the server goes with the submit, so
+     the last field typed is included even if its save is still
+     waiting. */
+  if (!/\.\.\.payload, \.\.\.rest/.test(form)) {
+    fail("the last thing typed can be missing from what is sent");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The field queue behaves (one job open, today visible, the rest a tap away).");
 process.exit(bad ? 1 : 0);

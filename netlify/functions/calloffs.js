@@ -191,6 +191,15 @@ export default withAuth(async function handler(req, context) {
          fail: a submission with no rows is recoverable by editing, and
          losing the whole thing because one row was malformed is not. */
       const spec = CHILD[mode];
+      /* The rows that get inserted, declared out here so the response
+         can name them.
+
+         They were const inside the block below, and the return that
+         reports them is outside it — which threw "kids is not defined"
+         on every call-off raised. Nothing caught it because the failure
+         is at the point of raising, not at build time. */
+      let saved = [];
+
       if (spec && items.length) {
         const payload = items.map((r, i) => {
           const out = { Submission_ID: created.Submission_ID, Sort_Order: i };
@@ -199,6 +208,7 @@ export default withAuth(async function handler(req, context) {
         });
         const { data: kids, error: kidErr } = await db
           .from(spec.table).insert(payload).select();
+        saved = kids || [];
         if (kidErr) {
           return json({
             ...created,
@@ -252,7 +262,7 @@ export default withAuth(async function handler(req, context) {
 
          Named `items` to match what was sent, so the caller can line
          them up with what it asked for. */
-      return json({ ...created, items: kids || [] });
+      return json({ ...created, items: saved });
     }
 
     /* ── PATCH: the submission, and what its dates invalidate ── */

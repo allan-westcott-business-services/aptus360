@@ -8021,9 +8021,16 @@ export default function GISCanvasPage() {
 
         const dataUrl = spanImage({
           trenches,
-          /* The two nodes this span runs between, and the seeds around
-             it — everything in frame, which spanImage decides. */
-          nodes: features.filter((f) => f.Feature_Role === "spannode"),
+          /* The nodes, each with the name the call-off uses.
+
+             labelOf is what mainsCallOff reads to name a run, and it
+             knows both forms: the Span_Label a node placed from the
+             trench network carries, and the circuit-and-sequence form
+             an older node needs computing. The feature's own Label is
+             neither, and drawing it put "nt" on every node. */
+          nodes: features
+            .filter((f) => f.Feature_Role === "spannode")
+            .map((f) => ({ ...f, label: spanNodeLabel(f) })),
           seeds: features.filter((f) => f.Feature_Role === "plot"),
           plan,
         });

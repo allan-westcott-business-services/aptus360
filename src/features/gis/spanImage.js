@@ -193,7 +193,13 @@ export function drawSpan(ctx, {
   ctx.font = "700 11px system-ui, sans-serif";
   for (const n of nodes) {
     const p = (n.Geometry || [])[0];
-    if (!p) continue;
+    /* In frame, like the seeds.
+
+       Every span node on the drawing was being drawn, so a picture of a
+       thirteen-metre run had three of them floating in its corners with
+       no trench near any of them — which reads as though the span runs
+       to them. */
+    if (!within(bounds, p)) continue;
     const c = at(view, p);
 
     ctx.beginPath();
@@ -204,9 +210,20 @@ export function drawSpan(ctx, {
     ctx.lineWidth = 2;
     ctx.stroke();
 
+    /* The label the paperwork names the run by.
+
+       A span node's Label is not it — that is whatever the feature was
+       called when it was placed, and every node here drew "nt". The
+       name a call-off uses is Span_Label, which is what labelOf in
+       mainsCallOff.js reads first for exactly this reason.
+
+       Passed in as `label` where the caller has already worked it out,
+       so this does not have to reproduce the computed form for nodes
+       made by an older build. */
+    const text = String(n.label ?? n.Attributes?.Span_Label ?? n.Label ?? "");
     ctx.fillStyle = "#ffffff";
     ctx.textBaseline = "middle";
-    ctx.fillText(String(n.Label ?? ""), c.x, c.y + 0.5);
+    ctx.fillText(text, c.x, c.y + 0.5);
     ctx.textBaseline = "alphabetic";
   }
 

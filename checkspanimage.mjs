@@ -119,17 +119,53 @@ function recorder() {
 // 4. Only what is in frame.
 //
 //    A seed two streets away would be drawn at the edge of the picture
-//    as though it were on this span.
+//    as though it were on this span. Nodes were not filtered at all, so
+//    a picture of a thirteen-metre run had three of them in its corners
+//    with no trench near any of them.
 {
   const { ctx, calls } = recorder();
   drawSpan(ctx, {
     trenches: [{ Geometry: [[100, 100], [113, 100]] }],
     seeds: [{ Geometry: [[105, 90]], Label: "near" },
       { Geometry: [[900, 900]], Label: "far" }],
+    nodes: [{ Geometry: [[100, 100]], label: "A15" },
+      { Geometry: [[900, 900]], label: "A99" }],
   });
   const text = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
   if (!text.includes("near")) fail("a seed beside the span is not drawn");
   if (text.includes("far")) fail("a seed outside the frame is drawn");
+  if (!text.includes("A15")) fail("a node on the span is not drawn");
+  if (text.includes("A99")) fail("a node outside the frame is drawn");
+}
+
+// 4b. Nodes carry the name the call-off uses.
+//
+//     A span node's own Label is whatever it was called when it was
+//     placed — every node in the first pictures drew "nt". The name a
+//     call-off names a run by is Span_Label, which is what labelOf in
+//     mainsCallOff reads first.
+{
+  const { ctx, calls } = recorder();
+  drawSpan(ctx, {
+    trenches: [{ Geometry: [[100, 100], [113, 100]] }],
+    nodes: [
+      { Geometry: [[100, 100]], label: "A15", Label: "nt" },
+      { Geometry: [[113, 100]], Label: "nt", Attributes: { Span_Label: "A16" } },
+    ],
+  });
+  const text = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
+  if (!text.includes("A15")) fail("the label worked out by the caller is ignored");
+  if (!text.includes("A16")) fail("Span_Label is not read where no label was passed");
+  if (text.includes("nt")) fail("the feature's own Label is drawn on a node");
+
+  /* And the canvas hands the worked-out name in rather than leaving
+     this to guess — an older node has no Span_Label and needs its
+     circuit and sequence computing, which labelOf knows and this does
+     not. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/label: spanNodeLabel\(f\)/.test(canvas)) {
+    fail("the canvas does not name the nodes it sends");
+  }
 }
 
 // 5. A plan that will not draw must not lose the span.

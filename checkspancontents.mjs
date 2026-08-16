@@ -422,6 +422,26 @@ const SITE = [
   const typed = feat("gas", { Line_Type: "gas_main", Size: "90mm PE" });
   if (labelOf(typed) !== "90mm PE") fail("a typed size is lost");
 
+  /* ── The older ways a size was held ──
+
+     Reading only the two keys the build writes today lost every size on
+     an older drawing, and the panel fell back to naming the line type.
+     Which is the worse fault: the wrong size is one length ordered
+     wrongly, no sizes at all is a call-off nobody can act on. */
+  const legacy = feat("electric", { Line_Type: "elec_main", Cable_Size_ID: 5 });
+  if (labelOf(legacy) !== "3c WAVE 95") {
+    fail(`a cable holding a plain Cable_Size_ID reads as ${labelOf(legacy)}`);
+  }
+  /* A layer the size rule does not know, with its size typed on it. */
+  const other = { Layer_Key: "lighting", Attributes: { Line_Type: "elec_main", Size: "95" } };
+  if (labelOf(other) !== "95") {
+    fail(`a typed size on another layer reads as ${labelOf(other)}`);
+  }
+  const noLayer = { Attributes: { Line_Type: "elec_main", Size: "25mm" } };
+  if (labelOf(noLayer) !== "25mm") {
+    fail(`a line with no layer loses its typed size: ${labelOf(noLayer)}`);
+  }
+
   /* Nothing sized falls back to the line type's name rather than
      going blank. */
   const bare = feat("gas", { Line_Type: "gas_main" });

@@ -73,12 +73,38 @@ export function contentsOptions(lineTypes = [], lookups = null) {
        there is no catalogue row. Using it here rather than a second
        lookup means there is one answer to "what size is this". */
     labelOf: (x) => {
+      /* The shared rule first: the override where there is one, the
+         calculated size otherwise, the catalogue's label, then the
+         typed text. */
       const size = sizeLabelOf(x, {
         electric: lookups?.cableSizes || [],
         gas: lookups?.gasPipeSizes || [],
         water: lookups?.waterPipeSizes || [],
       });
       if (size) return String(size).trim();
+
+      /* Then the ways a size was recorded before that rule existed.
+
+         sizeLabelOf answers null for anything whose Layer_Key is not
+         one of the three it knows, and it only looks at the two keys
+         per utility that the build writes now. A drawing older than
+         either — a cable holding a plain Cable_Size_ID, or a line on a
+         layer named something else with its size typed in — had a size
+         and lost it, and the panel fell back to naming the line type.
+
+         Kept underneath rather than folded into the rule: what the
+         build writes today is one question, and what a drawing from
+         last year happens to hold is another. */
+      const legacyId = x.Attributes?.Cable_Size_ID;
+      if (legacyId != null) {
+        const row = (lookups?.cableSizes || [])
+          .find((c) => String(c.Cable_Size_ID) === String(legacyId));
+        if (row?.Size_Label) return row.Size_Label;
+      }
+
+      const typed = String(x.Attributes?.Size ?? "").trim();
+      if (typed) return typed;
+
       return lineTypes.find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label
         ?? x.Label ?? null;
     },

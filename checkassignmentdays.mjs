@@ -377,6 +377,32 @@ const MON = "2026-08-17";
   if (!/shortfall && !window\.confirm/.test(saveFn.slice(0, 900))) {
     fail("a short booking saves without asking");
   }
+  /* The sentence reads as one sentence, and pluralises on each number
+     rather than on the first. "you have booked 1 days" is the kind of
+     thing that makes a warning look automated and get ignored. */
+  const say = (needed, booked) => {
+    const short = Math.round((needed - booked) * 10) / 10;
+    return `This is estimated at ${needed} day${needed === 1 ? "" : "s"}`
+      + ` and you have booked ${booked} day${booked === 1 ? "" : "s"}`
+      + `, meaning ${short} day${short === 1 ? "" : "s"}`
+      + " would be left for another team or another visit.";
+  };
+  if (!/booked 1 day,/.test(say(2, 1))) fail("one day booked reads as \"1 days\"");
+  if (!/1\.5 days,/.test(say(2, 1.5))) fail("a half day booked is not pluralised");
+  if (!/at 1 day and/.test(say(1, 0.5))) fail("a one-day estimate reads as \"1 days\"");
+  if (/\. [0-9]/.test(say(2, 1.5))) fail("the sentence is still broken in two");
+
+  /* And the page says it the same way. */
+  if (!/, meaning \$\{shortfall\.short\} day/.test(page)) {
+    fail("the warning does not read as one sentence");
+  }
+  if (!/booked \$\{shortfall\.booked\} day/.test(page)) {
+    fail("the booked figure is not given its unit");
+  }
+  if (!/shortfall\.booked === 1 \? "" : "s"/.test(page)) {
+    fail("the booked figure is not pluralised on itself");
+  }
+
   /* And both answers are offered as legitimate, because they are. */
   if (!/another team or/.test(saveFn.slice(0, 900))) {
     fail("the question does not say that saving it short is a real option");

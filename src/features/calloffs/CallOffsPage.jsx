@@ -2490,8 +2490,12 @@ function Assignments({ row }) {
                       <p className="asg-short">
                         {`This is estimated at ${shortfall.needed} day`}
                         {shortfall.needed === 1 ? "" : "s"}
-                        {` and you have booked ${shortfall.booked}. `}
-                        {`${shortfall.short} day`}
+                        {` and you have booked ${shortfall.booked} day`}
+                        {/* "1 day" and "1.5 days" — pluralised on the
+                            number itself, so a booking of exactly one
+                            day does not read "1 days". */}
+                        {shortfall.booked === 1 ? "" : "s"}
+                        {`, meaning ${shortfall.short} day`}
                         {shortfall.short === 1 ? "" : "s"}
                         {" would be left for another team or another visit."}
                       </p>

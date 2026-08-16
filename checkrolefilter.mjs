@@ -143,7 +143,53 @@ const shown = (filter) => ORGS.filter(([, r]) => matches(r, filter)).map(([n]) =
   }
 }
 
-// 7. Each utility's operator is called what it is called.
+// 7. Every operator role can record which utilities it works in.
+//
+//    The admin screen asked that question only of an idno or a dno, so
+//    Cadent's record had nowhere to say it works in gas — and a picker
+//    that matches on utility could never offer it. The same two-role
+//    list, in a second place.
+{
+  const admin = readFileSync("./src/features/admin/OrganisationsAdmin.jsx", "utf8");
+  const list = admin.match(/const OPERATOR_ROLES = \[([^\]]*)\]/);
+  if (!list) fail("the admin screen does not state which roles are operators");
+  else {
+    for (const role of ["dno", "idno", "gt", "igt", "wu", "iwu"]) {
+      if (!list[1].includes(`"${role}"`)) {
+        fail(`a ${role} cannot record which utilities it works in`);
+      }
+    }
+  }
+  /* And the test uses it rather than a list of its own. */
+  if (!/OPERATOR_ROLES\.includes\(/.test(admin)) {
+    fail("the operator test keeps its own list of roles");
+  }
+  if (/\["idno", "dno"\]\.includes/.test(admin)) {
+    fail("the two-role list is still there");
+  }
+
+  /* The two halves agree. This screen decides whether the question is
+     asked; the view decides whether the answer is used, and a role in
+     one but not the other is a company that can be described and never
+     offered, or offered and never described. */
+  const sql = readFileSync("./supabase/migrations/0172_operator_roles.sql", "utf8");
+  const view = sql.slice(sql.indexOf("CREATE OR REPLACE VIEW"));
+  const inView = view.match(/t\."Type_Key" IN \(([^)]*)\)/);
+  if (list && inView) {
+    for (const role of [...list[1].matchAll(/"([a-z_]+)"/g)].map((m) => m[1])) {
+      if (!inView[1].includes(`'${role}'`)) {
+        fail(`${role} can record utilities but is not offered by any picker`);
+      }
+    }
+    for (const role of [...inView[1].matchAll(/'([a-z_]+)'/g)].map((m) => m[1])) {
+      if (!list[1].includes(`"${role}"`)) {
+        fail(`${role} is offered by pickers but cannot record its utilities`);
+      }
+    }
+  }
+}
+
+// 8. Each utility's operator is called what it is called.
 //
 //    The field said "DNO" on all three. True of electricity and wrong
 //    of the others — a gas transporter is not a distribution network
@@ -164,6 +210,96 @@ const shown = (filter) => ORGS.filter(([, r]) => matches(r, filter)).map(([n]) =
   }
   if (!/label=\{operatorLabel\(/.test(tab)) {
     fail("the field label is not built from the utility");
+  }
+}
+
+// 9. A picker offers the right sort of company, not just one working
+//    in the utility.
+//
+//    The filter matched on utility alone, so an IDNO marked as covering
+//    gas was offered as a gas transporter. The role is what makes
+//    somebody a transporter; the utility only says where.
+{
+  /* Read from the page, not copied. A copy here passes while the page
+     offers electricity companies as gas transporters — which is the
+     whole fault this section exists to catch. */
+  const tabSrc = readFileSync("./src/features/stakeholders/StakeholderTab.jsx", "utf8");
+  const mapSrc = tabSrc.match(/const OPERATOR_ROLES = \{([\s\S]*?)\};/);
+  if (!mapSrc) fail("the page does not say which roles belong to which utility");
+  const ROLES = {};
+  for (const m of (mapSrc?.[1] ?? "").matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
+    ROLES[m[1]] = [...m[2].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
+  }
+  /* And says something for each of the three. */
+  for (const u of ["electric", "gas", "water"]) {
+    if (!ROLES[u]?.length) fail(`${u} has no operator roles named`);
+  }
+  const ops = [
+    { Name: "Cadent", role_keys: ["gt"], utility_ids: [2] },
+    { Name: "ES Pipelines", role_keys: ["igt"], utility_ids: [2] },
+    { Name: "GTC", role_keys: ["idno", "igt", "iwu"], utility_ids: [1, 2, 3] },
+    { Name: "Leep Networks", role_keys: ["idno", "iwu"], utility_ids: [1, 2, 3] },
+    { Name: "United Utilities", role_keys: ["wu"], utility_ids: [3] },
+  ];
+  const offered = (utility, id) => {
+    const roles = ROLES[utility] ?? null;
+    return ops.filter((o) =>
+      (!roles || (o.role_keys || []).some((k) => roles.includes(k)))
+      && (o.utility_ids || []).some((x) => Number(x) === Number(id)))
+      .map((o) => o.Name);
+  };
+
+  const gas = offered("gas", 2);
+  if (!gas.includes("Cadent")) fail("a gas transporter is not offered on gas");
+  if (!gas.includes("GTC")) fail("a company holding igt is not offered on gas");
+  /* Leep covers gas in this fixture and holds only idno and iwu — an
+     electricity and water company, and not a transporter. */
+  if (gas.includes("Leep Networks")) {
+    fail("an IDNO covering gas is offered as a gas transporter");
+  }
+
+  const water = offered("water", 3);
+  if (!water.includes("United Utilities")) fail("a water undertaker is not offered on water");
+  if (water.includes("Cadent")) fail("a gas transporter is offered on water");
+
+  /* And the screen does both halves rather than one. */
+  const tab = readFileSync("./src/features/stakeholders/StakeholderTab.jsx", "utf8");
+  if (!/rightRole\(o\) && covers\(o\)/.test(tab)) {
+    fail("the picker matches on utility without checking the role");
+  }
+  /* Whoever is already chosen stays in the list, or changing the rules
+     would empty a field that has a good answer in it and show None over
+     a saved value. */
+  if (!/Number\(o\.Organisation_ID\) === Number\(sc\.DNO_Organisation_ID\)/.test(tab)) {
+    fail("an existing selection drops out of its own picker");
+  }
+  /* A utility nobody has named roles for still offers everything, which
+     is the old behaviour and the safe fallback. */
+  if (!/!roles\s*\n?\s*\|\|/.test(tab)) {
+    fail("a utility with no named roles offers nobody at all");
+  }
+}
+
+// 10. The empty message says what is actually missing.
+//
+//    "No Gas Transporter is marked as working in this utility" said
+//    nothing — a gas transporter works in gas by definition. Two things
+//    can be wrong and they have different fixes.
+{
+  const tab = readFileSync("./src/features/stakeholders/StakeholderTab.jsx", "utf8");
+  if (!/anyWithRole/.test(tab)) {
+    fail("the message cannot tell 'none set up' from 'none linked to this utility'");
+  }
+  if (!/has been set up yet/.test(tab)) {
+    fail("there is no message for a role nobody holds");
+  }
+  if (!/Set which utilities each/.test(tab)) {
+    fail("there is no message for a role held but not linked to the utility");
+  }
+  /* The old wording, which was the complaint. */
+  if (/is marked as working in `\s*\+?\s*\n?\s*"?this utility/.test(tab)
+    || /marked as working in this utility/.test(tab)) {
+    fail("the message still restates the field back at the reader");
   }
 }
 

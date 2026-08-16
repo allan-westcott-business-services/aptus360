@@ -27,6 +27,26 @@ const OPERATOR_WORD = {
   water: "Water Undertaker",
 };
 
+/* Which roles may appear in each utility's picker.
+
+   The list used to filter on utility alone, so any operator marked as
+   covering gas was offered as a gas transporter — including an IDNO
+   that happens to work in gas, which is an electricity company. The
+   role is what makes somebody a transporter; the utility only says
+   where.
+
+   Both halves are needed. A company holding the role but not marked as
+   covering the utility is one somebody has not finished setting up; one
+   covering the utility without the role is the wrong sort of company. */
+const OPERATOR_ROLES = {
+  electric: ["dno", "idno"],
+  gas: ["gt", "igt"],
+  water: ["wu", "iwu"],
+};
+
+const rolesFor = (utility) =>
+  OPERATOR_ROLES[String(utility || "").toLowerCase().trim()] ?? null;
+
 const operatorWord = (utility) =>
   OPERATOR_WORD[String(utility || "").toLowerCase().trim()] ?? "operator";
 
@@ -321,9 +341,26 @@ function DnoSection({ scopes, lookups, onSet, saving }) {
       <div className="auth-grid">
         {scopes.map((sc) => {
           const utility = utilityById(sc.Utility_ID);
+          const roles = rolesFor(utility?.name);
+          /* Holds the right role for this utility. A utility nobody has
+             named roles for offers every operator, which is the old
+             behaviour and the safe fallback. */
+          const rightRole = (o) => !roles
+            || (o.role_keys || []).some((k) => roles.includes(k));
+          const covers = (o) => (o.utility_ids || [])
+            .some((x) => Number(x) === Number(sc.Utility_ID));
+
           const forThis = operators.filter((o) =>
-            (o.utility_ids || []).some((x) => Number(x) === Number(sc.Utility_ID))
+            (rightRole(o) && covers(o))
+            /* Whoever is already chosen stays in the list, whatever the
+               rules say now. Otherwise changing the roles would empty a
+               field that has a perfectly good answer in it, and the
+               screen would show None over a saved value. */
             || Number(o.Organisation_ID) === Number(sc.DNO_Organisation_ID));
+
+          /* Which of the two things is missing, so the message can say
+             something somebody can act on. */
+          const anyWithRole = operators.some(rightRole);
           return (
             <Field key={sc.Project_Scope_ID} label={operatorLabel(utility?.name)}>
               <Select value={sc.DNO_Organisation_ID ?? ""}
@@ -336,8 +373,17 @@ function DnoSection({ scopes, lookups, onSet, saving }) {
               </Select>
               {!forThis.length && (
                 <p className="dno-note">
-                  {`No ${operatorWord(utility?.name)} is marked as working in `}
-                  this utility &mdash; set that in Admin &rsaquo; Organisations.
+                  {/* Naming the gap rather than restating the field.
+
+                      "No Gas Transporter is marked as working in this
+                      utility" said nothing: a gas transporter works in
+                      gas by definition. What is actually wrong is one
+                      of two things, and they have different fixes. */}
+                  {anyWithRole
+                    ? `Set which utilities each ${operatorWord(utility?.name)} `
+                      + "covers in Admin \u203a Organisations."
+                    : `No ${operatorWord(utility?.name)} has been set up yet `
+                      + "\u2014 add one in Admin \u203a Organisations."}
                 </p>
               )}
             </Field>

@@ -1510,6 +1510,30 @@ function Assignments({ row }) {
      save take the same view. */
   const splitByDay = !!draft.byDay && schedule.days.length > 1;
 
+  /* Booked against estimated.
+
+     The estimate is the half-days the drawing gave this run (0159); the
+     booking is the day parts somebody has ticked. They are allowed to
+     differ — a gang may be given the morning and the rest handed to
+     another team, or picked up later in the week — but the difference
+     should be said rather than discovered on site.
+
+     Only where there is an estimate to compare against. A call-off
+     raised before 0159, or one whose ends are not both on the trench
+     network, has none — and a warning that fires on every one of those
+     is a warning nobody reads. */
+  const shortfall = useMemo(() => {
+    if (editing == null && !draft.Start_Date) return null;
+    const halves = halvesForSpan(draft, draft.Span_ID);
+    if (!(halves > 0) || !schedule.days.length) return null;
+
+    const booked = dayTotal(Object.fromEntries(schedule.days
+      .map((x) => [x.date, partFor(x, draft)])));
+    const needed = halves / 2;
+    if (booked >= needed) return null;
+    return { booked, needed, short: Math.round((needed - booked) * 10) / 10 };
+  }, [draft, schedule.days, halvesForSpan, editing]);
+
   /* The days a booking works, each with how much of it.
 
      Never "10 Aug to 12 Aug". A range says a gang is on site
@@ -1658,6 +1682,19 @@ function Assignments({ row }) {
     : null;
 
   async function save() {
+    /* Asked once, and only where it applies.
+
+       The panel above says it already; this is the point at which
+       ignoring it becomes a decision. Both answers are legitimate — the
+       rest of the work may genuinely be somebody else's — so the
+       question names them rather than warning and refusing. */
+    if (shortfall && !window.confirm(
+      `This booking is ${shortfall.short} day`
+      + `${shortfall.short === 1 ? "" : "s"} short of the estimate.\n\n`
+      + "OK to save it as it is \u2014 the rest can go to another team or "
+      + "another day.\n\nCancel to go back and change the days."
+    )) return;
+
     if (allProblems.length) {
       /* Said out loud. Returning quietly is what made a disabled button
          and an ignored click indistinguishable. */
@@ -2364,6 +2401,28 @@ function Assignments({ row }) {
                         })()}
                       </span>
                     </div>
+
+                    {/* Less time booked than the work is estimated to
+                        take.
+
+                        A warning rather than a refusal. Booking half of
+                        it is ordinary: the rest may go to another team,
+                        or to this one later in the week, and an
+                        application insisting on the whole estimate
+                        would be wrong more often than right.
+
+                        Beside the pills that caused it, so it can be
+                        answered by changing them. */}
+                    {shortfall && (
+                      <p className="asg-short">
+                        {`This is estimated at ${shortfall.needed} day`}
+                        {shortfall.needed === 1 ? "" : "s"}
+                        {` and you have booked ${shortfall.booked}. `}
+                        {`${shortfall.short} day`}
+                        {shortfall.short === 1 ? "" : "s"}
+                        {" would be left for another team or another visit."}
+                      </p>
+                    )}
                     {schedule.days.map(({ date: d, part: allowed }) => {
                       const part = partFor({ date: d, part: allowed }, draft);
                       return (
@@ -2798,6 +2857,12 @@ const CSS = `
   border-top: 1px dashed var(--border); }
 .asg-days-head { display: flex; align-items: center; gap: 9px; margin-bottom: 6px; }
 .asg-days-head strong { font-size: 12px; }
+/* Short of the estimate. Amber rather than red: it is a thing worth
+   knowing, not a thing that is wrong — booking half the work is
+   ordinary when the rest is going to another team. */
+.asg-short { margin: 8px 0 0; padding: 9px 11px; border-radius: 8px;
+  background: #fef3e2; border: 1px solid #f2d675; font-size: 12.5px;
+  line-height: 1.6; max-width: 70ch; color: #7c4a03; }
 .asg-days-tot { margin-left: auto; }
 .asg-days-tot { font-size: 11px; color: var(--muted); margin-right: auto; }
 .asg-all { background: none; border: 1px solid var(--border); border-radius: 5px;

@@ -323,6 +323,87 @@ const MON = "2026-08-17";
   }
 }
 
+// 13. Booking less time than the work needs is said, not refused.
+//
+//     A gang given the morning for a day's dig is ordinary — the rest
+//     may go to another team, or to this one later in the week. What is
+//     not ordinary is nobody noticing until somebody is on site.
+{
+  const total = (parts) => Object.values(parts)
+    .reduce((t, v) => t + (v === "Full" ? 1 : 0.5), 0);
+  const shortfall = (halves, parts) => {
+    if (!(halves > 0)) return null;
+    const booked = total(parts);
+    const needed = halves / 2;
+    return booked >= needed
+      ? null : { booked, needed, short: Math.round((needed - booked) * 10) / 10 };
+  };
+
+  /* The case that raised it: a day's work, a morning booked. */
+  const half = shortfall(2, { a: "AM" });
+  if (!half) fail("half a day booked against a full day's work says nothing");
+  else if (half.short !== 0.5) fail(`the shortfall came out as ${half.short}, wanted 0.5`);
+
+  if (shortfall(2, { a: "Full" })) fail("a booking that matches the estimate warns");
+  if (shortfall(4, { a: "Full", b: "Full" })) fail("two days for two days' work warns");
+  if (!shortfall(4, { a: "Full" })) fail("one day for two days' work says nothing");
+
+  /* More time than the estimate is not a warning. The estimate is a
+     planning figure, and a foreman who knows the ground is slow is not
+     making a mistake. */
+  if (shortfall(3, { a: "Full", b: "Full" })) fail("booking more than the estimate warns");
+
+  /* No estimate, no warning. A call-off raised before 0159, or one whose
+     ends are not both on the trench network, has none — and a warning
+     that fires on every one of those is a warning nobody reads. */
+  if (shortfall(0, { a: "AM" })) fail("a call-off with no estimate warns anyway");
+  if (shortfall(null, { a: "AM" })) fail("a missing estimate warns anyway");
+
+  /* Shown beside the pills that caused it, and asked once on save.
+     A warning that can be ignored silently is one that will be. */
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  if (!/className="asg-short"/.test(page)) {
+    fail("nothing shows the shortfall while the days are being chosen");
+  }
+  /* The assignment's save, not the energisation one — there are two
+     functions of that name in the file, and slicing from the first
+     found a save that has nothing to do with bookings and reported the
+     prompt missing while it was there. Identified by what it does
+     rather than by its name. */
+  const saves = [...page.matchAll(/async function save\(\)/g)].map((m) => m.index);
+  const saveAt = saves.find((i) => page.slice(i, i + 1200).includes("allProblems"));
+  if (saveAt == null) fail("cannot find the assignment's save");
+  const saveFn = saveAt == null ? "" : page.slice(saveAt);
+  if (!/shortfall && !window\.confirm/.test(saveFn.slice(0, 900))) {
+    fail("a short booking saves without asking");
+  }
+  /* And both answers are offered as legitimate, because they are. */
+  if (!/another team or/.test(saveFn.slice(0, 900))) {
+    fail("the question does not say that saving it short is a real option");
+  }
+  /* Not a blocker: the estimate is a planning figure, not a rule. The
+     guard is a question that can be answered yes, rather than a return
+     nothing gets past. */
+  const guard = saveFn.slice(0, 900);
+  if (/if \(shortfall\) return/.test(guard)) {
+    fail("a short booking is refused rather than questioned");
+  }
+
+  /* The comparison, read from the page rather than from the copy above.
+
+     The copy passed while the page was wrong: changing >= to === made
+     every booking that exceeded the estimate warn, and this file did not
+     notice because it was checking its own arithmetic. */
+  const memo = page.slice(page.indexOf("const shortfall = useMemo("));
+  const rule = memo.slice(0, memo.indexOf("}, ["));
+  if (!/booked >= needed/.test(rule)) {
+    fail("booking more than the estimate is treated as a shortfall");
+  }
+  if (!/!\(halves > 0\)/.test(rule)) {
+    fail("a call-off with no estimate is compared against zero");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assignment end dates behave (per run, laid around weekends, dig phases only).");
 process.exit(bad ? 1 : 0);

@@ -2261,12 +2261,21 @@ function Assignments({ row }) {
             <div className="asg-head">
               <span className="asg-n">{i + 1}</span>
               <strong>{ph.Task_Type_Name}</strong>
+              {/* How many teams can take this phase.
+
+                  It used to open with "any craft in this region", which
+                  read as a setting rather than as "nothing restricts
+                  it" — and the region part repeated on every phase of
+                  every call-off, saying the same thing each time.
+
+                  Where a craft is genuinely required that is worth
+                  saying, because it explains a short list. Where none
+                  is, the count says everything there is to say. */}
               <span className="asg-craft">
                 {ph.Craft_ID
-                  ? `needs ${craftName(ph.Craft_ID) ?? "a craft"}`
-                  : "any craft"}
-                {row.Region_ID ? " in this region" : ""}
-                {` \u00b7 ${can.length} team${can.length === 1 ? "" : "s"}`}
+                  ? `needs ${craftName(ph.Craft_ID) ?? "a craft"} \u00b7 `
+                  : ""}
+                {`${can.length} team${can.length === 1 ? "" : "s"}`}
               </span>
               {(() => {
                 /* Nothing left to assign on this phase: said on the

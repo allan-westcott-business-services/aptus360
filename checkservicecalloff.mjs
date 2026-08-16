@@ -15,6 +15,7 @@ import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
 } from "./src/features/gis/serviceCallOff.js";
+import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -265,6 +266,111 @@ const PLOTS = [
     if (!body.includes(col)) {
       fail(`${col} is required on a submission and the service call-off omits it`);
     }
+  }
+}
+
+// 12. The customer, from the plots.
+//
+//     A service call-off has no runs, so the mains rule — metres of
+//     trench per developer — had nothing to measure and left the
+//     customer blank on every one. The same question, counted rather
+//     than measured: whoever owns most of the plots.
+{
+  const area = (id, poly) => ({
+    Feature_Type: "polygon", Layer_Key: "boundary",
+    Geometry: poly, Attributes: { Project_Developer_ID: id },
+  });
+  const seed = (plotId, x, y) => ({
+    Feature_Role: "plot", Plot_ID: plotId, Geometry: [[x, y]],
+  });
+  const site = [
+    area(7, [[0, 0], [100, 0], [100, 100], [0, 100]]),
+    area(8, [[100, 0], [200, 0], [200, 100], [100, 100]]),
+    seed(1, 10, 10), seed(2, 20, 20), seed(3, 150, 50), seed(4, 160, 60),
+  ];
+  const list = [
+    { plot_id: 1, plot_number: "12" }, { plot_id: 2, plot_number: "13" },
+    { plot_id: 3, plot_number: "40" }, { plot_id: 4, plot_number: "41" },
+  ];
+  const branches = [
+    { Branch_ID: 1, Customer_ID: 10, Branch_Dropdown: "Barratt (Yorkshire East)" },
+    { Branch_ID: 2, Customer_ID: 20, Branch_Dropdown: "Anwyl (Wales)" },
+  ];
+  const customers = [
+    { Customer_ID: 10, Customer_Name: "Barratt Homes" },
+    { Customer_ID: 20, Customer_Name: "Anwyl Homes" },
+  ];
+  const devs = [
+    { Project_Developer_ID: 7, Branch_ID: 1 },
+    { Project_Developer_ID: 8, Branch_ID: 2 },
+  ];
+  const who = (plots) =>
+    serviceCallOffCustomer(plots, site, list, devs, branches, customers);
+
+  if (who(["12", "13"]).Branch_Name !== "Barratt (Yorkshire East)") {
+    fail("plots wholly in one developer's area got no customer");
+  }
+  if (who(["12", "13"]).Customer_Name !== "Barratt Homes") {
+    fail("the customer does not follow the branch");
+  }
+  /* Most of them, so a call-off crossing a boundary still goes
+     somewhere. */
+  if (who(["12", "13", "40"]).Branch_Name !== "Barratt (Yorkshire East)") {
+    fail("two plots against one did not go to the two");
+  }
+  /* Ordered by count, not by whichever developer was seen first.
+
+     The plot order matters here: 12 is developer 7 and is listed first,
+     while 40 and 41 are developer 8. A rule that took the first entry
+     rather than the largest would name Barratt. The earlier version of
+     this test listed them the other way round, so both rules gave the
+     same answer and the check proved nothing. */
+  if (who(["12", "40", "41"]).Branch_Name !== "Anwyl (Wales)") {
+    fail("it does not count — it takes whichever developer came first");
+  }
+  /* An even split is a coin toss, and a name invented for it would be
+     read as an answer. */
+  if (who(["12", "40"]).Branch_Name) {
+    fail("an even split picked a developer anyway");
+  }
+  /* A plot not on the drawing is counted for nobody rather than
+     guessed at. */
+  if (who(["99"]).Branch_Name) fail("a plot with no seed was attributed");
+
+  /* Both routes name a developer's branch through one function, or the
+     mains and service paths would eventually disagree about the same
+     developer. */
+  const mod = readFileSync("./src/features/gis/callOffCustomer.js", "utf8");
+  if ((mod.match(/branchFor\(/g) || []).length < 3) {
+    fail("the two routes resolve a branch separately");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/serviceCallOffCustomer\(servicePlots/.test(canvas)) {
+    fail("the service call-off does not work out its customer from its plots");
+  }
+  if (/callOffCustomer\(\[\], features/.test(canvas)) {
+    fail("the service call-off still asks the mains rule with nothing to measure");
+  }
+}
+
+// 13. The team count says only what it knows.
+//
+//     It opened with "any craft in this region", which read as a
+//     setting rather than as "nothing restricts it" — and the region
+//     part repeated on every phase of every call-off.
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  const at = page.indexOf('className="asg-craft"');
+  const label = at < 0 ? "" : page.slice(at, page.indexOf("</span>", at));
+  if (/any craft/.test(label)) fail("the label still says 'any craft'");
+  if (/in this region/.test(label)) fail("the label still repeats the region");
+  /* A required craft is still worth saying: it explains a short list. */
+  if (!/needs \$\{craftName/.test(label)) {
+    fail("a phase that needs a particular craft no longer says so");
+  }
+  if (!/team\$\{can\.length === 1/.test(label)) {
+    fail("the count of teams is gone");
   }
 }
 

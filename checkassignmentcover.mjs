@@ -224,7 +224,18 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
 //     reads.
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  const call = canvas.slice(canvas.indexOf("const created = await createCallOff("));
+  /* The mains submission, identified by what it sends rather than by
+     being the first one found.
+
+     A service call-off now raises through the same function and is
+     defined earlier in the file, so indexOf found that one and reported
+     the mains rule missing from a payload that never had it. */
+  const calls = [...canvas.matchAll(/const created = await createCallOff\(/g)]
+    .map((m) => m.index);
+  const mainsAt = calls.find((i) =>
+    canvas.slice(i, i + 2500).includes('Selection_Mode: "Span"'));
+  if (mainsAt == null) fail("cannot find where a mains call-off is raised");
+  const call = mainsAt == null ? "" : canvas.slice(mainsAt);
   const payload = call.slice(0, call.indexOf("items:"));
 
   /* The fields the module returns, checked where they are produced —

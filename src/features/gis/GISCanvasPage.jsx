@@ -66,7 +66,7 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
 import { bomLabour } from "./bomLabour.js";
-import { callOffCustomer } from "./callOffCustomer.js";
+import { callOffCustomer, serviceCallOffCustomer } from "./callOffCustomer.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
@@ -8122,11 +8122,15 @@ export default function GISCanvasPage() {
         Project_ID: projectId,
         Work_Type_ID: workType.Work_Type_ID,
         Selection_Mode: "PlotList",
-        /* Whose work it is, worked out the same way as a mains call-off
-           — whoever holds most of the trench the runs cross. A service
-           call-off has no runs, so this falls back to the project's
-           developers and answers only where there is one customer. */
-        ...callOffCustomer([], features, developers,
+        /* Whose work it is.
+
+           The mains call-off measures trench per developer; this counts
+           plots. Calling the mains one here with no ranges left it
+           nothing to measure, so the customer came out blank on every
+           service call-off — the same fault, one layer down.
+
+           Whoever owns most of the plots, and nothing on a tie. */
+        ...serviceCallOffCustomer(servicePlots, features, plotList, developers,
           lookups?.branches || [], lookups?.customers || []),
         /* Who asked, and when for.
 

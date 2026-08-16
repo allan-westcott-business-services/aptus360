@@ -201,6 +201,15 @@ export default withAuth(async function handler(req, context, user) {
        whole call-off shows all of them, in the order they were raised.
        Span_ID null on the assignment means the whole thing, which is
        the ordinary case. */
+    /* The job that is open, worked out once.
+
+       It was a property name in the response below and nothing else, so
+       reading it here threw "current is not defined" — and the field app
+       showed that instead of a queue. The response now uses this rather
+       than finding it a second time, which is also one fewer place for
+       the two to disagree about which job is open. */
+    const current = queue.find((q) => q.released) ?? null;
+
     let spans = [];
     if (current?.assignmentId) {
       const job = assignments.find((a) =>
@@ -244,7 +253,7 @@ export default withAuth(async function handler(req, context, user) {
       leader: { personId: person.Person_ID, name: person.Person_Name, email },
       /* The one to do now, or null when the queue is empty or every job
          is with the office. */
-      current: queue.find((q) => q.released) ?? null,
+      current,
       /* Beside the job rather than inside it, so the tablet can show
          them as their own section without unpacking the job card. */
       spans,

@@ -11,7 +11,9 @@
    correctness: a seed over the highlight hides the thing the picture is
    of, and a plan over everything hides the lot. */
 import { readFileSync } from "node:fs";
-import { spanBounds, fitView, drawSpan, PAD_M } from "./src/features/gis/spanImage.js";
+import {
+  spanBounds, fitView, drawSpan, PAD_M, NODE_R,
+} from "./src/features/gis/spanImage.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -285,6 +287,42 @@ function recorder() {
   /* And a failure is said, or a missing picture is silent until
      somebody opens the instruction on a road. */
   if (!/setStatus\(/.test(body)) fail("a failed capture says nothing");
+}
+
+// 9. A node is big enough to hold its own number.
+//
+//    A radius of 9 with 11px bold held two digits and clipped three, so
+//    a node labelled 120 read as 12 — which is another node on the same
+//    drawing, and the label is what the paperwork names the run by.
+{
+  if (NODE_R < 12) fail(`a node of radius ${NODE_R} cannot hold three digits`);
+
+  /* Measured, not assumed from the length: "A15" and "111" are not the
+     same width. */
+  const measured = (label, size) => String(label).length * size * 0.62;
+  if (measured("120", 10) > NODE_R * 2 - 4) {
+    fail("a three-character label does not fit at 10px");
+  }
+
+  /* And a longer one shrinks rather than being cut. */
+  const calls = [];
+  const ctx = new Proxy({}, {
+    get: (_t, k) => {
+      if (k === "measureText") return (t) => ({ width: String(t).length * 6.2 });
+      return (...a) => calls.push({ op: String(k), args: a });
+    },
+    set: (_t, k, v) => { calls.push({ op: `${String(k)}=`, args: [v] }); return true; },
+  });
+  drawSpan(ctx, {
+    trenches: [{ Geometry: [[100, 100], [113, 100]] }],
+    nodes: [{ Geometry: [[113, 100]], label: "1200" }],
+  });
+  const drawn = calls.filter((c) => c.op === "fillText").map((c) => String(c.args[0]));
+  if (!drawn.includes("1200")) fail("a long label is not drawn in full");
+  const fonts = calls.filter((c) => c.op === "font=").map((c) => String(c.args[0]));
+  if (!fonts.some((f) => /700 [789]px/.test(f))) {
+    fail("a label too wide for its node is not shrunk to fit");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

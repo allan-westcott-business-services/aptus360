@@ -35,6 +35,13 @@
 /* Metres of padding around the span's extent. */
 export const PAD_M = 20;
 
+/* The span node's radius, in pixels.
+
+   Named because it has to hold a label: the number is what the
+   paperwork calls the run by, and a node reading 12 when it is 120 is
+   a different node on the same drawing. */
+export const NODE_R = 13;
+
 /* The box a span occupies, with room around it.
 
    From the trench geometry rather than the two end nodes: a run that
@@ -190,7 +197,13 @@ export function drawSpan(ctx, {
      Last and on top, because the labels on them are what the paperwork
      names the run by — A10 to A11 means nothing unless both are legible
      in the picture. */
-  ctx.font = "700 11px system-ui, sans-serif";
+  /* Big enough for the number inside it.
+
+     A radius of 9 with 11px bold held two digits and clipped three, so
+     a node labelled 120 read as 12 — which is another node on the same
+     drawing. Half again as wide, a point smaller, and the widest label
+     in use fits with room around it. */
+  ctx.font = "700 10px system-ui, sans-serif";
   for (const n of nodes) {
     const p = (n.Geometry || [])[0];
     /* In frame, like the seeds.
@@ -203,7 +216,7 @@ export function drawSpan(ctx, {
     const c = at(view, p);
 
     ctx.beginPath();
-    ctx.arc(c.x, c.y, 9, 0, Math.PI * 2);
+    ctx.arc(c.x, c.y, NODE_R, 0, Math.PI * 2);
     ctx.fillStyle = "#0f172a";
     ctx.fill();
     ctx.strokeStyle = "#ffffff";
@@ -223,7 +236,30 @@ export function drawSpan(ctx, {
     const text = String(n.label ?? n.Attributes?.Span_Label ?? n.Label ?? "");
     ctx.fillStyle = "#ffffff";
     ctx.textBaseline = "middle";
-    ctx.fillText(text, c.x, c.y + 0.5);
+
+    /* Shrunk rather than clipped where the label is long.
+
+       Three characters fit at 10px; four do not, and a node reading 120
+       when it is 1200 is a different node on the same drawing. Measured
+       rather than assumed from the length, because "A15" and "111" are
+       not the same width. */
+    const room = NODE_R * 2 - 4;
+    /* Measured where the context can measure, and drawn as it is where
+       it cannot.
+
+       Checking that measureText exists was not enough: a context can
+       have the method and return nothing from it, and reading .width
+       off that threw and lost the whole picture. The label is worth
+       shrinking and not worth failing over. */
+    const width = Number(ctx.measureText?.(text)?.width) || 0;
+    if (width > room) {
+      ctx.font = `700 ${Math.max(7, Math.floor(10 * room / width))}px `
+        + "system-ui, sans-serif";
+      ctx.fillText(text, c.x, c.y + 0.5);
+      ctx.font = "700 10px system-ui, sans-serif";
+    } else {
+      ctx.fillText(text, c.x, c.y + 0.5);
+    }
     ctx.textBaseline = "alphabetic";
   }
 

@@ -66,6 +66,7 @@ import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
 import { bomLabour } from "./bomLabour.js";
+import { callOffCustomer } from "./callOffCustomer.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
   spanContents, callOffUtilities, utilityIdsFor,
@@ -1246,12 +1247,38 @@ export default function GISCanvasPage() {
      layers arrive, since which layer belongs to a utility is something
      only the loaded data knows. */
   const [pendingIsolate, setPendingIsolate] = useState(null);
+
+  /* Sent here to raise a call-off, and nothing else.
+
+     Somebody who chose "pick it off the drawing" on the call-offs page
+     came to select runs, not to edit the design. A canvas with every
+     tool live invites a change nobody asked for on the way past — and
+     an accidental drag on a trench is a change to a drawing other
+     people are working from.
+
+     So only Tools & Reporting is offered, and only the call-off within
+     it. Not permanent: it is a property of how this visit started, and
+     it goes when the page is left. There is a way out on screen for
+     somebody who decides they do need the drawing after all. */
+  const [callOffOnly, setCallOffOnly] = useState(false);
+
   useEffect(() => {
     const intent = takeGisIntent();
     if (!intent) return;
-    if (intent.projectId != null) setProjectId(String(intent.projectId));
+    /* The project may arrive as a row rather than an id, because the
+       call-offs page has the row and nothing else. */
+    const pid = intent.projectId ?? intent.project?.Project_ID;
+    if (pid != null) setProjectId(String(pid));
     if (intent.utilityId != null) setPendingIsolate(Number(intent.utilityId));
+    if (intent.callOffOnly) setCallOffOnly(true);
   }, []);
+
+  /* Opened on arrival, so the panel that was asked for is the one on
+     screen. Waits for the project, because the call-off panel reads its
+     spans from the drawing. */
+  useEffect(() => {
+    if (callOffOnly && projectId) setCallOffOpen(true);
+  }, [callOffOnly, projectId]);
 
   useEffect(() => { remember("gisProject", projectId || null); }, [projectId]);
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
@@ -7963,40 +7990,23 @@ export default function GISCanvasPage() {
            nothing set it — and a list with a blank customer on every row
            is a column nobody reads.
 
-           Worked out from the drawing: a developer area owns the plots
-           the runs pass, a Project_Developer points at a Customer_Branch,
-           and a branch belongs to a customer. All three are already
-           loaded, so this is a lookup rather than a fetch.
+           Whoever has most of the trench. A run crossing a developer
+           boundary is split there, so a call-off can hold sections
+           belonging to two developers — and it is still one piece of
+           paper going to one branch. The one with the metres is the one
+           being asked to do the work.
 
-           Only where the answer is one customer. A call-off crossing two
-           developers has two, and picking the first would put a name on
-           it that is wrong for half the work — worse than the blank it
-           replaces, because a blank invites the question and a wrong
-           name does not. */
-        ...(() => {
-          const branchOf = (d) => (lookups?.branches || [])
-            .find((b) => Number(b.Branch_ID) === Number(d?.Branch_ID));
-          const ids = [...new Set(developers
-            .map((d) => branchOf(d)?.Customer_ID)
-            .filter((x) => x != null)
-            .map(Number))];
-          if (ids.length !== 1) return {};
+           Not the first section, and not the one the run starts in: a
+           call-off beginning with three metres in one area and
+           continuing with ninety in the next belongs to the second.
 
-          const customer = (lookups?.customers || [])
-            .find((c) => Number(c.Customer_ID) === ids[0]);
-          const dev = developers.find((d) =>
-            Number(branchOf(d)?.Customer_ID) === ids[0]);
-          const branch = branchOf(dev);
-          return {
-            Customer_ID: ids[0],
-            Customer_Name: customer?.Customer_Name ?? null,
-            /* The branch too. A customer with three regional offices is
-               three different people to send a call-off to, and the
-               branch is what says which. */
-            Branch_ID: branch?.Branch_ID ?? null,
-            Branch_Name: branch?.Branch_Dropdown || branch?.Branch_Name || null,
-          };
-        })(),
+           The rule is in callOffCustomer.js rather than here, because
+           it is arithmetic over the drawing and arithmetic can be
+           checked. */
+        ...callOffCustomer(
+          callOff.ranges, features, developers,
+          lookups?.branches || [], lookups?.customers || [],
+        ),
         Contact_Name: raisedByName || "Site",
         Contact_Phone: "N/A",
         /* Today, as the earliest anybody could turn up. Changed on the
@@ -12214,15 +12224,32 @@ export default function GISCanvasPage() {
             {/* Drawing tools stay out of the menus: they are modal, and
                 which one is active has to be visible without opening
                 anything. */}
-            <div className="gis-tools" role="group" aria-label="Tools">
-              <button className={tool === "select" ? "gt on" : "gt"} onClick={() => { setTool("select"); setDraft([]); }}>
-                Select
-              </button>
-              <button className={tool === "line" ? "gt on" : "gt"}
-                onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
-                Draw line
-              </button>
-            </div>
+            {callOffOnly ? (
+              /* Raising a call-off, and the way back to the whole
+                 drawing.
+
+                 Said rather than merely done: a canvas with no menus
+                 looks broken to somebody who does not know why, and the
+                 person who chose this route ten seconds ago may well
+                 have changed their mind. One click undoes it, and
+                 nothing about the drawing was ever locked. */
+              <div className="gis-only" role="status">
+                <span>Raising a call-off &mdash; drawing tools are off</span>
+                <button className="gt" onClick={() => setCallOffOnly(false)}>
+                  Show everything
+                </button>
+              </div>
+            ) : (
+              <div className="gis-tools" role="group" aria-label="Tools">
+                <button className={tool === "select" ? "gt on" : "gt"} onClick={() => { setTool("select"); setDraft([]); }}>
+                  Select
+                </button>
+                <button className={tool === "line" ? "gt on" : "gt"}
+                  onClick={() => { setTool("line"); setSelected([]); setDraft([]); }}>
+                  Draw line
+                </button>
+              </div>
+            )}
 
             {/* What is being drawn, beside the button that starts it.
 
@@ -12313,1057 +12340,1073 @@ export default function GISCanvasPage() {
             <MenuBar>
               {({ open, setOpen }) => (
                 <>
-                  <Menu id="setup" label="Setup" open={open} setOpen={setOpen}>
-                    <MenuItem label={basemap?.Metres_Per_Pixel ? "Background Plan" : "Set Up Plan & Scale"}
-                      hint={basemap?.Metres_Per_Pixel ? "Scaled" : "Not set yet"}
-                      onClick={() => setSetupOpen(true)} />
-                    <MenuItem label={tool === "boundary" ? "Drawing Boundary\u2026" : "Draw Site Boundary"}
-                      active={tool === "boundary"}
-                      hint="Classifies runs as on or off site"
-                      onClick={() => {
-                        setTool(tool === "boundary" ? "select" : "boundary");
-                        setSelected([]); setDraft([]);
-                      }} />
-                    {/* Developer areas.
+                  {/* Everything but Tools & Reporting, hidden when the
+                      canvas was opened to raise a call-off.
 
-                        Only where there is more than one developer: with
-                        one, everything on the site is theirs already and
-                        an area would be a division of nothing. The whole
-                        block is absent rather than disabled, because a
-                        greyed-out item invites the question of how to
-                        enable it. */}
-                    {developers.length > 1 && (
-                      <>
-                        <div className="gm-sep" />
-                        <MenuGroup label="Developers" />
-                        {developers.map((d) => {
-                          const drawn = developerAreas(features)
-                            .some((a) => Number(a.id) === Number(d.Project_Developer_ID));
-                          const on = tool === "devarea"
-                            && Number(areaFor) === Number(d.Project_Developer_ID);
-                          return (
-                            <MenuItem key={d.Project_Developer_ID}
-                              label={on ? `Drawing ${d.label}\u2026` : `Draw ${d.label} Area`}
-                              hint={drawn ? "An area is already drawn \u2014 this adds another"
-                                : "Outline the ground that is theirs"}
-                              active={on}
-                              onClick={() => {
-                                setAreaFor(d.Project_Developer_ID);
-                                setTool(on ? "select" : "devarea");
-                                setSelected([]); setDraft([]);
-                              }} />
-                          );
-                        })}
-                        <MenuItem label={busy === "developer" ? "Assigning\u2026" : "Assign by Developer Area"}
-                          hint="Splits anything crossing an area edge. Substations, POCs and the incomer are left alone."
-                          disabled={!!busy || !developerAreas(features).length}
-                          onClick={assignByDeveloper} />
-                        <div className="gm-sep" />
-                      </>
-                    )}
-
-                    {/* One item, not two. Adding plots and placing them
-                        were separate entries opening much the same thing;
-                        the modal already offers both, so the menu should
-                        offer the job rather than the two halves of it. */}
-                    <MenuItem label="Plots"
-                      hint={`${plotList.filter((p) => !p.placed).length} still to place`}
-                      active={placeOpen || queue.length > 0}
-                      onClick={() => setPlaceOpen(true)} />
-                    {/* Meters for plots that were seeded before a
-                        utility was on the project.
-
-                        The seeding flow asks for one meter per utility
-                        as each plot goes down, so a utility added later
-                        has none anywhere — and re-seeding is no help,
-                        because it only offers plots that are not placed.
-                        This is the same flow entered from the other end.
-
-                        Offered only when something is actually short of
-                        one, so it is not a permanent item for a job most
-                        projects never need. */}
-                    {plotsMissingMeters > 0 || meterCatchUp ? (
-                      <MenuItem label="Add missing meters" indent
-                        hint={meterCatchUp
-                          ? "Click a plot seed \u00b7 Esc to stop"
-                          : `${plotsMissingMeters} plot(s) short of a meter`}
-                        active={!!meterCatchUp}
+                      Hidden rather than disabled. Eight greyed menus say
+                      "you cannot do any of this" over and over; their
+                      absence says the page is doing one job, which is
+                      the truth. The way out is on the toolbar. */}
+                  {!callOffOnly && (
+                    <>
+                    <Menu id="setup" label="Setup" open={open} setOpen={setOpen}>
+                      <MenuItem label={basemap?.Metres_Per_Pixel ? "Background Plan" : "Set Up Plan & Scale"}
+                        hint={basemap?.Metres_Per_Pixel ? "Scaled" : "Not set yet"}
+                        onClick={() => setSetupOpen(true)} />
+                      <MenuItem label={tool === "boundary" ? "Drawing Boundary\u2026" : "Draw Site Boundary"}
+                        active={tool === "boundary"}
+                        hint="Classifies runs as on or off site"
                         onClick={() => {
-                          if (meterCatchUp) {
-                            setMeterCatchUp(null); setMeterFor(null); setStatus("");
-                            return;
-                          }
-                          /* Clear of anything else that wants clicks —
-                             two placement modes at once is a click that
-                             does whichever was checked first. */
-                          stopPlacing();
-                          setPlaceOpen(false);
-                          setTool("select");
-                          setSelected([]);
-                          setMeterCatchUp({ started: Date.now() });
-                          /* Said on entry, because the mode changes what
-                             a click does and nothing else on screen
-                             would announce that. */
-                          setStatus(`Click a plot seed to add its missing meters `
-                            + `\u00b7 ${plotsMissingMeters} plot(s) short \u00b7 Esc to stop`);
+                          setTool(tool === "boundary" ? "select" : "boundary");
+                          setSelected([]); setDraft([]);
                         }} />
-                    ) : null}
-                    <div className="gm-sep" />
-                    <MenuGroup label="Drawing Standard" />
-                    <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
-                      <select className="gis-type" value={standard} aria-label="Drawing Standard"
-                        style={{ width: "100%" }}
-                        onClick={(e) => e.stopPropagation()}
-                        onChange={(e) => setStandard(e.target.value)}>
-                        <option value="">House style</option>
-                        {[...new Map((lookups?.orgOperators || [])
-                          .map((o) => [o.Organisation_ID, o])).values()].map((o) => (
-                            <option key={o.Organisation_ID} value={o.Organisation_ID}>
-                              {o.Name}{o.Code ? ` (${o.Code})` : ""}
-                            </option>
-                          ))}
-                      </select>
-                    </div>
-                    <div className="gm-sep" />
-                    <MenuItem label="Snap to Geometry" active={snapOn}
-                      onClick={() => setSnapOn(!snapOn)} />
-                    <MenuItem label="Classify Against the Boundary…"
-                      hint="Set on-site / off-site on what is already drawn"
-                      disabled={!projectId || !!busy}
-                      onClick={previewClassification} />
-                    <MenuItem label="Grid" active={showGrid}
-                      hint={`${GRID_M} m spacing`}
-                      onClick={() => setShowGrid(!showGrid)} />
-                    <MenuItem label="Reset View"
-                      onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
-                  </Menu>
+                      {/* Developer areas.
 
-                  {/* Two columns: what is shown on the left, what is
-                      locked and the tools on the right.
-
-                      One list meant the lock rows sat below the fold on
-                      a laptop, and locking a layer is exactly the thing
-                      somebody opens this menu to do. */}
-                  <Menu id="layers" label="Layers" open={open} setOpen={setOpen}
-                    columns={2}>
-                    {/* Above the layers, not below them.
-
-                        It undoes whatever hiding is in force, so it is
-                        the first thing wanted by somebody who has lost
-                        track of what is off — and it was at the foot of
-                        a list they would have to scroll to reach.
-
-                        Under a heading of its own, so both columns start
-                        with one and the two line up — a column beginning
-                        with a button against one beginning with a
-                        heading sits a few pixels out and reads as a
-                        wobble. */}
-                    <MenuGroup label="Everything" />
-                    <MenuItem label="Show Everything"
-                      disabled={!hidden.length && isolatedCircuit == null
-                        && !liveTrenchOnly
-                        && (showBasemap || !basemap?.Metres_Per_Pixel)}
-                      hint="Unhides every layer and ends any circuit isolation"
-                      onClick={() => {
-                        setHidden([]); setSolo(null); setShownOnly([]); setIsolatedCircuit(null);
-                        setShowBasemap(true); setLiveTrenchOnly(false);
-                      }} />
-                    <div className="gm-sep" />
-                    <MenuGroup label="Show or Hide" />
-                    {/* The Labels switch is under its own heading further
-                        down, not here. There were two of them in this one
-                        menu — the same setting offered twice, which is
-                        how a control and its copy drift into disagreeing
-                        about what they are showing. */}
-                    <p className="gm-note">
-                      H hides a layer and hides it again to bring it back.
-                      S shows only the layers whose S is lit — as many as you
-                      like. I is the same with room for one. The same switches
-                      as on the other menus.
-                    </p>
-
-                    {/* ── The order ──
-
-                        Listed the way somebody reads a drawing rather
-                        than in the order the layers were added to the
-                        database: the plan underneath, then what bounds
-                        the site, then what is being built on it, then
-                        the utilities, then the writing on top.
-
-                        Held as a list of keys rather than a Sort_Order
-                        column, because two of these rows are not layers
-                        at all — the boundaries are one layer split in
-                        two, and span nodes are a role — and a column
-                        could not order them among the rest.
-
-                        Anything not named here still appears, after the
-                        ones that are. A layer added later should show up
-                        somewhere obvious rather than not at all. */}
-                    {(() => {
-                      const ORDER = ["trench", "electric", "gas", "water", "lighting", "note"];
-                      const RENAME = { plot: "Plot Seeds" };
-                      const named = new Set([...ORDER, "plot", "boundary"]);
-                      const rowFor = (l) => (
-                        <MenuLayer key={l.Layer_Key} label={RENAME[l.Layer_Key] ?? l.Label}
-                          colour={l.Colour}
-                          count={classCount[l.Layer_Key] || 0}
-                          hidden={hidden.includes(l.Layer_Key)}
-                          solo={solo === l.Layer_Key}
-                          onHide={() => hideClass(l.Layer_Key)}
-                          onShow={() => showClass(l.Layer_Key)}
-                          shown={shownOnly.includes(l.Layer_Key)}
-                          onSolo={() => soloClass(l.Layer_Key)} />
-                      );
-                      const byKey = (k) => layers.find((l) => l.Layer_Key === k);
-                      const plot = byKey("plot");
-                      return (
-                        <>
-                          {/* The survey underneath everything. Only when
-                              one is attached — an entry for a plan that
-                              does not exist is a control that does
-                              nothing. */}
-                          {basemap?.Metres_Per_Pixel && (
-                            <MenuLayer label="Background Plan" colour="#94a3b8"
-                              count={1}
-                              /* Only its own H can hide it — no pick
-                                 sweeps it away — so the row reads from
-                                 that one switch. */
-                              hidden={!showBasemap}
-                              solo={solo === BASEMAP_KEY}
-                              shown={shownOnly.includes(BASEMAP_KEY)}
-                              /* H toggles. Hiding it while it is one of
-                                 the picks takes it off that list too,
-                                 otherwise S stays lit over a plan that
-                                 is not on screen — and dropping the
-                                 only pick brings the drawing back,
-                                 which is what H does everywhere else. */
-                              onHide={() => {
-                                if (showBasemap && shownOnly.includes(BASEMAP_KEY)) {
-                                  applyShown(shownOnly.filter((x) => x !== BASEMAP_KEY));
-                                }
-                                setShowBasemap((v) => !v);
-                              }}
-                              onShow={() => {
-                                /* Picking it also undoes its own H.
-                                   Otherwise S would light up and
-                                   nothing would appear, because the
-                                   other switch was still off. */
-                                setShowBasemap(true);
-                                showClass(BASEMAP_KEY);
-                              }}
-                              onSolo={() => {
-                                setShowBasemap(true);
-                                soloClass(BASEMAP_KEY);
-                              }} />
-                          )}
-
-                          {/* The two boundaries separately, and the
-                              layer they share not at all.
-
-                              That layer had a row of its own, which is
-                              the second Site Boundary in this menu: one
-                              entry hid the red line and the developer
-                              areas together, the other hid only the red
-                              line, and both were called the same thing.
-                              The layer row is gone; these two cover
-                              everything on it between them. */}
-                          {/* The A marker on every plot's property
-                              boundary point. Its own row, because it
-                              belongs to no utility \u2014 hiding it should
-                              not mean hiding the plots, and isolating a
-                              utility should not take it away. */}
-                          <MenuLayer label="Property Boundary Points"
-                            colour={byKey("plot")?.Colour}
-                            count={features.filter((f) => f.Feature_Role === "plot"
-                              && Array.isArray(f.Attributes?.Boundary_At)).length}
-                            hidden={hidden.includes("plot:boundary")}
-                            solo={solo === "plot:boundary"}
-                            onHide={() => hideClass("plot:boundary")}
-                            onShow={() => showClass("plot:boundary")}
-                            shown={shownOnly.includes("plot:boundary")}
-                            onSolo={() => soloClass("plot:boundary")} />
-                          <MenuLayer label="Site Boundary" colour={byKey("boundary")?.Colour}
-                            count={classCount["boundary:site"] || 0}
-                            hidden={hidden.includes("boundary:site")}
-                            solo={solo === "boundary:site"}
-                            onHide={() => hideClass("boundary:site")}
-                            onShow={() => showClass("boundary:site")}
-                            shown={shownOnly.includes("boundary:site")}
-                            onSolo={() => soloClass("boundary:site")} />
-                          <MenuLayer label="Developer Boundary" colour={byKey("boundary")?.Colour}
-                            count={classCount["boundary:dev"] || 0}
-                            hidden={hidden.includes("boundary:dev")}
-                            solo={solo === "boundary:dev"}
-                            onHide={() => hideClass("boundary:dev")}
-                            onShow={() => showClass("boundary:dev")}
-                            shown={shownOnly.includes("boundary:dev")}
-                            onSolo={() => soloClass("boundary:dev")} />
-
-                          {plot && rowFor(plot)}
-
-                          <MenuLayer label="Span Nodes" colour="#334155"
-                            count={classCount["role:spannode"] || 0}
-                            hidden={hidden.includes("role:spannode")}
-                            solo={solo === "role:spannode"}
-                            onHide={() => hideClass("role:spannode")}
-                            onShow={() => showClass("role:spannode")}
-                            shown={shownOnly.includes("role:spannode")}
-                            onSolo={() => soloClass("role:spannode")} />
-
-                          {ORDER.map(byKey).filter(Boolean).map(rowFor)}
-                          {layers.filter((l) => !named.has(l.Layer_Key)).map(rowFor)}
-                        </>
-                      );
-                    })()}
-
-                    {/* Labelling as a layer.
-
-                        Plot numbers, joint names, way and circuit
-                        labels, and the letters repeated along a run —
-                        all of it off together. On a dense estate the
-                        labels cover the geometry they describe, and
-                        turning them off one kind at a time is four
-                        decisions to make the one you wanted. */}
-                    <MenuGroup label="Labels" newColumn />
-                    {/* Under its own heading, and shaped like every other
-                        layer row.
-
-                        It had drifted below the locked section, leaving
-                        the Labels heading with nothing under it and the
-                        control itself unexplained where it landed. And
-                        it was a plain item where its neighbours are
-                        layers with an H button — the same question asked
-                        two different ways in one menu. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(false)}
-                      onShow={() => setShowLabels(true)} />
-
-                    <div className="gm-sep" />
-                    <MenuGroup label="Locked against moving" />
-                    {/* Per layer, which is the coarsest and most useful
-                        grain: a layer is usually finished all at once.
-                        Line types are locked from the right-click menu,
-                        where the thing being locked is under the cursor. */}
-                    {layers.filter((l) => classCount[l.Layer_Key]).map((l) => {
-                      const isLocked = lockedClasses.includes(l.Layer_Key);
-                      return (
-                        <MenuItem key={l.Layer_Key}
-                          /* A padlock, not only a highlight.
-
-                             Highlighting alone says "this row is
-                             different" and leaves which way round to be
-                             guessed — on a list where some are locked
-                             and some are not, the highlighted ones read
-                             as selected as easily as locked. An open
-                             padlock on the rest keeps the column
-                             aligned, so the two states are read by
-                             shape rather than by which rows have an
-                             icon at all. */
-                          /* A padlock only where it is locked.
-
-                             The open and closed padlock glyphs are very
-                             nearly the same shape at menu size, so
-                             showing both left the two states harder to
-                             tell apart than showing one. An unlocked row
-                             gets a space of the same width instead, so
-                             the names still line up and the icon is a
-                             presence rather than a shape to squint at. */
-                          label={`${isLocked ? "\uD83D\uDD12" : "\u2003"}  ${l.Label}`}
-                          active={isLocked}
-                          keepOpen
-                          hint={isLocked
-                            ? "Locked \u2014 cannot be moved"
-                            : "Unlocked \u2014 can be moved"}
-                          onClick={() => setLockedClasses((x) =>
-                            toggleClassLock(x, l.Layer_Key))} />
-                      );
-                    })}
-
-                    {/* Locked line types, listed here too.
-
-                        They are locked from the right-click menu, where
-                        the thing being locked is under the cursor \u2014 but
-                        this menu showed layers only, so a locked line
-                        type refused every drag with a message naming a
-                        key ("lt:trench_main") that appeared nowhere on
-                        screen and could not be undone from anywhere.
-
-                        Only the locked ones. Listing every line type
-                        would double the length of a menu whose ordinary
-                        use is layers, and an unlocked type is already
-                        one right-click away. */}
-                    {(() => {
-                      const lockedTypes = lockedClasses
-                        .filter((k) => String(k).startsWith("lt:"))
-                        .map((k) => ({
-                          key: k,
-                          label: lineTypes.find((t) => `lt:${t.Type_Key}` === k)?.Label
-                            ?? String(k).slice(3),
-                        }));
-                      if (!lockedTypes.length) return null;
-                      return (
+                          Only where there is more than one developer: with
+                          one, everything on the site is theirs already and
+                          an area would be a division of nothing. The whole
+                          block is absent rather than disabled, because a
+                          greyed-out item invites the question of how to
+                          enable it. */}
+                      {developers.length > 1 && (
                         <>
                           <div className="gm-sep" />
-                          <MenuGroup label="Locked line types" />
-                          {lockedTypes.map((t) => (
-                            <MenuItem key={t.key}
-                              label={`\uD83D\uDD12  ${t.label}`}
-                              active
-                              keepOpen
-                              hint="Locked \u2014 cannot be moved"
-                              onClick={() => setLockedClasses((x) =>
-                                toggleClassLock(x, t.key))} />
-                          ))}
+                          <MenuGroup label="Developers" />
+                          {developers.map((d) => {
+                            const drawn = developerAreas(features)
+                              .some((a) => Number(a.id) === Number(d.Project_Developer_ID));
+                            const on = tool === "devarea"
+                              && Number(areaFor) === Number(d.Project_Developer_ID);
+                            return (
+                              <MenuItem key={d.Project_Developer_ID}
+                                label={on ? `Drawing ${d.label}\u2026` : `Draw ${d.label} Area`}
+                                hint={drawn ? "An area is already drawn \u2014 this adds another"
+                                  : "Outline the ground that is theirs"}
+                                active={on}
+                                onClick={() => {
+                                  setAreaFor(d.Project_Developer_ID);
+                                  setTool(on ? "select" : "devarea");
+                                  setSelected([]); setDraft([]);
+                                }} />
+                            );
+                          })}
+                          <MenuItem label={busy === "developer" ? "Assigning\u2026" : "Assign by Developer Area"}
+                            hint="Splits anything crossing an area edge. Substations, POCs and the incomer are left alone."
+                            disabled={!!busy || !developerAreas(features).length}
+                            onClick={assignByDeveloper} />
+                          <div className="gm-sep" />
                         </>
-                      );
-                    })()}
+                      )}
 
-                    {/* Circuit rings are controlled from the circuit
-                        report, which is where the question they answer
-                        is being asked. Two controls for one setting is
-                        one more place to look when it does not work. */}
+                      {/* One item, not two. Adding plots and placing them
+                          were separate entries opening much the same thing;
+                          the modal already offers both, so the menu should
+                          offer the job rather than the two halves of it. */}
+                      <MenuItem label="Plots"
+                        hint={`${plotList.filter((p) => !p.placed).length} still to place`}
+                        active={placeOpen || queue.length > 0}
+                        onClick={() => setPlaceOpen(true)} />
+                      {/* Meters for plots that were seeded before a
+                          utility was on the project.
 
-                    {/* Everything back, whatever put it away.
+                          The seeding flow asks for one meter per utility
+                          as each plot goes down, so a utility added later
+                          has none anywhere — and re-seeding is no help,
+                          because it only offers plots that are not placed.
+                          This is the same flow entered from the other end.
 
-                        Circuit isolation is held apart from the hidden
-                        set so the two do not undo each other, and this
-                        was the cost of that: with a circuit isolated and
-                        nothing else hidden, the one item that brings
-                        things back was greyed out, and the only way out
-                        was a right-click on a feature of the isolated
-                        circuit. Anyone who could not find one was stuck
-                        with meters they could not see and no way to say
-                        so. */}
-                    {/* Find is on the toolbar now, beside Tools &
-                        Reporting. It was in here because the layer
-                        menu is where hiding things happens and finding
-                        one is the other half of that — but it is not a
-                        layer control, and it was two clicks deep for
-                        something reached constantly. */}
+                          Offered only when something is actually short of
+                          one, so it is not a permanent item for a job most
+                          projects never need. */}
+                      {plotsMissingMeters > 0 || meterCatchUp ? (
+                        <MenuItem label="Add missing meters" indent
+                          hint={meterCatchUp
+                            ? "Click a plot seed \u00b7 Esc to stop"
+                            : `${plotsMissingMeters} plot(s) short of a meter`}
+                          active={!!meterCatchUp}
+                          onClick={() => {
+                            if (meterCatchUp) {
+                              setMeterCatchUp(null); setMeterFor(null); setStatus("");
+                              return;
+                            }
+                            /* Clear of anything else that wants clicks —
+                               two placement modes at once is a click that
+                               does whichever was checked first. */
+                            stopPlacing();
+                            setPlaceOpen(false);
+                            setTool("select");
+                            setSelected([]);
+                            setMeterCatchUp({ started: Date.now() });
+                            /* Said on entry, because the mode changes what
+                               a click does and nothing else on screen
+                               would announce that. */
+                            setStatus(`Click a plot seed to add its missing meters `
+                              + `\u00b7 ${plotsMissingMeters} plot(s) short \u00b7 Esc to stop`);
+                          }} />
+                      ) : null}
+                      <div className="gm-sep" />
+                      <MenuGroup label="Drawing Standard" />
+                      <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
+                        <select className="gis-type" value={standard} aria-label="Drawing Standard"
+                          style={{ width: "100%" }}
+                          onClick={(e) => e.stopPropagation()}
+                          onChange={(e) => setStandard(e.target.value)}>
+                          <option value="">House style</option>
+                          {[...new Map((lookups?.orgOperators || [])
+                            .map((o) => [o.Organisation_ID, o])).values()].map((o) => (
+                              <option key={o.Organisation_ID} value={o.Organisation_ID}>
+                                {o.Name}{o.Code ? ` (${o.Code})` : ""}
+                              </option>
+                            ))}
+                        </select>
+                      </div>
+                      <div className="gm-sep" />
+                      <MenuItem label="Snap to Geometry" active={snapOn}
+                        onClick={() => setSnapOn(!snapOn)} />
+                      <MenuItem label="Classify Against the Boundary…"
+                        hint="Set on-site / off-site on what is already drawn"
+                        disabled={!projectId || !!busy}
+                        onClick={previewClassification} />
+                      <MenuItem label="Grid" active={showGrid}
+                        hint={`${GRID_M} m spacing`}
+                        onClick={() => setShowGrid(!showGrid)} />
+                      <MenuItem label="Reset View"
+                        onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
+                    </Menu>
 
-                    {/* The background plan counts as hidden too.
+                    {/* Two columns: what is shown on the left, what is
+                        locked and the tools on the right.
 
-                        It is listed with the layers, so leaving it off
-                        while saying everything is shown is the same
-                        quiet inconsistency as the circuit isolation this
-                        already had to be taught about. */}
-                  </Menu>
+                        One list meant the lock rows sat below the fold on
+                        a laptop, and locking a layer is exactly the thing
+                        somebody opens this menu to do. */}
+                    <Menu id="layers" label="Layers" open={open} setOpen={setOpen}
+                      columns={2}>
+                      {/* Above the layers, not below them.
 
-                  {/* Two columns, grouped by what somebody is doing.
+                          It undoes whatever hiding is in force, so it is
+                          the first thing wanted by somebody who has lost
+                          track of what is off — and it was at the foot of
+                          a list they would have to scroll to reach.
 
-                      One list of sixteen actions with "Route" and "Show
-                      or Hide" each appearing twice, and the off-site
-                      items filed under "Route" — the order was an
-                      accident of the order they were added in, and it
-                      had grown past the height of the screen.
+                          Under a heading of its own, so both columns start
+                          with one and the two line up — a column beginning
+                          with a button against one beginning with a
+                          heading sits a few pixels out and reads as a
+                          wobble. */}
+                      <MenuGroup label="Everything" />
+                      <MenuItem label="Show Everything"
+                        disabled={!hidden.length && isolatedCircuit == null
+                          && !liveTrenchOnly
+                          && (showBasemap || !basemap?.Metres_Per_Pixel)}
+                        hint="Unhides every layer and ends any circuit isolation"
+                        onClick={() => {
+                          setHidden([]); setSolo(null); setShownOnly([]); setIsolatedCircuit(null);
+                          setShowBasemap(true); setLiveTrenchOnly(false);
+                        }} />
+                      <div className="gm-sep" />
+                      <MenuGroup label="Show or Hide" />
+                      {/* The Labels switch is under its own heading further
+                          down, not here. There were two of them in this one
+                          menu — the same setting offered twice, which is
+                          how a control and its copy drift into disagreeing
+                          about what they are showing. */}
+                      <p className="gm-note">
+                        H hides a layer and hides it again to bring it back.
+                        S shows only the layers whose S is lit — as many as you
+                        like. I is the same with room for one. The same switches
+                        as on the other menus.
+                      </p>
 
-                      Drawing and marking on the left, routing and
-                      checking on the right. */}
-                  <Menu id="trench" label="Trench" open={open} setOpen={setOpen}
-                    columns={2}>
-                    <MenuGroup label="Draw" />
-                    {/* Drawing the dig, so it sits with the other ways
-                        of drawing one. Each utility is laid afterwards
-                        from its own menu, so a design done one utility
-                        at a time does not have the other two put in
-                        behind it. */}
-                    <MenuItem label={busy === "autoservice"
-                      ? "Laying\u2026" : "Auto Lay Service Trench"} indent
-                      hint="Draws the service trench to every plot, and nothing in it"
-                      disabled={!!busy || !projectId}
-                      onClick={() => runStep("service", () => withUndo(
-                        "Auto Service", () => runAutoService({ trenchesOnly: true })))} />
-                    {typesOn("trench").map((t) => (
-                      <MenuItem key={t.Type_Key} label={t.Label} indent
-                        active={isDrawing(t.Type_Key)}
-                        onClick={() => drawAs(t.Type_Key)} />
-                    ))}
+                      {/* ── The order ──
 
-                    {/* Build status and Off site were here, as a set of
-                        buttons that marked whatever was selected. Both
-                        are properties of one object, and the trench
-                        editor is where an object's properties are set —
-                        two ways to change one field is two places for
-                        them to disagree, and the menu was the one with
-                        no record of what it had just changed. */}
+                          Listed the way somebody reads a drawing rather
+                          than in the order the layers were added to the
+                          database: the plan underneath, then what bounds
+                          the site, then what is being built on it, then
+                          the utilities, then the writing on top.
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Show or Hide" />
-                    {/* Labels, on every utility menu.
+                          Held as a list of keys rather than a Sort_Order
+                          column, because two of these rows are not layers
+                          at all — the boundaries are one layer split in
+                          two, and span nodes are a role — and a column
+                          could not order them among the rest.
 
-                        Whether the drawing is readable is a question
-                        somebody asks while working on one utility, and
-                        the answer used to be in the Layers menu — a
-                        different menu from the one they are in. The same
-                        switch, offered where it is wanted. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(false)}
-                      onShow={() => setShowLabels(true)} />
-                    <MenuLayer label="Span nodes" colour="#1e3a5f"
-                      count={classCount["role:spannode"] || 0}
-                      hidden={hidden.includes("role:spannode")}
-                      solo={solo === "role:spannode"}
-                      onHide={() => hideClass("role:spannode")}
-                      onShow={() => showClass("role:spannode")}
-                      shown={shownOnly.includes("role:spannode")}
-                      onSolo={() => soloClass("role:spannode")} />
-                    {typesOn("trench").map((t) => (
-                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
-                        count={classCount[`lt:${t.Type_Key}`] || 0}
-                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
-                        solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
-                      onShow={() => showClass(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
-                    ))}
+                          Anything not named here still appears, after the
+                          ones that are. A layer added later should show up
+                          somewhere obvious rather than not at all. */}
+                      {(() => {
+                        const ORDER = ["trench", "electric", "gas", "water", "lighting", "note"];
+                        const RENAME = { plot: "Plot Seeds" };
+                        const named = new Set([...ORDER, "plot", "boundary"]);
+                        const rowFor = (l) => (
+                          <MenuLayer key={l.Layer_Key} label={RENAME[l.Layer_Key] ?? l.Label}
+                            colour={l.Colour}
+                            count={classCount[l.Layer_Key] || 0}
+                            hidden={hidden.includes(l.Layer_Key)}
+                            solo={solo === l.Layer_Key}
+                            onHide={() => hideClass(l.Layer_Key)}
+                            onShow={() => showClass(l.Layer_Key)}
+                            shown={shownOnly.includes(l.Layer_Key)}
+                            onSolo={() => soloClass(l.Layer_Key)} />
+                        );
+                        const byKey = (k) => layers.find((l) => l.Layer_Key === k);
+                        const plot = byKey("plot");
+                        return (
+                          <>
+                            {/* The survey underneath everything. Only when
+                                one is attached — an entry for a plan that
+                                does not exist is a control that does
+                                nothing. */}
+                            {basemap?.Metres_Per_Pixel && (
+                              <MenuLayer label="Background Plan" colour="#94a3b8"
+                                count={1}
+                                /* Only its own H can hide it — no pick
+                                   sweeps it away — so the row reads from
+                                   that one switch. */
+                                hidden={!showBasemap}
+                                solo={solo === BASEMAP_KEY}
+                                shown={shownOnly.includes(BASEMAP_KEY)}
+                                /* H toggles. Hiding it while it is one of
+                                   the picks takes it off that list too,
+                                   otherwise S stays lit over a plan that
+                                   is not on screen — and dropping the
+                                   only pick brings the drawing back,
+                                   which is what H does everywhere else. */
+                                onHide={() => {
+                                  if (showBasemap && shownOnly.includes(BASEMAP_KEY)) {
+                                    applyShown(shownOnly.filter((x) => x !== BASEMAP_KEY));
+                                  }
+                                  setShowBasemap((v) => !v);
+                                }}
+                                onShow={() => {
+                                  /* Picking it also undoes its own H.
+                                     Otherwise S would light up and
+                                     nothing would appear, because the
+                                     other switch was still off. */
+                                  setShowBasemap(true);
+                                  showClass(BASEMAP_KEY);
+                                }}
+                                onSolo={() => {
+                                  setShowBasemap(true);
+                                  soloClass(BASEMAP_KEY);
+                                }} />
+                            )}
 
-                    {/* The second column. */}
-                    <MenuGroup label="Span nodes and call-offs" newColumn />
-                    <MenuItem label="Place Span Nodes"
-                      hint="At every junction and end of the trench network, A1 upwards"
-                      disabled={!!busy || !projectId}
-                      /* Under undo, because this now cuts trenches as
-                         well as marking them. Placing a marker was
-                         nothing much to take back; replacing a length
-                         of trench that carries a build status with
-                         three sections of it is. */
-                      onClick={() => withUndo("Place Span Nodes", () => placeSpanNodes())} />
+                            {/* The two boundaries separately, and the
+                                layer they share not at all.
 
-                    {/* Routing was here: Trace All Meters, Step Through
-                        Traces, Suggest Trench Route, Only Live Trench.
+                                That layer had a row of its own, which is
+                                the second Site Boundary in this menu: one
+                                entry hid the red line and the developer
+                                areas together, the other hid only the red
+                                line, and both were called the same thing.
+                                The layer row is gone; these two cover
+                                everything on it between them. */}
+                            {/* The A marker on every plot's property
+                                boundary point. Its own row, because it
+                                belongs to no utility \u2014 hiding it should
+                                not mean hiding the plots, and isolating a
+                                utility should not take it away. */}
+                            <MenuLayer label="Property Boundary Points"
+                              colour={byKey("plot")?.Colour}
+                              count={features.filter((f) => f.Feature_Role === "plot"
+                                && Array.isArray(f.Attributes?.Boundary_At)).length}
+                              hidden={hidden.includes("plot:boundary")}
+                              solo={solo === "plot:boundary"}
+                              onHide={() => hideClass("plot:boundary")}
+                              onShow={() => showClass("plot:boundary")}
+                              shown={shownOnly.includes("plot:boundary")}
+                              onSolo={() => soloClass("plot:boundary")} />
+                            <MenuLayer label="Site Boundary" colour={byKey("boundary")?.Colour}
+                              count={classCount["boundary:site"] || 0}
+                              hidden={hidden.includes("boundary:site")}
+                              solo={solo === "boundary:site"}
+                              onHide={() => hideClass("boundary:site")}
+                              onShow={() => showClass("boundary:site")}
+                              shown={shownOnly.includes("boundary:site")}
+                              onSolo={() => soloClass("boundary:site")} />
+                            <MenuLayer label="Developer Boundary" colour={byKey("boundary")?.Colour}
+                              count={classCount["boundary:dev"] || 0}
+                              hidden={hidden.includes("boundary:dev")}
+                              solo={solo === "boundary:dev"}
+                              onHide={() => hideClass("boundary:dev")}
+                              onShow={() => showClass("boundary:dev")}
+                              shown={shownOnly.includes("boundary:dev")}
+                              onSolo={() => soloClass("boundary:dev")} />
 
-                        The code behind them is still in this file and is
-                        now unreachable — nothing else opens a trace.
-                        Left rather than torn out, because deleting four
-                        features' worth of working machinery on the
-                        strength of a menu change is a bigger decision
-                        than a menu change. */}
+                            {plot && rowFor(plot)}
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Services" />
-                    <MenuItem label="Check Services Reach the Mains"
-                      disabled={!projectId}
-                      onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
+                            <MenuLayer label="Span Nodes" colour="#334155"
+                              count={classCount["role:spannode"] || 0}
+                              hidden={hidden.includes("role:spannode")}
+                              solo={solo === "role:spannode"}
+                              onHide={() => hideClass("role:spannode")}
+                              onShow={() => showClass("role:spannode")}
+                              shown={shownOnly.includes("role:spannode")}
+                              onSolo={() => soloClass("role:spannode")} />
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Checks" />
-                    <MenuItem label="Check Trench Joins"
-                      hint="Trench ends close to another trench but not joined"
-                      disabled={!!busy || !projectId}
-                      onClick={findGaps} />
-                    <MenuItem label="Check Trench Connectivity"
-                      disabled={!projectId}
-                      onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
-                  </Menu>
+                            {ORDER.map(byKey).filter(Boolean).map(rowFor)}
+                            {layers.filter((l) => !named.has(l.Layer_Key)).map(rowFor)}
+                          </>
+                        );
+                      })()}
 
-                  <Menu id="electric" label="Electric" open={open} setOpen={setOpen}
-                    columns={2}
-                    /* Isolated whether or not there is any of it.
+                      {/* Labelling as a layer.
 
-                       This used to isolate only where the utility had
-                       something on the drawing. The intent was kindness
-                       — do not blank the canvas over nothing — and the
-                       effect was the opposite: opening Water on a site
-                       with no water left the electric drawing on screen,
-                       so the answer to "show me the water" was somebody
-                       else's design. Nothing said it had been refused.
+                          Plot numbers, joint names, way and circuit
+                          labels, and the letters repeated along a run —
+                          all of it off together. On a dense estate the
+                          labels cover the geometry they describe, and
+                          turning them off one kind at a time is four
+                          decisions to make the one you wanted. */}
+                      <MenuGroup label="Labels" newColumn />
+                      {/* Under its own heading, and shaped like every other
+                          layer row.
 
-                       An empty utility is a real answer. A blank canvas
-                       over the site plan says there is no water design
-                       here, which is what somebody opening the menu
-                       needs to know, and it cannot be mistaken for a
-                       drawing of anything else. */
-                    onOpen={() => soloClass("electric", true)}>
-                    {/* ── Network first ──
+                          It had drifted below the locked section, leaving
+                          the Labels heading with nothing under it and the
+                          control itself unexplained where it landed. And
+                          it was a plain item where its neighbours are
+                          layers with an H button — the same question asked
+                          two different ways in one menu. */}
+                      <MenuLayer label="Labels" colour="#64748b"
+                        hidden={!showLabels}
+                        onHide={() => setShowLabels(false)}
+                        onShow={() => setShowLabels(true)} />
 
-                        The order somebody works in: plant down, cable
-                        drawn, network built, then checked. Sizes and
-                        visibility are settings, and settings belong
-                        beside the work rather than in front of it.
+                      <div className="gm-sep" />
+                      <MenuGroup label="Locked against moving" />
+                      {/* Per layer, which is the coarsest and most useful
+                          grain: a layer is usually finished all at once.
+                          Line types are locked from the right-click menu,
+                          where the thing being locked is under the cursor. */}
+                      {layers.filter((l) => classCount[l.Layer_Key]).map((l) => {
+                        const isLocked = lockedClasses.includes(l.Layer_Key);
+                        return (
+                          <MenuItem key={l.Layer_Key}
+                            /* A padlock, not only a highlight.
 
-                        The drawing items sit here rather than under a
-                        Draw heading of their own: drawing a main is
-                        building the network, and a heading between them
-                        separated two halves of one job. The same shape
-                        as the Gas and Water menus, so three utilities
-                        read the same way round. */}
-                    <MenuGroup label="Network" />
-                    <MenuItem label="+ POC" hint="Snaps to the nearest main"
-                      disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
-                    <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
-                      disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
-                    <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
-                      hint="Shortest path along the trenches, as HV feeder"
-                      disabled={!!busy || !projectId}
-                      onClick={routeSupply} />
-                    {/* Under Draw, because that is what it does: the
-                        cable is drawn along a trench rather than by
-                        hand, but it is still drawing. */}
-                    <MenuItem label={busy === "laysvc"
-                      ? "Laying\u2026" : "Auto Lay Services"} indent
-                      hint="Runs the cable along service trenches already drawn"
-                      disabled={!!busy}
-                      onClick={() => autoLayServices("electric")} />
-                    {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"]].map(([key, label]) => {
-                      const t = lineTypes.find((x) => x.Type_Key === key);
-                      return t ? (
-                        <MenuItem key={key} label={label} indent
-                          active={isDrawing(key)} onClick={() => drawAs(key)} />
-                      ) : null;
-                    })}
+                               Highlighting alone says "this row is
+                               different" and leaves which way round to be
+                               guessed — on a list where some are locked
+                               and some are not, the highlighted ones read
+                               as selected as easily as locked. An open
+                               padlock on the rest keeps the column
+                               aligned, so the two states are read by
+                               shape rather than by which rows have an
+                               icon at all. */
+                            /* A padlock only where it is locked.
 
-                    <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
-                      active={tool === "circuit"} disabled={!projectId}
-                      hint="Draw round the plot seeds it serves"
-                      onClick={() => {
-                        setTool(tool === "circuit" ? "select" : "circuit");
-                        setSelected([]); setDraft([]);
-                      }} />
-                    <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
-                      hint="Routes each circuit's cables along the trenches"
-                      disabled={busy === "feeder" || !circuitsFrom(features).length}
-                      onClick={() => runStep("build",
-                        () => withUndo("Build LV Network", () => buildLvNetwork()))} />
-                    <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
-                      hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
-                      disabled={!!busy || !circuitsFrom(features).length}
-                      onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
-                    {/* One at a time, for the joints the model cannot
-                        know about.
+                               The open and closed padlock glyphs are very
+                               nearly the same shape at menu size, so
+                               showing both left the two states harder to
+                               tell apart than showing one. An unlocked row
+                               gets a space of the same width instead, so
+                               the names still line up and the icon is a
+                               presence rather than a shape to squint at. */
+                            label={`${isLocked ? "\uD83D\uDD12" : "\u2003"}  ${l.Label}`}
+                            active={isLocked}
+                            keepOpen
+                            hint={isLocked
+                              ? "Locked \u2014 cannot be moved"
+                              : "Unlocked \u2014 can be moved"}
+                            onClick={() => setLockedClasses((x) =>
+                              toggleClassLock(x, l.Layer_Key))} />
+                        );
+                      })}
 
-                        Place Feeder Joints above reads the routed
-                        network, so it finds every joint the design calls
-                        for and refuses to invent any others \u2014 which
-                        leaves no way at all to record a joint going in
-                        for a reason outside the model: an existing main
-                        being cut into, a breech left for a phase not yet
-                        drawn, a cable sealed off short of anything.
+                      {/* Locked line types, listed here too.
 
-                        Indented under it because they answer the same
-                        question at different grain, and named as the
-                        fittings rather than as "add joint" so the menu
-                        says what will be in the ground. */}
-                    <MenuItem label="+ Service Joint" indent
-                      hint="One joint, snapped to the nearest LV feeder"
-                      disabled={!!busy || !projectId}
-                      onClick={() => withUndo("Place service joint",
-                        () => placeJoint("service"))} />
-                    <MenuItem label="+ Breech Joint" indent
-                      hint="One joint, snapped to the nearest LV feeder"
-                      disabled={!!busy || !projectId}
-                      onClick={() => withUndo("Place breech joint",
-                        () => placeJoint("breech"))} />
-                    <MenuItem label="+ Bottle End" indent
-                      hint="Seals a feeder that stops here"
-                      disabled={!!busy || !projectId}
-                      onClick={() => withUndo("Place bottle end",
-                        () => placeJoint("bottleend"))} />
-{/* The older Place Joints is gone. It grouped coincident line ends
-                        across every utility, so it could not tell a feeder from a
-                        water main, wrote no Feature_Role, and put what it made on
-                        the trench layer — where nothing in the application
-                        recognised it as a joint. Place Feeder Joints above does
-                        the same job from the routed network and writes the layer,
-                        role, type and code properly. */}
+                          They are locked from the right-click menu, where
+                          the thing being locked is under the cursor \u2014 but
+                          this menu showed layers only, so a locked line
+                          type refused every drag with a message naming a
+                          key ("lt:trench_main") that appeared nowhere on
+                          screen and could not be undone from anywhere.
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Tools & Reporting" />
-                    <MenuItem label="Circuit Report"
-                      hint="Meters by feeder, with distances from the substation"
-                      disabled={!features.some((f) => f.Feature_Role === "substation")}
-                      onClick={() => setReportOpen(true)} />
-                    {/* Every circuit, from its own origin node outward.
+                          Only the locked ones. Listing every line type
+                          would double the length of a menu whose ordinary
+                          use is layers, and an unlocked type is already
+                          one right-click away. */}
+                      {(() => {
+                        const lockedTypes = lockedClasses
+                          .filter((k) => String(k).startsWith("lt:"))
+                          .map((k) => ({
+                            key: k,
+                            label: lineTypes.find((t) => `lt:${t.Type_Key}` === k)?.Label
+                              ?? String(k).slice(3),
+                          }));
+                        if (!lockedTypes.length) return null;
+                        return (
+                          <>
+                            <div className="gm-sep" />
+                            <MenuGroup label="Locked line types" />
+                            {lockedTypes.map((t) => (
+                              <MenuItem key={t.key}
+                                label={`\uD83D\uDD12  ${t.label}`}
+                                active
+                                keepOpen
+                                hint="Locked \u2014 cannot be moved"
+                                onClick={() => setLockedClasses((x) =>
+                                  toggleClassLock(x, t.key))} />
+                            ))}
+                          </>
+                        );
+                      })()}
 
-                        Nothing has to be selected: the question is
-                        whether anything on the scheme is outside its
-                        limits, which is about the design rather than
-                        about a point in it. Tracing from one selected
-                        node answered a narrower question and left the
-                        rest of the drawing unchecked. */}
-                    <MenuItem label="Run Levels Check"
-                      hint="Loop impedance and volt drop on every circuit, from the substation"
-                      disabled={!circuitsFrom(features).length}
-                      onClick={() => runLevelsCheck()} />
-                    <MenuItem label="Apply Cable Sizes to Span Nodes"
-                      hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
-                      disabled={!!busy}
-                      onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
+                      {/* Circuit rings are controlled from the circuit
+                          report, which is where the question they answer
+                          is being asked. Two controls for one setting is
+                          one more place to look when it does not work. */}
 
-                    {/* The column breaks here. Everything before it is the
-                        work; everything after is how the drawing is
-                        read. */}
-                    <MenuGroup label="Sizes" newColumn />
-                    <MenuItem label="System calculated" indent
-                      active={(sizeMode.electric ?? "system") === "system"}
-                      keepOpen
-                      hint="What the build worked out from the load"
-                      onClick={() => setSizeModeFor("electric", "system")} />
-                    <MenuItem label="Manually set" indent
-                      active={sizeMode.electric === "manual"}
-                      keepOpen
-                      hint="Overrides where set, calculated elsewhere"
-                      onClick={() => setSizeModeFor("electric", "manual")} />
+                      {/* Everything back, whatever put it away.
 
-                    <div className="gm-sep" />
-                    <MenuGroup label="Show or Hide" />
-                    {/* Labels, on every utility menu.
+                          Circuit isolation is held apart from the hidden
+                          set so the two do not undo each other, and this
+                          was the cost of that: with a circuit isolated and
+                          nothing else hidden, the one item that brings
+                          things back was greyed out, and the only way out
+                          was a right-click on a feature of the isolated
+                          circuit. Anyone who could not find one was stuck
+                          with meters they could not see and no way to say
+                          so. */}
+                      {/* Find is on the toolbar now, beside Tools &
+                          Reporting. It was in here because the layer
+                          menu is where hiding things happens and finding
+                          one is the other half of that — but it is not a
+                          layer control, and it was two clicks deep for
+                          something reached constantly. */}
 
-                        Whether the drawing is readable is a question
-                        somebody asks while working on one utility, and
-                        the answer used to be in the Layers menu — a
-                        different menu from the one they are in. The same
-                        switch, offered where it is wanted. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(false)}
-                      onShow={() => setShowLabels(true)} />
-                    {/* POC and substation first: they are the two fixed
-                        points a designer orients by, and everything else
-                        is described relative to them. */}
-                    {[["poc", "POCs"], ["substation", "Substations"]].map(([role, label]) => (
-                      <MenuLayer key={role} label={label}
-                        count={classCount[`role:${role}`] || 0}
-                        hidden={hidden.includes(`role:${role}`)}
-                        solo={solo === `role:${role}`}
-                        onHide={() => hideClass(`role:${role}`)}
-                      onShow={() => showClass(`role:${role}`)}
-                      shown={shownOnly.includes(`role:${role}`)}
-                        onSolo={() => soloClass(`role:${role}`)} />
-                    ))}
-                    {typesOn("electric").map((t) => (
-                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
-                        count={classCount[`lt:${t.Type_Key}`] || 0}
-                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
-                        solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
-                      onShow={() => showClass(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
-                    ))}
-                    <MenuLayer label="Electric Meters"
-                      count={classCount["electric:role:meter"] || 0}
-                      hidden={hidden.includes("electric:role:meter")}
-                      solo={solo === "electric:role:meter"}
-                      onHide={() => hideClass("electric:role:meter")}
-                      onShow={() => showClass("electric:role:meter")}
-                      shown={shownOnly.includes("electric:role:meter")}
-                      onSolo={() => soloClass("electric:role:meter")} />
-                    {[["joint", "Joints"], ["linkbox", "Link boxes"],
-                      ["spannode", "Span nodes"]].map(([role, label]) => (
+                      {/* The background plan counts as hidden too.
+
+                          It is listed with the layers, so leaving it off
+                          while saying everything is shown is the same
+                          quiet inconsistency as the circuit isolation this
+                          already had to be taught about. */}
+                    </Menu>
+
+                    {/* Two columns, grouped by what somebody is doing.
+
+                        One list of sixteen actions with "Route" and "Show
+                        or Hide" each appearing twice, and the off-site
+                        items filed under "Route" — the order was an
+                        accident of the order they were added in, and it
+                        had grown past the height of the screen.
+
+                        Drawing and marking on the left, routing and
+                        checking on the right. */}
+                    <Menu id="trench" label="Trench" open={open} setOpen={setOpen}
+                      columns={2}>
+                      <MenuGroup label="Draw" />
+                      {/* Drawing the dig, so it sits with the other ways
+                          of drawing one. Each utility is laid afterwards
+                          from its own menu, so a design done one utility
+                          at a time does not have the other two put in
+                          behind it. */}
+                      <MenuItem label={busy === "autoservice"
+                        ? "Laying\u2026" : "Auto Lay Service Trench"} indent
+                        hint="Draws the service trench to every plot, and nothing in it"
+                        disabled={!!busy || !projectId}
+                        onClick={() => runStep("service", () => withUndo(
+                          "Auto Service", () => runAutoService({ trenchesOnly: true })))} />
+                      {typesOn("trench").map((t) => (
+                        <MenuItem key={t.Type_Key} label={t.Label} indent
+                          active={isDrawing(t.Type_Key)}
+                          onClick={() => drawAs(t.Type_Key)} />
+                      ))}
+
+                      {/* Build status and Off site were here, as a set of
+                          buttons that marked whatever was selected. Both
+                          are properties of one object, and the trench
+                          editor is where an object's properties are set —
+                          two ways to change one field is two places for
+                          them to disagree, and the menu was the one with
+                          no record of what it had just changed. */}
+
+                      <div className="gm-sep" />
+                      <MenuGroup label="Show or Hide" />
+                      {/* Labels, on every utility menu.
+
+                          Whether the drawing is readable is a question
+                          somebody asks while working on one utility, and
+                          the answer used to be in the Layers menu — a
+                          different menu from the one they are in. The same
+                          switch, offered where it is wanted. */}
+                      <MenuLayer label="Labels" colour="#64748b"
+                        hidden={!showLabels}
+                        onHide={() => setShowLabels(false)}
+                        onShow={() => setShowLabels(true)} />
+                      <MenuLayer label="Span nodes" colour="#1e3a5f"
+                        count={classCount["role:spannode"] || 0}
+                        hidden={hidden.includes("role:spannode")}
+                        solo={solo === "role:spannode"}
+                        onHide={() => hideClass("role:spannode")}
+                        onShow={() => showClass("role:spannode")}
+                        shown={shownOnly.includes("role:spannode")}
+                        onSolo={() => soloClass("role:spannode")} />
+                      {typesOn("trench").map((t) => (
+                        <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
+                          count={classCount[`lt:${t.Type_Key}`] || 0}
+                          hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                          solo={solo === `lt:${t.Type_Key}`}
+                          onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                        onShow={() => showClass(`lt:${t.Type_Key}`)}
+                        shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                          onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
+                      ))}
+
+                      {/* The second column. */}
+                      <MenuGroup label="Span nodes and call-offs" newColumn />
+                      <MenuItem label="Place Span Nodes"
+                        hint="At every junction and end of the trench network, A1 upwards"
+                        disabled={!!busy || !projectId}
+                        /* Under undo, because this now cuts trenches as
+                           well as marking them. Placing a marker was
+                           nothing much to take back; replacing a length
+                           of trench that carries a build status with
+                           three sections of it is. */
+                        onClick={() => withUndo("Place Span Nodes", () => placeSpanNodes())} />
+
+                      {/* Routing was here: Trace All Meters, Step Through
+                          Traces, Suggest Trench Route, Only Live Trench.
+
+                          The code behind them is still in this file and is
+                          now unreachable — nothing else opens a trace.
+                          Left rather than torn out, because deleting four
+                          features' worth of working machinery on the
+                          strength of a menu change is a bigger decision
+                          than a menu change. */}
+
+                      <div className="gm-sep" />
+                      <MenuGroup label="Services" />
+                      <MenuItem label="Check Services Reach the Mains"
+                        disabled={!projectId}
+                        onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
+
+                      <div className="gm-sep" />
+                      <MenuGroup label="Checks" />
+                      <MenuItem label="Check Trench Joins"
+                        hint="Trench ends close to another trench but not joined"
+                        disabled={!!busy || !projectId}
+                        onClick={findGaps} />
+                      <MenuItem label="Check Trench Connectivity"
+                        disabled={!projectId}
+                        onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
+                    </Menu>
+
+                    <Menu id="electric" label="Electric" open={open} setOpen={setOpen}
+                      columns={2}
+                      /* Isolated whether or not there is any of it.
+
+                         This used to isolate only where the utility had
+                         something on the drawing. The intent was kindness
+                         — do not blank the canvas over nothing — and the
+                         effect was the opposite: opening Water on a site
+                         with no water left the electric drawing on screen,
+                         so the answer to "show me the water" was somebody
+                         else's design. Nothing said it had been refused.
+
+                         An empty utility is a real answer. A blank canvas
+                         over the site plan says there is no water design
+                         here, which is what somebody opening the menu
+                         needs to know, and it cannot be mistaken for a
+                         drawing of anything else. */
+                      onOpen={() => soloClass("electric", true)}>
+                      {/* ── Network first ──
+
+                          The order somebody works in: plant down, cable
+                          drawn, network built, then checked. Sizes and
+                          visibility are settings, and settings belong
+                          beside the work rather than in front of it.
+
+                          The drawing items sit here rather than under a
+                          Draw heading of their own: drawing a main is
+                          building the network, and a heading between them
+                          separated two halves of one job. The same shape
+                          as the Gas and Water menus, so three utilities
+                          read the same way round. */}
+                      <MenuGroup label="Network" />
+                      <MenuItem label="+ POC" hint="Snaps to the nearest main"
+                        disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
+                      <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
+                        disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
+                      <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
+                        hint="Shortest path along the trenches, as HV feeder"
+                        disabled={!!busy || !projectId}
+                        onClick={routeSupply} />
+                      {/* Under Draw, because that is what it does: the
+                          cable is drawn along a trench rather than by
+                          hand, but it is still drawing. */}
+                      <MenuItem label={busy === "laysvc"
+                        ? "Laying\u2026" : "Auto Lay Services"} indent
+                        hint="Runs the cable along service trenches already drawn"
+                        disabled={!!busy}
+                        onClick={() => autoLayServices("electric")} />
+                      {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"]].map(([key, label]) => {
+                        const t = lineTypes.find((x) => x.Type_Key === key);
+                        return t ? (
+                          <MenuItem key={key} label={label} indent
+                            active={isDrawing(key)} onClick={() => drawAs(key)} />
+                        ) : null;
+                      })}
+
+                      <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
+                        active={tool === "circuit"} disabled={!projectId}
+                        hint="Draw round the plot seeds it serves"
+                        onClick={() => {
+                          setTool(tool === "circuit" ? "select" : "circuit");
+                          setSelected([]); setDraft([]);
+                        }} />
+                      <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
+                        hint="Routes each circuit's cables along the trenches"
+                        disabled={busy === "feeder" || !circuitsFrom(features).length}
+                        onClick={() => runStep("build",
+                          () => withUndo("Build LV Network", () => buildLvNetwork()))} />
+                      <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
+                        hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
+                        disabled={!!busy || !circuitsFrom(features).length}
+                        onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
+                      {/* One at a time, for the joints the model cannot
+                          know about.
+
+                          Place Feeder Joints above reads the routed
+                          network, so it finds every joint the design calls
+                          for and refuses to invent any others \u2014 which
+                          leaves no way at all to record a joint going in
+                          for a reason outside the model: an existing main
+                          being cut into, a breech left for a phase not yet
+                          drawn, a cable sealed off short of anything.
+
+                          Indented under it because they answer the same
+                          question at different grain, and named as the
+                          fittings rather than as "add joint" so the menu
+                          says what will be in the ground. */}
+                      <MenuItem label="+ Service Joint" indent
+                        hint="One joint, snapped to the nearest LV feeder"
+                        disabled={!!busy || !projectId}
+                        onClick={() => withUndo("Place service joint",
+                          () => placeJoint("service"))} />
+                      <MenuItem label="+ Breech Joint" indent
+                        hint="One joint, snapped to the nearest LV feeder"
+                        disabled={!!busy || !projectId}
+                        onClick={() => withUndo("Place breech joint",
+                          () => placeJoint("breech"))} />
+                      <MenuItem label="+ Bottle End" indent
+                        hint="Seals a feeder that stops here"
+                        disabled={!!busy || !projectId}
+                        onClick={() => withUndo("Place bottle end",
+                          () => placeJoint("bottleend"))} />
+  {/* The older Place Joints is gone. It grouped coincident line ends
+                          across every utility, so it could not tell a feeder from a
+                          water main, wrote no Feature_Role, and put what it made on
+                          the trench layer — where nothing in the application
+                          recognised it as a joint. Place Feeder Joints above does
+                          the same job from the routed network and writes the layer,
+                          role, type and code properly. */}
+
+                      <div className="gm-sep" />
+                      <MenuGroup label="Tools & Reporting" />
+                      <MenuItem label="Circuit Report"
+                        hint="Meters by feeder, with distances from the substation"
+                        disabled={!features.some((f) => f.Feature_Role === "substation")}
+                        onClick={() => setReportOpen(true)} />
+                      {/* Every circuit, from its own origin node outward.
+
+                          Nothing has to be selected: the question is
+                          whether anything on the scheme is outside its
+                          limits, which is about the design rather than
+                          about a point in it. Tracing from one selected
+                          node answered a narrower question and left the
+                          rest of the drawing unchecked. */}
+                      <MenuItem label="Run Levels Check"
+                        hint="Loop impedance and volt drop on every circuit, from the substation"
+                        disabled={!circuitsFrom(features).length}
+                        onClick={() => runLevelsCheck()} />
+                      <MenuItem label="Apply Cable Sizes to Span Nodes"
+                        hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
+                        disabled={!!busy}
+                        onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
+
+                      {/* The column breaks here. Everything before it is the
+                          work; everything after is how the drawing is
+                          read. */}
+                      <MenuGroup label="Sizes" newColumn />
+                      <MenuItem label="System calculated" indent
+                        active={(sizeMode.electric ?? "system") === "system"}
+                        keepOpen
+                        hint="What the build worked out from the load"
+                        onClick={() => setSizeModeFor("electric", "system")} />
+                      <MenuItem label="Manually set" indent
+                        active={sizeMode.electric === "manual"}
+                        keepOpen
+                        hint="Overrides where set, calculated elsewhere"
+                        onClick={() => setSizeModeFor("electric", "manual")} />
+
+                      <div className="gm-sep" />
+                      <MenuGroup label="Show or Hide" />
+                      {/* Labels, on every utility menu.
+
+                          Whether the drawing is readable is a question
+                          somebody asks while working on one utility, and
+                          the answer used to be in the Layers menu — a
+                          different menu from the one they are in. The same
+                          switch, offered where it is wanted. */}
+                      <MenuLayer label="Labels" colour="#64748b"
+                        hidden={!showLabels}
+                        onHide={() => setShowLabels(false)}
+                        onShow={() => setShowLabels(true)} />
+                      {/* POC and substation first: they are the two fixed
+                          points a designer orients by, and everything else
+                          is described relative to them. */}
+                      {[["poc", "POCs"], ["substation", "Substations"]].map(([role, label]) => (
                         <MenuLayer key={role} label={label}
                           count={classCount[`role:${role}`] || 0}
                           hidden={hidden.includes(`role:${role}`)}
                           solo={solo === `role:${role}`}
                           onHide={() => hideClass(`role:${role}`)}
-                      onShow={() => showClass(`role:${role}`)}
-                      shown={shownOnly.includes(`role:${role}`)}
+                        onShow={() => showClass(`role:${role}`)}
+                        shown={shownOnly.includes(`role:${role}`)}
                           onSolo={() => soloClass(`role:${role}`)} />
                       ))}
-                    {/* The layer as a whole, matching the row the gas and
-                        water menus end with. Hiding it takes everything
-                        electric with it, including anything above that is
-                        currently shown. */}
-                    <div className="gm-sep" />
-                    <MenuLayer label="Whole Electric layer"
-                      colour={layers.find((l) => l.Layer_Key === "electric")?.Colour}
-                      count={classCount.electric || 0}
-                      hidden={hidden.includes("electric")}
-                      solo={solo === "electric"}
-                      onHide={() => hideClass("electric")}
-                      onShow={() => showClass("electric")}
-                      shown={shownOnly.includes("electric")}
-                      onSolo={() => soloClass("electric")} />
-
-                  </Menu>
-
-                  {/* Gas and Water, the two menus built from the layer
-                      list rather than written out.
-
-                      The fallback is the name, not the key. It was the
-                      key — so for the second or two between the canvas
-                      mounting and the layers arriving, the bar read
-                      "gas" and "water" in lower case beside Electric
-                      and Street Lighting, and then changed under the
-                      reader. A menu heading that rewrites itself looks
-                      like a fault whatever it settles on.
-
-                      Written out rather than capitalised from the key,
-                      on the same argument the bill makes for its role
-                      names: "Gas" is a fact about what the thing is
-                      called, not about the string 'gas', and a key that
-                      needs two words or an acronym would come out
-                      wrong. The layer's own Label still wins the moment
-                      it loads, so renaming one in Admin still works. */}
-                  {[["gas", "Gas"], ["water", "Water"]].map(([key, name]) => {
-                    const layer = layers.find((l) => l.Layer_Key === key);
-                    /* Opening the menu isolates the utility.
-
-                       Somebody opening the Gas menu is working on gas,
-                       and the first thing they used to do was press
-                       Isolate Gas — so the menu does it. Closing it does
-                       not put the drawing back: walking away from a menu
-                       is not a decision to show everything again, and a
-                       drawing that re-populated itself the moment the
-                       mouse moved would be unusable. Show all layers is
-                       on the Layers menu. */
-                    return (
-                      <Menu key={key} id={key} label={layer?.Label ?? name}
-                        open={open} setOpen={setOpen}
-                        /* Two columns, as Electric and Trench already
-                           have. These two had grown to the same length
-                           and were the only ones left scrolling — and a
-                           menu that scrolls hides its own bottom, so the
-                           reporting tools at the foot of gas and water
-                           were the least-found things on the drawing. */
-                        columns={2}
-                        /* Isolated whether or not there is any of it —
-                           see the note on Electric above. */
-                        onOpen={() => soloClass(key, true)}>
-                        {/* ── Network first ──
-
-                            The order somebody works in: put the origin
-                            and the point of connection down, draw the
-                            pipe, then build it, then check it. Sizes
-                            and visibility are settings, and settings
-                            belong beside the work rather than in front
-                            of it — they were first because the menu
-                            grew that way, not because anybody reaches
-                            for them first.
-
-                            The drawing items sit here rather than under
-                            a Draw heading of their own: drawing a main
-                            is building the network, and a heading
-                            between them separated two halves of one
-                            job. */}
-                        <MenuGroup label="Network" />
-                        <MenuItem label="+ POC" hint="Snaps to the nearest main"
-                          disabled={!projectId}
-                          onClick={() => placeNode("poc", key)} />
-                        {key === "gas" && (
-                          <MenuItem label="+ Gas Governor" hint="Snaps to the nearest trench"
-                            disabled={!projectId}
-                            onClick={() => placeNode("governor", key)} />
-                        )}
-                        {key === "water" && (
-                          <MenuItem label="+ Service Valve"
-                            hint="Snaps to the nearest water main and takes its angle"
-                            disabled={!projectId}
-                            onClick={() => placeNode("servicevalve", "water")} />
-                        )}
-                        {typesOn(key).map((t) => (
-                          <MenuItem key={t.Type_Key} label={t.Label} indent
-                            active={isDrawing(t.Type_Key)}
-                            onClick={() => drawAs(t.Type_Key)} />
+                      {typesOn("electric").map((t) => (
+                        <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
+                          count={classCount[`lt:${t.Type_Key}`] || 0}
+                          hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                          solo={solo === `lt:${t.Type_Key}`}
+                          onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                        onShow={() => showClass(`lt:${t.Type_Key}`)}
+                        shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                          onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
+                      ))}
+                      <MenuLayer label="Electric Meters"
+                        count={classCount["electric:role:meter"] || 0}
+                        hidden={hidden.includes("electric:role:meter")}
+                        solo={solo === "electric:role:meter"}
+                        onHide={() => hideClass("electric:role:meter")}
+                        onShow={() => showClass("electric:role:meter")}
+                        shown={shownOnly.includes("electric:role:meter")}
+                        onSolo={() => soloClass("electric:role:meter")} />
+                      {[["joint", "Joints"], ["linkbox", "Link boxes"],
+                        ["spannode", "Span nodes"]].map(([role, label]) => (
+                          <MenuLayer key={role} label={label}
+                            count={classCount[`role:${role}`] || 0}
+                            hidden={hidden.includes(`role:${role}`)}
+                            solo={solo === `role:${role}`}
+                            onHide={() => hideClass(`role:${role}`)}
+                        onShow={() => showClass(`role:${role}`)}
+                        shown={shownOnly.includes(`role:${role}`)}
+                            onSolo={() => soloClass(`role:${role}`)} />
                         ))}
-                        {/* Under Draw, because that is what it does:
-                            the service is drawn along a trench rather
-                            than by hand, but it is still drawing. */}
-                        <MenuItem label={busy === "laysvc"
-                          ? "Laying\u2026" : "Auto Lay Services"} indent
-                          hint="Runs the pipe along service trenches already drawn"
-                          disabled={!!busy}
-                          onClick={() => autoLayServices(key)} />
-                        {/* Gas and water each build their own.
+                      {/* The layer as a whole, matching the row the gas and
+                          water menus end with. Hiding it takes everything
+                          electric with it, including anything above that is
+                          currently shown. */}
+                      <div className="gm-sep" />
+                      <MenuLayer label="Whole Electric layer"
+                        colour={layers.find((l) => l.Layer_Key === "electric")?.Colour}
+                        count={classCount.electric || 0}
+                        hidden={hidden.includes("electric")}
+                        solo={solo === "electric"}
+                        onHide={() => hideClass("electric")}
+                        onShow={() => showClass("electric")}
+                        shown={shownOnly.includes("electric")}
+                        onSolo={() => soloClass("electric")} />
 
-                            They looked like one routine with a layer
-                            argument, and stopped looking like it the
-                            moment water needed sizing: gas covers the
-                            trench, water covers it and works out what
-                            diameter each length is from the plots
-                            beyond. Two modules sharing their walk
-                            rather than one with a flag deciding
-                            whether half of it runs. */}
-                        {key === "gas" && (
-                          <MenuItem
-                            label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
-                            hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
-                            disabled={!projectId || !!busy}
-                            onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
-                        )}
+                    </Menu>
 
-                        {key === "water" && (
-                          <MenuItem
-                            label={busy === "waternet" ? "Building\u2026" : "Build Water Network"}
-                            hint="Lays water main from the POC along mains trench, sized by the plots each length feeds. Needs a water outline design and a Water NAV Clean agreement"
-                            disabled={!projectId || !!busy}
-                            onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
-                        )}
-                        <div className="gm-sep" />
-                        {/* Beside the build, because it reads what the
-                            build laid: the sizes on the drawing are
-                            what each length's drop is worked out from.
-                            It was under Electric with the volt drop
-                            check, which put a gas answer behind an
-                            electric heading. */}
-                        {key === "gas" && (
-                          <MenuItem label={busy === "gaslevels"
-                            ? "Checking\u2026" : "Run Gas Levels Check"}
-                            hint="Pressure at every span node, from the gas POC's output pressure"
-                            disabled={!!busy || !features.some((f) =>
-                              f.Feature_Role === "poc" && f.Layer_Key === "gas")}
-                            onClick={() => runGasLevelsCheck()} />
-                        )}
+                    {/* Gas and Water, the two menus built from the layer
+                        list rather than written out.
 
-                        {/* The column breaks here.
+                        The fallback is the name, not the key. It was the
+                        key — so for the second or two between the canvas
+                        mounting and the layers arriving, the bar read
+                        "gas" and "water" in lower case beside Electric
+                        and Street Lighting, and then changed under the
+                        reader. A menu heading that rewrites itself looks
+                        like a fault whatever it settles on.
 
-                            Named rather than left to the browser, which
-                            splits by height and would put half the
-                            network list at the foot of one column and
-                            the rest at the head of the next. Everything
-                            before the break is the work; everything
-                            after it is how the drawing is read. */}
-                        <MenuGroup label="Sizes" newColumn />
-                        <MenuItem label="System calculated" indent
-                          active={(sizeMode[key] ?? "system") === "system"}
-                          keepOpen
-                          hint="What the build worked out from the load"
-                          onClick={() => setSizeModeFor(key, "system")} />
-                        <MenuItem label="Manually set" indent
-                          active={sizeMode[key] === "manual"}
-                          keepOpen
-                          hint="Overrides where set, calculated elsewhere"
-                          onClick={() => setSizeModeFor(key, "manual")} />
+                        Written out rather than capitalised from the key,
+                        on the same argument the bill makes for its role
+                        names: "Gas" is a fact about what the thing is
+                        called, not about the string 'gas', and a key that
+                        needs two words or an acronym would come out
+                        wrong. The layer's own Label still wins the moment
+                        it loads, so renaming one in Admin still works. */}
+                    {[["gas", "Gas"], ["water", "Water"]].map(([key, name]) => {
+                      const layer = layers.find((l) => l.Layer_Key === key);
+                      /* Opening the menu isolates the utility.
 
-                        <div className="gm-sep" />
-                        <MenuGroup label="Show or Hide" />
-                        {/* Labels, on every utility menu.
+                         Somebody opening the Gas menu is working on gas,
+                         and the first thing they used to do was press
+                         Isolate Gas — so the menu does it. Closing it does
+                         not put the drawing back: walking away from a menu
+                         is not a decision to show everything again, and a
+                         drawing that re-populated itself the moment the
+                         mouse moved would be unusable. Show all layers is
+                         on the Layers menu. */
+                      return (
+                        <Menu key={key} id={key} label={layer?.Label ?? name}
+                          open={open} setOpen={setOpen}
+                          /* Two columns, as Electric and Trench already
+                             have. These two had grown to the same length
+                             and were the only ones left scrolling — and a
+                             menu that scrolls hides its own bottom, so the
+                             reporting tools at the foot of gas and water
+                             were the least-found things on the drawing. */
+                          columns={2}
+                          /* Isolated whether or not there is any of it —
+                             see the note on Electric above. */
+                          onOpen={() => soloClass(key, true)}>
+                          {/* ── Network first ──
 
-                            Whether the drawing is readable is a
-                            question somebody asks while working on one
-                            utility, and the answer used to be in the
-                            Layers menu \u2014 a different menu from the one
-                            they are in. The same switch, offered where
-                            it is wanted. */}
-                        <MenuLayer label="Labels" colour="#64748b"
-                          hidden={!showLabels}
-                          onHide={() => setShowLabels(false)}
-                          onShow={() => setShowLabels(true)} />
-                        {/* As on the Electric menu: the whole utility as
-                            a named action, not only the S on the layer
-                            row below. */}
-                        <div className="gm-sep" />
-                        {typesOn(key).map((t) => (
-                          <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
-                            count={classCount[`lt:${t.Type_Key}`] || 0}
-                            hidden={hidden.includes(`lt:${t.Type_Key}`)}
-                            solo={solo === `lt:${t.Type_Key}`}
-                            onHide={() => hideClass(`lt:${t.Type_Key}`)}
-                      onShow={() => showClass(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                            onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
-                        ))}
-                        <MenuLayer label="Meters"
-                          count={classCount[`${key}:role:meter`] || 0}
-                          hidden={hidden.includes(`${key}:role:meter`)}
-                          solo={solo === `${key}:role:meter`}
-                          onHide={() => hideClass(`${key}:role:meter`)}
-                      onShow={() => showClass(`${key}:role:meter`)}
-                      shown={shownOnly.includes(`${key}:role:meter`)}
-                          onSolo={() => soloClass(`${key}:role:meter`)} />
-                        {/* The fixed plant on this utility. Gas has a
-                            governor where electric has a substation —
-                            the point the incoming supply is reduced and
-                            metered before it feeds the site. Offered on
-                            gas alone, since nothing else has one. */}
+                              The order somebody works in: put the origin
+                              and the point of connection down, draw the
+                              pipe, then build it, then check it. Sizes
+                              and visibility are settings, and settings
+                              belong beside the work rather than in front
+                              of it — they were first because the menu
+                              grew that way, not because anybody reaches
+                              for them first.
 
-                        <div className="gm-sep" />
-                        <MenuLayer label={`Whole ${layer?.Label ?? key} layer`}
-                          colour={layer?.Colour} count={classCount[key] || 0}
-                          hidden={hidden.includes(key)}
-                          solo={solo === key}
-                          onHide={() => hideClass(key)}
-                      onShow={() => showClass(key)}
-                      shown={shownOnly.includes(key)}
-                          onSolo={() => soloClass(key)} />
-                      </Menu>
-                    );
-                  })}
+                              The drawing items sit here rather than under
+                              a Draw heading of their own: drawing a main
+                              is building the network, and a heading
+                              between them separated two halves of one
+                              job. */}
+                          <MenuGroup label="Network" />
+                          <MenuItem label="+ POC" hint="Snaps to the nearest main"
+                            disabled={!projectId}
+                            onClick={() => placeNode("poc", key)} />
+                          {key === "gas" && (
+                            <MenuItem label="+ Gas Governor" hint="Snaps to the nearest trench"
+                              disabled={!projectId}
+                              onClick={() => placeNode("governor", key)} />
+                          )}
+                          {key === "water" && (
+                            <MenuItem label="+ Service Valve"
+                              hint="Snaps to the nearest water main and takes its angle"
+                              disabled={!projectId}
+                              onClick={() => placeNode("servicevalve", "water")} />
+                          )}
+                          {typesOn(key).map((t) => (
+                            <MenuItem key={t.Type_Key} label={t.Label} indent
+                              active={isDrawing(t.Type_Key)}
+                              onClick={() => drawAs(t.Type_Key)} />
+                          ))}
+                          {/* Under Draw, because that is what it does:
+                              the service is drawn along a trench rather
+                              than by hand, but it is still drawing. */}
+                          <MenuItem label={busy === "laysvc"
+                            ? "Laying\u2026" : "Auto Lay Services"} indent
+                            hint="Runs the pipe along service trenches already drawn"
+                            disabled={!!busy}
+                            onClick={() => autoLayServices(key)} />
+                          {/* Gas and water each build their own.
 
-                  <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}
-                    /* Isolated on opening, as the other utility menus
-                       are. It had no isolate at all rather than a
-                       guarded one, so opening it left whatever was on
-                       screen exactly where it was. */
-                    onOpen={() => soloClass("lighting", true)}>
-                    {/* Drawing first, as on the other utility menus: it
-                        is what somebody opens this to do. */}
-                    <MenuGroup label="Draw" />
-                    <MenuItem label={lightingPlace === "column"
-                      ? "Placing Columns\u2026" : "Place Lighting Columns"}
-                      hint="Click where each column goes \u00b7 Esc to stop"
-                      active={lightingPlace === "column"}
-                      disabled={!projectId}
-                      keepOpen
-                      onClick={() => {
-                        setLightingPlace(lightingPlace === "column" ? null : "column");
-                        /* Clear of anything else that wants clicks — two
-                           placement modes at once is a click that does
-                           whichever was checked first. */
-                        setMeterCatchUp(null); setMeterFor(null);
-                        setTool("select"); setSelected([]);
-                        setStatus(lightingPlace === "column" ? ""
-                          : "Click where each column goes \u00b7 Esc to stop");
-                      }} />
-                    {/* Connecting a column to the feeder that supplies
-                        it. Absent until there is a column to connect —
-                        a mode that can only say "click a column" is not
-                        worth entering. */}
-                    <MenuItem label={lightingPlace === "connect"
-                      ? "Connecting\u2026" : "Connect Column to Feeder"}
-                      hint={classCount["role:column"]
-                        ? "Click a column, then its feeder \u00b7 Esc to stop"
-                        : "No columns to connect yet"}
-                      active={lightingPlace === "connect"}
-                      disabled={!projectId || !classCount["role:column"]}
-                      keepOpen
-                      onClick={() => {
-                        const on = lightingPlace === "connect";
-                        setLightingPlace(on ? null : "connect");
-                        setConnectColumn(null);
-                        setMeterCatchUp(null); setMeterFor(null);
-                        setTool("select"); setSelected([]);
-                        setStatus(on ? ""
-                          : "Click a lighting column, then the feeder it comes off");
-                      }} />
-                    <div className="gm-sep" />
-                    <MenuGroup label="Show or Hide" />
-                    {/* Labels, on every utility menu.
+                              They looked like one routine with a layer
+                              argument, and stopped looking like it the
+                              moment water needed sizing: gas covers the
+                              trench, water covers it and works out what
+                              diameter each length is from the plots
+                              beyond. Two modules sharing their walk
+                              rather than one with a flag deciding
+                              whether half of it runs. */}
+                          {key === "gas" && (
+                            <MenuItem
+                              label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
+                              hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
+                              disabled={!projectId || !!busy}
+                              onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
+                          )}
 
-                        Whether the drawing is readable is a question
-                        somebody asks while working on one utility, and
-                        the answer used to be in the Layers menu — a
-                        different menu from the one they are in. The same
-                        switch, offered where it is wanted. */}
-                    <MenuLayer label="Labels" colour="#64748b"
-                      hidden={!showLabels}
-                      onHide={() => setShowLabels(false)}
-                      onShow={() => setShowLabels(true)} />
-                    {typesOn("lighting").map((t) => (
-                      <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
-                        count={classCount[`lt:${t.Type_Key}`] || 0}
-                        hidden={hidden.includes(`lt:${t.Type_Key}`)}
-                        solo={solo === `lt:${t.Type_Key}`}
-                        onHide={() => hideClass(`lt:${t.Type_Key}`)}
-                      onShow={() => showClass(`lt:${t.Type_Key}`)}
-                      shown={shownOnly.includes(`lt:${t.Type_Key}`)}
-                        onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
-                    ))}
-                    <MenuLayer label="Columns" count={classCount["role:column"] || 0}
-                      hidden={hidden.includes("role:column")}
-                      solo={solo === "role:column"}
-                      onHide={() => hideClass("role:column")}
-                      onShow={() => showClass("role:column")}
-                      shown={shownOnly.includes("role:column")}
-                      onSolo={() => soloClass("role:column")} />
-                    {!typesOn("lighting").length && (
-                      <MenuItem label="Lighting Layer Missing" hint="run migration 0072" disabled />
-                    )}
-                  </Menu>
+                          {key === "water" && (
+                            <MenuItem
+                              label={busy === "waternet" ? "Building\u2026" : "Build Water Network"}
+                              hint="Lays water main from the POC along mains trench, sized by the plots each length feeds. Needs a water outline design and a Water NAV Clean agreement"
+                              disabled={!projectId || !!busy}
+                              onClick={() => withUndo("Build Water Network", () => buildWaterNetwork())} />
+                          )}
+                          <div className="gm-sep" />
+                          {/* Beside the build, because it reads what the
+                              build laid: the sizes on the drawing are
+                              what each length's drop is worked out from.
+                              It was under Electric with the volt drop
+                              check, which put a gas answer behind an
+                              electric heading. */}
+                          {key === "gas" && (
+                            <MenuItem label={busy === "gaslevels"
+                              ? "Checking\u2026" : "Run Gas Levels Check"}
+                              hint="Pressure at every span node, from the gas POC's output pressure"
+                              disabled={!!busy || !features.some((f) =>
+                                f.Feature_Role === "poc" && f.Layer_Key === "gas")}
+                              onClick={() => runGasLevelsCheck()} />
+                          )}
+
+                          {/* The column breaks here.
+
+                              Named rather than left to the browser, which
+                              splits by height and would put half the
+                              network list at the foot of one column and
+                              the rest at the head of the next. Everything
+                              before the break is the work; everything
+                              after it is how the drawing is read. */}
+                          <MenuGroup label="Sizes" newColumn />
+                          <MenuItem label="System calculated" indent
+                            active={(sizeMode[key] ?? "system") === "system"}
+                            keepOpen
+                            hint="What the build worked out from the load"
+                            onClick={() => setSizeModeFor(key, "system")} />
+                          <MenuItem label="Manually set" indent
+                            active={sizeMode[key] === "manual"}
+                            keepOpen
+                            hint="Overrides where set, calculated elsewhere"
+                            onClick={() => setSizeModeFor(key, "manual")} />
+
+                          <div className="gm-sep" />
+                          <MenuGroup label="Show or Hide" />
+                          {/* Labels, on every utility menu.
+
+                              Whether the drawing is readable is a
+                              question somebody asks while working on one
+                              utility, and the answer used to be in the
+                              Layers menu \u2014 a different menu from the one
+                              they are in. The same switch, offered where
+                              it is wanted. */}
+                          <MenuLayer label="Labels" colour="#64748b"
+                            hidden={!showLabels}
+                            onHide={() => setShowLabels(false)}
+                            onShow={() => setShowLabels(true)} />
+                          {/* As on the Electric menu: the whole utility as
+                              a named action, not only the S on the layer
+                              row below. */}
+                          <div className="gm-sep" />
+                          {typesOn(key).map((t) => (
+                            <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
+                              count={classCount[`lt:${t.Type_Key}`] || 0}
+                              hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                              solo={solo === `lt:${t.Type_Key}`}
+                              onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                        onShow={() => showClass(`lt:${t.Type_Key}`)}
+                        shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                              onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
+                          ))}
+                          <MenuLayer label="Meters"
+                            count={classCount[`${key}:role:meter`] || 0}
+                            hidden={hidden.includes(`${key}:role:meter`)}
+                            solo={solo === `${key}:role:meter`}
+                            onHide={() => hideClass(`${key}:role:meter`)}
+                        onShow={() => showClass(`${key}:role:meter`)}
+                        shown={shownOnly.includes(`${key}:role:meter`)}
+                            onSolo={() => soloClass(`${key}:role:meter`)} />
+                          {/* The fixed plant on this utility. Gas has a
+                              governor where electric has a substation —
+                              the point the incoming supply is reduced and
+                              metered before it feeds the site. Offered on
+                              gas alone, since nothing else has one. */}
+
+                          <div className="gm-sep" />
+                          <MenuLayer label={`Whole ${layer?.Label ?? key} layer`}
+                            colour={layer?.Colour} count={classCount[key] || 0}
+                            hidden={hidden.includes(key)}
+                            solo={solo === key}
+                            onHide={() => hideClass(key)}
+                        onShow={() => showClass(key)}
+                        shown={shownOnly.includes(key)}
+                            onSolo={() => soloClass(key)} />
+                        </Menu>
+                      );
+                    })}
+
+                    <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}
+                      /* Isolated on opening, as the other utility menus
+                         are. It had no isolate at all rather than a
+                         guarded one, so opening it left whatever was on
+                         screen exactly where it was. */
+                      onOpen={() => soloClass("lighting", true)}>
+                      {/* Drawing first, as on the other utility menus: it
+                          is what somebody opens this to do. */}
+                      <MenuGroup label="Draw" />
+                      <MenuItem label={lightingPlace === "column"
+                        ? "Placing Columns\u2026" : "Place Lighting Columns"}
+                        hint="Click where each column goes \u00b7 Esc to stop"
+                        active={lightingPlace === "column"}
+                        disabled={!projectId}
+                        keepOpen
+                        onClick={() => {
+                          setLightingPlace(lightingPlace === "column" ? null : "column");
+                          /* Clear of anything else that wants clicks — two
+                             placement modes at once is a click that does
+                             whichever was checked first. */
+                          setMeterCatchUp(null); setMeterFor(null);
+                          setTool("select"); setSelected([]);
+                          setStatus(lightingPlace === "column" ? ""
+                            : "Click where each column goes \u00b7 Esc to stop");
+                        }} />
+                      {/* Connecting a column to the feeder that supplies
+                          it. Absent until there is a column to connect —
+                          a mode that can only say "click a column" is not
+                          worth entering. */}
+                      <MenuItem label={lightingPlace === "connect"
+                        ? "Connecting\u2026" : "Connect Column to Feeder"}
+                        hint={classCount["role:column"]
+                          ? "Click a column, then its feeder \u00b7 Esc to stop"
+                          : "No columns to connect yet"}
+                        active={lightingPlace === "connect"}
+                        disabled={!projectId || !classCount["role:column"]}
+                        keepOpen
+                        onClick={() => {
+                          const on = lightingPlace === "connect";
+                          setLightingPlace(on ? null : "connect");
+                          setConnectColumn(null);
+                          setMeterCatchUp(null); setMeterFor(null);
+                          setTool("select"); setSelected([]);
+                          setStatus(on ? ""
+                            : "Click a lighting column, then the feeder it comes off");
+                        }} />
+                      <div className="gm-sep" />
+                      <MenuGroup label="Show or Hide" />
+                      {/* Labels, on every utility menu.
+
+                          Whether the drawing is readable is a question
+                          somebody asks while working on one utility, and
+                          the answer used to be in the Layers menu — a
+                          different menu from the one they are in. The same
+                          switch, offered where it is wanted. */}
+                      <MenuLayer label="Labels" colour="#64748b"
+                        hidden={!showLabels}
+                        onHide={() => setShowLabels(false)}
+                        onShow={() => setShowLabels(true)} />
+                      {typesOn("lighting").map((t) => (
+                        <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
+                          count={classCount[`lt:${t.Type_Key}`] || 0}
+                          hidden={hidden.includes(`lt:${t.Type_Key}`)}
+                          solo={solo === `lt:${t.Type_Key}`}
+                          onHide={() => hideClass(`lt:${t.Type_Key}`)}
+                        onShow={() => showClass(`lt:${t.Type_Key}`)}
+                        shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                          onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
+                      ))}
+                      <MenuLayer label="Columns" count={classCount["role:column"] || 0}
+                        hidden={hidden.includes("role:column")}
+                        solo={solo === "role:column"}
+                        onHide={() => hideClass("role:column")}
+                        onShow={() => showClass("role:column")}
+                        shown={shownOnly.includes("role:column")}
+                        onSolo={() => soloClass("role:column")} />
+                      {!typesOn("lighting").length && (
+                        <MenuItem label="Lighting Layer Missing" hint="run migration 0072" disabled />
+                      )}
+                    </Menu>
+                    </>
+                  )}
 
                   <Menu id="tools" label="Tools & Reporting" open={open} setOpen={setOpen}>
+                    {/* Hidden while raising a call-off: the build order
+                        is about making the design, and this visit is
+                        about reading it. */}
+                    {!callOffOnly && (
+                    <>
                     {/* The order the electric design is built in.
 
                         Shown rather than only enforced: somebody who
@@ -13373,6 +13416,8 @@ export default function GISCanvasPage() {
                     <MenuItem label={`Electric build order \u00b7 ${steps.doneCount} of 8`}
                       hint={steps.next ? `Next: ${steps.next.title}` : "All steps done"}
                       onClick={() => setStepsOpen(true)} />
+                    </>
+                    )}
 
                     {/* A call-off is a report on what is to be laid, not
                         a change to the drawing \u2014 it belongs with the
@@ -13388,66 +13433,75 @@ export default function GISCanvasPage() {
                         setAskAnother(false);
                         if (callOffOpen) setRanges([]);
                       }} />
-                    <MenuItem label="Bill of Materials"
-                      hint="Quantities by site, utility and surface"
-                      disabled={!projectId} onClick={() => setBomOpen(true)} />
-                    <div className="gm-sep" />
-                    <MenuGroup label="Network" />
-                    {/* Number Ways and Circuits is hidden rather than
-                        removed.
+                    {/* The rest of Tools & Reporting, hidden while raising a
+                        call-off. Each of these reads the design, which
+                        is a reasonable thing to want — but not the thing
+                        somebody was sent here to do, and a menu with one
+                        live item and six dead ones reads as broken. */}
+                    {!callOffOnly && (
+                    <>
+  <MenuItem label="Bill of Materials"
+                        hint="Quantities by site, utility and surface"
+                        disabled={!projectId} onClick={() => setBomOpen(true)} />
+                      <div className="gm-sep" />
+                      <MenuGroup label="Network" />
+                      {/* Number Ways and Circuits is hidden rather than
+                          removed.
 
-                        It predates the circuit and feeder work: for
-                        electric, Build LV Network now assigns real
-                        circuits and their ways, and all the tracer adds
-                        is a hop count nothing reads. Its remaining use is
-                        gas and water, where there are no circuits and
-                        "which main leaves the source" is the right
-                        question — so the code, the endpoint and the
-                        function stay, and this is one line to restore.
+                          It predates the circuit and feeder work: for
+                          electric, Build LV Network now assigns real
+                          circuits and their ways, and all the tracer adds
+                          is a hop count nothing reads. Its remaining use is
+                          gas and water, where there are no circuits and
+                          "which main leaves the source" is the right
+                          question — so the code, the endpoint and the
+                          function stay, and this is one line to restore.
 
-                        runNetwork("trace") is still called by the context
-                        menu on a point, which is deliberate: it is
-                        reachable when wanted without sitting in a menu
-                        that is otherwise about circuits. */}
-                    <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
-                      hint="Match meters to their plots"
-                      disabled={!!busy} onClick={() => runNetwork("meters")} />
-                    <div className="gm-sep" />
-                    <MenuGroup label="Selection" />
-                    <MenuItem label={`Edit ${selected.length}`}
-                      disabled={selected.length < 2 || !selectionClass}
-                      hint={selected.length > 1 && !selectionClass
-                        ? "Everything selected has to be the same kind of thing" : undefined}
-                      onClick={() => setBulkOpen(true)} />
-                    <MenuItem label={busy === "join" ? "Joining\u2026" : `Join ${selected.length}`}
-                      disabled={!joinable || busy === "join"} onClick={joinSelected} />
-                    <MenuItem label={`Delete ${selected.length}`} danger
-                      disabled={!selected.length} onClick={removeSelected} />
-                    <MenuItem label="Bulk Delete…" danger
-                      hint="Whole categories at once"
-                      disabled={!projectId || !features.length}
-                      onClick={() => setBulkDelOpen(true)} />
-                    {/* Drawn round whatever is to go, rather than
-                        selected one object at a time. A phase that has
-                        been redrawn is a dozen clicks otherwise, and a
-                        rubber-band box cannot follow a curved road.
+                          runNetwork("trace") is still called by the context
+                          menu on a point, which is deliberate: it is
+                          reachable when wanted without sitting in a menu
+                          that is otherwise about circuits. */}
+                      <MenuItem label={busy === "meters" ? "Working\u2026" : "Assign Meters"}
+                        hint="Match meters to their plots"
+                        disabled={!!busy} onClick={() => runNetwork("meters")} />
+                      <div className="gm-sep" />
+                      <MenuGroup label="Selection" />
+                      <MenuItem label={`Edit ${selected.length}`}
+                        disabled={selected.length < 2 || !selectionClass}
+                        hint={selected.length > 1 && !selectionClass
+                          ? "Everything selected has to be the same kind of thing" : undefined}
+                        onClick={() => setBulkOpen(true)} />
+                      <MenuItem label={busy === "join" ? "Joining\u2026" : `Join ${selected.length}`}
+                        disabled={!joinable || busy === "join"} onClick={joinSelected} />
+                      <MenuItem label={`Delete ${selected.length}`} danger
+                        disabled={!selected.length} onClick={removeSelected} />
+                      <MenuItem label="Bulk Delete…" danger
+                        hint="Whole categories at once"
+                        disabled={!projectId || !features.length}
+                        onClick={() => setBulkDelOpen(true)} />
+                      {/* Drawn round whatever is to go, rather than
+                          selected one object at a time. A phase that has
+                          been redrawn is a dozen clicks otherwise, and a
+                          rubber-band box cannot follow a curved road.
 
-                        Under Bulk Delete because it is a third way of
-                        deleting several things at once. It was at the
-                        top of the menu among the reports — the one
-                        destructive item in a run of things that only
-                        read the drawing — and it is marked danger here
-                        like its neighbours, which it never was. */}
-                    <MenuItem label={tool === "lassodelete"
-                      ? "Drawing\u2026 click to place, double-click to finish"
-                      : "Polygon Delete…"} danger
-                      hint="Draw round objects, then delete them together"
-                      active={tool === "lassodelete"}
-                      disabled={!projectId || !!busy}
-                      onClick={() => {
-                        setDraft([]);
-                        setTool(tool === "lassodelete" ? "select" : "lassodelete");
-                      }} />
+                          Under Bulk Delete because it is a third way of
+                          deleting several things at once. It was at the
+                          top of the menu among the reports — the one
+                          destructive item in a run of things that only
+                          read the drawing — and it is marked danger here
+                          like its neighbours, which it never was. */}
+                      <MenuItem label={tool === "lassodelete"
+                        ? "Drawing\u2026 click to place, double-click to finish"
+                        : "Polygon Delete…"} danger
+                        hint="Draw round objects, then delete them together"
+                        active={tool === "lassodelete"}
+                        disabled={!projectId || !!busy}
+                        onClick={() => {
+                          setDraft([]);
+                          setTool(tool === "lassodelete" ? "select" : "lassodelete");
+                        }} />
+                    </>
+                    )}
                   </Menu>
 
                   {/* Find, as a box on the bar rather than a button
@@ -15677,6 +15731,10 @@ const CSS = `
    hold it \u2014 and with the border wrapping both, "Draw line" broke onto
    two lines to make room. The picker is a separate control that follows
    the tools rather than part of them. */
+/* The call-off-only banner, where the drawing tools would be. */
+.gis-only { display: flex; align-items: center; gap: 10px; padding: 4px 10px;
+  border-radius: 8px; background: #fef3e2; border: 1px solid #f2d675;
+  font-size: 12px; color: #7c4a03; }
 .gis-tools { display: inline-flex; border: 1px solid var(--border);
   border-radius: 7px; overflow: hidden; flex: 0 0 auto; }
 .gt { background: var(--white); border: none; padding: 6px 14px; cursor: pointer;

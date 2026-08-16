@@ -7,6 +7,7 @@ import { takeCallOffIntent, onOpenCallOff } from "../../lib/callOffIntent.js";
 import { getLookups } from "../../api/lookups.js";
 import { getProject, listProjects } from "../../api/projects.js";
 import { openProject } from "../../lib/projectIntent.js";
+import { openGis } from "../../lib/gisIntent.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
 import { halfDaysText } from "./digDays.js";
@@ -232,7 +233,19 @@ export default function CallOffsPage() {
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
   const [status, setStatus] = useState(() => recall("callOffStatus", "open"));
-  const [picking, setPicking] = useState(false);
+  /* Raising a call-off: null, or "editor" / "canvas" once the way has
+     been chosen.
+
+     Two ways, and they are not the same job. The editor is for a
+     call-off somebody can describe — plots, dates, a work type. The
+     canvas is for one they have to point at, where the answer is which
+     runs between which span nodes and that is only legible on a
+     drawing.
+
+     Asked before the project rather than after, because the choice does
+     not depend on the project and asking afterwards would mean going
+     back. */
+  const [picking, setPicking] = useState(null);
   const [openId, setOpenId] = useState(null);
 
   /* Arrived here from the planning board, which asked for one call-off
@@ -497,15 +510,50 @@ export default function CallOffsPage() {
           onToggle={layout.toggleColumn}
           onReset={layout.reset}
         />
-        <button className="btn accent sm" onClick={() => setPicking(true)}>
+        <button className="btn accent sm" onClick={() => setPicking("how")}>
           + New call-off
         </button>
       </div>
 
-      {picking && (
+      {picking === "how" && (
+        <div className="co-modal" role="dialog" aria-modal="true">
+          <div className="co-how">
+            <h3>How do you want to raise it?</h3>
+            <button className="co-how-opt" onClick={() => setPicking("editor")}>
+              <strong>Fill in the call-off form</strong>
+              <span>
+                Plots, dates and utilities, typed in. Best when you already
+                know what is being asked for.
+              </span>
+            </button>
+            <button className="co-how-opt" onClick={() => setPicking("canvas")}>
+              <strong>Pick it off the drawing</strong>
+              <span>
+                Opens the GIS canvas to choose the runs between span nodes.
+                Best for mains, where which lengths are being laid is only
+                clear on a plan.
+              </span>
+            </button>
+            <button className="btn ghost" onClick={() => setPicking(null)}>
+              Cancel
+            </button>
+          </div>
+        </div>
+      )}
+
+      {(picking === "editor" || picking === "canvas") && (
         <ProjectPicker
-          onCancel={() => setPicking(false)}
-          onPick={(project) => openProject(project, "calloffs")}
+          onCancel={() => setPicking(null)}
+          onPick={(project) => (picking === "canvas"
+            /* Straight to the drawing, with everything but the call-off
+               turned off. Somebody who came here to raise one is not
+               here to edit the design, and a canvas with every tool live
+               invites a change nobody asked for on the way past. */
+            ? openGis({ project, callOffOnly: true })
+            /* Straight to the editor, not to the tab it lives on. The
+               tab's New call-off button asked nothing and could only be
+               pressed — a step, not a decision. */
+            : openProject(project, "calloffs", { newCallOff: true }))}
         />
       )}
 
@@ -3255,6 +3303,23 @@ const CSS = FILTER_CSS + `
    Amber for part rather than red: a half-booked call-off is not wrong,
    it is unfinished, and a list of red rows stops being read. Grey for
    unassigned, because that is where everything starts. */
+/* Choosing how to raise a call-off. Two options as full-width cards
+   with a sentence each, not a pair of buttons: they lead to different
+   screens doing different jobs, and a label alone would not say which
+   is which to somebody meeting them for the first time. */
+.co-modal { position: fixed; inset: 0; background: rgba(15,23,42,.4);
+  display: flex; align-items: center; justify-content: center; z-index: 70;
+  padding: 16px; }
+.co-how { background: var(--white); border-radius: 12px; padding: 20px;
+  width: min(520px, 100%); box-shadow: 0 24px 60px rgba(15,23,42,.28); }
+.co-how h3 { margin: 0 0 14px; font-size: 17px; font-weight: 700; }
+.co-how-opt { display: block; width: 100%; text-align: left; margin-bottom: 10px;
+  padding: 14px 16px; border: 1px solid var(--border); border-radius: 10px;
+  background: var(--white); cursor: pointer; }
+.co-how-opt:hover { border-color: var(--accent); background: var(--bg); }
+.co-how-opt strong { display: block; font-size: 15px; margin-bottom: 3px; }
+.co-how-opt span { display: block; font-size: 12.5px; color: var(--muted);
+  line-height: 1.6; }
 .co-cover { display: flex; flex-wrap: wrap; gap: 4px; }
 .co-cov { display: inline-flex; align-items: baseline; gap: 5px;
   border-radius: 20px; padding: 2px 9px; font-size: 11px; white-space: nowrap;

@@ -1,6 +1,7 @@
-import { useState, useEffect, useMemo, useCallback } from "react";
+import { useState, useEffect, useMemo, useCallback, useRef } from "react";
 import { listCallOffs, createCallOff, deleteCallOff } from "../../api/calloffs.js";
 import { openCallOff } from "../../lib/callOffIntent.js";
+import { recall, remember } from "../../lib/session.js";
 import { getLookups } from "../../api/lookups.js";
 import { todayMs, toISO } from "../planning/timeline.js";
 import { listPlots } from "../../api/plots.js";
@@ -413,6 +414,32 @@ export default function CallOffsTab({ projectId }) {
     [f, projectId],
   );
   const energDefault = energFloor ? dayAfter(energFloor.date) : "";
+
+  /* Arriving with the editor already asked for.
+
+     Raising a call-off from the list lands here, and the next act was
+     always New call-off — a step that asked nothing. So the intent
+     carries it and this opens the form on arrival.
+
+     Waits for the work types, because openForm reads workTypes[0] for
+     its default and an empty list would open a form with no work type
+     in it. Consumed once: the flag is cleared as soon as it is acted
+     on, or coming back to this tab later would reopen a form nobody
+     asked for. */
+  const wanted = useRef(false);
+  useEffect(() => {
+    const saved = recall("project", null);
+    if (saved?.newCallOff) {
+      wanted.current = true;
+      remember("project", { ...saved, newCallOff: false });
+    }
+  }, []);
+
+  useEffect(() => {
+    if (!wanted.current || !workTypes.length || open) return;
+    wanted.current = false;
+    openForm();
+  }, [workTypes.length, open]);
 
   function openForm() {
     setF({

@@ -303,6 +303,59 @@ const shown = (filter) => ORGS.filter(([, r]) => matches(r, filter)).map(([n]) =
   }
 }
 
+// 11. The section is not narrowed to one role before the utility is
+//     known.
+//
+//     The operators list was filtered to the dno role on the way in, so
+//     gas transporters and water undertakers were discarded before the
+//     per-utility rules ran — and each field then said none had been set
+//     up. True of the list it had been given, false of the register.
+//
+//     A filter at that point can only ever be right for one of the
+//     three utilities.
+{
+  const tab = readFileSync("./src/features/stakeholders/StakeholderTab.jsx", "utf8");
+  const fn = tab.slice(tab.indexOf("function DnoSection("));
+  const head = fn.slice(0, fn.indexOf("if (!scopes.length)"));
+
+  if (/=== "dno"/.test(head)) {
+    fail("the section still keeps only the dno role, before the utility is known");
+  }
+  if (!/OPERATOR_ROLE_KEYS/.test(head)) {
+    fail("the section does not filter to operator roles at all");
+  }
+
+  /* And that list covers all three utilities, so nothing is dropped on
+     the way in. */
+  const flat = tab.match(/const OPERATOR_ROLE_KEYS = \[\.\.\.new Set\(Object\.values\(OPERATOR_ROLES\)\.flat\(\)\)\]/);
+  if (!flat) {
+    fail("the operator roles are listed twice rather than derived from the map");
+  }
+
+  /* The behaviour, end to end: a transporter survives the first filter
+     and reaches the gas picker.
+
+     The map is read from the page again here rather than reaching into
+     the block above — these sections are meant to be readable and
+     removable one at a time. */
+  const roleMap = tab.match(/const OPERATOR_ROLES = \{([\s\S]*?)\};/);
+  const KEYS = [...new Set([...(roleMap?.[1] ?? "")
+    .matchAll(/"([a-z_]+)"/g)].map((m) => m[1]))];
+  const registry = [
+    { Name: "Cadent", role_keys: ["gt"] },
+    { Name: "United Utilities", role_keys: ["wu"] },
+    { Name: "Barratt Homes", role_keys: ["customer"] },
+  ];
+  const survived = registry.filter((o) =>
+    (o.role_keys || []).some((k) => KEYS.includes(k))).map((o) => o.Name);
+  if (survived.includes("Barratt Homes")) {
+    fail("a customer survives the operator filter");
+  }
+  for (const n of ["Cadent", "United Utilities"]) {
+    if (!survived.includes(n)) fail(`${n} is discarded before the utility is known`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The organisation role filter behaves (DNO does not mean IDNO).");
 process.exit(bad ? 1 : 0);

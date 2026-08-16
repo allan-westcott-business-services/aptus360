@@ -47,6 +47,11 @@ const OPERATOR_ROLES = {
 const rolesFor = (utility) =>
   OPERATOR_ROLES[String(utility || "").toLowerCase().trim()] ?? null;
 
+/* Every role in that map, flattened. What counts as an operator at all,
+   as against a customer or an authority — the view already excludes
+   those, and this keeps the list honest if it ever stops. */
+const OPERATOR_ROLE_KEYS = [...new Set(Object.values(OPERATOR_ROLES).flat())];
+
 const operatorWord = (utility) =>
   OPERATOR_WORD[String(utility || "").toLowerCase().trim()] ?? "operator";
 
@@ -321,8 +326,20 @@ export default function StakeholderTab({ projectId }) {
    offered — but the count is shown, because a name missing from a
    dropdown with no explanation is exactly the fault this fixes. */
 function DnoSection({ scopes, lookups, onSet, saving }) {
+  /* Every operator, narrowed per utility below.
+
+     This filtered to the dno role here, before the per-utility rules
+     ran — so a gas transporter and a water undertaker were discarded on
+     the way in, and each field then reported that none had been set up.
+     Which was true of the list it had been given, and false of the
+     register.
+
+     The narrowing belongs below, where the utility is known: gas wants
+     gt and igt, water wants wu and iwu, and only electricity wants dno.
+     A filter here can only ever be right for one of the three. */
   const operators = (lookups?.operators || [])
-    .filter((o) => (o.role_keys || []).some((k) => String(k).toLowerCase() === "dno"));
+    .filter((o) => (o.role_keys || []).some((k) =>
+      OPERATOR_ROLE_KEYS.includes(String(k).toLowerCase())));
   const unassigned = operators.filter((o) => !(o.utility_ids || []).length).length;
 
   if (!scopes.length) {

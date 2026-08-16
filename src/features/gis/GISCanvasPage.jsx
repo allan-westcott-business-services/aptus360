@@ -67,6 +67,10 @@ import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
 import { planTrenchSplits } from "./splitTrenches.js";
 import { bomLabour } from "./bomLabour.js";
 import { callOffCustomer } from "./callOffCustomer.js";
+import {
+  plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
+  alreadyCalledOff, serviceSummary, priorServicesFrom,
+} from "./serviceCallOff.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
   spanContents, callOffUtilities, utilityIdsFor,
@@ -378,6 +382,29 @@ export default function GISCanvasPage() {
   }, [user, lookups?.people]);
 
   const [callOffOpen, setCallOffOpen] = useState(false);
+
+  /* ── A service call-off ──
+
+     A set of plots and the utilities being connected to them. Not a run:
+     gas and water go in on one visit and the electric follows a
+     fortnight later, and neither is described by a length of trench.
+
+     Three ways to choose the plots — typed, tapped, or taken from a run
+     of trench — all adding to one list, because the list is the answer
+     and how it was reached is nobody's business downstream.
+
+     Utilities are ticked rather than read off the drawing. A mains
+     call-off asks what is routed along a trench, which the drawing
+     knows. A service call-off asks what is being connected now, which
+     it does not. */
+  const [serviceOpen, setServiceOpen] = useState(false);
+  const [servicePlots, setServicePlots] = useState([]);
+  const [serviceUtils, setServiceUtils] = useState([]);
+  const [serviceText, setServiceText] = useState("");
+  const [serviceNote, setServiceNote] = useState("");
+  /* Service call-offs already raised on this project, for telling
+     somebody a plot is being asked for twice on the same utility. */
+  const [priorServices, setPriorServices] = useState([]);
   /* Which utilities the call-off covers (0146). Raised from the drawing
      the same as from the project screen: a gang sent to an E/G dig
      needs to know it is electric and gas before they load the van, and
@@ -445,11 +472,15 @@ export default function GISCanvasPage() {
           }
         }
         setCalledOff(spans);
+        /* And the service ones, which are a list of plot numbers rather
+           than a run to colour — the only thing they share is the table
+           they came from. */
+        setPriorServices(priorServicesFrom(res.rows || []));
       })
       /* A drawing that cannot reach the call-offs still draws. Colouring
          is a convenience; refusing to render the site because of it
          would not be. */
-      .catch(() => { if (live) setCalledOff([]); });
+      .catch(() => { if (live) { setCalledOff([]); setPriorServices([]); } });
     return () => { live = false; };
   }, [projectId]);
 
@@ -4740,6 +4771,26 @@ export default function GISCanvasPage() {
 
        Checked before `placing` below, so catching up on an old plot is
        not mistaken for seeding a new one. */
+    /* Tapping a plot seed while a service call-off is open.
+
+       Toggles: tapping one already on the list takes it off. The
+       alternative is a list that only grows and a separate remove
+       action, which is two gestures for one decision.
+
+       Before the ordinary select below, so a tap adds a plot rather
+       than selecting a seed — while this panel is open, that is what a
+       tap on a seed means. */
+    if (serviceOpen) {
+      const hit = featureAt(px, py);
+      if (hit?.Feature_Role === "plot") {
+        const plot = plotOfSeed(hit, plotList);
+        if (plot) {
+          setServicePlots((ps) => togglePlot(ps, plot));
+          return;
+        }
+      }
+    }
+
     /* ── Connecting a column to a feeder ──
 
        The column, then the feeder. Two clicks because there is a choice
@@ -8049,6 +8100,58 @@ export default function GISCanvasPage() {
     }
   }
 
+  /* Raising a service call-off.
+
+     The same submission table as everything else, with Selection_Mode
+     PlotList and a row per plot — so it lands in the same list, and the
+     office sees no difference between one raised here and one typed in
+     on the project's own tab. */
+  async function submitServiceCallOff() {
+    if (!projectId || !servicePlots.length || !serviceUtils.length) return;
+
+    const workType = (lookups?.workTypes || [])
+      .find((w) => w.Selection_Mode === "PlotList" && w.Is_Active !== false);
+    if (!workType) {
+      setError("No work type on this system collects a list of plots.");
+      return;
+    }
+
+    setBusy("service");
+    try {
+      const created = await createCallOff(projectId, {
+        Project_ID: projectId,
+        Work_Type_ID: workType.Work_Type_ID,
+        Selection_Mode: "PlotList",
+        /* Whose work it is, worked out the same way as a mains call-off
+           — whoever holds most of the trench the runs cross. A service
+           call-off has no runs, so this falls back to the project's
+           developers and answers only where there is one customer. */
+        ...callOffCustomer([], features, developers,
+          lookups?.branches || [], lookups?.customers || []),
+        items: servicePlots.map((p, i) => ({ Plot: p, Sort_Order: i })),
+        /* Ticked, not derived: what is being connected now is a
+           decision, and the drawing cannot answer it. */
+        utility_ids: serviceUtils.map(Number),
+        Notes: serviceNote || null,
+      });
+
+      setServiceOpen(false);
+      setServicePlots([]);
+      setServiceUtils([]);
+      setServiceText("");
+      setServiceNote("");
+      setStatus(`Service call-off #${created?.Submission_ID} raised \u00b7 `
+        + `${servicePlots.length} plot(s)`);
+      setError("");
+      /* Re-read, so a plot just called off is flagged if it is picked
+         again in the next one. */
+      const res = await listCallOffs(projectId).catch(() => null);
+      if (res) setPriorServices(priorServicesFrom(res.rows || []));
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(null); }
+  }
+
   async function submitCallOff() {
     if (!callOff?.spans?.length) return;
 
@@ -8197,6 +8300,7 @@ export default function GISCanvasPage() {
           }
         }
         setCalledOff(spans);
+        setPriorServices(priorServicesFrom(res.rows || []));
       }).catch(() => {});
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
@@ -13533,6 +13637,30 @@ export default function GISCanvasPage() {
                         setAskAnother(false);
                         if (callOffOpen) setRanges([]);
                       }} />
+
+                    {/* A service call-off: a set of plots and what is
+                        being connected to them. Beside the mains one
+                        because both read the drawing and neither changes
+                        it — and outside the wrapper below, because
+                        somebody sent here to raise a call-off may have
+                        meant this one. */}
+                    <MenuItem label="New Service Call-off"
+                      hint="Type a plot range, tap seeds, or take them from a run"
+                      active={serviceOpen}
+                      disabled={!!busy || !projectId}
+                      onClick={() => {
+                        const on = !serviceOpen;
+                        setServiceOpen(on);
+                        /* Clear of the mains picker: two panels both
+                           wanting the next tap is a tap that does
+                           whichever was checked first. */
+                        if (on) { setCallOffOpen(false); setPick(null); }
+                        else {
+                          setServicePlots([]); setServiceUtils([]);
+                          setServiceText(""); setServiceNote("");
+                        }
+                      }} />
+
                     {/* The rest of Tools & Reporting, hidden while raising a
                         call-off. Each of these reads the design, which
                         is a reasonable thing to want — but not the thing
@@ -14440,6 +14568,154 @@ export default function GISCanvasPage() {
                 </div>
               </div>
             )}
+
+            {/* ── Raising a service call-off ── */}
+            {serviceOpen && (() => {
+              const utilRows = (lookups?.utilities || []);
+              const names = serviceUtils
+                .map((id) => utilRows.find((u) =>
+                  Number(u.Utility_ID) === Number(id))?.Utility)
+                .filter(Boolean);
+              const twice = alreadyCalledOff(servicePlots, serviceUtils, priorServices);
+              const typed = plotsFromText(serviceText, plotList);
+
+              return (
+                <div className="gis-co gco-svc">
+                  <div className="gco-head">
+                    <strong>Service call-off</strong>
+                  </div>
+
+                  {/* ── Which utilities ──
+
+                      Ticked, not read off the drawing. A mains call-off
+                      asks what is routed along a trench, which the
+                      drawing knows. This asks what is being connected
+                      now, which it does not: gas and water usually go in
+                      together and the electric follows a fortnight
+                      later. */}
+                  <div className="gco-svc-utils">
+                    {utilRows.map((u) => {
+                      const on = serviceUtils.includes(Number(u.Utility_ID));
+                      return (
+                        <button key={u.Utility_ID}
+                          className={`gco-svc-u${on ? " on" : ""}`}
+                          onClick={() => setServiceUtils((us) => (on
+                            ? us.filter((x) => Number(x) !== Number(u.Utility_ID))
+                            : [...us, Number(u.Utility_ID)]))}>
+                          {u.Utility}
+                        </button>
+                      );
+                    })}
+                  </div>
+
+                  {/* ── Typed ──
+
+                      The same syntax as placing plots, so what somebody
+                      learns in one place works in the other. */}
+                  <div className="gco-svc-add">
+                    <input value={serviceText} placeholder="12-21, 25, 30-32"
+                      aria-label="Plot numbers"
+                      onChange={(e) => setServiceText(e.target.value)}
+                      onKeyDown={(e) => {
+                        if (e.key !== "Enter" || !typed.plots.length) return;
+                        setServicePlots((ps) => sortPlots([...ps, ...typed.plots]));
+                        setServiceText("");
+                      }} />
+                    <button className="btn ghost sm"
+                      disabled={!typed.plots.length}
+                      onClick={() => {
+                        setServicePlots((ps) => sortPlots([...ps, ...typed.plots]));
+                        setServiceText("");
+                      }}>Add</button>
+                  </div>
+
+                  {!!typed.unreadable.length && (
+                    <p className="gco-warn">
+                      {`Could not read: ${typed.unreadable.join(", ")}`}
+                    </p>
+                  )}
+                  {/* Said, not refused. A plot may be on the site and
+                      not yet on the drawing, and refusing would make the
+                      drawing the authority on what exists. */}
+                  {!!typed.unknown.length && (
+                    <p className="gco-warn">
+                      {`Not on this drawing: ${typed.unknown.join(", ")}`}
+                    </p>
+                  )}
+
+                  <p className="gco-hint">
+                    Or tap plot seeds on the drawing, or pick a run of
+                    trench and take the plots it serves.
+                  </p>
+
+                  {/* ── From a run ── */}
+                  <button className="btn ghost sm"
+                    disabled={!callOff?.spans?.length}
+                    onClick={() => {
+                      setServicePlots((ps) =>
+                        sortPlots([...ps, ...plotsFromRun(callOff.spans)]));
+                    }}>
+                    {callOff?.spans?.length
+                      ? `Take the ${plotsFromRun(callOff.spans).length} plot(s) `
+                        + "on the picked run"
+                      : "No run picked"}
+                  </button>
+
+                  {/* ── The list ── */}
+                  {servicePlots.length ? (
+                    <div className="gco-svc-plots">
+                      {servicePlots.map((p) => (
+                        <button key={p}
+                          className={`gco-svc-p${twice.includes(p) ? " twice" : ""}`}
+                          title={twice.includes(p)
+                            ? "Already called off for one of these utilities"
+                            : "Remove"}
+                          onClick={() => setServicePlots((ps) => togglePlot(ps, p))}>
+                          {p}
+                        </button>
+                      ))}
+                    </div>
+                  ) : (
+                    <p className="gco-none">No plots yet.</p>
+                  )}
+
+                  {/* Flagged, not removed. Twice is sometimes right — a
+                      service aborted and rescheduled — and dropping them
+                      would answer a question nobody asked. What is not
+                      right is nobody noticing. */}
+                  {!!twice.length && (
+                    <p className="gco-warn">
+                      {`${twice.join(", ")} already called off for `}
+                      {names.join(" or ")}. Raise again only if you mean to.
+                    </p>
+                  )}
+
+                  <textarea className="gco-svc-note" rows={2}
+                    placeholder="Anything the gang should know (optional)"
+                    aria-label="Notes"
+                    value={serviceNote}
+                    onChange={(e) => setServiceNote(e.target.value)} />
+
+                  <p className="gco-tot">
+                    {serviceSummary(servicePlots, names)}
+                  </p>
+
+                  <div className="gco-foot">
+                    <button className="btn ghost sm"
+                      onClick={() => {
+                        setServiceOpen(false);
+                        setServicePlots([]); setServiceUtils([]);
+                        setServiceText(""); setServiceNote("");
+                      }}>Cancel</button>
+                    <button className="btn accent sm"
+                      disabled={!!busy || !servicePlots.length || !serviceUtils.length}
+                      onClick={submitServiceCallOff}>
+                      {busy === "service" ? "Raising\u2026" : "Raise call-off"}
+                    </button>
+                  </div>
+                </div>
+              );
+            })()}
 
             {callOffOpen && !raised && (
               <div className="gis-co">
@@ -15968,6 +16244,30 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   max-height: 70vh; overflow-y: auto; background: var(--white);
   border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
   box-shadow: 0 4px 18px rgba(0,0,0,.13); font-size: 12px; }
+/* The service call-off panel. Wider than the mains one: a plot list of
+   forty numbers wraps to nothing readable in a 320px column. */
+.gco-svc { width: min(460px, calc(100vw - 32px)); }
+.gco-svc-utils { display: flex; gap: 6px; flex-wrap: wrap; margin-bottom: 10px; }
+/* Ticked, so what is being connected is a decision somebody made rather
+   than something the drawing guessed. */
+.gco-svc-u { border: 1px solid var(--border); background: var(--white);
+  border-radius: 20px; padding: 5px 13px; font-size: 12px; cursor: pointer; }
+.gco-svc-u.on { border-color: var(--accent); border-width: 2px;
+  background: #eef1f8; font-weight: 700; }
+.gco-svc-add { display: flex; gap: 6px; margin-bottom: 8px; }
+.gco-svc-add input { flex: 1; font: 500 12.5px inherit; padding: 6px 9px;
+  border: 1px solid var(--border); border-radius: 7px; }
+.gco-svc-plots { display: flex; flex-wrap: wrap; gap: 5px; margin: 10px 0; }
+.gco-svc-p { border: 1px solid var(--border); background: var(--white);
+  border-radius: 6px; padding: 3px 9px; font-size: 12px; cursor: pointer; }
+.gco-svc-p:hover { border-color: #b91c1c; color: #b91c1c; }
+/* Already called off for one of these utilities. Amber, because doing
+   it twice is sometimes right and this is a question rather than a
+   fault. */
+.gco-svc-p.twice { background: #fef3e2; border-color: #f2d675; color: #7c4a03; }
+.gco-svc-note { width: 100%; font: 500 12.5px inherit; padding: 7px 9px;
+  border: 1px solid var(--border); border-radius: 7px; resize: vertical;
+  margin-top: 8px; }
 .gco-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .gco-head strong { font-size: 13px; }
 .gco-hint { flex: 1; font-size: 10.5px; color: var(--muted); }

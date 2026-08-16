@@ -13,7 +13,7 @@
 import { readFileSync } from "node:fs";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
-  alreadyCalledOff, serviceSummary, priorServicesFrom,
+  alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
 } from "./src/features/gis/serviceCallOff.js";
 
 let bad = 0;
@@ -205,6 +205,66 @@ const PLOTS = [
   }
   if (!/no utilities/.test(serviceSummary(["12"], []))) {
     fail("a call-off with no utilities chosen does not say so");
+  }
+}
+
+// 10. Only the utilities a plot is connected to.
+//
+//     Street lighting is called off by column: a column sits on the
+//     lighting layer, is fed from the LV network, and has no plot at
+//     all. A lighting pill on a form collecting plot numbers offers a
+//     call-off that cannot be worked, and the mistake surfaces on site.
+{
+  for (const u of [{ Utility: "Electric" }, { Utility: "Gas" }, { Utility: "Water" }]) {
+    if (!servicedByPlot(u)) fail(`${u.Utility} is not offered on a service call-off`);
+  }
+  for (const u of [{ Utility: "Street Lighting" }, { layer_key: "lighting" },
+    { Utility: "Telecoms" }, {}]) {
+    if (servicedByPlot(u)) {
+      fail(`${u.Utility ?? u.layer_key ?? "an unnamed utility"} is offered by plot`);
+    }
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/utilRows\.filter\(servicedByPlot\)/.test(canvas)) {
+    fail("the panel offers every utility, including ones with no plots");
+  }
+}
+
+// 11. What the submission insists on.
+//
+//     Contact_Name and Preferred_Date are NOT NULL. Leaving them out
+//     failed at the moment of raising, with a constraint error nobody
+//     could act on — the mains path has always set them and this one
+//     was written without looking at what the table requires.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("async function submitServiceCallOff");
+  const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("\n  async function", at + 10));
+
+  for (const f of ["Contact_Name", "Preferred_Date"]) {
+    if (!body.includes(f)) fail(`a service call-off is raised with no ${f}`);
+  }
+  /* The same defaults the mains path uses, so the two do not disagree
+     about who raised a call-off with nobody named on it. */
+  if (!/raisedByName \|\| "Site"/.test(body)) {
+    fail("the contact is not defaulted the way the mains call-off defaults it");
+  }
+
+  /* Read from the schema rather than listed here, so a column made NOT
+     NULL later is caught rather than waiting to be discovered by
+     somebody pressing the button. */
+  const sql = readFileSync("./supabase/migrations/0111_call_offs.sql", "utf8");
+  const table = sql.slice(sql.indexOf('CREATE TABLE IF NOT EXISTS "Mains_Call_Off_Submission"'));
+  const decl = table.slice(0, table.indexOf(");"));
+  for (const line of decl.split("\n")) {
+    const m = line.match(/^\s*"(\w+)"\s+[\w ]+NOT NULL(?! DEFAULT)/);
+    if (!m) continue;
+    const col = m[1];
+    if (col === "Submission_ID" || col === "Status") continue;
+    if (!body.includes(col)) {
+      fail(`${col} is required on a submission and the service call-off omits it`);
+    }
   }
 }
 

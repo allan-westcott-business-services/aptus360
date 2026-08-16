@@ -69,7 +69,7 @@ import { bomLabour } from "./bomLabour.js";
 import { callOffCustomer } from "./callOffCustomer.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
-  alreadyCalledOff, serviceSummary, priorServicesFrom,
+  alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
 } from "./serviceCallOff.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
@@ -8128,6 +8128,19 @@ export default function GISCanvasPage() {
            developers and answers only where there is one customer. */
         ...callOffCustomer([], features, developers,
           lookups?.branches || [], lookups?.customers || []),
+        /* Who asked, and when for.
+
+           Both are NOT NULL on the submission, and leaving them out
+           failed at the moment of raising with a constraint error
+           nobody could act on. The mains path has always set them; this
+           one was written without looking at what the table insists on.
+
+           The same defaults the mains call-off uses: whoever is signed
+           in, and today. The office edits both on the call-off itself,
+           where the customer's own contact belongs. */
+        Contact_Name: raisedByName || "Site",
+        Preferred_Date: new Date().toISOString().slice(0, 10),
+        Site_Name: project?.Site_Name ?? null,
         items: servicePlots.map((p, i) => ({ Plot: p, Sort_Order: i })),
         /* Ticked, not derived: what is being connected now is a
            decision, and the drawing cannot answer it. */
@@ -14593,8 +14606,15 @@ export default function GISCanvasPage() {
                       now, which it does not: gas and water usually go in
                       together and the electric follows a fortnight
                       later. */}
+                  {/* ── Which utilities ──
+
+                      Only those a plot is connected to. Street lighting
+                      is called off by column, not by plot — a lighting
+                      pill here would offer somebody a call-off that
+                      could not be worked, and the mistake would only
+                      surface on site. */}
                   <div className="gco-svc-utils">
-                    {utilRows.map((u) => {
+                    {utilRows.filter(servicedByPlot).map((u) => {
                       const on = serviceUtils.includes(Number(u.Utility_ID));
                       return (
                         <button key={u.Utility_ID}

@@ -144,3 +144,22 @@ export function priorServicesFrom(rows = []) {
       plots: (co.items || []).map((it) => String(it.Plot ?? "").trim()),
     }));
 }
+
+/* Whether a utility is connected to a plot.
+
+   Street lighting is called off by column: a column is placed on the
+   lighting layer, fed from the LV network, and has no plot at all. A
+   lighting pill on a form that collects plot numbers would offer
+   somebody a call-off that cannot be worked, and the mistake would only
+   surface on site.
+
+   Named by what it is rather than by a list of exclusions, so a utility
+   added later is asked the same question instead of being let through
+   because nobody remembered to exclude it. */
+const PLOT_UTILITIES = ["electric", "gas", "water"];
+
+export function servicedByPlot(utility) {
+  const key = String(utility?.layer_key ?? utility?.Utility ?? "")
+    .toLowerCase().replace(/[^a-z]/g, "");
+  return PLOT_UTILITIES.includes(key);
+}

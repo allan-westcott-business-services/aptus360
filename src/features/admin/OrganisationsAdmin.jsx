@@ -107,7 +107,17 @@ export default function OrganisationsAdmin() {
   const shown = useMemo(() => rows.filter((r) => {
     const q = search.trim().toLowerCase();
     if (q && !`${r.Name} ${r.Code ?? ""}`.toLowerCase().includes(q)) return false;
-    if (roleFilter && !(r.roles || "").includes(roleFilter)) return false;
+    /* Matched whole, not as a substring.
+
+       roles is the labels joined with commas — "IDNO, IGT — independent
+       gas transporter" — and filtering on DNO caught every IDNO,
+       because "IDNO" contains "DNO". Two of the roles in this list are
+       an initial away from another, and a filter that quietly widens
+       itself is worse than one that finds nothing: nothing is obvious,
+       and a list of the wrong companies reads as the right answer. */
+    if (roleFilter && !(r.roles || "").split(",")
+      .map((x) => x.trim())
+      .includes(roleFilter)) return false;
     if (!showInactive && r.Is_Active === false) return false;
     return true;
   }), [rows, search, roleFilter, showInactive]);

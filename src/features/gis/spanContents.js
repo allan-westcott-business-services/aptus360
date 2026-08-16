@@ -31,6 +31,7 @@
    rather than added up section by section. */
 
 import { contentsOf } from "./trenchContents.js";
+import { sizeLabelOf } from "./sizeMode.js";
 import { concurrentCount, dominantOf, trenchSize } from "./trenchSize.js";
 import { digEstimate } from "./digRate.js";
 import { isTrenchType } from "./snapping.js";
@@ -57,16 +58,27 @@ export function contentsOptions(lineTypes = [], lookups = null) {
       && isTrenchType(x.Attributes?.Line_Type, lineTypes),
     /* The size, which is what somebody wants — a cable's label is its
        circuit and way, which says which run it is and nothing about
-       what was laid. */
+       what was laid.
+
+       ── The size in force, not the calculated one ──
+
+       This read Cable_Size_ID and VD_Cable_Size_ID and stopped there, so
+       a length overridden to 185 was called off as the 95 the build had
+       worked out. The call-off said one thing, the trench editor beside
+       it said another, and the bill said a third.
+
+       sizeLabelOf is the rule, and it already covered all three
+       utilities: the override where there is one, the calculated size
+       everywhere else, the catalogue's label, and the typed text where
+       there is no catalogue row. Using it here rather than a second
+       lookup means there is one answer to "what size is this". */
     labelOf: (x) => {
-      const sizeId = x.Attributes?.Cable_Size_ID ?? x.Attributes?.VD_Cable_Size_ID;
-      const size = sizeId != null
-        ? (lookups?.cableSizes || []).find((c) =>
-          String(c.Cable_Size_ID) === String(sizeId))?.Size_Label
-        : null;
-      if (size) return size;
-      const pipe = String(x.Attributes?.Size ?? "").trim();
-      if (pipe) return pipe;
+      const size = sizeLabelOf(x, {
+        electric: lookups?.cableSizes || [],
+        gas: lookups?.gasPipeSizes || [],
+        water: lookups?.waterPipeSizes || [],
+      });
+      if (size) return String(size).trim();
       return lineTypes.find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label
         ?? x.Label ?? null;
     },

@@ -1,3 +1,4 @@
+import { readFileSync } from "node:fs";
 /* What a span of a mains call-off carries, and which plots are on it.
 
    Two things checked here, found together on one drawing.
@@ -13,7 +14,7 @@
    it once. */
 import {
   spanContents, callOffUtilities, utilityIdsFor,
-  spanDigEstimate, rangeDigEstimate, contentsText,
+  spanDigEstimate, rangeDigEstimate, contentsText, contentsOptions,
 } from "./src/features/gis/spanContents.js";
 import { toCallOffRows, spansBetween } from "./src/features/gis/mainsCallOff.js";
 import { UTILITIES } from "./src/lib/utilities.js";
@@ -366,6 +367,74 @@ const SITE = [
   }
   if (!plotsOn(unlinked, 10, 12).includes("16")) {
     fail("with no recorded link, the plot was lost altogether");
+  }
+}
+
+// The size in force, not the calculated one.
+//
+//    A length overridden to 185 was called off as the 95 the build had
+//    worked out: this read VD_Cable_Size_ID and stopped. The call-off
+//    said one thing, the trench editor beside it said another, and the
+//    bill said a third.
+{
+  const lookups = {
+    cableSizes: [
+      { Cable_Size_ID: 5, Size_Label: "3c WAVE 95" },
+      { Cable_Size_ID: 9, Size_Label: "3c WAVE 185" },
+    ],
+    gasPipeSizes: [
+      { Gas_Pipe_Size_ID: 2, Size_Label: "125mm PE" },
+      { Gas_Pipe_Size_ID: 3, Size_Label: "180mm PE" },
+    ],
+    waterPipeSizes: [{ Water_Pipe_Size_ID: 1, Size_Label: "63mm" }],
+  };
+  const types = [
+    { Type_Key: "elec_main", Layer_Key: "electric", Label: "Electric Main" },
+    { Type_Key: "gas_main", Layer_Key: "gas", Label: "Gas Main" },
+  ];
+  const { labelOf } = contentsOptions(types, lookups);
+  const feat = (layer, attrs) => ({ Layer_Key: layer, Attributes: attrs });
+
+  const overridden = feat("electric", {
+    Line_Type: "elec_main", VD_Cable_Size_ID: 5, Manual_VD_Cable_Size_ID: 9,
+  });
+  if (labelOf(overridden) !== "3c WAVE 185") {
+    fail(`an overridden cable is called off as ${labelOf(overridden)}`);
+  }
+
+  /* And the calculated one where nothing has been overridden — the
+     override does not become a requirement. */
+  const plain = feat("electric", { Line_Type: "elec_main", VD_Cable_Size_ID: 5 });
+  if (labelOf(plain) !== "3c WAVE 95") {
+    fail(`an un-overridden cable is called off as ${labelOf(plain)}`);
+  }
+
+  /* Gas and water had the same fault, and are fixed by the same rule
+     rather than by two more lookups. */
+  const gas = feat("gas", {
+    Line_Type: "gas_main", Gas_Pipe_Size_ID: 2, Manual_Gas_Pipe_Size_ID: 3,
+  });
+  if (labelOf(gas) !== "180mm PE") {
+    fail(`an overridden gas main is called off as ${labelOf(gas)}`);
+  }
+
+  /* A size typed before the catalogue existed is still a real size. */
+  const typed = feat("gas", { Line_Type: "gas_main", Size: "90mm PE" });
+  if (labelOf(typed) !== "90mm PE") fail("a typed size is lost");
+
+  /* Nothing sized falls back to the line type's name rather than
+     going blank. */
+  const bare = feat("gas", { Line_Type: "gas_main" });
+  if (labelOf(bare) !== "Gas Main") fail("an unsized main has no label at all");
+
+  /* Through the shared rule, not a second lookup: this is the third
+     reader of "what size is this", and the first two disagreed. */
+  const src = readFileSync("./src/features/gis/spanContents.js", "utf8");
+  if (!/sizeLabelOf\(/.test(src)) {
+    fail("the span contents keep their own idea of a feature's size");
+  }
+  if (/Attributes\?\.Cable_Size_ID \?\? /.test(src)) {
+    fail("the old calculated-only lookup is still there");
   }
 }
 

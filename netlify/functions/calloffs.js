@@ -243,7 +243,16 @@ export default withAuth(async function handler(req, context) {
         }
       }
 
-      return json(created);
+      /* The rows that were inserted, with their ids.
+
+         Only the submission came back, so a caller that wanted to
+         attach something to a span — a picture of it for the work
+         instruction — had no way to name one. The ids exist here and
+         were being thrown away.
+
+         Named `items` to match what was sent, so the caller can line
+         them up with what it asked for. */
+      return json({ ...created, items: kids || [] });
     }
 
     /* ── PATCH: the submission, and what its dates invalidate ── */

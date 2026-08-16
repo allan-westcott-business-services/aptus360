@@ -75,3 +75,12 @@ export async function setPlotEnergisation(servicePlotId, utilities) {
   }
   return http.put(`/calloffs/plots/${servicePlotId}/energisation`, { utilities });
 }
+
+/* The picture of one span, stored against it.
+
+   Sent to a function rather than uploaded from here: the browser's key
+   has no policies and can write nothing, so storage goes the same way
+   everything else does. */
+export async function saveSpanImage({ spanId, dataUrl }) {
+  return http.post("/call-off-span-image", { spanId, dataUrl });
+}

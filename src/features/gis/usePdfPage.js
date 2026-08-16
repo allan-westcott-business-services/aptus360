@@ -96,7 +96,51 @@ export function usePdfPage(url, pageNumber = 1) {
     }
   }, [size, pageNumber, tile]);
 
-  return { tile, size, error, request };
+  /* One region, rendered and handed back.
+
+     `request` exists for the screen: it keeps one tile, grows it so
+     small pans stay inside, and skips work the current tile already
+     covers. All of that is wrong for taking a picture of a span — the
+     answer has to be this extent, now, and several in a row without
+     each replacing the last.
+
+     So this renders and returns rather than setting state. Same
+     document, same page, no tile touched: capturing a call-off leaves
+     the drawing on screen exactly as it was.
+
+     Sequential by necessity — pdf.js renders one page at a time — so a
+     caller with six spans awaits six of these. That is a second or two
+     once, when a call-off is raised. */
+  const renderRegion = useCallback(async (rect, scale) => {
+    if (!docRef.current || !size || !rect || !scale) return null;
+
+    const x = Math.max(0, rect.x);
+    const y = Math.max(0, rect.y);
+    const w = Math.min(size.width - x, rect.w);
+    const h = Math.min(size.height - y, rect.h);
+    if (!(w > 0) || !(h > 0)) return null;
+
+    /* The same ceiling the tile uses. A span at a high zoom would
+       otherwise ask for a canvas the browser refuses to make, and the
+       failure is a blank picture rather than an error. */
+    let s = scale;
+    if (w * s * h * s > MAX_PIXELS) s = Math.sqrt(MAX_PIXELS / (w * h));
+
+    const page = await docRef.current.getPage(pageNumber);
+    const vp = page.getViewport({ scale: s, offsetX: -x * s, offsetY: -y * s });
+
+    const cv = document.createElement("canvas");
+    cv.width = Math.max(1, Math.round(w * s));
+    cv.height = Math.max(1, Math.round(h * s));
+    const ctx = cv.getContext("2d", { alpha: false });
+    ctx.fillStyle = "#ffffff";
+    ctx.fillRect(0, 0, cv.width, cv.height);
+    await page.render({ canvasContext: ctx, viewport: vp }).promise;
+
+    return { canvas: cv, x, y, w, h, scale: s };
+  }, [size, pageNumber]);
+
+  return { tile, size, error, request, renderRegion };
 }
 
 /* Draw a rendered tile onto a canvas, given the page→screen transform. */

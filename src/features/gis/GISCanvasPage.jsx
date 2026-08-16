@@ -98,7 +98,11 @@ import {
 import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
 } from "./easement.js";
-import { createCallOff, updateCallOff, listCallOffs } from "../../api/calloffs.js";
+import {
+  createCallOff, updateCallOff, listCallOffs, saveSpanImage,
+} from "../../api/calloffs.js";
+import { spanImage, spanBounds } from "./spanImage.js";
+import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -7968,6 +7972,76 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
 
+  /* A picture of each span on a call-off that has just been raised.
+
+     The rows come back from the create with their ids, in the order
+     they were sent — which is the order toCallOffRows produced them,
+     and therefore the order of callOff.ranges. Matched by position
+     rather than by name: two runs between the same pair of nodes are
+     two rows with identical labels, and a join on the label would put
+     both pictures on one of them.
+
+     Failures are counted, not thrown. A span without a picture is a
+     work instruction missing one picture; a call-off lost because a
+     canvas would not draw is a morning's work. */
+  async function captureSpans(created) {
+    const rows = created?.items || [];
+    if (!rows.length || !callOff?.ranges?.length) return;
+
+    /* The runs, flattened to spans in the same order the rows were
+       built from them. */
+    const spans = callOff.ranges.flatMap((r) => r.spans || [r]);
+
+    let done = 0;
+    let failed = 0;
+
+    for (let i = 0; i < rows.length && i < spans.length; i++) {
+      const row = rows[i];
+      const sp = spans[i];
+      if (!row?.Span_ID) { failed += 1; continue; }
+
+      try {
+        const trenches = (sp.trenchIds || [])
+          .map((id) => features.find((f) => Number(f.Feature_ID) === Number(id)))
+          .filter(Boolean);
+        if (!trenches.length) { failed += 1; continue; }
+
+        /* The plan under it, at this span's extent. Asked for per span
+           because a PDF is rendered for a region, and the region is
+           different every time. */
+        const bounds = spanBounds(trenches.map((t) => t.Geometry));
+        const plan = await planLayer({
+          basemap,
+          bounds,
+          image: bgImage,
+          renderRegion: pdf.renderRegion,
+          isPdf: isPdfMap,
+          scale: view.scale,
+        }).catch(() => null);
+
+        const dataUrl = spanImage({
+          trenches,
+          /* The two nodes this span runs between, and the seeds around
+             it — everything in frame, which spanImage decides. */
+          nodes: features.filter((f) => f.Feature_Role === "spannode"),
+          seeds: features.filter((f) => f.Feature_Role === "plot"),
+          plan,
+        });
+        if (!dataUrl) { failed += 1; continue; }
+
+        await saveSpanImage({ spanId: row.Span_ID, dataUrl });
+        done += 1;
+      } catch { failed += 1; }
+    }
+
+    /* Said, because a missing picture is otherwise silent until
+       somebody opens the work instruction on a road. */
+    if (failed) {
+      setStatus(`Call-off raised \u00b7 ${done} of ${done + failed} span `
+        + "pictures saved. The rest can be redrawn from the call-off.");
+    }
+  }
+
   async function submitCallOff() {
     if (!callOff?.spans?.length) return;
 
@@ -8041,6 +8115,25 @@ export default function GISCanvasPage() {
           .filter((e) => e.ok)
           .reduce((t, e) => t + e.halfDays, 0) || null,
       });
+
+      /* A picture of each span, drawn now and kept.
+
+         Now, because this is the only moment everything needed is in
+         one place: the drawing as it stands, the styles, and the plan
+         underneath. And kept, because a work instruction is a record —
+         if the design moves next week the gang still sees what was
+         called off.
+
+         After the call-off is saved, never before. A picture that fails
+         to draw or fails to upload must not lose the call-off it
+         belongs to; the span keeps a null path and the work instruction
+         says the picture is missing, which is recoverable. A call-off
+         that failed to save because of an image is not.
+
+         Awaited one at a time. pdf.js renders a page at a time anyway,
+         and six requests at once from a tablet is how the last one
+         times out. */
+      captureSpans(created).catch(() => { /* said below, not here */ });
 
       setRanges([]);
       setPick(null);
@@ -15970,8 +16063,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 /* The prompt sits above the list, where the eye already is after
    picking, rather than at the foot where the totals are. */
 .gco-ask { display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
-  padding: 8px 10px; background: #eff6ff; border: 1px solid #bfdbfe;
-  border-radius: 8px; }
+  padding: 8px 10px; border-radius: 8px; background: #eef2ff;
+  border: 1px solid #c7d2fe; }
 .gco-ask strong { flex: 1; font-size: 12.5px; }
 .gco-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
 .gco-fld { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }

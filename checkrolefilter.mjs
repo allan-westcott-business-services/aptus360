@@ -230,15 +230,22 @@ const shown = (filter) => ORGS.filter(([, r]) => matches(r, filter)).map(([n]) =
   for (const m of (mapSrc?.[1] ?? "").matchAll(/(\w+):\s*\[([^\]]*)\]/g)) {
     ROLES[m[1]] = [...m[2].matchAll(/"([a-z_]+)"/g)].map((x) => x[1]);
   }
-  /* And says something for each of the three. */
-  for (const u of ["electric", "gas", "water"]) {
-    if (!ROLES[u]?.length) fail(`${u} has no operator roles named`);
+  /* One role each, and the incumbent one. Two would put the
+     independents back in the list. */
+  for (const [u, want] of [["electric", "dno"], ["gas", "gt"], ["water", "wu"]]) {
+    if (!ROLES[u]?.length) fail(`${u} has no operator role named`);
+    else if (ROLES[u].length !== 1) {
+      fail(`${u} names ${ROLES[u].length} roles — the independents are a separate field`);
+    } else if (ROLES[u][0] !== want) {
+      fail(`${u} names ${ROLES[u][0]} rather than ${want}`);
+    }
   }
   const ops = [
     { Name: "Cadent", role_keys: ["gt"], utility_ids: [2] },
     { Name: "ES Pipelines", role_keys: ["igt"], utility_ids: [2] },
     { Name: "GTC", role_keys: ["idno", "igt", "iwu"], utility_ids: [1, 2, 3] },
     { Name: "Leep Networks", role_keys: ["idno", "iwu"], utility_ids: [1, 2, 3] },
+    { Name: "Northern Powergrid", role_keys: ["dno"], utility_ids: [1] },
     { Name: "United Utilities", role_keys: ["wu"], utility_ids: [3] },
   ];
   const offered = (utility, id) => {
@@ -250,17 +257,23 @@ const shown = (filter) => ORGS.filter(([, r]) => matches(r, filter)).map(([n]) =
   };
 
   const gas = offered("gas", 2);
-  if (!gas.includes("Cadent")) fail("a gas transporter is not offered on gas");
-  if (!gas.includes("GTC")) fail("a company holding igt is not offered on gas");
-  /* Leep covers gas in this fixture and holds only idno and iwu — an
-     electricity and water company, and not a transporter. */
+  if (!gas.includes("Cadent")) fail("the gas transporter is not offered on gas");
+  /* The independents belong to a different question with its own field.
+     Offering them here made the list several times longer than it should
+     be, and invited somebody to name GTC where Cadent belongs. */
+  if (gas.includes("GTC")) fail("an IGT is offered as the gas transporter");
   if (gas.includes("Leep Networks")) {
-    fail("an IDNO covering gas is offered as a gas transporter");
+    fail("an IDNO covering gas is offered as the gas transporter");
   }
 
   const water = offered("water", 3);
   if (!water.includes("United Utilities")) fail("a water undertaker is not offered on water");
+  if (water.includes("GTC")) fail("an IWU is offered as the water undertaker");
   if (water.includes("Cadent")) fail("a gas transporter is offered on water");
+
+  const electric = offered("electric", 1);
+  if (!electric.includes("Northern Powergrid")) fail("a DNO is not offered on electricity");
+  if (electric.includes("GTC")) fail("an IDNO is offered as the DNO");
 
   /* And the screen does both halves rather than one. */
   const tab = readFileSync("./src/features/stakeholders/StakeholderTab.jsx", "utf8");

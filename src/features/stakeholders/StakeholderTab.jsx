@@ -27,21 +27,29 @@ const OPERATOR_WORD = {
   water: "Water Undertaker",
 };
 
-/* Which roles may appear in each utility's picker.
+/* Which role belongs in each utility's picker.
 
-   The list used to filter on utility alone, so any operator marked as
-   covering gas was offered as a gas transporter — including an IDNO
-   that happens to work in gas, which is an electricity company. The
-   role is what makes somebody a transporter; the utility only says
-   where.
+   The incumbent network operator, and only that: the DNO on electricity,
+   the gas transporter, the water undertaker. One role each.
 
-   Both halves are needed. A company holding the role but not marked as
-   covering the utility is one somebody has not finished setting up; one
-   covering the utility without the role is the wrong sort of company. */
+   ── Not the independents ──
+
+   An IDNO, an IGT or an IWU is an adopting operator, which is a
+   different question with a different answer and its own field. Offering
+   them here made the list several times longer than it should be and
+   invited somebody to name GTC where Cadent belongs — and the two are
+   not interchangeable on any document that follows.
+
+   ── Both halves still matter ──
+
+   The role says what sort of company it is, the utility says where it
+   works. A company holding the role but not marked as covering the
+   utility is one somebody has not finished setting up; one covering the
+   utility without the role is the wrong sort of company entirely. */
 const OPERATOR_ROLES = {
-  electric: ["dno", "idno"],
-  gas: ["gt", "igt"],
-  water: ["wu", "iwu"],
+  electric: ["dno"],
+  gas: ["gt"],
+  water: ["wu"],
 };
 
 const rolesFor = (utility) =>

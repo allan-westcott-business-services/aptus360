@@ -379,11 +379,15 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   /* Driven by the column list, not a fixed run of cells — otherwise a
      moved header leaves its data behind, which is the failure the other
      tables' comments warn about. */
-  if (!/layout\.visible\.map/.test(page)) {
+  /* Drawn from the layout, by way of `cols` — which is the layout
+     minus whatever the grouping folds away. Asserting on
+     layout.visible.map directly was right until grouping arrived and
+     then failed on correct code. */
+  if (!/\{cols\.map\(\(c\) => \(\s*\n?\s*<th key=\{c\.key\} \{\.\.\.layout\.reorderProps/.test(page)) {
     fail("the header is drawn from a fixed list, so moving a column would misalign it");
   }
   const body = page.slice(page.indexOf("<tbody>"), page.indexOf("</tbody>"));
-  if (!/layout\.visible\.map/.test(body)) {
+  if (!/\{cols\.map\(\(c\) => \{/.test(body)) {
     fail("the body is a fixed run of cells, so a moved column shows the wrong data");
   }
 
@@ -406,8 +410,11 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   if (!/const FILTERABLE = COLS\.filter\(\(c\) => c\.type !== "none"\)/.test(page)) {
     fail("a column with nothing to filter on is passed to the filter");
   }
-  if (!/status === "open" && CLOSED\.has/.test(page)) {
-    fail("adding column filters dropped the open/closed filter");
+  /* The open/closed filter above the table has gone: the Status column
+     filters itself, and two controls for one question could disagree.
+     What must not go is the column filtering itself. */
+  if (!/rowPasses\(r, FILTERABLE, filters\)/.test(page)) {
+    fail("the column filters are not applied to the rows");
   }
 
   /* Assigned sorts and filters on the worst state on the row, so
@@ -530,6 +537,81 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
   }
   if (shown.some((t) => t.Task_Type_ID === 12)) {
     fail("another work type's phase is shown");
+  }
+}
+
+// 17. The list groups, and the status dropdown is gone.
+//
+//     Two controls for one question could disagree: the dropdown saying
+//     open, the Status column filter saying Complete, and a table
+//     showing nothing with no obvious reason why.
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+
+  if (!/const \[groupBy, setGroupBy\]/.test(page)) fail("the list cannot be grouped");
+  for (const g of ["customer", "worktype", "status"]) {
+    if (!new RegExp(`value="${g}"`).test(page)) fail(`there is no grouping by ${g}`);
+  }
+
+  /* The dropdown is gone, and so is the filter behind it — filtering to
+     open with no control on screen would hide finished call-offs with
+     nothing to say so, and somebody would think they had lost one. */
+  if (/setStatus\(/.test(page)) fail("the status control is still there");
+  if (/status === "open" && CLOSED\.has/.test(page)) {
+    fail("the list still hides closed call-offs with no way to say so");
+  }
+
+  /* The grouped column folds away: repeating the branch on every row
+     under a heading that says the branch is noise. */
+  if (!/const cols = layout\.visible\.filter\(\(c\) => c\.key !== groupedCol\)/.test(page)) {
+    fail("the column being grouped by is repeated on every row");
+  }
+  /* And the table draws from that list, or a folded column leaves a
+     hole where its cells were. */
+  if (/layout\.visible\.map/.test(page)) {
+    fail("part of the table still draws every column, including the grouped one");
+  }
+
+  /* Groups shut, and say what is in them when shut. */
+  if (!/collapsed\[label\]/.test(page)) fail("groups cannot be collapsed");
+  if (!/call-off\$\{list\.length === 1/.test(page)) {
+    fail("a shut group does not say how many are in it");
+  }
+
+  /* Status groups read in the order the office works through, not
+     alphabetically: Pending Review before Complete says something about
+     progress that P-before-C does not. */
+  if (!/statusRank\(a\[0\]\) - statusRank\(b\[0\]\)/.test(page)) {
+    fail("status groups are sorted alphabetically");
+  }
+  /* The order is read out of the page rather than imported: node
+     cannot load a .jsx module, and a copy of the list here would be a
+     second answer to what order statuses go in. */
+  const listed = page.match(/export const STATUSES = \[([\s\S]*?)\];/);
+  const STATUSES = listed
+    ? [...listed[1].matchAll(/"([^"]+)"/g)].map((m) => m[1]) : [];
+  const statusRank = (n) => {
+    const i = STATUSES.indexOf(n);
+    return i < 0 ? STATUSES.length : i;
+  };
+  if (!STATUSES.length) fail("the page no longer says what order statuses go in");
+
+  const order = ["Complete", "Pending Review", "Submitted"]
+    .sort((a, b) => statusRank(a) - statusRank(b));
+  if (order[0] !== "Pending Review" || order[2] !== "Complete") {
+    fail(`status groups came out as ${order.join(" then ")}`);
+  }
+  /* A status the database has and this list does not sorts last, rather
+     than being promoted above the ones somebody thought about. */
+  if (statusRank("Something New") <= statusRank("Complete")) {
+    fail("an unknown status sorts above known ones");
+  }
+
+  /* Submitted and Aborted arrived with the field app (0169) and this
+     list was not updated, so neither could be set by hand on a call-off
+     that needed correcting. */
+  for (const st of ["Submitted", "Aborted"]) {
+    if (!STATUSES.includes(st)) fail(`${st} is missing from the status list`);
   }
 }
 

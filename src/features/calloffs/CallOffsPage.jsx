@@ -39,10 +39,31 @@ import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js
    Clicking one opens it, where the work is scheduled and the status
    moved. */
 
+/* The statuses a call-off moves through, in the order it moves through
+   them.
+
+   Declared here as well as seeded in the database (0116, 0169) because
+   this is the order things are *read* in — grouping by status should
+   put Pending Review before Complete, which says something about
+   progress that P-before-C does not.
+
+   Submitted and Aborted were missing: 0169 added them for the field
+   app, and this list was not updated, so neither could be set by hand
+   on a call-off that needed correcting. */
 export const STATUSES = [
   "Pending Review", "Reviewed", "Scheduled", "In Progress",
-  "Complete", "Withdrawn (Customer)", "Withdrawn (Aptus)",
+  "Submitted", "Complete", "Aborted",
+  "Withdrawn (Customer)", "Withdrawn (Aptus)",
 ];
+
+/* Where a status sits in that order. Anything not on the list sorts
+   after everything that is, rather than at the front — a status added
+   to the database and not here should be visible as an oddity, not
+   promoted above the ones somebody thought about. */
+export function statusRank(name) {
+  const i = STATUSES.indexOf(String(name || ""));
+  return i < 0 ? STATUSES.length : i;
+}
 
 /* The later of two dates, either of which may be missing. Used where
    two floors apply at once — today and a dependency — and the binding
@@ -236,7 +257,15 @@ export default function CallOffsPage() {
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
-  const [status, setStatus] = useState(() => recall("callOffStatus", "open"));
+  /* The open/closed filter that lived above the table is gone: the
+     Status column filters itself, and two controls for one question
+     could disagree — one saying open, the other Complete, and a table
+     showing nothing with no obvious reason.
+
+     Which leaves what happens by default. Filtering to open with no
+     control on screen would hide finished call-offs with nothing to say
+     so, and somebody would think they had lost one. So everything shows
+     and the Status filter narrows it. */
   /* Raising a call-off: null, or "editor" / "canvas" once the way has
      been chosen.
 
@@ -266,8 +295,16 @@ export default function CallOffsPage() {
       const id = Number(intent?.submissionId);
       if (!id) return;
       setOpenId(id);
-      setStatus("all");
+      /* Cleared, so the row somebody was sent to is not hidden by
+         whatever was being looked at before.
+
+         This used to widen the status filter above the table; that has
+         gone, but the column filters can hide a row just as
+         effectively — and arriving from the planning board to an empty
+         table is the same confusion by a different route. */
       setQ("");
+      setFilters({});
+      setGroupBy("none");
     };
     take(takeCallOffIntent());
     return onOpenCallOff(take);
@@ -297,6 +334,19 @@ export default function CallOffsPage() {
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
   const [sort, setSort] = useState({ key: "created", dir: "desc" });
+
+  /* Grouping, and which groups are shut.
+
+     Collapsed rather than expanded is the state worth keeping: a table
+     of six branches is read one branch at a time, and the ones already
+     dealt with should stay out of the way.
+
+     The status dropdown above the table is gone with this. It did what
+     the Status column filter already does, and having both meant two
+     controls that could disagree — one saying open, the other saying
+     Complete, and a table showing nothing with no obvious reason. */
+  const [groupBy, setGroupBy] = useState("none");
+  const [collapsed, setCollapsed] = useState({});
 
   const toggleSort = (key) => setSort((sc) => (sc.key === key
     ? { key, dir: sc.dir === "asc" ? "desc" : "asc" }
@@ -356,8 +406,6 @@ export default function CallOffsPage() {
   const shown = useMemo(() => {
     const t = q.trim().toLowerCase();
     const list = withCover.filter((r) => {
-      if (status === "open" && CLOSED.has(r.Status)) return false;
-      if (status !== "open" && status !== "all" && r.Status !== status) return false;
       /* The column filters, on top of the search box and the status
          dropdown above the table. All three narrow: none of them
          replaces another.
@@ -388,6 +436,44 @@ export default function CallOffsPage() {
       return String(x ?? "").localeCompare(String(y ?? "")) * dir;
     });
   }, [withCover, q, status, filters, sort]);
+
+  /* The rows, in groups.
+
+     One heading row per group, so a branch or a work type reads as a
+     block rather than something to scan for. Sorted by label, except
+     status, which reads in the order the office works through rather
+     than alphabetically — Pending Review before Complete says something
+     about progress that P-before-C does not. */
+  const groups = useMemo(() => {
+    if (groupBy === "none") return [["", shown]];
+
+    const label = (r) => {
+      if (groupBy === "customer") {
+        return r.Branch_Name || r.Customer_Name || "No customer";
+      }
+      if (groupBy === "worktype") {
+        return r.Work_Type?.Work_Type_Name || "No work type";
+      }
+      return r.Status || "No status";
+    };
+
+    const m = new Map();
+    for (const r of shown) {
+      const k = label(r);
+      if (!m.has(k)) m.set(k, []);
+      m.get(k).push(r);
+    }
+
+    const order = groupBy === "status"
+      ? (a, b) => statusRank(a[0]) - statusRank(b[0])
+      : (a, b) => a[0].localeCompare(b[0], undefined, { numeric: true });
+    return [...m].sort(order);
+  }, [shown, groupBy]);
+
+  /* The column being grouped by, folded away: repeating the branch on
+     every row under a heading that says the branch is noise. */
+  const groupedCol = { customer: "customer", worktype: "worktype", status: "status" }[groupBy];
+  const cols = layout.visible.filter((c) => c.key !== groupedCol);
 
   /* The values present in a column, for its filter list. Taken from what
      survives the other filters, so a list never offers a value that
@@ -493,14 +579,23 @@ export default function CallOffsPage() {
         </h2>
         <input className="co-search" value={q} placeholder="Search reference, site, customer, contact…"
           onChange={(e) => setQ(e.target.value)} />
-        <select className="co-status-sel" value={status}
-          onChange={(e) => setStatus(e.target.value)}>
-          <option value="open">Open call-offs</option>
-          <option value="all">All statuses</option>
-          {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
+        {/* Grouping, where the status dropdown was.
+
+            That dropdown did what the Status column filter already
+            does, and having both meant two controls that could
+            disagree — one saying open, the other saying Complete, and a
+            table showing nothing with no obvious reason why. */}
+        <select className="co-status-sel" value={groupBy}
+          aria-label="Group by"
+          onChange={(e) => { setGroupBy(e.target.value); setCollapsed({}); }}>
+          <option value="none">No grouping</option>
+          <option value="customer">Group by customer</option>
+          <option value="worktype">Group by work type</option>
+          <option value="status">Group by status</option>
         </select>
-        {(q || status !== "open") && (
-          <button className="btn ghost sm" onClick={() => { setQ(""); setStatus("open"); }}>
+        {(q || groupBy !== "none" || Object.keys(filters).length > 0) && (
+          <button className="btn ghost sm"
+            onClick={() => { setQ(""); setGroupBy("none"); setFilters({}); }}>
             Clear
           </button>
         )}
@@ -590,12 +685,12 @@ export default function CallOffsPage() {
         <div className="dt-wrap">
           <table className="dt co-tbl">
             <colgroup>
-              {layout.visible.map((c) =>
+              {cols.map((c) =>
                 <col key={c.key} style={{ width: layout.widths[c.key] }} />)}
             </colgroup>
             <thead>
               <tr className="head-row">
-                {layout.visible.map((c) => (
+                {cols.map((c) => (
                   <th key={c.key} {...layout.reorderProps(c.key)}
                       className={c.align === "center" ? "ta-c" : undefined}
                       onClick={() => c.type !== "none" && toggleSort(c.key)}>
@@ -615,7 +710,7 @@ export default function CallOffsPage() {
                 ))}
               </tr>
               <tr className="filter-row" onClick={(e) => e.stopPropagation()}>
-                {layout.visible.map((c) => (
+                {cols.map((c) => (
                   <th key={c.key}>
                     {c.type !== "none" && (
                       <FilterCell col={c} value={filters[c.key] ?? blankFilter(c.type)}
@@ -629,11 +724,37 @@ export default function CallOffsPage() {
               </tr>
             </thead>
             <tbody>
-              {shown.map((r) => (
+              {groups.flatMap(([label, list]) => [
+                /* A heading per group, spanning the table. Clicking it
+                   shuts the group: a list of six branches is read one
+                   branch at a time, and the ones dealt with should get
+                   out of the way. */
+                ...(label ? [(
+                  <tr className="co-grp" key={`g:${label}`}
+                    onClick={() => setCollapsed((c) => ({ ...c, [label]: !c[label] }))}>
+                    <td colSpan={cols.length}>
+                      <button className="co-grp-t" aria-expanded={!collapsed[label]}
+                        aria-label={`${collapsed[label] ? "Expand" : "Collapse"} ${label}`}
+                        onClick={(e) => {
+                          e.stopPropagation();
+                          setCollapsed((c) => ({ ...c, [label]: !c[label] }));
+                        }}>
+                        {collapsed[label] ? "\u25B8" : "\u25BE"}
+                      </button>
+                      <strong>{label}</strong>
+                      {/* The count, because a shut group otherwise says
+                          nothing about what is inside it. */}
+                      <span className="co-grp-n">
+                        {`${list.length} call-off${list.length === 1 ? "" : "s"}`}
+                      </span>
+                    </td>
+                  </tr>
+                )] : []),
+                ...(collapsed[label] ? [] : list.map((r) => (
                 /* The whole row opens it: the target is bigger and there
                    is nothing else on a row to click. */
                 <tr key={r.Submission_ID} onClick={() => setOpenId(r.Submission_ID)}>
-                  {layout.visible.map((c) => {
+                  {cols.map((c) => {
                     if (c.key === "act") {
                       /* stopPropagation on both: the row opens the
                          call-off, and without it Delete would open the
@@ -707,7 +828,8 @@ export default function CallOffsPage() {
                     return <td key={c.key}>{col_text(c.raw(r))}</td>;
                   })}
                 </tr>
-              ))}
+                ))),
+              ])}
             </tbody>
           </table>
         </div>
@@ -3390,6 +3512,17 @@ const CSS = FILTER_CSS + `
 .co-how-opt strong { display: block; font-size: 15px; margin-bottom: 3px; }
 .co-how-opt span { display: block; font-size: 12.5px; color: var(--muted);
   line-height: 1.6; }
+/* A group heading, spanning the table. Its own row rather than a
+   sub-table, so the columns stay aligned across every group — the
+   thing a table is for. */
+.co-grp td { background: var(--bg); border-top: 1px solid var(--border);
+  border-bottom: 1px solid var(--border); padding: 7px 10px; cursor: pointer;
+  font-size: 12.5px; position: sticky; left: 0; }
+.co-grp strong { font-size: 13px; }
+.co-grp-t { background: none; border: none; cursor: pointer; padding: 0 7px 0 0;
+  font-size: 11px; color: var(--muted); }
+/* What is inside a shut group, which it otherwise says nothing about. */
+.co-grp-n { margin-left: 9px; font-size: 11.5px; color: var(--muted); }
 .co-cover { display: flex; flex-wrap: wrap; gap: 4px; }
 .co-cov { display: inline-flex; align-items: baseline; gap: 5px;
   border-radius: 20px; padding: 2px 9px; font-size: 11px; white-space: nowrap;

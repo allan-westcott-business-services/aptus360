@@ -99,6 +99,41 @@ export default withAuth(async function handler(req) {
       utils = data || [];
     }
 
+    /* What has been booked against each, so the list can say how much
+       of a call-off is covered (assignmentCover.js).
+
+       Fetched here rather than left to the page: the page has the
+       call-offs and nothing else, and a screen that had to ask per row
+       would make a query for every line in the table.
+
+       Tolerated missing, like the utilities above. Call_Off_Assignment
+       and Call_Off_Work_Day arrive in migrations that an older database
+       may not have, and a list that failed to load over a status pill
+       would be worse than one that cannot show it. */
+    let assignments = [];
+    let workDays = [];
+    let taskTypes = [];
+    if (ids.length) {
+      const { data: asg } = await db.from("Call_Off_Assignment")
+        .select("Assignment_ID,Submission_ID,Task_Type_ID,Team_ID,Span_ID,Status")
+        .in("Submission_ID", ids)
+        .then((r) => r, () => ({ data: [] }));
+      assignments = asg || [];
+
+      if (assignments.length) {
+        const { data: wd } = await db.from("Call_Off_Work_Day")
+          .select("Work_Day_ID,Assignment_ID,Work_Date,Part")
+          .in("Assignment_ID", assignments.map((a) => a.Assignment_ID))
+          .then((r) => r, () => ({ data: [] }));
+        workDays = wd || [];
+      }
+
+      const { data: tt } = await db.from("Task_Type")
+        .select("Task_Type_ID,Task_Type_Name")
+        .then((r) => r, () => ({ data: [] }));
+      taskTypes = tt || [];
+    }
+
     /* The site name, where the submission did not capture one.
 
        A call-off records the site as it was when raised, so a project
@@ -133,10 +168,20 @@ export default withAuth(async function handler(req) {
         utility_ids: utils
           .filter((u) => u.Submission_ID === s.Submission_ID)
           .map((u) => Number(u.Utility_ID)),
+        /* Enough for the page to work out how much of it is booked. The
+           rule lives in assignmentCover.js, not here: the same question
+           is asked on the call-off itself, and two answers to it would
+           eventually differ. */
+        assignments: assignments
+          .filter((a) => Number(a.Submission_ID) === Number(s.Submission_ID)),
       };
     });
 
-    return json({ rows });
+    /* Sent alongside rather than folded into each row: a work day
+       belongs to an assignment, not to a call-off, and copying them per
+       row would send the same day several times on a call-off booked
+       across phases. */
+    return json({ rows, workDays, taskTypes });
   } catch (e) {
     return fail(e, 400);
   }

@@ -10,6 +10,7 @@ import { openProject } from "../../lib/projectIntent.js";
 import { setPlotEnergisation } from "../../api/calloffs.js";
 import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
 import { halfDaysText } from "./digDays.js";
+import { phaseCover, COVER_LABEL, isListedPhase } from "./assignmentCover.js";
 import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { pillStyle } from "../../lib/pillColour.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
@@ -124,8 +125,24 @@ const fmt = (d) => {
   return M && dd ? `${dd}-${M}-${y}` : d;
 };
 
+/* A phase, short enough for a pill. "Excavation and Lay" is the width
+   of the column on its own. */
+function shortPhase(name) {
+  const n = String(name || "");
+  if (/^excav/i.test(n)) return "Dig";
+  if (/^lay/i.test(n)) return "Lay";
+  if (/^reinstat/i.test(n)) return "Reinstate";
+  return n.split(/\s+/)[0];
+}
+
 export default function CallOffsPage() {
   const [rows, setRows] = useState([]);
+  /* Sent alongside the rows so the list can say how much of each
+     call-off is booked. Days belong to assignments rather than to
+     call-offs, so they arrive once rather than copied onto every row
+     that touches them. */
+  const [allWorkDays, setAllWorkDays] = useState([]);
+  const [allTaskTypes, setAllTaskTypes] = useState([]);
   const [error, setError] = useState("");
   const [loading, setLoading] = useState(true);
   const [q, setQ] = useState("");
@@ -164,6 +181,8 @@ export default function CallOffsPage() {
          for as a single equality. */
       const res = await listAllCallOffs({});
       setRows(res.rows || []);
+      setAllWorkDays(res.workDays || []);
+      setAllTaskTypes(res.taskTypes || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -329,7 +348,16 @@ export default function CallOffsPage() {
             <tr>
               <th>Submitted</th><th>Reference</th><th>Site</th>
               <th>Customer</th><th>Work Type</th><th>Contact</th>
-              <th>Preferred</th><th>Status</th>
+              <th>Preferred</th>
+              {/* How much of the work is booked, phase by phase.
+
+                  A call-off with a team against it looks dealt with, and
+                  may be a morning booked against a day's dig or one span
+                  of four. Nothing on this list said so, so it had to be
+                  opened to find out — and a thing you open to check is a
+                  thing that gets missed. */}
+              <th>Assigned</th>
+              <th>Status</th>
               {/* Edit and delete on the row itself.
 
                   They were on the detail page, which meant opening a
@@ -355,6 +383,38 @@ export default function CallOffsPage() {
                 </td>
                 <td>{r.Contact_Name || "\u2014"}</td>
                 <td>{fmt(r.Preferred_Date)}</td>
+                <td className="co-cover">
+                  {(() => {
+                    const asg = r.assignments || [];
+                    const phases = allTaskTypes
+                      .filter((t) => isListedPhase(t.Task_Type_Name))
+                      /* Only the phases this call-off actually has work
+                         booked or bookable for. A pill reading
+                         "Unassigned" against a phase the work type does
+                         not include is a warning about nothing. */
+                      .filter((t) => asg.some((a) =>
+                        Number(a.Task_Type_ID) === Number(t.Task_Type_ID))
+                        || (r.Work_Type?.Selection_Mode === "Span"
+                          && isListedPhase(t.Task_Type_Name)));
+                    if (!phases.length) return <span className="co-dim">&mdash;</span>;
+                    return phases.map((t) => {
+                      const mine = asg.filter((a) =>
+                        Number(a.Task_Type_ID) === Number(t.Task_Type_ID));
+                      const state = phaseCover(r.items || [], mine, allWorkDays);
+                      /* Named as well as coloured. Three shades of pill
+                         is a legend somebody has to learn, and the one
+                         that matters — part assigned — is the one a
+                         colour alone would not distinguish from done. */
+                      return (
+                        <span className={`co-cov c-${state}`} key={t.Task_Type_ID}
+                          title={`${t.Task_Type_Name}: ${COVER_LABEL[state]}`}>
+                          {shortPhase(t.Task_Type_Name)}
+                          <b>{COVER_LABEL[state]}</b>
+                        </span>
+                      );
+                    });
+                  })()}
+                </td>
                 <td>
                   <span className={`co-st s-${String(r.Status || "").replace(/\W+/g, "").toLowerCase()}`}>
                     {r.Status}
@@ -428,6 +488,12 @@ export default function CallOffsPage() {
 export function ProjectPicker({ onCancel, onPick }) {
   const drag = useDragHandle();
   const [rows, setRows] = useState([]);
+  /* Sent alongside the rows so the list can say how much of each
+     call-off is booked. Days belong to assignments rather than to
+     call-offs, so they arrive once rather than copied onto every row
+     that touches them. */
+  const [allWorkDays, setAllWorkDays] = useState([]);
+  const [allTaskTypes, setAllTaskTypes] = useState([]);
   const [q, setQ] = useState("");
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState("");
@@ -2968,6 +3034,23 @@ const CSS = `
 .co-tbl.flat tbody tr { cursor: default; }
 .co-tbl.flat tbody tr:hover { background: none; }
 .co-dim { color: var(--muted); }
+/* How much of each phase is booked.
+
+   Named as well as coloured. Three shades of pill is a legend somebody
+   has to learn, and the state that matters — part assigned — is exactly
+   the one a colour alone would not tell from done.
+
+   Amber for part rather than red: a half-booked call-off is not wrong,
+   it is unfinished, and a list of red rows stops being read. Grey for
+   unassigned, because that is where everything starts. */
+.co-cover { display: flex; flex-wrap: wrap; gap: 4px; }
+.co-cov { display: inline-flex; align-items: baseline; gap: 5px;
+  border-radius: 20px; padding: 2px 9px; font-size: 11px; white-space: nowrap;
+  border: 1px solid transparent; }
+.co-cov b { font-weight: 700; }
+.co-cov.c-unassigned { background: #f1f5f9; color: #64748b; border-color: #e2e8f0; }
+.co-cov.c-part { background: #fef3e2; color: #92400e; border-color: #f2d675; }
+.co-cov.c-assigned { background: #dcfce7; color: #166534; border-color: #bbf7d0; }
 .co-wt-pill { font: 700 11px inherit; padding: 2px 9px; border-radius: 5px;
   background: #f3e8ff; color: #7c3aed; }
 .co-st { font: 700 10.5px inherit; padding: 2px 9px; border-radius: 20px;

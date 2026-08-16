@@ -12,6 +12,35 @@ import DevelopersSection from "./DevelopersSection.jsx";
 
 /* Everyone outside Aptus with a stake in the site: the authorities that
    have to be satisfied, and the developer's own people. */
+/* What the network operator is called on each utility.
+
+   They are different trades with different names, and the field said
+   "DNO" on all three. That was true of electricity and wrong of the
+   others: a gas transporter is not a distribution network operator, and
+   the picker now offers Cadent under a heading that says it is one.
+
+   Worth getting right rather than approximately right, because these
+   are the words on the paperwork somebody sends out. */
+const OPERATOR_WORD = {
+  electric: "DNO",
+  gas: "Gas Transporter",
+  water: "Water Undertaker",
+};
+
+const operatorWord = (utility) =>
+  OPERATOR_WORD[String(utility || "").toLowerCase().trim()] ?? "operator";
+
+/* "Electric DNO", "Gas Transporter", "Water Undertaker".
+
+   Electricity keeps its utility in front because "DNO" alone does not
+   say which network. The other two carry it already. */
+function operatorLabel(utility) {
+  const word = operatorWord(utility);
+  if (word === "DNO") return `${utility ?? "Utility"} DNO`;
+  if (word === "operator") return `${utility ?? "Utility"} operator`;
+  return word;
+}
+
 export default function StakeholderTab({ projectId }) {
   const [lookups, setLookups] = useState(null);
   const [f, setF] = useState(null);
@@ -296,7 +325,7 @@ function DnoSection({ scopes, lookups, onSet, saving }) {
             (o.utility_ids || []).some((x) => Number(x) === Number(sc.Utility_ID))
             || Number(o.Organisation_ID) === Number(sc.DNO_Organisation_ID));
           return (
-            <Field key={sc.Project_Scope_ID} label={`${utility?.name ?? "Utility"} DNO`}>
+            <Field key={sc.Project_Scope_ID} label={operatorLabel(utility?.name)}>
               <Select value={sc.DNO_Organisation_ID ?? ""}
                 disabled={saving === sc.Project_Scope_ID}
                 onChange={(v) => onSet(sc, v ? Number(v) : null)}>
@@ -307,8 +336,8 @@ function DnoSection({ scopes, lookups, onSet, saving }) {
               </Select>
               {!forThis.length && (
                 <p className="dno-note">
-                  No DNO is marked as working in this utility &mdash; set that in
-                  Admin &rsaquo; Organisations.
+                  {`No ${operatorWord(utility?.name)} is marked as working in `}
+                  this utility &mdash; set that in Admin &rsaquo; Organisations.
                 </p>
               )}
             </Field>

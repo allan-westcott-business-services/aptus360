@@ -895,15 +895,17 @@ export default function FeatureEditor({
 
               {/* Not on a span node.
 
-                  A span node's layer is decided when it is placed and
-                  there is no right answer to change it to — moving one
-                  to another layer does not move the network it is
-                  measured along, it just hides it from the utility that
-                  owns it.
+                  Its layer is decided when it is placed and there is no
+                  right answer to change it to — moving one to another
+                  layer does not move the network it is measured along,
+                  it just hides it from the utility that owns it.
 
-                  The Line type field never showed here anyway: it is
-                  gated on the feature being a line, and a span node is
-                  a point. */}
+                  The line type dropdown that used to appear beside this
+                  came from somewhere else: a span node sits on the
+                  trench layer, and isTrenchFeature answered yes to
+                  anything on that layer whether or not it was a line —
+                  so the editor gave a point the whole trench form. That
+                  is fixed at the source, in snapping.js. */}
               {feature.Feature_Role !== "spannode" && (
                 <div className="fld">
                   <label htmlFor="fe-layer">Layer</label>

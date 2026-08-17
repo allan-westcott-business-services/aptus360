@@ -142,6 +142,21 @@ export function isTrenchType(typeKey, lineTypes = []) {
    bulk delete uses; written here so the two cannot drift. */
 export function isTrenchFeature(f, lineTypes = []) {
   if (!f) return false;
+
+  /* A trench is a length of ground. A point is not one, whatever layer
+     it sits on.
+
+     Without this, a span node on the trench layer answered yes — and
+     the feature editor, which decides its whole layout from this, gave
+     a span node the trench form: a line type dropdown, an easement
+     tickbox and an on-site question, none of which mean anything for a
+     point.
+
+     The other two callers already filtered to lines before asking,
+     which is the same requirement written out three times and only
+     enforced in two of them. */
+  if (f.Feature_Type && f.Feature_Type !== "line") return false;
+
   if (f.Layer_Key === "trench") return true;
   const key = f.Attributes?.Line_Type ?? "";
   const t = lineTypes.find((x) => x.Type_Key === key);

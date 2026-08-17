@@ -10,6 +10,7 @@
    visible, and it must not appear in the bill, where only what is being
    built belongs. */
 import { readFileSync } from "node:fs";
+import { isTrenchFeature } from "./src/features/gis/snapping.js";
 import {
   allowanceOf, allowanceSupplies, allowanceLoad, allowanceText,
 } from "./src/features/gis/futureLoad.js";
@@ -321,6 +322,39 @@ const node = (a) => ({ Attributes: { Future_Allowance: a } });
      it rather than moving anything. */
   if (!/feature\.Feature_Role !== "spannode" && \(/.test(code)) {
     fail("a span node is still offered a layer to change");
+  }
+
+  /* And it is not given the trench form.
+
+     A span node sits on the trench layer, and isTrenchFeature answered
+     yes to anything on that layer whether or not it was a line — so the
+     editor handed a point a line type dropdown, an easement tickbox and
+     an on-site question, none of which mean anything for a point.
+
+     A trench is a length of ground. A point is not one, whatever layer
+     it is on. */
+  const node = {
+    Feature_Type: "point", Feature_Role: "spannode", Layer_Key: "trench",
+  };
+  if (isTrenchFeature(node, [])) fail("a span node still reads as a trench");
+  if (isTrenchFeature({ Feature_Type: "point", Layer_Key: "trench" }, [])) {
+    fail("a point on the trench layer reads as a trench");
+  }
+  /* Real trenches are untouched, by layer and by line type. */
+  const types = [{ Type_Key: "trench_main", Layer_Key: "trench" }];
+  if (!isTrenchFeature({ Feature_Type: "line", Layer_Key: "trench" }, types)) {
+    fail("a mains trench stopped being a trench");
+  }
+  if (!isTrenchFeature({
+    Feature_Type: "line", Layer_Key: "other",
+    Attributes: { Line_Type: "trench_main" },
+  }, types)) {
+    fail("a trench known only by its line type stopped being a trench");
+  }
+  /* A row with no Feature_Type answers as it always did, rather than
+     being dropped by a rule added later. */
+  if (!isTrenchFeature({ Layer_Key: "trench" }, types)) {
+    fail("a legacy row with no feature type is no longer a trench");
   }
 }
 

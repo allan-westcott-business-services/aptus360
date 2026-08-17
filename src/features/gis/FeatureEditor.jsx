@@ -985,7 +985,24 @@ export default function FeatureEditor({
               rather than merely approximate.
 
               Not offered on the origin: nothing feeds the substation. */}
+          {/* ── Only on a node that is part of an electric circuit ──
+
+              This pair is the size of the cable feeding the node, which
+              feeder.js reads to work out volt drop and the levels label
+              shows beside it. Real, and worth keeping where it means
+              something.
+
+              It means nothing on a gas or water span node, or on a
+              standalone one. Those have no cable feeding them and no
+              volt drop to compute, so the fields sat there offering an
+              override of a figure that does not exist — which is what
+              "No cable set" was saying, in a box asking to change it.
+
+              Gated on the circuit rather than on the geometry: every
+              span node is a point, and the ones that do need this are
+              points too. */}
           {feature.Feature_Role === "spannode"
+            && f.Attributes.Circuit_ID != null
             && Number(f.Attributes.Span_Seq) !== 0 && (
             <>
               {/* The build's answer and the override, the same pair the

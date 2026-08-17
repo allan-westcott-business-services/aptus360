@@ -1631,6 +1631,20 @@ export default function GISCanvasPage() {
      all layers clears it. */
   const lightingView = solo === "lighting" && shownOnly.length === 1;
 
+  /* Whether the drawing has been narrowed to utilities that are not
+     water. Gas and electric alone, or either of them on its own — the
+     views somebody is reading as a gas or electric design.
+
+     Not "water is hidden": a drawing showing everything is the general
+     view, and taking the boundary point off it would lose the marker
+     that every service trench routes to. */
+  const isolatedAwayFromWater = useMemo(() => {
+    if (!shownOnly.length) return false;
+    const utilities = shownOnly.filter((k) =>
+      ["electric", "gas", "water"].includes(k));
+    return utilities.length > 0 && !utilities.includes("water");
+  }, [shownOnly]);
+
   const visible = useMemo(
     () => features.filter((f) => {
       /* ── Span nodes answer to their own switch only ──
@@ -1738,8 +1752,25 @@ export default function GISCanvasPage() {
        either: it answers to the key "plot:boundary", which no feature
        carries, so the sweep that builds the hidden set never sees it. */
     () => !lightingView && !boundaryStyle.off
-      && !hidden.includes("plot:boundary"),
-    [hidden, lightingView, boundaryStyle]);
+      && !hidden.includes("plot:boundary")
+      /* ── Water's symbol, on water's drawing ──
+
+         The boundary point is where the water enters the plot — the
+         boundary box position, which is a water thing. It is not a gas
+         or electric idea, and on those drawings it was a lettered ring
+         on every plot that meant nothing to the person reading them.
+
+         Only the symbol. The point itself still exists and every
+         utility still routes its service trench from the main to it,
+         which is what it is for structurally — this is about what is
+         drawn, not about what is there.
+
+         Shown unless the drawing has been isolated to a utility that is
+         not water: everything visible at once is the general view and
+         the point belongs on it, the same way it is left off the
+         lighting drawing above. */
+      && !isolatedAwayFromWater,
+    [hidden, lightingView, boundaryStyle, isolatedAwayFromWater]);
 
   /* How many of each class exist, so a toggle can say whether it will
      change anything before you click it. */

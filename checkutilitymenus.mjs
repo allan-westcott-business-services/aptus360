@@ -263,10 +263,14 @@ const onScreen = (keys) => {
   const at = canvas.indexOf("const boundaryShown = useMemo(");
   if (at < 0) fail("nothing decides whether the boundary point is drawn");
   else {
-    /* To the end of the useMemo rather than a fixed number of
-       characters past its dependency list — that list has grown once
-       already and the check went red for it. */
-    const body = canvas.slice(at, canvas.indexOf("boundaryStyle]", at) + 20);
+    /* To the end of the useMemo, found by its closing `]);` rather than
+       by naming the last dependency.
+
+       Anchoring on "boundaryStyle]" was itself a fixed guess: the list
+       has now grown twice, and the second time it went red on correct
+       code for exactly the reason the first fix was written to
+       prevent. */
+    const body = canvas.slice(at, canvas.indexOf("]);", at) + 3);
     if (!/!lightingView/.test(body)) {
       fail("the boundary point is still drawn on the lighting drawing");
     }

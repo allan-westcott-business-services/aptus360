@@ -358,6 +358,57 @@ const node = (a) => ({ Attributes: { Future_Allowance: a } });
   }
 }
 
+// 12. The boundary point is water's symbol.
+//
+//     It marks where the water enters the plot — the boundary box
+//     position. Not a gas or electric idea, and on those drawings it
+//     was a lettered ring on every plot meaning nothing to the person
+//     reading them.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (!/isolatedAwayFromWater/.test(canvas)) {
+    fail("the boundary point shows on every design");
+  }
+
+  /* The rule as the page computes it, evaluated rather than copied.
+
+     A copy here tested the check against itself: breaking the page left
+     the copy intact and every case passed. Reading the body out and
+     running it is the only version that can fail. */
+  const m = canvas.match(
+    /const isolatedAwayFromWater = useMemo\(\(\) => \{([\s\S]*?)\n  \}, \[shownOnly\]\);/);
+  if (!m) fail("the rule is not where the check can read it");
+  // eslint-disable-next-line no-new-func
+  const away = m ? new Function("shownOnly", m[1]) : () => false;
+
+  /* And it is actually applied, not merely computed. */
+  if (!/&& !isolatedAwayFromWater,/.test(canvas)) {
+    fail("the rule is worked out and never used");
+  }
+
+  /* Hidden where the drawing has been narrowed to something that is not
+     water. */
+  for (const v of [["gas"], ["electric"], ["gas", "electric"]]) {
+    if (!away(v)) fail(`the boundary point still shows on a ${v.join("+")} design`);
+  }
+  /* Shown wherever water is in view, and on the general drawing —
+     taking it off everything would lose the marker every service trench
+     routes to. */
+  for (const v of [[], ["water"], ["gas", "water"], ["trench"], ["plot"]]) {
+    if (away(v)) {
+      fail(`the boundary point is hidden on ${v.length ? v.join("+") : "the general view"}`);
+    }
+  }
+
+  /* The symbol only. Every utility still routes its service trench from
+     the main to the point, which is what it is for structurally. */
+  const auto = readFileSync("./src/features/gis/autoService.js", "utf8");
+  if (/boundaryShown|isolatedAwayFromWater/.test(auto)) {
+    fail("routing depends on whether the symbol is drawn");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Future allowances behave (described or typed, reaching the POC, not billed).");
 process.exit(bad ? 1 : 0);

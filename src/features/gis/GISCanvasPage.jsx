@@ -10325,6 +10325,9 @@ export default function GISCanvasPage() {
   async function autoLayServices(utility) {
     if (!projectId) return;
     setBusy("laysvc");
+    /* Cleared before starting, or a run stopped an hour ago would stop
+       this one on its first plot. */
+    cancelRef.current = false;
     try {
       const { cables, skipped, error } = layServices(features, utility, {
         isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
@@ -10344,8 +10347,46 @@ export default function GISCanvasPage() {
         return;
       }
 
+      /* ── How far through ──
+
+         One request per plot, awaited in turn, so a site of seventy-six
+         is seventy-six round trips and the better part of a minute with
+         nothing on screen but a menu item that says "Laying…".
+
+         The count is known before the first one is written — layServices
+         planned them all — so the bar can say which plot rather than a
+         proportion. "Connecting plot 4 of 76" tells somebody it is
+         working and roughly how long is left; a bar filling silently
+         tells them only the first. */
+      setProgress({ done: 0, total: cables.length, label: "Connecting" });
+
+      let stopped = false;
       const made = [];
-      for (const c of cables) {
+      for (const [i, c] of cables.entries()) {
+        /* Stopping part-way is safe and worth offering: the bar already
+           has a Stop button, and it did nothing here — auto lay never
+           looked at the flag, so pressing it left the run going with no
+           sign it had been ignored.
+
+           Safe because each service is written as it is planned, so a
+           stopped run leaves the ones it made and the next run lays the
+           rest — the same guard that stops a second run doubling up. */
+        if (cancelRef.current) { stopped = true; break; }
+
+        /* Counted, not named. The plot's own number is available — the
+           run ends at a meter and a meter carries Plot_ID — but
+           "connecting plot 12 of 76" reads as though there are 76 plots
+           numbered up to at least 12, when it means the fourth of
+           seventy-six.
+
+           `done` is the one just finished, so the bar and the count
+           under it agree; the label is the one starting. */
+        setProgress({
+          done: i,
+          total: cables.length,
+          label: `Connecting plot ${i + 1} of ${cables.length}`,
+        });
+
         const f = await createFeature(projectId, {
           Layer_Key: utility,
           Feature_Type: "line",
@@ -10364,15 +10405,21 @@ export default function GISCanvasPage() {
         made.push(f);
       }
 
+      setProgress({ done: made.length, total: cables.length, label: "Saving" });
+
       await recordAction(`Lay ${made.length} ${utility} service(s)`, [], made);
       const fresh = await listGis(projectId);
       setFeatures(fresh.features || []);
       setStatus(`${made.length} ${utility} service(s) laid`
+        + (stopped ? " \u00b7 stopped early, run it again for the rest" : "")
         + (skipped.length ? ` \u00b7 ${skipped.length} trench(es) skipped` : ""));
       setTimeout(() => setStatus(""), 8000);
       setError("");
     } catch (e) { setError(e.message); }
-    finally { setBusy(""); }
+    /* Cleared however it ended. A bar left at 43 of 76 after a failure
+       says the run is still going, which is the one thing it must never
+       say. */
+    finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
 
   async function buildGasNetwork() {

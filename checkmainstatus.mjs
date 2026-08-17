@@ -179,6 +179,52 @@ const line = (type, status) => ({
   }
 }
 
+// 6. Auto Lay says how far through it is, and can be stopped.
+//
+//    One request per plot, awaited in turn: a site of seventy-six is
+//    seventy-six round trips and the better part of a minute with
+//    nothing on screen but a menu item reading "Laying…".
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("async function autoLayServices");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("async function buildGasNetwork"));
+  if (!fn) fail("auto lay is gone");
+
+  if (!/Connecting plot \$\{i \+ 1\} of \$\{cables\.length\}/.test(fn)) {
+    fail("auto lay does not say which plot it is on");
+  }
+  /* Counted, not named: "connecting plot 12 of 76" reads as though
+     there are 76 plots numbered up to at least 12. */
+  if (/Connecting plot \$\{plot\}/.test(fn)) {
+    fail("the bar names the plot rather than counting");
+  }
+
+  /* The bar is cleared however the run ends. Left at 43 of 76 after a
+     failure it says the run is still going, which is the one thing it
+     must never say. */
+  if (!/finally \{ setBusy\(""\); setProgress\(null\)/.test(fn)) {
+    fail("a failed run leaves the progress bar up");
+  }
+
+  /* Stop works. The button was already on the bar and auto lay never
+     looked at the flag, so pressing it left the run going with no sign
+     it had been ignored. */
+  if (!/if \(cancelRef\.current\) \{ stopped = true; break; \}/.test(fn)) {
+    fail("Stop does nothing during auto lay");
+  }
+  /* Cleared before starting, or a run stopped an hour ago stops this
+     one on its first plot. */
+  const beforeLoop = fn.slice(0, fn.indexOf("for (const [i, c] of cables"));
+  if (!/cancelRef\.current = false;/.test(beforeLoop)) {
+    fail("a previous Stop still applies to the next run");
+  }
+  /* And a part-finished run says so, rather than reporting a number
+     that looks like the whole job. */
+  if (!/stopped early/.test(fn)) {
+    fail("a stopped run does not say it stopped");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Main build status behaves (its own stages, live drawn apart).");
 process.exit(bad ? 1 : 0);

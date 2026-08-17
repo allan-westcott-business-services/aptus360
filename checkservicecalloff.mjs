@@ -16,6 +16,7 @@ import {
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
+import { plotSupplyState } from "./src/features/gis/plotSupply.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -432,6 +433,89 @@ const PLOTS = [
     ["a service trench", { Layer_Key: "trench", Attributes: { Line_Type: "trench_service" } }],
   ]) {
     if (shown(f)) fail(`${what} is still on top of the seeds being tapped`);
+  }
+}
+
+// 15. A plot off a dead main cannot be picked.
+//
+//     A service call-off sends a gang to connect these plots. If the
+//     main feeding one has not been made live there is nothing to
+//     connect to and the visit is wasted — which the drawing already
+//     knew and used to keep to itself.
+{
+  const LT = [
+    { Type_Key: "gas_main", Layer_Key: "gas" },
+    { Type_Key: "gas_service", Layer_Key: "gas" },
+  ];
+  const main = (id, st, geom) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "gas",
+    Geometry: geom ?? [[0, 0], [100, 0]],
+    Attributes: { Line_Type: "gas_main", Build_Status: st },
+  });
+  const svc = (id, connects) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "gas",
+    Geometry: [[50, 0], [50, 20]],
+    Attributes: { Line_Type: "gas_service", ...(connects ? { Connects: connects } : {}) },
+  });
+  const at = (features) => plotSupplyState({
+    anchor: [50, 20], utility: "gas", features, lineTypes: LT,
+  });
+
+  if (at([main(1, "live"), svc(2, [1])]).state !== "live") {
+    fail("a plot off a live main cannot be picked");
+  }
+  /* As Laid is not live: the pipe is in the ground and still cannot be
+     connected to. */
+  if (at([main(1, "aslaid"), svc(2, [1])]).state !== "dead") {
+    fail("a plot off an as-laid main reads as connectable");
+  }
+  if (at([main(1, "planned"), svc(2, [1])]).state !== "dead") {
+    fail("a plot off a planned main reads as connectable");
+  }
+  /* The words the office agreed. */
+  if (at([main(1, "planned"), svc(2, [1])]).why !== "The Feeder Main is not yet live.") {
+    fail("the message is not the one that was asked for");
+  }
+
+  /* Followed by geometry where Connects was never recorded — and along
+     the main, not to its vertices: a service tees into the middle of a
+     main far more often than at an end. */
+  if (at([main(1, "live"), svc(2, null)]).state !== "live") {
+    fail("a service that tees mid-main cannot find it");
+  }
+  /* A main genuinely too far away is not joined to. */
+  if (at([main(1, "live", [[0, -2], [100, -2]]), svc(2, null)]).state === "live") {
+    fail("a main two metres away counts as connected");
+  }
+
+  /* Silence is not a yes. The point is to stop a gang being sent to a
+     dead main, and an unanswerable question is not a reason to send
+     them. */
+  for (const [what, f] of [
+    ["a plot with no service", [main(1, "live")]],
+    ["a main with no status", [main(1, null), svc(2, [1])]],
+    ["a service reaching no main", [svc(2, null)]],
+  ]) {
+    if (at(f).state === "live") fail(`${what} was treated as connectable`);
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(dead\) \{ setError\(dead\.why\); return; \}/.test(canvas)) {
+    fail("tapping a plot off a dead main still adds it");
+  }
+  /* Only on the way in — refusing to remove one would strand somebody
+     who picked it before the status was corrected. */
+  if (!/const already = servicePlots\.includes\(plot\);/.test(canvas)) {
+    fail("a plot already picked cannot be taken off the list");
+  }
+
+  /* The hatching is shown while picking, and not at every other time —
+     a marking that is always on is one nobody reads. */
+  if (!/for \(const f of \(serviceOpen \? features : \[\]\)\)/.test(canvas)) {
+    fail("live and dead mains are hatched outside the call-off picker");
+  }
+  if (!/serviceOpen, servicePlots, priorServices\]\);/.test(canvas)) {
+    fail("opening the picker does not redraw the hatching");
   }
 }
 

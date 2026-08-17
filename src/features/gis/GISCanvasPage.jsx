@@ -70,6 +70,7 @@ import { callOffCustomer, serviceCallOffCustomer } from "./callOffCustomer.js";
 import {
   allowanceOf, allowanceLoad, allowanceSupplies, allowanceText,
 } from "./futureLoad.js";
+import { plotSupplyState } from "./plotSupply.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
@@ -3021,7 +3022,13 @@ export default function GISCanvasPage() {
        pass gives: isolating gas would otherwise hide the trench and
        take the marking with it, and whether the main is live does not
        stop being true because a layer filter is on. */
-    for (const f of features) {
+    /* Only while plots are being picked for a service call-off.
+
+       Live or dead is the question being asked at that moment: can this
+       plot be connected. At every other time it is a red band across
+       every road on the drawing answering a question nobody asked, and
+       a marking that is always on is one nobody reads. */
+    for (const f of (serviceOpen ? features : [])) {
       if (!isMainFeature(f, lineTypes)) continue;
       const stage = statusOf(f);
       if (!stage) continue;
@@ -4643,7 +4650,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -4965,6 +4972,37 @@ export default function GISCanvasPage() {
       if (hit?.Feature_Role === "plot") {
         const plot = plotOfSeed(hit, plotList);
         if (plot) {
+          /* ── Not off a dead main ──
+
+             A service call-off sends a gang to connect these plots. If
+             the main feeding one has not been made live there is
+             nothing to connect to, and the visit is wasted — which the
+             drawing already knows and used to keep to itself.
+
+             Only on the way in. Tapping a plot that is already on the
+             list takes it off, and refusing that would strand somebody
+             who had picked it before the main's status was corrected. */
+          const already = servicePlots.includes(plot);
+          if (!already && serviceUtils.length) {
+            /* The layer a utility's lines sit on, from its name — the
+               same normalising spanContents uses to match the two, so
+               there is not a second mapping to keep in step. The Utility
+               table has no layer key of its own. */
+            const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+            const dead = serviceUtils
+              .map((id) => (lookups?.utilities || [])
+                .find((u) => Number(u.Utility_ID) === Number(id))?.Utility)
+              .filter(Boolean)
+              .map(norm)
+              .map((utility) => plotSupplyState({
+                anchor: (hit.Geometry || [])[0],
+                utility, features, lineTypes,
+              }))
+              .find((r) => r.state === "dead");
+
+            if (dead) { setError(dead.why); return; }
+          }
+
           setServicePlots((ps) => togglePlot(ps, plot));
           return;
         }

@@ -153,11 +153,19 @@ const line = (type, status) => ({
   if (!/if \(!stage\) continue;/.test(pass.slice(0, 1800))) {
     fail("a main with no stage set is marked as dead");
   }
-  /* Its own pass over every feature, not inside the layer filter:
+  /* Its own pass over the whole drawing, not inside the layer filter:
      isolating gas would otherwise hide the trench and take the marking
-     with it. */
-  if (!/for \(const f of features\)/.test(pass.slice(0, 1800))) {
-    fail("the marking follows the layer filter");
+     with it.
+
+     Over `features` rather than `visible`, but only while the service
+     call-off picker is open — live or dead is the question being asked
+     at that moment, and a red band across every road at all other times
+     is a marking nobody reads. */
+  if (!/for \(const f of \(serviceOpen \? features : \[\]\)\)/.test(pass.slice(0, 2200))) {
+    fail("the marking follows the layer filter, or is not gated on the picker");
+  }
+  if (/for \(const f of visible\)/.test(pass.slice(0, 2200))) {
+    fail("the marking is hidden by the layer filter");
   }
 }
 

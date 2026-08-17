@@ -78,6 +78,7 @@ import {
 } from "./spanContents.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
+  isMainFeature, LIVE_COLOUR, DEAD_COLOUR, LIVE_BAND_M,
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
@@ -2135,14 +2136,21 @@ export default function GISCanvasPage() {
 
        Dashed for planned and to-be-removed: those are lengths that are
        not in the ground, and a solid line for something that does not
-       exist yet is the drawing saying something untrue. */
+       exist yet is the drawing saying something untrue.
+
+       And for a main, dashed until it is live. As Laid means the cable
+       is in the ground and cannot yet be connected to — which is closer
+       to planned than to finished, for anybody deciding what work can
+       go out. Solid is reserved for the one state that means "you can
+       use this". */
     const bs = statusOf(f);
     const bsColour = bs ? statusColour(bs) : null;
+    const notLive = isMainFeature(f, lineTypes) && bs !== "live";
 
     return appearance(resolved, view.scale, {
       colour: bsColour ?? lt?.Colour ?? layer?.Colour ?? "#64748b",
       widthPx: lt?.Width_px ?? 2,
-      ...(bs === "planned" || bs === "remove" ? { dashed: true } : {}),
+      ...(bs === "planned" || bs === "remove" || notLive ? { dashed: true } : {}),
       ...fallback,
     });
   }, [styles, layers, lineTypes, standard, view.scale]);
@@ -2914,6 +2922,52 @@ export default function GISCanvasPage() {
       /* An edge as well as the hatch: zoomed out the mesh is too fine
          to read, and the boundary is the part that matters on site. */
       ctx.strokeStyle = EASEMENT_COLOUR;
+      ctx.lineWidth = 1.5;
+      ctx.setLineDash([]);
+      ctx.stroke();
+      ctx.restore();
+    }
+
+    /* ── Whether a main is live ────────────────────────────────────
+
+       Hatched over the trench it runs in, the same way an easement is:
+       green where the main is live, red where it is not.
+
+       On the trench rather than on the main itself because that is the
+       ground a gang stands on. A dashed cable is easy to miss at the
+       zoom somebody plans at; a red band across the road is not, and
+       "do not connect anything off this yet" is worth being that
+       loud about.
+
+       Only where a main has been given a stage. A drawing that has
+       never used the field is not covered in red — it is a drawing
+       where nobody has said, and saying it for them would be a claim
+       this cannot support.
+
+       Its own pass over every feature, for the reason the easement
+       pass gives: isolating gas would otherwise hide the trench and
+       take the marking with it, and whether the main is live does not
+       stop being true because a layer filter is on. */
+    for (const f of features) {
+      if (!isMainFeature(f, lineTypes)) continue;
+      const stage = statusOf(f);
+      if (!stage) continue;
+
+      const band = easementBand((f.Geometry || []).map(toPx),
+        /* Narrower than an easement, which is a legal strip. This is
+           marking a line, and at easement width two mains in one trench
+           would each hatch over the other. */
+        Math.max(1.2, LIVE_BAND_M) * view.scale);
+      if (band.length < 3) continue;
+
+      const colour = stage === "live" ? LIVE_COLOUR : DEAD_COLOUR;
+      ctx.save();
+      ctx.beginPath();
+      band.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
+      ctx.closePath();
+      ctx.fillStyle = hatchPattern(ctx, colour);
+      ctx.fill();
+      ctx.strokeStyle = colour;
       ctx.lineWidth = 1.5;
       ctx.setLineDash([]);
       ctx.stroke();

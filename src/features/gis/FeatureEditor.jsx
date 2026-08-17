@@ -1,7 +1,7 @@
 import { useState, useMemo, useCallback } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
-import { BUILD_STATUSES } from "./buildStatus.js";
+import { BUILD_STATUSES, MAIN_STATUSES, isMainFeature } from "./buildStatus.js";
 import { utilityById } from "../../lib/utilities.js";
 import {
   lineLength, isTrenchType, isTrenchFeature, classLabel,
@@ -60,6 +60,10 @@ export default function FeatureEditor({
      layer has no type until somebody picks one, and asking the type
      alone hid every trench-only control on exactly those sections. */
   const isTrench = isTrenchFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
+  /* Read from the edited attributes rather than the saved feature, so
+     changing a line's type to a main shows the field without saving
+     first. */
+  const isMain = isMainFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
   /* Whether this edit changed the cable, so the span node it feeds can
      be brought with it once the change is saved. */
   const [cableChanged, setCableChanged] = useState(false);
@@ -2133,6 +2137,41 @@ export default function FeatureEditor({
                   ))}
                 </div>
               </div>
+            </div>
+          )}
+
+          {/* ── What stage a main is at ──
+
+              Its own, not the trench's. On a lay-only project the
+              developer digs and we lay, so a trench is As-Built or
+              Existing before anything is in it — and reading the pipe's
+              stage from the hole around it would call every one of
+              those mains laid on the day the trench was finished.
+
+              Live is the one that matters most and belongs to nothing
+              else: a trench is dug or it is not, while a main is
+              charged or energised separately, often weeks later. A gang
+              sent to connect a plot off a main nobody has made live has
+              been sent to do something that cannot be done. */}
+          {isMain && (
+            <div className="fld">
+              <label htmlFor="fe-main-status">Status</label>
+              <select id="fe-main-status"
+                value={f.Attributes.Build_Status ?? "planned"}
+                onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
+                {MAIN_STATUSES.map((ms) => (
+                  <option key={ms.key} value={ms.key}>{ms.label}</option>
+                ))}
+              </select>
+              {/* fe-sub, which already exists for exactly this — a line
+                  of explanation under a field. A new class would have
+                  been a second name for one thing. */}
+              <p className="fe-sub">
+                {f.Attributes.Build_Status === "live"
+                  ? "Plots can be connected off this main."
+                  : "Until this is Live, plots fed from it cannot be "
+                    + "called off for connection."}
+              </p>
             </div>
           )}
 

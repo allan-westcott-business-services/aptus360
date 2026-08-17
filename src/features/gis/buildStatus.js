@@ -27,14 +27,93 @@ export const BUILD_STATUSES = [
   { key: "asbuilt", label: "As-Built", colour: "#16a34a" },
 ];
 
+/* ── What stage a main is at ──
+
+   A separate list, because a main's stages are not a trench's and the
+   two genuinely diverge.
+
+   On a lay-only project the developer digs and we lay: the trench is
+   As-Built or Existing before anything is in it, and reading the pipe's
+   stage from the hole around it would say every one of those mains was
+   laid on the day the trench was finished.
+
+   And Live is not a property of a hole at all. A trench is dug or it is
+   not; a main is charged or energised separately, often weeks later and
+   by somebody else. That is the distinction the whole of this is for:
+   a gang sent to connect a plot off a main nobody has made live has
+   been sent to do something that cannot be done.
+
+   ── Why the same attribute ──
+
+   Build_Status on both, rather than a second attribute name. It is the
+   same question — what stage is this length at — asked of two different
+   things, and one name means one place to look. The lists are what
+   differ, and statusesFor says which applies. */
+export const MAIN_STATUSES = [
+  { key: "planned", label: "Planned", colour: "#8b5e34" },
+  { key: "aslaid", label: "As Laid", colour: "#0891b2" },
+  { key: "live", label: "Live", colour: "#16a34a" },
+];
+
+/* Which list applies to a feature.
+
+   Mains carry their own; everything else — trenches, and anything that
+   has never had a stage — carries the trench list. A main set to
+   "existing" or a trench set to "live" is a value from the wrong list,
+   which is what keeping them apart is meant to prevent. */
+export function statusesFor(feature, lineTypes = []) {
+  return isMainFeature(feature, lineTypes) ? MAIN_STATUSES : BUILD_STATUSES;
+}
+
+/* A main: a mains cable or pipe on one of the three utility layers.
+
+   Not a service. A service takes its liveness from the main feeding it
+   — it is connected in the same visit as the plot it serves, and asking
+   somebody to set a stage on every one would be a hundred fields nobody
+   fills in. */
+export function isMainFeature(f, lineTypes = []) {
+  if (!f || f.Feature_Type !== "line") return false;
+  const key = String(f.Attributes?.Line_Type ?? "");
+  if (!/_main$/.test(key)) return false;
+  const t = lineTypes.find((x) => x.Type_Key === key);
+  const layer = t?.Layer_Key ?? f.Layer_Key;
+  return ["electric", "gas", "water"].includes(layer);
+}
+
 export const statusOf = (f) => f?.Attributes?.Build_Status ?? null;
 
+/* How a main's stage is marked on the drawing.
+
+   Hatched over the trench it runs in, the same way an easement is —
+   green for live, red for anything else. A dashed cable is easy to miss
+   at the zoom somebody plans at; a red band across the road is not.
+
+   Narrower than an easement band, which is a legal strip of land. This
+   is marking a line, and at easement width two mains in one trench
+   would each hatch over the other. */
+export const LIVE_COLOUR = "#16a34a";
+export const DEAD_COLOUR = "#dc2626";
+export const LIVE_BAND_M = 1.4;
+
+/* Whether a main is live, which is the question everything else asks.
+
+   Only a main can be: a trench has no such stage, and something with
+   no stage set has not been made live by omission. */
+export const isLive = (f, lineTypes = []) =>
+  isMainFeature(f, lineTypes) && statusOf(f) === "live";
+
+/* Both lists, so a colour or a label can be looked up without the
+   caller knowing which kind of feature it came from. The keys that
+   appear in both — planned — carry the same colour in both, so there is
+   nothing to choose between them. */
+const ALL_STATUSES = [...BUILD_STATUSES, ...MAIN_STATUSES];
+
 export function statusColour(key) {
-  return BUILD_STATUSES.find((s) => s.key === key)?.colour ?? null;
+  return ALL_STATUSES.find((s) => s.key === key)?.colour ?? null;
 }
 
 export function statusLabel(key) {
-  return BUILD_STATUSES.find((s) => s.key === key)?.label ?? null;
+  return ALL_STATUSES.find((s) => s.key === key)?.label ?? null;
 }
 
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);

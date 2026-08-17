@@ -570,6 +570,73 @@ const MON = "2026-08-17";
   }
 }
 
+// 17. A team's machine and pace, and a call-off's machine.
+//
+//     Every estimate assumed the same machine at the same pace, so a
+//     fortnight booked for one gang was a fortnight booked for any
+//     gang.
+{
+  const sql = readFileSync("./supabase/migrations/0178_team_machine.sql", "utf8");
+  const teams = readFileSync("./src/features/admin/TeamsAdmin.jsx", "utf8");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  for (const col of ["Dig_Rate_ID", "Efficiency"]) {
+    if (!sql.includes(col)) fail(`a team cannot record its ${col}`);
+  }
+  /* Bounded, because the field is typed by hand: a team at 0 takes no
+     time at all and one at 10 finishes a street in an afternoon. */
+  if (!/"Efficiency" >= 0\.25 AND "Efficiency" <= 3/.test(sql)) {
+    fail("a team's pace is not bounded");
+  }
+  /* Default 1, so every existing team keeps working exactly as it did
+     until somebody sets one. */
+  if (!/"Efficiency" numeric NOT NULL DEFAULT 1/.test(sql)) {
+    fail("existing teams do not default to the rates' own pace");
+  }
+
+  /* The screen writes both, and the machine list comes from the rate
+     table rather than a second list to keep in step. */
+  if (!/Dig_Rate_ID: e\.target\.value/.test(teams)) {
+    fail("the teams screen cannot set a machine");
+  }
+  if (!/adminList\("Dig_Rate"\)/.test(teams)) {
+    fail("the machine list is not read from the rate table");
+  }
+  /* Saved on blur, not on every keystroke: typing 1.5 passes through
+     "15" on the way, and saving that writes a team at fifteen times the
+     rate. */
+  if (!/onBlur=\{\(e\) => \{/.test(teams)) {
+    fail("a pace is saved on every keystroke");
+  }
+  /* And what a pace means is said, because "1.15" is not a claim
+     anybody can check. */
+  if (!/function paceNote/.test(teams)) {
+    fail("nothing says what a team's pace means");
+  }
+
+  /* The call-off carries its own machine: it is raised before a team is
+     assigned, so it cannot inherit one. */
+  if (!/"Mains_Call_Off_Submission"[\s\S]{0,200}"Dig_Rate_ID"/.test(sql)) {
+    fail("a call-off cannot record the machine it was estimated on");
+  }
+  if (!/setCallOffMachine/.test(canvas)) fail("the machine cannot be chosen");
+  /* Fed into the estimate, or the picker changes a label and nothing
+     else. */
+  if (!/machineKey: callOffMachine/.test(canvas)) {
+    fail("choosing a machine does not change the estimate");
+  }
+  /* And kept with the call-off: a span's half-days mean nothing without
+     the machine behind them, and the office cannot ask the drawing
+     later. */
+  if (!/Dig_Rate_ID: callOffMachine \?\? null/.test(canvas)) {
+    fail("the machine is not saved with the call-off");
+  }
+  /* Only on the mains one — a service call-off has no dig estimate. */
+  if ((canvas.match(/Dig_Rate_ID: callOffMachine/g) || []).length !== 1) {
+    fail("the machine is sent on a call-off that has no dig to estimate");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Assignment end dates behave (per run, laid around weekends, dig phases only).");
 process.exit(bad ? 1 : 0);

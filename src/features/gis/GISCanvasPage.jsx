@@ -256,6 +256,11 @@ export default function GISCanvasPage() {
      mock data — digRate.js falls back to its own figures either way, so
      an estimate is never missing, only less specific to this company. */
   const [digRates, setDigRates] = useState([]);
+  /* The machine this call-off assumes. Null means the default in
+     Dig_Rate — which is what every call-off used before it could be
+     chosen. Changed here, and carried onto the submission so the
+     estimate stored on each span says what it was worked out with. */
+  const [callOffMachine, setCallOffMachine] = useState(null);
   const [digDepthFactors, setDigDepthFactors] = useState([]);
   const [digLayRates, setDigLayRates] = useState({});
   const [surface, setSurface] = useState("");
@@ -548,8 +553,16 @@ export default function GISCanvasPage() {
     () => ({
       lineTypes, lookups, surfaceTypes,
       rates: digRates, depthBands: digDepthFactors, layRates: digLayRates,
+      /* The machine chosen for this call-off, where one has been.
+         Undefined lets digEstimate fall back to the table's default,
+         which is what it did before this could be picked. */
+      machineKey: callOffMachine
+        ? digRates.find((r) =>
+          Number(r.Dig_Rate_ID) === Number(callOffMachine))?.Machine_Key
+        : undefined,
     }),
-    [lineTypes, lookups, surfaceTypes, digRates, digDepthFactors, digLayRates],
+    [lineTypes, lookups, surfaceTypes, digRates, digDepthFactors, digLayRates,
+      callOffMachine],
   );
 
   const callOffFound = useMemo(
@@ -8218,6 +8231,10 @@ export default function GISCanvasPage() {
           callOff.ranges, features, developers,
           lookups?.branches || [], lookups?.customers || [],
         ),
+        /* What the estimate was worked out with, kept with it. A span's
+           half-days mean nothing without the machine behind them, and
+           the office reading it later cannot ask the drawing. */
+        Dig_Rate_ID: callOffMachine ?? null,
         Contact_Name: raisedByName || "Site",
         Contact_Phone: "N/A",
         /* Today, as the earliest anybody could turn up. Changed on the
@@ -14945,6 +14962,37 @@ export default function GISCanvasPage() {
                     records which utilities a call-off covers, and that
                     is a different question from what a panel shows. */}
 
+                {/* ── The machine this is estimated on ──
+
+                    A call-off is raised before any team is assigned, so
+                    it cannot inherit one. It takes the default and can
+                    be changed here — and the estimate stored on each
+                    span moves with it, because the days Planning books
+                    come from this number.
+
+                    The team's own machine applies once the office
+                    schedules it, which is a different question asked
+                    later. */}
+                {callOff?.spans?.length > 0 && !!digRates.length && (
+                  <div className="gco-machine">
+                    <label htmlFor="gco-mach">Digging with</label>
+                    <select id="gco-mach" value={callOffMachine ?? ""}
+                      onChange={(e) => setCallOffMachine(
+                        e.target.value ? Number(e.target.value) : null,
+                      )}>
+                      <option value="">
+                        {`Default \u2014 ${digRates.find((r) => r.Is_Default)?.Label
+                          ?? "as the rates assume"}`}
+                      </option>
+                      {digRates.filter((r) => r.Is_Active !== false).map((r) => (
+                        <option key={r.Dig_Rate_ID} value={r.Dig_Rate_ID}>
+                          {r.Label}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+
                 {callOff?.spans?.length > 0 && (
                   <p className="gco-tot">
                     {`${callOff.ranges.length} run(s) \u00b7 `}
@@ -16355,6 +16403,12 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-hint { font-size: 12.5px; color: var(--muted); line-height: 1.6;
   margin: 14px 0 0; }
 /* The totals on their own line, above the instruction. */
+/* The machine a call-off is estimated on, above its totals — the days
+   below come from it. */
+.gco-machine { display: flex; align-items: center; gap: 8px; margin-top: 10px;
+  font-size: 11.5px; color: var(--muted); }
+.gco-machine select { font: 500 12px inherit; padding: 4px 7px;
+  border: 1px solid var(--border); border-radius: 7px; }
 .gco-tot { font-size: 12.5px; font-weight: 700; margin: 12px 0 0;
   padding-top: 12px; border-top: 1px solid var(--border); }
 /* What a run carries, on its head line beside the length. Wraps rather

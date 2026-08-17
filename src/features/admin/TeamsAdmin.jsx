@@ -22,6 +22,24 @@ const TABS = [
   { id: "details", label: "Details" },
 ];
 
+/* What a pace means, said rather than left as a number.
+
+   "1.15" tells somebody nothing; "delivers about 15% more than the
+   rates assume" tells them what they are claiming about a gang, which
+   is the thing worth being sure of before saving it. */
+function paceNote(value) {
+  const v = Number(value ?? 1);
+  if (!Number.isFinite(v) || v === 1) {
+    return "Works at the pace the rate tables assume.";
+  }
+  const pct = Math.round(Math.abs(v - 1) * 100);
+  return v > 1
+    ? `Delivers about ${pct}% more than the rates assume — digging, `
+      + "jointing and reinstating all take proportionately less time."
+    : `Delivers about ${pct}% less than the rates assume — an apprentice `
+      + "or a gang still working up to speed.";
+}
+
 export default function TeamsAdmin() {
   const [teams, setTeams] = useState([]);
   const [crafts, setCrafts] = useState([]);
@@ -40,15 +58,23 @@ export default function TeamsAdmin() {
   const [tab, setTab] = useState("members");
   const [adding, setAdding] = useState(false);
   const [draft, setDraft] = useState({ Team_Name: "", Supplier_ID: "" });
+  /* The machines a team can dig with, from the same table the rates
+     live in — Dig_Rate is keyed by machine and carries what each one
+     shifts, so there is no second list to keep in step. */
+  const [machines, setMachines] = useState([]);
   const [addPerson, setAddPerson] = useState("");
 
   async function load() {
     try {
-      const [t, c, rg, p, r, tm, tc, tr] = await Promise.all([
+      const [t, c, rg, p, r, tm, tc, tr, dr] = await Promise.all([
         adminList("Team"), adminList("Craft"),
         adminList("Region").catch(() => ({ rows: [] })),
         adminList("Person"), adminList("Role").catch(() => ({ rows: [] })),
         adminList("Team_Member"), adminList("Team_Craft"), adminList("Team_Region"),
+        /* Tolerated missing, like the regions above: a database without
+           the dig rates still lists teams, and the machine picker is
+           simply empty rather than the screen refusing to load. */
+        adminList("Dig_Rate").catch(() => ({ rows: [] })),
       ]);
       setTeams(t.rows || []);
       setCrafts(c.rows || []);
@@ -58,6 +84,7 @@ export default function TeamsAdmin() {
       setMembers(tm.rows || []);
       setTeamCrafts(tc.rows || []);
       setTeamRegions(tr.rows || []);
+      setMachines(dr.rows || []);
       setError("");
     } catch (e) { setError(e.message); }
     finally { setLoading(false); }
@@ -252,6 +279,8 @@ export default function TeamsAdmin() {
     return true;
   }
 
+  const defaultMachine = machines.find((m) => m.Is_Default);
+
   if (loading) return <p className="hint">Loading teams…</p>;
 
   return (
@@ -321,6 +350,67 @@ export default function TeamsAdmin() {
                   {current.Rate ? ` \u00b7 \u00a3${current.Rate} per ${current.Rate_Unit || "day"}` : ""}
                 </p>
                 <TeamContact lead={leaderOf(current.Team_ID)} />
+              </div>
+
+              {/* ── What this team digs with, and how fast ──
+
+                  Both were assumed and neither was true: every estimate
+                  used the default machine at the tables' own pace, so a
+                  fortnight booked for one gang was a fortnight booked
+                  for any gang.
+
+                  Beside the team rather than on a screen of its own,
+                  because they are properties of the gang in the same way
+                  its members are. */}
+              <div className="tm-plant">
+                <label className="tm-fld">
+                  <span>Machine</span>
+                  <select value={current.Dig_Rate_ID ?? ""}
+                    disabled={busy === "details"}
+                    onChange={(e) => saveDetails({
+                      Dig_Rate_ID: e.target.value ? Number(e.target.value) : null,
+                    })}>
+                    {/* The default is a real answer, not a blank: most
+                        teams dig with whatever the tables assume, and
+                        saying so is better than an empty box that reads
+                        as unset. */}
+                    <option value="">
+                      {`Default \u2014 ${defaultMachine?.Label ?? "as the rates assume"}`}
+                    </option>
+                    {machines.filter((m) => m.Is_Active !== false).map((m) => (
+                      <option key={m.Dig_Rate_ID} value={m.Dig_Rate_ID}>
+                        {m.Label}
+                      </option>
+                    ))}
+                  </select>
+                </label>
+
+                <label className="tm-fld">
+                  <span>Pace</span>
+                  <input type="number" step="0.05" min="0.25" max="3"
+                    defaultValue={current.Efficiency ?? 1}
+                    disabled={busy === "details"}
+                    /* On blur rather than on change: typing "1.5" passes
+                       through "1." and "15" on the way, and saving each
+                       keystroke would write a team at fifteen times the
+                       rate before the decimal point arrives. */
+                    onBlur={(e) => {
+                      const v = Number(e.target.value);
+                      if (!Number.isFinite(v) || v < 0.25 || v > 3) {
+                        setError("A team's pace has to be between 0.25 and 3.");
+                        e.target.value = current.Efficiency ?? 1;
+                        return;
+                      }
+                      setError("");
+                      if (v !== Number(current.Efficiency ?? 1)) {
+                        saveDetails({ Efficiency: v });
+                      }
+                    }} />
+                </label>
+
+                <p className="tm-plant-why">
+                  {paceNote(current.Efficiency)}
+                </p>
               </div>
 
               <div className="tm-tabs" role="tablist">
@@ -712,6 +802,19 @@ const CSS = `
    the panel jump. */
 .tm-name-input { font: 700 16px inherit; padding: 3px 8px; min-width: 220px;
   border: 1px solid var(--accent); border-radius: 6px; }
+/* What a team digs with, and how fast. Two fields and a line saying
+   what the second one means — a pace is a claim about a gang, and
+   "1.15" does not read as one. */
+.tm-plant { display: flex; flex-wrap: wrap; align-items: flex-end; gap: 12px;
+  padding: 10px 0 0; margin-top: 8px; border-top: 1px solid var(--border); }
+.tm-fld { display: flex; flex-direction: column; gap: 3px; font-size: 11px; }
+.tm-fld > span { font: 700 9.5px inherit; color: var(--muted);
+  text-transform: uppercase; letter-spacing: .05em; }
+.tm-fld select, .tm-fld input { font: 500 12.5px inherit; padding: 5px 8px;
+  border: 1px solid var(--border); border-radius: 7px; min-width: 150px; }
+.tm-fld input { max-width: 90px; min-width: 0; }
+.tm-plant-why { flex: 1 1 100%; margin: 0; font-size: 11.5px;
+  color: var(--muted); line-height: 1.6; }
 .tm-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
 .tm-contact { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 12px;
   margin: 6px 0 0; font-size: 12px; }

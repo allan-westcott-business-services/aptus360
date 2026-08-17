@@ -575,6 +575,9 @@ export default function FeatureEditor({
      invented in this file would be the one that stops matching. */
   const kind = isSeed ? "Plot seed"
     : isMeter ? "Meter"
+    /* A span node is what the whole network is measured between, and
+       "Point" told somebody nothing they did not already know. */
+    : feature.Feature_Role === "spannode" ? "Span node"
     : isPoly ? "Area"
     : isLine ? (classLabel(f, lineTypes) || "Line")
     : "Point";
@@ -700,6 +703,21 @@ export default function FeatureEditor({
                 is a field of its own on a trench \u2014 said twice, it was
                 two places to read the same number from. */}
             {plot && <p className="fe-sub">plot {plot.plot_number}</p>}
+            {/* ── The feature's own id ──
+
+                Nothing on screen said which feature this was, so the
+                only way to name one when something on a drawing needed
+                investigating was to describe where it sat and hope.
+
+                Selectable, and in a monospace face, because the thing
+                somebody does with it is copy it into a query. Quiet,
+                because it is for the times something is wrong rather
+                than a fact about the dig. */}
+            {feature.Feature_ID != null && (
+              <p className="fe-id mono" title="Feature ID">
+                {`#${feature.Feature_ID}`}
+              </p>
+            )}
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>
@@ -875,15 +893,28 @@ export default function FeatureEditor({
                   onChange={(e) => setF((p) => ({ ...p, Label: e.target.value }))} />
               </div>
 
-              <div className="fld">
-                <label htmlFor="fe-layer">Layer</label>
-                <select id="fe-layer" value={f.Layer_Key}
-                  onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
-                  {layers.map((l) => (
-                    <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
-                  ))}
-                </select>
-              </div>
+              {/* Not on a span node.
+
+                  A span node's layer is decided when it is placed and
+                  there is no right answer to change it to — moving one
+                  to another layer does not move the network it is
+                  measured along, it just hides it from the utility that
+                  owns it.
+
+                  The Line type field never showed here anyway: it is
+                  gated on the feature being a line, and a span node is
+                  a point. */}
+              {feature.Feature_Role !== "spannode" && (
+                <div className="fld">
+                  <label htmlFor="fe-layer">Layer</label>
+                  <select id="fe-layer" value={f.Layer_Key}
+                    onChange={(e) => setF((p) => ({ ...p, Layer_Key: e.target.value }))}>
+                    {layers.map((l) => (
+                      <option key={l.Layer_Key} value={l.Layer_Key}>{l.Label}</option>
+                    ))}
+                  </select>
+                </div>
+              )}
             </>
           )}
 
@@ -2235,6 +2266,9 @@ const CSS = `
   padding: 15px 18px 12px; border-bottom: 1px solid var(--border);
   border-top: 3px solid var(--muted); border-radius: 12px 12px 0 0; }
 .fe-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+/* The feature's id, for naming one in a query. Selectable and quiet. */
+.fe-id { margin: 2px 0 0; font-size: 10.5px; color: var(--muted);
+  user-select: all; cursor: text; }
 .fe-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
 /* .fe-x lives in src/styles.css. */
 .fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }

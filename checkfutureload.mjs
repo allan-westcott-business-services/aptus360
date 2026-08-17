@@ -295,6 +295,35 @@ const node = (a) => ({ Attributes: { Future_Allowance: a } });
   if (fa.filter((a) => a.stranded).length !== 1) fail("the fixture is wrong");
 }
 
+// 11. The editor says what it is looking at, and which one.
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const code = editor.replace(/\/\*[\s\S]*?\*\//g, "").replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+
+  /* "Point" told somebody nothing they did not already know. */
+  if (!/Feature_Role === "spannode" \? "Span node"/.test(code)) {
+    fail("a span node's editor is still headed Point");
+  }
+
+  /* The feature's id. Nothing on screen said which feature this was, so
+     naming one in a query meant describing where it sat and hoping —
+     which cost an afternoon on a junction that turned out to be
+     correct. */
+  if (!/feature\.Feature_ID != null && \(/.test(code)) {
+    fail("the editor does not show which feature it is");
+  }
+  if (!/user-select: all/.test(editor)) {
+    fail("the id cannot be selected, which is the one thing it is for");
+  }
+
+  /* No layer picker on a span node: its layer is decided when it is
+     placed, and changing it hides the node from the utility that owns
+     it rather than moving anything. */
+  if (!/feature\.Feature_Role !== "spannode" && \(/.test(code)) {
+    fail("a span node is still offered a layer to change");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Future allowances behave (described or typed, reaching the POC, not billed).");
 process.exit(bad ? 1 : 0);

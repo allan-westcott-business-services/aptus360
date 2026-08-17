@@ -374,6 +374,67 @@ const PLOTS = [
   }
 }
 
+// 14. Opening it sets the drawing up for the job.
+//
+//     Plot seeds because they are what is being tapped; the mains trench
+//     because a plot is recognised by which run it sits off. Seeds alone
+//     are dots on a plan.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf('label="New Service Call-off"');
+  /* The whole menu item, to its closing `}} />` — a fixed window
+     stopped short of the restore branch and reported it missing on
+     correct code. */
+  const item = at < 0 ? "" : canvas.slice(at, canvas.indexOf("}} />", at) + 5);
+
+  if (!/applyShown\(\["role:plot", "lt:trench_main"\]\)/.test(item)) {
+    fail("opening the panel does not show the plots and the mains trench");
+  }
+  /* Labels off: each seed carries its plot number and each trench its
+     length, and at a zoom showing a street of seeds those overlap into
+     a wall of text with the seeds behind it. */
+  if (!/setShowLabels\(false\)/.test(item)) {
+    fail("the labels are left on over the seeds being tapped");
+  }
+
+  /* And the drawing goes back when the panel closes. Somebody who came
+     to raise a call-off did not ask for a permanently changed view. */
+  if (!/applyShown\(\[\]\)/.test(item)) {
+    fail("closing the panel leaves the drawing isolated");
+  }
+  if (!/setShowLabels\(true\)/.test(item)) {
+    fail("closing the panel leaves the labels off");
+  }
+
+  /* The two keys, checked against how a feature declares them: a key
+     that matches nothing hides the whole drawing, and a key that
+     matches too much brings back the services and meters the isolate
+     exists to get out of the way. */
+  const classKeys = (f) => [
+    f.Layer_Key,
+    f.Attributes?.Line_Type ? `lt:${f.Attributes.Line_Type}` : null,
+    f.Feature_Role && f.Feature_Role !== "shape" ? `role:${f.Feature_Role}` : null,
+    f.Layer_Key && f.Feature_Role && f.Feature_Role !== "shape"
+      ? `${f.Layer_Key}:role:${f.Feature_Role}` : null,
+  ].filter(Boolean);
+  const shown = (f) => classKeys(f).some((k) =>
+    ["role:plot", "lt:trench_main"].includes(k));
+
+  if (!shown({ Layer_Key: "plot", Feature_Role: "plot" })) {
+    fail("a plot seed is hidden by the isolate meant to show it");
+  }
+  if (!shown({ Layer_Key: "trench", Attributes: { Line_Type: "trench_main" } })) {
+    fail("the mains trench is hidden by the isolate meant to show it");
+  }
+  for (const [what, f] of [
+    ["a gas service", { Layer_Key: "gas", Attributes: { Line_Type: "gas_service" } }],
+    ["a meter", { Layer_Key: "gas", Feature_Role: "meter" }],
+    ["a service trench", { Layer_Key: "trench", Attributes: { Line_Type: "trench_service" } }],
+  ]) {
+    if (shown(f)) fail(`${what} is still on top of the seeds being tapped`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Service call-offs behave (three ways in, one list of plots out).");
 process.exit(bad ? 1 : 0);

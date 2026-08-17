@@ -13681,10 +13681,45 @@ export default function GISCanvasPage() {
                         /* Clear of the mains picker: two panels both
                            wanting the next tap is a tap that does
                            whichever was checked first. */
-                        if (on) { setCallOffOpen(false); setPick(null); }
-                        else {
+                        if (on) {
+                          setCallOffOpen(false);
+                          setPick(null);
+
+                          /* The drawing this job is done against.
+
+                             Plot seeds, because they are what is being
+                             tapped — a service call-off is chosen by
+                             plot, and hunting for a seed among services,
+                             meters and cables is how the wrong one gets
+                             tapped.
+
+                             And the mains trench, because a plot is
+                             recognised by which run it sits off. Seeds
+                             alone are dots on a plan.
+
+                             Nothing else: every service, joint and meter
+                             on the site sits on top of exactly the
+                             things being picked. */
+                          applyShown(["role:plot", "lt:trench_main"]);
+
+                          /* Labels off. Each seed carries its plot
+                             number and each trench its length and size,
+                             and at a zoom where a whole street of seeds
+                             is visible those overlap into a wall of text
+                             with the seeds behind it. The panel says
+                             which plots are picked; the drawing only has
+                             to show where they are. */
+                          setShowLabels(false);
+                        } else {
                           setServicePlots([]); setServiceUtils([]);
                           setServiceText(""); setServiceNote("");
+                          /* Put the drawing back. Somebody who came here
+                             to raise a call-off did not ask for a
+                             permanently changed view, and leaving it
+                             isolated means the next thing they do is
+                             wonder where the gas went. */
+                          applyShown([]);
+                          setShowLabels(true);
                         }
                       }} />
 

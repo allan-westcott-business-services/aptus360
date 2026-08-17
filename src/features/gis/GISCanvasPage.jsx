@@ -9602,6 +9602,76 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); }
   }
 
+  /* ── The whole gas network, in one go ──
+
+     Mains then services, which is the order they have to happen in: the
+     service pipe tees into the main, so laying services first gives
+     every one of them nothing to join.
+
+     ── Why one button ──
+
+     They were two, always pressed together, with a rebuild in between
+     that used to delete what the first had just done. Two steps that
+     are only ever run as a pair are one step somebody can get half
+     right.
+
+     ── Asked once ──
+
+     The mains build confirms; auto lay does not. So this asks its own
+     question covering both and runs the build silently, rather than
+     asking twice — somebody who agreed to the first and declined the
+     second would be left with mains and no services, which is neither
+     of the two states they were choosing between.
+
+     ── What it does when half of it cannot run ──
+
+     Says so and does the rest. A site with no gas meters placed yet
+     still wants its mains laid, and refusing the whole thing because
+     the second step has nothing to do would be refusing the work that
+     was possible. */
+  async function buildWholeGasNetwork() {
+    if (!projectId) return;
+
+    /* What each step needs, checked before either runs — so the
+       question can say what will actually happen rather than promising
+       two steps and delivering one. */
+    const meters = features.filter((f) => f.Feature_Role === "meter"
+      && f.Layer_Key === "gas").length;
+    const nodes = features.filter((f) => f.Feature_Role === "spannode").length;
+
+    if (!nodes) {
+      setError("Place the span nodes before building the gas network.");
+      return;
+    }
+
+    if (!window.confirm(
+      "Build the whole gas network?\n\n"
+      + "1. Lay the gas main along the mains trench\n"
+      + (meters
+        ? `2. Run service pipe to ${meters} gas meter(s)`
+        : "2. Services \u2014 skipped, no gas meters are placed yet")
+      + "\n\nExisting generated gas mains are replaced. Services already "
+      + "laid are left alone."
+    )) return;
+
+    /* Silently, because the question above covered it. */
+    await buildGasNetwork(true);
+
+    /* Only if the first step got somewhere. buildGasNetwork sets error
+       and returns when there is nothing to lay, and running the
+       services against a main that was never drawn would report a
+       second failure for the same cause. */
+    if (!meters) return;
+
+    /* Read back before laying. The build has just written the mains and
+       set state, but this is the same render — `features` in the
+       closure is still the drawing as it was before, and passing it
+       would lay services against a network that does not include what
+       was just built. */
+    const after = await listGis(projectId).catch(() => null);
+    await autoLayServices("gas", after?.features ?? null);
+  }
+
   /* ── Build Gas Network ──
 
      Pipe along every length of mains trench the gas POC can reach.
@@ -10332,14 +10402,23 @@ export default function GISCanvasPage() {
      because the three are rarely designed together, and a water run
      should not quietly add gas pipe to plots nobody has thought about
      yet. */
-  async function autoLayServices(utility) {
+  /* `src` is the drawing to work from, defaulting to what is in state.
+
+     Build Whole Gas Network passes a freshly read list, because the
+     mains build writes features and this runs immediately after it —
+     within one render, so `features` from the closure is still the
+     drawing as it was before the main was laid. Nothing here reads the
+     main today, which is why chaining them appeared to work; it would
+     stop appearing to work the first time it did. */
+  async function autoLayServices(utility, src = null) {
     if (!projectId) return;
     setBusy("laysvc");
     /* Cleared before starting, or a run stopped an hour ago would stop
        this one on its first plot. */
     cancelRef.current = false;
     try {
-      const { cables, skipped, error } = layServices(features, utility, {
+      const world = src ?? features;
+      const { cables, skipped, error } = layServices(world, utility, {
         isTrench: (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes),
       });
       if (error) { setError(error); return; }
@@ -10406,7 +10485,7 @@ export default function GISCanvasPage() {
             /* Marked as laid by this, so a rebuild can replace it
                rather than leaving two runs in one trench. */
             Generated: true,
-            Connects: connectedTo(c.geometry, features, null),
+            Connects: connectedTo(c.geometry, world, null),
             /* The scope defaults for this line type — size, and whatever
                else a new service of this utility starts with. */
             ...defaultsFor(type.Type_Key),
@@ -10447,7 +10526,7 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
 
-  async function buildGasNetwork() {
+  async function buildGasNetwork(silent = false) {
     if (!projectId) return;
     const src = features;
 
@@ -10596,7 +10675,15 @@ export default function GISCanvasPage() {
       && !!f.Attributes?.Generated
       && isMainType(f.Attributes?.Line_Type, lineTypes));
 
-    if (!window.confirm(
+    /* Asked once, and by whoever started this.
+
+       Build Whole Gas Network confirms both steps together before
+       either runs, so a second question here would be the same
+       decision asked twice — and somebody who answered the first and
+       then declined the second would be left with mains and no
+       services, which is neither of the two states they chose
+       between. */
+    if (!silent && !window.confirm(
       `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m `
       + `to ${plan.services} service trench(es), ${plan.meters} gas meter(s)?`
       /* The stub past each end is in that total, so it is named. A
@@ -13601,10 +13688,32 @@ export default function GISCanvasPage() {
                               beyond. Two modules sharing their walk
                               rather than one with a flag deciding
                               whether half of it runs. */}
+                          {/* ── The whole thing, in order ──
+
+                              Mains then services, which is the order
+                              they have to happen in: a service tees
+                              into the main, so laying services first
+                              gives every one of them nothing to join.
+
+                              Above the two steps rather than below,
+                              because it is what somebody wants nearly
+                              every time — the separate builds stay for
+                              rebuilding one half without touching the
+                              other. */}
+                          {key === "gas" && (
+                            <MenuItem
+                              label={busy === "gasnet" || busy === "laysvc"
+                                ? "Building\u2026" : "Build Whole Gas Network"}
+                              hint="Lays the gas main, then runs service pipe to every gas meter. Needs span nodes placed; skips the services if no meters are placed yet"
+                              disabled={!projectId || !!busy}
+                              onClick={() => withUndo("Build Whole Gas Network",
+                                () => buildWholeGasNetwork())} />
+                          )}
+
                           {key === "gas" && (
                             <MenuItem
                               label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
-                              hint="Lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
+                              hint="Mains only \u2014 lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
                               disabled={!projectId || !!busy}
                               onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
                           )}

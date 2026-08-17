@@ -327,6 +327,84 @@ const line = (type, status) => ({
   }
 }
 
+// 9. One button for the whole gas network.
+//
+//    Mains then services, which is the order they have to happen in: a
+//    service tees into the main, so laying services first gives every
+//    one of them nothing to join. They were two menu items always
+//    pressed together — and two steps only ever run as a pair are one
+//    step somebody can get half right.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("async function buildWholeGasNetwork");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("\n  /* ── Build Gas Network", at));
+  if (!fn) fail("there is no whole-network build");
+
+  if (!/Build Whole Gas Network/.test(canvas)) fail("the button is not on the menu");
+
+  /* Mains first. */
+  if (fn.indexOf("buildGasNetwork(true)") > fn.indexOf('autoLayServices("gas"')) {
+    fail("the services are laid before the main they tee into");
+  }
+
+  /* Asked once, covering both. Somebody who agreed to the first
+     question and declined the second would be left with mains and no
+     services — neither of the two states they were choosing between. */
+  if ((fn.match(/window\.confirm/g) || []).length !== 1) {
+    fail("the combined build asks more than once, or not at all");
+  }
+  if (!/buildGasNetwork\(true\)/.test(fn)) {
+    fail("the mains build asks its own question as well");
+  }
+  /* And that flag actually silences it. */
+  /* To the end of the function rather than a fixed window — its confirm
+     is 7.5k characters in, and a 6k slice reported correct code as
+     broken. */
+  const gasAt = canvas.indexOf("async function buildGasNetwork");
+  const gas = gasAt < 0 ? ""
+    : canvas.slice(gasAt, canvas.indexOf("\n  async function", gasAt + 10));
+  if (!/if \(!silent && !window\.confirm\(/.test(gas)) {
+    fail("the mains build ignores the silent flag");
+  }
+  if (!/async function buildGasNetwork\(silent = false\)/.test(canvas)) {
+    fail("the mains build cannot be run without asking");
+  }
+
+  /* Span nodes are what the mains build needs; without them it says so
+     rather than running and failing. */
+  if (!/Place the span nodes/.test(fn)) {
+    fail("a drawing with no span nodes is not told why it cannot build");
+  }
+  /* No meters is not a reason to refuse the mains. A site still wants
+     its main laid, and refusing the whole thing because the second step
+     has nothing to do refuses the work that was possible. */
+  if (!/skipped, no gas meters/.test(fn)) {
+    fail("the question does not say the services will be skipped");
+  }
+  if (!/if \(!meters\) return;/.test(fn)) {
+    fail("the services run even with no meters to run to");
+  }
+
+  /* The drawing is read back between the steps. The build has just
+     written the mains and set state, but this is the same render —
+     `features` in the closure is the drawing as it was before. */
+  if (!/await listGis\(projectId\)/.test(fn)) {
+    fail("the services are laid against a drawing that predates the mains");
+  }
+  if (!/autoLayServices\("gas", after\?\.features/.test(fn)) {
+    fail("the freshly read drawing is not passed to the services step");
+  }
+  /* And auto lay uses what it is given rather than the closure. */
+  const auto = canvas.slice(canvas.indexOf("async function autoLayServices"));
+  const body = auto.slice(0, 4000);
+  if (!/const world = src \?\? features;/.test(body)) {
+    fail("auto lay ignores the drawing it is handed");
+  }
+  if (/layServices\(features,/.test(body)) {
+    fail("auto lay still reads the stale drawing");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Main build status behaves (its own stages, live drawn apart).");
 process.exit(bad ? 1 : 0);

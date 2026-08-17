@@ -5,7 +5,8 @@
    end date the calendar agrees with, that only the trenching phases get
    one, and that not knowing produces no date rather than a wrong one. */
 import { readFileSync } from "node:fs";
-import { jointEstimate } from "./src/features/gis/jointRate.js";
+import { jointEstimate, reinstateEstimate } from "./src/features/gis/jointRate.js";
+import { digEstimate } from "./src/features/gis/digRate.js";
 import {
   endAfterHalves, workedDaysIn, layHalves, laySchedule, daysBetween,
   bookedParts, freeParts,
@@ -481,6 +482,91 @@ const MON = "2026-08-17";
      somebody overrides on a hunch. */
   if (!/jointEstimateText\(est\)/.test(page)) {
     fail("the estimate is shown without saying where it came from");
+  }
+}
+
+// 15. A gang's pace changes every phase, not just the digging.
+//
+//     An experienced team delivers up to half again what an apprentice
+//     one manages, and a plan that gives both the same duration is
+//     wrong for both.
+{
+  const dig = (eff) => digEstimate({
+    lengthM: 100, size: { widthM: 1.19, depthM: 0.96 },
+    surfaceKey: "footway", utilities: ["gas", "water", "electric"],
+    machineKey: "mini_3t", efficiency: eff,
+  });
+  const fast = dig(1.5);
+  const base = dig(1);
+  if (!(fast.totalHours < base.totalHours)) {
+    fail("a faster gang does not dig faster");
+  }
+  /* Half again on the work — the ratio is not exact because setup does
+     not move. */
+  if (!(fast.digHours < base.digHours * 0.7)) {
+    fail(`a 1.5x gang dug in ${fast.digHours}h against ${base.digHours}h`);
+  }
+  /* Setting up is the machine being moved and matted, and a quick gang
+     does not unload faster. */
+  if (fast.setupHours !== base.setupHours) {
+    fail("the gang's pace was applied to setting up");
+  }
+
+  /* Jointing too: connecting a plot is work like any other. */
+  if (jointEstimate({ plots: 12, efficiency: 1.5 }).hours
+    >= jointEstimate({ plots: 12 }).hours) {
+    fail("a faster gang does not joint faster");
+  }
+
+  /* And reinstatement. */
+  const surface = { Label: "Footway", Reinstate_M2_Hr: 3, Reinstate_Setup_Minutes: 30 };
+  const r1 = reinstateEstimate({ lengthM: 100, widthM: 1.19, surface });
+  const r2 = reinstateEstimate({ lengthM: 100, widthM: 1.19, surface, efficiency: 1.5 });
+  if (!(r2.hours < r1.hours)) fail("a faster gang does not reinstate faster");
+  if (r2.setupHours !== r1.setupHours) {
+    fail("the gang's pace was applied to signing and guarding");
+  }
+
+  /* Out of range is treated as unstated rather than obeyed: a team
+     entered at 0 would take no time at all, and one at 10 would finish
+     a street in an afternoon. */
+  for (const bad_ of [0, 10, -1, NaN, "fast"]) {
+    if (dig(bad_).totalHours !== base.totalHours) {
+      fail(`an efficiency of ${bad_} was obeyed`);
+    }
+  }
+}
+
+// 16. Reinstatement: area and surface, and nothing invented.
+{
+  const rated = { Label: "Footway", Reinstate_M2_Hr: 3, Reinstate_Setup_Minutes: 30 };
+  const e = reinstateEstimate({ lengthM: 100, widthM: 1.19, surface: rated });
+  if (!e.ok) fail("a rated surface produced no estimate");
+  if (e.areaM2 !== 119) fail(`the area came out as ${e.areaM2}, wanted 119`);
+  /* Shown, so the figure can be argued with rather than overridden on a
+     hunch. */
+  if (!/119 m² of Footway at 3 m²\/hr/.test(e.why)) {
+    fail("the estimate does not show its working");
+  }
+  /* Rounded up to the half-day a gang is booked in. */
+  if (e.halfDays !== Math.ceil(e.hours / 4)) fail("the hours are not rounded to half days");
+
+  /* No rate, no estimate — not a zero and not a guess. There is no free
+     source for these figures, and one invented here would be worse than
+     the blank end date reinstatement has now. */
+  const unrated = reinstateEstimate({
+    lengthM: 100, widthM: 1.19, surface: { Label: "Carriageway 1/2" },
+  });
+  if (unrated.ok) fail("an unrated surface produced an estimate anyway");
+  if (!unrated.needsRate) fail("an unrated surface does not say a rate is missing");
+  if (!/Carriageway 1\/2/.test(unrated.why)) {
+    fail("the message does not name the surface that needs a rate");
+  }
+
+  /* And no area is a different answer from no rate. */
+  const noArea = reinstateEstimate({ lengthM: 0, widthM: 1.19, surface: rated });
+  if (noArea.ok || noArea.needsRate) {
+    fail("a trench with no area is reported as a missing rate");
   }
 }
 

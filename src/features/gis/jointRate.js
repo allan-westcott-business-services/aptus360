@@ -66,9 +66,18 @@ export function jointTaskIds(taskTypes = []) {
    Returns half-days, the unit assignments are booked in, alongside the
    hours it came from so a screen can show the working rather than a
    number nobody can check. */
-export function jointEstimate({ plots = 0, hoursPerPlot = HOURS_PER_JOINT } = {}) {
+export function jointEstimate({
+  plots = 0,
+  hoursPerPlot = HOURS_PER_JOINT,
+  /* The gang's pace, as everywhere else. An experienced team connects a
+     plot faster than an apprentice one, and a plan giving both the same
+     duration is wrong for both. */
+  efficiency = 1,
+} = {}) {
   const n = Math.max(0, Math.floor(Number(plots) || 0));
   const hoursPerJoint = hoursPerPlot;
+  const eff = Number(efficiency);
+  const factor = Number.isFinite(eff) && eff >= 0.25 && eff <= 3 ? eff : 1;
   if (!n) {
     /* No joints is not half a day of jointing. Said as not-ok rather
        than zero, so a caller shows nothing instead of "0 days", which
@@ -79,17 +88,83 @@ export function jointEstimate({ plots = 0, hoursPerPlot = HOURS_PER_JOINT } = {}
     };
   }
 
-  const hours = n * hoursPerJoint;
+  const hours = (n * hoursPerJoint) / factor;
   /* Up to the next half day, because a gang is booked in half days. */
   const halfDays = Math.max(1, Math.ceil(hours / (HOURS_PER_DAY / 2)));
 
   return {
     ok: true,
     plots: n,
-    hours,
+    hours: Math.round(hours * 100) / 100,
     halfDays,
     hoursPerJoint,
+    efficiency: factor,
     why: `${n} plot${n === 1 ? "" : "s"} at ${hoursPerJoint} hr each`,
+  };
+}
+
+/* ── Reinstatement ──
+
+   Area and surface. A hundred metres of carriageway is a different job
+   from a hundred metres of verge, and the difference is the surface
+   rather than the length — so the rate is square metres an hour, per
+   surface, and the area is the trench's own length by its width.
+
+   ── No rate, no estimate ──
+
+   Not a zero and not a guess. There is no free source for these: SROH
+   and the council standard details specify materials and depths and say
+   nothing about durations, and the recognised output rates are in a
+   commercial price book.
+
+   So an unrated surface answers "nobody has said", which is what a
+   blank end date already means — and is honest in a way a number
+   invented here would not be. */
+export function reinstateEstimate({
+  lengthM = 0,
+  widthM = 0,
+  surface = null,
+  efficiency = 1,
+} = {}) {
+  const L = Number(lengthM) || 0;
+  const W = Number(widthM) || 0;
+  const rate = Number(surface?.Reinstate_M2_Hr) || 0;
+
+  if (!(L > 0) || !(W > 0)) {
+    return { ok: false, why: "This trench has no measured area to reinstate." };
+  }
+  if (!(rate > 0)) {
+    return {
+      ok: false,
+      why: `No reinstatement rate set for ${surface?.Label ?? "this surface"}.`,
+      needsRate: true,
+    };
+  }
+
+  const eff = Number(efficiency);
+  const factor = Number.isFinite(eff) && eff >= 0.25 && eff <= 3 ? eff : 1;
+
+  const areaM2 = L * W;
+  /* The work, quickened or slowed by the gang. */
+  const workHours = (areaM2 / rate) / factor;
+  /* Setting up is not: signing and guarding take what they take, and a
+     quick gang does not put out cones faster. */
+  const setupHours = (Number(surface?.Reinstate_Setup_Minutes) || 0) / 60;
+
+  const hours = workHours + setupHours;
+  const halfDays = Math.max(1, Math.ceil(hours / (HOURS_PER_DAY / 2)));
+
+  return {
+    ok: true,
+    areaM2: Math.round(areaM2 * 10) / 10,
+    ratePerHour: rate,
+    hours: Math.round(hours * 100) / 100,
+    setupHours: Math.round(setupHours * 100) / 100,
+    halfDays,
+    efficiency: factor,
+    surfaceLabel: surface?.Label ?? null,
+    why: `${Math.round(areaM2 * 10) / 10} m\u00b2 of `
+      + `${surface?.Label ?? "surface"} at ${rate} m\u00b2/hr`,
   };
 }
 

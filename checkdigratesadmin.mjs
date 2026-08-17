@@ -138,6 +138,63 @@ const page = readFileSync("./src/features/admin/AdminPage.jsx", "utf8");
   if (!/trenchSize\(/.test(screen)) fail("the example does not size its trench");
 }
 
+// The example is labelled as one, before its numbers.
+//
+//    Six durations in bold on an admin screen read as this company's
+//    figures for a job somebody is planning. They are not: it is one
+//    invented trench put through the tables so a rate can be seen as
+//    days.
+{
+  const page = readFileSync("./src/features/admin/DigRatesAdmin.jsx", "utf8");
+  if (!/An example, not a job/.test(page)) {
+    fail("the worked example is not labelled as an example");
+  }
+  /* Above the numbers: somebody who reads the figures first and the
+     caption second has already taken them for data. */
+  const whatAt = page.indexOf("dr-example-what");
+  const headAt = page.indexOf("dr-example-head");
+  if (whatAt < 0 || headAt < 0 || whatAt > headAt) {
+    fail("the caption sits below the numbers it qualifies");
+  }
+}
+
+// Reinstatement rates, and what an unset one means.
+{
+  const page = readFileSync("./src/features/admin/DigRatesAdmin.jsx", "utf8");
+  const sql = readFileSync("./supabase/migrations/0179_reinstate_rates.sql", "utf8");
+
+  if (!/Reinstate_M2_Hr/.test(sql)) fail("there is no reinstatement rate to set");
+  /* Seeded empty on purpose: there is no public source for these, and a
+     figure invented here would be worse than the blank end date
+     reinstatement has now. */
+  if (/INSERT INTO "GIS_Surface_Type"[\s\S]{0,400}Reinstate_M2_Hr/.test(sql)) {
+    fail("the migration seeds reinstatement rates nobody has agreed");
+  }
+  /* Provenance travels with the rate, as it does for the machines. */
+  if (!/Reinstate_Source/.test(sql)) fail("a reinstatement rate has no provenance");
+  /* The constraint's own body, not its name — the name appears in the
+     DROP above it, so a search for it passed while the CHECK had been
+     replaced with `true`. */
+  if (!/surface_reinstate_provenance\s*\n\s*CHECK \("Reinstate_Source" IS NULL OR "Reinstate_M2_Hr" IS NOT NULL\)/
+    .test(sql)) {
+    fail("a source can be set on a surface with no rate");
+  }
+
+  /* And the screen shows both, and says what a blank means. */
+  /* Used in the markup, not merely styled — the class survives in the
+     stylesheet after the element using it has gone, so a search of the
+     whole file passed while the cell rendered empty. */
+  if (!/<span className="dr-unset">/.test(page)) {
+    fail("an unset rate shows as an empty cell");
+  }
+  if (!/no estimate for this surface until a rate is set/.test(page)) {
+    fail("nothing says what an unset rate costs");
+  }
+  if (!/no public\s*\n?\s*source for these figures/.test(page)) {
+    fail("the screen does not say why the rates are missing");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Dig rates admin behaves (allow-listed, routed, one default, no free Source).");
 process.exit(bad ? 1 : 0);

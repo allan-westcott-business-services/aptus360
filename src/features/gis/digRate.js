@@ -230,6 +230,21 @@ export function digEstimate({
      Setup goes with the dig rather than the lay, because it is the
      machine being moved and matted. No dig, no machine. */
   existing = false,
+  /* How this team compares to the rate the tables assume.
+
+     1 is the figure in the tables. An experienced gang delivers more in
+     a day than an apprentice one — the difference reported here is up
+     to half again — and a plan that gives both the same duration is
+     wrong for both.
+
+     Applied to the work, not to the setup: moving and matting a machine
+     takes what it takes, and a quick gang does not unload faster.
+
+     A multiplier rather than a second set of rates per team, because
+     the tables describe the job and this describes the gang. Two rate
+     tables would drift, and nobody would know which was being
+     calibrated. */
+  efficiency = 1,
   rates = DEFAULT_DIG_RATES,
   depthBands = DEFAULT_DEPTH_FACTORS,
   layRates = DEFAULT_LAY_RATES,
@@ -255,10 +270,16 @@ export function digEstimate({
   const band = depthFactorFor(D, depthBands);
   const surface = surfaceFactorFor(surfaceKey, surfaceTypes);
 
+  /* Out of range is treated as unstated rather than obeyed: a team
+     entered at 0 would take no time at all, and one at 10 would finish
+     a street in an afternoon. */
+  const eff = Number(efficiency);
+  const factor = Number.isFinite(eff) && eff >= 0.25 && eff <= 3 ? eff : 1;
+
   const volumeM3 = L * W * D;
   const digHours = existing
     ? 0
-    : (volumeM3 / rate.baseRateM3Hr) * band.factor * surface.factor;
+    : ((volumeM3 / rate.baseRateM3Hr) * band.factor * surface.factor) / factor;
   const setupHours = existing ? 0 : (rate.setupMinutes ?? 0) / 60;
 
   /* One lay per thing in the trench, at that utility's rate. */
@@ -270,7 +291,7 @@ export function digEstimate({
   }));
   const rawLayHours = lays.reduce((t, x) => t + x.hours, 0);
   const jointFactor = lays.length > 1 ? JOINT_LAY_FACTOR : 1;
-  const layHours = rawLayHours * jointFactor;
+  const layHours = (rawLayHours * jointFactor) / factor;
 
   const totalHours = digHours + setupHours + layHours;
 
@@ -298,6 +319,9 @@ export function digEstimate({
     depthBandNote: band.note ?? null,
     surfaceFactor: surface.factor,
     surfaceLabel: surface.label,
+    /* Reported whether or not it is 1, so a duration that looks short
+       says why rather than looking like a mistake. */
+    efficiency: factor,
     surfaceAssumed: !surfaceKey,
     lays,
     jointFactor,

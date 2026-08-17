@@ -239,6 +239,21 @@ export default function DigRatesAdmin() {
           is a number of days. */}
       {shown && (
         <div className="dr-example">
+          {/* Said before the numbers, not after.
+
+              Six durations in bold on an admin screen read as this
+              company's figures for a job somebody is planning. They are
+              not: it is one invented trench put through the tables so a
+              rate can be seen as days, and it changes as the fields
+              below change.
+
+              Somebody who reads the numbers first and the caption
+              second has already taken them for data. */}
+          <p className="dr-example-what">
+            <strong>An example, not a job.</strong> One made-up trench put
+            through the rates below, so a change to a rate can be read as
+            a number of days. Edit anything underneath and these move.
+          </p>
           <div className="dr-example-head">
             <strong>100 m of joint trench</strong>
             <span>
@@ -530,7 +545,16 @@ export default function DigRatesAdmin() {
       </p>
       <table className="dr-tbl">
         <thead>
-          <tr><th>Surface</th><th className="num">Factor</th><th>Against unmade</th></tr>
+          <tr>
+            <th>Surface</th>
+            <th className="num">Factor</th>
+            <th>Against unmade</th>
+            {/* Reinstatement: area and surface, so it belongs on the
+                same row as the dig factor rather than a table of its
+                own. */}
+            <th className="num">Reinstate m&sup2;/hr</th>
+            <th>Where that came from</th>
+          </tr>
         </thead>
         <tbody>
           {surfaces.filter((s) => s.Is_Active).map((s) => {
@@ -544,6 +568,20 @@ export default function DigRatesAdmin() {
                     : f > 1 ? `${round2(f)}\u00d7 the dig, for breaking out`
                       : `${round2(f)}\u00d7 the dig, softer going`}
                 </td>
+                <td className="num">
+                  {s.Reinstate_M2_Hr ? round2(Number(s.Reinstate_M2_Hr))
+                    : <span className="dr-unset">not set</span>}
+                </td>
+                <td className="dr-why">
+                  {/* Provenance, the same way the machine rates carry
+                      it: a rate from eleven real jobs is a different
+                      thing from one somebody estimated. */}
+                  {!s.Reinstate_M2_Hr
+                    ? "no estimate for this surface until a rate is set"
+                    : s.Reinstate_Source === "measured"
+                      ? `measured, ${s.Reinstate_Sample_Size ?? "?"} job(s)`
+                      : "an estimate, not yet measured"}
+                </td>
               </tr>
             );
           })}
@@ -555,6 +593,23 @@ export default function DigRatesAdmin() {
           No surface is at 1.00. The machine rates above are written for
           unmade ground, so one of these should be the baseline — if none
           is, every estimate on every project is scaled by something.
+        </p>
+      )}
+
+      {/* ── Reinstatement, unrated ──
+
+          Said plainly rather than left to be noticed. Until a rate is
+          set the phase gets no estimate and somebody types an end date
+          from memory — which is what it has always done, and is easy to
+          keep doing without realising it could stop. */}
+      {surfaces.filter((s) => s.Is_Active && !s.Reinstate_M2_Hr).length > 0 && (
+        <p className="dr-warn">
+          {`${surfaces.filter((s) => s.Is_Active && !s.Reinstate_M2_Hr).length} `}
+          surface(s) have no reinstatement rate, so that phase gets no
+          estimate and its end date is typed by hand. There is no public
+          source for these figures &mdash; SROH and the council standard
+          details specify materials and depths, not durations &mdash; so
+          they want a number from somebody who has laid the surface.
         </p>
       )}
     </div>
@@ -573,6 +628,11 @@ const CSS = `
    days. */
 .dr-example { border: 1px solid var(--border); border-radius: 10px;
   background: var(--bg); padding: 12px 14px; margin-bottom: 8px; }
+/* What the example is, above what it says. Amber rather than grey: it
+   is a caveat about the figures beside it, not a footnote. */
+.dr-example-what { margin: 0 0 12px; padding: 9px 11px; border-radius: 8px;
+  background: #fef3e2; border: 1px solid #f2d675; font-size: 12.5px;
+  line-height: 1.6; color: #7c4a03; }
 .dr-example-head { display: flex; flex-wrap: wrap; align-items: baseline; gap: 4px 10px;
   margin-bottom: 9px; }
 .dr-example-head span { font-size: 11.5px; color: var(--muted); }
@@ -636,6 +696,9 @@ const CSS = `
 .dr-cal-row span { font-weight: 500; color: var(--muted); }
 .dr-cal-warn { font-size: 11.5px; }
 
+/* A figure nobody has set. Said as words rather than left blank: an
+   empty cell reads as nothing to enter. */
+.dr-unset { color: var(--muted); font-style: italic; }
 .dr-warn { max-width: 62ch; margin: 6px 0 0; padding: 8px 11px; border-radius: 8px;
   background: #fef3c7; border: 1px solid #fcd34d; font-size: 12px; line-height: 1.6; }
 `;

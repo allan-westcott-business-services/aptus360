@@ -244,20 +244,33 @@ export const ADMIN_TABLES = [
       { col: "DNO_Name", label: "DNO Name", type: "text", required: true },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
-  { key: "Local_Authority", label: "Local Authority", pk: "Local_Authority_ID", fields: [
-      { col: "Authority_Name", label: "Authority Name", type: "text", required: true },
-      { col: "Authority_Type", label: "Type", type: "select", options: ["Town","County","Unitary"], required: true },
-      { col: "Contact_Name", label: "Contact", type: "text" },
-      { col: "Telephone", label: "Telephone", type: "text" },
-      { col: "Email", label: "Email", type: "text" },
-    ] },
+  /* Local Authority stood here.
+
+     The councils live in Organisation now (0177), as a Local Authority
+     role with a subtype for each of the eleven kinds — beside the
+     customers, the DNOs and the fire authorities, which is where every
+     other body the business deals with already was.
+
+     This screen edited its own table, which was empty and which nothing
+     read. Two places to maintain a council would have been two lists
+     that disagreed the first time somebody added one.
+
+     The table itself is left in place. Dropping it is a separate
+     decision from taking it off the menu, and an empty table costs
+     nothing to keep until somebody is sure. */
   { key: "AV_Agreement_Type", label: "AV Agreement Type", pk: "AV_Agreement_Type_ID", fields: [
       { col: "AV_Agreement_Type", label: "Type Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
     ] },
-  { key: "Fire_Service", label: "Fire Authority", pk: "Fire_Service_ID", fields: [
-      { col: "Fire_Service_Name", label: "Authority Name", type: "text", required: true },
-    ] },
+  /* Fire Authority stood here, for the same reason.
+
+     Fire_Service held one row and no project pointed at it, while
+     Cheshire Fire & Rescue Service was already in Organisation with a
+     Fire Authority role — so the same body existed twice, in two places
+     that could not see each other.
+
+     Added and edited in Organisations from now on, like everything
+     else. */
 
   /* A second Teams entry stood here — the plain table editor over
      Team, alongside the bespoke screen up in Organisations & People.

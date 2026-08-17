@@ -187,6 +187,51 @@ const COUNTS = {
   }
 }
 
+// 8. One place to maintain a body, not two.
+//
+//    Local Authority and Fire Authority each had their own table and
+//    their own admin page, while the same organisations already existed
+//    in the register. Two places holding one thing is two lists that
+//    disagree the first time somebody adds one.
+{
+  const tables = readFileSync("./src/lib/adminTables.js", "utf8");
+
+  /* The screens are gone. Checked on the entry rather than the name —
+     both are explained in comments where they stood, and searching the
+     file for the name found the explanation. */
+  if (/\{ key: "Local_Authority"/.test(tables)) {
+    fail("the Local Authority screen is still on the admin menu");
+  }
+  if (/\{ key: "Fire_Service"/.test(tables)) {
+    fail("the Fire Authority screen is still on the admin menu");
+  }
+
+  /* And nothing reads the old lists, or removing the screens would have
+     left a dropdown nobody can add to. */
+  /* Read, not merely mentioned — the tab explains where the old list
+     went, and matching that explanation failed on correct code. */
+  const tabCode = tab.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (/localAuthorities/.test(tabCode)) {
+    fail("the stakeholders tab still reads the old council list");
+  }
+  const apiCode = api.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (/from\("Local_Authority"\)/.test(apiCode)) {
+    fail("the lookups endpoint still fetches the old council table");
+  }
+  if (/from\("Fire_Service"\)/.test(apiCode)) {
+    fail("the fire authorities still come from their own table");
+  }
+
+  /* The fire authorities come from the register, the same way the
+     councils and the operators do. */
+  if (!/eq\("Type_Key", "fire_authority"\)/.test(api)) {
+    fail("the fire authorities are not read from the organisation register");
+  }
+  if (!/x\.Organisation_ID/.test(tab)) {
+    fail("the fire dropdown still names organisations by the old id");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The council lists behave (382 loaded, both tiers, none past its date).");
 process.exit(bad ? 1 : 0);

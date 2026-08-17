@@ -31,7 +31,20 @@ export default withAuth(async function handler() {
       people:         db.from("Person").select("Person_ID,Person_Name,Email,Telephone,Person_Role(Role_ID)").eq("Is_Active", true).order("Person_Name"),
       roles:          db.from("Role").select("Role_ID,Role,Role_Code,Sort_Order").eq("Is_Active", true).order("Sort_Order"),
       utilities:      db.from("Utility").select("Utility_ID,Utility,Is_Lighting,Colour").order("Sort_Order"),
-      fireServices:   db.from("Fire_Service").select("Fire_Service_ID,Fire_Service_Name").order("Fire_Service_Name"),
+      /* The fire authorities, from the organisation register.
+
+         Fire_Service was their own table with a single row, while the
+         same body already existed in Organisation with a Fire Authority
+         role — two places holding one thing, neither able to see the
+         other. The admin page that edited the old table has gone, so
+         this is now the only one.
+
+         Through Organisation_By_Role, like the councils and the
+         operators: one join, defined once. */
+      fireServices: db.from("Organisation_By_Role")
+        .select("Organisation_ID,Name")
+        .eq("Type_Key", "fire_authority")
+        .order("Name"),
       /* Through the view so the picker knows which utilities each one
          covers. An empty utility_ids means unassigned, which the picker
          treats as unrestricted rather than as matching nothing. */
@@ -128,7 +141,16 @@ export default withAuth(async function handler() {
         .eq("Is_Active", true).order("Make").order("Model"),
       projectStatuses: db.from("Project_Status").select("Project_Status_ID,Stage,Status,Sort_Order,Row_Colour,Is_Terminal").order("Sort_Order"),
       scopeStatuses:   db.from("Scope_Status").select("Scope_Status_ID,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
-      localAuthorities: db.from("Local_Authority").select("Local_Authority_ID,Authority_Name,Authority_Type,Contact_Name,Telephone,Email").eq("Is_Active", true).order("Authority_Name"),
+      /* localAuthorities was fetched here, from a table of its own.
+
+         The councils live in Organisation now (0177) and are read as
+         `councils` below. Nothing has used this since, and a query kept
+         "in case" is a query somebody eventually reads from by mistake
+         — two lists of councils that disagree being exactly what
+         moving them was meant to stop.
+
+         The table itself is left in place; dropping it is a separate
+         decision. */
 
       /* The councils, from the organisation register (0177).
 

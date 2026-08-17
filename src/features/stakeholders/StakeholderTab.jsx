@@ -179,7 +179,10 @@ export default function StakeholderTab({ projectId }) {
 
   if (loading) return <div className="loading">Loading stakeholders&hellip;</div>;
 
-  const authorities = lookups?.localAuthorities || [];
+  /* localAuthorities was read here. The councils moved to the
+     organisation register in 0177 and this was left assigned and never
+     used — dead the moment the dropdowns started reading `councils`
+     instead. */
   /* ── Which councils go in which dropdown ──
 
      A county council sits above districts; a unitary has nothing above
@@ -213,7 +216,10 @@ export default function StakeholderTab({ projectId }) {
     .sort((a, b) => String(a.Name).localeCompare(String(b.Name)));
   const detailFor = (id) => councils.find((a) =>
     String(a.Organisation_ID) === String(id));
-  const fire = (lookups?.fireServices || []).find((x) => String(x.Fire_Service_ID) === String(f.Fire_Service_ID));
+  /* Fire authorities come from the organisation register now, so they
+     are named the way every other organisation is. */
+  const fire = (lookups?.fireServices || [])
+    .find((x) => String(x.Organisation_ID) === String(f.Fire_Service_ID));
 
   return (
     <div>
@@ -238,7 +244,9 @@ export default function StakeholderTab({ projectId }) {
             <Select value={f.Fire_Service_ID} onChange={set("Fire_Service_ID")}>
               <option value="">&mdash; None &mdash;</option>
               {(lookups.fireServices || []).map((x) => (
-                <option key={x.Fire_Service_ID} value={x.Fire_Service_ID}>{x.Fire_Service_Name}</option>
+                <option key={x.Organisation_ID} value={x.Organisation_ID}>
+                  {x.Name}
+                </option>
               ))}
             </Select>
             {fire && <p className="auth-note">Hydrant approvals and access</p>}

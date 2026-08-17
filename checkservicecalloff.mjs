@@ -14,6 +14,7 @@ import { readFileSync } from "node:fs";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
+  firstElectricCallOff, electricUtilityId,
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState } from "./src/features/gis/plotSupply.js";
@@ -516,6 +517,76 @@ const PLOTS = [
   }
   if (!/serviceOpen, servicePlots, priorServices\]\);/.test(canvas)) {
     fail("opening the picker does not redraw the hatching");
+  }
+}
+
+// 16. The substation is energised once.
+//
+//     The first electric service call-off on a site switches it on: the
+//     transformer goes live and so does the network. A day's work,
+//     happening as part of that visit rather than as a job of its own —
+//     so it is a phase on that call-off and on no other.
+{
+  const U = [
+    { Utility_ID: 1, Utility: "Electric" },
+    { Utility_ID: 2, Utility: "Gas" },
+  ];
+  const e = electricUtilityId(U);
+  if (e !== 1) fail("the electric utility cannot be identified");
+
+  if (!firstElectricCallOff([], e)) fail("the first call-off is not the first");
+  if (!firstElectricCallOff([{ status: "Complete", utility_ids: [2] }], e)) {
+    fail("a gas call-off used up the energisation");
+  }
+  if (firstElectricCallOff([{ status: "Scheduled", utility_ids: [1] }], e)) {
+    fail("the substation would be energised twice");
+  }
+  /* A withdrawn one energised nothing, so the next still carries it —
+     otherwise the site has no energisation booked at all. */
+  if (!firstElectricCallOff([{ status: "Withdrawn (Customer)", utility_ids: [1] }], e)) {
+    fail("a withdrawn call-off still holds the energisation");
+  }
+  /* Aborted is not withdrawn: that visit is being rescheduled and the
+     energisation is still coming with it. */
+  if (firstElectricCallOff([{ status: "Aborted", utility_ids: [1] }], e)) {
+    fail("an aborted call-off gave up its energisation");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* Anchored on the payload key, not merely the name — a field renamed
+     to X_Needs_Energisation still contains it, and the endpoint would
+     drop it silently while this passed. */
+  if (!/^\s+Needs_Energisation: serviceUtils/m.test(canvas)) {
+    fail("raising a call-off does not decide whether it energises");
+  }
+  /* Only where electric is being connected. */
+  if (!/includes\(Number\(electricUtilityId/.test(canvas)) {
+    fail("a gas-only call-off can carry the energisation");
+  }
+
+  /* The endpoints carry it, or the flag is set and never stored, and
+     the assignment panel never sees it. */
+  const write = readFileSync("./netlify/functions/calloffs.js", "utf8");
+  if (!/"Needs_Energisation"/.test(write)) {
+    fail("the flag is dropped on the way in");
+  }
+  /* Dig_Rate_ID was missing from the same list, so the machine picker
+     was silently discarding its answer. */
+  if (!/"Dig_Rate_ID"/.test(write)) {
+    fail("the chosen machine is dropped on the way in");
+  }
+  const list = readFileSync("./netlify/functions/calloffs-all.js", "utf8");
+  if (!/"Needs_Energisation"/.test(list)) {
+    fail("the list does not carry the flag, so no phase is added");
+  }
+
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  if (!/r\.Needs_Energisation/.test(page)) {
+    fail("the call-off carrying it gets no energisation phase");
+  }
+  /* Added once. A phase listed twice is a day booked twice. */
+  if (!/!phases\.some\(\(p\) => Number\(p\.Task_Type_ID\)/.test(page)) {
+    fail("the energisation phase can be added twice");
   }
 }
 

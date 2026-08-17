@@ -97,11 +97,17 @@ export const COVER_LABEL = {
    three days. Adding it costs mains nothing: no jointing phase is
    mapped against that work type, so no pill appears there.
 
+   Energisation likewise, and it costs even less: it is mapped against
+   no work type at all and appears only on the single call-off per
+   project that carries the flag. A day at the substation is not a phase
+   to leave off a row that has one.
+
    Matched on the name because that is what a phase is identified by
    throughout — the same test energisationFloor and isDigTask use. */
 export function isListedPhase(taskTypeName) {
   const n = String(taskTypeName || "").toLowerCase().trim();
   return n.startsWith("excav") || n.startsWith("lay")
     || n.startsWith("joint")
+    || n.startsWith("energis")
     || n.startsWith("reinstat");
 }

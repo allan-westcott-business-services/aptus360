@@ -21,6 +21,14 @@ const SUB_COLS = [
      understood on the day, and an estimate that moved would silently
      lengthen a booking a team had already been given. */
   "Estimated_Half_Days",
+  /* The machine this call-off was estimated on (0178), and whether it
+     is the visit that energises the substation (0180).
+
+     Both written once at raise time and read back with the rest: a
+     call-off is a request for work as it was understood on the day, and
+     a machine or a phase that changed afterwards would move a booking
+     somebody had already been given. */
+  "Dig_Rate_ID", "Needs_Energisation",
 ].join(",");
 
 const WRITABLE = new Set(SUB_COLS.split(",")

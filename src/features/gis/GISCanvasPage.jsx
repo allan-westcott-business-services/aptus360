@@ -74,6 +74,7 @@ import { plotSupplyState } from "./plotSupply.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
+  firstElectricCallOff, electricUtilityId,
 } from "./serviceCallOff.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
@@ -8367,6 +8368,22 @@ export default function GISCanvasPage() {
         /* Ticked, not derived: what is being connected now is a
            decision, and the drawing cannot answer it. */
         utility_ids: serviceUtils.map(Number),
+        /* ── The visit that switches the substation on ──
+
+           The first electric service call-off on a site energises it:
+           the transformer goes live and so does the network. Real work,
+           a day of it, happening as part of this visit rather than as a
+           job of its own — so it is a phase on this call-off and on no
+           other.
+
+           Judged now, against the call-offs already raised. A withdrawn
+           one energised nothing and does not count; an aborted one is
+           being rescheduled and does. */
+        Needs_Energisation: serviceUtils
+          .map(Number)
+          .includes(Number(electricUtilityId(lookups?.utilities || [])))
+          && firstElectricCallOff(priorServices,
+            electricUtilityId(lookups?.utilities || [])),
         Notes: serviceNote || null,
       });
 

@@ -388,6 +388,25 @@ export default function CallOffsPage() {
           .find((t) => Number(t.Task_Type_ID) === Number(m.Task_Type_ID)))
         .filter(Boolean)
         .filter((t) => isListedPhase(t.Task_Type_Name));
+
+      /* ── Energising the substation ──
+
+         On one call-off per project: the first electric service one.
+         The transformer is switched on and the network goes live, which
+         is a day's work happening as part of that visit rather than as
+         a job of its own.
+
+         Added here rather than through Work_Type_Task_Type because it
+         is not a property of the work type — every electric service
+         call-off has the same phases, and this is true of exactly one
+         of them. */
+      if (r.Needs_Energisation) {
+        const en = allTaskTypes.find((t) =>
+          /^energis/i.test(String(t.Task_Type_Name || "")));
+        if (en && !phases.some((p) => Number(p.Task_Type_ID) === Number(en.Task_Type_ID))) {
+          phases.push(en);
+        }
+      }
       const states = phases.map((t) => ({
         taskTypeId: t.Task_Type_ID,
         name: t.Task_Type_Name,

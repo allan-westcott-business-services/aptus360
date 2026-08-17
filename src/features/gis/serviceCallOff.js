@@ -163,3 +163,43 @@ export function servicedByPlot(utility) {
     .toLowerCase().replace(/[^a-z]/g, "");
   return PLOT_UTILITIES.includes(key);
 }
+
+/* Whether this would be the first electric service call-off on a site.
+
+   ── Why it matters ──
+
+   The first one energises the substation: the transformer is switched
+   on and the network goes live. Real work, a day of it, and it happens
+   as part of that visit rather than as a job of its own — so it is a
+   phase on that call-off and on no other.
+
+   ── What counts as one before it ──
+
+   Any electric service call-off that has not been withdrawn. An
+   abandoned one energised nothing, and treating it as the first would
+   leave the site with the substation never switched on by anybody's
+   programme.
+
+   Aborted is not withdrawn. A call-off the gang could not work on the
+   day is rescheduled rather than abandoned — the energisation is still
+   coming, on whichever visit ends up doing it, and this call-off is
+   still the one carrying it. */
+export function firstElectricCallOff(priorCallOffs = [], electricUtilityId) {
+  if (electricUtilityId == null) return false;
+  const wanted = Number(electricUtilityId);
+
+  return !priorCallOffs.some((co) => {
+    if (/^withdrawn/i.test(String(co.status ?? ""))) return false;
+    return (co.utility_ids || []).some((u) => Number(u) === wanted);
+  });
+}
+
+/* The id of the electric utility, from the lookup list.
+
+   By name, the way every other part of the drawing matches a utility to
+   a layer — the Utility table has no key of its own to match on. */
+export function electricUtilityId(utilities = []) {
+  const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  const row = utilities.find((u) => norm(u.Utility) === "electric");
+  return row ? Number(row.Utility_ID) : null;
+}

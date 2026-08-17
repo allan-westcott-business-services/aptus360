@@ -19,6 +19,11 @@ const COLS = [
   "Preferred_Date", "Alternative_Date",
   "Obstruction_Free", "Ground_Unmade", "Line_Level_Required",
   "Notes", "Created_By", "Created_At",
+  /* Whether this is the call-off that energises the substation (0180).
+     The assignment panel adds a phase for it, so the list has to carry
+     it — the phases a call-off has are otherwise entirely the work
+     type's, and this one is true of a single call-off on a project. */
+  "Needs_Energisation",
   /* Half-days to dig and lay the whole call-off (0159). Read here as
      well as on the project's own tab: this is the endpoint the
      Call-offs page uses, and it is where an assignment's end date is

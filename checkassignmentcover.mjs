@@ -142,7 +142,14 @@ const day = (id, part) => ({ Assignment_ID: id, Part: part });
     "Jointing"]) {
     if (!isListedPhase(n)) fail(`${n} is not shown on the list`);
   }
-  for (const n of ["Survey", "Energise", "Traffic Management", ""]) {
+  /* Energisation is listed now (0180): the first electric service
+     call-off on a site switches the substation on, which is a day's
+     work and belongs on the row that carries it. It was excluded here
+     when no such phase existed. */
+  if (!isListedPhase("Energisation")) {
+    fail("the energisation phase is not shown on the list");
+  }
+  for (const n of ["Survey", "Traffic Management", ""]) {
     if (isListedPhase(n)) fail(`${n} is shown on the list`);
   }
 

@@ -14896,32 +14896,19 @@ export default function GISCanvasPage() {
                   </p>
                 )}
 
-                {/* What is being laid, read off the drawing.
+                {/* The "Utilities" summary line was here.
 
-                    Ticking these by hand was asking somebody to retype
-                    what the application already knew: the mains on a run
-                    are the pipes and cables routed along the trench
-                    sections it crosses. A hand can tick gas on a run
-                    with no gas in it; the drawing cannot.
+                    Each span now says what it carries on its own head
+                    line, so this was the same information a second
+                    time — and as a union it was less useful than the
+                    per-span version: three runs carrying different
+                    sizes came out as "Electric · Gas · Water", which
+                    says what somebody could already see and hides what
+                    they could not.
 
-                    So it is shown rather than chosen. Each span lists
-                    its own contents above, and this is the union across
-                    them — what one visit has to carry. */}
-                {callOff?.spans?.length > 0 && (
-                  <div className="gco-utils">
-                    <span className="gco-utils-label">Utilities</span>
-                    <span className="gco-utils-found">
-                      {callOffFound.length
-                        ? callOffFound
-                          .map((k) => (lookups?.utilities || [])
-                            .find((u) => String(u.Utility).toLowerCase()
-                              .replace(/[^a-z]/g, "") === String(k).toLowerCase()
-                              .replace(/[^a-z]/g, ""))?.Utility ?? k)
-                          .join(" \u00b7 ")
-                        : "Nothing routed along these runs yet"}
-                    </span>
-                  </div>
-                )}
+                    callOffFound is still worked out: the submission
+                    records which utilities a call-off covers, and that
+                    is a different question from what a panel shows. */}
 
                 {callOff?.spans?.length > 0 && (
                   <p className="gco-tot">
@@ -16296,7 +16283,11 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    plot list, so "23, 24, 25" read as three separate things. Capped
    against the viewport so it stays on screen on a laptop. */
 .gis-co { position: absolute; right: 16px; top: 70px; z-index: 40;
-  width: min(480px, calc(100vw - 32px));
+  /* Wide enough for a run's name, its length and what it carries on one
+     line. At 480 the name wrapped mid-way — "A19 to" above "A23" — and
+     a label broken across two lines is harder to read than a panel that
+     takes more room. */
+  width: min(560px, calc(100vw - 32px));
   max-height: 70vh; overflow-y: auto; background: var(--white);
   border: 1px solid var(--border); border-radius: 10px; padding: 11px 13px;
   box-shadow: 0 4px 18px rgba(0,0,0,.13); font-size: 12px; }
@@ -16361,8 +16352,17 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-none { color: var(--muted); font-style: italic; margin: 6px 0; }
 .gco-range { border: 1px solid var(--border); border-radius: 7px; padding: 7px 9px;
   margin-bottom: 6px; }
-.gco-range-head { display: flex; align-items: center; gap: 7px; margin-bottom: 4px; }
-.gco-f { flex: 1; font-size: 10.5px; color: var(--muted); }
+.gco-range-head { display: flex; align-items: baseline; gap: 10px;
+  margin-bottom: 4px; }
+/* The run's name, whole. Without this it shrank to fit whatever was
+   beside it and "A19 to A23" broke across two lines — a label that
+   wraps mid-name is harder to read than one that pushes the row
+   wider. */
+.gco-range-head > strong { white-space: nowrap; flex: 0 0 auto; }
+/* The length, beside it and equally unwrappable: "56.8 m" split after
+   the number reads as two figures. */
+.gco-f { flex: 0 0 auto; font-size: 10.5px; color: var(--muted);
+  white-space: nowrap; }
 .ins-util { text-transform: capitalize; }
 /* Wide enough for a cable size — "185mm\u00b2 WF Al" is longer than the
    circuit label it replaced, and a truncated cable size is a cable size
@@ -16415,19 +16415,18 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 
 .gl-note { font-size: 11.5px; color: var(--muted); line-height: 1.55; margin: 8px 0 0; }
 
-.gco-utils { display: flex; flex-wrap: wrap; align-items: center; gap: 6px 12px;
-  padding: 8px 0 2px; border-top: 1px solid var(--border); margin-top: 8px; }
 /* A utility with nothing of its kind drawn along these runs. Dimmed
    rather than hidden: it can still be ticked, and a missing box would
    look like the panel had lost it. */
 .gco-util.absent { opacity: .45; }
-/* What a span carries, under its plots. */
+/* What a span carries. Under its plots where several spans are listed
+   within a run; on the head line for the run itself. */
 .gco-in { flex-basis: 100%; font-size: 10.5px; color: var(--muted);
   margin-top: 2px; }
-/* What the drawing says is on the call-off. Read, not chosen. */
-.gco-utils-found { font-weight: 600; color: var(--text); }
-.gco-utils-label { font: 700 10px inherit; color: var(--muted);
-  text-transform: uppercase; letter-spacing: .04em; }
+/* On the head line it takes whatever room is left, so the name and the
+   length keep theirs and this is what gives if the panel is narrow. */
+.gco-in-head { flex: 1 1 auto; flex-basis: auto; margin-top: 0;
+  min-width: 0; }
 .gco-util { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
   cursor: pointer; }
 

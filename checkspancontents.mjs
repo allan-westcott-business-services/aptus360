@@ -504,6 +504,46 @@ const SITE = [
   if (!/gco-in gco-in-head/.test(code)) {
     fail("a run does not say what it carries beside its length");
   }
+  /* The name and the length do not wrap. "A19 to A23" broken across
+     two lines is harder to read than a row that pushes the panel
+     wider — and .gco-f having flex:1 was what squeezed them, by taking
+     all the spare width for a six-character length. */
+  const css = canvas.slice(canvas.indexOf("const CSS = "));
+  const headRule = css.slice(css.indexOf(".gco-range-head > strong"),
+    css.indexOf(".gco-range-head > strong") + 120);
+  if (!/white-space: nowrap/.test(headRule)) {
+    fail("a run's name can wrap mid-name");
+  }
+  const lenAt = css.indexOf(".gco-f {");
+  if (!/white-space: nowrap/.test(css.slice(lenAt, lenAt + 160))) {
+    fail("a run's length can wrap after the number");
+  }
+  if (/\.gco-f \{ flex: 1;/.test(css)) {
+    fail("the length still takes all the spare width");
+  }
+  /* One width on the panel, not two — the second silently overrode the
+     first. */
+  const panelAt = css.indexOf(".gis-co {");
+  const panel = css.slice(panelAt, css.indexOf("}", panelAt));
+  if ((panel.match(/width:/g) || []).length !== 1) {
+    fail("the panel declares its width more than once");
+  }
+
+  /* The Utilities summary line is gone: each span says what it carries
+     on its own head line, and the union across three runs said what
+     somebody could already see while hiding what they could not. */
+  if (/className="gco-utils"/.test(code)) {
+    fail("the utilities summary line is still shown");
+  }
+  if (/\.gco-utils \{|\.gco-utils-found/.test(css)) {
+    fail("the removed line's styles are still there");
+  }
+  /* But the submission still records which utilities it covers — a
+     different question from what a panel shows. */
+  if (!/utility_ids: utilityIdsFor\(callOffFound/.test(code)) {
+    fail("removing the line stopped the call-off recording its utilities");
+  }
+
   /* Read off the drawing through the shared rule, so the panel and the
      bill cannot disagree about a size. */
   const head = code.slice(code.indexOf("gco-in-head"));

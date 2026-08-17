@@ -11,6 +11,7 @@ import StatusWorkflowAdmin from "./StatusWorkflowAdmin.jsx";
 import ElectricSpecsAdmin from "./ElectricSpecsAdmin.jsx";
 import PointsConfigAdmin from "./PointsConfigAdmin.jsx";
 import CustomersAdmin from "./CustomersAdmin.jsx";
+import TabbedTables from "./TabbedTables.jsx";
 import OrganisationsAdmin from "./OrganisationsAdmin.jsx";
 import GisStylesAdmin from "./GisStylesAdmin.jsx";
 import WaterPipeSizesAdmin from "./WaterPipeSizesAdmin.jsx";
@@ -24,7 +25,14 @@ import AdminMenuAdmin from "./AdminMenuAdmin.jsx";
 export default function AdminPage() {
   /* Headings are rows in the same list, so anything that walks it for a
      screen has to step over both kinds. */
-  const isScreen = (t) => !t.separator && !t.group;
+  /* What appears in the menu.
+
+     `hidden` is a table that still exists and is still edited — just
+     not from an entry of its own. Regions, Sub Regions, Roles, Crafts
+     and the three POC lists are reached through the merged pages that
+     name them, and listing them twice would be two routes to one
+     editor with no way to tell which somebody meant. */
+  const isScreen = (t) => !t.separator && !t.group && !t.hidden;
 
   /* ── The menu, arranged in the database ──
 
@@ -145,6 +153,49 @@ export default function AdminPage() {
           <ProjectTabsAdmin />
         ) : table?.special === "subregions" ? (
           <SubRegionAdmin />
+
+        /* ── The merged pages ──
+
+            Tabs over the editors that already exist, rather than three
+            new screens. Each tab names a table by key and the wrapper
+            hands it to GenericTable — or renders a bespoke screen where
+            one is needed, as Sub Region is.
+
+            Described here rather than in adminTables.js because a tab
+            list is a layout, and that file describes tables. */
+        ) : table?.special === "regions" ? (
+          <TabbedTables
+            title="Regions & Sub Regions"
+            note={"Where work happens. A sub region belongs to a region, "
+              + "so the two are set up together."}
+            tabs={[
+              { label: "Regions", key: "Region" },
+              { label: "Sub Regions", render: () => <SubRegionAdmin /> },
+            ]}
+          />
+        ) : table?.special === "rolescrafts" ? (
+          <TabbedTables
+            title="Roles & Crafts"
+            note={"What somebody is, and what they can do. A role is a "
+              + "job title; a craft is a skill a team holds and a work "
+              + "phase can require."}
+            tabs={[
+              { label: "Roles", key: "Role" },
+              { label: "Crafts", key: "Craft" },
+            ]}
+          />
+        ) : table?.special === "poc" ? (
+          <TabbedTables
+            title="POC Admin"
+            note={"The lists a point of connection is described by: what "
+              + "kind it is, where it has got to, and where its quotation "
+              + "has got to."}
+            tabs={[
+              { label: "POC Type", key: "POC_Type" },
+              { label: "POC Status", key: "POC_Status" },
+              { label: "POC Quotation Status", key: "Quotation_Status" },
+            ]}
+          />
         ) : table?.special === "workflow" ? (
           <StatusWorkflowAdmin />
         ) : table?.special === "electric" ? (

@@ -35,7 +35,17 @@ export const ADMIN_TABLES = [
       { col: "Row_Colour", label: "Row Colour", type: "colour" },
       { col: "Is_Terminal", label: "Terminal", type: "checkbox" },
     ] },
-  { key: "Scope_Status", label: "Scope Status", pk: "Scope_Status_ID", fields: [
+  /* ── Design ──
+
+     Scope Status stood above, among the project lists. It is the status
+     of an outline design, which is what the rest of the application
+     calls it — so it is named that and sits with the other design
+     configuration.
+
+     The table keeps its key: renaming a screen is a label, and renaming
+     a table is a migration and every reference to it. */
+  { key: "Scope_Status", label: "Outline Design Status", pk: "Scope_Status_ID",
+    fields: [
       { col: "Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Terminal", label: "Terminal", type: "checkbox" },
@@ -61,7 +71,11 @@ export const ADMIN_TABLES = [
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
   { key: "Electric_Specs", label: "Electric Specs", special: "electric" },
-  { key: "POC_Type", label: "POC Type", pk: "POC_Type_ID", fields: [
+  /* The three POC lists on one page. A point of connection has a type,
+     a status and a quotation status, and setting one up meant three
+     entries in three parts of the menu. */
+  { key: "POCAdmin", label: "POC Admin", special: "poc" },
+  { key: "POC_Type", label: "POC Type", hidden: true, pk: "POC_Type_ID", fields: [
       { col: "POC_Type", label: "Type Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
@@ -71,11 +85,15 @@ export const ADMIN_TABLES = [
       { col: "Row_Colour", label: "Colour", type: "text" },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
     ] },
-  { key: "Quotation_Status", label: "Quotation Status", pk: "Quotation_Status_ID", fields: [
+  /* Named for what it is. "Quotation Status" on its own read as a
+     status any quotation might have; these are the stages a point of
+     connection quotation goes through. */
+  { key: "Quotation_Status", label: "POC Quotation Status", hidden: true,
+    pk: "Quotation_Status_ID", fields: [
       { col: "Quotation_Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
     ] },
-  { key: "POC_Status", label: "POC Status", pk: "POC_Status_ID", fields: [
+  { key: "POC_Status", label: "POC Status", hidden: true, pk: "POC_Status_ID", fields: [
       { col: "POC_Status", label: "Status Name", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
     ] },
@@ -217,23 +235,46 @@ export const ADMIN_TABLES = [
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
-  { key: "Craft", label: "Crafts", pk: "Craft_ID", fields: [
+  /* Roles and crafts on one page. What somebody is and what they can
+     do are set up in the same sitting and were two entries apart. */
+  { key: "RolesCrafts", label: "Roles & Crafts", special: "rolescrafts" },
+  /* Regions and their sub regions on one page, as tabs.
+
+     They were two menu entries and are one thing maintained together:
+     a sub region belongs to a region, and reaching them separately
+     meant holding that relationship in your head.
+
+     The tables themselves are unchanged and still described below —
+     the merged page names them rather than restating them, so a column
+     added to Region appears in the tab without anything here knowing.
+     Sub Region keeps its own screen, because a sub region is chosen
+     against a region and the plain editor cannot ask that. */
+  { key: "Regions", label: "Regions & Sub Regions", special: "regions" },
+
+  /* The tables the merged pages above are made of.
+
+     `hidden` keeps them out of the menu and available to everything
+     that looks a table up by key — the tabs, and anything else that
+     resolves a lookup column against them. Deleting them would have
+     taken the field definitions with them, and the tabs draw from
+     exactly these. */
+  { key: "Region", label: "Region", hidden: true, pk: "Region_ID", fields: [
+      { col: "Region", label: "Region", type: "text", required: true },
+      { col: "Sort_Order", label: "Sort Order", type: "number" },
+      { col: "Is_Active", label: "Active", type: "checkbox" },
+    ] },
+  { key: "Sub_Region", label: "Sub Region", hidden: true, special: "subregions" },
+  { key: "Craft", label: "Crafts", hidden: true, pk: "Craft_ID", fields: [
       { col: "Craft_Name", label: "Craft", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
-  { key: "Role", label: "Role", pk: "Role_ID", fields: [
+  { key: "Role", label: "Role", hidden: true, pk: "Role_ID", fields: [
       { col: "Role", label: "Role Name", type: "text", required: true },
       { col: "Role_Code", label: "Code", type: "text", required: true },
       { col: "Sort_Order", label: "Sort Order", type: "number" },
       { col: "Is_Active", label: "Active", type: "checkbox" },
     ] },
-  { key: "Region", label: "Region", pk: "Region_ID", fields: [
-      { col: "Region", label: "Region", type: "text", required: true },
-      { col: "Sort_Order", label: "Sort Order", type: "number" },
-      { col: "Is_Active", label: "Active", type: "checkbox" },
-    ] },
-  { key: "Sub_Region", label: "Sub Region", special: "subregions" },
 
   { separator: true, label: "Utilities & Connections" },
   { group: true, label: "Utilities" },

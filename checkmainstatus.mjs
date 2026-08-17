@@ -15,7 +15,7 @@
 import { readFileSync } from "node:fs";
 import {
   BUILD_STATUSES, MAIN_STATUSES, statusesFor, isMainFeature, isLive,
-  statusOf, statusLabel, statusColour, LIVE_COLOUR, DEAD_COLOUR,
+  statusOf, statusLabel, statusColour, LIVE_COLOUR, DEAD_COLOUR, isMainType,
 } from "./src/features/gis/buildStatus.js";
 
 let bad = 0;
@@ -222,6 +222,108 @@ const line = (type, status) => ({
      that looks like the whole job. */
   if (!/stopped early/.test(fn)) {
     fail("a stopped run does not say it stopped");
+  }
+}
+
+// 7. What could not be laid, and why, is kept.
+//
+//    The reasons were worked out and thrown away: the panel showed one,
+//    and only when nothing at all had been laid. A run that laid
+//    seventy-five of seventy-six said "1 trench skipped" and nothing
+//    about which or why — which is exactly the case somebody needs,
+//    because the seventy-five are fine and the one is a plot that will
+//    be missed on site.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const auto = readFileSync("./src/features/gis/autoService.js", "utf8");
+
+  if (!/setSkipReport\(/.test(canvas)) fail("the skip reasons are still discarded");
+  if (!/gis-skips/.test(canvas)) fail("nothing shows what could not be laid");
+  /* Not in the status line, which clears itself after eight seconds —
+     a list somebody works through should stay until they close it. */
+  const at = canvas.indexOf("setSkipReport(real.length");
+  if (at < 0) fail("the skipped trenches are not reported");
+  if (!/setSkipReport\(null\)/.test(canvas)) {
+    fail("the report cannot be closed");
+  }
+  /* Already-serviced trenches are not a problem to look at. */
+  if (!/!\/already\/i\.test/.test(canvas)) {
+    fail("trenches that already have a service are listed as failures");
+  }
+  /* And each row selects its trench, because the next thing anybody
+     does with this list is go and look. */
+  /* Inside the report, not anywhere in the file — selecting a feature
+     is a common thing to do and a search of the whole canvas passed
+     while the row's own button did nothing. */
+  const reportAt = canvas.indexOf('className="gis-skips"');
+  const report = reportAt < 0 ? "" : canvas.slice(reportAt, reportAt + 2400);
+  if (!/setSelected\(\[f\.Feature_ID\]\)/.test(report)) {
+    fail("a listed trench cannot be found on the drawing");
+  }
+
+  /* The reasons say how far off, where it is a tolerance. "Does not
+     meet a mains trench" is true of a trench half a metre short and one
+     on the other side of the site, and only one is worth walking to. */
+  if (!/closest is /.test(auto)) {
+    fail("a trench that misses the main does not say by how much");
+  }
+  if (!/the nearest \$\{utility\} meter is /.test(auto)) {
+    fail("a trench with no meter in range does not say how far the nearest is");
+  }
+  /* Both quote the tolerance, so the message says what to change. */
+  if (!/within \$\{teeM\}m/.test(auto)) fail("the tee tolerance is not stated");
+  if (!/within \$\{meterM\}m/.test(auto)) fail("the meter tolerance is not stated");
+}
+
+// 8. A rebuild replaces the mains and leaves the services alone.
+//
+//    Build Gas Network deleted every generated gas line — and Auto Lay
+//    Services marks the service pipes it draws as generated too, on the
+//    same layer. So rebuilding the mains deleted every service laid to
+//    every plot on the site, and a gang would have arrived to find the
+//    meters unconnected on a drawing that had been right an hour
+//    earlier.
+//
+//    Water and electric had it too. It is the same fault the electric
+//    build already had against gas — Generated alone was every layer —
+//    one level further down.
+{
+  const types = [
+    { Type_Key: "gas_main", Label: "Gas Main" },
+    { Type_Key: "gas_service", Label: "Gas Service" },
+    { Type_Key: "water_main", Label: "Water Main" },
+    { Type_Key: "elec_main", Label: "Electric Main" },
+    { Type_Key: "elec_service", Label: "Electric Service" },
+    /* Renamed in admin, which is a thing somebody may do. */
+    { Type_Key: "lp_main", Label: "Gas Main (LP)" },
+    { Type_Key: "lp_svc", Label: "Gas Service (LP)" },
+    /* A key that looks like a main on something labelled a service.
+       This is what the label check is for, and without a case that
+       reaches it the guard was untested — the key check alone answered
+       every other fixture. */
+    { Type_Key: "gas2_main", Label: "Gas Service (LP)" },
+  ];
+  for (const k of ["gas_main", "water_main", "elec_main", "lp_main"]) {
+    if (!isMainType(k, types)) fail(`${k} is not treated as a main, so it is never rebuilt`);
+  }
+  for (const k of ["gas_service", "elec_service", "lp_svc", "gas2_main", ""]) {
+    if (isMainType(k, types)) fail(`${k} is treated as a main, so a rebuild deletes it`);
+  }
+
+  /* All three builds ask. A guard on two of them leaves the third
+     deleting services, which is how this was found in the first
+     place. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const guards = (canvas.match(/isMainType\(f\.Attributes\?\.Line_Type, lineTypes\)/g) || []);
+  if (guards.length < 3) {
+    fail(`only ${guards.length} of the three rebuilds keep services`);
+  }
+  /* And each still narrows to its own layer, or a gas rebuild would
+     replace the electric mains. */
+  for (const layer of ["gas", "water", "electric"]) {
+    if (!new RegExp(`Layer_Key === "${layer}"[\\s\\S]{0,120}isMainType`).test(canvas)) {
+      fail(`the ${layer} rebuild does not keep that layer's services`);
+    }
   }
 }
 

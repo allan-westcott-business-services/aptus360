@@ -512,7 +512,26 @@ export function layServices(features = [], utility, opts = {}) {
        from. */
     const teeEnd = ends.find((e) => mains.some((m) => gapTo(e, m.Geometry) <= teeM));
     if (!teeEnd) {
-      skipped.push({ trench: sv, why: "does not meet a mains trench" });
+      /* How far off it was, because "does not meet a mains trench" is
+         true of a trench half a metre short and one on the other side
+         of the site, and only one of those is worth going to look at.
+
+         The tolerance is half a metre: a service drawn to within a
+         metre of the main looks connected at any sensible zoom and is
+         not. Saying the gap turns "why did this one not lay" into
+         "move that end 0.3m". */
+      const near = mains
+        .map((m) => gapTo(ends[0], m.Geometry))
+        .concat(mains.map((m) => gapTo(ends[1], m.Geometry)))
+        .filter((d) => Number.isFinite(d))
+        .sort((a, b) => a - b)[0];
+      skipped.push({
+        trench: sv,
+        why: near != null && near < 25
+          ? `neither end reaches a mains trench \u2014 closest is `
+            + `${near.toFixed(2)}m away, and it has to be within ${teeM}m`
+          : "does not meet a mains trench",
+      });
       continue;
     }
     const farEnd = ends.find((e) => e !== teeEnd) ?? ends[1];
@@ -524,7 +543,20 @@ export function layServices(features = [], utility, opts = {}) {
       .sort((a, b) => a.d - b.d)[0]?.m;
 
     if (!meter) {
-      skipped.push({ trench: sv, why: `no ${utility} meter at the end of it` });
+      /* The same again: a meter thirteen metres away is a tolerance
+         problem, and no meter at all is a missing feature. They are
+         fixed differently and the message used to be the same. */
+      const nearest = meters
+        .map((m) => Math.hypot(m.Geometry[0][0] - farEnd[0],
+          m.Geometry[0][1] - farEnd[1]))
+        .sort((a, b) => a - b)[0];
+      skipped.push({
+        trench: sv,
+        why: nearest != null && nearest < 60
+          ? `the nearest ${utility} meter is ${nearest.toFixed(1)}m from the `
+            + `end of this trench, and it has to be within ${meterM}m`
+          : `no ${utility} meter at the end of it`,
+      });
       continue;
     }
 

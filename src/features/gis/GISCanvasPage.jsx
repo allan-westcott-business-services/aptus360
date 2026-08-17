@@ -78,7 +78,7 @@ import {
 } from "./spanContents.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
-  isMainFeature, LIVE_COLOUR, DEAD_COLOUR, LIVE_BAND_M,
+  isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, LIVE_BAND_M,
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
@@ -271,6 +271,10 @@ export default function GISCanvasPage() {
   const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
+  /* Which trenches an auto lay could not service, and why. Its own
+     state rather than the status line, because it is a list somebody
+     works through rather than a message that scrolls past. */
+  const [skipReport, setSkipReport] = useState(null);
   /* The same idea for work started from inside a modal. Its own state
      because the canvas bar is positioned in the canvas and covered by
      the modal that asked for the work. */
@@ -9192,9 +9196,15 @@ export default function GISCanvasPage() {
        On the electric layer, though. Generated alone was every layer,
        which was harmless while this was the only thing generating
        anything — and the moment Build Gas Network drew a gas main,
-       rebuilding the LV feeders would have deleted it. */
+       rebuilding the LV feeders would have deleted it.
+
+       And a main, not a service. Electric services are generated on the
+       same layer by Auto Lay Services, so this deleted every one of
+       them along with the feeders — the same fault gas and water had,
+       found by somebody watching their gas services disappear. */
     const old = src.filter((f) => f.Attributes?.Generated
-      && f.Layer_Key === "electric");
+      && f.Layer_Key === "electric"
+      && isMainType(f.Attributes?.Line_Type, lineTypes));
 
     if (!silent && !window.confirm(
       `Build the LV feeder network for ${circuits.length} circuit(s)?`
@@ -10413,6 +10423,21 @@ export default function GISCanvasPage() {
       setStatus(`${made.length} ${utility} service(s) laid`
         + (stopped ? " \u00b7 stopped early, run it again for the rest" : "")
         + (skipped.length ? ` \u00b7 ${skipped.length} trench(es) skipped` : ""));
+
+      /* ── Why the rest were skipped ──
+
+         The reasons were worked out and thrown away: the panel only
+         showed one, and only when nothing at all had been laid. So a
+         run that laid seventy-five of seventy-six said "1 trench
+         skipped" and nothing about which or why — which is exactly the
+         case somebody needs to know about, because the seventy-five are
+         fine and the one is a plot that will be missed on site.
+
+         Kept out of `status`, which clears itself after eight seconds.
+         A list somebody has to act on should stay until they close
+         it. */
+      const real = skipped.filter((k) => !/already/i.test(k.why || ""));
+      setSkipReport(real.length ? { utility, rows: real } : null);
       setTimeout(() => setStatus(""), 8000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -10553,11 +10578,23 @@ export default function GISCanvasPage() {
         .join(" \u00b7 "));
     }
 
-    /* Generated and gas: a rebuild replaces what this drew and leaves
-       a pipe somebody drew by hand exactly where it is. */
+    /* Generated, gas, and a main — all three.
+
+       Generated and gas was not enough. Auto Lay Services marks the
+       service pipes it draws as generated too, on the same layer, so
+       rebuilding the mains deleted every service that had been laid to
+       every plot on the site. A gang would have arrived to find the
+       meters unconnected on a drawing that had been correct an hour
+       earlier.
+
+       The layer says what utility it is; the type says whether it is a
+       main or a service, and only the mains belong to this. Exactly the
+       fault the electric build had against gas — Generated alone was
+       every layer — one level further down. */
     const old = src.filter((f) => f.Feature_Type === "line"
       && f.Layer_Key === "gas"
-      && !!f.Attributes?.Generated);
+      && !!f.Attributes?.Generated
+      && isMainType(f.Attributes?.Line_Type, lineTypes));
 
     if (!window.confirm(
       `Lay ${plan.runs.length} run(s) of gas main \u2014 ${plan.totalM} m `
@@ -10940,9 +10977,12 @@ export default function GISCanvasPage() {
         + "mains trench leads away from it.");
     }
 
+    /* Mains only, as for gas above: the services on this layer are
+       generated too, and rebuilding the mains was deleting them. */
     const old = src.filter((f) => f.Feature_Type === "line"
       && f.Layer_Key === "water"
-      && !!f.Attributes?.Generated);
+      && !!f.Attributes?.Generated
+      && isMainType(f.Attributes?.Line_Type, lineTypes));
 
     if (!window.confirm(
       `Lay ${plan.runs.length} run(s) of water main \u2014 ${plan.totalM} m `
@@ -16233,6 +16273,55 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {/* ── What could not be laid ──
+
+                One line per trench with the reason and, where it is a
+                tolerance, how far off it was. Clicking one selects it,
+                because the next thing anybody does with this list is go
+                and look. */}
+            {skipReport && (
+              <div className="gis-skips" role="status">
+                <div className="gs-head">
+                  <strong>
+                    {`${skipReport.rows.length} ${skipReport.utility} `}
+                    {skipReport.rows.length === 1 ? "service" : "services"}
+                    {" could not be laid"}
+                  </strong>
+                  <button className="gs-x" onClick={() => setSkipReport(null)}>
+                    Close
+                  </button>
+                </div>
+                <ul>
+                  {skipReport.rows.slice(0, 12).map((k, i) => (
+                    <li key={k.trench?.Feature_ID ?? k.seed?.Feature_ID ?? i}>
+                      <button className="gs-go"
+                        /* Selected, which opens the editor on it and
+                           highlights it on the drawing.
+
+                           Not centred as well: there is no helper for
+                           moving the view to a point, and inventing a
+                           viewport transform to save one pan is a piece
+                           of arithmetic that can be subtly wrong in a
+                           way nobody notices until a feature is off
+                           screen and the panel says it is selected. */
+                        onClick={() => {
+                          const f = k.trench ?? k.seed;
+                          if (f) setSelected([f.Feature_ID]);
+                        }}>
+                        {k.trench?.Label || k.seed?.Label || "This trench"}
+                      </button>
+                      <span>{k.why}</span>
+                    </li>
+                  ))}
+                  {skipReport.rows.length > 12 && (
+                    <li className="gs-more">
+                      {`and ${skipReport.rows.length - 12} more`}
+                    </li>
+                  )}
+                </ul>
+              </div>
+            )}
+
             {progress && (
               <div className="gis-prog" role="status" aria-live="polite">
                 <p className="gp-lbl">{progress.label}</p>
@@ -16699,6 +16788,24 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-tbl td { padding: 4px 5px; border-bottom: 1px solid var(--border); }
 .gt-tbl .num { text-align: right; font-variant-numeric: tabular-nums; }
 .gt-tot td { font-weight: 700; border-bottom: none; }
+/* What an auto lay could not do. Amber: none of it is broken, and
+   every line is something somebody can go and fix. */
+.gis-skips { position: absolute; left: 16px; bottom: 16px; z-index: 42;
+  width: min(460px, calc(100vw - 32px)); max-height: 45vh; overflow-y: auto;
+  background: #fef3e2; border: 1px solid #f2d675; border-radius: 10px;
+  padding: 10px 12px; font-size: 12px; color: #7c4a03;
+  box-shadow: 0 4px 18px rgba(0,0,0,.13); }
+.gs-head { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; margin-bottom: 7px; }
+.gs-x { background: none; border: none; cursor: pointer; color: inherit;
+  font: 600 11px inherit; }
+.gis-skips ul { margin: 0; padding: 0; list-style: none; }
+.gis-skips li { display: flex; gap: 8px; padding: 4px 0;
+  border-top: 1px solid rgba(124,74,3,.15); line-height: 1.55; }
+.gs-go { background: none; border: none; padding: 0; cursor: pointer;
+  font: 700 12px inherit; color: inherit; text-decoration: underline;
+  white-space: nowrap; }
+.gs-more { color: rgba(124,74,3,.7); }
 .gis-prog { position: absolute; left: 50%; bottom: 26px; transform: translateX(-50%);
   z-index: 8; min-width: 300px; background: var(--white); border: 1px solid var(--border);
   border-radius: 12px; padding: 13px 16px; box-shadow: 0 10px 34px rgba(15,23,42,.22); }

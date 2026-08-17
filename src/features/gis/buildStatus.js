@@ -71,6 +71,25 @@ export function statusesFor(feature, lineTypes = []) {
    — it is connected in the same visit as the plot it serves, and asking
    somebody to set a stage on every one would be a hundred fields nobody
    fills in. */
+/* Whether a line type is a main rather than a service.
+
+   By the type, not the layer. A gas main and a gas service are both
+   gas, both drawn by the application, and both marked Generated — so a
+   rebuild that matched on layer alone deleted every service on the site
+   along with the mains it meant to replace.
+
+   Trusts the configured list first and the naming second, because a
+   type can be renamed in admin and the suffix is what survives when
+   somebody has. */
+export function isMainType(typeKey, lineTypes = []) {
+  const key = String(typeKey ?? "");
+  if (!key) return false;
+  if (/service/i.test(key)) return false;
+  const t = lineTypes.find((x) => x.Type_Key === key);
+  if (t && /service/i.test(t.Label ?? "")) return false;
+  return /_main$/.test(key) || /main/i.test(t?.Label ?? "");
+}
+
 export function isMainFeature(f, lineTypes = []) {
   if (!f || f.Feature_Type !== "line") return false;
   const key = String(f.Attributes?.Line_Type ?? "");

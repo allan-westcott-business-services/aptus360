@@ -129,6 +129,27 @@ export default withAuth(async function handler() {
       projectStatuses: db.from("Project_Status").select("Project_Status_ID,Stage,Status,Sort_Order,Row_Colour,Is_Terminal").order("Sort_Order"),
       scopeStatuses:   db.from("Scope_Status").select("Scope_Status_ID,Status,Sort_Order,Is_Terminal").order("Sort_Order"),
       localAuthorities: db.from("Local_Authority").select("Local_Authority_ID,Authority_Name,Authority_Type,Contact_Name,Telephone,Email").eq("Is_Active", true).order("Authority_Name"),
+
+      /* The councils, from the organisation register (0177).
+
+         Local_Authority above is the old home and is empty; this is
+         where they live now, beside the customers, the DNOs and the
+         fire authorities. Both are returned while anything still reads
+         the old one.
+
+         Through Organisation_By_Role, which already joins organisation,
+         role, type and subtype — the same view the operator lists use.
+         Hand-rolling that join again would be a second answer to what a
+         role is.
+
+         Councils past their abolition date are filtered on the way out
+         rather than here: England is mid-reorganisation and the date is
+         a moving target, so the rule belongs where it can be read. */
+      councils: db.from("Organisation_By_Role")
+        .select("Organisation_ID,Name,Subtype_Key,trade_label,"
+          + "GSS_Code,Nation,Abolition_Date")
+        .eq("Type_Key", "local_authority")
+        .order("Name"),
       avAgreementTypes: db.from("AV_Agreement_Type").select("AV_Agreement_Type_ID,AV_Agreement_Type,Utility_ID").eq("Is_Active", true).order("Sort_Order"),
       avStatuses:      db.from("AV_Status").select("AV_Status_ID,AV_Status,Row_Colour").eq("Is_Active", true).order("Sort_Order"),
       quotationStatuses: db.from("Quotation_Status").select("Quotation_Status_ID,Quotation_Status").eq("Is_Active", true).order("Sort_Order"),

@@ -180,9 +180,39 @@ export default function StakeholderTab({ projectId }) {
   if (loading) return <div className="loading">Loading stakeholders&hellip;</div>;
 
   const authorities = lookups?.localAuthorities || [];
-  const towns = authorities.filter((a) => a.Authority_Type === "Town" || a.Authority_Type === "Unitary");
-  const counties = authorities.filter((a) => a.Authority_Type === "County" || a.Authority_Type === "Unitary");
-  const detailFor = (id) => authorities.find((a) => String(a.Local_Authority_ID) === String(id));
+  /* ── Which councils go in which dropdown ──
+
+     A county council sits above districts; a unitary has nothing above
+     it and does both jobs, so it belongs in both lists. Scotland, Wales
+     and Northern Ireland have no county tier at all, and their councils
+     are single-tier — which is why they sit with the unitaries rather
+     than being forced into one box or the other.
+
+     Named by subtype rather than worked out from the name: "Durham
+     County Council" and "County Durham" are the same body spelled two
+     ways, and a rule reading the name would get one of them wrong. */
+  const COUNTY_TIER = ["county_council"];
+  const TOWN_TIER = ["district_council", "borough_council", "city_council"];
+  /* Single-tier: does both jobs, so appears in both lists. */
+  const SINGLE_TIER = ["unitary", "met_borough", "london_borough",
+    "council_area", "principal_council", "ni_district", "sui_generis"];
+
+  /* Gone, or going, is not the same as gone yet. A council past its
+     abolition date is not offered — England is mid-reorganisation and
+     172 of these disappear in April 2028 — but a project that already
+     names one keeps it, because this filters what is offered and not
+     what is stored. */
+  const today = new Date().toISOString().slice(0, 10);
+  const councils = (lookups?.councils || [])
+    .filter((c) => !c.Abolition_Date || c.Abolition_Date > today);
+
+  const inTier = (keys) => councils.filter((c) => keys.includes(c.Subtype_Key));
+  const towns = [...inTier(TOWN_TIER), ...inTier(SINGLE_TIER)]
+    .sort((a, b) => String(a.Name).localeCompare(String(b.Name)));
+  const counties = [...inTier(COUNTY_TIER), ...inTier(SINGLE_TIER)]
+    .sort((a, b) => String(a.Name).localeCompare(String(b.Name)));
+  const detailFor = (id) => councils.find((a) =>
+    String(a.Organisation_ID) === String(id));
   const fire = (lookups?.fireServices || []).find((x) => String(x.Fire_Service_ID) === String(f.Fire_Service_ID));
 
   return (
@@ -218,7 +248,9 @@ export default function StakeholderTab({ projectId }) {
             <Select value={f.Town_Council_ID} onChange={set("Town_Council_ID")}>
               <option value="">&mdash; None &mdash;</option>
               {towns.map((a) => (
-                <option key={a.Local_Authority_ID} value={a.Local_Authority_ID}>{a.Authority_Name}</option>
+                <option key={a.Organisation_ID} value={a.Organisation_ID}>
+                  {a.Name}
+                </option>
               ))}
             </Select>
             <AuthorityNote a={detailFor(f.Town_Council_ID)} />
@@ -228,15 +260,18 @@ export default function StakeholderTab({ projectId }) {
             <Select value={f.County_Council_ID} onChange={set("County_Council_ID")}>
               <option value="">&mdash; None &mdash;</option>
               {counties.map((a) => (
-                <option key={a.Local_Authority_ID} value={a.Local_Authority_ID}>{a.Authority_Name}</option>
+                <option key={a.Organisation_ID} value={a.Organisation_ID}>
+                  {a.Name}
+                </option>
               ))}
             </Select>
             <AuthorityNote a={detailFor(f.County_Council_ID)} />
           </Field>
         </div>
-        {authorities.length === 0 && (
+        {councils.length === 0 && (
           <p className="hint">
-            No local authorities configured &mdash; add them in Admin &rarr; Local Authority.
+            No councils on the register &mdash; add them in Admin &rarr;
+            Organisations, as a Local Authority.
           </p>
         )}
       </Section>
@@ -425,11 +460,37 @@ function DnoSection({ scopes, lookups, onSet, saving }) {
   );
 }
 
+/* What is known about the council somebody has picked.
+
+   Contacts came from the old Local_Authority table and are still shown
+   where an organisation has them. What a council reliably has is its
+   kind and its nation, which say something useful on their own: a
+   Metropolitan Borough and a County Council are not the same body to
+   deal with.
+
+   And where it is going. 172 of these councils cease to exist in April
+   2028, and a project running into 2029 wants that visible at the
+   moment it is chosen rather than discovered later. */
 function AuthorityNote({ a }) {
   if (!a) return null;
-  const bits = [a.Contact_Name, a.Telephone, a.Email].filter(Boolean);
-  if (!bits.length) return null;
-  return <p className="auth-note">{bits.join(" \u00B7 ")}</p>;
+
+  const bits = [
+    a.trade_label,
+    a.Nation && a.Nation !== "England" ? a.Nation : null,
+    a.Contact_Name, a.Telephone, a.Email,
+  ].filter(Boolean);
+
+  const going = a.Abolition_Date
+    ? `Ceases ${String(a.Abolition_Date).split("-").reverse().join("/")}`
+    : null;
+
+  if (!bits.length && !going) return null;
+  return (
+    <>
+      {!!bits.length && <p className="auth-note">{bits.join(" \u00B7 ")}</p>}
+      {going && <p className="auth-going">{going}</p>}
+    </>
+  );
 }
 
 const CSS = `
@@ -437,6 +498,9 @@ const CSS = `
 .dno-none { font-size: 12.5px; color: var(--muted); margin: 0; }
 .auth-grid { display: grid; grid-template-columns: repeat(3, minmax(200px, 1fr)); gap: 14px; }
 .auth-note { font-size: 11px; color: var(--muted); margin: 4px 0 0; }
+/* When a council stops existing. Amber rather than grey: it is a thing
+   to notice at the moment of choosing, not a footnote. */
+.auth-going { font-size: 11px; color: #7c4a03; margin: 2px 0 0; font-weight: 600; }
 .btn.sm { padding: 4px 12px; font-size: 11.5px; }
 .contact-form { border: 1px solid var(--border); border-radius: var(--radius);
   background: #f8f9fb; padding: 12px; margin-bottom: 12px; }

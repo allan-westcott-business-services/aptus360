@@ -458,6 +458,60 @@ const SITE = [
   }
 }
 
+// The mains call-off panel, as it reads.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* The "Add another span?" prompt is gone: both its answers were
+     already on screen — click another node, or press Raise call-off. */
+  /* Comments stripped: the panel explains why the prompt was removed,
+     and matching that explanation failed on correct code. */
+  const code = canvas
+    .replace(/\/\*[\s\S]*?\*\//g, "")
+    .replace(/\{\/\*[\s\S]*?\*\/\}/g, "");
+  if (/Add another span\?/.test(code)) fail("the prompt is still there");
+  if (/className="gco-ask"/.test(code)) fail("the prompt still renders");
+
+  /* Cancel sits beside Raise call-off: the two ends of one decision
+     were at opposite ends of the panel.
+
+     The mains panel's footer, not the first one in the file — three
+     panels have a gco-foot, and slicing the first checked the wrong
+     one. */
+  /* The mains panel's footer specifically.
+
+     Three panels have a gco-foot and the service one has its own Cancel
+     and its own disabled guard, so anything checked against the whole
+     file passed while the mains footer had lost it. Found by the button
+     that only this panel has. */
+  const raiseAt = code.indexOf("submitCallOff}");
+  const footAt = raiseAt < 0 ? -1 : code.lastIndexOf('className="gco-foot"', raiseAt);
+  /* Far enough past the handler to include the button's own label,
+     which sits on the line after it. */
+  const block = footAt < 0 ? "" : code.slice(footAt, raiseAt + 260);
+  if (!block) fail("there is no mains raise button at all");
+  if (!/Cancel/.test(block)) fail("Cancel is not beside Raise call-off");
+  if (!/Raise call-off/.test(block)) fail("the raise button left the footer");
+
+  /* And it cannot be pressed with nothing picked. */
+  if (!/!callOff\?\.spans\?\.length/.test(block)) {
+    fail("a call-off can be raised with no runs on it");
+  }
+
+  /* What a run carries, on its head line beside the length: the three
+     facts somebody checks before raising read as one line or as three
+     things to look for. */
+  if (!/gco-in gco-in-head/.test(code)) {
+    fail("a run does not say what it carries beside its length");
+  }
+  /* Read off the drawing through the shared rule, so the panel and the
+     bill cannot disagree about a size. */
+  const head = code.slice(code.indexOf("gco-in-head"));
+  if (!/spanContents\(/.test(head.slice(0, 600))) {
+    fail("the panel works out its own contents");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Span contents behave (read off the trench, one entry per utility).");
 process.exit(bad ? 1 : 0);

@@ -381,6 +381,17 @@ export default function GISCanvasPage() {
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [user, lookups?.people]);
 
+  /* Was the "Add another span?" prompt, which is gone: clicking another
+     node adds a run and Raise call-off raises it, so the question had
+     two answers that were both already on screen.
+
+     The flag is still set in three places along the picking flow and
+     read nowhere. Left rather than unpicked here, because pulling it
+     out means editing the flow that adds a range — and this change is
+     to the panel, not to how a run is chosen. Worth doing on its own,
+     and checkscope will not complain because it is declared. */
+  const [askAnother, setAskAnother] = useState(false);
+
   const [callOffOpen, setCallOffOpen] = useState(false);
 
   /* ── A service call-off ──
@@ -411,7 +422,6 @@ export default function GISCanvasPage() {
      the drawing is where somebody knows that. */
   const [pick, setPick] = useState(null);
   /* Whether to ask for another run. See where a range is added. */
-  const [askAnother, setAskAnother] = useState(false);
   const [ranges, setRanges] = useState([]);
 
   /* The call-off just raised, waiting for the rest of its details.
@@ -14743,43 +14753,24 @@ export default function GISCanvasPage() {
 
             {callOffOpen && !raised && (
               <div className="gis-co">
-                {/* After each run: another, or commit what is picked. */}
-                {askAnother && (
-                  <div className="gco-ask">
-                    <strong>Add another span?</strong>
-                    <button className="btn ghost sm"
-                      onClick={() => { setAskAnother(false); submitCallOff(); }}>
-                      No, raise it
-                    </button>
-                    <button className="btn accent sm"
-                      onClick={() => setAskAnother(false)}>
-                      Yes
-                    </button>
-                  </div>
-                )}
+                {/* The "Add another span?" prompt was here.
 
+                    It asked after every run and both its answers were
+                    already on screen: clicking another node adds one,
+                    Raise call-off raises it. A question whose answers
+                    are both already available is a step, not a
+                    decision — and it sat above the heading, so the
+                    panel changed shape each time a run was added. */}
+                {/* The heading on its own.
+
+                    It shared a line with the next-step hint and a
+                    Cancel button, which made the busiest line of the
+                    panel the one carrying the least. The hint reads
+                    better at the foot, beside the buttons it describes,
+                    and Cancel belongs next to Raise call-off — the two
+                    things that end this. */}
                 <div className="gco-head">
                   <strong>Mains call-off</strong>
-                  {/* What to do next, at every point in the picking.
-
-                      "Click a span node, then the one it runs to" was
-                      the only thing it ever said, so after a range was
-                      added there was nothing to suggest another could
-                      be. Adding more was always possible and never
-                      said. */}
-                  <span className="gco-hint">
-                    {pick
-                      ? `From ${spanNodeLabel(pick) ?? "\u2014"} \u2014 `
-                        + "click the node it runs to"
-                      : ranges.length
-                        ? "Click another span node to add a second run, "
-                          + "or raise the call-off"
-                        : "Click a span node, then the one it runs to"}
-                  </span>
-                  <button className="gco-x"
-                    onClick={() => { setCallOffOpen(false); setPick(null); setRanges([]); }}>
-                    Cancel
-                  </button>
                 </div>
 
                 {!ranges.length && (
@@ -14818,6 +14809,23 @@ export default function GISCanvasPage() {
                           both. */}
                       <strong>{from} to {to}</strong>
                       <span className="gco-f">{`${totalM} m`}</span>
+                      {/* What the run carries, beside its length.
+
+                          On the head line rather than under it: the
+                          three facts somebody checks before raising —
+                          which run, how long, what is in it — read as
+                          one line or as three things to look for. */}
+                      <span className="gco-in gco-in-head">
+                        {(() => {
+                          const inIt = spanContents(
+                            r.spans.flatMap((sp) => sp.trenchIds || []),
+                            features, { lineTypes, lookups });
+                          if (!inIt.length) return "nothing routed yet";
+                          return inIt
+                            .map((c) => `${c.icon} ${c.label ?? ""}`.trim())
+                            .join(" \u00b7 ");
+                        })()}
+                      </span>
                       {/* The word, not a cross. A × reads as "close
                           this panel" at least as readily as "remove
                           this run", and the two are a long way apart in
@@ -14916,18 +14924,42 @@ export default function GISCanvasPage() {
                 )}
 
                 {callOff?.spans?.length > 0 && (
-                  <div className="gco-foot">
-                    <span className="gco-tot">
-                      {`${callOff.ranges.length} run(s) \u00b7 `}
-                      {`${callOff.spans.length} span(s) \u00b7 ${callOff.totalM} m \u00b7 `}
-                      {`${callOff.plotCount} plot(s)`}
-                    </span>
-                    <button className="btn accent sm" disabled={!!busy}
-                      onClick={submitCallOff}>
-                      {busy === "calloff" ? "Raising\u2026" : "Raise call-off"}
-                    </button>
-                  </div>
+                  <p className="gco-tot">
+                    {`${callOff.ranges.length} run(s) \u00b7 `}
+                    {`${callOff.spans.length} span(s) \u00b7 ${callOff.totalM} m \u00b7 `}
+                    {`${callOff.plotCount} plot(s)`}
+                  </p>
                 )}
+
+                {/* What to do next, at the foot rather than the head.
+
+                    Beside the buttons it describes, and last because it
+                    is what to do after reading everything above it —
+                    which is the order somebody works in. */}
+                <p className="gco-hint">
+                  {pick
+                    ? `From ${spanNodeLabel(pick) ?? "\u2014"} \u2014 `
+                      + "click the node it runs to"
+                    : ranges.length
+                      ? "Click another span node to add another run or "
+                        + "raise the call-off."
+                      : "Click a span node, then the one it runs to."}
+                </p>
+
+                {/* The two ways out, together. Cancel was in the header
+                    and Raise at the foot, so the two ends of one
+                    decision sat at opposite ends of the panel. */}
+                <div className="gco-foot">
+                  <button className="btn ghost sm"
+                    onClick={() => { setCallOffOpen(false); setPick(null); setRanges([]); }}>
+                    Cancel
+                  </button>
+                  <button className="btn accent sm"
+                    disabled={!!busy || !callOff?.spans?.length}
+                    onClick={submitCallOff}>
+                    {busy === "calloff" ? "Raising\u2026" : "Raise call-off"}
+                  </button>
+                </div>
               </div>
             )}
 
@@ -16292,9 +16324,20 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-svc-note { width: 100%; font: 500 12.5px inherit; padding: 7px 9px;
   border: 1px solid var(--border); border-radius: 7px; resize: vertical;
   margin-top: 8px; }
+/* The next step, at the foot beside the buttons it describes — it used
+   to share the header line with the heading and Cancel. */
+.gco-hint { font-size: 12.5px; color: var(--muted); line-height: 1.6;
+  margin: 14px 0 0; }
+/* The totals on their own line, above the instruction. */
+.gco-tot { font-size: 12.5px; font-weight: 700; margin: 12px 0 0;
+  padding-top: 12px; border-top: 1px solid var(--border); }
+/* What a run carries, on its head line beside the length. Wraps rather
+   than truncating: three utilities and their sizes is the whole point
+   of the line, and half of it says less than none. */
+.gco-in-head { flex: 1; font-size: 11.5px; color: var(--muted);
+  white-space: normal; }
 .gco-head { display: flex; align-items: center; gap: 8px; margin-bottom: 8px; }
 .gco-head strong { font-size: 13px; }
-.gco-hint { flex: 1; font-size: 10.5px; color: var(--muted); }
 .gco-x { background: none; border: none; cursor: pointer; color: var(--muted);
   font: 600 11px inherit; padding: 0 3px; }
 .gco-x:hover { color: #b91c1c; }
@@ -16388,15 +16431,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gco-util { display: inline-flex; align-items: center; gap: 5px; font-size: 12px;
   cursor: pointer; }
 
-.gco-foot { display: flex; align-items: center; gap: 9px; margin-top: 9px;
-  padding-top: 9px; border-top: 1px solid var(--border); }
-.gco-tot { flex: 1; font-weight: 700; }
-/* The prompt sits above the list, where the eye already is after
-   picking, rather than at the foot where the totals are. */
-.gco-ask { display: flex; align-items: center; gap: 8px; margin-bottom: 9px;
-  padding: 8px 10px; border-radius: 8px; background: #eef2ff;
-  border: 1px solid #c7d2fe; }
-.gco-ask strong { flex: 1; font-size: 12.5px; }
+.gco-foot { display: flex; justify-content: flex-end; gap: 8px;
+  margin-top: 16px; }
 .gco-fields { display: grid; grid-template-columns: 1fr 1fr; gap: 7px 10px; }
 .gco-fld { display: flex; flex-direction: column; gap: 2px; font-size: 11px; }
 .gco-fld.wide { grid-column: 1 / -1; }

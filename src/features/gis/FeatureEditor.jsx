@@ -2,6 +2,7 @@ import { useState, useMemo, useCallback } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { BUILD_STATUSES, MAIN_STATUSES, isMainFeature } from "./buildStatus.js";
+import FutureAllowance from "./FutureAllowance.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import {
   lineLength, isTrenchType, isTrenchFeature, classLabel,
@@ -892,6 +893,30 @@ export default function FeatureEditor({
               position in a sequence and editing it would break the
               schedule it appears on. A standalone one is a named waypoint
               and the letter is the whole point of it. */}
+          {/* ── Plots that are not drawn yet ──
+
+              A phase two of fifty gets fed from a node on phase one.
+              Nothing sizes for it, so the main laid today is sized for
+              today — and when phase two arrives the answer is to dig
+              the road up again.
+
+              Described rather than typed as a load, where the mix is
+              known: twenty three-bed on gas reads the same consumption
+              figures a drawn three-bed on gas reads, so the allowance
+              and the real plot size identically and recalibrating that
+              table moves both.
+
+              A plain figure as well, because on a phase nobody has
+              designed the mix usually is not known. */}
+          {feature.Feature_Role === "spannode" && (
+            <FutureAllowance
+              value={f.Attributes.Future_Allowance ?? null}
+              consumption={lookups?.houseTypeConsumption || []}
+              heatSources={lookups?.heatSources || []}
+              onChange={setAttr("Future_Allowance")}
+            />
+          )}
+
           {feature.Feature_Role === "spannode" && (
             <div className="fld">
               {f.Attributes.Circuit_ID != null ? (

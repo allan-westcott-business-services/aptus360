@@ -68,6 +68,9 @@ import { planTrenchSplits } from "./splitTrenches.js";
 import { bomLabour } from "./bomLabour.js";
 import { callOffCustomer, serviceCallOffCustomer } from "./callOffCustomer.js";
 import {
+  allowanceOf, allowanceLoad, allowanceSupplies, allowanceText,
+} from "./futureLoad.js";
+import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
 } from "./serviceCallOff.js";
@@ -554,6 +557,41 @@ export default function GISCanvasPage() {
   /* What the dig model needs, in one place. Three callers want the same
      tables, and three copies is three chances for one of them to be
      estimating against different rates from the panel beside it. */
+  /* ── Future expansion allowed for at span nodes ──
+
+     Gathered once and given to both the gas report and the gas build.
+     They are the same question asked twice, and two readings of it
+     would eventually size a main one way on screen and another in the
+     ground.
+
+     Load and supplies together: gas reads its diversity factor against
+     how many supplies lie beyond a point, so a kW figure with no count
+     would be diversified as though one house drew it. */
+  const futureAllowances = useMemo(() => {
+    const cons = lookups?.houseTypeConsumption || [];
+    const out = [];
+    for (const f of features) {
+      if (f.Feature_Role !== "spannode") continue;
+      const a = allowanceOf(f);
+      if (!a) continue;
+      const gas = allowanceLoad(a, "gas", cons);
+      out.push({
+        featureId: f.Feature_ID,
+        label: f.Attributes?.Span_Label ?? f.Label ?? null,
+        at: (f.Geometry || [])[0] ?? null,
+        supplies: allowanceSupplies(a),
+        kw: gas.value,
+        /* Rows whose description has no consumption figure. Reported
+           rather than counted as nothing: a missing row in the table is
+           something to fill in, and a silent zero would size the main
+           for fewer plots than were asked for. */
+        unmatched: gas.unmatched,
+        note: a.note,
+      });
+    }
+    return out;
+  }, [features, lookups]);
+
   const digOpts = useMemo(
     () => ({
       lineTypes, lookups, surfaceTypes,
@@ -9773,6 +9811,8 @@ export default function GISCanvasPage() {
         diversity: lookups?.gasDiversity || [],
         diversityOperators: lookups?.gasDiversityOperators || [],
         tier: "LP",
+        /* Plots not on the drawing yet, sized for. */
+        futureAllowances,
         /* The plot behind each gas meter, which is where the load is.
 
            Without this every meter reads as carrying nothing: the load
@@ -10610,6 +10650,9 @@ export default function GISCanvasPage() {
       diversity: lookups?.gasDiversity || [],
       diversityOperators: lookups?.gasDiversityOperators || [],
       operatorIds: gasOperatorIds,
+      /* Plots not on the drawing yet, sized for — the same reading the
+         report uses, so the pipe laid is the pipe the report said. */
+      futureAllowances,
       /* ── LP, and not yet a choice ──
 
          Nothing in the schema records what tier a scheme runs at, so

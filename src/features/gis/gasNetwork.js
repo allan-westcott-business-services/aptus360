@@ -821,6 +821,49 @@ function gasMainRunsFromOne(features = [], opts = {}) {
   const tees = new Set();
   const unattachedServices = [];
 
+  /* ── Plots that are not drawn yet ──
+
+     A phase two of fifty gets fed from an end span node on phase one.
+     Nothing sizes for it, so the main laid today is sized for today —
+     and when phase two arrives the answer is to dig the road up again.
+
+     An allowance on a span node is added to that node's own demand,
+     which is the only place it needs to go: everything upstream sums
+     what lies beyond it, so a figure put in here reaches the point of
+     connection by the same walk that carries the real plots. That is
+     what "sized for future expansion" means, and it is why one node's
+     allowance can widen pipe across a site.
+
+     Matched by position because this planner works in trench vertices
+     rather than features — a span node is a point on the drawing, and
+     the node it belongs to is the one it sits on.
+
+     Counted as supplies as well as load. Gas reads its diversity factor
+     against how many supplies lie beyond a point, so an allowance that
+     added kW without a count would be diversified as though one
+     enormous house drew it — which would size the main larger than the
+     truth, not smaller, but for a reason nobody could explain. */
+  const futureAt = [];
+  for (const f of (opts.futureAllowances || [])) {
+    const p = (f.at || [])[0] != null ? f.at : null;
+    if (!p) continue;
+    let hit = -1;
+    let bd = Infinity;
+    for (let i = 0; i < nodes.length; i++) {
+      const d = dist(nodes[i], p);
+      if (d < bd) { bd = d; hit = i; }
+    }
+    /* Only where it lands on the network. An allowance on a node the
+       gas main cannot reach is a claim about a leg that does not exist,
+       and silently sizing nothing for it would be worse than saying
+       so. */
+    if (hit < 0 || bd > eps) { futureAt.push({ ...f, stranded: true }); continue; }
+
+    demand[hit] += Number(f.supplies) || 0;
+    demandKw[hit] += Number(f.kw) || 0;
+    futureAt.push({ ...f, node: hit });
+  }
+
   for (const sv of services) {
     const carried = servedBy.get(sv.Feature_ID) || 0;
     const carriedKw = kwBy.get(sv.Feature_ID) || 0;
@@ -1280,6 +1323,13 @@ function gasMainRunsFromOne(features = [], opts = {}) {
     strandedMeters,
     /* Service trenches that reach a meter but not the main. */
     unattachedServices,
+    /* What was allowed for that is not on the drawing, and where.
+
+       So the report can say why a main is wider than the plots account
+       for. A quantity nobody can explain is one that gets checked twice
+       and believed neither time — and an oversized main with no reason
+       beside it looks like a mistake rather than a decision. */
+    futureAllowances: futureAt,
     /* ── Every meter the main does not reach, by name ──
 
        The two lists above say what is wrong with the drawing; this says

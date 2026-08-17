@@ -76,6 +76,20 @@ export default withAuth(async function handler() {
          discouraged. */
       heatSources:    db.from("Heat_Source").select("Heat_Source_ID,Heat_Source")
         .eq("Is_Active", true).order("Sort_Order").order("Heat_Source"),
+
+      /* What a house type draws, by bedrooms and heat source.
+
+         The same table gis_unplaced_plots reads to work out what a
+         drawn plot draws — so a future allowance described as twenty
+         three-bed on gas sizes exactly as twenty drawn ones would, and
+         recalibrating the table moves both together.
+
+         Gas_PID_kW and Consumption_kVA are the two figures. Water has
+         none and needs none: water mains size on how many plots lie
+         beyond a point rather than on a load. */
+      houseTypeConsumption: db.from("House_Type_Consumption")
+        .select("Bedrooms,Heat_Source_ID,Consumption_kVA,Gas_PID_kW")
+        .order("Bedrooms"),
       /* Ordered newest first so resolving a rate for a date is a find(),
          not a sort. */
       /* Column names are 0027's — Cable_Size_ID, not

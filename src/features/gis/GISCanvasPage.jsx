@@ -4282,6 +4282,36 @@ export default function GISCanvasPage() {
       const q = toPx(g[0]);
       const code = f.Attributes?.Span_Label ?? "";
 
+      /* ── A node that is carrying future load ──
+
+         An outer ring, drawn before the node itself so the node sits on
+         top of it.
+
+         Because an allowance is invisible otherwise, and it is not a
+         small thing: fifty plots nobody has drawn widen the main from
+         here back to the point of connection, so a drawing where one
+         length is 180mm and its neighbour 90mm has an explanation that
+         lives entirely in a field somebody has to open a panel to see.
+
+         A ring rather than a colour: the node's own colour is its
+         style, and taking it over would trade one thing being visible
+         for another stopping being. */
+      if (allowanceOf(f)) {
+        /* Sized from the node's own radius, worked out the same way it
+           is below — ps.symbolPx, not a guess at what the style calls
+           it. Four pixels clear, so the ring reads as around the node
+           rather than as part of it. */
+        const rr = Math.max(3, ps.symbolPx) * (on ? 1.25 : 1) + 4;
+        ctx.save();
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, rr, 0, Math.PI * 2);
+        ctx.strokeStyle = "#7c3aed";
+        ctx.lineWidth = 2;
+        ctx.setLineDash([3, 2]);
+        ctx.stroke();
+        ctx.restore();
+      }
+
       /* The circle is sized by the style, and the text sized to fit it.
 
          It used to be the other way round — the radius was the larger of
@@ -10748,6 +10778,34 @@ export default function GISCanvasPage() {
             ? `, ${plan.operatorRules} set for this project\u2019s operator,`
             : " \u2014 the standard rules, none for this project\u2019s operator \u2014")
           + ` and ${plan.diversityRules} diversity rule(s).`
+        : "")
+      /* ── What was allowed for that is not on the drawing ──
+
+         Named, and before the build runs. A main sized for fifty plots
+         nobody has drawn is wider than the drawing accounts for, and
+         somebody comparing this schedule against the plots on screen
+         will find more pipe than they can explain. A quantity nobody
+         can account for is one that gets checked twice and believed
+         neither time.
+
+         Said here rather than only in a report afterwards, because this
+         is the moment somebody decides whether the figure is right. */
+      + ((plan.futureAllowances || []).filter((a) => !a.stranded).length
+        ? `\n\nIncludes future expansion allowed for:\n`
+          + plan.futureAllowances.filter((a) => !a.stranded)
+            .map((a) => `  ${a.label ?? "a node"}: `
+              + `${a.supplies ? `${a.supplies} plot(s), ` : ""}${a.kw} kW`)
+            .join("\n")
+          + "\n\nThose plots are not built and are not on the bill \u2014 "
+          + "the pipe carrying them is."
+        : "")
+      /* An allowance on a node the main cannot reach. Sized for
+         nothing, so the pipe is narrower than somebody asked for and
+         nothing else would say so. */
+      + ((plan.futureAllowances || []).filter((a) => a.stranded).length
+        ? `\n\n${plan.futureAllowances.filter((a) => a.stranded).length} `
+          + "future allowance(s) sit on a node this main does not reach, "
+          + "so nothing is sized for them."
         : "")
       /* Every pipe upstream of a plot with no figure is sized light,
          which is the dangerous direction. Said before it is drawn. */

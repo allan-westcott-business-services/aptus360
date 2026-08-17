@@ -229,6 +229,72 @@ const node = (a) => ({ Attributes: { Future_Allowance: a } });
   }
 }
 
+// 10. An allowance is visible, on the drawing and before the build.
+//
+//     Fifty plots nobody has drawn widen the main from that node back
+//     to the point of connection. Invisible, that is a drawing where
+//     one length is 180mm and its neighbour 90mm for a reason living
+//     entirely in a field somebody has to open a panel to see.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* A ring on the node itself. */
+  const nodeAt = canvas.indexOf("A node that is carrying future load");
+  if (nodeAt < 0) fail("a node carrying an allowance looks like any other");
+  /* The ring block itself, comments stripped — the explanation beside
+     it names everything the check looks for, and matching that passed
+     while the code did nothing. */
+  const ring = (nodeAt < 0 ? "" : canvas.slice(nodeAt, nodeAt + 1400))
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  if (!/if \(allowanceOf\(f\)\) \{/.test(ring)) {
+    fail("the ring is not drawn from whether the node has an allowance");
+  }
+  /* Sized from the node's own radius rather than a guess at what the
+     style calls it — the first version read ps.symbolSizePx, which does
+     not exist, and would have drawn every ring the same size. */
+  if (!/const rr = Math\.max\(3, ps\.symbolPx\)/.test(ring)) {
+    fail("the ring is not sized from the node's own style");
+  }
+
+  /* And said before the build runs, which is when somebody decides
+     whether the figure is right. */
+  const code = canvas.replace(/\/\*[\s\S]*?\*\//g, "");
+  if (!/`\\n\\nIncludes future expansion allowed for/.test(code)) {
+    fail("the build does not say what it is sizing for");
+  }
+  /* With the plots named as not billed, or the schedule looks like it
+     has more pipe than the drawing accounts for. */
+  /* The literal as written — it opens with two newlines, so anchoring
+     on the quote missed it and the check failed on correct code. */
+  if (!/Those plots are not built and are not on the bill/.test(code)) {
+    fail("nothing says the allowed-for plots are not being built");
+  }
+  /* An allowance the main cannot reach is sized for nothing, and
+     nothing else would say so. */
+  if (!/"future allowance\(s\) sit on a node this main does not reach, "/.test(code)) {
+    fail("a stranded allowance is silently sized as nothing");
+  }
+
+  /* The message, over a realistic mix — a breakdown, a typed figure
+     with no count, and a stranded one. */
+  const fa = [
+    { label: "A14", supplies: 30, kw: 350 },
+    { label: "A22", supplies: 0, kw: 120 },
+    { label: "A31", stranded: true },
+  ];
+  const live = fa.filter((a) => !a.stranded);
+  const lines = live.map((a) => `  ${a.label}: `
+    + `${a.supplies ? `${a.supplies} plot(s), ` : ""}${a.kw} kW`);
+  if (!/30 plot\(s\), 350 kW/.test(lines[0])) {
+    fail(`a described allowance reads as ${lines[0]}`);
+  }
+  /* A typed figure has no count, and must not claim one. */
+  if (/plot\(s\)/.test(lines[1])) {
+    fail(`a typed allowance invented a plot count: ${lines[1]}`);
+  }
+  if (fa.filter((a) => a.stranded).length !== 1) fail("the fixture is wrong");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Future allowances behave (described or typed, reaching the POC, not billed).");
 process.exit(bad ? 1 : 0);

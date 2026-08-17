@@ -96,7 +96,14 @@ export function bottleEndAngle(joint, features = [], opts = {}) {
     if (!best || d < best.d) best = { d, vx, vy };
   }
 
-  return best ? Math.atan2(best.vy, best.vx) : null;
+  if (!best) return null;
+  const along = Math.atan2(best.vy, best.vx);
+
+  /* A quarter turn for a temporary one, so the cable reads as running
+     past it rather than terminating in it. The seal is across the
+     cable's line instead of along it, which is the difference somebody
+     sees at a glance without being told. */
+  return isTemporaryBottleEnd(joint) ? along + Math.PI / 2 : along;
 }
 
 /* Whether a joint is a bottle end.
@@ -109,6 +116,36 @@ export function isBottleEnd(feature) {
   return feature?.Feature_Role === "joint"
     && String(feature?.Attributes?.Joint_Type ?? "") === "bottleend";
 }
+
+/* ── Two kinds of bottle end ──
+
+   The design one is where the feeder genuinely ends: nothing is fed
+   beyond it and nothing ever will be. planJoints works those out from
+   the network and owns them.
+
+   The temporary one is where the *programme* stops. The cable is sealed
+   five metres past the last plot a call-off connects, because the plots
+   beyond it are not being built yet — the design says the feeder
+   carries on, and one day a straight joint will be made here and it
+   will.
+
+   Told apart by rotation rather than by a symbol of its own: a quarter
+   turn from the cable it sits on, so the planned cable reads as
+   continuing past it rather than stopping at it. Somebody who knows the
+   symbol needs no key to see which is which.
+
+   Written by the call-off that caused it, so it can be taken away again
+   if that call-off is cancelled — which is the whole reason it is not a
+   design joint. */
+export function isTemporaryBottleEnd(feature) {
+  return isBottleEnd(feature) && feature?.Attributes?.Temporary === true;
+}
+
+/* Which call-off put it there, or null for a design joint. */
+export const bottleEndSubmission = (feature) =>
+  (isTemporaryBottleEnd(feature)
+    ? (feature.Attributes?.Submission_ID ?? null)
+    : null);
 
 /* Whether a joint is a breech.
 

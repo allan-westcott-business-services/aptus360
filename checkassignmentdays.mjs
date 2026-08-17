@@ -9,7 +9,7 @@ import { jointEstimate, reinstateEstimate } from "./src/features/gis/jointRate.j
 import { digEstimate } from "./src/features/gis/digRate.js";
 import {
   endAfterHalves, workedDaysIn, layHalves, laySchedule, daysBetween,
-  bookedParts, freeParts,
+  bookedParts, freeParts, dayTotal,
 } from "./src/features/calloffs/assignments.js";
 import { isDigTask, digTaskIds, toItems } from "./src/features/calloffs/rules.js";
 
@@ -634,6 +634,54 @@ const MON = "2026-08-17";
   /* Only on the mains one — a service call-off has no dig estimate. */
   if ((canvas.match(/Dig_Rate_ID: callOffMachine/g) || []).length !== 1) {
     fail("the machine is sent on a call-off that has no dig to estimate");
+  }
+}
+
+// 18. An estimate's odd half can be moved to the afternoon.
+//
+//     A gang finishing at lunchtime and one starting after it are both
+//     ordinary. The form refused the second, because the last half of
+//     an odd estimate and a Saturday morning arrived looking identical
+//     — both were a row whose part was "AM" — and the weekend rule's
+//     "you cannot change this" was applied to both.
+{
+  const halves = Array.from({ length: 23 }, () => ({}));
+  const laid = layHalves("2026-08-17", false, halves, {});
+
+  if (laid.days.length !== 12) {
+    fail(`11.5 days laid across ${laid.days.length} dates`);
+  }
+  const last = laid.days[laid.days.length - 1];
+  if (last.part !== "AM") fail("the odd half no longer lands in the morning");
+  /* Movable: it is where the halves happened to land, not a rule. */
+  if (last.fixed) fail("the estimate's own odd half is treated as fixed");
+
+  /* Every full day is unfixed too, or the buttons on eleven of these
+     twelve rows would stop working. */
+  if (laid.days.some((d) => d.part === "Full" && d.fixed)) {
+    fail("a full day is marked as fixed");
+  }
+
+  /* A weekend half is fixed, because the rule above the form put it
+     there and the form must not contradict it. */
+  const sat = layHalves("2026-08-22", false, [{}, {}], { Sat_AM: true });
+  if (!sat.days[0]?.fixed) fail("a Saturday morning can be moved to the afternoon");
+
+  /* And moving it does not change what was booked. */
+  const asLaid = Object.fromEntries(laid.days.map((d) => [d.date, d.part]));
+  const moved = { ...asLaid, [last.date]: "PM" };
+  if (dayTotal(asLaid) !== dayTotal(moved)) {
+    fail(`moving the half changed the total from ${dayTotal(asLaid)} to ${dayTotal(moved)}`);
+  }
+  if (dayTotal(asLaid) !== 11.5) fail(`23 halves came to ${dayTotal(asLaid)} days`);
+
+  /* The screen reads the flag rather than inferring from the part. */
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  if (!/const fixed = d\.fixed && opt !== allowed/.test(page)) {
+    fail("the buttons still treat any half day as fixed");
+  }
+  if (!/const partFor = \(\{ date, part: allowed, fixed \}/.test(page)) {
+    fail("the chosen part is still overridden by any half day");
   }
 }
 

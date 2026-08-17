@@ -615,7 +615,10 @@ export function laySchedule(start, length, weekend = {}) {
   let guard = 0;
   while (days.length < want && guard++ < 400) {
     const part = availablePart(cursor, weekend);
-    if (part) days.push({ date: cursor, part });
+    /* A half here is always the weekend rule's doing — laySchedule
+       works in whole days, so anything less than one came from
+       availablePart. */
+    if (part) days.push({ date: cursor, part, fixed: part !== "Full" });
     else skipped += 1;
     const dt = at(cursor);
     dt.setDate(dt.getDate() + 1);
@@ -706,6 +709,20 @@ export function layHalves(start, startPM, halves = [], weekend = {}) {
         rows.push({
           date: cursor,
           part: taken.length === 2 ? "Full" : taken[0][0],
+          /* Why it is a half, which is two different things.
+
+             A Saturday where only the morning is worked is fixed: the
+             weekend rule above put it there and the form must not
+             contradict it.
+
+             The last half of an odd estimate is not. It lands in the
+             AM because the halves are laid in order, but a gang
+             finishing at lunchtime and one starting after it are both
+             ordinary — and the form refused to let anybody say so,
+             because the two arrived looking identical.
+
+             Full days are never fixed by this. */
+          fixed: avail !== "Full",
           offSite: taken.some(([, h]) => !!h?.offSite),
         });
       }

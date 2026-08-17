@@ -128,8 +128,19 @@ export function spansAWeekend(start, end) {
    rule has already decided it. A Saturday with only the morning ticked
    is a morning whatever is in `parts`, which may hold "Full" from
    before the rule was changed. */
-const partFor = ({ date, part: allowed }, draft) =>
-  (allowed !== "Full" ? allowed : (draft.parts?.[date] || "Full"));
+/* Which half of a day is worked.
+
+   A day the weekend rule fixed to a half stays as it is: the rule above
+   put it there and the form must not contradict it.
+
+   Anything else is a default somebody can change — including the odd
+   half at the end of an estimate, which lands in the morning because
+   the halves are laid in order. A gang finishing at lunchtime and one
+   starting after it are both ordinary, and this used to refuse the
+   second because an estimate's half and a weekend's half arrived
+   looking identical. */
+const partFor = ({ date, part: allowed, fixed }, draft) =>
+  (fixed ? allowed : (draft.parts?.[date] || allowed || "Full"));
 
 /* Statuses that mean the job is done with, one way or another. Kept
    apart because the default view is work still to do, and a list that
@@ -2964,7 +2975,11 @@ function Assignments({ row }) {
                                Saturday where only the morning is ticked
                                would let the form contradict the thing
                                that put the Saturday in the list. */
-                            const fixed = allowed !== "Full" && opt !== allowed;
+                            /* Fixed by the weekend rule, not merely a
+                               half. The estimate's own odd half is a
+                               default, and the whole point of these
+                               buttons is to move it. */
+                            const fixed = d.fixed && opt !== allowed;
                             const free = !fixed && partIsFree(taken, opt);
                             return (
                               <button key={opt} type="button"

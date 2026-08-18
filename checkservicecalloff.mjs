@@ -1582,6 +1582,34 @@ const PLOTS = [
         fail(`a trench marked ${st} was overwritten as as-built`);
       }
     }
+    /* ── A main runs along several trenches ──
+
+       One gas main of 156 metres over sections of 31. Asking whether
+       the main lies along one trench asks whether 156 metres fit inside
+       31, which is false for every section — so nothing matched and no
+       trench was ever marked. That is what stopped this working.
+
+       Asked the right way round, each section lies along the main. */
+    const longMain = { Feature_ID: 1, Geometry: [[0, 0], [150, 0]] };
+    const road = [
+      trench(11, "planned"),
+      { ...trench(12, null), Geometry: [[50, 0], [100, 0]] },
+      { ...trench(13, "planned"), Geometry: [[100, 0], [150, 0]] },
+    ];
+    const marked = trenchesUnder([longMain], road, lineFollows)
+      .map((t) => Number(t.Feature_ID)).sort();
+    if (marked.join() !== "11,12,13") {
+      fail(`a main over three sections marked ${marked.join(", ") || "nothing"}`);
+    }
+
+    /* And a main that stops part way down a section still opens that
+       ground, so it counts too — the reverse test on its own missed
+       it. */
+    const half = { Feature_ID: 2, Geometry: [[0, 0], [25, 0]] };
+    if (!trenchesUnder([half], [trench(11, "planned")], lineFollows).length) {
+      fail("a main that stops half way down a trench leaves it unmarked");
+    }
+
     /* And only the trench the main is actually in. */
     const elsewhere = { Feature_ID: 2, Geometry: [[0, 50], [100, 50]] };
     if (trenchesUnder([elsewhere], [trench(5, "planned")], lineFollows).length) {

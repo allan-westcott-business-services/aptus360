@@ -248,6 +248,20 @@ export function liveCascade(featureId, graph) {
   return deadUpstream(featureId, graph);
 }
 
+/* Whether two lengths run along each other at all.
+
+   Either the trench lies along the main — the ordinary case, where one
+   main covers several sections of road — or the main lies along the
+   trench, which is a main that stops part way down a section. That
+   ground is opened either way, and asking only the first question left
+   a half-laid section unmarked.
+
+   Neither test alone is enough, and neither is wrong: they are the two
+   ways one line can sit inside another. */
+function alongEachOther(a, b, follows) {
+  return follows(a, b) || follows(b, a);
+}
+
 /* The trenches a set of mains are laid in.
 
    ── Why setting a main live touches them ──
@@ -278,7 +292,20 @@ export function trenchesUnder(mains = [], features = [], follows) {
     for (const t of trenches) {
       const stage = t.Attributes?.Build_Status ?? null;
       if (stage === "existing" || stage === "remove" || stage === "asbuilt") continue;
-      if (!follows(m.Geometry || [], t.Geometry || [])) continue;
+
+      /* ── The trench follows the main, not the main the trench ──
+
+         A main runs the length of a road and the road is drawn as
+         several trenches: one gas main of 156 metres over sections of
+         31. Asking whether the main lies along one trench is asking
+         whether all 156 metres fit inside 31, which is false for every
+         one of them — so nothing was ever matched and no trench was
+         ever marked.
+
+         Asked the right way round, each section lies along the main and
+         each is marked. A main that stops half way down a trench still
+         matches it, which is right: that ground was opened. */
+      if (!alongEachOther(t.Geometry || [], m.Geometry || [], follows)) continue;
       out.set(Number(t.Feature_ID), t);
     }
   }

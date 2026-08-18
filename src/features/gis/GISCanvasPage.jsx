@@ -5578,14 +5578,22 @@ export default function GISCanvasPage() {
         const size = seedStyle(f, false).symbolPx ?? 8;
         const rr = Math.max(4, size * 0.55);
         const d = Math.hypot(q.x + size + rr - px, q.y - size - py);
-        if (d <= rr * 1.6) { found = { ...v, x: px, y: py }; break; }
+        if (d <= rr * 1.6) {
+          found = { ...v, featureId: Number(f.Feature_ID), x: px, y: py };
+          break;
+        }
       }
       /* Compared before setting, or every mouse move over the canvas
-         re-renders the whole drawing. */
-      if ((found?.submission ?? null) !== (plotTip?.submission ?? null)) {
-        setPlotTip(found);
-      } else if (found && plotTip
-        && (found.x !== plotTip.x || found.y !== plotTip.y)) {
+         re-renders the whole drawing.
+
+         Compared on the plot, not on the submission. Only a booked plot
+         has a submission, so for a cross or a question mark both sides
+         were null, nothing was ever set, and no note appeared — while
+         the clock worked perfectly. That is why hovering a question
+         mark showed nothing at all. */
+      const sameMark = (found?.featureId ?? null) === (plotTip?.featureId ?? null);
+      if (!sameMark
+        || (found && plotTip && (found.x !== plotTip.x || found.y !== plotTip.y))) {
         setPlotTip(found);
       }
     } else if (plotTip) setPlotTip(null);

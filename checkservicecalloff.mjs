@@ -1122,6 +1122,31 @@ const PLOTS = [
     if (!canvas.includes(words)) fail(`the note never says "${words}"`);
   }
 
+  /* ── And the note actually appears ──
+
+     It was set only when the submission changed, and only a booked plot
+     has one — so for a cross or a question mark both sides were null,
+     setPlotTip was never called, and nothing showed. The clock worked
+     perfectly, which is what made it look like the marks were fine and
+     only the hover text was missing. */
+  if (/found\?\.submission \?\? null\) !== \(plotTip\?\.submission/.test(canvas)) {
+    fail("only a booked plot can raise its note");
+  }
+  if (!/found\?\.featureId \?\? null\) === \(plotTip\?\.featureId/.test(canvas)) {
+    fail("the note is not compared on which plot it belongs to");
+  }
+  if (!/featureId: Number\(f\.Feature_ID\)/.test(canvas)) {
+    fail("the hovered mark does not record which plot it is");
+  }
+
+  /* The rule itself, over the three kinds of mark. */
+  const same = (f, t) => (f?.featureId ?? null) === (t?.featureId ?? null);
+  const cross = { featureId: 31, state: "dead" };
+  const question = { featureId: 44, state: "unknown" };
+  if (same(cross, null)) fail("moving onto a cross does not raise its note");
+  if (same(question, cross)) fail("moving between two marks keeps the first note");
+  if (same(null, question)) fail("moving off a mark leaves its note up");
+
   /* The clock, and the date behind it. */
   if (!/v\.state === "booked"/.test(canvas)) fail("a booked plot has no mark");
   /* The note has to render, not merely be styled — the class survives
@@ -1136,8 +1161,18 @@ const PLOTS = [
 
      The hit test itself, not setPlotTip — that is called twice for
      other reasons and matched with the test removed. */
-  if (!/found = \{ \.\.\.v, x: px, y: py \}/.test(canvas)) {
-    fail("nothing detects hovering over a clock");
+  /* The hit test, without pinning the exact shape of what it records —
+     that object has since gained a field and the old pattern failed on
+     correct code. */
+  /* The hit test and what it records, without pinning the exact shape
+     of the object — that has gained a field since and the old pattern
+     failed on correct code, while a looser one passed with the test
+     itself removed. */
+  if (!/if \(d <= rr \* 1\.6\) \{/.test(canvas)) {
+    fail("nothing measures whether the pointer is over a mark");
+  }
+  if (!/found = \{ \.\.\.v,/.test(canvas)) {
+    fail("nothing records the mark under the pointer");
   }
   if (!/Planned for /.test(canvas)) fail("the note does not give the date");
   /* Read the way a date is read here, not as the database stores it. */

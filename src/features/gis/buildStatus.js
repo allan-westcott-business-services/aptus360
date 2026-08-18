@@ -110,8 +110,31 @@ export const statusOf = (f) => f?.Attributes?.Build_Status ?? null;
    Narrower than an easement band, which is a legal strip of land. This
    is marking a line, and at easement width two mains in one trench
    would each hatch over the other. */
-export const LIVE_COLOUR = "#16a34a";
-export const DEAD_COLOUR = "#dc2626";
+/* Halfway to white from the solid green and red the plot marks use.
+
+   The band covers a length of road at every zoom, so at full strength
+   it was the loudest thing on the drawing and the plan underneath it
+   could not be read — which is the opposite of useful, because the plan
+   is what somebody is checking the main against.
+
+   The marks beside the plots stay solid: they are small, and small
+   things need the contrast that large ones do not. */
+export const LIVE_COLOUR = "#8bd1a5";
+export const DEAD_COLOUR = "#ee9393";
+
+
+/* A main nobody has given a stage.
+
+   Not live, and hatched — a main left out of the marking reads as "no
+   main here" rather than "nobody has said". But grey rather than red,
+   because the two want different things done about them: red is a main
+   waiting to be energised, grey is a main waiting for somebody to say
+   what stage it is at.
+
+   Light, so a drawing where nothing has been set yet is legible rather
+   than covered. It is the state most sites start in, and a wall of
+   colour on day one is a marking people learn to ignore. */
+export const UNSET_COLOUR = "#cbd5e1";
 export const LIVE_BAND_M = 1.4;
 
 /* Whether a main is live, which is the question everything else asks.

@@ -86,7 +86,8 @@ import {
 } from "./spanContents.js";
 import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
-  isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, LIVE_BAND_M,
+  isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
+  LIVE_BAND_M,
   isOffSite,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
@@ -3212,7 +3213,12 @@ export default function GISCanvasPage() {
         Math.max(1.2, LIVE_BAND_M) * view.scale);
       if (band.length < 3) continue;
 
-      const colour = stage === "live" ? LIVE_COLOUR : DEAD_COLOUR;
+      /* Three answers, not two. Grey says nobody has set a stage, which
+         wants somebody to say what it is; red says a stage is set and
+         it is not live, which wants the main energising. Both refuse a
+         plot, and they are fixed differently. */
+      const colour = stage === "live" ? LIVE_COLOUR
+        : stage ? DEAD_COLOUR : UNSET_COLOUR;
       ctx.save();
       ctx.beginPath();
       band.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));

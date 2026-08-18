@@ -15,7 +15,8 @@
 import { readFileSync } from "node:fs";
 import {
   BUILD_STATUSES, MAIN_STATUSES, statusesFor, isMainFeature, isLive,
-  statusOf, statusLabel, statusColour, LIVE_COLOUR, DEAD_COLOUR, isMainType,
+  statusOf, statusLabel, statusColour, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
+  isMainType,
 } from "./src/features/gis/buildStatus.js";
 
 let bad = 0;
@@ -141,10 +142,28 @@ const line = (type, status) => ({
   if (!/Whether a main is live/.test(canvas)) {
     fail("nothing marks a main's stage on the drawing");
   }
-  if (!/stage === "live" \? LIVE_COLOUR : DEAD_COLOUR/.test(canvas)) {
-    fail("live and dead are not told apart by colour");
+  /* Three answers now, not two: live, said to be not live, and nobody
+     has said. The third is grey because it is fixed by somebody setting
+     a status rather than by energising anything. */
+  if (!/stage === "live" \? LIVE_COLOUR/.test(canvas)) {
+    fail("live is not told apart by colour");
   }
-  if (LIVE_COLOUR === DEAD_COLOUR) fail("live and dead are the same colour");
+  if (!/: stage \? DEAD_COLOUR : UNSET_COLOUR/.test(canvas)) {
+    fail("a main with no status is coloured as though it had one");
+  }
+  if (new Set([LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR]).size !== 3) {
+    fail("two of the three states share a colour");
+  }
+  /* Lighter than the plot marks: the band covers a length of road at
+     every zoom, and at full strength the plan underneath could not be
+     read — which is the thing somebody is checking the main against. */
+  const bright = (hex) => {
+    const n = parseInt(hex.slice(1), 16);
+    return (((n >> 16) & 255) + ((n >> 8) & 255) + (n & 255)) / 3;
+  };
+  if (bright(LIVE_COLOUR) < 120 || bright(DEAD_COLOUR) < 120) {
+    fail("the bands are as strong as the marks and swamp the plan");
+  }
 
   /* A main with no stage is hatched red, not skipped.
 

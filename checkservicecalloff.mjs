@@ -20,7 +20,9 @@ import {
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState, anchorsFor } from "./src/features/gis/plotSupply.js";
-import { mainsGraph, pathToSource, deadUpstream } from "./src/features/gis/upstream.js";
+import {
+  mainsGraph, pathToSource, deadUpstream, sourceFor,
+} from "./src/features/gis/upstream.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -1410,6 +1412,39 @@ const PLOTS = [
      answer stands. */
   if (at3(gapped, null).state !== "live") {
     fail("the chain test fires without the graph it needs");
+  }
+
+  /* ── The same walk on all three utilities ──
+
+     Electric runs back to a substation, gas and water to a point of
+     connection. One walk, told apart only by which role it stops at —
+     so nothing had to be written three times and none of the three can
+     quietly behave differently from the others. */
+  for (const [layer, role] of [
+    ["electric", "substation"], ["gas", "poc"], ["water", "poc"],
+  ]) {
+    const type = layer === "electric" ? "elec_main" : `${layer}_main`;
+    const types = [{ Type_Key: type, Layer_Key: layer }];
+    const part = (id, geom, st) => ({
+      Feature_ID: id, Feature_Type: "line", Layer_Key: layer, Geometry: geom,
+      Attributes: { Line_Type: type, ...(st ? { Build_Status: st } : {}) },
+    });
+    const world = [
+      { Feature_ID: 99, Feature_Role: role, Geometry: [[0, 0]] },
+      part(1, [[0, 0], [50, 0]], "planned"),
+      /* No status at all, which must be picked up as well — it is not
+         live either. */
+      part(2, [[50, 0], [100, 0]], null),
+      part(3, [[100, 0], [150, 0]], "live"),
+    ];
+    const g = mainsGraph(layer, world, types);
+    if (!sourceFor(layer, world)) fail(`${layer} has no source to walk back to`);
+    if (!g.roots.length) fail(`${layer} mains do not reach their source`);
+
+    const also = (deadUpstream(3, g) || []).map((m) => Number(m.Feature_ID));
+    if (also.join() !== "1,2") {
+      fail(`setting a ${layer} main live would also set ${also.join(", ") || "nothing"}`);
+    }
   }
 
   /* And setting a length live carries upstream. */

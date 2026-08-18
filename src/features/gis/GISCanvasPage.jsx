@@ -11096,6 +11096,7 @@ export default function GISCanvasPage() {
       meter: spill.filter((f) => servicePartOf(f, lineTypes) === "meter"),
       cable: spill.filter((f) => servicePartOf(f, lineTypes) === "cable"),
       trench: spill.filter((f) => servicePartOf(f, lineTypes) === "trench"),
+      joint: spill.filter((f) => servicePartOf(f, lineTypes) === "joint"),
     });
 
     if (!window.confirm(
@@ -12130,31 +12131,53 @@ export default function GISCanvasPage() {
      issued a request per feature, which on four hundred trenches is four
      hundred round trips. */
   async function runBulkDelete(ids, catCount) {
+    /* Seeds ticked here take their service with them, as they do
+       everywhere else.
+
+       This one was left out at first, on the grounds that Bulk Delete
+       is a list of categories and ticking "All plot seeds" asks for
+       seeds and nothing else. That reading is tidy and wrong: the
+       orphans are the same orphans however the delete was started, and
+       a rule that holds on four paths out of five is a rule nobody can
+       rely on. The categories still say what was picked; this says what
+       has to follow. */
+    const also = seedCascade(ids, features, lineTypes);
+    const extra = also.ids.filter((x) => !ids.includes(x));
+
     if (!window.confirm(
       `Delete ${ids.length} feature(s) across ${catCount} categor${catCount === 1 ? "y" : "ies"}?`
+      + (extra.length ? `\n\nPlus the service belonging to the plot seeds in it: ${
+        cascadeSummary({
+          meter: also.meter.filter((f) => extra.includes(f.Feature_ID)),
+          cable: also.cable.filter((f) => extra.includes(f.Feature_ID)),
+          trench: also.trench.filter((f) => extra.includes(f.Feature_ID)),
+          joint: also.joint.filter((f) => extra.includes(f.Feature_ID)),
+        })}.` : "")
       + "\n\nUndo will bring them back, but not anything else that has "
       + "happened since."
     )) return;
 
+    const all = [...ids, ...extra];
+
     /* Captured before the first batch goes, or there is nothing left to
        record: the rows are the only description of what was deleted. */
-    const doomed = features.filter((f) => ids.includes(f.Feature_ID));
+    const doomed = features.filter((f) => all.includes(f.Feature_ID));
 
     setBusy("bulkdel");
-    setProgress({ done: 0, total: ids.length, label: "Deleting" });
+    setProgress({ done: 0, total: all.length, label: "Deleting" });
     const CHUNK = 100;
     try {
-      for (let i = 0; i < ids.length; i += CHUNK) {
-        const batch = ids.slice(i, i + CHUNK);
+      for (let i = 0; i < all.length; i += CHUNK) {
+        const batch = all.slice(i, i + CHUNK);
         await deleteFeatures(projectId, batch);
-        const done = Math.min(i + batch.length, ids.length);
-        setProgress({ done, total: ids.length, label: `Deleting ${done} of ${ids.length}` });
+        const done = Math.min(i + batch.length, all.length);
+        setProgress({ done, total: all.length, label: `Deleting ${done} of ${all.length}` });
       }
-      await recordAction(`Delete ${ids.length} feature(s)`, doomed, []);
+      await recordAction(`Delete ${all.length} feature(s)`, doomed, []);
       setBulkDelOpen(false);
       await load(projectId);
       setSelected([]);
-      setStatus(`Deleted ${ids.length} feature(s)`);
+      setStatus(`Deleted ${all.length} feature(s)`);
       setTimeout(() => setStatus(""), 6000);
       setError("");
     } catch (e) { setError(e.message); await load(projectId); }

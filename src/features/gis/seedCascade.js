@@ -38,6 +38,39 @@
    with the count in the question. */
 
 import { isTrenchFeature } from "./snapping.js";
+import { SERVED_NEAR_M, METER_CLEARANCE_M, METER_SPACING_M } from "./autoService.js";
+
+/* How far past the seed a meter of its own can sit.
+
+   Auto Service lays them in a column starting METER_CLEARANCE_M beyond
+   the seed and stepping METER_SPACING_M each time, so four utilities
+   reach 1.5 + 3 × 0.8 = 3.9 m. Rounded up to 4.5 m for a column placed
+   by hand or nudged afterwards.
+
+   Only ever used on a meter carrying no link at all. A meter that says
+   which plot it belongs to is read, not measured. */
+export const METER_REACH_M = 4.5;
+
+/* How close a joint must sit to the end of a cable to be its joint.
+
+   A joint is written at the tee itself, so the two coincide exactly on
+   anything the application drew. The allowance is for a fitting placed
+   by hand and for the rounding a drawing picks up being moved about —
+   tight on purpose, because two plots teeing into the same main a metre
+   apart each have their own joint and the wrong one must not be taken. */
+export const JOINT_NEAR_M = 0.5;
+
+const at = (f) => (f?.Geometry || [])[0] || null;
+const gap = (a, b) => (a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : Infinity);
+
+/* Whether a line ends at a point. Either end, since a service may have
+   been drawn from the plot outwards as easily as towards it — the same
+   reading meterHasService takes of the same question. */
+function endsAt(f, point, near) {
+  const g = f?.Geometry || [];
+  if (g.length < 2 || !point) return false;
+  return gap(g[0], point) <= near || gap(g[g.length - 1], point) <= near;
+}
 
 /* Which part of a plot's service a feature is, or null for anything
    that is not part of one.
@@ -50,6 +83,27 @@ import { isTrenchFeature } from "./snapping.js";
 export function servicePartOf(f, lineTypes = []) {
   if (!f) return null;
   if (f.Feature_Role === "meter") return "meter";
+
+  /* A service joint: the fitting on the main where this plot's cable
+     leaves it.
+
+     Only one typed "service". A joint holds every reason it exists for,
+     and the largest wins the type — so a breech that also takes a
+     service off it is typed "breech", and a bottle end that does the
+     same is typed "bottleend". Those stay: the feeder still divides, or
+     still ends, once this plot has gone. A joint typed "service" has no
+     other reason to be there, which is exactly the one to remove.
+
+     Not the lighting ones. A column's service joint is typed the same
+     way but feeds a lamp, not a plot, and it carries For_Lighting to
+     say so. */
+  if (f.Feature_Role === "joint") {
+    if (f.Attributes?.For_Lighting) return null;
+    const kind = String(f.Attributes?.Joint_Type ?? "").toLowerCase();
+    const code = String(f.Attributes?.Joint_Code ?? "").toUpperCase();
+    return (kind === "service" || code === "SVC") ? "joint" : null;
+  }
+
   if (f.Feature_Type !== "line") return null;
 
   const key = String(f.Attributes?.Line_Type ?? "");
@@ -89,30 +143,138 @@ export function belongsToSeed(f, seed) {
 
    Non-seeds in the list are ignored rather than refused. Deleting a
    mixed selection is ordinary, and the cascade is a fact about the
-   seeds in it. */
+   seeds in it.
+
+   ── Found in two passes, because half of it carries no label ──
+
+   The first pass reads the links: the stamp Auto Service writes, or the
+   plot number. That finds everything the application drew itself.
+
+   It finds nothing at all on work drawn by hand, which is most of what
+   is actually on an older drawing — and a rule that only tidies up
+   after itself leaves exactly the mess somebody has been living with.
+   This is the same lesson isServed learned: a trench dug to a meter by
+   somebody who then ran Auto Service got a second trench laid over the
+   first, because the stamp was the only thing being read.
+
+   So the second pass goes by position, through the meters. A service
+   trench ending at this plot's meter is this plot's dig whoever drew
+   it, and a cable ending there is its cable. The meters are the anchor
+   because they are the one part that is nearly always linked — and
+   where even they are not, one sitting in the column just beyond the
+   seed and belonging to no plot at all is taken as this plot's.
+
+   Position is only ever a fallback. Anything that says who it belongs
+   to is believed, so a neighbour's stamped trench is never claimed by
+   proximity. */
 export function seedCascade(ids = [], features = [], lineTypes = []) {
   const asked = new Set(ids.map(Number));
 
   const seeds = features.filter((f) =>
     f.Feature_Role === "plot" && asked.has(Number(f.Feature_ID)));
 
-  const out = { meter: [], cable: [], trench: [] };
+  const out = { meter: [], cable: [], trench: [], joint: [] };
   if (!seeds.length) return { seeds, ...out, all: [], ids: [], summary: "" };
 
+  const seedIds = new Set(seeds.map((s) => Number(s.Feature_ID)));
+  const parts = features
+    .map((f) => ({ f, part: servicePartOf(f, lineTypes) }))
+    .filter((x) => x.part);
+
+  /* Whether something is spoken for elsewhere: stamped with a seed that
+     is not going, or carrying a different plot number. Those are never
+     taken by position — the drawing has said whose they are. */
+  const claimedElsewhere = (f) => {
+    const stamp = f.Attributes?.Seed_Feature_ID;
+    if (stamp != null && stamp !== "") return !seedIds.has(Number(stamp));
+    if (f.Plot_ID != null) {
+      return !seeds.some((s) => Number(s.Plot_ID) === Number(f.Plot_ID));
+    }
+    return false;
+  };
+
+  /* Pass one: the meters, by link, then by position for a meter that
+     names no owner at all. */
+  const meters = parts.filter((x) => x.part === "meter");
+  const mine = new Set(meters
+    .filter((x) => seeds.some((s) => belongsToSeed(x.f, s)))
+    .map((x) => x.f));
+
+  for (const { f } of meters) {
+    if (mine.has(f) || claimedElsewhere(f)) continue;
+    const p = at(f);
+    if (seeds.some((s) => gap(p, at(s)) <= METER_REACH_M)) mine.add(f);
+  }
+
+  /* Pass two: the dig and what lies in it. Linked, or ending at one of
+     the meters found above.
+
+     SERVED_NEAR_M is too tight here. That figure exists to tell two
+     meters 0.8 m apart from one another; this asks whether a trench
+     runs to this plot at all, where landing on the meter beside the
+     right one is still the right plot. isServed makes the same
+     distinction, with the same two numbers. */
+  const REACH = 1.5;
+  const meterPts = [...mine].map(at).filter(Boolean);
+  const seedPts = seeds.map(at).filter(Boolean);
+
+  const takes = (f) => {
+    if (seeds.some((s) => belongsToSeed(f, s))) return true;
+    if (claimedElsewhere(f)) return false;
+    return meterPts.some((p) => endsAt(f, p, REACH))
+      || seedPts.some((p) => endsAt(f, p, REACH));
+  };
+
   const taken = new Set();
-  for (const f of features) {
+  for (const { f, part } of parts) {
     const id = Number(f.Feature_ID);
     if (asked.has(id) || taken.has(id)) continue;
-
-    const part = servicePartOf(f, lineTypes);
-    if (!part) continue;
-    if (!seeds.some((s) => belongsToSeed(f, s))) continue;
+    if (part === "joint") continue;                 // decided below
+    if (part === "meter" ? !mine.has(f) : !takes(f)) continue;
 
     out[part].push(f);
     taken.add(id);
   }
 
-  const all = [...out.meter, ...out.cable, ...out.trench];
+  /* Pass three: the joint on the main where this plot's cable leaves
+     it.
+
+     Found from the cables rather than from the seed. A service joint
+     sits at the tee — the far end of the run from the meter, often
+     tens of metres from the plot it feeds — so distance to the seed
+     says nothing about which plot it serves. The end of a cable that is
+     already going is the one thing that does.
+
+     A joint feeding more than one plot stays. Two services leaving the
+     same fitting is ordinary on a terrace, and removing it because one
+     of them has gone would cut the other off at the main. `Services` is
+     the count the joint placer recorded; where it is absent the cables
+     still on the drawing are counted instead, so a joint written before
+     that attribute existed is still judged on what it actually feeds. */
+  const goingCables = out.cable;
+  const stillHere = parts.filter((x) => x.part === "cable" && !taken.has(Number(x.f.Feature_ID)));
+
+  for (const { f } of parts.filter((x) => x.part === "joint")) {
+    const id = Number(f.Feature_ID);
+    if (asked.has(id) || taken.has(id)) continue;
+
+    const p = at(f);
+    if (!p) continue;
+    if (!goingCables.some((c) => endsAt(c, p, JOINT_NEAR_M))) continue;
+
+    /* Anything else still teeing in here keeps it. */
+    const others = stillHere.filter((x) => endsAt(x.f, p, JOINT_NEAR_M)).length;
+    if (others > 0) continue;
+
+    const recorded = Number(f.Attributes?.Services);
+    if (Number.isFinite(recorded) && recorded > goingCables
+      .filter((c) => endsAt(c, p, JOINT_NEAR_M)).length) continue;
+
+    out.joint.push(f);
+    taken.add(id);
+  }
+
+  const all = [...out.meter, ...out.cable, ...out.trench, ...out.joint];
   return {
     seeds,
     ...out,
@@ -134,6 +296,7 @@ export function cascadeSummary(parts = {}) {
     [parts.meter?.length ?? 0, "meter", "meters"],
     [parts.cable?.length ?? 0, "service cable or pipe", "service cables and pipes"],
     [parts.trench?.length ?? 0, "service trench", "service trenches"],
+    [parts.joint?.length ?? 0, "service joint", "service joints"],
   ]
     .filter(([n]) => n > 0)
     .map(([n, one, many]) => `${n} ${n === 1 ? one : many}`);

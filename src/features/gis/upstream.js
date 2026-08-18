@@ -258,8 +258,21 @@ export function liveCascade(featureId, graph) {
 
    Neither test alone is enough, and neither is wrong: they are the two
    ways one line can sit inside another. */
+/* How far a main may sit from its trench's centreline and still be in
+   it.
+
+   Mains share a trench and are drawn side by side: a joint trench is
+   about 1.2m wide and carries electric, gas and water across it, so a
+   main sits up to 0.6m off centre by design. The default half metre
+   was inside that, so a main drawn on the outside of a shared trench
+   matched nothing — and no trench was marked.
+
+   Two metres: wider than any trench somebody would draw, narrower than
+   the gap to the next road. */
+const IN_TRENCH_M = 2;
+
 function alongEachOther(a, b, follows) {
-  return follows(a, b) || follows(b, a);
+  return follows(a, b, IN_TRENCH_M) || follows(b, a, IN_TRENCH_M);
 }
 
 /* The trenches a set of mains are laid in.

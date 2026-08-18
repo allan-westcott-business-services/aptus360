@@ -1610,6 +1610,27 @@ const PLOTS = [
       fail("a main that stops half way down a trench leaves it unmarked");
     }
 
+    /* ── A main sits off the trench's centreline ──
+
+       A joint trench is about 1.2m wide and carries electric, gas and
+       water across it, so a main is drawn up to 0.6m off centre by
+       design. The half-metre default was inside that, so a main on the
+       outside of a shared trench matched nothing and no trench was
+       marked. */
+    for (const off of [0, 0.3, 0.6, 0.9, 1.5]) {
+      const parallel = { Feature_ID: 3, Geometry: [[0, off], [100, off]] };
+      if (!trenchesUnder([parallel], [trench(11, "planned")], lineFollows).length) {
+        fail(`a main ${off}m off the trench centreline is not matched to it`);
+      }
+    }
+    /* And not so wide that a main matches the trench in the next road. */
+    for (const off of [4, 8]) {
+      const away = { Feature_ID: 4, Geometry: [[0, off], [100, off]] };
+      if (trenchesUnder([away], [trench(11, "planned")], lineFollows).length) {
+        fail(`a main ${off}m away was matched to a trench it is not in`);
+      }
+    }
+
     /* And only the trench the main is actually in. */
     const elsewhere = { Feature_ID: 2, Geometry: [[0, 50], [100, 50]] };
     if (trenchesUnder([elsewhere], [trench(5, "planned")], lineFollows).length) {

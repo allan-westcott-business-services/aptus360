@@ -405,6 +405,19 @@ export default function CallOffsPage() {
           /^energis/i.test(String(t.Task_Type_Name || "")));
         if (en && !phases.some((p) => Number(p.Task_Type_ID) === Number(en.Task_Type_ID))) {
           phases.push(en);
+          /* In the order the work happens, not on the end.
+
+             The cable goes in, the substation is switched on, the
+             joints are made onto a live network, and the ground is
+             reinstated last. Appended, it sat after reinstatement and
+             read as work happening once the ground was closed.
+
+             Sorted by the task type's own Display_Order, which is where
+             that order is recorded — the mapping's order says where a
+             phase sits within its work type, and this phase belongs to
+             no work type. */
+          phases.sort((a, b) =>
+            (Number(a.Display_Order) || 0) - (Number(b.Display_Order) || 0));
         }
       }
       const states = phases.map((t) => ({
@@ -2969,8 +2982,21 @@ function Assignments({ row }) {
                         {" would be left for another team or another visit."}
                       </p>
                     )}
-                    {schedule.days.map(({ date: d, part: allowed }) => {
-                      const part = partFor({ date: d, part: allowed }, draft);
+                    {/* The whole row, not a copy of two of its fields.
+
+                        It rebuilt `{ date, part }` here and handed that
+                        to partFor, which reads `fixed` — so `fixed` was
+                        always undefined, every half day looked like the
+                        weekend rule had set it, and the buttons on the
+                        odd half at the end of an estimate did nothing.
+
+                        The flag was added to the rows and threaded
+                        through partFor, and this one call site quietly
+                        dropped it. */}
+                    {schedule.days.map((d0) => {
+                      const d = d0.date;
+                      const allowed = d0.part;
+                      const part = partFor(d0, draft);
                       return (
                         <div className="asg-day" key={d}>
                           <span className="asg-day-d">{fmt(d)}</span>
@@ -2998,7 +3024,7 @@ function Assignments({ row }) {
                                half. The estimate's own odd half is a
                                default, and the whole point of these
                                buttons is to move it. */
-                            const fixed = d.fixed && opt !== allowed;
+                            const fixed = d0.fixed && opt !== allowed;
                             const free = !fixed && partIsFree(taken, opt);
                             return (
                               <button key={opt} type="button"

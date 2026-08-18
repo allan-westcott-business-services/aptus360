@@ -677,11 +677,68 @@ const MON = "2026-08-17";
 
   /* The screen reads the flag rather than inferring from the part. */
   const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
-  if (!/const fixed = d\.fixed && opt !== allowed/.test(page)) {
+  /* The row's own flag, whatever the variable is called — it was `d`
+     and is now `d0`, and pinning the name failed on correct code. */
+  if (!/const fixed = \w+\.fixed && opt !== allowed/.test(page)) {
     fail("the buttons still treat any half day as fixed");
   }
   if (!/const partFor = \(\{ date, part: allowed, fixed \}/.test(page)) {
     fail("the chosen part is still overridden by any half day");
+  }
+}
+
+// 19. The row reaches partFor whole.
+//
+//     `fixed` was added to the schedule rows and threaded through
+//     partFor, and the one place that calls it rebuilt `{ date, part }`
+//     from two of the fields — so `fixed` was always undefined, every
+//     half day read as though the weekend rule had set it, and the
+//     buttons on the odd half at the end of an estimate did nothing.
+//
+//     The fix looked right in the module and in the schedule for weeks.
+//     It was never connected.
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+
+  if (/partFor\(\{ date: d, part: allowed \}, draft\)/.test(page)) {
+    fail("the schedule row is rebuilt before partFor sees it, losing fixed");
+  }
+  if (!/const part = partFor\(d0, draft\);/.test(page)) {
+    fail("partFor is not given the row it is meant to read");
+  }
+  if (!/const fixed = d0\.fixed && opt !== allowed;/.test(page)) {
+    fail("the buttons no longer read the row's own fixed flag");
+  }
+
+  /* The behaviour, as partFor computes it. */
+  const partOf = ({ date, part: allowed, fixed }, draft) =>
+    (fixed ? allowed : (draft.parts?.[date] || allowed || "Full"));
+  const odd = { date: "2026-08-19", part: "AM", fixed: false };
+  if (partOf(odd, {}) !== "AM") fail("the odd half no longer defaults to the morning");
+  if (partOf(odd, { parts: { "2026-08-19": "PM" } }) !== "PM") {
+    fail("the odd half cannot be moved to the afternoon");
+  }
+  /* And a whole day, for booking more time than the estimate asked
+     for — which is somebody who knows the site saying the figure is
+     light. */
+  if (partOf(odd, { parts: { "2026-08-19": "Full" } }) !== "Full") {
+    fail("a half day cannot be made a whole one");
+  }
+  /* A weekend half still cannot be argued with. */
+  const sat = { date: "2026-08-22", part: "AM", fixed: true };
+  if (partOf(sat, { parts: { "2026-08-22": "PM" } }) !== "AM") {
+    fail("a Saturday morning can be moved to the afternoon");
+  }
+
+  /* And the totals follow: moving the half keeps the estimate, making
+     it whole adds to it. */
+  const laid = { "2026-08-18": "Full", "2026-08-19": "AM" };
+  if (dayTotal(laid) !== 1.5) fail(`the estimate laid out as ${dayTotal(laid)} days`);
+  if (dayTotal({ ...laid, "2026-08-19": "PM" }) !== 1.5) {
+    fail("moving the half changed the total");
+  }
+  if (dayTotal({ ...laid, "2026-08-19": "Full" }) !== 2) {
+    fail("making the last day whole did not add half a day");
   }
 }
 

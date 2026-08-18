@@ -12,7 +12,7 @@
    the version of this rule that lived in the canvas called that a main,
    directly under a comment promising it was not. */
 import {
-  LABEL_KINDS, DEFAULT_LABEL_KINDS, lineLabelKind, lineLabelShown,
+  LABEL_KINDS, DEFAULT_LABEL_KINDS, labelKindOf, labelShown,
 } from "./src/features/gis/labelKinds.js";
 
 let bad = 0;
@@ -40,7 +40,7 @@ const line = (key, layer = null) => ({
   Attributes: { Line_Type: key },
 });
 
-const kind = (key) => lineLabelKind(line(key), TYPES);
+const kind = (key) => labelKindOf(line(key), TYPES);
 
 // 1. Every mains cable and pipe is a main, on all four carrying layers.
 for (const key of ["elec_main", "gas_main", "water_main", "light_main"]) {
@@ -76,21 +76,21 @@ for (const key of ["elec_hv", "elec_feeder"]) {
 {
   const renamed = TYPES.map((t) => (t.Type_Key === "gas_service"
     ? { ...t, Label: "Gas connection" } : t));
-  const got = lineLabelKind(line("gas_service"), renamed);
+  const got = labelKindOf(line("gas_service"), renamed);
   if (got !== "services") fail(`a renamed gas service sorted as ${got}`);
 }
 
 // 6. Points and unknowns fall through rather than guessing.
 {
-  if (lineLabelKind({ Feature_Type: "point", Attributes: { Line_Type: "gas_main" } },
+  if (labelKindOf({ Feature_Type: "point", Attributes: { Line_Type: "gas_main" } },
     TYPES) !== null) fail("a point was sorted as a line");
-  if (lineLabelKind(null, TYPES) !== null) fail("a missing feature was sorted");
-  if (lineLabelKind({ Feature_Type: "line", Attributes: {} }, TYPES) !== null) {
+  if (labelKindOf(null, TYPES) !== null) fail("a missing feature was sorted");
+  if (labelKindOf({ Feature_Type: "line", Attributes: {} }, TYPES) !== null) {
     fail("a line with no type was sorted");
   }
   /* A type nobody has configured, on a layer that carries pipe. Sorted
      by its key alone, which is all there is to go on. */
-  if (lineLabelKind(line("gas_main", "gas"), []) !== "mains") {
+  if (labelKindOf(line("gas_main", "gas"), []) !== "mains") {
     fail("an unconfigured gas main was not sorted by its key");
   }
 }
@@ -100,13 +100,13 @@ for (const key of ["elec_hv", "elec_feeder"]) {
 //    A drawing opens to be read, and several hundred tags is not a
 //    drawing being read. The levels only exist once a check has run.
 {
-  const want = { mains: false, services: false, levels: true };
+  const want = { mains: false, services: false, joints: false, levels: true };
   for (const [k, v] of Object.entries(want)) {
     if (DEFAULT_LABEL_KINDS[k] !== v) {
       fail(`${k} defaults to ${DEFAULT_LABEL_KINDS[k]}, wanted ${v}`);
     }
   }
-  if (LABEL_KINDS.length !== 3) fail(`${LABEL_KINDS.length} kinds offered, wanted 3`);
+  if (LABEL_KINDS.length !== 4) fail(`${LABEL_KINDS.length} kinds offered, wanted 4`);
   /* The menu reads this list, so every key it offers has to be one the
      default knows about — a switch with no default is a switch that
      does nothing until it is pressed twice. */
@@ -122,7 +122,7 @@ for (const key of ["elec_hv", "elec_feeder"]) {
   const gasSvc = line("gas_service");
   const trench = line("trench_main");
   const shown = (f, kinds, showLabels = true) =>
-    lineLabelShown(f, { lineTypes: TYPES, showLabels, kinds });
+    labelShown(f, { lineTypes: TYPES, showLabels, kinds });
 
   const off = { mains: false, services: false, levels: true };
   const mainsOnly = { mains: true, services: false, levels: true };
@@ -145,7 +145,7 @@ for (const key of ["elec_hv", "elec_feeder"]) {
 
   // And selection overrides both, so clicking always answers.
   for (const f of [gasMain, gasSvc, trench]) {
-    if (!lineLabelShown(f, {
+    if (!labelShown(f, {
       lineTypes: TYPES, showLabels: false, kinds: off, selected: true,
     })) fail("a selected line was not labelled");
   }
@@ -156,18 +156,70 @@ for (const key of ["elec_hv", "elec_feeder"]) {
 //    The canvas spreads the defaults under whatever was remembered, so
 //    a fourth kind added later is on for somebody with a stored value
 //    rather than silently absent. Checked here because the merge is the
-//    reason lineLabelShown treats an unknown kind as shown.
+//    reason labelShown treats an unknown kind as shown.
 {
   const stored = { mains: true };
   const merged = { ...DEFAULT_LABEL_KINDS, ...stored };
   if (merged.levels !== true) fail("an old stored preference hid the levels");
   if (merged.mains !== true) fail("a stored preference was lost to the defaults");
   /* And a kind missing from the object entirely still draws. */
-  if (!lineLabelShown(line("gas_main"), { lineTypes: TYPES, kinds: {} })) {
+  if (!labelShown(line("gas_main"), { lineTypes: TYPES, kinds: {} })) {
     fail("a kind with no setting at all was hidden");
   }
 }
 
+// 10. Joints answer to their own switch.
+//
+//    They are points, not lines, and they are named rather than
+//    measured — one word against every fitting on the feeder. On a
+//    drawing with a joint at every plot that is a column of words down
+//    the road, over the geometry somebody is trying to read.
+{
+  const joint = (kind) => ({
+    Feature_Type: "point", Feature_Role: "joint", Layer_Key: "electric",
+    Label: "Service Joint", Attributes: { Joint_Type: kind },
+  });
+  const plotSeed = {
+    Feature_Type: "point", Feature_Role: "plot", Layer_Key: "plot", Label: "12",
+    Attributes: {},
+  };
+
+  /* Every kind of joint, not only the service ones. Which type a joint
+     is matters when deciding what a delete may remove; for reading a
+     drawing they are one sort of writing on it. */
+  for (const kind of ["service", "breech", "bottleend", "straight"]) {
+    if (labelKindOf(joint(kind), TYPES) !== "joints") {
+      fail(`a ${kind} joint sorted as ${labelKindOf(joint(kind), TYPES)}`);
+    }
+  }
+
+  const shown = (f, kinds) => labelShown(f, { lineTypes: TYPES, kinds });
+  const on = { mains: false, services: false, joints: true, levels: true };
+  const off = { ...on, joints: false };
+
+  /* Off out of the box, with the mains and service labels. A fitting at
+     every plot, each one named, is a column of words down the road. */
+  if (DEFAULT_LABEL_KINDS.joints !== false) {
+    fail("joint labels did not start switched off");
+  }
+  if (labelShown(joint("service"), { lineTypes: TYPES })) {
+    fail("a joint was labelled on a drawing nobody had touched the switches on");
+  }
+
+  if (!shown(joint("service"), on)) fail("a joint lost its label with joints on");
+  if (shown(joint("service"), off)) fail("a joint kept its label with joints off");
+
+  /* A plot number is not a joint. It has always followed the master
+     switch and still does \u2014 turning the joint labels off must not take
+     the plot numbers with it. */
+  if (!shown(plotSeed, off)) fail("a plot number went with the joint labels");
+
+  /* And selection still answers. */
+  if (!labelShown(joint("service"), {
+    lineTypes: TYPES, showLabels: false, kinds: off, selected: true,
+  })) fail("a selected joint was not labelled");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
-  : "Label kinds behave (mains, services and levels switch separately; trenches follow the master).");
+  : "Label kinds behave (mains, services, joints and levels switch separately; trenches follow the master).");
 process.exit(bad ? 1 : 0);

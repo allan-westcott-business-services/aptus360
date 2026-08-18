@@ -6940,7 +6940,29 @@ export default function GISCanvasPage() {
         const world = features.map((x) =>
           (x.Feature_ID === id ? { ...x, ...changes } : x));
         const graph = mainsGraph(before.Layer_Key, world, lineTypes);
-        const also = (liveCascade(id, graph) || [])
+        const chain = liveCascade(id, graph);
+
+        /* ── When the walk cannot get back ──
+
+           Said, not swallowed. A cascade that quietly does nothing is
+           indistinguishable from one that had nothing to do, and the
+           difference is the whole point: the first means the drawing
+           cannot see a way from this main to the source, and somebody
+           should look at why.
+
+           Two reasons, and they are fixed differently: no point of
+           connection placed for this utility at all, or one placed and
+           this main not joined to anything that reaches it. */
+        if (chain == null) {
+          setStatus(graph.roots.length
+            ? "Set live \u2014 but this main does not connect back to the "
+              + `${before.Layer_Key === "electric" ? "substation" : "POC"}, `
+              + "so nothing upstream was changed."
+            : `Set live \u2014 but no ${before.Layer_Key} point of connection `
+              + "is placed on the drawing, so nothing upstream was changed.");
+        }
+
+        const also = (chain || [])
           .filter((m) => Number(m.Feature_ID) !== Number(id));
 
         if (also.length) {

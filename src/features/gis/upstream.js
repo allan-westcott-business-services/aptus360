@@ -67,10 +67,28 @@ function meet(a, b) {
 
 /* The source feeding a utility: a substation for electric, a point of
    connection for gas and water. */
-export function sourceFor(utility, features = []) {
+export function sourcesFor(utility, features = []) {
   const role = utility === "electric" ? "substation" : "poc";
-  return features.find((f) => f.Feature_Role === role
-    && (f.Geometry || []).length) ?? null;
+  /* Its layer where it has one, and any source of the right role
+     otherwise.
+
+     Requiring the layer to match looked tidy and was wrong: an electric
+     POC is created on the electric layer, but a gas or water one takes
+     whichever layer the menu was on, and a drawing made before that was
+     settled has them on something else entirely. Insisting made every
+     source invisible — which is a worse failure than occasionally
+     walking to a source that belongs to another utility, because the
+     mains graph is already filtered to this utility and a source that
+     touches none of its lengths becomes no root at all. */
+  const all = features.filter((f) => f.Feature_Role === role
+    && (f.Geometry || []).length);
+  const own = all.filter((f) => f.Layer_Key === utility);
+  return own.length ? own : all;
+}
+
+/* Kept for callers that only want to know whether there is one. */
+export function sourceFor(utility, features = []) {
+  return sourcesFor(utility, features)[0] ?? null;
 }
 
 /* Every main of a utility, and which of them touch each other.
@@ -92,15 +110,30 @@ export function mainsGraph(utility, features = [], lineTypes = []) {
     }
   }
 
-  const source = sourceFor(utility, features);
-  const at = (source?.Geometry || [])[0] ?? null;
-  /* The lengths the source itself sits on. More than one where several
-     leave a substation, which is the ordinary case. */
-  const roots = at
-    ? mains.filter((m) => onLine(at, m.Geometry)).map((m) => Number(m.Feature_ID))
-    : [];
+  /* ── Every source, not the first one ──
 
-  return { mains, near, roots, source };
+     A site can be fed from more than one side: two gas mains in from
+     different roads, or a water main from each end of an estate. The
+     drawing allows several gas and water points of connection for
+     exactly that reason.
+
+     Taking only the first meant a main fed from the second one reached
+     no source at all — so the walk returned nothing, the cascade did
+     nothing, and it did it silently. Electric has one substation, which
+     is why this only ever went wrong on gas and water. */
+  const sources = sourcesFor(utility, features);
+  const roots = [];
+  for (const src of sources) {
+    const at = (src.Geometry || [])[0];
+    if (!at) continue;
+    for (const m of mains) {
+      if (!onLine(at, m.Geometry)) continue;
+      const id = Number(m.Feature_ID);
+      if (!roots.includes(id)) roots.push(id);
+    }
+  }
+
+  return { mains, near, roots, sources, source: sources[0] ?? null };
 }
 
 /* The path from a main back to the source, as feature ids.
@@ -164,7 +197,11 @@ export function deadUpstream(featureId, graph) {
    rather than rewriting half the drawing with the value it already
    had. */
 export function liveCascade(featureId, graph) {
-  const dead = deadUpstream(featureId, graph);
-  if (!dead) return [];
-  return dead;
+  /* Null passed through rather than flattened to an empty list.
+
+     They mean different things — nothing to change, and no way to tell
+     — and returning [] for both let a main that reached no source look
+     exactly like one already fully live upstream. That is how a
+     cascade came to do nothing without saying so. */
+  return deadUpstream(featureId, graph);
 }

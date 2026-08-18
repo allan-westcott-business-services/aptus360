@@ -21,7 +21,7 @@ import {
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState, anchorsFor } from "./src/features/gis/plotSupply.js";
 import {
-  mainsGraph, pathToSource, deadUpstream, sourceFor,
+  mainsGraph, pathToSource, deadUpstream, sourceFor, liveCascade,
 } from "./src/features/gis/upstream.js";
 
 let bad = 0;
@@ -1444,6 +1444,81 @@ const PLOTS = [
     const also = (deadUpstream(3, g) || []).map((m) => Number(m.Feature_ID));
     if (also.join() !== "1,2") {
       fail(`setting a ${layer} main live would also set ${also.join(", ") || "nothing"}`);
+    }
+  }
+
+  /* ── Every source, not the first ──
+
+     A site can be fed from more than one side: two gas mains in from
+     different roads, or water from each end of an estate. Taking only
+     the first meant a main fed from the second reached no source at
+     all, so the cascade did nothing — and did it silently. Electric has
+     one substation, which is why this only ever went wrong on gas and
+     water. */
+  {
+    const gt = [{ Type_Key: "gas_main", Layer_Key: "gas" }];
+    const gm = (id, geom, st) => ({
+      Feature_ID: id, Feature_Type: "line", Layer_Key: "gas", Geometry: geom,
+      Attributes: { Line_Type: "gas_main", ...(st ? { Build_Status: st } : {}) },
+    });
+    const twoWays = [
+      { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[0, 0]] },
+      { Feature_ID: 91, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[200, 0]] },
+      gm(1, [[0, 0], [50, 0]], "planned"),
+      gm(2, [[150, 0], [200, 0]], "planned"),
+      gm(3, [[150, 0], [100, 0]], "live"),
+    ];
+    const g2 = mainsGraph("gas", twoWays, gt);
+    if (g2.roots.length !== 2) {
+      fail(`a site with two points of connection found ${g2.roots.length} root(s)`);
+    }
+    const from2 = (deadUpstream(3, g2) || []).map((m) => Number(m.Feature_ID));
+    if (!from2.includes(2)) {
+      fail("a main fed from the second point of connection reaches no source");
+    }
+
+    /* Null and empty mean different things: no way to tell, and nothing
+       to change. Flattening both to empty is how a cascade came to do
+       nothing without saying so. */
+    const nowhere = mainsGraph("gas", [gm(1, [[0, 0], [50, 0]])], gt);
+    if (liveCascade(1, nowhere) !== null) {
+      fail("a main with no point of connection reports nothing to do");
+    }
+    const fine = mainsGraph("gas", [
+      { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[0, 0]] },
+      gm(1, [[0, 0], [50, 0]], "live"),
+    ], gt);
+    if (liveCascade(1, fine)?.length !== 0) {
+      fail("a wholly live chain does not report an empty list");
+    }
+
+    /* A point of connection is found whatever layer it sits on.
+
+       An electric POC is created on the electric layer, but a gas or
+       water one takes whichever layer the menu was on. Insisting the
+       layer matched made every source invisible on those drawings —
+       which is very likely what stopped the gas and water cascade
+       working at all. */
+    for (const [what, poc] of [
+      ["its own layer", { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[0, 0]] }],
+      ["the electric layer", { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "electric", Geometry: [[0, 0]] }],
+      ["no layer at all", { Feature_ID: 90, Feature_Role: "poc", Geometry: [[0, 0]] }],
+    ]) {
+      const g3 = mainsGraph("gas", [
+        poc, gm(1, [[0, 0], [50, 0]], "planned"), gm(2, [[50, 0], [100, 0]], "live"),
+      ], gt);
+      if (!g3.roots.length) {
+        fail(`a gas POC on ${what} is not found, so nothing cascades`);
+      }
+    }
+
+    /* And the canvas says so rather than swallowing it. */
+    const cv = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (!/if \(chain == null\) \{/.test(cv)) {
+      fail("a cascade that cannot walk back says nothing");
+    }
+    if (!/no \$\{before\.Layer_Key\} point of connection/.test(cv)) {
+      fail("the message does not distinguish a missing point of connection");
     }
   }
 

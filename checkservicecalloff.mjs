@@ -896,6 +896,68 @@ const PLOTS = [
   }
   if (!/state: "booked"/.test(body)) fail("there is no booked state");
 
+  /* ── The mark is drawn where the seed is ──
+
+     It sat in the `else` branch of `if (isSeed)`, guarded by
+     `isSeed && …`, so it could never run — and it read q.x and
+     ps.symbolPx, which are the other branch's names and were undefined
+     anyway. The tooltip worked, because the hover test used the seed's
+     own position, and nothing was drawn. */
+  const markAt = canvas.indexOf("Can this plot be connected");
+  const seedAt = canvas.lastIndexOf("if (isSeed) {", markAt);
+  if (markAt < 0 || seedAt < 0) fail("the plot marks are gone");
+  else {
+    let depth = 0;
+    let inElse = false;
+    for (const line of canvas.slice(seedAt, markAt).split("\n")) {
+      depth += (line.match(/\{/g) || []).length - (line.match(/\}/g) || []).length;
+      if (depth === 0) inElse = false;
+      if (depth === 1 && /\} else \{/.test(line)) inElse = true;
+    }
+    if (inElse) fail("the marks are drawn in the branch seeds never take");
+  }
+
+  /* From the seed's own style and point, which are the ones in scope
+     there — and the ones the hover test uses, so the mark and the note
+     cannot end up in different places. */
+  /* To the end of the block rather than a fixed window — it has grown
+     a branch since and the window stopped reaching the lines below,
+     failing on correct code. */
+  const mark = markAt < 0 ? ""
+    : canvas.slice(markAt, canvas.indexOf("A joint lies along its cable", markAt));
+  if (!/const size = ss\.symbolPx \?\? 8;/.test(mark)) {
+    fail("the mark is sized from a style a seed does not have");
+  }
+  if (!/const mx = p\.x \+ size \+ r;/.test(mark)) {
+    fail("the mark is placed from a point a seed does not have");
+  }
+  if (!/const size = seedStyle\(f, false\)\.symbolPx \?\? 8;/.test(canvas)) {
+    fail("the hover test sizes the mark differently from the drawing");
+  }
+
+  /* ── Every plot gets a mark, including the ones it cannot answer ──
+
+     Unknown used to draw nothing, so a plot whose main could not be
+     found looked exactly like a plot nobody had asked about — and if
+     every plot came back unknown the whole feature looked as though it
+     had not been built. A question mark says the question was asked and
+     could not be answered, which points at what to fix. */
+  if (/v && v\.state !== "unknown"/.test(canvas)) {
+    fail("a plot whose main cannot be found is drawn as nothing");
+  }
+  if (!/const unknown = v\.state === "unknown";/.test(canvas)) {
+    fail("there is no mark for a plot that cannot be judged");
+  }
+
+  /* And hovering explains any of them. A cross that will not say what
+     is wrong is a mark somebody has to come and ask about. */
+  if (/if \(v\?\.state !== "booked"\) continue;/.test(canvas)) {
+    fail("only the clock explains itself");
+  }
+  for (const words of ["Ready to connect", "Cannot be connected", "Cannot tell"]) {
+    if (!canvas.includes(words)) fail(`the note never says "${words}"`);
+  }
+
   /* The clock, and the date behind it. */
   if (!/v\.state === "booked"/.test(canvas)) fail("a booked plot has no mark");
   /* The note has to render, not merely be styled — the class survives

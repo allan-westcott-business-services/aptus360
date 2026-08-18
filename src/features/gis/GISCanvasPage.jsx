@@ -3182,7 +3182,7 @@ export default function GISCanvasPage() {
 
         if (isSeed) {
           symbolPath(ctx, ss.symbol, p.x, p.y, ss.symbolPx);
-                } else {
+        } else {
           /* Symbol, size and colour come from the style, so a DNO that
              draws meters as hexagons in its own green gets both without
              a code change. */
@@ -3282,73 +3282,6 @@ export default function GISCanvasPage() {
             }
           }
 
-          /* ── Can this plot be connected ──
-
-             A tick or a cross beside the seed, once the picker is open
-             and a utility is chosen.
-
-             On every plot rather than only the ones tapped: somebody
-             choosing where the work goes needs to see where it can go,
-             and a panel that refuses each plot in turn makes them find
-             the answer by trial.
-
-             Beside the symbol rather than over it — a cross drawn on
-             top of a seed hides the plot number, which is the thing
-             being read. */
-          if (isSeed && plotSupply.size) {
-            const v = plotSupply.get(Number(f.Feature_ID));
-            if (v && v.state !== "unknown") {
-              const live = v.state === "live";
-              const booked = v.state === "booked";
-              const r = Math.max(4, (ps.symbolPx ?? 8) * 0.55);
-              const mx = q.x + (ps.symbolPx ?? 8) + r;
-              const my = q.y - (ps.symbolPx ?? 8);
-
-              ctx.save();
-              ctx.lineCap = "round";
-              ctx.lineWidth = Math.max(1.6, r * 0.38);
-              /* Amber for booked: neither a yes nor a no. The plot is
-                 fine and the work is already going out, so there is
-                 nothing to fix and nothing to add. */
-              ctx.strokeStyle = booked ? "#b45309"
-                : live ? "#16a34a" : "#dc2626";
-              /* On a white disc, so the mark reads over a plan, a
-                 boundary line or another symbol without being hunted
-                 for. */
-              ctx.beginPath();
-              ctx.arc(mx, my, r * 1.35, 0, Math.PI * 2);
-              ctx.fillStyle = "#fff";
-              ctx.fill();
-              ctx.stroke();
-
-              ctx.beginPath();
-              if (booked) {
-                /* A clock: a ring with two hands. Drawn rather than
-                   typed as a character, so it sizes with the seed and
-                   does not depend on a font having the glyph. */
-                ctx.arc(mx, my, r * 0.72, 0, Math.PI * 2);
-                ctx.stroke();
-                ctx.beginPath();
-                ctx.moveTo(mx, my);
-                ctx.lineTo(mx, my - r * 0.45);
-                ctx.moveTo(mx, my);
-                ctx.lineTo(mx + r * 0.38, my + r * 0.1);
-              } else if (live) {
-                ctx.moveTo(mx - r * 0.55, my);
-                ctx.lineTo(mx - r * 0.15, my + r * 0.45);
-                ctx.lineTo(mx + r * 0.6, my - r * 0.5);
-              } else {
-                ctx.moveTo(mx - r * 0.45, my - r * 0.45);
-                ctx.lineTo(mx + r * 0.45, my + r * 0.45);
-                ctx.moveTo(mx + r * 0.45, my - r * 0.45);
-                ctx.lineTo(mx - r * 0.45, my + r * 0.45);
-              }
-              ctx.stroke();
-              ctx.restore();
-              ctx.beginPath();
-            }
-          }
-
           /* A joint lies along its cable.
 
              It is a box buried in the trench, laid the way the cable
@@ -3394,6 +3327,103 @@ export default function GISCanvasPage() {
            would be rotated too, and a joint's label is read off the
            page rather than along the cable. */
         if (spin) ctx.restore();
+
+          /* ── Can this plot be connected ──
+
+             A tick or a cross beside the seed, once the picker is open
+             and a utility is chosen.
+
+             On every plot rather than only the ones tapped: somebody
+             choosing where the work goes needs to see where it can go,
+             and a panel that refuses each plot in turn makes them find
+             the answer by trial.
+
+             Beside the symbol rather than over it — a cross drawn on
+             top of a seed hides the plot number, which is the thing
+             being read. */
+          if (isSeed && plotSupply.size) {
+            const v = plotSupply.get(Number(f.Feature_ID));
+            /* Unknown is drawn too.
+
+               It used to be skipped, so a plot whose main could not be
+               found looked exactly like a plot nobody had asked about —
+               and if every plot came back unknown, the whole feature
+               looked as though it had not been built. A question mark
+               says the question was asked and could not be answered,
+               which is a different thing from silence and points at
+               what to fix. */
+            if (v) {
+              const live = v.state === "live";
+              const booked = v.state === "booked";
+              const unknown = v.state === "unknown";
+              /* From the seed's own position and size.
+
+                 This read q.x and ps.symbolPx — the point and style of
+                 the *other* branch, which a seed never sets. Both were
+                 undefined, so every mark was drawn at NaN and nothing
+                 appeared, while the hover test used the right ones and
+                 found it. The tooltip worked and the icon did not. */
+              const size = ss.symbolPx ?? 8;
+              const r = Math.max(4, size * 0.55);
+              const mx = p.x + size + r;
+              const my = p.y - size;
+
+              ctx.save();
+              ctx.lineCap = "round";
+              ctx.lineWidth = Math.max(1.6, r * 0.38);
+              /* Amber for booked: neither a yes nor a no. The plot is
+                 fine and the work is already going out, so there is
+                 nothing to fix and nothing to add. */
+              ctx.strokeStyle = unknown ? "#94a3b8"
+                : booked ? "#b45309"
+                  : live ? "#16a34a" : "#dc2626";
+              /* On a white disc, so the mark reads over a plan, a
+                 boundary line or another symbol without being hunted
+                 for. */
+              ctx.beginPath();
+              ctx.arc(mx, my, r * 1.35, 0, Math.PI * 2);
+              ctx.fillStyle = "#fff";
+              ctx.fill();
+              ctx.stroke();
+
+              ctx.beginPath();
+              if (unknown) {
+                /* A question mark: a hook and a dot. */
+                ctx.arc(mx, my - r * 0.2, r * 0.34, Math.PI, Math.PI * 0.35);
+                ctx.lineTo(mx, my + r * 0.25);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.arc(mx, my + r * 0.6, Math.max(0.9, r * 0.13), 0, Math.PI * 2);
+                ctx.fillStyle = "#94a3b8";
+                ctx.fill();
+                ctx.beginPath();
+              } else if (booked) {
+                /* A clock: a ring with two hands. Drawn rather than
+                   typed as a character, so it sizes with the seed and
+                   does not depend on a font having the glyph. */
+                ctx.arc(mx, my, r * 0.72, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(mx, my);
+                ctx.lineTo(mx, my - r * 0.45);
+                ctx.moveTo(mx, my);
+                ctx.lineTo(mx + r * 0.38, my + r * 0.1);
+              } else if (live) {
+                ctx.moveTo(mx - r * 0.55, my);
+                ctx.lineTo(mx - r * 0.15, my + r * 0.45);
+                ctx.lineTo(mx + r * 0.6, my - r * 0.5);
+              } else {
+                ctx.moveTo(mx - r * 0.45, my - r * 0.45);
+                ctx.lineTo(mx + r * 0.45, my + r * 0.45);
+                ctx.moveTo(mx + r * 0.45, my - r * 0.45);
+                ctx.lineTo(mx - r * 0.45, my + r * 0.45);
+              }
+              ctx.stroke();
+              ctx.restore();
+              ctx.beginPath();
+            }
+          }
+
         /* Labels are a layer of their own: on a drawing this dense they
            are the difference between reading it and not, and sometimes
            the difference between seeing the geometry and not. Selection
@@ -5485,7 +5515,10 @@ export default function GISCanvasPage() {
       for (const f of features) {
         if (f.Feature_Role !== "plot") continue;
         const v = plotSupply.get(Number(f.Feature_ID));
-        if (v?.state !== "booked") continue;
+        /* Any mark, not only the clock. A cross that will not say what
+           is wrong, or a question mark that will not say what could not
+           be found, is a mark somebody has to come and ask about. */
+        if (!v) continue;
         const g = (f.Geometry || [])[0];
         if (!g) continue;
         const q = toPx(g);
@@ -16856,13 +16889,20 @@ export default function GISCanvasPage() {
             {plotTip && (
               <div className="gis-plottip"
                 style={{ left: plotTip.x + 14, top: plotTip.y + 14 }}>
-                <strong>Already called off</strong>
-                <span>
-                  {plotTip.plannedFor
-                    ? `Planned for ${String(plotTip.plannedFor)
-                      .split("-").reverse().join("/")}`
-                    : "No date set on that call-off"}
-                </span>
+                <strong>
+                  {plotTip.state === "booked" ? "Already called off"
+                    : plotTip.state === "live" ? "Ready to connect"
+                      : plotTip.state === "dead" ? "Cannot be connected"
+                        : "Cannot tell"}
+                </strong>
+                {plotTip.state === "booked" ? (
+                  <span>
+                    {plotTip.plannedFor
+                      ? `Planned for ${String(plotTip.plannedFor)
+                        .split("-").reverse().join("/")}`
+                      : "No date set on that call-off"}
+                  </span>
+                ) : plotTip.why ? <span>{plotTip.why}</span> : null}
                 {plotTip.reference && <span>{plotTip.reference}</span>}
               </div>
             )}

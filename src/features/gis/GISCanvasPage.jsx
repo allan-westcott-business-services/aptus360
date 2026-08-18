@@ -46,6 +46,9 @@ import {
 import {
   seedCascade, servicePartOf, cascadeSummary, CASCADE_REV,
 } from "./seedCascade.js";
+import {
+  planWholeDesign, describePlan, describeOutcome,
+} from "./wholeDesign.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
@@ -12374,8 +12377,147 @@ export default function GISCanvasPage() {
      plots whose gas has not been thought about. So the dig is one act,
      on the Trench menu, and each utility is laid from its own menu with
      Auto Lay Services. */
-  async function runAutoService({ trenchesOnly = false } = {}) {
-    const seeds = selected.length
+  /* ── Build the whole design ──
+
+     The six steps in the order wholeDesign.js sets out, across every
+     utility that is contracted and drawn far enough to take part.
+
+     ── One question, then no more ──
+
+     Every step here can refuse, and several will on an ordinary site.
+     Asked one at a time that is six dialogs to walk a site through,
+     which is worse than the six menu items it replaces. So the plan is
+     worked out first, everything known to be missing is said in the one
+     question, and after that it runs to the end and reports.
+
+     ── Nothing stops the run ──
+
+     A utility that is not contracted, a POC not yet placed, a sizing
+     table nobody has filled in: each is a reason to leave that piece
+     out, not a reason to abandon the rest. A site with no gas agreement
+     should still come out with its water main laid. So every step is
+     caught, recorded and stepped over.
+
+     ── Counted, not trusted ──
+
+     The steps report failure by putting a message on screen and
+     returning, which is not something a caller can read. So what each
+     one did is measured instead: the drawing is counted before and
+     after, and the difference is what the report says. A step that
+     changed nothing says so rather than claiming success. */
+  async function runWholeDesign() {
+    if (!projectId) return;
+
+    /* The agreements are read now rather than held in state, for the
+       reason the gas build gives: a value loaded with the drawing is
+       however old the tab is, and this decides whether a main gets laid. */
+    let agreements = [];
+    try {
+      const { rows = [] } = await listAgreements(projectId);
+      agreements = rows;
+    } catch (e) {
+      setError(`Couldn\u2019t check the asset value agreements: ${e.message}`);
+      return;
+    }
+
+    const plan = planWholeDesign({
+      features, layers, scopeDefaults, agreements, lineTypes,
+    });
+
+    if (!plan.hasServiceTrenchType) {
+      setError("No service trench type is configured, so there is nothing to "
+        + "draw the service trenches with \u2014 set one in Admin \u203a GIS Styles.");
+      return;
+    }
+    if (!plan.worthRunning) {
+      setError(`Nothing to build \u2014 ${plan.skips.map((x) => x.why).join("; ")}.`);
+      return;
+    }
+
+    if (!window.confirm(
+      `${describePlan(plan)}\n\nRun all of this? It lands as one undo step.`
+    )) return;
+
+    /* Counting what changed. Categories rather than a total, so the
+       report can say "3 service trenches" instead of "7 features". */
+    const tally = (fs) => ({
+      trench: fs.filter((f) => /service/i.test(String(f.Attributes?.Line_Type ?? ""))
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes)).length,
+      meter: fs.filter((f) => f.Feature_Role === "meter").length,
+      node: fs.filter((f) => f.Feature_Role === "spannode").length,
+      joint: fs.filter((f) => f.Feature_Role === "joint").length,
+      line: fs.filter((f) => f.Feature_Type === "line").length,
+    });
+
+    const results = [];
+
+    /* Run one step, and say what it did.
+
+       `read` names the count that step is expected to move, so a step
+       that ran without error and moved nothing is reported as having
+       done nothing rather than as a success. */
+    const step = async (label, read, fn) => {
+      let before = [];
+      try { before = (await listGis(projectId)).features || []; } catch { /* counted as 0 */ }
+      try {
+        await fn();
+      } catch (e) {
+        results.push({ label, ok: false, why: e?.message || "refused" });
+        return;
+      }
+      let after = [];
+      try { after = (await listGis(projectId)).features || []; } catch { after = before; }
+
+      const a = tally(before);
+      const b = tally(after);
+      const made = (b[read] ?? 0) - (a[read] ?? 0);
+      results.push({
+        label,
+        ok: true,
+        changed: made > 0,
+        detail: made > 0 ? `${made} added` : "",
+      });
+    };
+
+    setBusy("wholedesign");
+    try {
+      await withUndo("Build the whole design", async () => {
+        await step("Service trenches", "trench",
+          () => runAutoService({ trenchesOnly: true }));
+        await step("Meters", "meter", () => runNetwork("meters"));
+        await step("Span nodes", "node", () => placeSpanNodes());
+
+        for (const u of plan.mains) {
+          if (u === "electric") await step("LV network", "line", () => buildLvNetwork());
+          if (u === "gas") await step("Gas main", "line", () => buildGasNetwork(true));
+          if (u === "water") await step("Water main", "line", () => buildWaterNetwork());
+        }
+
+        for (const u of plan.services) {
+          await step(`${u} services`, "line", () => autoLayServices(u));
+        }
+
+        await step("Feeder joints", "joint", () => placeFeederJoints({ silent: true }));
+      });
+    } finally {
+      setBusy("");
+      setProgress(null);
+    }
+
+    await load(projectId);
+
+    /* The skips from the plan belong in the report too. They were said
+       before the run, and somebody reading the outcome afterwards
+       should not have to remember a dialog they dismissed. */
+    const outcome = describeOutcome(results)
+      + (plan.skips.length
+        ? `\n\nLeft out:\n${plan.skips.map((x) => `   ${x.utility} \u2014 ${x.why}`).join("\n")}`
+        : "");
+    window.alert(outcome);
+    setError("");
+  }
+
+  async function runAutoService({ trenchesOnly = false } = {}) {    const seeds = selected.length
       ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
       : features.filter((f) => f.Feature_Role === "plot");
     if (!seeds.length) {
@@ -14747,6 +14889,23 @@ export default function GISCanvasPage() {
                       onClick={() => setStepsOpen(true)} />
                     </>
                     )}
+
+                    {/* The six steps in one, in the order they depend on
+                        each other.
+
+                        Here rather than under a utility because it is
+                        all three at once, and because the order is the
+                        whole point of it: run from the utility menus
+                        these are six items in four places, and the
+                        sequence is remembered rather than written
+                        down. */}
+                    <MenuItem label={busy === "wholedesign"
+                      ? "Building\u2026" : "Build the Whole Design"}
+                      hint="Service trenches, meters, span nodes, mains, services and joints \u2014 for every utility that is contracted"
+                      disabled={!!busy || !projectId}
+                      onClick={() => runWholeDesign()} />
+
+                    <div className="gm-sep" />
 
                     {/* A call-off is a report on what is to be laid, not
                         a change to the drawing \u2014 it belongs with the

@@ -271,8 +271,69 @@ export function liveCascade(featureId, graph) {
    the gap to the next road. */
 const IN_TRENCH_M = 2;
 
-function alongEachOther(a, b, follows) {
-  return follows(a, b, IN_TRENCH_M) || follows(b, a, IN_TRENCH_M);
+/* How much of a trench has to run alongside a main to count as holding
+   it. */
+const OVERLAP_SHARE = 0.4;
+const OVERLAP_M = 2;
+
+/* Whether a trench and a main run along each other for a real distance.
+
+   ── Why not "every point lies on the other" ──
+
+   That is what lineFollows asks, and it is true only when one line is
+   wholly inside the other. Real drawings are not like that: a main
+   covers part of a trench and carries on into the next, the two have
+   vertices in different places, and a main is drawn to one side because
+   three utilities share the width. Any one of those makes the answer
+   false, and the answer being false is why no trench was ever marked.
+
+   ── What is asked instead ──
+
+   Walk the trench in metre steps and count how many of those steps sit
+   near the main. If a decent share of the trench runs beside it — or a
+   few metres do, whichever is the lower bar — the main is in that
+   trench.
+
+   A share rather than a count, so a fifty-metre trench is not matched
+   by two metres of a main crossing it; and a floor in metres as well,
+   so a short section wholly under a long main still counts. */
+function alongEachOther(trench = [], main = []) {
+  if (trench.length < 2 || main.length < 2) return false;
+
+  let total = 0;
+  let near = 0;
+  for (let i = 0; i + 1 < trench.length; i++) {
+    const a = trench[i];
+    const b = trench[i + 1];
+    const segLen = dist(a, b);
+    if (segLen <= 0) continue;
+
+    const steps = Math.max(1, Math.round(segLen));
+    for (let k = 0; k <= steps; k++) {
+      const u = k / steps;
+      const at = [a[0] + (b[0] - a[0]) * u, a[1] + (b[1] - a[1]) * u];
+      const w = segLen / (steps + 1);
+      total += w;
+      if (nearestOn(at, main) <= IN_TRENCH_M) near += w;
+    }
+  }
+
+  if (!total) return false;
+
+  /* Both a share and a length.
+
+     The share alone misses a main that has been laid down three metres
+     of a fifty-metre section — real, and that ground is open.
+
+     The length alone matched a main crossing the trench at right
+     angles: four metres of it pass within two metres of the crossing
+     point, which is enough to clear a bare metres test and is plainly
+     not a main laid in that trench.
+
+     Together they say the same thing from both ends: a fair part of the
+     trench, and enough of it to be a length of dig rather than a
+     crossing. */
+  return near >= OVERLAP_M && near / total >= OVERLAP_SHARE;
 }
 
 /* The trenches a set of mains are laid in.
@@ -318,7 +379,7 @@ export function trenchesUnder(mains = [], features = [], follows) {
          Asked the right way round, each section lies along the main and
          each is marked. A main that stops half way down a trench still
          matches it, which is right: that ground was opened. */
-      if (!alongEachOther(t.Geometry || [], m.Geometry || [], follows)) continue;
+      if (!alongEachOther(t.Geometry || [], m.Geometry || [])) continue;
       out.set(Number(t.Feature_ID), t);
     }
   }

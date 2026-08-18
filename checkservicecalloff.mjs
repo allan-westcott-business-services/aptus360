@@ -1602,12 +1602,38 @@ const PLOTS = [
       fail(`a main over three sections marked ${marked.join(", ") || "nothing"}`);
     }
 
-    /* And a main that stops part way down a section still opens that
-       ground, so it counts too — the reverse test on its own missed
+    /* A main down most of a section marks it; a main down a corner of
+       one does not.
+
+       The trench is the unit being recorded, and a quarter of it under
+       a main is a section mostly not laid — calling it As-Laid would
+       overstate what is in the ground. Half is marked, a quarter is
+       not, and the line between them is a judgement rather than a
+       fact.
+
+       The earlier version of this used a 25m main on a 100m trench and
+       called it "half way", which is a quarter — it passed only because
+       the old test marked any overlap at all. */
+    const halfWay = { Feature_ID: 2, Geometry: [[0, 0], [55, 0]] };
+    if (!trenchesUnder([halfWay], [trench(11, "planned")], lineFollows).length) {
+      fail("a main down more than half a trench leaves it unmarked");
+    }
+    const corner = { Feature_ID: 3, Geometry: [[0, 0], [15, 0]] };
+    if (trenchesUnder([corner], [trench(11, "planned")], lineFollows).length) {
+      fail("a main down a corner of a trench marked the whole section");
+    }
+
+    /* A stub of trench wholly beside a main is a high share of almost
+       nothing. The metres floor is what refuses it, and without a case
+       like this that floor could be removed with nothing to show for
        it. */
-    const half = { Feature_ID: 2, Geometry: [[0, 0], [25, 0]] };
-    if (!trenchesUnder([half], [trench(11, "planned")], lineFollows).length) {
-      fail("a main that stops half way down a trench leaves it unmarked");
+    const stub = {
+      ...trench(12, "planned"), Geometry: [[10, 0], [10.8, 0]],
+    };
+    if (trenchesUnder(
+      [{ Feature_ID: 4, Geometry: [[0, 0], [100, 0]] }], [stub], lineFollows,
+    ).length) {
+      fail("a stub under a metre long was marked as a laid trench");
     }
 
     /* ── A main sits off the trench's centreline ──
@@ -1628,6 +1654,45 @@ const PLOTS = [
       const away = { Feature_ID: 4, Geometry: [[0, off], [100, off]] };
       if (trenchesUnder([away], [trench(11, "planned")], lineFollows).length) {
         fail(`a main ${off}m away was matched to a trench it is not in`);
+      }
+    }
+
+    /* ── Overlap, not containment ──
+
+       "Every point of one lies on the other" is true only when a line
+       is wholly inside another, and real drawings are never like that:
+       a main covers part of a trench and carries on into the next, the
+       vertices are in different places, and the main is drawn to one
+       side because three utilities share the width. Any one of those
+       made the answer false, which is why no trench was ever marked
+       through six attempts at this. */
+    const cases = [
+      ["a main covering three sections", [[0, 0], [150, 0]],
+        [[0, 0], [50, 0]], true],
+      ["a main 0.6m off the centreline", [[0, 0.6], [100, 0.6]],
+        [[0, 0], [100, 0]], true],
+      ["a main covering half a section", [[0, 0], [25, 0]],
+        [[0, 0], [50, 0]], true],
+      ["vertices in different places", [[0, 0], [37, 0], [100, 0]],
+        [[0, 0], [12, 0], [64, 0], [100, 0]], true],
+      ["a short section under a long main", [[0, 0], [200, 0]],
+        [[80, 0], [86, 0]], true],
+      /* A main crossing the trench passes within reach of it for a few
+         metres, which cleared a bare length test — and is plainly not a
+         main laid in that trench. */
+      ["a main crossing at right angles", [[25, -20], [25, 20]],
+        [[0, 0], [50, 0]], false],
+      ["a main in the next road", [[0, 8], [100, 8]],
+        [[0, 0], [100, 0]], false],
+    ];
+    for (const [what, mainGeom, trenchGeom, want] of cases) {
+      const got = trenchesUnder(
+        [{ Feature_ID: 1, Geometry: mainGeom }],
+        [{ ...trench(11, "planned"), Geometry: trenchGeom }],
+        lineFollows,
+      ).length > 0;
+      if (got !== want) {
+        fail(`${what} ${got ? "marked" : "did not mark"} its trench`);
       }
     }
 

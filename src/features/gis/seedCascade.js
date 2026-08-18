@@ -38,6 +38,15 @@
    with the count in the question. */
 
 import { isTrenchFeature } from "./snapping.js";
+
+/* Which revision of this rule is in the build.
+
+   The files here are copied in one at a time, so "is the fix live?" has
+   been an unanswerable question more than once — a half-applied change
+   looks exactly like a change that does not work. Printed by
+   checkseedlive.mjs and shown in the delete message when nothing is
+   found, so the answer is on screen rather than inferred. */
+export const CASCADE_REV = 4;
 import { SERVED_NEAR_M, METER_CLEARANCE_M, METER_SPACING_M } from "./autoService.js";
 
 /* How far past the seed a meter of its own can sit.
@@ -53,12 +62,19 @@ export const METER_REACH_M = 4.5;
 
 /* How close a joint must sit to the end of a cable to be its joint.
 
-   A joint is written at the tee itself, so the two coincide exactly on
-   anything the application drew. The allowance is for a fitting placed
-   by hand and for the rounding a drawing picks up being moved about —
-   tight on purpose, because two plots teeing into the same main a metre
-   apart each have their own joint and the wrong one must not be taken. */
-export const JOINT_NEAR_M = 0.5;
+   Not as close as it first looks. A service cable begins at the foot of
+   the perpendicular from the seed to the *mains trench*, while the
+   joint is placed at a node on the *feeder cable* — two different
+   features that run together but are not the same line. Half a metre
+   assumed they were, and left the joint standing on drawings where
+   everything else went.
+
+   1.5 m is the same allowance the trench end uses, and for the same
+   reason: it asks whether a fitting belongs to this plot's service, not
+   which of two adjacent fittings it is. What keeps a neighbour's joint
+   safe is not the radius but the test below — any other service cable
+   still on the drawing ending at the same joint keeps it there. */
+export const JOINT_NEAR_M = 1.5;
 
 const at = (f) => (f?.Geometry || [])[0] || null;
 const gap = (a, b) => (a && b ? Math.hypot(a[0] - b[0], a[1] - b[1]) : Infinity);
@@ -285,8 +301,28 @@ export function seedCascade(ids = [], features = [], lineTypes = []) {
      the count the joint placer recorded; where it is absent the cables
      still on the drawing are counted instead, so a joint written before
      that attribute existed is still judged on what it actually feeds. */
-  const goingCables = out.cable;
+  /* The dig counts as well as the cable. Both start at the same tee, and
+     on a drawing where the cable's own start has drifted the trench end
+     is often the truer of the two. */
+  const goingRuns = [...out.cable, ...out.trench];
   const stillHere = parts.filter((x) => x.part === "cable" && !taken.has(Number(x.f.Feature_ID)));
+
+  /* What the dig and its cables say they touch.
+
+     Every service trench and cable is written with a Connects list —
+     the ids of the features its ends actually meet, at the 0.25 m the
+     drawing treats as joined rather than merely near. Where the joint
+     is in that list there is nothing to measure: the trench has already
+     recorded what it is connected to, which is the question being
+     asked.
+
+     Only ever additional. The list is written when the run is drawn, so
+     a joint placed afterwards is not in it and the measurement below is
+     what finds that one. Neither alone covers both cases. */
+  const connected = new Set();
+  for (const r of goingRuns) {
+    for (const cid of (r.Attributes?.Connects || [])) connected.add(Number(cid));
+  }
 
   for (const { f } of parts.filter((x) => x.part === "joint")) {
     const id = Number(f.Feature_ID);
@@ -294,15 +330,21 @@ export function seedCascade(ids = [], features = [], lineTypes = []) {
 
     const p = at(f);
     if (!p) continue;
-    if (!goingCables.some((c) => endsAt(c, p, JOINT_NEAR_M))) continue;
+    if (!connected.has(id) && !goingRuns.some((c) => endsAt(c, p, JOINT_NEAR_M))) continue;
 
-    /* Anything else still teeing in here keeps it. */
-    const others = stillHere.filter((x) => endsAt(x.f, p, JOINT_NEAR_M)).length;
-    if (others > 0) continue;
+    /* Anything else still teeing in here keeps it. This is what makes
+       the radius above safe: a joint a neighbour is still using is held
+       by the neighbour's own cable, however loose the measurement. */
+    if (stillHere.some((x) => endsAt(x.f, p, JOINT_NEAR_M)
+      || (x.f.Attributes?.Connects || []).some((cid) => Number(cid) === id))) continue;
 
+    /* And the count the joint placer recorded, where it disagrees with
+       what is actually leaving. Compared against the cables going, not
+       the trenches — a dig is not a service off a fitting. */
+    const leaving = out.cable.filter((c) => endsAt(c, p, JOINT_NEAR_M)
+      || (c.Attributes?.Connects || []).some((cid) => Number(cid) === id)).length;
     const recorded = Number(f.Attributes?.Services);
-    if (Number.isFinite(recorded) && recorded > goingCables
-      .filter((c) => endsAt(c, p, JOINT_NEAR_M)).length) continue;
+    if (Number.isFinite(recorded) && recorded > Math.max(leaving, 1)) continue;
 
     out.joint.push(f);
     taken.add(id);

@@ -447,6 +447,59 @@ for (const args of [[[], [], []], [[100], [], LINE_TYPES], [undefined, undefined
   }
 }
 
+// 17. The joint the trench says it is connected to.
+//
+//    Every service trench and cable is written with a Connects list —
+//    the ids its ends actually meet. Where the joint is in that list
+//    there is nothing to measure: the trench has already recorded what
+//    it is connected to.
+//
+//    This is the case measurement misses. The joint sits on the feeder
+//    cable while the trench starts on the mains trench, and on a drawing
+//    where those two are metres apart no tolerance that is safe between
+//    neighbouring plots is loose enough to bridge it.
+{
+  const seed = {
+    Feature_ID: 1000, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: 60, Layer_Key: "plot", Geometry: [[0, 0]], Attributes: {},
+  };
+  /* The joint is 8 m from the end of the dig — far outside any radius —
+     but the dig names it. */
+  const joint = {
+    Feature_ID: 1001, Feature_Type: "point", Feature_Role: "joint",
+    Layer_Key: "electric", Geometry: [[0, -18]],
+    Attributes: { Joint_Type: "service", Services: 1 },
+  };
+  const trench = {
+    Feature_ID: 1002, Feature_Type: "line", Layer_Key: "trench", Plot_ID: 60,
+    Geometry: [[0, -10], [0, 0]],
+    Attributes: {
+      Line_Type: "trench_service", Seed_Feature_ID: 1000, Connects: [1001],
+    },
+  };
+  const meter = {
+    Feature_ID: 1003, Feature_Type: "point", Feature_Role: "meter",
+    Layer_Key: "electric", Plot_ID: 60, Geometry: [[0, 1.5]],
+    Attributes: { Seed_Feature_ID: 1000 },
+  };
+
+  const c = seedCascade([1000], [MAIN, seed, joint, trench, meter], LINE_TYPES);
+  if (!c.ids.includes(1001)) {
+    fail("a joint the trench records as connected was left behind");
+  }
+
+  /* And a neighbour's cable naming the same joint still keeps it. */
+  const theirs = {
+    Feature_ID: 1004, Feature_Type: "line", Layer_Key: "electric", Plot_ID: 61,
+    Geometry: [[40, -18], [40, 1.5]],
+    Attributes: { Line_Type: "elec_service", Connects: [1001] },
+  };
+  if (seedCascade([1000], [MAIN, seed, joint, trench, meter, theirs], LINE_TYPES)
+    .ids.includes(1001)) {
+    fail("a joint another plot's cable still connects to was removed");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Seed cascade behaves (a plot takes its meters, services and dig, and nothing of its neighbour's).");
 process.exit(bad ? 1 : 0);

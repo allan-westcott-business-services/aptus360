@@ -43,7 +43,9 @@ import {
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
 } from "./labelKinds.js";
-import { seedCascade, servicePartOf, cascadeSummary } from "./seedCascade.js";
+import {
+  seedCascade, servicePartOf, cascadeSummary, CASCADE_REV,
+} from "./seedCascade.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
@@ -7157,7 +7159,7 @@ export default function GISCanvasPage() {
         servicePartOf(f, lineTypes) && f.Feature_ID !== id).length;
       if (near) {
         setStatus("Plot seed deleted \u2014 no service of its own was found, "
-          + "so nothing else was removed.");
+          + `so nothing else was removed. (rule rev ${CASCADE_REV})`);
         setTimeout(() => setStatus(""), 9000);
       }
     }

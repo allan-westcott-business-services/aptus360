@@ -26,6 +26,7 @@
 import { readFileSync } from "node:fs";
 import {
   seedCascade, servicePartOf, belongsToSeed, METER_REACH_M, JOINT_NEAR_M,
+  CASCADE_REV,
 } from "./src/features/gis/seedCascade.js";
 
 const [file, seedArg] = process.argv.slice(2);
@@ -38,6 +39,8 @@ const raw = JSON.parse(readFileSync(file, "utf8"));
 const features = raw.features || raw.Features || (Array.isArray(raw) ? raw : []);
 const lineTypes = raw.lineTypes || raw.line_types || raw.lookups?.lineTypes || [];
 
+console.log(`seedCascade rev ${CASCADE_REV}. `
+  + "If the app behaves differently from this script, the build is older.\n");
 console.log(`${features.length} feature(s), ${lineTypes.length} line type(s) loaded.\n`);
 
 if (!lineTypes.length) {
@@ -79,6 +82,53 @@ if (result.all.length) {
     console.log(`   takes ${f.Feature_ID} ${servicePartOf(f, lineTypes)}`
       + ` ${f.Attributes?.Line_Type || f.Feature_Role || ""}`);
   }
+  /* The joint is the part most likely to be missing, so say what
+     happened to it either way. */
+  const joints = features.filter((f) => f.Feature_Role === "joint");
+  const runs = [...result.cable, ...result.trench];
+  const endsOf = (f) => {
+    const g = f.Geometry || [];
+    return g.length > 1 ? [g[0], g[g.length - 1]] : [];
+  };
+  console.log(`\n${joints.length} joint(s) on the drawing, `
+    + `${result.joint.length} going with this plot.`);
+
+  if (!result.joint.length && joints.length && runs.length) {
+    console.log("\nNearest joints to an end of this plot's service:");
+    const rows = joints.map((j) => {
+      const p = (j.Geometry || [])[0];
+      let best = Infinity;
+      for (const r of runs) {
+        for (const e of endsOf(r)) {
+          const d = p ? Math.hypot(e[0] - p[0], e[1] - p[1]) : Infinity;
+          if (d < best) best = d;
+        }
+      }
+      return { j, d: best };
+    }).sort((a, b) => a.d - b.d).slice(0, 6);
+
+    for (const { j, d } of rows) {
+      const a = j.Attributes || {};
+      console.log(`   ${d.toFixed(2)} m  id ${j.Feature_ID}`
+        + `  Joint_Type ${a.Joint_Type ?? "-"}`
+        + `  Joint_Code ${a.Joint_Code ?? "-"}`
+        + `  Services ${a.Services ?? "-"}`
+        + `  named-by-dig ${runs.some((r) => (r.Attributes?.Connects || [])
+          .some((c) => Number(c) === Number(j.Feature_ID))) ? "yes" : "no"}`
+        + (a.For_Lighting ? "  For_Lighting" : "")
+        + (d > JOINT_NEAR_M ? `   << beyond ${JOINT_NEAR_M} m` : ""));
+    }
+    console.log("\nRead the row that should have gone:");
+    console.log(`   distance over ${JOINT_NEAR_M} m and named-by-dig no`);
+    console.log("      -> neither measurement nor the trench's own Connects list");
+    console.log("         reaches it; send this line and I will key off something else");
+    console.log("   Joint_Type not \"service\"  -> it is kept on purpose: the feeder");
+    console.log("      also divides, ends or changes cable there");
+    console.log("   Services above 1          -> another plot is recorded as fed");
+    console.log("      from it, so it is kept until that plot goes too");
+    process.exit(1);
+  }
+
   console.log("\nThe rule works on this drawing. If the app still leaves them,");
   console.log("the build being served is older than this code.");
   process.exit(0);
@@ -141,6 +191,6 @@ if (p0) {
   console.log("");
 }
 
-console.log(`Joint tolerance is ${JOINT_NEAR_M} m from a cable end.`);
+console.log(`Joint tolerance is ${JOINT_NEAR_M} m from a cable or trench end.`);
 console.log("\nSend this output and I can say which of these it is.");
 process.exit(1);

@@ -142,6 +142,11 @@ export function priorServicesFrom(rows = []) {
       status: co.Status,
       utility_ids: co.utility_ids || [],
       plots: (co.items || []).map((it) => String(it.Plot ?? "").trim()),
+      /* When the gang is due. A plot already called off should say when
+         rather than only that — "already on a call-off" invites the
+         question this answers. */
+      plannedFor: co.Preferred_Date ?? null,
+      reference: co.AP_Number ?? null,
     }));
 }
 
@@ -293,4 +298,36 @@ export function chooseUtilityFirst(groups = []) {
   return names.length
     ? `Choose what is being connected first \u2014 ${names.join(" or ")}.`
     : "This project has no utilities set up to connect.";
+}
+
+/* Statuses a service call-off has finished at.
+
+   A plot on a finished call-off is connected, and the question of
+   whether to call it off again is a different one — this is about work
+   already booked and not yet done. */
+const DONE = ["Complete", "Aborted", "Withdrawn (Customer)", "Withdrawn (Aptus)"];
+
+/* A call-off already booked for this plot on one of these utilities,
+   and not yet finished.
+
+   Which is a third answer beside live and dead: the plot is fine, the
+   main may or may not be, and the work is already going out. Adding it
+   to a second call-off would send two gangs to one plot. */
+export function bookedFor(plot, utilityIds = [], priorCallOffs = []) {
+  if (plot == null || !utilityIds.length) return null;
+  const wanted = new Set(utilityIds.map(Number));
+  const key = String(plot).trim();
+
+  const hits = priorCallOffs.filter((co) => {
+    if (DONE.includes(String(co.status ?? ""))) return false;
+    if (!(co.utility_ids || []).some((u) => wanted.has(Number(u)))) return false;
+    return (co.plots || []).some((p) => String(p).trim() === key);
+  });
+  if (!hits.length) return null;
+
+  /* The soonest, where a plot somehow sits on two: the earliest visit
+     is the one that answers "when is this happening". */
+  const sorted = [...hits].sort((a, b) =>
+    String(a.plannedFor ?? "9999").localeCompare(String(b.plannedFor ?? "9999")));
+  return sorted[0];
 }

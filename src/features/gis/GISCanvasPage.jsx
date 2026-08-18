@@ -75,7 +75,7 @@ import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
   firstElectricCallOff, electricUtilityId, utilitiesToTest,
-  serviceGroupsFor, isWholeGroup, chooseUtilityFirst,
+  serviceGroupsFor, isWholeGroup, chooseUtilityFirst, bookedFor,
 } from "./serviceCallOff.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
@@ -432,6 +432,8 @@ export default function GISCanvasPage() {
   /* Service call-offs already raised on this project, for telling
      somebody a plot is being asked for twice on the same utility. */
   const [priorServices, setPriorServices] = useState([]);
+  /* The booked plot the pointer is over, and where to put the note. */
+  const [plotTip, setPlotTip] = useState(null);
   /* Which utilities the call-off covers (0146). Raised from the drawing
      the same as from the project screen: a gang sent to an E/G dig
      needs to know it is electric and gas before they load the van, and
@@ -594,6 +596,67 @@ export default function GISCanvasPage() {
     }
     return out;
   }, [features, lookups]);
+
+  /* ── Which plots can be connected, once the utility is known ──
+
+     Worked out for every plot on the drawing rather than only the ones
+     tapped, so somebody can see where the work can go before choosing
+     any of it — a panel that refuses each plot in turn makes you find
+     the answer by trial.
+
+     Only while the picker is open and a utility has been chosen: before
+     that there is no question, and a drawing covered in ticks at all
+     times is a drawing nobody reads.
+
+     Keyed by Feature_ID rather than by plot number, because that is
+     what the drawing has in its hand when it comes to draw one. */
+  const plotSupply = useMemo(() => {
+    const out = new Map();
+    if (!serviceOpen || !serviceUtils.length) return out;
+
+    const wanted = utilitiesToTest(serviceUtils, lookups?.utilities || []);
+    if (!wanted.length) return out;
+
+    for (const f of features) {
+      if (f.Feature_Role !== "plot") continue;
+      const anchor = (f.Geometry || [])[0];
+      if (!anchor) continue;
+
+      /* Every utility being connected has to be live, not just one: a
+         gas-and-water visit that finds the water main dead is half a
+         visit. */
+      /* ── Already going out ──
+
+         A plot on a call-off that has not been done yet is not a plot
+         to pick: adding it to a second one sends two gangs to it.
+
+         Asked before the main's status, because it is the more useful
+         answer. Whether that feeder is live is the previous call-off's
+         problem, and it has a date against it either way. */
+      const plot = plotOfSeed(f, plotList);
+      const booked = bookedFor(plot, serviceUtils, priorServices);
+      if (booked) {
+        out.set(Number(f.Feature_ID), {
+          state: "booked",
+          plannedFor: booked.plannedFor,
+          reference: booked.reference,
+          submission: booked.submission,
+        });
+        continue;
+      }
+
+      const states = wanted.map((utility) =>
+        plotSupplyState({ anchor, utility, features, lineTypes }));
+      const dead = states.find((r) => r.state === "dead");
+      out.set(Number(f.Feature_ID), dead
+        ? { state: "dead", why: dead.why }
+        : states.every((r) => r.state === "live")
+          ? { state: "live" }
+          : { state: "unknown", why: states.find((r) => r.why)?.why ?? null });
+    }
+    return out;
+  }, [serviceOpen, serviceUtils, features, lineTypes, lookups, plotList,
+    priorServices]);
 
   const digOpts = useMemo(
     () => ({
@@ -3219,6 +3282,73 @@ export default function GISCanvasPage() {
             }
           }
 
+          /* ── Can this plot be connected ──
+
+             A tick or a cross beside the seed, once the picker is open
+             and a utility is chosen.
+
+             On every plot rather than only the ones tapped: somebody
+             choosing where the work goes needs to see where it can go,
+             and a panel that refuses each plot in turn makes them find
+             the answer by trial.
+
+             Beside the symbol rather than over it — a cross drawn on
+             top of a seed hides the plot number, which is the thing
+             being read. */
+          if (isSeed && plotSupply.size) {
+            const v = plotSupply.get(Number(f.Feature_ID));
+            if (v && v.state !== "unknown") {
+              const live = v.state === "live";
+              const booked = v.state === "booked";
+              const r = Math.max(4, (ps.symbolPx ?? 8) * 0.55);
+              const mx = q.x + (ps.symbolPx ?? 8) + r;
+              const my = q.y - (ps.symbolPx ?? 8);
+
+              ctx.save();
+              ctx.lineCap = "round";
+              ctx.lineWidth = Math.max(1.6, r * 0.38);
+              /* Amber for booked: neither a yes nor a no. The plot is
+                 fine and the work is already going out, so there is
+                 nothing to fix and nothing to add. */
+              ctx.strokeStyle = booked ? "#b45309"
+                : live ? "#16a34a" : "#dc2626";
+              /* On a white disc, so the mark reads over a plan, a
+                 boundary line or another symbol without being hunted
+                 for. */
+              ctx.beginPath();
+              ctx.arc(mx, my, r * 1.35, 0, Math.PI * 2);
+              ctx.fillStyle = "#fff";
+              ctx.fill();
+              ctx.stroke();
+
+              ctx.beginPath();
+              if (booked) {
+                /* A clock: a ring with two hands. Drawn rather than
+                   typed as a character, so it sizes with the seed and
+                   does not depend on a font having the glyph. */
+                ctx.arc(mx, my, r * 0.72, 0, Math.PI * 2);
+                ctx.stroke();
+                ctx.beginPath();
+                ctx.moveTo(mx, my);
+                ctx.lineTo(mx, my - r * 0.45);
+                ctx.moveTo(mx, my);
+                ctx.lineTo(mx + r * 0.38, my + r * 0.1);
+              } else if (live) {
+                ctx.moveTo(mx - r * 0.55, my);
+                ctx.lineTo(mx - r * 0.15, my + r * 0.45);
+                ctx.lineTo(mx + r * 0.6, my - r * 0.5);
+              } else {
+                ctx.moveTo(mx - r * 0.45, my - r * 0.45);
+                ctx.lineTo(mx + r * 0.45, my + r * 0.45);
+                ctx.moveTo(mx + r * 0.45, my - r * 0.45);
+                ctx.lineTo(mx - r * 0.45, my + r * 0.45);
+              }
+              ctx.stroke();
+              ctx.restore();
+              ctx.beginPath();
+            }
+          }
+
           /* A joint lies along its cable.
 
              It is a box buried in the trench, laid the way the cable
@@ -4652,7 +4782,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -5006,21 +5136,14 @@ export default function GISCanvasPage() {
           }
 
           if (!already) {
-            /* Against the utilities ticked, or against all of them
-               where none have been.
+            /* The same verdict the drawing is showing.
 
-               This used to run only once a utility was chosen, and the
-               panel invites tapping plots first — so for anybody
-               working in that order it never ran at all, and plots off
-               a dead feeder went straight onto the list. */
-            const dead = utilitiesToTest(serviceUtils, lookups?.utilities || [])
-              .map((utility) => plotSupplyState({
-                anchor: (hit.Geometry || [])[0],
-                utility, features, lineTypes,
-              }))
-              .find((r) => r.state === "dead");
-
-            if (dead) { setError(dead.why); return; }
+               Worked out once for every plot and read here, rather than
+               recomputed for the one being tapped — two answers to one
+               question is a cross on the drawing beside a plot the
+               panel accepts, and nobody knowing which to believe. */
+            const v = plotSupply.get(Number(hit.Feature_ID));
+            if (v?.state === "dead") { setError(v.why); return; }
           }
 
           setServicePlots((ps) => togglePlot(ps, plot));
@@ -5347,6 +5470,39 @@ export default function GISCanvasPage() {
     const r = canvasRef.current.getBoundingClientRect();
     const px = e.clientX - r.left, py = e.clientY - r.top;
     const raw = toM(px, py);
+
+    /* ── When a booked plot is going out ──
+
+       The clock says a call-off already covers this plot; hovering says
+       which visit. A mark that raises a question and does not answer it
+       is a mark somebody has to go and look up.
+
+       Only while the picker is open, because that is the only time the
+       marks are drawn — and the search is over plot seeds rather than
+       every feature, so it costs nothing on a drawing with none. */
+    if (plotSupply.size) {
+      let found = null;
+      for (const f of features) {
+        if (f.Feature_Role !== "plot") continue;
+        const v = plotSupply.get(Number(f.Feature_ID));
+        if (v?.state !== "booked") continue;
+        const g = (f.Geometry || [])[0];
+        if (!g) continue;
+        const q = toPx(g);
+        const size = seedStyle(f, false).symbolPx ?? 8;
+        const rr = Math.max(4, size * 0.55);
+        const d = Math.hypot(q.x + size + rr - px, q.y - size - py);
+        if (d <= rr * 1.6) { found = { ...v, x: px, y: py }; break; }
+      }
+      /* Compared before setting, or every mouse move over the canvas
+         re-renders the whole drawing. */
+      if ((found?.submission ?? null) !== (plotTip?.submission ?? null)) {
+        setPlotTip(found);
+      } else if (found && plotTip
+        && (found.x !== plotTip.x || found.y !== plotTip.y)) {
+        setPlotTip(found);
+      }
+    } else if (plotTip) setPlotTip(null);
 
     if (drawing || placing) {
       const { point, hit } = resolve(raw[0], raw[1]);
@@ -16692,6 +16848,25 @@ export default function GISCanvasPage() {
                 tolerance, how far off it was. Clicking one selects it,
                 because the next thing anybody does with this list is go
                 and look. */}
+            {/* What is already booked for a plot, on hovering its clock.
+
+                Beside the pointer rather than in a corner: the answer
+                belongs next to the thing that raised the question, and
+                a note somewhere else is one somebody has to find. */}
+            {plotTip && (
+              <div className="gis-plottip"
+                style={{ left: plotTip.x + 14, top: plotTip.y + 14 }}>
+                <strong>Already called off</strong>
+                <span>
+                  {plotTip.plannedFor
+                    ? `Planned for ${String(plotTip.plannedFor)
+                      .split("-").reverse().join("/")}`
+                    : "No date set on that call-off"}
+                </span>
+                {plotTip.reference && <span>{plotTip.reference}</span>}
+              </div>
+            )}
+
             {skipReport && (
               <div className="gis-skips" role="status">
                 <div className="gs-head">
@@ -17211,6 +17386,14 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-tot td { font-weight: 700; border-bottom: none; }
 /* What an auto lay could not do. Amber: none of it is broken, and
    every line is something somebody can go and fix. */
+/* The note beside a booked plot's clock. Follows the pointer, so it
+   never covers the mark that raised it. */
+.gis-plottip { position: absolute; z-index: 44; pointer-events: none;
+  background: #1c2430; color: #fff; border-radius: 8px; padding: 7px 10px;
+  font-size: 11.5px; line-height: 1.55; box-shadow: 0 4px 14px rgba(0,0,0,.25);
+  display: flex; flex-direction: column; gap: 1px; max-width: 220px; }
+.gis-plottip strong { font-size: 11px; letter-spacing: .02em; }
+.gis-plottip span { color: rgba(255,255,255,.8); }
 .gis-skips { position: absolute; left: 16px; bottom: 16px; z-index: 42;
   width: min(460px, calc(100vw - 32px)); max-height: 45vh; overflow-y: auto;
   background: #fef3e2; border: 1px solid #f2d675; border-radius: 10px;

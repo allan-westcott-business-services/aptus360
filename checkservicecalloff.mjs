@@ -15,7 +15,7 @@ import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
   firstElectricCallOff, electricUtilityId, utilitiesToTest,
-  serviceGroupsFor, isWholeGroup, chooseUtilityFirst,
+  serviceGroupsFor, isWholeGroup, chooseUtilityFirst, bookedFor,
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState } from "./src/features/gis/plotSupply.js";
@@ -513,7 +513,9 @@ const PLOTS = [
      dead main, and an unanswerable question is not a reason to send
      them. */
   for (const [what, f] of [
-    ["a plot with no service", [main(1, "live")]],
+    /* A plot with no service is no longer unknown: the nearest main
+       answers instead, because at the moment plots are picked the
+       services have not been laid. Its own case below. */
     ["a main with no status", [main(1, null), svc(2, [1])]],
     ["a service reaching no main", [svc(2, null)]],
   ]) {
@@ -521,7 +523,9 @@ const PLOTS = [
   }
 
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/if \(dead\) \{ setError\(dead\.why\); return; \}/.test(canvas)) {
+  /* Read from the shared verdict now, rather than recomputed at the
+     tap — checked in its own section below. */
+  if (!/v\?\.state === "dead"/.test(canvas)) {
     fail("tapping a plot off a dead main still adds it");
   }
   /* Only on the way in — refusing to remove one would strand somebody
@@ -576,7 +580,7 @@ const PLOTS = [
   if (!/for \(const f of \(serviceOpen \? features : \[\]\)\)/.test(canvas)) {
     fail("live and dead mains are hatched outside the call-off picker");
   }
-  if (!/serviceOpen, servicePlots, priorServices\]\);/.test(canvas)) {
+  if (!/serviceOpen, servicePlots, priorServices, plotSupply\]\);/.test(canvas)) {
     fail("opening the picker does not redraw the hatching");
   }
 }
@@ -758,6 +762,165 @@ const PLOTS = [
      setting a flag whose meaning nobody has agreed. */
   if (!/Accepting a penalty is not built yet/.test(canvas)) {
     fail("the penalty button pretends to work");
+  }
+}
+
+// 18. Judged before the services exist, and shown on every plot.
+//
+//     A service call-off is raised to get the services put in, so at
+//     the moment somebody is picking plots there is usually no service
+//     cable to follow. Answering "unknown" then meant the rule never
+//     fired for the case it was written for — which is exactly what
+//     happened: plots off a Planned feeder went straight onto a list.
+{
+  const LT = [
+    { Type_Key: "elec_main", Layer_Key: "electric" },
+    { Type_Key: "elec_service", Layer_Key: "electric" },
+  ];
+  const feeder = (st, geom) => ({
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: geom ?? [[0, 0], [100, 0]],
+    Attributes: { Line_Type: "elec_main", Build_Status: st },
+  });
+  const ask = (f, anchor = [50, 12]) => plotSupplyState({
+    anchor, utility: "electric", features: f, lineTypes: LT,
+  });
+
+  if (ask([feeder("planned")]).state !== "dead") {
+    fail("a plot off a planned feeder is allowed when no service is drawn yet");
+  }
+  if (ask([feeder("aslaid")]).state !== "dead") {
+    fail("a plot off an as-laid feeder is allowed before its service exists");
+  }
+  if (ask([feeder("live")]).state !== "live") {
+    fail("a plot off a live feeder is refused before its service exists");
+  }
+
+  /* Within reach. Without a limit the answer is always some main
+     somewhere, and a plot would be judged against a feeder on the next
+     street. */
+  if (ask([feeder("planned", [[0, 300], [100, 300]])]).state === "dead") {
+    fail("a plot is judged against a main hundreds of metres away");
+  }
+  /* Measured to the line, not to its ends: a plot opposite the middle
+     of a long feeder is inches from it. */
+  if (ask([feeder("planned")], [50, 12]).state !== "dead") {
+    fail("distance is measured to the feeder's ends rather than to the feeder");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* Every plot marked, once a utility is chosen — somebody choosing
+     where the work goes needs to see where it can go, rather than
+     finding out by tapping each one. */
+  if (!/const plotSupply = useMemo/.test(canvas)) {
+    fail("plots are not judged until they are tapped");
+  }
+  if (!/if \(!serviceOpen \|\| !serviceUtils\.length\) return out;/.test(canvas)) {
+    fail("the marks show outside the picker, or before a utility is chosen");
+  }
+  /* Every utility being connected has to be live, not just one: a
+     gas-and-water visit that finds the water main dead is half a
+     visit. */
+  if (!/states\.every\(\(r\) => r\.state === "live"\)/.test(canvas)) {
+    fail("a plot is ticked when only one of its utilities is live");
+  }
+  if (!/states\.find\(\(r\) => r\.state === "dead"\)/.test(canvas)) {
+    fail("a plot with one dead utility is not crossed");
+  }
+
+  /* And the tap reads the same verdict the drawing is showing — two
+     answers to one question is a cross beside a plot the panel
+     accepts. */
+  if (!/const v = plotSupply\.get\(Number\(hit\.Feature_ID\)\);/.test(canvas)) {
+    fail("the tap guard works the answer out a second time");
+  }
+  /* Drawn as a tick and a cross rather than only a colour, which a
+     colour-blind reader cannot tell apart on a busy plan. */
+  if (!/live \? "#16a34a" : "#dc2626"/.test(canvas)) {
+    fail("the marks are not green and red");
+  }
+  if (!/plotSupply\]\);/.test(canvas)) {
+    fail("choosing a utility does not redraw the marks");
+  }
+}
+
+// 19. A plot already going out says so, and when.
+//
+//     Adding it to a second call-off sends two gangs to one plot. A
+//     clock rather than a cross, because there is nothing wrong with
+//     the plot — the work is booked.
+{
+  const prior = [
+    { submission: 41, status: "Scheduled", utility_ids: [1],
+      plots: ["12", "13"], plannedFor: "2026-09-14", reference: "AP-900" },
+    { submission: 42, status: "Complete", utility_ids: [1],
+      plots: ["14"], plannedFor: "2026-07-01" },
+    { submission: 43, status: "Pending Review", utility_ids: [2],
+      plots: ["15"], plannedFor: "2026-08-30" },
+  ];
+
+  if (bookedFor("12", [1], prior)?.submission !== 41) {
+    fail("a plot already called off is not recognised");
+  }
+  /* Finished work is a different question: that plot is connected, and
+     whether to call it off again is not what this asks. */
+  if (bookedFor("14", [1], prior)) {
+    fail("a completed call-off still blocks its plots");
+  }
+  /* Per utility. A plot booked for gas is free for electric. */
+  if (bookedFor("15", [1], prior)) fail("a gas booking blocks an electric one");
+  if (!bookedFor("15", [2], prior)) fail("a gas booking is not seen for gas");
+  if (bookedFor("99", [1], prior)) fail("an unbooked plot reads as booked");
+
+  /* Withdrawn and aborted are finished too — neither is work still
+     coming. */
+  for (const st of ["Withdrawn (Customer)", "Aborted"]) {
+    if (bookedFor("12", [1], [{ ...prior[0], status: st }])) {
+      fail(`a ${st} call-off still blocks its plots`);
+    }
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* Asked before the main's status: whether the feeder is live is the
+     previous call-off's problem, and this plot has a date either
+     way. */
+  const supplyAt = canvas.indexOf("const plotSupply = useMemo");
+  const body = supplyAt < 0 ? "" : canvas.slice(supplyAt, supplyAt + 2600);
+  if (!/const booked = bookedFor\(plot, serviceUtils, priorServices\);/.test(body)) {
+    fail("the booked state is not worked out from the prior call-offs");
+  }
+  if (body.indexOf("bookedFor(") > body.indexOf("plotSupplyState({")) {
+    fail("a booked plot is judged on its main before its booking");
+  }
+  if (!/state: "booked"/.test(body)) fail("there is no booked state");
+
+  /* The clock, and the date behind it. */
+  if (!/v\.state === "booked"/.test(canvas)) fail("a booked plot has no mark");
+  /* The note has to render, not merely be styled — the class survives
+     in the stylesheet after the element using it has gone. */
+  if (!/\{plotTip && \(/.test(canvas)) {
+    fail("hovering the clock says nothing about when");
+  }
+  if (!/className="gis-plottip"/.test(canvas)) {
+    fail("the note has no markup");
+  }
+  /* And something has to find the clock under the pointer.
+
+     The hit test itself, not setPlotTip — that is called twice for
+     other reasons and matched with the test removed. */
+  if (!/found = \{ \.\.\.v, x: px, y: py \}/.test(canvas)) {
+    fail("nothing detects hovering over a clock");
+  }
+  if (!/Planned for /.test(canvas)) fail("the note does not give the date");
+  /* Read the way a date is read here, not as the database stores it. */
+  if (!/split\("-"\)\.reverse\(\)\.join\("\/"\)/.test(canvas)) {
+    fail("the date is shown back to front");
+  }
+  /* A call-off with no date says so rather than showing nothing. */
+  if (!/No date set on that call-off/.test(canvas)) {
+    fail("a booking with no date shows an empty note");
   }
 }
 

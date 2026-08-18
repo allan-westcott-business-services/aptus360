@@ -95,6 +95,45 @@ function touches(point, geometry) {
   return false;
 }
 
+/* The closest main of a utility to a point, within reach.
+
+   Reach matters: without it the answer is always some main somewhere,
+   and a plot on a site with one gas main a quarter of a mile away would
+   be judged against it. Sixty metres is further than any plot sits from
+   the road it faces and closer than the next street. */
+const REACH_M = 60;
+
+function nearestMain(point, features, utility, lineTypes) {
+  let best = null;
+  for (const f of features) {
+    if (f.Layer_Key !== utility) continue;
+    if (!isMainFeature(f, lineTypes)) continue;
+    const d = distanceToLine(point, f.Geometry || []);
+    if (d == null || d > REACH_M) continue;
+    if (!best || d < best.d) best = { d, f };
+  }
+  return best?.f ?? null;
+}
+
+/* How far a point is from a line, measured to the line rather than to
+   its vertices — a plot opposite the middle of a long straight feeder
+   is inches from it and a hundred metres from either end. */
+function distanceToLine(point, geometry) {
+  let best = null;
+  for (let i = 0; i + 1 < geometry.length; i++) {
+    const a = geometry[i];
+    const b = geometry[i + 1];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const l2 = vx * vx + vy * vy;
+    let u = l2 ? ((point[0] - a[0]) * vx + (point[1] - a[1]) * vy) / l2 : 0;
+    u = Math.max(0, Math.min(1, u));
+    const d = dist([a[0] + vx * u, a[1] + vy * u], point);
+    if (best == null || d < best) best = d;
+  }
+  return best;
+}
+
 /* Whether one plot can be connected for one utility.
 
    `anchor` is where the plot's supply arrives — its meter, or its
@@ -107,8 +146,34 @@ export function plotSupplyState({
   const services = linesAt(anchor, features, utility)
     .filter((f) => !isMainFeature(f, lineTypes));
 
+  /* ── Before the services are laid ──
+
+     A service call-off is raised to get the services put in, so at the
+     moment somebody is picking plots there is usually no service cable
+     to follow. Answering "unknown" then meant the whole rule never
+     fired for the case it was written for.
+
+     So where nothing runs to the plot yet, the nearest main of that
+     utility is used instead. On a housing estate the feeder runs along
+     the road the plot faces, and the nearest one is the one that will
+     feed it — not a certainty, but a far better answer than none, and
+     the plot is marked with what it found so anybody can see the
+     verdict rather than take it on trust. */
   if (!services.length) {
-    return { state: "unknown", why: "No service runs to this plot yet." };
+    const main = nearestMain(anchor, features, utility, lineTypes);
+    if (!main) {
+      return { state: "unknown", why: "No main of this utility reaches this plot." };
+    }
+    const stage = statusOf(main);
+    if (stage === "live") return { state: "live", main, viaNearest: true };
+    return {
+      state: stage ? "dead" : "unknown",
+      main,
+      viaNearest: true,
+      why: stage
+        ? "The Feeder Main is not yet live."
+        : "The main nearest this plot has no status set.",
+    };
   }
 
   /* Any live main is enough. A plot fed from two directions — rare, but

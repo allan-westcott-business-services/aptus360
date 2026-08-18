@@ -92,7 +92,18 @@ const line = (type, status) => ({
     if (!statusLabel(k)) fail(`${k} has no label`);
     if (!statusColour(k)) fail(`${k} has no colour`);
   }
-  if (statusLabel("aslaid") !== "As Laid") fail("As Laid is not called that");
+  /* Both lists say "As-Laid" for the same fact about the same length of
+     road: the pipe is in the ground, and the trench that holds it is
+     closed. They read differently for a while — "As Laid" against
+     "As-Built" — which made one look like a different state from the
+     other. */
+  if (statusLabel("aslaid") !== "As-Laid") fail("a main's As-Laid is not called that");
+  if (statusLabel("asbuilt") !== "As-Laid") fail("a trench's As-Laid is not called that");
+  /* The trench keeps its key, though: `asbuilt` is what every drawing
+     already stores and what the bill and the labour rows read. */
+  if (!BUILD_STATUSES.some((x) => x.key === "asbuilt")) {
+    fail("the trench's stored value was renamed, not just its label");
+  }
 }
 
 // 3. Only a main can be live.

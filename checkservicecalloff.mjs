@@ -1513,6 +1513,37 @@ const PLOTS = [
       }
     }
 
+    /* ── A source is placed near the main, not on it ──
+
+       A substation or point of connection is a symbol somebody drops
+       beside the road; the main begins a metre or two away. At the
+       three-quarter-metre tolerance used between two lengths, the walk
+       found no root at all on ordinary drawings — so the cascade did
+       nothing, which is almost certainly why setting a main live
+       changed nothing upstream. */
+    for (const off of [0, 0.5, 2, 4]) {
+      const g4 = mainsGraph("gas", [
+        { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[0, off]] },
+        gm(1, [[0, 0], [50, 0]], "planned"),
+        gm(2, [[50, 0], [100, 0]], "live"),
+      ], gt);
+      if (!g4.roots.length) {
+        fail(`a point of connection ${off}m off the main is not found`);
+      }
+      const up = (deadUpstream(2, g4) || []).map((m) => Number(m.Feature_ID));
+      if (!up.includes(1)) {
+        fail(`with the source ${off}m off, the length upstream is not picked up`);
+      }
+    }
+    /* And not so wide that a source roots a main on the next street. */
+    const far = mainsGraph("gas", [
+      { Feature_ID: 90, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[0, 40]] },
+      gm(1, [[0, 0], [50, 0]], "planned"),
+    ], gt);
+    if (far.roots.length) {
+      fail("a point of connection forty metres away roots a main");
+    }
+
     /* And the canvas says so rather than swallowing it. */
     const cv = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     if (!/if \(chain == null\) \{/.test(cv)) {

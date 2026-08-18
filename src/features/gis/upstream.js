@@ -33,11 +33,26 @@
 
 import { isMainFeature, statusOf } from "./buildStatus.js";
 
+/* How close two lengths have to be to count as joined.
+
+   Three quarters of a metre for length-to-length: two mains that meet
+   are drawn to meet, and anything further apart is two separate runs.
+
+   The source is different. A substation or a point of connection is a
+   symbol placed near where the main starts, not a vertex on it —
+   somebody drops it beside the road and the main begins a metre or two
+   away. At three quarters of a metre the walk found no root at all on
+   ordinary drawings, so the cascade did nothing and, until it learned
+   to say so, did it in silence.
+
+   Five metres is wider than any gap somebody would call touching and
+   narrower than the next junction. */
 const JOIN_M = 0.75;
+const SOURCE_M = 5;
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
 /* Whether a point lies on a line, anywhere along it. */
-function onLine(point, geometry = []) {
+function onLine(point, geometry = [], within = JOIN_M) {
   for (let i = 0; i + 1 < geometry.length; i++) {
     const a = geometry[i];
     const b = geometry[i + 1];
@@ -46,9 +61,25 @@ function onLine(point, geometry = []) {
     const l2 = vx * vx + vy * vy;
     let u = l2 ? ((point[0] - a[0]) * vx + (point[1] - a[1]) * vy) / l2 : 0;
     u = Math.max(0, Math.min(1, u));
-    if (dist([a[0] + vx * u, a[1] + vy * u], point) <= JOIN_M) return true;
+    if (dist([a[0] + vx * u, a[1] + vy * u], point) <= within) return true;
   }
   return false;
+}
+
+/* How far a point is from a line. */
+function nearestOn(point, geometry = []) {
+  let best = Infinity;
+  for (let i = 0; i + 1 < geometry.length; i++) {
+    const a = geometry[i];
+    const b = geometry[i + 1];
+    const vx = b[0] - a[0];
+    const vy = b[1] - a[1];
+    const l2 = vx * vx + vy * vy;
+    let u = l2 ? ((point[0] - a[0]) * vx + (point[1] - a[1]) * vy) / l2 : 0;
+    u = Math.max(0, Math.min(1, u));
+    best = Math.min(best, dist([a[0] + vx * u, a[1] + vy * u], point));
+  }
+  return best;
 }
 
 /* Whether two lines meet.
@@ -126,11 +157,22 @@ export function mainsGraph(utility, features = [], lineTypes = []) {
   for (const src of sources) {
     const at = (src.Geometry || [])[0];
     if (!at) continue;
+    /* Nearest first, so a source beside a junction roots the length it
+       actually sits on rather than every length within reach. */
+    let best = null;
     for (const m of mains) {
-      if (!onLine(at, m.Geometry)) continue;
-      const id = Number(m.Feature_ID);
-      if (!roots.includes(id)) roots.push(id);
+      if (!onLine(at, m.Geometry, SOURCE_M)) continue;
+      const d = nearestOn(at, m.Geometry);
+      if (!best || d < best.d) best = { d, id: Number(m.Feature_ID) };
+      /* Anything genuinely touching is a root in its own right: several
+         mains leave a substation, and taking only the closest would
+         strand the others. */
+      if (onLine(at, m.Geometry, JOIN_M)) {
+        const id = Number(m.Feature_ID);
+        if (!roots.includes(id)) roots.push(id);
+      }
     }
+    if (best && !roots.includes(best.id)) roots.push(best.id);
   }
 
   return { mains, near, roots, sources, source: sources[0] ?? null };

@@ -24,7 +24,17 @@ export const BUILD_STATUSES = [
   { key: "existing", label: "Existing", colour: "#64748b" },
   { key: "planned", label: "Planned", colour: "#8b5e34" },
   { key: "remove", label: "To be Removed", colour: "#dc2626" },
-  { key: "asbuilt", label: "As-Built", colour: "#16a34a" },
+  /* "As-Laid", not "As-Built".
+
+     The key stays `asbuilt`: it is what every drawing already stores
+     and what the bill, the labour rows and the trench splitting all
+     read. Renaming it would be a migration of every trench on every
+     project to say the same thing a different way.
+
+     The label is what anybody sees, and it now matches what a main
+     says when it is in the ground — which is the same fact about the
+     same length of road. */
+  { key: "asbuilt", label: "As-Laid", colour: "#16a34a" },
 ];
 
 /* ── What stage a main is at ──
@@ -51,7 +61,7 @@ export const BUILD_STATUSES = [
    differ, and statusesFor says which applies. */
 export const MAIN_STATUSES = [
   { key: "planned", label: "Planned", colour: "#8b5e34" },
-  { key: "aslaid", label: "As Laid", colour: "#0891b2" },
+  { key: "aslaid", label: "As-Laid", colour: "#0891b2" },
   { key: "live", label: "Live", colour: "#16a34a" },
 ];
 

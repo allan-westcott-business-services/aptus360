@@ -7138,6 +7138,27 @@ export default function GISCanvasPage() {
       + "Delete them too?\n\nCancel to leave the seed in place."
     )) return;
 
+    /* A seed that appears to have nothing attached says so.
+
+       Silence here is the one answer that cannot be read. A plot with
+       no service drawn yet and a plot whose service the rule failed to
+       recognise look identical — the seed vanishes and everything else
+       stays — and the second is a fault nobody can report because
+       nothing on screen distinguishes it from the first.
+
+       Only for seeds, and only where something plausibly related is
+       actually on the drawing, so an untouched plot deleted in a tidy-up
+       does not get a message about work that never existed. */
+    if (gone?.Feature_Role === "plot" && !also.all.length) {
+      const near = features.filter((f) =>
+        servicePartOf(f, lineTypes) && f.Feature_ID !== id).length;
+      if (near) {
+        setStatus("Plot seed deleted \u2014 no service of its own was found, "
+          + "so nothing else was removed.");
+        setTimeout(() => setStatus(""), 9000);
+      }
+    }
+
     const doomed = [id, ...also.ids];
     setFeatures((f) => f.filter((x) => !doomed.includes(x.Feature_ID)));
     setSelected((sel) => sel.filter((x) => !doomed.includes(x)));

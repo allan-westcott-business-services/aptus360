@@ -80,7 +80,23 @@ function endsAt(f, point, near) {
    the dig or what lies in it is settled by the layer, which is what
    isTrenchFeature asks. Same question the bulk delete asks, so the two
    agree about what a service trench is. */
-export function servicePartOf(f, lineTypes = []) {
+/* Which part of a plot's service a feature is, or null for anything
+   that is not part of one.
+
+   `stamped` says the feature already carries this seed's mark. That
+   settles *whether* it goes; this only has to say what to call it.
+   Seed_Feature_ID is written in four places, all of them Auto Service
+   drawing a service, and nowhere on the server — so a stamped feature
+   is part of a service whatever else is or is not filled in on it.
+
+   That distinction matters because the type can be missing. A generated
+   cable takes its Line_Type from a lookup that returns null when no
+   service type is configured for the layer, and the code that writes it
+   says as much: get it wrong and "every generated cable" is left with
+   an unrecognised type. Those cables are still cables. Read strictly,
+   the rule below would call them nothing at all and leave them on the
+   drawing — which is the failure this is written to avoid. */
+export function servicePartOf(f, lineTypes = [], stamped = false) {
   if (!f) return null;
   if (f.Feature_Role === "meter") return "meter";
 
@@ -104,10 +120,19 @@ export function servicePartOf(f, lineTypes = []) {
     return (kind === "service" || code === "SVC") ? "joint" : null;
   }
 
-  if (f.Feature_Type !== "line") return null;
+  if (f.Feature_Type !== "line") return stamped ? "cable" : null;
 
   const key = String(f.Attributes?.Line_Type ?? "");
-  if (!/service/i.test(key)) return null;
+  if (!key && stamped) {
+    /* No type at all, but stamped. The layer is the only thing left to
+       read, and it is enough: the trench layer is the dig, anything
+       else is what was laid in it. */
+    return f.Layer_Key === "trench" ? "trench" : "cable";
+  }
+  if (!/service/i.test(key)) {
+    if (!stamped) return null;
+    return isTrenchFeature(f, lineTypes) ? "trench" : "cable";
+  }
 
   return isTrenchFeature(f, lineTypes) ? "trench" : "cable";
 }
@@ -177,8 +202,17 @@ export function seedCascade(ids = [], features = [], lineTypes = []) {
   if (!seeds.length) return { seeds, ...out, all: [], ids: [], summary: "" };
 
   const seedIds = new Set(seeds.map((s) => Number(s.Feature_ID)));
+
+  /* Whether a feature already carries one of these seeds' marks. Asked
+     before the kind is decided, because the mark is what allows a
+     feature with no usable type to be recognised at all. */
+  const isStamped = (f) => {
+    const stamp = f.Attributes?.Seed_Feature_ID;
+    return stamp != null && stamp !== "" && seedIds.has(Number(stamp));
+  };
+
   const parts = features
-    .map((f) => ({ f, part: servicePartOf(f, lineTypes) }))
+    .map((f) => ({ f, stamped: isStamped(f), part: servicePartOf(f, lineTypes, isStamped(f)) }))
     .filter((x) => x.part);
 
   /* Whether something is spoken for elsewhere: stamped with a seed that

@@ -21,8 +21,9 @@ import {
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState, anchorsFor } from "./src/features/gis/plotSupply.js";
 import {
-  mainsGraph, pathToSource, deadUpstream, sourceFor, liveCascade,
+  mainsGraph, pathToSource, deadUpstream, sourceFor, liveCascade, trenchesUnder,
 } from "./src/features/gis/upstream.js";
+import { lineFollows } from "./src/features/gis/gasPressure.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -1519,6 +1520,58 @@ const PLOTS = [
     }
     if (!/no \$\{before\.Layer_Key\} point of connection/.test(cv)) {
       fail("the message does not distinguish a missing point of connection");
+    }
+  }
+
+  /* ── A live main means its trench is closed ──
+
+     A main cannot be live unless it is in the ground, and it cannot be
+     in the ground unless the trench was dug, laid and closed. Asking
+     somebody to record that separately is asking them to state the same
+     fact twice.
+
+     Existing ground and trenches marked for removal are left alone —
+     one was never built by this job, and the other is being taken
+     out. */
+  {
+    const trench = (id, st) => ({
+      Feature_ID: id, Feature_Type: "line", Layer_Key: "trench",
+      Geometry: [[0, 0], [100, 0]],
+      Attributes: { Line_Type: "trench_main", ...(st ? { Build_Status: st } : {}) },
+    });
+    const laid = { Feature_ID: 1, Geometry: [[10, 0], [90, 0]] };
+
+    for (const st of ["planned", null]) {
+      if (!trenchesUnder([laid], [trench(5, st)], lineFollows).length) {
+        fail(`a ${st ?? "unset"} trench under a live main is not marked as-built`);
+      }
+    }
+    for (const st of ["existing", "remove", "asbuilt"]) {
+      if (trenchesUnder([laid], [trench(5, st)], lineFollows).length) {
+        fail(`a trench marked ${st} was overwritten as as-built`);
+      }
+    }
+    /* And only the trench the main is actually in. */
+    const elsewhere = { Feature_ID: 2, Geometry: [[0, 50], [100, 50]] };
+    if (trenchesUnder([elsewhere], [trench(5, "planned")], lineFollows).length) {
+      fail("a trench in another road was marked as-built");
+    }
+
+    const cv2 = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    /* Assigned from the call, not merely mentioning it — `[] ||
+       trenchesUnder(...)` still contains the words and passed. */
+    if (!/const digs = trenchesUnder\(/.test(cv2)) {
+      fail("setting a main live leaves its trench as it was");
+    }
+    if (!/Build_Status: "asbuilt"/.test(cv2)) {
+      fail("the trenches are found and not marked");
+    }
+    /* Every main the cascade touched, not only the one edited. */
+    if (!/\[\{ \.\.\.before, \.\.\.changes \}, \.\.\.also\]/.test(cv2)) {
+      fail("only the edited main's trench is marked, not the ones upstream");
+    }
+    if (!/Mark \$\{digs\.length\} trench\(es\) as-built/.test(cv2)) {
+      fail("the trench change is not recorded, so it cannot be undone");
     }
   }
 

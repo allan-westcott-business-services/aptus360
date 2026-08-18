@@ -205,3 +205,40 @@ export function liveCascade(featureId, graph) {
      cascade came to do nothing without saying so. */
   return deadUpstream(featureId, graph);
 }
+
+/* The trenches a set of mains are laid in.
+
+   ── Why setting a main live touches them ──
+
+   A main cannot be live unless it is in the ground, and it cannot be in
+   the ground unless the trench was dug, laid and closed. So a live main
+   says its trench is as-built, and asking somebody to record that
+   separately is asking them to state the same fact twice.
+
+   ── Which trenches are left alone ──
+
+   Existing ground is not something this job built: marking it as-built
+   would claim work nobody did. A trench marked for removal is being
+   taken out, and calling it as-built says the opposite. Both are left
+   exactly as they are — the cascade only answers for lengths that were
+   Planned or have no stage at all.
+
+   `follows` is passed in rather than imported so this module does not
+   depend on the gas pressure code for a geometric test. */
+export function trenchesUnder(mains = [], features = [], follows) {
+  const trenches = features.filter((f) =>
+    f.Feature_Type === "line"
+    && f.Layer_Key === "trench"
+    && (f.Geometry || []).length >= 2);
+
+  const out = new Map();
+  for (const m of mains) {
+    for (const t of trenches) {
+      const stage = t.Attributes?.Build_Status ?? null;
+      if (stage === "existing" || stage === "remove" || stage === "asbuilt") continue;
+      if (!follows(m.Geometry || [], t.Geometry || [])) continue;
+      out.set(Number(t.Feature_ID), t);
+    }
+  }
+  return [...out.values()];
+}

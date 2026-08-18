@@ -71,7 +71,9 @@ import {
   allowanceOf, allowanceLoad, allowanceSupplies, allowanceText,
 } from "./futureLoad.js";
 import { plotSupplyState, anchorsFor } from "./plotSupply.js";
-import { mainsGraph, liveCascade, deadUpstream } from "./upstream.js";
+import {
+  mainsGraph, liveCascade, deadUpstream, trenchesUnder,
+} from "./upstream.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
@@ -6965,6 +6967,48 @@ export default function GISCanvasPage() {
         const also = (chain || [])
           .filter((m) => Number(m.Feature_ID) !== Number(id));
 
+        /* ── The ground the live mains are in ──
+
+            A main cannot be live unless it is in the ground, and it
+            cannot be in the ground unless the trench was dug, laid and
+            closed. So a live main says its trench is as-built.
+
+            Every main the cascade touched, not only the one edited: if
+            the length back to the source is live, all of that ground is
+            closed too.
+
+            Existing ground and trenches marked for removal are left
+            alone — one was never built by this job and the other is
+            being taken out. */
+        const digs = trenchesUnder(
+          [{ ...before, ...changes }, ...also], world, lineFollows,
+        );
+        if (digs.length) {
+          const dug = digs.map((t) => ({
+            Feature_ID: t.Feature_ID,
+            Attributes: { ...t.Attributes, Build_Status: "asbuilt" },
+          }));
+          for (const u of dug) {
+            await updateFeature(projectId, u.Feature_ID, { Attributes: u.Attributes });
+          }
+          setFeatures((fs) => fs.map((x) => {
+            const hit = dug.find((u) => u.Feature_ID === x.Feature_ID);
+            return hit ? { ...x, Attributes: hit.Attributes } : x;
+          }));
+          await recordAction(
+            `Mark ${digs.length} trench(es) as-built`,
+            digs, dug.map((u, i) => ({ ...digs[i], Attributes: u.Attributes })),
+          );
+        }
+
+        if (!also.length && digs.length) {
+          /* The main was already the only thing not live, so nothing
+             cascaded — but its trench still changed, and a change
+             nobody is told about is one they find later and wonder
+             about. */
+          setStatus(`${digs.length} trench(es) marked as-built`);
+        }
+
         if (also.length) {
           const patch = also.map((m) => ({
             Feature_ID: m.Feature_ID,
@@ -6983,7 +7027,8 @@ export default function GISCanvasPage() {
             `Energise ${also.length} length(s) upstream`,
             also, patch.map((u, i) => ({ ...also[i], Attributes: u.Attributes })),
           );
-          setStatus(`${also.length} length(s) upstream set live as well`);
+          setStatus(`${also.length} length(s) upstream set live as well`
+            + (digs.length ? `, and ${digs.length} trench(es) marked as-built` : ""));
         }
       }
 

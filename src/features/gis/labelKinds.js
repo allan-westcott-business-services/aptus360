@@ -150,3 +150,20 @@ export function labelShown(f, {
   if (!kind) return true;              // not a cable or pipe: master only
   return kinds?.[kind] !== false;
 }
+
+/* The names these two went by before joints were added.
+
+   `lineLabelKind` and `lineLabelShown` were accurate while only lines
+   had a switch of their own. A joint is a point, so the rule had to
+   cover points too and the old names stopped being true.
+
+   Renaming an export is safe in a repo where every file moves at once.
+   This one is hand-copied a file at a time, so for one deploy the
+   canvas asked for a name this module had stopped exporting and the
+   build stopped dead — a rename is not worth a broken deploy, and the
+   two names cost nothing standing side by side.
+
+   Kept rather than removed later: anything still importing the old name
+   keeps working, and there is no version of this file that only one
+   half of a pair of files can load. */
+export { labelKindOf as lineLabelKind, labelShown as lineLabelShown };

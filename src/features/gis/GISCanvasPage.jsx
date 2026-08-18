@@ -41,7 +41,7 @@ import {
   MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels,
 } from "./GisMenus.jsx";
 import {
-  LABEL_KINDS, DEFAULT_LABEL_KINDS, lineLabelShown,
+  LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
 } from "./labelKinds.js";
 import { seedCascade, servicePartOf, cascadeSummary } from "./seedCascade.js";
 import * as XLSX from "xlsx";
@@ -233,7 +233,7 @@ export default function GISCanvasPage() {
      key alone — which made `trench_main` a main, three lines above a
      comment promising that a trench followed the master switch. */
   const labelShown = useCallback(
-    (f, selected = false) => lineLabelShown(f, {
+    (f, selected = false) => labelShownFor(f, {
       lineTypes, showLabels, kinds: labelKinds, selected,
     }),
     [lineTypes, showLabels, labelKinds],
@@ -3547,7 +3547,10 @@ export default function GISCanvasPage() {
            the difference between seeing the geometry and not. Selection
            still labels, so clicking something always tells you what it
            is. */
-        if (f.Label && (on || showLabels) && view.scale > 2.5
+        /* Through the same rule the lines use, so a joint's name answers
+           to the Joint labels switch while a plot number carries on
+           following the master one. */
+        if (f.Label && labelShown(f, on) && view.scale > 2.5
             && !isMeter && f.Feature_Role !== "spannode") {
           ctx.fillStyle = pointStyle.labelColour;
           ctx.font = "600 11px ui-monospace, Menlo, monospace";

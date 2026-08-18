@@ -71,6 +71,7 @@ import {
   allowanceOf, allowanceLoad, allowanceSupplies, allowanceText,
 } from "./futureLoad.js";
 import { plotSupplyState, anchorsFor } from "./plotSupply.js";
+import { mainsGraph, liveCascade, deadUpstream } from "./upstream.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
@@ -662,6 +663,13 @@ export default function GISCanvasPage() {
     const wanted = utilitiesToTest(serviceUtils, lookups?.utilities || []);
     if (!wanted.length) return out;
 
+    /* One graph per utility, built once for the whole drawing.
+
+       A site of two hundred lengths is forty thousand comparisons, and
+       doing that per plot is what makes a drawing feel slow. */
+    const graphs = new Map(wanted.map((u) =>
+      [u, mainsGraph(u, features, lineTypes)]));
+
     for (const f of features) {
       if (f.Feature_Role !== "plot") continue;
       /* Where the supply arrives, not where the seed sits.
@@ -699,7 +707,7 @@ export default function GISCanvasPage() {
       const states = wanted.map((utility) =>
         plotSupplyState({
           anchors: anchorsFor(f, features, utility).concat(anchors),
-          utility, features, lineTypes,
+          utility, features, lineTypes, graph: graphs.get(utility),
         }));
       const dead = states.find((r) => r.state === "dead");
       out.set(Number(f.Feature_ID), dead
@@ -717,6 +725,18 @@ export default function GISCanvasPage() {
      The utilities chosen in the service call-off panel, as layer keys —
      so electric alone hatches the electric mains and nothing else, and
      gas and water hatch both. */
+  /* How far to nudge a gas or water main so the pair reads as two.
+
+     Only when both are being asked about — on any other view they are
+     where the drawing says they are, and moving them would be the
+     drawing telling a small lie for no reason. */
+  const servicePairOffset = useCallback((f, layers) => {
+    if (!layers.includes("gas") || !layers.includes("water")) return 0;
+    if (f.Layer_Key === "gas") return -3;
+    if (f.Layer_Key === "water") return 3;
+    return 0;
+  }, []);
+
   const hatchLayers = useMemo(
     () => (serviceOpen
       ? utilitiesToTest(serviceUtils, lookups?.utilities || [])
@@ -3533,7 +3553,21 @@ export default function GISCanvasPage() {
            Only feeder mains are in the plan; everything else draws
            exactly as it did. */
         const fp = feederPlan.get(Number(f.Feature_ID));
-        const line = fp?.offsetPx ? offsetPolyline(pts, fp.offsetPx) : pts;
+
+        /* ── Gas and water, side by side ──
+
+           They share a trench, so drawn true they lie on top of each
+           other and the drawing shows one line where there are two —
+           and the hatching that says which is live has nothing to sit
+           against.
+
+           Only while both are being asked about, and only by a few
+           pixels: this is a drawing convention for reading, not a claim
+           about where the pipes are. The same nudge the LV feeders use,
+           for the same reason and through the same function. */
+        const pairNudge = servicePairOffset(f, hatchLayers);
+        const nudge = fp?.offsetPx ?? pairNudge;
+        const line = nudge ? offsetPolyline(pts, nudge) : pts;
 
         ctx.beginPath();
         line.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
@@ -4899,7 +4933,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -6878,6 +6912,51 @@ export default function GISCanvasPage() {
           `Edit ${classLabel(before, lineTypes) || "feature"}`,
           [before], [{ ...before, ...changes }],
         );
+      }
+
+      /* ── Setting a main live energises what feeds it ──
+
+         A length is only live in the sense that matters — gas or
+         current reaching a plot — if everything between it and the
+         source is live too. So marking one live says the network back
+         to the substation is live, and recording that by hand length by
+         length is asking somebody to state the same fact six times and
+         get it wrong once.
+
+         Only the lengths that are not already live, so the undo entry
+         says what actually changed.
+
+         After the edit rather than with it: the cascade follows from
+         the change, and a failure here should leave the main somebody
+         set correctly set rather than rolling their edit back. */
+      if (changes.Attributes?.Build_Status === "live"
+        && before && isMainFeature(before, lineTypes)) {
+        const world = features.map((x) =>
+          (x.Feature_ID === id ? { ...x, ...changes } : x));
+        const graph = mainsGraph(before.Layer_Key, world, lineTypes);
+        const also = (liveCascade(id, graph) || [])
+          .filter((m) => Number(m.Feature_ID) !== Number(id));
+
+        if (also.length) {
+          const patch = also.map((m) => ({
+            Feature_ID: m.Feature_ID,
+            Attributes: { ...m.Attributes, Build_Status: "live" },
+          }));
+          for (const up of patch) {
+            await updateFeature(projectId, up.Feature_ID, {
+              Attributes: up.Attributes,
+            });
+          }
+          setFeatures((fs) => fs.map((x) => {
+            const hit = patch.find((u) => u.Feature_ID === x.Feature_ID);
+            return hit ? { ...x, Attributes: hit.Attributes } : x;
+          }));
+          await recordAction(
+            `Energise ${also.length} length(s) upstream`,
+            also, patch.map((u, i) => ({ ...also[i], Attributes: u.Attributes })),
+          );
+          setStatus(`${also.length} length(s) upstream set live as well`);
+        }
       }
 
       /* Carry a changed cable through to the node that reads it.
@@ -15471,7 +15550,25 @@ export default function GISCanvasPage() {
                       return (
                         <button key={g.key}
                           className={`gco-svc-u${on ? " on" : ""}`}
-                          onClick={() => setServiceUtils(on ? [] : ids)}>
+                          onClick={() => {
+                          setServiceUtils(on ? [] : ids);
+                          /* ── Show the mains being asked about ──
+
+                              The picker opens on the plots and the mains
+                              trench, which is what you tap. Once
+                              somebody says what they are connecting,
+                              the mains for it are the thing they need
+                              to see: the hatching is on them, and
+                              whether a plot can be worked depends on
+                              them.
+
+                              Not every main — the ones for this choice.
+                              Electric picked and the gas main on screen
+                              is a line nobody is working on. */
+                          applyShown(on
+                            ? ["role:plot", "lt:trench_main"]
+                            : ["role:plot", "lt:trench_main", ...g.members]);
+                        }}>
                           {g.label}
                         </button>
                       );

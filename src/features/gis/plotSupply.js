@@ -27,6 +27,7 @@
    and an unanswerable question is not a reason to send them. */
 
 import { isMainFeature, statusOf } from "./buildStatus.js";
+import { deadUpstream } from "./upstream.js";
 
 const NEAR_M = 0.75;
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
@@ -205,8 +206,43 @@ export function anchorsFor(plot, features = [], utility = null) {
    Said differently from a Planned main, because the fix is different:
    one wants the main energising, the other wants somebody to say what
    stage it is at. */
-function verdict(main, extra = {}) {
+function verdict(main, extra = {}, graph = null) {
   const stage = statusOf(main);
+
+  /* ── Live means live all the way back ──
+
+     A main marked Live with a dead length between it and the substation
+     is marked wrong: nothing can flow to it. So a plot is connectable
+     only if the whole chain is live, and the length nearest the plot
+     being live is not enough on its own.
+
+     The cascade normally makes this true — setting a length live sets
+     everything upstream live — but a drawing edited before that
+     existed, or one where somebody set a status directly in the
+     database, can still be inconsistent. This is what catches it. */
+  if (stage === "live" && graph) {
+    const dead = deadUpstream(main.Feature_ID, graph);
+    if (dead == null) {
+      return {
+        state: "unknown",
+        main,
+        ...extra,
+        why: "This main does not connect back to the substation or POC.",
+      };
+    }
+    const blocking = dead.filter((m) =>
+      Number(m.Feature_ID) !== Number(main.Feature_ID));
+    if (blocking.length) {
+      return {
+        state: "dead",
+        main,
+        ...extra,
+        why: `The main here is live, but ${blocking.length} length(s) `
+          + "between it and the source are not.",
+      };
+    }
+  }
+
   if (stage === "live") return { state: "live", main, ...extra };
   return {
     state: "dead",
@@ -225,7 +261,7 @@ function verdict(main, extra = {}) {
    than looked up here, because which one a utility uses is the caller's
    business and this should not have a second opinion about it. */
 export function plotSupplyState({
-  anchor, anchors, utility, features = [], lineTypes = [],
+  anchor, anchors, utility, features = [], lineTypes = [], graph = null,
 }) {
   /* Every place the supply might arrive, tried in turn. The first that
      finds a service wins; a plot answered from its meter is answered
@@ -234,7 +270,7 @@ export function plotSupplyState({
   if (points.length > 1) {
     let last = null;
     for (const p of points) {
-      const r = plotSupplyState({ anchor: p, utility, features, lineTypes });
+      const r = plotSupplyState({ anchor: p, utility, features, lineTypes, graph });
       if (r.state !== "unknown") return r;
       last = last ?? r;
     }
@@ -276,7 +312,7 @@ export function plotSupplyState({
     if (!main) {
       return { state: "unknown", why: "No main of this utility reaches this plot." };
     }
-    return verdict(main, { viaNearest: true });
+    return verdict(main, { viaNearest: true }, graph);
   }
 
   /* Any live main is enough. A plot fed from two directions — rare, but
@@ -286,7 +322,7 @@ export function plotSupplyState({
   for (const sv of services) {
     const main = mainBehind(sv, features, lineTypes, utility);
     if (!main) { best = best ?? { state: "unknown", main: null }; continue; }
-    const v = verdict(main);
+    const v = verdict(main, {}, graph);
     if (v.state === "live") return v;
     best = v;
   }
@@ -305,7 +341,7 @@ export function plotSupplyState({
      "cannot tell". */
   if (!best?.main) {
     const near = nearestMain(anchor, features, utility, lineTypes);
-    if (near) return verdict(near, { viaNearest: true });
+    if (near) return verdict(near, { viaNearest: true }, graph);
   }
 
   /* A main was found: verdict decides, and it is the only thing that
@@ -313,7 +349,7 @@ export function plotSupplyState({
      fixed message — so a main with no status got Planned's wording and
      a plot with no main at all got a verdict it had no business
      having. */
-  if (best?.main) return verdict(best.main);
+  if (best?.main) return verdict(best.main, {}, graph);
 
   /* Nothing found by either route. Honestly unknown: the drawing does
      not say what feeds this plot, and inventing an answer would be

@@ -20,6 +20,7 @@ import {
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState, anchorsFor } from "./src/features/gis/plotSupply.js";
+import { mainsGraph, pathToSource, deadUpstream } from "./src/features/gis/upstream.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -1243,9 +1244,18 @@ const PLOTS = [
 
   /* One place decides. The tail of the function used to reach its own
      conclusion, so a main with no status got Planned's wording. */
+  /* One function decides, though it now has two ways of saying dead —
+     the main itself not being live, and a length upstream of it not
+     being. Counting the words was a proxy for "one decider" and stopped
+     being one; what matters is that the callers all go through
+     verdict. */
   const mod = readFileSync("./src/features/gis/plotSupply.js", "utf8");
-  if ((mod.match(/state: "dead"/g) || []).length > 1) {
-    fail("more than one place decides a plot is dead");
+  const body = mod.slice(mod.indexOf("export function plotSupplyState"));
+  if (/state: "dead"/.test(body)) {
+    fail("plotSupplyState reaches its own conclusion instead of asking verdict");
+  }
+  if ((mod.match(/verdict\(/g) || []).length < 4) {
+    fail("not every route through the answer goes via verdict");
   }
 
   /* And the editor no longer shows a stage that is not there. */
@@ -1326,6 +1336,98 @@ const PLOTS = [
      has not been marked. */
   if (/utilitiesOutOfStep[\s\S]{0,400}disabled=/.test(canvas)) {
     fail("a status mismatch blocks the call-off rather than warning");
+  }
+}
+
+// 22. Live means live all the way back to the source.
+//
+//     A main marked Live with a dead length between it and the
+//     substation is marked wrong: nothing can flow to it. So setting a
+//     length live sets everything upstream live, and a plot is
+//     connectable only if the whole chain is.
+{
+  const LT3 = [
+    { Type_Key: "elec_main", Layer_Key: "electric" },
+    { Type_Key: "trench_service", Layer_Key: "trench" },
+  ];
+  const seg = (id, geom, st) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: geom,
+    Attributes: { Line_Type: "elec_main", ...(st ? { Build_Status: st } : {}) },
+  });
+  const site = (mid) => [
+    { Feature_ID: 100, Feature_Role: "substation", Geometry: [[0, 0]] },
+    seg(1, [[0, 0], [50, 0]], "live"),
+    seg(2, [[50, 0], [100, 0]], mid),
+    seg(3, [[100, 0], [150, 0]], "live"),
+    {
+      Feature_ID: 9, Feature_Type: "line", Layer_Key: "trench",
+      Geometry: [[120, 0], [120, 10]], Attributes: { Line_Type: "trench_service" },
+    },
+  ];
+
+  const whole = site("live");
+  const gapped = site("planned");
+  const gWhole = mainsGraph("electric", whole, LT3);
+  const gGapped = mainsGraph("electric", gapped, LT3);
+
+  if (!gWhole.roots.length) fail("the walk cannot find where the network starts");
+
+  /* The path back, and what is not live along it. */
+  if (!pathToSource(3, gWhole)) fail("a length cannot be walked back to the source");
+  if ((deadUpstream(3, gWhole) || []).length) {
+    fail("a wholly live chain reports something not live");
+  }
+  const blocking = deadUpstream(3, gGapped) || [];
+  if (blocking.length !== 1 || Number(blocking[0].Feature_ID) !== 2) {
+    fail(`the gap in the chain came out as ${blocking.map((m) => m.Feature_ID)}`);
+  }
+  /* A length the source cannot reach is not "nothing upstream" — the
+     difference matters, and null says so. */
+  const island = mainsGraph("electric", [
+    ...whole, seg(9, [[500, 500], [600, 500]], "live"),
+  ], LT3);
+  if (deadUpstream(9, island) !== null) {
+    fail("a length that reaches nothing reports an empty chain");
+  }
+
+  /* The plot follows: the nearest main is live and the plot is still
+     refused, because a length behind it is not. */
+  const at3 = (f, g) => plotSupplyState({
+    anchor: [120, 10], utility: "electric", features: f, lineTypes: LT3, graph: g,
+  });
+  if (at3(whole, gWhole).state !== "live") {
+    fail("a plot on a wholly live chain is refused");
+  }
+  const short = at3(gapped, gGapped);
+  if (short.state !== "dead") {
+    fail(`a plot fed through a dead length reads as ${short.state}`);
+  }
+  if (!/between it and the source/.test(short.why ?? "")) {
+    fail("the reason does not say the break is upstream");
+  }
+  /* Without the graph it cannot know, and must not pretend: the old
+     answer stands. */
+  if (at3(gapped, null).state !== "live") {
+    fail("the chain test fires without the graph it needs");
+  }
+
+  /* And setting a length live carries upstream. */
+  const canvas2 = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/liveCascade\(id, graph\)/.test(canvas2)) {
+    fail("setting a main live leaves the lengths feeding it alone");
+  }
+  if (!/Energise \$\{also\.length\} length\(s\) upstream/.test(canvas2)) {
+    fail("the cascade is not recorded, so it cannot be undone");
+  }
+
+  /* The mains for the chosen utility are shown, and gas and water are
+     drawn apart so the pair reads as two lines. */
+  if (!/\.\.\.g\.members\]\)/.test(canvas2)) {
+    fail("choosing a utility does not show its mains");
+  }
+  if (!/const servicePairOffset = useCallback/.test(canvas2)) {
+    fail("gas and water are drawn on top of each other");
   }
 }
 

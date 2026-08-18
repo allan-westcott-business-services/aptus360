@@ -189,6 +189,35 @@ export function anchorsFor(plot, features = [], utility = null) {
   return out;
 }
 
+/* What a main's stage means for the plots it feeds.
+
+   ── Nothing set is not live ──
+
+   It used to answer "unknown", which drew a question mark and let the
+   plot be picked. But liveness is a thing somebody asserts: a main
+   nobody has said anything about has certainly not been energised, and
+   treating silence as an open question sent gangs to plots off mains
+   that were never switched on.
+
+   The reverse — assuming live — is the one answer that can waste a
+   visit, so the safe reading is the correct one here.
+
+   Said differently from a Planned main, because the fix is different:
+   one wants the main energising, the other wants somebody to say what
+   stage it is at. */
+function verdict(main, extra = {}) {
+  const stage = statusOf(main);
+  if (stage === "live") return { state: "live", main, ...extra };
+  return {
+    state: "dead",
+    main,
+    ...extra,
+    why: stage
+      ? "The Feeder Main is not yet live."
+      : "The Feeder Main is not yet live \u2014 no status has been set on it.",
+  };
+}
+
 /* Whether one plot can be connected for one utility.
 
    `anchor` is where the plot's supply arrives — its meter, or its
@@ -247,16 +276,7 @@ export function plotSupplyState({
     if (!main) {
       return { state: "unknown", why: "No main of this utility reaches this plot." };
     }
-    const stage = statusOf(main);
-    if (stage === "live") return { state: "live", main, viaNearest: true };
-    return {
-      state: stage ? "dead" : "unknown",
-      main,
-      viaNearest: true,
-      why: stage
-        ? "The Feeder Main is not yet live."
-        : "The main nearest this plot has no status set.",
-    };
+    return verdict(main, { viaNearest: true });
   }
 
   /* Any live main is enough. A plot fed from two directions — rare, but
@@ -266,9 +286,9 @@ export function plotSupplyState({
   for (const sv of services) {
     const main = mainBehind(sv, features, lineTypes, utility);
     if (!main) { best = best ?? { state: "unknown", main: null }; continue; }
-    const stage = statusOf(main);
-    if (stage === "live") return { state: "live", main };
-    best = { state: stage ? "dead" : "unknown", main, stage };
+    const v = verdict(main);
+    if (v.state === "live") return v;
+    best = v;
   }
 
   /* ── The trace failed, so fall back rather than give up ──
@@ -285,42 +305,23 @@ export function plotSupplyState({
      "cannot tell". */
   if (!best?.main) {
     const near = nearestMain(anchor, features, utility, lineTypes);
-    if (near) {
-      const stage = statusOf(near);
-      if (stage === "live") return { state: "live", main: near, viaNearest: true };
-      if (stage) {
-        return {
-          state: "dead",
-          main: near,
-          viaNearest: true,
-          why: "The Feeder Main is not yet live.",
-        };
-      }
-      return {
-        state: "unknown",
-        main: near,
-        viaNearest: true,
-        why: "The main nearest this plot has no status set.",
-      };
-    }
+    if (near) return verdict(near, { viaNearest: true });
   }
 
-  if (!best || best.state === "unknown") {
-    return {
-      state: "unknown",
-      main: best?.main ?? null,
-      why: best?.main
-        ? "The main feeding this plot has no status set."
-        : "Cannot tell which main feeds this plot.",
-    };
-  }
+  /* A main was found: verdict decides, and it is the only thing that
+     does. This block used to reach its own conclusion — "dead", with a
+     fixed message — so a main with no status got Planned's wording and
+     a plot with no main at all got a verdict it had no business
+     having. */
+  if (best?.main) return verdict(best.main);
 
+  /* Nothing found by either route. Honestly unknown: the drawing does
+     not say what feeds this plot, and inventing an answer would be
+     worse than admitting it. */
   return {
-    state: "dead",
-    main: best.main,
-    /* The words the office asked for, exactly. A message somebody has
-       agreed is a message they will recognise on site. */
-    why: "The Feeder Main is not yet live.",
+    state: "unknown",
+    main: null,
+    why: "Cannot tell which main feeds this plot.",
   };
 }
 

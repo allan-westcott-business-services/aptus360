@@ -1185,6 +1185,84 @@ const PLOTS = [
   }
 }
 
+// 20. A main nobody has spoken about is not live.
+//
+//     This answered "unknown", which drew a question mark and let the
+//     plot be picked. Liveness is a thing somebody asserts: a main
+//     nobody has said anything about has certainly not been energised.
+//
+//     And the editor made it invisible. Its dropdown defaulted to
+//     "Planned" when the attribute was empty, so a main with no stage
+//     read as Planned on screen while the drawing saw nothing at all —
+//     somebody checking why their plots would not connect looked at the
+//     field, saw Planned, and had no way to know it disagreed.
+{
+  const LT2 = [
+    { Type_Key: "elec_main", Layer_Key: "electric" },
+    { Type_Key: "trench_service", Layer_Key: "trench" },
+  ];
+  const main = (st) => ({
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [100, 0]],
+    Attributes: { Line_Type: "elec_main", ...(st ? { Build_Status: st } : {}) },
+  });
+  const trench = {
+    Feature_ID: 2, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[50, 0], [50, 10]], Attributes: { Line_Type: "trench_service" },
+  };
+  const at = (f) => plotSupplyState({
+    anchor: [50, 10], utility: "electric", features: f, lineTypes: LT2,
+  });
+
+  const unset = at([main(null), trench]);
+  if (unset.state !== "dead") {
+    fail(`a main with no status left its plots ${unset.state}`);
+  }
+  /* Said differently from Planned, because the fix is different: one
+     wants the main energising, the other wants somebody to say what
+     stage it is at. */
+  if (!/no status has been set/.test(unset.why ?? "")) {
+    fail("a main with no status is reported as though it had one");
+  }
+  if (at([main("planned"), trench]).why !== "The Feeder Main is not yet live.") {
+    fail("a planned main no longer uses the agreed wording");
+  }
+  if (at([main("live"), trench]).state !== "live") {
+    fail("a live main stopped being live");
+  }
+  /* No main at all is still honestly unknown — inventing a verdict
+     there would be worse than admitting it. */
+  if (at([trench]).state !== "unknown") {
+    fail("a plot with no main anywhere was given a verdict");
+  }
+
+  /* One place decides. The tail of the function used to reach its own
+     conclusion, so a main with no status got Planned's wording. */
+  const mod = readFileSync("./src/features/gis/plotSupply.js", "utf8");
+  if ((mod.match(/state: "dead"/g) || []).length > 1) {
+    fail("more than one place decides a plot is dead");
+  }
+
+  /* And the editor no longer shows a stage that is not there. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  /* The main's own field, found by the id it carries — the trench has
+     a Build_Status select too, and it legitimately defaults to planned,
+     so a pattern that could match either passed while this one was
+     still pretending. */
+  const fieldAt = editor.indexOf('id="fe-main-status"');
+  const field = fieldAt < 0 ? "" : editor.slice(fieldAt, fieldAt + 900);
+  if (!field) fail("the main has no status field");
+  if (/Build_Status \?\? "planned"/.test(field)) {
+    fail("the main's status field still shows Planned when nothing is set");
+  }
+  if (!/Build_Status \?\? ""/.test(field)) {
+    fail("the main's status field does not show an empty value when unset");
+  }
+  if (!/&mdash; Not set &mdash;/.test(editor)) {
+    fail("there is no way to see that a main has no status");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Service call-offs behave (three ways in, one list of plots out).");
 process.exit(bad ? 1 : 0);

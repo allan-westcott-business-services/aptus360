@@ -2232,8 +2232,17 @@ export default function FeatureEditor({
             <div className="fld">
               <label htmlFor="fe-main-status">Status</label>
               <select id="fe-main-status"
-                value={f.Attributes.Build_Status ?? "planned"}
+                value={f.Attributes.Build_Status ?? ""}
                 onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
+                {/* Blank where nothing has been set.
+
+                    This defaulted to "planned", so a main nobody had
+                    given a stage read as Planned on screen while the
+                    attribute was empty — and everything downstream saw
+                    no stage at all. Somebody checking why their plots
+                    would not connect looked at this field, saw Planned,
+                    and had no way to know the drawing disagreed. */}
+                <option value="">&mdash; Not set &mdash;</option>
                 {MAIN_STATUSES.map((ms) => (
                   <option key={ms.key} value={ms.key}>{ms.label}</option>
                 ))}
@@ -2244,8 +2253,12 @@ export default function FeatureEditor({
               <p className="fe-sub">
                 {f.Attributes.Build_Status === "live"
                   ? "Plots can be connected off this main."
-                  : "Until this is Live, plots fed from it cannot be "
-                    + "called off for connection."}
+                  : f.Attributes.Build_Status
+                    ? "Until this is Live, plots fed from it cannot be "
+                      + "called off for connection."
+                    : "Nothing has been set, so this main is treated as "
+                      + "not live and plots fed from it cannot be called "
+                      + "off."}
               </p>
             </div>
           )}

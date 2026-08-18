@@ -6937,6 +6937,28 @@ export default function GISCanvasPage() {
          After the edit rather than with it: the cascade follows from
          the change, and a failure here should leave the main somebody
          set correctly set rather than rolling their edit back. */
+      /* ── Say what happened, every time ──
+
+         Eight attempts at this have each fixed a plausible cause and
+         changed nothing, because none of them was checked against what
+         the code actually sees at the moment somebody saves. A silent
+         mechanism cannot be debugged from the outside, and asking
+         somebody to try again is not a diagnosis.
+
+         So this reports, always: whether it recognised the feature as a
+         main, how many mains and roots it found, how far back it
+         walked, and how many trenches it matched. If any of those is
+         zero the next message says which — and that is a fact rather
+         than another theory. */
+      if (changes.Attributes?.Build_Status === "live" && before) {
+        const isMain = isMainFeature(before, lineTypes);
+        if (!isMain) {
+          setStatus("Set live \u2014 but this is not recognised as a main "
+            + `(type ${before.Attributes?.Line_Type ?? "none"}, `
+            + `layer ${before.Layer_Key ?? "none"}), so nothing else changed.`);
+        }
+      }
+
       if (changes.Attributes?.Build_Status === "live"
         && before && isMainFeature(before, lineTypes)) {
         const world = features.map((x) =>
@@ -6999,6 +7021,20 @@ export default function GISCanvasPage() {
             `Mark ${digs.length} trench(es) as-built`,
             digs, dug.map((u, i) => ({ ...digs[i], Attributes: u.Attributes })),
           );
+        }
+
+        /* What the walk saw. Reported whenever nothing changed, because
+           "nothing to do" and "could not tell" look identical from
+           outside and only one of them is fine. */
+        if (!also.length && !digs.length) {
+          const trenchCount = world.filter((x) => x.Feature_Type === "line"
+            && x.Layer_Key === "trench").length;
+          setStatus(`Set live \u2014 nothing else changed. `
+            + `${graph.mains.length} ${before.Layer_Key} main(s) on the drawing, `
+            + `${graph.sources?.length ?? 0} source(s), `
+            + `${graph.roots.length} of the mains reach one, `
+            + `${chain == null ? "no path back to the source" : `${chain.length} length(s) on the path`}, `
+            + `${trenchCount} trench(es) to match against.`);
         }
 
         if (!also.length && digs.length) {

@@ -985,24 +985,23 @@ export default function FeatureEditor({
               rather than merely approximate.
 
               Not offered on the origin: nothing feeds the substation. */}
-          {/* ── Only on a node that is part of an electric circuit ──
+          {/* ── The cable feeding this node ──
 
-              This pair is the size of the cable feeding the node, which
-              feeder.js reads to work out volt drop and the levels label
-              shows beside it. Real, and worth keeping where it means
-              something.
+              The build's answer and the override, which feeder.js reads
+              to work out volt drop and the levels label shows beside
+              the node.
 
-              It means nothing on a gas or water span node, or on a
-              standalone one. Those have no cable feeding them and no
-              volt drop to compute, so the fields sat there offering an
-              override of a figure that does not exist — which is what
-              "No cable set" was saying, in a box asking to change it.
+              This was briefly hidden on any node with no circuit, on
+              the grounds that such a node has no cable feeding it. That
+              was wrong: a node's circuit is stamped on it when the LV
+              network is built, so a node on a drawing that has not been
+              built yet has none — and hiding the field took away the
+              one place the size could be set before the build ran.
 
-              Gated on the circuit rather than on the geometry: every
-              span node is a point, and the ones that do need this are
-              points too. */}
+              Not offered on the origin, because nothing feeds the
+              substation. That is the only case where the question does
+              not arise. */}
           {feature.Feature_Role === "spannode"
-            && f.Attributes.Circuit_ID != null
             && Number(f.Attributes.Span_Seq) !== 0 && (
             <>
               {/* The build's answer and the override, the same pair the

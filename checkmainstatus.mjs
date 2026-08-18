@@ -460,6 +460,36 @@ const line = (type, status) => ({
   }
 }
 
+// The cable feeding a span node can always be set.
+//
+//    The build's answer and the override, which feeder.js reads for
+//    volt drop. It was briefly hidden on any node with no circuit, on
+//    the grounds that such a node has no cable feeding it — but a
+//    node's circuit is stamped on it when the LV network is built, so a
+//    node on a drawing not yet built has none, and hiding the field
+//    took away the only place the size could be set before the build
+//    ran.
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  const at = editor.indexOf('Feature_Role === "spannode"\n            && Number(f.Attributes.Span_Seq)');
+  if (at < 0) fail("the cable-feeding-this-node fields are gone or re-gated");
+
+  /* The rule, as the editor computes it. */
+  const shown = (a) => a.Feature_Role === "spannode"
+    && Number(a.Attributes.Span_Seq) !== 0;
+  const node = (circuit, seq) => ({
+    Feature_Role: "spannode", Attributes: { Circuit_ID: circuit, Span_Seq: seq },
+  });
+  if (!shown(node(7, 2))) fail("a node on a circuit cannot set its cable");
+  if (!shown(node(null, 1))) fail("a standalone node cannot set its cable");
+  if (!shown(node(undefined, 3))) {
+    fail("a node on an unbuilt drawing cannot set its cable");
+  }
+  /* Nothing feeds the substation, which is the one case where the
+     question does not arise. */
+  if (shown(node(7, 0))) fail("the origin is asked what feeds it");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Main build status behaves (its own stages, live drawn apart).");
 process.exit(bad ? 1 : 0);

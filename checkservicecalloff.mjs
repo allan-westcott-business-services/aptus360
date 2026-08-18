@@ -807,6 +807,45 @@ const PLOTS = [
     fail("a plot off a live feeder is refused before its service exists");
   }
 
+  /* ── Followed by the service, not by proximity ──
+
+     A plot is fed by a main because its service runs to that main. On a
+     site with two roads alongside each other, nearest puts the plots
+     from one road on the other road's feeder — the mistake
+     mainsCallOff.js records having made and fixed, and this is the same
+     relationship followed the same way.
+
+     The service *trench* counts, which is the point: a service call-off
+     is raised before any cable is laid, so the trench is what says
+     where the plot connects. Asking only the utility's own layer found
+     nothing and made every plot unanswerable, which is what put a
+     question mark on all of them. */
+  const svcTrench = {
+    Feature_ID: 7, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[50, 0], [50, 11]], Attributes: { Line_Type: "trench_service" },
+  };
+  const viaTrench = ask([feeder("planned"), svcTrench]);
+  if (viaTrench.state !== "dead") {
+    fail(`a plot on a service trench to a planned main reads as ${viaTrench.state}`);
+  }
+  if (viaTrench.viaNearest) {
+    fail("the trench was ignored and the nearest main guessed at instead");
+  }
+  if (ask([feeder("live"), svcTrench]).state !== "live") {
+    fail("a plot on a service trench to a live main is refused");
+  }
+
+  /* And the main has to be the right utility: a gas main touching the
+     same trench does not answer for electric. */
+  const gasMain = {
+    Feature_ID: 8, Feature_Type: "line", Layer_Key: "gas",
+    Geometry: [[0, 0], [100, 0]],
+    Attributes: { Line_Type: "gas_main", Build_Status: "live" },
+  };
+  if (ask([gasMain, svcTrench]).state === "live") {
+    fail("a live gas main made an electric plot connectable");
+  }
+
   /* ── A service that cannot be traced falls back too ──
 
      Connects is only written when a service is laid by the application,

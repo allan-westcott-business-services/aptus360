@@ -31,16 +31,28 @@ import { isMainFeature, statusOf } from "./buildStatus.js";
 const NEAR_M = 0.75;
 const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 
-/* Every line of one utility that ends at or near a point. */
-function linesAt(point, features, utility) {
+/* Whatever runs from a plot towards a main — trench or cable, on any
+   layer.
+
+   Not filtered to the utility's own layer. A service call-off is raised
+   before the cables are laid, so the line running from the plot is
+   usually the service *trench*, which sits on the trench layer. Asking
+   only the utility's layer found nothing and made every plot
+   unanswerable.
+
+   Two metres, which is what mainsCallOff uses to attach a meter to its
+   service: a seed is drawn inside the plot boundary and the service
+   starts at the boundary, so they are near rather than coincident. */
+const ATTACH_M = 2.0;
+
+function servicesFrom(point, features) {
   if (!point) return [];
   return features.filter((f) => {
     if (f.Feature_Type !== "line") return false;
-    if (f.Layer_Key !== utility) return false;
     const g = f.Geometry || [];
     if (g.length < 2) return false;
-    return dist(g[0], point) <= NEAR_M
-      || dist(g[g.length - 1], point) <= NEAR_M;
+    return dist(g[0], point) <= ATTACH_M
+      || dist(g[g.length - 1], point) <= ATTACH_M;
   });
 }
 
@@ -48,13 +60,16 @@ function linesAt(point, features, utility) {
 
    Connects first, because it is what the service recorded when it was
    laid. Geometry second, for anything drawn before that. */
-function mainBehind(service, features, lineTypes) {
+function mainBehind(service, features, lineTypes, utility) {
+  const wants = (f) => isMainFeature(f, lineTypes)
+    && (!utility || f.Layer_Key === utility);
+
   const ids = Array.isArray(service?.Attributes?.Connects)
     ? service.Attributes.Connects : [];
 
   for (const id of ids) {
     const f = features.find((x) => Number(x.Feature_ID) === Number(id));
-    if (f && isMainFeature(f, lineTypes)) return f;
+    if (f && wants(f)) return f;
   }
 
   /* Nothing recorded, or what it recorded is not a main. Both ends
@@ -64,8 +79,7 @@ function mainBehind(service, features, lineTypes) {
   if (g.length < 2) return null;
 
   for (const end of [g[0], g[g.length - 1]]) {
-    const hit = features.find((f) =>
-      isMainFeature(f, lineTypes) && touches(end, f.Geometry || []));
+    const hit = features.find((f) => wants(f) && touches(end, f.Geometry || []));
     if (hit) return hit;
   }
   return null;
@@ -143,7 +157,22 @@ function distanceToLine(point, geometry) {
 export function plotSupplyState({
   anchor, utility, features = [], lineTypes = [],
 }) {
-  const services = linesAt(anchor, features, utility)
+  /* ── The route the mains call-off already uses ──
+
+     A plot is fed by a main because its service runs to that main. Not
+     because the main is near it: on a site with two roads alongside
+     each other, nearest puts the plots from one road on the other
+     road's feeder — which is the mistake mainsCallOff.js records having
+     made and fixed.
+
+     So the same relationship, followed the same way: whatever line runs
+     from the plot to a main — trench or cable, whichever somebody drew
+     — and then what that line is joined to.
+
+     A service *trench* counts, which matters because a service call-off
+     is raised before any cable is laid. The trench is drawn first and
+     is what says where the plot connects. */
+  const services = servicesFrom(anchor, features)
     .filter((f) => !isMainFeature(f, lineTypes));
 
   /* ── Before the services are laid ──
@@ -181,7 +210,7 @@ export function plotSupplyState({
      one of them is charged. */
   let best = null;
   for (const sv of services) {
-    const main = mainBehind(sv, features, lineTypes);
+    const main = mainBehind(sv, features, lineTypes, utility);
     if (!main) { best = best ?? { state: "unknown", main: null }; continue; }
     const stage = statusOf(main);
     if (stage === "live") return { state: "live", main };

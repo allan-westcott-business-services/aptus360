@@ -8488,8 +8488,19 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
-  async function placeSpanNodes() {
-    const trenches = features.filter((f) =>
+  async function placeSpanNodes(srcFeatures = null) {
+    /* `src` is the drawing to work from, defaulting to what is in
+       state.
+
+       Needed because this can be run as one step of a longer sequence.
+       `features` is a closure over the render the run started in, so a
+       chained step sees the drawing as it was before any earlier step
+       wrote to it — the trenches just dug are not there, and neither
+       are the ones the span nodes cut. Handed a fresh list, it works
+       from what is actually on the drawing. */
+    const world = srcFeatures || features;
+
+    const trenches = world.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
     /* Every utility's origin, not the first plant on the drawing.
 
@@ -8499,7 +8510,7 @@ export default function GISCanvasPage() {
        ended up on a gas POC.
 
        Substation first, so the A-numbers count outward from it. */
-    const origins = [...originsOf(features).values()].map((o) => o.feature);
+    const origins = [...originsOf(world).values()].map((o) => o.feature);
     const plant = origins.sort((a, b) =>
       (a.Feature_Role === "substation" ? -1 : 0) - (b.Feature_Role === "substation" ? -1 : 0));
 
@@ -8572,7 +8583,7 @@ export default function GISCanvasPage() {
       label: `Placing ${plan.nodes.length} span node(s)`,
     });
     try {
-      const existing = features.filter((f) => f.Feature_Role === "spannode");
+      const existing = world.filter((f) => f.Feature_Role === "spannode");
       const claimed = new Set();
       let made = 0;
       let moved = 0;
@@ -8604,7 +8615,7 @@ export default function GISCanvasPage() {
          Placed on top of the plant, sharing its position, and carrying
          the circuit so a site with two substations has an origin for
          each. */
-      for (const [key, origin] of originsOf(features)) {
+      for (const [key, origin] of originsOf(world)) {
         /* The key identifies the origin and may name the POC \u2014 "gas:2"
            for a second feed. The layer is on the entry. */
         const layer = origin.layer ?? key;
@@ -11316,9 +11327,18 @@ export default function GISCanvasPage() {
     finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
 
-  async function buildGasNetwork(silent = false) {
+  async function buildGasNetwork(silent = false, srcFeatures = null) {
     if (!projectId) return;
-    const src = features;
+    /* `src` is the drawing to work from, defaulting to what is in
+       state.
+
+       Needed because this can be run as one step of a longer sequence.
+       `features` is a closure over the render the run started in, so a
+       chained step sees the drawing as it was before any earlier step
+       wrote to it — the trenches just dug are not there, and neither
+       are the ones the span nodes cut. Handed a fresh list, it works
+       from what is actually on the drawing. */
+    const src = srcFeatures || features;
 
     /* The mains type from the configured list rather than the string
        "gas_main". Renaming a line type in admin is a thing somebody may
@@ -11755,9 +11775,18 @@ export default function GISCanvasPage() {
      No gate on a water design or an agreement. Gas has both because
      they were asked for; adding them here unasked would be this build
      deciding a commercial rule on its own. */
-  async function buildWaterNetwork() {
+  async function buildWaterNetwork(srcFeatures = null) {
     if (!projectId) return;
-    const src = features;
+    /* `src` is the drawing to work from, defaulting to what is in
+       state.
+
+       Needed because this can be run as one step of a longer sequence.
+       `features` is a closure over the render the run started in, so a
+       chained step sees the drawing as it was before any earlier step
+       wrote to it — the trenches just dug are not there, and neither
+       are the ones the span nodes cut. Handed a fresh list, it works
+       from what is actually on the drawing. */
+    const src = srcFeatures || features;
 
     const mainType = lineTypes.find((t) => t.Layer_Key === "water"
       && /main/i.test(t.Type_Key) && !/service/i.test(t.Type_Key));
@@ -12424,88 +12453,84 @@ export default function GISCanvasPage() {
      one did is measured instead: the drawing is counted before and
      after, and the difference is what the report says. A step that
      changed nothing says so rather than claiming success. */
-  /* ── Lay every service, once the dig is in ──
+  /* ── One routine, run for each utility in turn ──
 
-     Auto Lay Service Trench draws the dig and stops there, by design:
-     the cable and pipe come afterwards, from each utility menu. Three
-     menus in three places, and each one has to be found and the order
-     kept in somebody's head.
-
-     This is those three, in one. Nothing clever \u2014 it calls the same
-     routine the menus call, once per utility, and says what each did.
+     Two buttons want the same shape: go through electric, gas and
+     water, run the same thing on each, keep the bar moving and say what
+     each did. The bodies differ by one call and one thing to count.
 
      ── Read fresh between utilities ──
 
      Every pass gets the drawing as it stands, not as it stood when the
-     button was pressed. autoLayServices works from `features` unless it
-     is handed something, and `features` is a render-old closure that
-     will not have the electric cable in it by the time gas runs. Build
-     Whole Gas Network already passes a fresh list for exactly this
-     reason and says so; the same applies threefold here.
+     button was pressed. These routines work from `features` unless
+     handed something, and `features` is a render-old closure that will
+     not have the electric cable in it by the time gas runs. Build Whole
+     Gas Network already passes a fresh list for exactly this reason and
+     says so; the same applies threefold here.
 
      ── Counted, not trusted ──
 
-     The routine reports by putting a message on screen and returning,
-     which a caller cannot read. So each pass counts the lines on that
-     utility's layer before and after, and the difference is what gets
-     reported. A utility whose trenches already carry pipe says nothing
-     to do, which is the ordinary answer on a re-run. */
-  async function runAllServices(only = null) {
+     They report by putting a message on screen and returning, which a
+     caller cannot read. So each pass counts what it should have added,
+     before and after, and the difference is what gets reported. A
+     utility with nothing outstanding says nothing to do, which is the
+     ordinary answer on a re-run. */
+  async function runPerUtility({
+    busyKey, undoLabel, utilities, doing, counts, run, skips = [],
+    verb = "Laying",
+  }) {
     if (!projectId) return;
 
-    const wanted = only ?? ["electric", "gas", "water"];
     const results = [];
     let at = 0;
 
-    setBusy("layall");
+    setBusy(busyKey);
     abortRunRef.current = false;
     cancelRef.current = false;
     try {
-      await withUndo("Lay all services", async () => {
-        for (const u of wanted) {
+      await withUndo(undoLabel, async () => {
+        for (const u of utilities) {
+          const label = `${u} ${doing}`;
           if (abortRunRef.current) {
-            results.push({ label: `${u} services`, ok: false, why: "stopped" });
+            results.push({ label, ok: false, why: "stopped" });
             continue;
           }
 
-          setStage({ done: at, total: wanted.length, label: `Laying the ${u} services` });
-          setBusy("layall");
+          setStage({ done: at, total: utilities.length, label: `${verb} the ${label}` });
+          /* Put back each time. Each routine clears `busy` in its own
+             finally, which unlocked the menus half way through a run. */
+          setBusy(busyKey);
 
           let world = [];
           try { world = (await listGis(projectId)).features || []; }
           catch (e) {
-            results.push({ label: `${u} services`, ok: false, why: e.message });
+            results.push({ label, ok: false, why: e.message });
             at += 1;
             continue;
           }
 
-          const was = world.filter((f) => f.Feature_Type === "line"
-            && f.Layer_Key === u).length;
-
+          const was = counts(world, u);
           try {
-            await autoLayServices(u, world);
+            await run(u, world);
           } catch (e) {
-            results.push({ label: `${u} services`, ok: false, why: e?.message || "refused" });
+            results.push({ label, ok: false, why: e?.message || "refused" });
             at += 1;
             continue;
           }
 
-          let after = was;
-          try {
-            after = ((await listGis(projectId)).features || [])
-              .filter((f) => f.Feature_Type === "line" && f.Layer_Key === u).length;
-          } catch { /* leave it reading as nothing done */ }
+          let now = was;
+          try { now = counts((await listGis(projectId)).features || [], u); }
+          catch { /* leave it reading as nothing done */ }
 
-          const made = after - was;
+          const made = now - was;
           results.push({
-            label: `${u} services`,
-            ok: true,
-            changed: made > 0,
-            detail: made > 0 ? `${made} laid` : "",
+            label, ok: true, changed: made > 0, detail: made > 0 ? `${made} added` : "",
           });
           at += 1;
         }
-        setStage({ done: wanted.length, total: wanted.length, label: "Reading the drawing back" });
+        setStage({
+          done: utilities.length, total: utilities.length, label: "Reading the drawing back",
+        });
       });
     } finally {
       setBusy("");
@@ -12520,7 +12545,90 @@ export default function GISCanvasPage() {
        to say "nothing to lay" would otherwise be left on screen over a
        run that laid two hundred. */
     setError("");
-    window.alert(describeOutcome(results));
+    window.alert(describeOutcome(results)
+      + (skips.length
+        ? `\n\nLeft out:\n${skips.map((x) => `   ${x.utility} \u2014 ${x.why}`).join("\n")}`
+        : ""));
+  }
+
+  const isServiceLine = (f) => /service/i.test(String(f.Attributes?.Line_Type ?? ""));
+
+  /* Every service cable and pipe, once the dig is in.
+
+     Auto Lay Service Trench draws the dig and stops there, by design:
+     the cable and pipe come afterwards, from each utility menu. Three
+     menus in three places, and the order kept in somebody's head. This
+     is those three, in one.
+
+     No design or agreement test, matching the per-utility menu items it
+     stands in for. Pipe in a trench that is already dug is a different
+     commitment from an adopted main, which is why Build All Mains below
+     does check. */
+  async function runAllServices(only = null) {
+    await runPerUtility({
+      busyKey: "layall",
+      undoLabel: "Lay all services",
+      utilities: only ?? ["electric", "gas", "water"],
+      doing: "services",
+      counts: (world, u) => world.filter((f) => f.Feature_Type === "line"
+        && f.Layer_Key === u && isServiceLine(f)).length,
+      run: (u, world) => autoLayServices(u, world),
+    });
+  }
+
+  /* ── Every main, in one go ──
+
+     The LV network, the gas main and the water main. Three routines on
+     three menus, each with its own name for the same act.
+
+     ── Why this one checks and Lay All Services does not ──
+
+     A main is adopted work. Laying one on a project with no outline
+     design and no asset value agreement is quantities against work
+     nobody is doing — which is why the gas and water builds refuse on
+     their own account, and why electric is judged the same way here
+     even though its own menu item still does not.
+
+     Skipped, not refused. A site where gas is not yet contracted is
+     ordinary, and abandoning the run over it would mean the water main
+     never gets laid either. The reasons go in the report with
+     everything else. */
+  async function runAllMains() {
+    if (!projectId) return;
+
+    let agreements = [];
+    try {
+      const { rows = [] } = await listAgreements(projectId);
+      agreements = rows;
+    } catch (e) {
+      setError(`Couldn\u2019t check the asset value agreements: ${e.message}`);
+      return;
+    }
+
+    const plan = planWholeDesign({
+      features, layers, scopeDefaults, agreements, lineTypes,
+    });
+
+    if (!plan.mains.length) {
+      setError(`No mains to build \u2014 ${plan.skips.map((x) => x.why).join("; ")}.`);
+      return;
+    }
+
+    await runPerUtility({
+      busyKey: "mainsall",
+      undoLabel: "Build all mains",
+      verb: "Building",
+      utilities: plan.mains,
+      doing: "main",
+      skips: plan.skips,
+      counts: (world, u) => world.filter((f) => f.Feature_Type === "line"
+        && f.Layer_Key === u && !isServiceLine(f)).length,
+      run: async (u, world) => {
+        if (u === "electric") return buildLvNetwork({ srcFeatures: world });
+        if (u === "gas") return buildGasNetwork(true, world);
+        return buildWaterNetwork(world);
+      },
+    });
   }
 
   async function runWholeDesign() {
@@ -12610,7 +12718,12 @@ export default function GISCanvasPage() {
       let before = [];
       try { before = (await listGis(projectId)).features || []; } catch { /* counted as 0 */ }
       try {
-        await fn();
+        /* Handed the list read a moment ago. Every step after the first
+           would otherwise work from the drawing as it stood when the
+           run began: the span nodes would not see the trenches just
+           dug, and the mains would not see the trenches the span nodes
+           cut. */
+        await fn(before);
       } catch (e) {
         results.push({ label, ok: false, why: e?.message || "refused" });
         return;
@@ -12641,30 +12754,30 @@ export default function GISCanvasPage() {
         await step("Meters", "Assigning the meters", "meter",
           () => runNetwork("meters"));
         await step("Span nodes", "Placing the span nodes", "node",
-          () => placeSpanNodes());
+          (world) => placeSpanNodes(world));
 
         for (const u of plan.mains) {
           if (u === "electric") {
             await step("LV network", "Building the LV network", "line",
-              () => buildLvNetwork());
+              (world) => buildLvNetwork({ srcFeatures: world }));
           }
           if (u === "gas") {
             await step("Gas main", "Laying the gas main", "line",
-              () => buildGasNetwork(true));
+              (world) => buildGasNetwork(true, world));
           }
           if (u === "water") {
             await step("Water main", "Laying the water main", "line",
-              () => buildWaterNetwork());
+              (world) => buildWaterNetwork(world));
           }
         }
 
         for (const u of plan.services) {
           await step(`${u} services`, `Laying the ${u} services`, "line",
-            () => autoLayServices(u));
+            (world) => autoLayServices(u, world));
         }
 
         await step("Feeder joints", "Placing the feeder joints", "joint",
-          () => placeFeederJoints({ silent: true }));
+          (world) => placeFeederJoints({ silent: true, srcFeatures: world }));
 
         /* Full, briefly, before the panel goes. A bar that disappears at
            five of six leaves somebody wondering what happened to the
@@ -15104,6 +15217,17 @@ export default function GISCanvasPage() {
                         and pipe follow, which until now meant three
                         menus in three places and the order kept in
                         somebody's head. */}
+                    {/* The mains for all three, in one. Three routines
+                        on three menus, each with its own name for the
+                        same act \u2014 and unlike the services, each one
+                        first has to be shown that the utility is
+                        actually contracted. */}
+                    <MenuItem label={busy === "mainsall"
+                      ? "Building\u2026" : "Build All Mains"}
+                      hint="LV network, gas main and water main \u2014 for every utility with an outline design and an AV agreement"
+                      disabled={!!busy || !projectId}
+                      onClick={() => runAllMains()} />
+
                     <MenuItem label={busy === "layall"
                       ? "Laying\u2026" : "Lay All Services"}
                       hint="Electric, gas and water service cable and pipe into the trenches already dug"

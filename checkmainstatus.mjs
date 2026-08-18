@@ -421,7 +421,13 @@ const line = (type, status) => ({
   if (!/if \(!silent && !window\.confirm\(/.test(gas)) {
     fail("the mains build ignores the silent flag");
   }
-  if (!/async function buildGasNetwork\(silent = false\)/.test(canvas)) {
+  /* The flag is what matters, and that it is first and defaults to
+     false \u2014 not that it is the only parameter. It now takes a drawing
+     to work from as well, because a chained run has to hand it one:
+     `features` is a closure over the render the run started in, so a
+     main built as step four of six would otherwise be routed along the
+     trenches as they were before step one dug them. */
+  if (!/async function buildGasNetwork\(silent = false[,)]/.test(canvas)) {
     fail("the mains build cannot be run without asking");
   }
 

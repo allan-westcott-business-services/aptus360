@@ -43,6 +43,7 @@ import {
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, lineLabelShown,
 } from "./labelKinds.js";
+import { seedCascade, servicePartOf, cascadeSummary } from "./seedCascade.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
@@ -7117,8 +7118,29 @@ export default function GISCanvasPage() {
 
   async function deleteFeature(id) {
     const gone = features.find((x) => x.Feature_ID === id);
-    setFeatures((f) => f.filter((x) => x.Feature_ID !== id));
-    setSelected((sel) => sel.filter((x) => x !== id));
+
+    /* A seed takes its service with it: the meters, the cables and
+       pipes feeding them, and the trench they were laid in.
+
+       Left behind, they are worse than clutter. The bill still counts
+       the pipe and the dig estimate still counts the trench, and Auto
+       Service reads a trench stamped with a seed as "this plot is
+       done" — so the plot could not be redrawn either. The one command
+       that would have tidied it up was the one the mess stopped from
+       running.
+
+       Asked rather than assumed. The confirm that got us here said
+       "Delete this plot seed", and taking four more features on the
+       strength of that answer is not what was agreed to. */
+    const also = seedCascade([id], features, lineTypes);
+    if (also.all.length && !window.confirm(
+      `This plot's service goes with it: ${also.summary}.\n\n`
+      + "Delete them too?\n\nCancel to leave the seed in place."
+    )) return;
+
+    const doomed = [id, ...also.ids];
+    setFeatures((f) => f.filter((x) => !doomed.includes(x.Feature_ID)));
+    setSelected((sel) => sel.filter((x) => !doomed.includes(x)));
 
     /* Deleting a seed frees its plot to be placed again.
 
@@ -7131,11 +7153,20 @@ export default function GISCanvasPage() {
     }
 
     try {
-      await deleteFeatures(projectId, [id]);
+      await deleteFeatures(projectId, doomed);
       /* Recorded from the row itself rather than by reading the drawing
          twice: what was deleted is already in hand, so the delta is
          exact and costs nothing. */
-      if (gone) await recordAction(`Delete ${classLabel(gone, lineTypes) || "feature"}`, [gone], []);
+      /* The service goes into the same entry, so one undo puts the plot
+         back whole. Recorded as separate steps it would take four
+         presses to restore one delete, and three of those would leave
+         the drawing in a state nobody chose. */
+      const rows = [gone, ...also.all].filter(Boolean);
+      if (rows.length) {
+        await recordAction(also.all.length
+          ? `Delete ${classLabel(gone, lineTypes) || "feature"} and its service`
+          : `Delete ${classLabel(gone, lineTypes) || "feature"}`, rows, []);
+      }
     }
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
@@ -11041,17 +11072,48 @@ export default function GISCanvasPage() {
       .map(([k, n]) => `${n} \u00d7 ${k}`)
       .join("\n");
 
+    /* A seed inside the outline takes its service with it, even the
+       part that falls outside.
+
+       The lasso's own rule is that a feature counts only where the
+       whole of it is within — which is right for a trench running out
+       of the area, and wrong for the one dug to a plot inside it. That
+       trench serves a plot that is about to stop existing, and leaving
+       it is the same orphan the seed delete makes.
+
+       Named separately in the question, because these are the ones the
+       outline does not visibly contain. */
+    /* A lock still holds. The lasso skips locked features and so does
+       this: a lock says a thing is not to be removed, and reaching it
+       through a seed rather than through the outline does not change
+       what was said about it. */
+    const spill = seedCascade(inside.map((f) => f.Feature_ID), features, lineTypes)
+      .all.filter((f) => !locked(f));
+
+    /* Grouped again after the lock filter, so the question counts what
+       will actually go rather than what the cascade first found. */
+    const spilt = cascadeSummary({
+      meter: spill.filter((f) => servicePartOf(f, lineTypes) === "meter"),
+      cable: spill.filter((f) => servicePartOf(f, lineTypes) === "cable"),
+      trench: spill.filter((f) => servicePartOf(f, lineTypes) === "trench"),
+    });
+
     if (!window.confirm(
       `Delete ${inside.length} object(s) inside the outline?\n\n${summary}`
+      + (spilt
+        ? `\n\nPlus the service belonging to plots inside it: ${spilt}`
+          + " \u2014 some of it outside the outline."
+        : "")
     )) return;
 
+    const doomed = [...inside, ...spill];
     setBusy("lassodelete");
     try {
-      await deleteFeatures(projectId, inside.map((f) => f.Feature_ID));
+      await deleteFeatures(projectId, doomed.map((f) => f.Feature_ID));
       /* One undo for the whole lasso: it was one action, and undoing it
          a feature at a time would be twenty presses. */
       await recordAction(`Delete ${inside.length} object(s) inside an outline`,
-        inside, []);
+        doomed, []);
       const fresh = await listGis(projectId);
       setFeatures(fresh.features || []);
       setSelected([]);
@@ -13234,9 +13296,24 @@ export default function GISCanvasPage() {
     if (withPlots.length && !window.confirm(
       `${withPlots.length} of these are plot markers. Deleting removes the marker, not the plot. Continue?`
     )) return;
-    const rows = features.filter((f) => selected.includes(f.Feature_ID));
+
+    /* And the service belonging to any seed in the selection, for the
+       reason deleteFeature gives at length.
+
+       Asked as a second question rather than folded into the one above.
+       That one is about plots surviving their markers; this is about
+       features that are about to disappear without having been picked,
+       and answering yes to the first is not answering yes to this. */
+    const also = seedCascade(selected, features, lineTypes);
+    if (also.all.length && !window.confirm(
+      `${also.seeds.length === 1 ? "This plot's" : "These plots'"} service goes with `
+      + `${also.seeds.length === 1 ? "it" : "them"}: ${also.summary}.\n\nDelete them too?`
+    )) return;
+
+    const doomed = [...selected, ...also.ids];
+    const rows = features.filter((f) => doomed.includes(f.Feature_ID));
     try {
-      await deleteFeatures(projectId, selected);
+      await deleteFeatures(projectId, doomed);
       await recordAction(`Delete ${rows.length} feature(s)`, rows, []);
       setSelected([]);
       await load(projectId);

@@ -188,6 +188,40 @@ export function plotSupplyState({
     best = { state: stage ? "dead" : "unknown", main, stage };
   }
 
+  /* ── The trace failed, so fall back rather than give up ──
+
+     A service that exists but cannot be traced to a main is the common
+     case, not a rare one: Connects is only written when a service is
+     laid by the application, and a service drawn or dragged by hand can
+     end a metre off the main it feeds. The plot is still fed by
+     something, and the drawing still knows which main is nearest.
+
+     Without this, having a service made the answer worse than having
+     none — a plot with no service fell back to the nearest main and was
+     judged correctly, while its neighbour with a service came back
+     "cannot tell". */
+  if (!best?.main) {
+    const near = nearestMain(anchor, features, utility, lineTypes);
+    if (near) {
+      const stage = statusOf(near);
+      if (stage === "live") return { state: "live", main: near, viaNearest: true };
+      if (stage) {
+        return {
+          state: "dead",
+          main: near,
+          viaNearest: true,
+          why: "The Feeder Main is not yet live.",
+        };
+      }
+      return {
+        state: "unknown",
+        main: near,
+        viaNearest: true,
+        why: "The main nearest this plot has no status set.",
+      };
+    }
+  }
+
   if (!best || best.state === "unknown") {
     return {
       state: "unknown",

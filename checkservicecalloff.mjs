@@ -504,9 +504,20 @@ const PLOTS = [
   if (at([main(1, "live"), svc(2, null)]).state !== "live") {
     fail("a service that tees mid-main cannot find it");
   }
-  /* A main genuinely too far away is not joined to. */
-  if (at([main(1, "live", [[0, -2], [100, -2]]), svc(2, null)]).state === "live") {
-    fail("a main two metres away counts as connected");
+  /* A main two metres from the service's end is no longer "not
+     joined": the trace fails, and the fallback answers from the nearest
+     main in range — which is the point of it, because a service drawn
+     by hand routinely ends a little short.
+
+     What still has to hold is that the verdict is honest about where it
+     came from, so a wrong answer can be recognised as a guess. */
+  const near = at([main(1, "live", [[0, -2], [100, -2]]), svc(2, null)]);
+  if (near.state === "live" && !near.viaNearest) {
+    fail("a main two metres away was treated as traced rather than guessed");
+  }
+  /* And beyond reach it is still unknown. */
+  if (at([main(1, "live", [[0, 400], [100, 400]]), svc(2, null)]).state !== "unknown") {
+    fail("a main hundreds of metres away was used");
   }
 
   /* Silence is not a yes. The point is to stop a gang being sent to a
@@ -794,6 +805,31 @@ const PLOTS = [
   }
   if (ask([feeder("live")]).state !== "live") {
     fail("a plot off a live feeder is refused before its service exists");
+  }
+
+  /* ── A service that cannot be traced falls back too ──
+
+     Connects is only written when a service is laid by the application,
+     and one drawn or dragged by hand can end a metre off the main it
+     feeds. Without this, having a service made the answer worse than
+     having none: a plot with no service fell back to the nearest main
+     and was judged, while its neighbour with one came back "cannot
+     tell" and drew a question mark. */
+  const strayService = {
+    Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[50, 1.2], [50, 12]], Attributes: { Line_Type: "elec_service" },
+  };
+  const stray = ask([feeder("planned"), strayService]);
+  if (stray.state !== "dead") {
+    fail(`a plot whose service misses the main reads as ${stray.state}`);
+  }
+  if (ask([feeder("live"), strayService]).state !== "live") {
+    fail("a plot off a live main is not connectable when its service strays");
+  }
+  /* And a service that reaches no main at all, with no main in range
+     either, is still honestly unknown. */
+  if (ask([strayService]).state !== "unknown") {
+    fail("a plot with no main anywhere was given a verdict");
   }
 
   /* Within reach. Without a limit the answer is always some main

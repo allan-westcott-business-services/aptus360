@@ -196,6 +196,16 @@ export default function GISCanvasPage() {
   const [cursor, setCursor] = useState(null);
   const [lineTypes, setLineTypes] = useState([]);
   const [lineType, setLineType] = useState("elec_main");
+  /* The stage of a whole-design run: which of its steps is going, and
+     what that step is placing.
+
+     Separate from `progress` because the two answer different
+     questions and both are worth showing. Each step drives `progress`
+     itself — "Connecting plot 4 of 76" — and clears it when it
+     finishes, so on its own the bar empties and vanishes six times
+     with nothing to say which of the six is under way. This one stays
+     up for the whole run. */
+  const [stage, setStage] = useState(null);
   const [snapOn, setSnapOn] = useState(true);
   const [snapHit, setSnapHit] = useState(null);
   const [editVertex, setEditVertex] = useState(null);   // { featureId, index }
@@ -12451,12 +12461,39 @@ export default function GISCanvasPage() {
 
     const results = [];
 
+    /* How many steps this run has, so the bar means something from the
+       first one. Three fixed, a main for each utility that is ready, a
+       service run for each, and the joints. */
+    const total = 3 + plan.mains.length + plan.services.length + 1;
+    let at = 0;
+    let stopped = false;
+
     /* Run one step, and say what it did.
 
        `read` names the count that step is expected to move, so a step
        that ran without error and moved nothing is reported as having
-       done nothing rather than as a success. */
-    const step = async (label, read, fn) => {
+       done nothing rather than as a success.
+
+       `doing` is what the bar says while it runs — the present tense of
+       what is being placed, because somebody watching wants to know
+       what is happening rather than what it will be called afterwards. */
+    const step = async (label, doing, read, fn) => {
+      /* Stop applies to the run, not only to the step inside it.
+
+         The panel has always had the button and the inner routines
+         respect it, so pressing it stopped one step and the next
+         started immediately — which reads as the button not working.
+         Checked here so the rest of the run is abandoned too, and the
+         flag is cleared so the step that was stopped does not stop the
+         one after it in a later run. */
+      if (cancelRef.current) {
+        stopped = true;
+        results.push({ label, ok: false, why: "stopped" });
+        return;
+      }
+
+      setStage({ done: at, total, label: doing });
+
       let before = [];
       try { before = (await listGis(projectId)).features || []; } catch { /* counted as 0 */ }
       try {
@@ -12464,6 +12501,8 @@ export default function GISCanvasPage() {
       } catch (e) {
         results.push({ label, ok: false, why: e?.message || "refused" });
         return;
+      } finally {
+        at += 1;
       }
       let after = [];
       try { after = (await listGis(projectId)).features || []; } catch { after = before; }
@@ -12482,26 +12521,46 @@ export default function GISCanvasPage() {
     setBusy("wholedesign");
     try {
       await withUndo("Build the whole design", async () => {
-        await step("Service trenches", "trench",
+        await step("Service trenches", "Laying the service trenches", "trench",
           () => runAutoService({ trenchesOnly: true }));
-        await step("Meters", "meter", () => runNetwork("meters"));
-        await step("Span nodes", "node", () => placeSpanNodes());
+        await step("Meters", "Assigning the meters", "meter",
+          () => runNetwork("meters"));
+        await step("Span nodes", "Placing the span nodes", "node",
+          () => placeSpanNodes());
 
         for (const u of plan.mains) {
-          if (u === "electric") await step("LV network", "line", () => buildLvNetwork());
-          if (u === "gas") await step("Gas main", "line", () => buildGasNetwork(true));
-          if (u === "water") await step("Water main", "line", () => buildWaterNetwork());
+          if (u === "electric") {
+            await step("LV network", "Building the LV network", "line",
+              () => buildLvNetwork());
+          }
+          if (u === "gas") {
+            await step("Gas main", "Laying the gas main", "line",
+              () => buildGasNetwork(true));
+          }
+          if (u === "water") {
+            await step("Water main", "Laying the water main", "line",
+              () => buildWaterNetwork());
+          }
         }
 
         for (const u of plan.services) {
-          await step(`${u} services`, "line", () => autoLayServices(u));
+          await step(`${u} services`, `Laying the ${u} services`, "line",
+            () => autoLayServices(u));
         }
 
-        await step("Feeder joints", "joint", () => placeFeederJoints({ silent: true }));
+        await step("Feeder joints", "Placing the feeder joints", "joint",
+          () => placeFeederJoints({ silent: true }));
+
+        /* Full, briefly, before the panel goes. A bar that disappears at
+           five of six leaves somebody wondering what happened to the
+           last one. */
+        setStage({ done: total, total, label: "Reading the drawing back" });
       });
     } finally {
       setBusy("");
       setProgress(null);
+      setStage(null);
+      cancelRef.current = false;
     }
 
     await load(projectId);
@@ -12509,7 +12568,8 @@ export default function GISCanvasPage() {
     /* The skips from the plan belong in the report too. They were said
        before the run, and somebody reading the outcome afterwards
        should not have to remember a dialog they dismissed. */
-    const outcome = describeOutcome(results)
+    const outcome = (stopped ? "Stopped part way through.\n\n" : "")
+      + describeOutcome(results)
       + (plan.skips.length
         ? `\n\nLeft out:\n${plan.skips.map((x) => `   ${x.utility} \u2014 ${x.why}`).join("\n")}`
         : "");
@@ -17600,8 +17660,27 @@ export default function GISCanvasPage() {
               </div>
             )}
 
-            {progress && (
+            {(progress || stage) && (
               <div className="gis-prog" role="status" aria-live="polite">
+                {stage && (
+                  /* The run as a whole, above whatever the step inside
+                     it is doing. Its own track, because a single bar
+                     jumping back to nothing at each step reads as the
+                     work being undone. */
+                  <div className="gp-stage">
+                    <p className="gp-lbl">{stage.label}</p>
+                    <div className="gp-track">
+                      <div className="gp-bar" style={{
+                        width: `${stage.total
+                          ? Math.round(stage.done / stage.total * 100) : 0}%`,
+                      }} />
+                    </div>
+                    <div className="gp-foot">
+                      <span>Step {Math.min(stage.done + 1, stage.total)} of {stage.total}</span>
+                    </div>
+                  </div>
+                )}
+                {progress && (<>
                 <p className="gp-lbl">{progress.label}</p>
                 <div className="gp-track">
                   <div className="gp-bar" style={{
@@ -17610,6 +17689,9 @@ export default function GISCanvasPage() {
                 </div>
                 <div className="gp-foot">
                   <span>{progress.done} of {progress.total}</span>
+                </div>
+                </>)}
+                <div className="gp-foot">
                   <button className="gp-stop" onClick={() => { cancelRef.current = true; }}>
                     Stop
                   </button>
@@ -18104,6 +18186,11 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   z-index: 8; min-width: 300px; background: var(--white); border: 1px solid var(--border);
   border-radius: 12px; padding: 13px 16px; box-shadow: 0 10px 34px rgba(15,23,42,.22); }
 .gp-lbl { margin: 0 0 9px; font-size: 12.5px; font-weight: 600; }
+/* The run, above the step. Separated by a rule rather than by spacing
+   alone: two bars with nothing between them read as one thing measured
+   twice. */
+.gp-stage { padding-bottom: 10px; margin-bottom: 10px; border-bottom: 1px solid var(--line); }
+.gp-stage .gp-foot { color: var(--muted); }
 .gp-track { height: 9px; background: #eef0f8; border-radius: 6px; overflow: hidden; }
 .gp-bar { height: 100%; background: var(--accent); border-radius: 6px; transition: width .15s ease; }
 .gp-foot { display: flex; align-items: center; justify-content: space-between; margin-top: 7px;

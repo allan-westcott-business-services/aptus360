@@ -76,6 +76,7 @@ import {
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
   firstElectricCallOff, electricUtilityId, utilitiesToTest,
   serviceGroupsFor, isWholeGroup, chooseUtilityFirst, bookedFor,
+  utilitiesOutOfStep,
 } from "./serviceCallOff.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
@@ -710,6 +711,18 @@ export default function GISCanvasPage() {
     return out;
   }, [serviceOpen, serviceUtils, features, lineTypes, lookups, plotList,
     priorServices]);
+
+  /* Which layers the live/dead hatching answers for.
+
+     The utilities chosen in the service call-off panel, as layer keys —
+     so electric alone hatches the electric mains and nothing else, and
+     gas and water hatch both. */
+  const hatchLayers = useMemo(
+    () => (serviceOpen
+      ? utilitiesToTest(serviceUtils, lookups?.utilities || [])
+      : []),
+    [serviceOpen, serviceUtils, lookups],
+  );
 
   const digOpts = useMemo(
     () => ({
@@ -3148,8 +3161,29 @@ export default function GISCanvasPage() {
        a marking that is always on is one nobody reads. */
     for (const f of (serviceOpen ? features : [])) {
       if (!isMainFeature(f, lineTypes)) continue;
+
+      /* ── Only the utilities being connected ──
+
+         Electric picked, and the gas main beside it is not the question
+         — hatching it says something true about a main nobody is
+         working on, in a colour that means "you cannot connect here".
+
+         Gas and water picked, and both are the question, because both
+         go in on that visit.
+
+         Nothing picked yet: nothing hatched. The colour answers "can
+         this be connected", and until somebody says what they are
+         connecting there is no answer to give. */
+      if (!hatchLayers.length) continue;
+      if (!hatchLayers.includes(f.Layer_Key)) continue;
+
+      /* A main with no status is hatched red, not skipped.
+
+         Skipping it drew nothing, which reads as "no main here" rather
+         than "nobody has said" — and a main nobody has spoken about has
+         certainly not been energised. The plot marks already treat it
+         that way; this now agrees with them. */
       const stage = statusOf(f);
-      if (!stage) continue;
 
       const band = easementBand((f.Geometry || []).map(toPx),
         /* Narrower than an easement, which is a legal strip. This is
@@ -4865,7 +4899,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -15522,6 +15556,43 @@ export default function GISCanvasPage() {
                       service aborted and rescheduled — and dropping them
                       would answer a question nobody asked. What is not
                       right is nobody noticing. */}
+                  {/* ── One utility live and the other not ──
+
+                      Gas and water go in on one visit. If one main is
+                      live and the other is not, that visit connects
+                      half of what it was sent to do and somebody comes
+                      back for the rest.
+
+                      Said rather than refused: the mains are almost
+                      certainly both fine and one has not been marked,
+                      and refusing real work because a field is out of
+                      date would be the wrong trade. */}
+                  {(() => {
+                    const keys = utilitiesToTest(serviceUtils, utilRows);
+                    const step = utilitiesOutOfStep(keys, (u) => {
+                      /* Live for this utility if every plot picked is,
+                         which is the question the visit asks. With no
+                         plots picked yet, whether any main on that
+                         utility is live. */
+                      const list = servicePlots.length
+                        ? features.filter((f) => f.Feature_Role === "plot"
+                          && servicePlots.includes(plotOfSeed(f, plotList)))
+                        : [];
+                      if (!list.length) {
+                        return features.some((f) => f.Layer_Key === u
+                          && isMainFeature(f, lineTypes)
+                          && statusOf(f) === "live");
+                      }
+                      return list.every((f) => plotSupplyState({
+                        anchors: anchorsFor(f, features, u),
+                        utility: u, features, lineTypes,
+                      }).state === "live");
+                    });
+                    return step ? (
+                      <p className="gco-warn">{step.why}</p>
+                    ) : null;
+                  })()}
+
                   {!!deadNow.length && (
                     <p className="gco-warn gco-dead">
                       {`${deadNow.join(", ")} — The Feeder Main is not yet live. `}

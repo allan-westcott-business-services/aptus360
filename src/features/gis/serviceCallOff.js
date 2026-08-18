@@ -331,3 +331,46 @@ export function bookedFor(plot, utilityIds = [], priorCallOffs = []) {
     String(a.plannedFor ?? "9999").localeCompare(String(b.plannedFor ?? "9999")));
   return sorted[0];
 }
+
+/* Utilities in one call-off whose mains are at different stages.
+
+   ── Why it matters ──
+
+   Gas and water go in on one visit. If the gas main is live and the
+   water main is not, that visit connects half of what it was sent to do
+   and somebody comes back for the rest — which is the second trip to
+   the same trench this pairing exists to avoid.
+
+   ── Why it is a message and not a refusal ──
+
+   The mains are almost certainly both fine and one of them has not been
+   marked. Refusing the call-off would be refusing real work because a
+   field is out of date; saying so puts it in front of the person who
+   can fix it in ten seconds.
+
+   `stateFor` answers whether that utility's mains are live across the
+   plots being picked. Passed in rather than worked out here, because
+   the drawing is what knows and this is only comparing answers. */
+export function utilitiesOutOfStep(utilityKeys = [], stateFor) {
+  if (utilityKeys.length < 2) return null;
+
+  const seen = utilityKeys.map((u) => ({ utility: u, live: !!stateFor(u) }));
+  const live = seen.filter((x) => x.live).map((x) => x.utility);
+  const notLive = seen.filter((x) => !x.live).map((x) => x.utility);
+
+  /* All one way is not a mismatch. Both dead is an ordinary "not yet",
+     which the plot marks already say; both live is fine. */
+  if (!live.length || !notLive.length) return null;
+
+  const name = (u) => u.charAt(0).toUpperCase() + u.slice(1);
+  return {
+    live,
+    notLive,
+    why: `${live.map(name).join(" and ")} `
+      + `${live.length === 1 ? "is" : "are"} live but `
+      + `${notLive.map(name).join(" and ")} `
+      + `${notLive.length === 1 ? "is" : "are"} not. `
+      + "These go in on one visit \u2014 update the main\u2019s status "
+      + "before raising this.",
+  };
+}

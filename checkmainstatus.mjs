@@ -146,12 +146,29 @@ const line = (type, status) => ({
   }
   if (LIVE_COLOUR === DEAD_COLOUR) fail("live and dead are the same colour");
 
-  /* Only where somebody has said. A drawing that has never used the
-     field is not covered in red — it is one where nobody has answered,
-     and answering for them would be a claim this cannot support. */
-  const pass = canvas.slice(canvas.indexOf("Whether a main is live"));
-  if (!/if \(!stage\) continue;/.test(pass.slice(0, 1800))) {
-    fail("a main with no stage set is marked as dead");
+  /* A main with no stage is hatched red, not skipped.
+
+     This used to require the opposite — skip it, on the grounds that
+     nobody had answered. But liveness is a thing somebody asserts, and
+     a main nobody has spoken about has certainly not been energised.
+     Skipping drew nothing, which reads as "no main here" rather than
+     "nobody has said", and the plot marks meanwhile called it dead —
+     so the drawing and the panel disagreed about the same main.
+
+     The distinction is kept in the wording of the plot's note, not in
+     whether the ground is coloured. */
+  /* To the end of the loop rather than a fixed window — the line this
+     looks for sits 2,415 characters in, and a 2,400 window missed it by
+     fifteen, which is the whole of this file's history in one
+     mistake. */
+  const passAt = canvas.indexOf("Whether a main is live");
+  const pass = passAt < 0 ? ""
+    : canvas.slice(passAt, canvas.indexOf("ctx.restore();", passAt));
+  if (/const stage = statusOf\(f\);\s*\n\s*if \(!stage\) continue;/.test(pass)) {
+    fail("a main with no stage set is left unhatched");
+  }
+  if (!/const stage = statusOf\(f\);/.test(pass)) {
+    fail("the hatching no longer reads the main's stage");
   }
   /* Its own pass over the whole drawing, not inside the layer filter:
      isolating gas would otherwise hide the trench and take the marking

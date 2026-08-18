@@ -16,6 +16,7 @@ import {
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
   firstElectricCallOff, electricUtilityId, utilitiesToTest,
   serviceGroupsFor, isWholeGroup, chooseUtilityFirst, bookedFor,
+  utilitiesOutOfStep,
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState, anchorsFor } from "./src/features/gis/plotSupply.js";
@@ -591,8 +592,12 @@ const PLOTS = [
   if (!/for \(const f of \(serviceOpen \? features : \[\]\)\)/.test(canvas)) {
     fail("live and dead mains are hatched outside the call-off picker");
   }
-  if (!/serviceOpen, servicePlots, priorServices, plotSupply\]\);/.test(canvas)) {
-    fail("opening the picker does not redraw the hatching");
+  /* Each dependency by name, not the exact tail of the list — it has
+     grown twice and both times these went red on correct code. */
+  for (const dep of ["serviceOpen", "servicePlots", "priorServices"]) {
+    if (!new RegExp(`\\b${dep}, `).test(canvas)) {
+      fail(`the drawing does not depend on ${dep}, so it will not redraw`);
+    }
   }
 }
 
@@ -1004,7 +1009,7 @@ const PLOTS = [
   if (!/live \? "#16a34a" : "#dc2626"/.test(canvas)) {
     fail("the marks are not green and red");
   }
-  if (!/plotSupply\]\);/.test(canvas)) {
+  if (!/\bplotSupply, /.test(canvas) && !/\bplotSupply\]\);/.test(canvas)) {
     fail("choosing a utility does not redraw the marks");
   }
 }
@@ -1260,6 +1265,67 @@ const PLOTS = [
   }
   if (!/&mdash; Not set &mdash;/.test(editor)) {
     fail("there is no way to see that a main has no status");
+  }
+}
+
+// 21. The hatching follows the utility, and mismatches are named.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* Electric picked, and the gas main beside it is not the question —
+     hatching it says something true about a main nobody is working on,
+     in a colour that means "you cannot connect here". */
+  if (!/const hatchLayers = useMemo/.test(canvas)) {
+    fail("the hatching does not know which utilities are being connected");
+  }
+  if (!/if \(!hatchLayers\.includes\(f\.Layer_Key\)\) continue;/.test(canvas)) {
+    fail("every main is hatched whatever is being connected");
+  }
+  /* Nothing picked, nothing hatched: the colour answers a question
+     nobody has asked yet. */
+  if (!/if \(!hatchLayers\.length\) continue;/.test(canvas)) {
+    fail("mains are hatched before a utility is chosen");
+  }
+  /* A main with no status is hatched red rather than skipped — skipping
+     read as "no main here" rather than "nobody has said". */
+  if (/const stage = statusOf\(f\);\s*\n\s*if \(!stage\) continue;/.test(canvas)) {
+    fail("a main with no status is left unhatched");
+  }
+  if (!/\bhatchLayers[,\]]/.test(canvas)) {
+    fail("changing the utility does not redraw the hatching");
+  }
+
+  /* ── One live and the other not ──
+
+     Gas and water go in on one visit. If one main is live and the other
+     is not, that visit connects half of what it was sent to do. */
+  const live = (...ks) => (u) => ks.includes(u);
+  if (!utilitiesOutOfStep(["gas", "water"], live("gas"))) {
+    fail("gas live and water not is not reported");
+  }
+  if (!utilitiesOutOfStep(["gas", "water"], live("water"))) {
+    fail("water live and gas not is not reported");
+  }
+  /* All one way is not a mismatch: both dead is an ordinary "not yet",
+     which the plot marks already say. */
+  if (utilitiesOutOfStep(["gas", "water"], live("gas", "water"))) {
+    fail("two live mains are reported as out of step");
+  }
+  if (utilitiesOutOfStep(["gas", "water"], live())) {
+    fail("two mains that are both not live are reported as out of step");
+  }
+  if (utilitiesOutOfStep(["electric"], live())) {
+    fail("one utility can be out of step with itself");
+  }
+  /* Named, so somebody knows which one to go and set. */
+  const msg = utilitiesOutOfStep(["gas", "water"], live("gas")).why;
+  if (!/Gas is live but Water is not/.test(msg)) {
+    fail(`the message reads "${msg}"`);
+  }
+  /* Said, not refused: the mains are almost certainly both fine and one
+     has not been marked. */
+  if (/utilitiesOutOfStep[\s\S]{0,400}disabled=/.test(canvas)) {
+    fail("a status mismatch blocks the call-off rather than warning");
   }
 }
 

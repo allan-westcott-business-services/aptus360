@@ -148,6 +148,47 @@ function distanceToLine(point, geometry) {
   return best;
 }
 
+/* Where a plot's supply actually arrives.
+
+   ── Not the seed ──
+
+   A seed sits inside the plot. The service runs to the meter, which is
+   on the boundary — often ten metres away — so measuring from the seed
+   found no service at all and every plot came back unanswerable.
+
+   mainsCallOff walks from meters for exactly this reason. Same here,
+   with the boundary point next and the seed last: a plot with no meter
+   drawn for this utility still has a boundary point, and a plot with
+   neither is at least somewhere.
+
+   All three are tried rather than the best one chosen, because which
+   exists varies plot by plot on a part-drawn site. */
+export function anchorsFor(plot, features = [], utility = null) {
+  const out = [];
+
+  const pid = plot?.Plot_ID ?? plot?.Attributes?.Plot_ID;
+  if (pid != null) {
+    for (const f of features) {
+      if (f.Feature_Role !== "meter") continue;
+      if (Number(f.Plot_ID ?? f.Attributes?.Plot_ID) !== Number(pid)) continue;
+      /* The meter for this utility where the layer says which, and any
+         meter otherwise — a drawing that puts all three on one layer is
+         still telling us where the supply arrives. */
+      if (utility && f.Layer_Key && f.Layer_Key !== utility) continue;
+      const p = (f.Geometry || [])[0];
+      if (p) out.push(p);
+    }
+  }
+
+  const at = plot?.Attributes?.Boundary_At;
+  if (Array.isArray(at) && at.length === 2) out.push([Number(at[0]), Number(at[1])]);
+
+  const seed = (plot?.Geometry || [])[0];
+  if (seed) out.push(seed);
+
+  return out;
+}
+
 /* Whether one plot can be connected for one utility.
 
    `anchor` is where the plot's supply arrives — its meter, or its
@@ -155,8 +196,21 @@ function distanceToLine(point, geometry) {
    than looked up here, because which one a utility uses is the caller's
    business and this should not have a second opinion about it. */
 export function plotSupplyState({
-  anchor, utility, features = [], lineTypes = [],
+  anchor, anchors, utility, features = [], lineTypes = [],
 }) {
+  /* Every place the supply might arrive, tried in turn. The first that
+     finds a service wins; a plot answered from its meter is answered
+     from where the service actually is. */
+  const points = (anchors && anchors.length ? anchors : [anchor]).filter(Boolean);
+  if (points.length > 1) {
+    let last = null;
+    for (const p of points) {
+      const r = plotSupplyState({ anchor: p, utility, features, lineTypes });
+      if (r.state !== "unknown") return r;
+      last = last ?? r;
+    }
+    return last ?? { state: "unknown", why: "This plot has no position." };
+  }
   /* ── The route the mains call-off already uses ──
 
      A plot is fed by a main because its service runs to that main. Not

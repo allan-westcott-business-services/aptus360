@@ -70,7 +70,7 @@ import { callOffCustomer, serviceCallOffCustomer } from "./callOffCustomer.js";
 import {
   allowanceOf, allowanceLoad, allowanceSupplies, allowanceText,
 } from "./futureLoad.js";
-import { plotSupplyState } from "./plotSupply.js";
+import { plotSupplyState, anchorsFor } from "./plotSupply.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
@@ -186,6 +186,50 @@ export default function GISCanvasPage() {
   const [size, setSize] = useState("");
   const [busy, setBusy] = useState("");
   const [showLabels, setShowLabels] = useState(true);
+
+  /* ── Which labels, not just whether ──
+
+     One switch turned off everything at once, so somebody who wanted to
+     stop the pipe sizes crowding a busy road lost the span node levels
+     and the plot numbers with them.
+
+     Three kinds worth deciding separately: what a main carries, what a
+     service carries, and the levels on the span nodes.
+
+     Mains and services start off. On a drawing of any size they are the
+     labels that overwhelm it — a size and a length against every length
+     of pipe, most of which somebody reads once at the start and never
+     again. The levels stay on, because a levels check nobody can read
+     is a check nobody does.
+
+     Remembered, because it is a preference about how somebody works
+     rather than a state of the drawing. */
+  const [labelKinds, setLabelKinds] = useState(
+    () => recall("gisLabelKinds", { mains: false, services: false, levels: true }),
+  );
+  const setLabelKind = useCallback((key, on) => {
+    setLabelKinds((k) => {
+      const next = { ...k, [key]: on };
+      remember("gisLabelKinds", next);
+      return next;
+    });
+  }, []);
+
+  /* Whether a line's own label should be drawn.
+
+     The master switch still wins: turning labels off turns them all
+     off, and these say which come back when it is on. Selection
+     overrides both — clicking something should always tell you what it
+     is. */
+  const lineLabelShown = useCallback((f) => {
+    const key = String(f?.Attributes?.Line_Type ?? "");
+    if (/service/i.test(key)) return !!labelKinds.services;
+    if (/_main$/.test(key) || /main/i.test(key)) return !!labelKinds.mains;
+    /* Anything that is neither follows the master switch alone: a
+       trench, a duct, a boundary. Their labels were never the problem
+       and quietly hiding them would be a change nobody asked for. */
+    return true;
+  }, [labelKinds]);
   const [basemap, setBasemap] = useState(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [bgImage, setBgImage] = useState(null);
@@ -619,8 +663,14 @@ export default function GISCanvasPage() {
 
     for (const f of features) {
       if (f.Feature_Role !== "plot") continue;
-      const anchor = (f.Geometry || [])[0];
-      if (!anchor) continue;
+      /* Where the supply arrives, not where the seed sits.
+
+         A seed is inside the plot; the service runs to the meter on the
+         boundary, often ten metres away. Measuring from the seed found
+         no service and every plot came back unanswerable — which is
+         what put a question mark on all of them. */
+      const anchors = anchorsFor(f, features, null);
+      if (!anchors.length) continue;
 
       /* Every utility being connected has to be live, not just one: a
          gas-and-water visit that finds the water main dead is half a
@@ -646,7 +696,10 @@ export default function GISCanvasPage() {
       }
 
       const states = wanted.map((utility) =>
-        plotSupplyState({ anchor, utility, features, lineTypes }));
+        plotSupplyState({
+          anchors: anchorsFor(f, features, utility).concat(anchors),
+          utility, features, lineTypes,
+        }));
       const dead = states.find((r) => r.state === "dead");
       out.set(Number(f.Feature_ID), dead
         ? { state: "dead", why: dead.why }

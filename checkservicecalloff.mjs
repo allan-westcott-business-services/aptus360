@@ -18,7 +18,7 @@ import {
   serviceGroupsFor, isWholeGroup, chooseUtilityFirst, bookedFor,
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
-import { plotSupplyState } from "./src/features/gis/plotSupply.js";
+import { plotSupplyState, anchorsFor } from "./src/features/gis/plotSupply.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -805,6 +805,95 @@ const PLOTS = [
   }
   if (ask([feeder("live")]).state !== "live") {
     fail("a plot off a live feeder is refused before its service exists");
+  }
+
+  /* ── From where the supply arrives, not from the seed ──
+
+     A seed sits inside the plot; the service runs to the meter on the
+     boundary, often ten metres away. Measuring from the seed found no
+     service at all, so every plot came back unanswerable and drew a
+     question mark — the fault that survived three attempts at this,
+     because each one fixed how the search worked and not where it
+     started.
+
+     mainsCallOff walks from meters for exactly this reason. */
+  {
+    const far = {
+      Feature_ID: 1, Feature_Type: "line", Layer_Key: "electric",
+      Geometry: [[0, 0], [200, 0]],
+      Attributes: { Line_Type: "elec_main", Build_Status: "planned" },
+    };
+    const trench = {
+      Feature_ID: 2, Feature_Type: "line", Layer_Key: "trench",
+      Geometry: [[50, 0], [50, 70]], Attributes: { Line_Type: "trench_service" },
+    };
+    const meter = {
+      Feature_ID: 3, Feature_Role: "meter", Layer_Key: "electric",
+      Plot_ID: 7, Geometry: [[50, 70]],
+    };
+    const seed = {
+      Feature_ID: 4, Feature_Role: "plot", Plot_ID: 7, Geometry: [[50, 78]],
+      Attributes: { Boundary_At: [50, 70] },
+    };
+    const world = [far, trench, meter, seed];
+
+    /* Deliberately beyond the nearest-main reach, so only the service
+       route can answer and the fallback cannot mask the difference. */
+    const fromSeed = plotSupplyState({
+      anchor: seed.Geometry[0], utility: "electric",
+      features: world, lineTypes: LT,
+    });
+    if (fromSeed.state !== "unknown") {
+      fail("the fixture no longer isolates the anchor question");
+    }
+
+    const anchors = anchorsFor(seed, world, "electric");
+    if (!anchors.length) fail("a plot has nowhere its supply arrives");
+    /* The meter first, then the boundary, then the seed. */
+    if (anchors[0][1] !== 70) fail("the meter is not tried first");
+    if (anchors[anchors.length - 1][1] !== 78) fail("the seed is not the last resort");
+
+    /* Each source proved on its own, with the others taken away —
+       otherwise the boundary point stands in for the meter, the seed
+       stands in for the boundary, and removing any one of them changes
+       nothing that can be seen. That is why three breaks of this passed
+       against a fixture that had all three. */
+    const meterOnly = anchorsFor(
+      { ...seed, Attributes: {}, Geometry: [[999, 999]] }, world, "electric",
+    );
+    if (!meterOnly.some((a) => a[1] === 70)) {
+      fail("a plot's meter is not used to find where its supply arrives");
+    }
+    const boundaryOnly = anchorsFor(seed, [seed], "electric");
+    if (!boundaryOnly.some((a) => a[1] === 70)) {
+      fail("a plot's boundary point is not used when it has no meter");
+    }
+    if (!boundaryOnly.some((a) => a[1] === 78)) {
+      fail("a plot with neither is not even tried at its seed");
+    }
+
+    /* And every anchor is tried, not just the first. The meter here
+       finds nothing; the answer has to come from one of the others. */
+    const noMeterWorld = world.filter((f) => f.Feature_Role !== "meter");
+    const tried = plotSupplyState({
+      anchors: [[999, 999], [50, 70]], utility: "electric",
+      features: noMeterWorld, lineTypes: LT,
+    });
+    if (tried.state !== "dead") {
+      fail("only the first anchor is tried, so a plot answered by the second is missed");
+    }
+
+    const fromMeter = plotSupplyState({
+      anchors, utility: "electric", features: world, lineTypes: LT,
+    });
+    if (fromMeter.state !== "dead") {
+      fail(`anchored on the meter, the plot reads as ${fromMeter.state}`);
+    }
+
+    const canvasSrc = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (!/anchors: anchorsFor\(f, features, utility\)/.test(canvasSrc)) {
+      fail("the drawing still judges plots from the seed");
+    }
   }
 
   /* ── Followed by the service, not by proximity ──

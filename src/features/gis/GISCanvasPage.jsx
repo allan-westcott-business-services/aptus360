@@ -12769,6 +12769,24 @@ export default function GISCanvasPage() {
           continue;
         }
 
+        /* Trenches only means trenches only.
+
+           This pass repairs a seed whose trench exists but whose cable
+           is missing, and it ran whatever was asked for — so Auto Lay
+           Service Trench drew no new cable and quietly put cable back
+           into every trench that had lost it. On a site being re-run
+           that is most of them, which is why it looked like the dig was
+           laying pipe.
+
+           The tee repairs above stay. They mend the mains geometry
+           where a service meets it, which is trench work and wanted on
+           a trenches-only run — the comment at the top of this block
+           says as much, and making it conditional was what once left a
+           re-run reporting nothing to do. What stops here is the
+           writing of cable, which the status message has always
+           promised comes from the utility menus. */
+        if (trenchesOnly) continue;
+
         /* From the main to the meter, the same route the planner
            builds.
 

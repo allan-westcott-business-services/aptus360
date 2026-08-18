@@ -24,7 +24,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots,
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
-  bookedParts, partIsFree,
+  bookedParts, partIsFree, plotDayOwner,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
@@ -2128,6 +2128,19 @@ function Assignments({ row }) {
       .sort((a, b) => Number(a) - Number(b))
     : (draft.plots || []);
 
+  /* Which day of this booking already holds each plot.
+
+     Derived once for the whole grid rather than per pill: every day
+     redraws every plot, so a six-plot booking over three days asks the
+     question eighteen times and the answer is the same each time.
+
+     Empty unless the days carry their own plots — the pills are not on
+     screen otherwise, and building it from a stale `dayPlots` would
+     mean a tick somebody unticked still greying things out. */
+  const dayPlotOwner = splitByDay
+    ? plotDayOwner(draft.dayPlots || {})
+    : new Map();
+
   /* A mains call-off divides spans, not plots, so the plot rule does not
      apply to it — requiring at least one plot would make every mains
      assignment impossible to save. */
@@ -2142,6 +2155,12 @@ function Assignments({ row }) {
          booking holds. */
       utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
       utilities: draft.byUtility ? (draft.utility_ids || []) : [],
+      /* The per-day plots, and only where the days actually carry their
+         own. `bookingPlots` above folds them into a set, so by the time
+         the draft reaches the rule a plot ticked on two days looks
+         exactly like a plot ticked on one — the duplicate has to be
+         handed over separately or it cannot be seen at all. */
+      dayPlots: splitByDay ? (draft.dayPlots || {}) : null,
       /* So a Sunday nobody is on site for is not tested for clashes. */
       exceptId: editing,
       /* So a clash is checked half-day by half-day: a gang doing one
@@ -3065,9 +3084,40 @@ function Assignments({ row }) {
                             <div className="asg-day-plots">
                               {(draft.plots || []).map((pl) => {
                                 const on = (draft.dayPlots?.[d] || []).includes(pl);
+                                /* Already down for another day of this
+                                   same booking.
+
+                                   A plot is dug, laid or jointed once.
+                                   Ticked on the Wednesday as well as
+                                   the Tuesday, it goes out on both
+                                   days' work — so either two gangs
+                                   turn up to it or one does it twice
+                                   and bills twice, and neither is
+                                   discovered until somebody is
+                                   standing on it.
+
+                                   Refused here rather than only on
+                                   save, so the grid says which plots
+                                   are still going while they are being
+                                   picked.
+
+                                   Never the lit one. A booking saved
+                                   before this rule can hold a plot on
+                                   two days, and disabling both pills
+                                   would leave a planner looking at the
+                                   fault with no way to undo it. The
+                                   day that has it keeps its pill, and
+                                   unticking there frees the plot
+                                   everywhere else. */
+                                const heldBy = !on ? dayPlotOwner.get(pl) : null;
                                 return (
                                   <button key={pl} type="button"
-                                    className={`asg-pill sm${on ? " on" : ""}`}
+                                    className={`asg-pill sm${on ? " on" : ""}`
+                                      + (heldBy ? " held" : "")}
+                                    disabled={!!heldBy}
+                                    title={heldBy
+                                      ? `Already on ${fmt(heldBy)} \u2014 a plot is done once`
+                                      : ""}
                                     onClick={() => setDraft((dd) => {
                                       const cur = dd.dayPlots?.[d] || [];
                                       return {
@@ -3466,6 +3516,13 @@ const CSS = FILTER_CSS + `
    plots all remain visible and the reason is in the tooltip. */
 .asg-pill.off { border-color: #fecaca; background: #fef2f2; color: #b91c1c;
   cursor: not-allowed; opacity: .65; }
+/* Held by another day of this same booking. Grey rather than the red
+   above: that one is a clash with somebody else's work and wants
+   noticing, this is the booking's own arrangement seen from the wrong
+   day. Red on every plot the Tuesday has would make a correctly filled
+   grid look like a screen full of errors. */
+.asg-pill.held { color: var(--muted); background: var(--bg); cursor: not-allowed;
+  opacity: .55; }
 .asg-edit { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10.5px inherit; padding: 2px 9px; color: var(--accent); }
 .asg-off-tag { font: 700 10px inherit; padding: 2px 7px; border-radius: 4px;

@@ -175,6 +175,51 @@ export function MenuLayer({
   );
 }
 
+/* The Labels switch, and the three under it.
+
+   Offered on five menus — Layers and each utility — because whether a
+   drawing is readable is asked while working on one utility, not while
+   visiting the menu that happens to own the switch. One component so
+   the five stay the same: they were five copies of the same four lines,
+   and a fourth kind added to four of them is a menu that disagrees with
+   itself depending on how you reached it.
+
+   The kinds are indented under the master and drawn as plain checks
+   rather than layer rows. H and S would be wrong here: there is nothing
+   to isolate — showing "only mains labels" is not a view of a drawing —
+   and the master row above already carries the H that hides the lot. */
+export function MenuLabels({ kinds, showLabels, onShowLabels, value, onKind }) {
+  return (
+    <>
+      <MenuLayer label="Labels" colour="#64748b"
+        hidden={!showLabels}
+        onHide={() => onShowLabels(!showLabels)}
+        onShow={() => onShowLabels(true)} />
+
+      {kinds.map((k) => {
+        const on = value?.[k.key] !== false;
+        return (
+          /* Greyed with the master off, not hidden.
+
+             A row that vanishes when labels are turned off takes the
+             explanation with it — somebody who turned the mains labels
+             on last week and sees nothing needs to find out that the
+             master is off, and an empty space does not say so. Disabled
+             and still ticked says both facts at once. */
+          <label key={k.key}
+            className={showLabels ? "gm-sub" : "gm-sub off"}
+            data-keep-open
+            title={showLabels ? "" : "Labels are hidden — turn them on above"}>
+            <input type="checkbox" checked={on} disabled={!showLabels}
+              onChange={(e) => onKind(k.key, e.target.checked)} />
+            <span>{k.label}</span>
+          </label>
+        );
+      })}
+    </>
+  );
+}
+
 const CSS = `
 .gm-bar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
 .gm-wrap { position: relative; }
@@ -238,6 +283,20 @@ const CSS = `
 .gm-row .gm-lbl { flex: 1; }
 .gm-row.off .gm-lbl { color: var(--muted); text-decoration: line-through; }
 .gm-row.off .gm-dot { opacity: .3; }
+
+/* A kind of label, under the Labels row.
+
+   Indented to the depth of that row's own dot, so the three read as
+   belonging to the switch above rather than as three more layers. A
+   checkbox rather than the H/S pair: there is nothing to isolate, and
+   the master row already carries the H that hides the lot. */
+.gm-sub { display: flex; align-items: center; gap: 8px; padding: 3px 6px 3px 26px;
+  border-radius: 6px; font-size: 12.5px; cursor: pointer; }
+.gm-sub:hover { background: var(--bg); }
+.gm-sub input { margin: 0; cursor: pointer; }
+.gm-sub.off { cursor: default; }
+.gm-sub.off span { color: var(--muted); }
+.gm-sub.off input { cursor: default; }
 .gm-dot { width: 9px; height: 9px; border-radius: 2px; display: inline-block; }
 /* Small, square and equal, so H and S read as a pair rather than as two
    unrelated controls. */

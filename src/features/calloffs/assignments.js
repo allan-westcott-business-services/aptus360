@@ -406,6 +406,55 @@ export function takenPlots(assignments = [], taskTypeId, exceptId = null,
   return out;
 }
 
+/* ── A plot belongs to one day of a booking ──
+
+   Split a booking by day and each day gets its own plots: the gang does
+   four on the Tuesday and the rest on the Wednesday. Which means a plot
+   on two of those days is the booking saying the same work happens
+   twice — and it is the day rows that go out to the field, so a plot
+   ticked on both is a plot two gangs turn up to, or one gang does twice
+   and bills twice.
+
+   Nothing stopped it. The pills were drawn from the booking's own plot
+   list with no notion that a neighbouring day had already claimed one,
+   and `bookingPlots` folds the days into a set before validation sees
+   them — so the duplicate was gone by the time anything could object.
+
+   Returns which day holds each plot. The panel asks it to grey a pill,
+   and validate asks it again on save, for the reason the utility split
+   gives: a disabled pill is a hint, and a booking loaded from before
+   this rule existed has to be able to say what is wrong with it.
+
+   First day wins, by date rather than by whatever order the object
+   happens to iterate in. Two days claiming a plot is the thing being
+   reported, so which one is called the owner only decides which pill
+   stays lit — and the earlier day is the one already being worked
+   towards. */
+export function plotDayOwner(dayPlots = {}) {
+  const out = new Map();
+  for (const date of Object.keys(dayPlots || {}).sort()) {
+    for (const p of dayPlots[date] || []) {
+      if (!out.has(p)) out.set(p, date);
+    }
+  }
+  return out;
+}
+
+/* The plots claimed by more than one day, and which days claimed them. */
+export function plotDayClashes(dayPlots = {}) {
+  const days = new Map();
+  for (const date of Object.keys(dayPlots || {}).sort()) {
+    for (const p of dayPlots[date] || []) {
+      if (!days.has(p)) days.set(p, []);
+      if (!days.get(p).includes(date)) days.get(p).push(date);
+    }
+  }
+  return [...days.entries()]
+    .filter(([, ds]) => ds.length > 1)
+    .map(([plot, ds]) => ({ plot, days: ds }))
+    .sort((a, b) => Number(a.plot) - Number(b.plot));
+}
+
 /* Everything wrong with a proposed assignment, as a list. */
 export function validate(draft, opts = {}) {
   const {
@@ -464,6 +513,29 @@ export function validate(draft, opts = {}) {
   }
 
   if (!plots.length) out.push("Choose at least one plot.");
+
+  /* One plot, one day.
+
+     Only where the booking is actually split by day — the caller passes
+     the day plots when it is, and null when it is not. A booking that
+     covers the same plots every day has no per-day list to contradict,
+     and reading a stale one left over from a tick somebody unticked
+     would refuse a booking on the strength of a split it no longer has.
+
+     Named by date rather than counted, because the fix is to untick one
+     of them and a message saying "a plot is on two days" leaves the
+     planner hunting a grid for which. */
+  const dayPlots = opts.dayPlots ?? null;
+  if (dayPlots) {
+    const clashes = plotDayClashes(dayPlots);
+    if (clashes.length) {
+      out.push(`Plot${clashes.length === 1 ? "" : "s"} `
+        + `${clashes.map((c) => `${c.plot} (${c.days.map(fmtDate).join(" and ")})`)
+          .join(", ")} `
+        + `${clashes.length === 1 ? "is" : "are"} on more than one day `
+        + "\u2014 a plot is done once.");
+    }
+  }
 
   /* Booked, day part by day part.
 

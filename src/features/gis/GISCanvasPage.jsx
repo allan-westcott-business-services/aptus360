@@ -37,7 +37,12 @@ import {
 import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
-import { MenuBar, Menu, MenuGroup, MenuItem, MenuLayer } from "./GisMenus.jsx";
+import {
+  MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels,
+} from "./GisMenus.jsx";
+import {
+  LABEL_KINDS, DEFAULT_LABEL_KINDS, lineLabelShown,
+} from "./labelKinds.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
@@ -210,7 +215,7 @@ export default function GISCanvasPage() {
      Remembered, because it is a preference about how somebody works
      rather than a state of the drawing. */
   const [labelKinds, setLabelKinds] = useState(
-    () => recall("gisLabelKinds", { mains: false, services: false, levels: true }),
+    () => ({ ...DEFAULT_LABEL_KINDS, ...(recall("gisLabelKinds", null) || {}) }),
   );
   const setLabelKind = useCallback((key, on) => {
     setLabelKinds((k) => {
@@ -222,19 +227,16 @@ export default function GISCanvasPage() {
 
   /* Whether a line's own label should be drawn.
 
-     The master switch still wins: turning labels off turns them all
-     off, and these say which come back when it is on. Selection
-     overrides both — clicking something should always tell you what it
-     is. */
-  const lineLabelShown = useCallback((f) => {
-    const key = String(f?.Attributes?.Line_Type ?? "");
-    if (/service/i.test(key)) return !!labelKinds.services;
-    if (/_main$/.test(key) || /main/i.test(key)) return !!labelKinds.mains;
-    /* Anything that is neither follows the master switch alone: a
-       trench, a duct, a boundary. Their labels were never the problem
-       and quietly hiding them would be a change nobody asked for. */
-    return true;
-  }, [labelKinds]);
+     The rule is in labelKinds.js, where it is checked against the line
+     types a drawing actually carries. It was here, and read the type
+     key alone — which made `trench_main` a main, three lines above a
+     comment promising that a trench followed the master switch. */
+  const labelShown = useCallback(
+    (f, selected = false) => lineLabelShown(f, {
+      lineTypes, showLabels, kinds: labelKinds, selected,
+    }),
+    [lineTypes, showLabels, labelKinds],
+  );
   const [basemap, setBasemap] = useState(null);
   const [setupOpen, setSetupOpen] = useState(false);
   const [bgImage, setBgImage] = useState(null);
@@ -3778,8 +3780,14 @@ export default function GISCanvasPage() {
           ? pts.reduce((t, q, i) => (i ? t + Math.hypot(q.x - pts[i - 1].x, q.y - pts[i - 1].y) : 0), 0)
           : 0;
 
+        /* And the kind of label this is: a main's or a service's tag
+           each answer to their own switch, so a designer can read the
+           network without a hundred service tags over it. `labelShown`
+           holds the master switch and the selection override too, so
+           the test that was here is inside it rather than beside it. */
         if (pts.length > 1 && st.showLabel && view.scale > 1.5
-            && (on || (showLabels && drawnLenPx > 34))) {
+            && labelShown(f, on)
+            && (on || drawnLenPx > 34)) {
           /* Half way along the run, not the middle vertex.
 
              It was pts[Math.floor(pts.length / 2)] — which is the middle
@@ -4789,7 +4797,13 @@ export default function GISCanvasPage() {
          the thing somebody is looking for. */
       /* gasPressureAt is already null while the gas layer is hidden —
          see its own note. Not repeated here: one rule, one place. */
-      if (gasPressureAt && fontPx >= 7 && view.scale > 1.2) {
+      /* The levels switch covers this too. It is the result of Run Gas
+         Levels Check, the same way the plate below is the result of the
+         electric one — two utilities answering the same question, and
+         splitting them across two switches would mean learning which
+         menu called it what. */
+      if (gasPressureAt && labelKinds.levels !== false
+          && fontPx >= 7 && view.scale > 1.2) {
         /* The same figure the ring used, not a second lookup: two ways
            of finding one number is two ways for them to disagree, and a
            node ringed red with no pressure beside it would be exactly
@@ -4874,7 +4888,13 @@ export default function GISCanvasPage() {
       /* elecLevelsAt is already null while the electric layer is hidden,
          which is where gas keeps the matching test. One rule, one place,
          and the two utilities answering the same way. */
-      if (elecLevelsAt && fontPx >= 7 && view.scale > 1.2) {
+      /* And its own switch, beside the mains and service ones. A levels
+         check is run, read, and then in the way — the figures stay on
+         every node until the next edit clears them, and on a dense
+         estate that is a plate over every junction. Off by a switch
+         rather than by re-running the check. */
+      if (elecLevelsAt && labelKinds.levels !== false
+          && fontPx >= 7 && view.scale > 1.2) {
         const vd = elecLevelsAt.get(Number(f.Feature_ID));
         if (vd) {
           const text = `${vd.pct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`;
@@ -4941,7 +4961,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -13824,10 +13844,9 @@ export default function GISCanvasPage() {
                           it was a plain item where its neighbours are
                           layers with an H button — the same question asked
                           two different ways in one menu. */}
-                      <MenuLayer label="Labels" colour="#64748b"
-                        hidden={!showLabels}
-                        onHide={() => setShowLabels(false)}
-                        onShow={() => setShowLabels(true)} />
+                      <MenuLabels kinds={LABEL_KINDS}
+                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        value={labelKinds} onKind={setLabelKind} />
 
                       <div className="gm-sep" />
                       <MenuGroup label="Locked against moving" />
@@ -13987,10 +14006,9 @@ export default function GISCanvasPage() {
                           the answer used to be in the Layers menu — a
                           different menu from the one they are in. The same
                           switch, offered where it is wanted. */}
-                      <MenuLayer label="Labels" colour="#64748b"
-                        hidden={!showLabels}
-                        onHide={() => setShowLabels(false)}
-                        onShow={() => setShowLabels(true)} />
+                      <MenuLabels kinds={LABEL_KINDS}
+                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        value={labelKinds} onKind={setLabelKind} />
                       <MenuLayer label="Span nodes" colour="#1e3a5f"
                         count={classCount["role:spannode"] || 0}
                         hidden={hidden.includes("role:spannode")}
@@ -14206,10 +14224,9 @@ export default function GISCanvasPage() {
                           the answer used to be in the Layers menu — a
                           different menu from the one they are in. The same
                           switch, offered where it is wanted. */}
-                      <MenuLayer label="Labels" colour="#64748b"
-                        hidden={!showLabels}
-                        onHide={() => setShowLabels(false)}
-                        onShow={() => setShowLabels(true)} />
+                      <MenuLabels kinds={LABEL_KINDS}
+                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        value={labelKinds} onKind={setLabelKind} />
                       {/* POC and substation first: they are the two fixed
                           points a designer orients by, and everything else
                           is described relative to them. */}
@@ -14449,10 +14466,9 @@ export default function GISCanvasPage() {
                               Layers menu \u2014 a different menu from the one
                               they are in. The same switch, offered where
                               it is wanted. */}
-                          <MenuLayer label="Labels" colour="#64748b"
-                            hidden={!showLabels}
-                            onHide={() => setShowLabels(false)}
-                            onShow={() => setShowLabels(true)} />
+                          <MenuLabels kinds={LABEL_KINDS}
+                            showLabels={showLabels} onShowLabels={setShowLabels}
+                            value={labelKinds} onKind={setLabelKind} />
                           {/* As on the Electric menu: the whole utility as
                               a named action, not only the S on the layer
                               row below. */}
@@ -14549,10 +14565,9 @@ export default function GISCanvasPage() {
                           the answer used to be in the Layers menu — a
                           different menu from the one they are in. The same
                           switch, offered where it is wanted. */}
-                      <MenuLayer label="Labels" colour="#64748b"
-                        hidden={!showLabels}
-                        onHide={() => setShowLabels(false)}
-                        onShow={() => setShowLabels(true)} />
+                      <MenuLabels kinds={LABEL_KINDS}
+                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        value={labelKinds} onKind={setLabelKind} />
                       {typesOn("lighting").map((t) => (
                         <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
                           count={classCount[`lt:${t.Type_Key}`] || 0}

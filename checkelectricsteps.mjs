@@ -233,6 +233,71 @@ const pt = (role, attrs = {}, id = 1) => ({
   }
 }
 
+// A site part-way through: started is not the same as not started.
+//
+//    69 seeds for 72 plots is a site being worked through, not a site
+//    with no seeds on it. Auto Service on the 69 is the work somebody
+//    is doing, and refusing it left them seeding three plots that were
+//    not ready or not laying sixty-nine that were.
+{
+  const plots = Array.from({ length: 72 }, (_, i) => (
+    { plot_id: i + 1, config_code: "3BS", heat_source_id: 2 }));
+  const seeds = Array.from({ length: 69 }, (_, i) => pt("plot", {}, 200 + i));
+
+  const r = electricSteps({
+    plots,
+    features: [poly(), ...seeds, line("trench_main")],
+    lineTypes: LT,
+  });
+
+  const svc = r.allows("service");
+  if (!svc.ok) fail(`Auto Service was refused on a part-seeded site: ${svc.why}`);
+  if (!svc.warn) fail("Auto Service ran on a part-seeded site with no warning");
+  if (svc.warn && !/69/.test(svc.warn)) {
+    fail(`the warning did not say how many were ready: ${svc.warn}`);
+  }
+  /* The step itself is still not done, so the panel keeps saying so. */
+  if (r.steps.find((x) => x.key === "seeds")?.done) {
+    fail("69 of 72 seeds counted as finished");
+  }
+}
+
+// Nothing at all still blocks.
+//
+//    No seed anywhere means Auto Service has nothing to lay to. That is
+//    a real answer rather than caution, and the caller should not have
+//    a way through it.
+{
+  const plots = Array.from({ length: 10 }, (_, i) => (
+    { plot_id: i + 1, config_code: "3BS", heat_source_id: 2 }));
+
+  const r = electricSteps({
+    plots, features: [poly(), line("trench_main")], lineTypes: LT,
+  });
+  const svc = r.allows("service");
+  if (svc.ok) fail("Auto Service ran on a site with no seeds at all");
+  if (svc.ok || !/seed/i.test(svc.why || "")) {
+    fail(`the refusal did not name the seeds: ${svc.why}`);
+  }
+}
+
+// Every shortfall at once, not the first one over and over.
+{
+  const plots = Array.from({ length: 4 }, (_, i) => (
+    { plot_id: i + 1, config_code: i < 3 ? "3BS" : null, heat_source_id: i < 3 ? 2 : null }));
+  const r = electricSteps({
+    plots,
+    features: [poly(), pt("plot", {}, 301), line("trench_main")],
+    lineTypes: LT,
+  });
+  const svc = r.allows("service");
+  if (!svc.ok) fail(`a part-done site was refused: ${svc.why}`);
+  const lines = (svc.warn || "").split("\n");
+  if (lines.length < 2) {
+    fail(`only ${lines.length} shortfall reported, wanted the plots and the seeds`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Electric build order behaves (read from the drawing, refused with a reason).");
 process.exit(bad ? 1 : 0);

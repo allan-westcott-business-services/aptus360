@@ -102,6 +102,7 @@ export function electricSteps({
       title: "Set the plots",
       hint: "House type and heat source against every plot",
       done: plots.length > 0 && sized.length === plots.length,
+      enough: sized.length > 0,
       detail: plots.length === 0
         ? "No plots on this project yet"
         : `${sized.length} of ${plots.length} have a house type and heat source`,
@@ -113,6 +114,7 @@ export function electricSteps({
       done: siteBoundaries.length > 0
         /* One developer needs no areas: the whole site is theirs. */
         && (developers.length < 2 || devAreas.length >= developers.length),
+      enough: siteBoundaries.length > 0,
       detail: siteBoundaries.length === 0
         ? "No site boundary drawn"
         : `${devAreas.length} developer area(s) for ${developers.length} developer(s)`,
@@ -123,6 +125,7 @@ export function electricSteps({
       hint: "Puts the meters and the property boundary point on each plot",
       done: plots.length > 0
         && count(features, (f) => f.Feature_Role === "plot") >= plots.length,
+      enough: count(features, (f) => f.Feature_Role === "plot") > 0,
       detail: `${count(features, (f) => f.Feature_Role === "plot")} seed(s) `
         + `for ${plots.length} plot(s)`,
     },
@@ -153,6 +156,7 @@ export function electricSteps({
       hint: "Says which feeder serves which plot",
       done: meters.length > 0
         && meters.every((m) => m.Attributes?.Circuit_ID != null),
+      enough: count(meters, (m) => m.Attributes?.Circuit_ID != null) > 0,
       detail: meters.length === 0
         ? "No electric meters placed"
         : `${count(meters, (m) => m.Attributes?.Circuit_ID != null)} of `
@@ -183,14 +187,43 @@ export function electricSteps({
     steps,
     next,
     doneCount: steps.filter((s) => s.done).length,
-    /* Whether a step may be run now, and why not where it may not. */
+    /* Whether a step may be run now, and why not where it may not.
+
+       ── Not finished is not the same as not started ──
+
+       This refused anything whose predecessors were not complete, which
+       reads as caution and is mostly an obstruction. Seeds on 69 of 72
+       plots is not "the seeds have not been placed": it is a site being
+       worked through, and Auto Service on those 69 is exactly the work
+       somebody is trying to do. Refusing it meant either seeding three
+       plots that are not ready or not laying sixty-nine that are.
+
+       So a step that has started but is not finished warns; only one
+       that has produced nothing at all blocks. No mains trench and
+       there is nothing to tee off, which is a real answer — the caller
+       has no route through that and should not have one.
+
+       Every unfinished step before this one is considered, not merely
+       the first. Told about the seeds, fixing them and being told about
+       the boundary is the same refusal twice. */
     allows: (key) => {
-      const s = steps.find((x) => x.key === key);
-      if (!s) return { ok: true };
-      if (s.open) return { ok: true };
+      const i = steps.findIndex((x) => x.key === key);
+      if (i < 0) return { ok: true };
+
+      const short = steps.slice(0, i).filter((x) => !x.done);
+      if (!short.length) return { ok: true };
+
+      const hard = short.find((x) => !x.enough);
+      if (hard) {
+        return {
+          ok: false,
+          why: `${hard.title} first \u2014 ${hard.detail.toLowerCase()}`,
+        };
+      }
+
       return {
-        ok: false,
-        why: `${s.blockedBy.title} first \u2014 ${s.blockedBy.detail.toLowerCase()}`,
+        ok: true,
+        warn: short.map((x) => `${x.title}: ${x.detail.toLowerCase()}`).join("\n"),
       };
     },
   };

@@ -1120,10 +1120,22 @@ export default function GISCanvasPage() {
 
      Refused rather than hidden or greyed: a menu item that vanishes
      leaves somebody hunting for it, and one greyed with no reason is
-     the same problem more politely. The reason is the useful part. */
+     the same problem more politely. The reason is the useful part.
+
+     A step already under way is a question rather than a refusal. Seeds
+     on 69 of 72 plots does not mean the seeds have not been placed, it
+     means the site is being worked through — and Auto Service on those
+     69 is the work somebody is trying to do. The shortfall is worth
+     saying, because running on a partly seeded site does less than the
+     plot count suggests and the difference should be known before it is
+     discovered. It is not worth preventing. */
   const runStep = useCallback((key, go) => {
     const r = steps.allows(key);
     if (!r.ok) { setError(r.why); return; }
+    if (r.warn && !window.confirm(
+      `${r.warn}\n\nRun anyway? Only what is ready will be dealt with, `
+      + "and the rest can be run again once it is."
+    )) return;
     go();
   }, [steps]);
 

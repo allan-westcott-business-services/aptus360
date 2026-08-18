@@ -206,6 +206,15 @@ export default function GISCanvasPage() {
      with nothing to say which of the six is under way. This one stays
      up for the whole run. */
   const [stage, setStage] = useState(null);
+
+  /* Stop, for a run made of several steps.
+
+     `cancelRef` cannot serve. Each routine clears it on entry — rightly,
+     or a run stopped an hour ago would stop the next one on its first
+     plot — so a Stop pressed during step three is gone by the time step
+     four asks. This one is owned by the outer run and only it clears
+     it. */
+  const abortRunRef = useRef(false);
   const [snapOn, setSnapOn] = useState(true);
   const [snapHit, setSnapHit] = useState(null);
   const [editVertex, setEditVertex] = useState(null);   // { featureId, index }
@@ -12415,6 +12424,105 @@ export default function GISCanvasPage() {
      one did is measured instead: the drawing is counted before and
      after, and the difference is what the report says. A step that
      changed nothing says so rather than claiming success. */
+  /* ── Lay every service, once the dig is in ──
+
+     Auto Lay Service Trench draws the dig and stops there, by design:
+     the cable and pipe come afterwards, from each utility menu. Three
+     menus in three places, and each one has to be found and the order
+     kept in somebody's head.
+
+     This is those three, in one. Nothing clever \u2014 it calls the same
+     routine the menus call, once per utility, and says what each did.
+
+     ── Read fresh between utilities ──
+
+     Every pass gets the drawing as it stands, not as it stood when the
+     button was pressed. autoLayServices works from `features` unless it
+     is handed something, and `features` is a render-old closure that
+     will not have the electric cable in it by the time gas runs. Build
+     Whole Gas Network already passes a fresh list for exactly this
+     reason and says so; the same applies threefold here.
+
+     ── Counted, not trusted ──
+
+     The routine reports by putting a message on screen and returning,
+     which a caller cannot read. So each pass counts the lines on that
+     utility's layer before and after, and the difference is what gets
+     reported. A utility whose trenches already carry pipe says nothing
+     to do, which is the ordinary answer on a re-run. */
+  async function runAllServices(only = null) {
+    if (!projectId) return;
+
+    const wanted = only ?? ["electric", "gas", "water"];
+    const results = [];
+    let at = 0;
+
+    setBusy("layall");
+    abortRunRef.current = false;
+    cancelRef.current = false;
+    try {
+      await withUndo("Lay all services", async () => {
+        for (const u of wanted) {
+          if (abortRunRef.current) {
+            results.push({ label: `${u} services`, ok: false, why: "stopped" });
+            continue;
+          }
+
+          setStage({ done: at, total: wanted.length, label: `Laying the ${u} services` });
+          setBusy("layall");
+
+          let world = [];
+          try { world = (await listGis(projectId)).features || []; }
+          catch (e) {
+            results.push({ label: `${u} services`, ok: false, why: e.message });
+            at += 1;
+            continue;
+          }
+
+          const was = world.filter((f) => f.Feature_Type === "line"
+            && f.Layer_Key === u).length;
+
+          try {
+            await autoLayServices(u, world);
+          } catch (e) {
+            results.push({ label: `${u} services`, ok: false, why: e?.message || "refused" });
+            at += 1;
+            continue;
+          }
+
+          let after = was;
+          try {
+            after = ((await listGis(projectId)).features || [])
+              .filter((f) => f.Feature_Type === "line" && f.Layer_Key === u).length;
+          } catch { /* leave it reading as nothing done */ }
+
+          const made = after - was;
+          results.push({
+            label: `${u} services`,
+            ok: true,
+            changed: made > 0,
+            detail: made > 0 ? `${made} laid` : "",
+          });
+          at += 1;
+        }
+        setStage({ done: wanted.length, total: wanted.length, label: "Reading the drawing back" });
+      });
+    } finally {
+      setBusy("");
+      setProgress(null);
+      setStage(null);
+      cancelRef.current = false;
+      abortRunRef.current = false;
+    }
+
+    await load(projectId);
+    /* Cleared because each pass sets its own as it goes: the last one
+       to say "nothing to lay" would otherwise be left on screen over a
+       run that laid two hundred. */
+    setError("");
+    window.alert(describeOutcome(results));
+  }
+
   async function runWholeDesign() {
     if (!projectId) return;
 
@@ -12486,13 +12594,18 @@ export default function GISCanvasPage() {
          Checked here so the rest of the run is abandoned too, and the
          flag is cleared so the step that was stopped does not stop the
          one after it in a later run. */
-      if (cancelRef.current) {
+      if (abortRunRef.current) {
         stopped = true;
         results.push({ label, ok: false, why: "stopped" });
         return;
       }
 
       setStage({ done: at, total, label: doing });
+      /* Put back after every step. Each of these clears `busy` in its
+         own finally, which unlocked the menus half way through a run
+         and turned the label back from "Building\u2026" while it was still
+         building. */
+      setBusy("wholedesign");
 
       let before = [];
       try { before = (await listGis(projectId)).features || []; } catch { /* counted as 0 */ }
@@ -12519,6 +12632,8 @@ export default function GISCanvasPage() {
     };
 
     setBusy("wholedesign");
+    abortRunRef.current = false;
+    cancelRef.current = false;
     try {
       await withUndo("Build the whole design", async () => {
         await step("Service trenches", "Laying the service trenches", "trench",
@@ -12561,6 +12676,7 @@ export default function GISCanvasPage() {
       setProgress(null);
       setStage(null);
       cancelRef.current = false;
+      abortRunRef.current = false;
     }
 
     await load(projectId);
@@ -14982,6 +15098,17 @@ export default function GISCanvasPage() {
                       hint="Service trenches, meters, span nodes, mains, services and joints \u2014 for every utility that is contracted"
                       disabled={!!busy || !projectId}
                       onClick={() => runWholeDesign()} />
+
+                    {/* The second half of Auto Service, for all three at
+                        once. The dig goes in on its own and the cable
+                        and pipe follow, which until now meant three
+                        menus in three places and the order kept in
+                        somebody's head. */}
+                    <MenuItem label={busy === "layall"
+                      ? "Laying\u2026" : "Lay All Services"}
+                      hint="Electric, gas and water service cable and pipe into the trenches already dug"
+                      disabled={!!busy || !projectId}
+                      onClick={() => runAllServices()} />
 
                     <div className="gm-sep" />
 
@@ -17710,7 +17837,10 @@ export default function GISCanvasPage() {
                 </div>
                 </>)}
                 <div className="gp-foot">
-                  <button className="gp-stop" onClick={() => { cancelRef.current = true; }}>
+                  <button className="gp-stop" onClick={() => {
+                    cancelRef.current = true;
+                    abortRunRef.current = true;
+                  }}>
                     Stop
                   </button>
                 </div>

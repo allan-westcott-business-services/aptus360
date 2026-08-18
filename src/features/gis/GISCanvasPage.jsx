@@ -74,7 +74,8 @@ import { plotSupplyState } from "./plotSupply.js";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
-  firstElectricCallOff, electricUtilityId,
+  firstElectricCallOff, electricUtilityId, utilitiesToTest,
+  serviceGroupsFor, isWholeGroup, chooseUtilityFirst,
 } from "./serviceCallOff.js";
 import { serviceSizeFor, pipeRowFor } from "./serviceDefaults.js";
 import {
@@ -4983,18 +4984,36 @@ export default function GISCanvasPage() {
              Only on the way in. Tapping a plot that is already on the
              list takes it off, and refusing that would strand somebody
              who had picked it before the main's status was corrected. */
+          /* ── What is being connected, before which plots ──
+
+             A plot cannot be checked against a dead main until the
+             panel knows which main to look at, and the answer decides
+             what the whole call-off is. Asked first rather than
+             discovered at the end.
+
+             Removing a plot is still allowed with nothing chosen: that
+             is undoing, and refusing it would strand somebody. */
           const already = servicePlots.includes(plot);
-          if (!already && serviceUtils.length) {
-            /* The layer a utility's lines sit on, from its name — the
-               same normalising spanContents uses to match the two, so
-               there is not a second mapping to keep in step. The Utility
-               table has no layer key of its own. */
-            const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
-            const dead = serviceUtils
+          if (!already && !isWholeGroup(
+            serviceUtils
               .map((id) => (lookups?.utilities || [])
                 .find((u) => Number(u.Utility_ID) === Number(id))?.Utility)
-              .filter(Boolean)
-              .map(norm)
+              .filter(Boolean),
+            serviceGroupsFor(utilities),
+          )) {
+            setError(chooseUtilityFirst(serviceGroupsFor(utilities)));
+            return;
+          }
+
+          if (!already) {
+            /* Against the utilities ticked, or against all of them
+               where none have been.
+
+               This used to run only once a utility was chosen, and the
+               panel invites tapping plots first — so for anybody
+               working in that order it never ran at all, and plots off
+               a dead feeder went straight onto the list. */
+            const dead = utilitiesToTest(serviceUtils, lookups?.utilities || [])
               .map((utility) => plotSupplyState({
                 anchor: (hit.Geometry || [])[0],
                 utility, features, lineTypes,
@@ -15088,11 +15107,37 @@ export default function GISCanvasPage() {
             {/* ── Raising a service call-off ── */}
             {serviceOpen && (() => {
               const utilRows = (lookups?.utilities || []);
+              const serviceGroups = serviceGroupsFor(utilities);
+              /* The fewest plots this project's contract expects on one
+                 visit. Null where none has been agreed. */
+              const minPlots = Number(project?.Minimum_Service_Call_Off) || 0;
               const names = serviceUtils
                 .map((id) => utilRows.find((u) =>
                   Number(u.Utility_ID) === Number(id))?.Utility)
                 .filter(Boolean);
               const twice = alreadyCalledOff(servicePlots, serviceUtils, priorServices);
+
+              /* ── Plots already picked that turn out to be dead ──
+
+                 Tapping one is refused, but ticking a utility afterwards
+                 changes the answer for plots already on the list — and
+                 nothing re-asked, so a call-off could still be raised
+                 against a dead feeder by doing it in that order.
+
+                 Flagged rather than removed, for the same reason a
+                 plot called off twice is: taking somebody's selection
+                 away is worse than telling them what is wrong with
+                 it. */
+              const deadNow = servicePlots.filter((p) => {
+                const seed = features.find((f) => f.Feature_Role === "plot"
+                  && plotOfSeed(f, plotList) === p);
+                const anchor = (seed?.Geometry || [])[0];
+                if (!anchor) return false;
+                return utilitiesToTest(serviceUtils, lookups?.utilities || [])
+                  .some((utility) => plotSupplyState({
+                    anchor, utility, features, lineTypes,
+                  }).state === "dead");
+              });
               const typed = plotsFromText(serviceText, plotList);
 
               return (
@@ -15116,16 +15161,34 @@ export default function GISCanvasPage() {
                       pill here would offer somebody a call-off that
                       could not be worked, and the mistake would only
                       surface on site. */}
+                  {/* ── One pill per way the work goes out ──
+
+                      Not one per utility. Gas and water are laid in one
+                      trench and connected on one visit; the electric
+                      follows separately once the network is energised.
+                      Ticking gas without water asked for a visit that
+                      left the water gang a second trip to the same
+                      hole — so the pair is one choice rather than two
+                      that happen to be usually made together.
+
+                      Narrowed to what the site has: a gas-only project
+                      offers "Gas", which is a whole call-off rather
+                      than half of one. */}
                   <div className="gco-svc-utils">
-                    {utilRows.filter(servicedByPlot).map((u) => {
-                      const on = serviceUtils.includes(Number(u.Utility_ID));
+                    {serviceGroups.map((g) => {
+                      const ids = g.members
+                        .map((m) => utilRows.find((u) =>
+                          String(u.Utility ?? "").toLowerCase()
+                            .replace(/[^a-z]/g, "") === m))
+                        .filter(Boolean)
+                        .map((u) => Number(u.Utility_ID));
+                      const on = ids.length
+                        && ids.every((id) => serviceUtils.includes(id));
                       return (
-                        <button key={u.Utility_ID}
+                        <button key={g.key}
                           className={`gco-svc-u${on ? " on" : ""}`}
-                          onClick={() => setServiceUtils((us) => (on
-                            ? us.filter((x) => Number(x) !== Number(u.Utility_ID))
-                            : [...us, Number(u.Utility_ID)]))}>
-                          {u.Utility}
+                          onClick={() => setServiceUtils(on ? [] : ids)}>
+                          {g.label}
                         </button>
                       );
                     })}
@@ -15189,10 +15252,13 @@ export default function GISCanvasPage() {
                     <div className="gco-svc-plots">
                       {servicePlots.map((p) => (
                         <button key={p}
-                          className={`gco-svc-p${twice.includes(p) ? " twice" : ""}`}
-                          title={twice.includes(p)
-                            ? "Already called off for one of these utilities"
-                            : "Remove"}
+                          className={`gco-svc-p${deadNow.includes(p) ? " dead"
+                            : twice.includes(p) ? " twice" : ""}`}
+                          title={deadNow.includes(p)
+                            ? "The Feeder Main is not yet live"
+                            : twice.includes(p)
+                              ? "Already called off for one of these utilities"
+                              : "Remove"}
                           onClick={() => setServicePlots((ps) => togglePlot(ps, p))}>
                           {p}
                         </button>
@@ -15206,6 +15272,53 @@ export default function GISCanvasPage() {
                       service aborted and rescheduled — and dropping them
                       would answer a question nobody asked. What is not
                       right is nobody noticing. */}
+                  {!!deadNow.length && (
+                    <p className="gco-warn gco-dead">
+                      {`${deadNow.join(", ")} — The Feeder Main is not yet live. `}
+                      Take them off, or set the main live before raising this.
+                    </p>
+                  )}
+
+                  {/* ── Fewer plots than the contract expects ──
+
+                      A visit for three plots costs very nearly what a
+                      visit for twelve costs — the travel, the setting
+                      up, the traffic management — so a contract sets
+                      the fewest that make one worth making, and going
+                      under it is a decision somebody takes knowingly.
+
+                      Said as a choice rather than a refusal: there are
+                      good reasons to go short, and the office is the
+                      one that knows whether this is one of them.
+
+                      Null means no minimum has been agreed for this
+                      project, which is not zero — nothing is said at
+                      all. */}
+                  {!!minPlots && servicePlots.length > 0
+                    && servicePlots.length < minPlots && (
+                    <div className="gco-warn gco-min">
+                      <p>
+                        {`${servicePlots.length} plot(s) — this project's `}
+                        {`minimum is ${minPlots}. `}
+                        {`Add ${minPlots - servicePlots.length} more, or `}
+                        raise it short and accept the penalty.
+                      </p>
+                      <button className="btn ghost sm"
+                        /* Does nothing yet. What a penalty is, and what
+                           accepting one has to record, is not settled —
+                           and a button that quietly set a flag nobody
+                           had agreed the meaning of would be worse than
+                           one that visibly does not work. */
+                        onClick={() => setError(
+                          "Accepting a penalty is not built yet \u2014 "
+                          + "add more plots, or raise this from the "
+                          + "call-off form instead.",
+                        )}>
+                        Accept penalty
+                      </button>
+                    </div>
+                  )}
+
                   {!!twice.length && (
                     <p className="gco-warn">
                       {`${twice.join(", ")} already called off for `}
@@ -15231,7 +15344,11 @@ export default function GISCanvasPage() {
                         setServiceText(""); setServiceNote("");
                       }}>Cancel</button>
                     <button className="btn accent sm"
-                      disabled={!!busy || !servicePlots.length || !serviceUtils.length}
+                      /* Not while a picked plot is off a dead main. A
+                         warning somebody can raise past is a warning
+                         that gets raised past. */
+                      disabled={!!busy || !servicePlots.length
+                        || !serviceUtils.length || !!deadNow.length}
                       onClick={submitServiceCallOff}>
                       {busy === "service" ? "Raising\u2026" : "Raise call-off"}
                     </button>
@@ -16881,6 +16998,14 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    it twice is sometimes right and this is a question rather than a
    fault. */
 .gco-svc-p.twice { background: #fef3e2; border-color: #f2d675; color: #7c4a03; }
+/* Fed from a main that is not live. Red rather than amber: doing a
+   plot twice is a question, and this one cannot be worked at all. */
+.gco-svc-p.dead { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+.gco-warn.gco-dead { background: #fee2e2; border-color: #fca5a5; color: #b91c1c; }
+/* Short of the contract's minimum. Amber, not red: it is a decision to
+   take rather than a fault to fix, and the office may well take it. */
+.gco-min { display: flex; align-items: center; gap: 10px; }
+.gco-min p { margin: 0; flex: 1; }
 .gco-svc-note { width: 100%; font: 500 12.5px inherit; padding: 7px 9px;
   border: 1px solid var(--border); border-radius: 7px; resize: vertical;
   margin-top: 8px; }

@@ -203,3 +203,94 @@ export function electricUtilityId(utilities = []) {
   const row = utilities.find((u) => norm(u.Utility) === "electric");
   return row ? Number(row.Utility_ID) : null;
 }
+
+/* The utilities to test a plot against.
+
+   Those ticked, where any have been. Where none have, every utility a
+   plot can be connected to — because a panel that checks nothing until
+   a box is ticked checks nothing at all for anybody who taps plots
+   first, which is the order the panel invites.
+
+   That was the fault: the rule was written to answer "can this plot be
+   connected for what you have asked for", and until something is asked
+   for the honest question is "can it be connected for anything". A plot
+   fed from a dead main on every utility cannot. */
+export function utilitiesToTest(serviceUtils = [], utilities = []) {
+  const rows = utilities.filter(servicedByPlot);
+  const chosen = serviceUtils.length
+    ? rows.filter((u) => serviceUtils.map(Number).includes(Number(u.Utility_ID)))
+    : rows;
+  const norm = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+  return chosen.map((u) => norm(u.Utility)).filter(Boolean);
+}
+
+/* ── Which utilities a service call-off may cover ──
+
+   Electric on its own, or gas and water together.
+
+   Not a rule invented here: it is how the work goes out. Gas and water
+   are laid in one trench and connected on one visit, and the electric
+   follows separately once the network is energised. A call-off for gas
+   alone leaves the water gang a second visit to the same hole, and one
+   for gas and electric together asks a gang to do two jobs that do not
+   happen at the same time.
+
+   ── Where a project has only some of them ──
+
+   The combination is narrowed to what the site has. A gas-and-water
+   project offers those two; a gas-only project offers gas alone, and
+   that is a whole call-off rather than half of one. Offering water on a
+   site with no water is offering a call-off nobody can raise.
+
+   Kept here rather than in the panel because the panel is where it
+   would be written twice — once to decide which pills to show and once
+   to decide whether the selection is allowed. */
+const SERVICE_GROUPS = [
+  { key: "electric", members: ["electric"], label: "Electric" },
+  { key: "gaswater", members: ["gas", "water"], label: "Gas & Water" },
+];
+
+const normKey = (v) => String(v ?? "").toLowerCase().replace(/[^a-z]/g, "");
+
+/* The groups this project can raise, each narrowed to the utilities it
+   actually has. A group with nothing left is not offered. */
+export function serviceGroupsFor(projectUtilities = []) {
+  const have = new Set(projectUtilities
+    .map((u) => normKey(u.layer_key ?? u.Utility))
+    .filter(Boolean));
+
+  return SERVICE_GROUPS
+    .map((g) => {
+      const members = g.members.filter((m) => have.has(m));
+      return {
+        ...g,
+        members,
+        /* Named for what is actually there: a gas-only site should read
+           "Gas", not "Gas & Water" with the water greyed out. */
+        label: members.length === g.members.length
+          ? g.label
+          : members.map((m) => m[0].toUpperCase() + m.slice(1)).join(" & "),
+      };
+    })
+    .filter((g) => g.members.length);
+}
+
+/* Whether a set of chosen utilities is one whole group.
+
+   Not "at least one": half of a group is the case this exists to stop.
+   Somebody who ticks gas on a site with water has asked for a visit
+   that leaves the water gang a second trip to the same trench. */
+export function isWholeGroup(chosen = [], groups = []) {
+  if (!chosen.length) return false;
+  const picked = [...new Set(chosen.map(normKey))].sort();
+  return groups.some((g) =>
+    [...g.members].sort().join() === picked.join());
+}
+
+/* What to say when somebody taps a plot before choosing. */
+export function chooseUtilityFirst(groups = []) {
+  const names = groups.map((g) => g.label);
+  return names.length
+    ? `Choose what is being connected first \u2014 ${names.join(" or ")}.`
+    : "This project has no utilities set up to connect.";
+}

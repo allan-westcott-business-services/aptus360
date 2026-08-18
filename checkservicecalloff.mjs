@@ -14,7 +14,8 @@ import { readFileSync } from "node:fs";
 import {
   plotOfSeed, sortPlots, plotsFromText, togglePlot, plotsFromRun,
   alreadyCalledOff, serviceSummary, priorServicesFrom, servicedByPlot,
-  firstElectricCallOff, electricUtilityId,
+  firstElectricCallOff, electricUtilityId, utilitiesToTest,
+  serviceGroupsFor, isWholeGroup, chooseUtilityFirst,
 } from "./src/features/gis/serviceCallOff.js";
 import { serviceCallOffCustomer } from "./src/features/gis/callOffCustomer.js";
 import { plotSupplyState } from "./src/features/gis/plotSupply.js";
@@ -171,10 +172,21 @@ const PLOTS = [
      being broken rather than the form being incomplete — and a search
      of the whole file passed on the handler while the button had lost
      it. */
-  const btn = canvas.slice(canvas.indexOf("onClick={submitServiceCallOff}") - 400,
-    canvas.indexOf("onClick={submitServiceCallOff}"));
-  if (!/!servicePlots\.length \|\| !serviceUtils\.length/.test(btn)) {
-    fail("the raise button is live with no plots or no utilities");
+  /* Back to the button's own opening tag rather than a fixed 400
+     characters — the disabled condition has grown a clause and a
+     comment since, which pushed the earlier part of it out of the
+     window and failed on correct code. */
+  const btnAt = canvas.indexOf("onClick={submitServiceCallOff}");
+  const btn = btnAt < 0 ? ""
+    : canvas.slice(canvas.lastIndexOf("<button", btnAt), btnAt);
+  /* Each clause separately: the condition has grown and now wraps
+     across lines, so matching the two together failed on correct
+     code. */
+  for (const [clause, what] of [
+    [/!servicePlots\.length/, "no plots"],
+    [/!serviceUtils\.length/, "no utilities"],
+  ]) {
+    if (!clause.test(btn)) fail(`the raise button is live with ${what}`);
   }
   if (!/if \(!projectId \|\| !servicePlots\.length \|\| !serviceUtils\.length\) return;/
     .test(canvas)) {
@@ -228,9 +240,17 @@ const PLOTS = [
     }
   }
 
+  /* The pills are per group now, and the groups are built from the
+     project's own utilities — which are the ones connected by plot, so
+     street lighting never reaches them. serviceGroupsFor is where that
+     is enforced, tested above; this used to check a filter the panel no
+     longer has. */
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/utilRows\.filter\(servicedByPlot\)/.test(canvas)) {
-    fail("the panel offers every utility, including ones with no plots");
+  if (!/serviceGroupsFor\(utilities\)/.test(canvas)) {
+    fail("the pills are not narrowed to what the project has");
+  }
+  if (serviceGroupsFor([{ layer_key: "lighting" }]).length) {
+    fail("street lighting is offered as a service call-off");
   }
 }
 
@@ -510,6 +530,47 @@ const PLOTS = [
     fail("a plot already picked cannot be taken off the list");
   }
 
+  /* ── Whatever order somebody works in ──
+
+     The check used to run only once a utility was ticked, and the panel
+     invites tapping plots first — so for anybody working in that order
+     it never ran at all and dead plots went straight onto the list. */
+  if (/if \(!already && serviceUtils\.length\)/.test(canvas)) {
+    fail("plots are only checked after a utility is ticked");
+  }
+  if (!/utilitiesToTest\(serviceUtils, lookups\?\.utilities \|\| \[\]\)/.test(canvas)) {
+    fail("the plot check does not know which utilities to ask about");
+  }
+
+  /* Every utility until one is chosen: a plot fed from a dead main on
+     all of them cannot be connected for any of them. */
+  const U = [
+    { Utility_ID: 1, Utility: "Electric" }, { Utility_ID: 2, Utility: "Gas" },
+    { Utility_ID: 3, Utility: "Water" }, { Utility_ID: 4, Utility: "Street Lighting" },
+  ];
+  if (utilitiesToTest([], U).join() !== "electric,gas,water") {
+    fail(`with nothing ticked it tests ${utilitiesToTest([], U).join("/") || "nothing"}`);
+  }
+  if (utilitiesToTest([1], U).join() !== "electric") {
+    fail("ticking one utility does not narrow the check to it");
+  }
+  /* Street lighting is not connected by plot, so it is never asked. */
+  if (utilitiesToTest([4], U).length) {
+    fail("street lighting is checked against plots");
+  }
+
+  /* And ticking a utility after picking re-asks about what is already
+     on the list — otherwise a call-off could still be raised against a
+     dead feeder by working in that order. */
+  if (!/const deadNow = servicePlots\.filter/.test(canvas)) {
+    fail("plots already picked are never re-checked");
+  }
+  /* Flagged, and not raisable past. A warning somebody can raise past
+     is a warning that gets raised past. */
+  if (!/\|\| !!deadNow\.length/.test(canvas)) {
+    fail("a call-off can still be raised with a dead plot on it");
+  }
+
   /* The hatching is shown while picking, and not at every other time —
      a marking that is always on is one nobody reads. */
   if (!/for \(const f of \(serviceOpen \? features : \[\]\)\)/.test(canvas)) {
@@ -587,6 +648,116 @@ const PLOTS = [
   /* Added once. A phase listed twice is a day booked twice. */
   if (!/!phases\.some\(\(p\) => Number\(p\.Task_Type_ID\)/.test(page)) {
     fail("the energisation phase can be added twice");
+  }
+
+  /* ── And in the order the work happens ──
+
+     The cable goes in, the substation is switched on, the joints are
+     made onto a live network, and the ground is reinstated last.
+     Appended, it sat after reinstatement and read as work happening
+     once the ground was closed. */
+  if (!/phases\.sort\(\(a, b\) =>/.test(page)) {
+    fail("the energisation phase is added on the end rather than in order");
+  }
+
+  const sql = readFileSync("./supabase/migrations/0180_energisation.sql", "utf8");
+  if (!/SELECT 'Energisation', 15, true/.test(sql)) {
+    fail("the energisation phase is not ordered between lay and jointing");
+  }
+  /* And moved if an earlier run of this file seeded it elsewhere. */
+  if (!/SET "Display_Order" = 15/.test(sql)) {
+    fail("a phase seeded at the wrong order is left there");
+  }
+
+  /* The order has to reach the page, or there is nothing to sort on —
+     this phase is added by a flag rather than by the work type's
+     mapping, so the mapping's own order does not cover it. */
+  if (!/Task_Type_ID,Task_Type_Name,Display_Order/.test(list)) {
+    fail("the phase order is not sent, so the sort does nothing");
+  }
+
+  /* The sequence itself. */
+  const T = (o, n) => ({ Task_Type_Name: n, Display_Order: o });
+  const mapping = [T(10, "Excavation and Lay"), T(20, "Jointing"), T(30, "Reinstatement")];
+  const withEn = [...mapping, T(15, "Energisation")]
+    .sort((a, b) => (Number(a.Display_Order) || 0) - (Number(b.Display_Order) || 0))
+    .map((x) => x.Task_Type_Name);
+  if (withEn.join(" ") !== "Excavation and Lay Energisation Jointing Reinstatement") {
+    fail(`the phases came out as ${withEn.join(" then ")}`);
+  }
+}
+
+// 17. What is being connected, chosen before the plots.
+//
+//     A plot cannot be checked against a dead main until the panel
+//     knows which main to look at — and the answer decides what the
+//     whole call-off is. Asked first rather than discovered at the end.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const P = (...k) => k.map((x, i) => ({ Utility_ID: i + 1, layer_key: x }));
+
+  /* Electric on its own, or gas and water together. How the work goes
+     out: gas and water share a trench and a visit, the electric follows
+     once the network is energised. */
+  const all = serviceGroupsFor(P("electric", "gas", "water"));
+  if (all.map((g) => g.label).join(" | ") !== "Electric | Gas & Water") {
+    fail(`the pills read ${all.map((g) => g.label).join(" | ")}`);
+  }
+  if (!isWholeGroup(["electric"], all)) fail("electric alone is refused");
+  if (!isWholeGroup(["gas", "water"], all)) fail("gas and water together is refused");
+  /* Half a group is the case this exists to stop: gas without water
+     leaves the water gang a second trip to the same trench. */
+  if (isWholeGroup(["gas"], all)) fail("gas alone is allowed on a site with water");
+  if (isWholeGroup(["electric", "gas"], all)) {
+    fail("electric and gas can be called off together");
+  }
+  if (isWholeGroup([], all)) fail("choosing nothing counts as a choice");
+
+  /* Narrowed to what the site has. A gas-only project offers "Gas",
+     which is a whole call-off rather than half of one — and offering
+     water on a site with none is offering a call-off nobody can
+     raise. */
+  const gasOnly = serviceGroupsFor(P("gas"));
+  if (gasOnly.map((g) => g.label).join() !== "Gas") {
+    fail(`a gas-only site offers ${gasOnly.map((g) => g.label).join(" | ")}`);
+  }
+  if (!isWholeGroup(["gas"], gasOnly)) {
+    fail("gas alone is refused on a site with no water");
+  }
+  if (serviceGroupsFor(P("gas", "water")).some((g) => g.key === "electric")) {
+    fail("a site with no electric is offered an electric call-off");
+  }
+
+  /* And the panel asks before a plot can be picked. */
+  if (!/setError\(chooseUtilityFirst\(serviceGroupsFor\(utilities\)\)\)/.test(canvas)) {
+    fail("plots can be picked before choosing what is being connected");
+  }
+  if (!/serviceGroups\.map\(\(g\) => \{/.test(canvas)) {
+    fail("the pills are one per utility rather than one per group");
+  }
+
+  /* ── Fewer plots than the contract expects ──
+
+     Said as a choice rather than a refusal: there are good reasons to
+     go short and the office is the one that knows. */
+  if (!/servicePlots\.length < minPlots/.test(canvas)) {
+    fail("nothing says when a call-off is under the minimum");
+  }
+  if (!/Minimum_Service_Call_Off/.test(canvas)) {
+    fail("the minimum is not read from the project");
+  }
+  /* Null is not zero: a project with no minimum agreed says nothing at
+     all rather than objecting to every call-off. */
+  if (!/Number\(project\?\.Minimum_Service_Call_Off\) \|\| 0/.test(canvas)) {
+    fail("a project with no minimum set would still warn");
+  }
+  if (!/!!minPlots && servicePlots\.length > 0/.test(canvas)) {
+    fail("the warning shows before any plot is picked");
+  }
+  /* The penalty button visibly does not work, rather than quietly
+     setting a flag whose meaning nobody has agreed. */
+  if (!/Accepting a penalty is not built yet/.test(canvas)) {
+    fail("the penalty button pretends to work");
   }
 }
 

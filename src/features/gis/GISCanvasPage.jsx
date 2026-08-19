@@ -11355,6 +11355,26 @@ export default function GISCanvasPage() {
         rows.map((r, i) => ({ ...changes[i].feature, Attributes: r.Attributes })));
       const fresh = await listGis(projectId);
       setFeatures(fresh.features || []);
+
+      /* Widening a main changes what every branch off it steps down to.
+
+         This walks back to the POC raising each length in turn, and
+         every one of those lengths may feed branches that were never
+         touched. A branch off a 90 dropping to 63 was one reducer;
+         once that 90 becomes a 125 the same branch is two, because
+         there is no 125/63 fitting.
+
+         Nothing recomputed them, so those branches kept the single
+         reducer they had and the drawing showed one fitting where the
+         ground needs two. The edited length itself was right, which is
+         what made it look like the rule worked.
+
+         From `fresh` rather than from state: the widening has just
+         landed and the drawing in hand is the one that includes it. */
+      try {
+        await placeReducers({ silent: true, srcFeatures: fresh.features || [] });
+      } catch { /* the Place Reducers button will catch it */ }
+
       setStatus(`${rows.length} upstream main(s) brought up to ${label}`);
       setTimeout(() => setStatus(""), 6000);
     } catch (e) { setError(e.message); }

@@ -233,6 +233,58 @@ const run = (world) => reducersFor(world, { lineTypes: LT, gasPipeSizes: SZ });
   if (REDUCER_FIRST_M !== 1.5) fail(`the first sits at ${REDUCER_FIRST_M} m, wanted 1.5`);
 }
 
+// 13. Widening a main upstream re-reckons every branch off it.
+//
+//    Raising a length to a bigger bore walks back to the POC raising
+//    each one in turn, and those lengths feed branches that were never
+//    touched. A branch off a 90 dropping to 63 was one reducer; once
+//    that 90 is a 125 the same branch is two, because there is no
+//    125/63 fitting.
+//
+//    Nothing recomputed them, so those branches kept the single reducer
+//    they had and the drawing showed one fitting where the ground needs
+//    two. The edited length itself was right, which is what made it
+//    look as though the rule had worked.
+{
+  const spine90 = [POC, pipe(1, [[0, 0], [30, 0]], 3), pipe(2, [[30, 0], [30, 20]], 4)];
+  const before = run(spine90).reducers;
+  if (before.length !== 1 || before[0].from !== 90 || before[0].to !== 63) {
+    fail(`a 90 feeding a 63 gave ${before.map((r) => `${r.from}/${r.to}`).join(",")}`);
+  }
+
+  /* Placed, as they would be on the drawing. */
+  const placed = before.map((r, i) => ({
+    Feature_ID: 300 + i, Feature_Role: "reducer", Geometry: [r.at],
+    Attributes: { From_mm: r.from, To_mm: r.to },
+  }));
+
+  /* Now the spine is widened to 125 by the upstream rule. The branch
+     was not edited and is still 63. */
+  const spine125 = [POC, pipe(1, [[0, 0], [30, 0]], 2),
+    pipe(2, [[30, 0], [30, 20]], 4), ...placed];
+  const after = run(spine125).reducers;
+
+  if (after.length !== 2) {
+    fail(`after widening the branch needs ${after.length} reducers, wanted 2`);
+  }
+  if (after.map((r) => `${r.from}/${r.to}`).join(",") !== "125/90,90/63") {
+    fail(`the steps came out as ${after.map((r) => `${r.from}/${r.to}`).join(",")}`);
+  }
+
+  /* Both are outstanding: the 125/90 because nothing like it exists,
+     and the 90/63 because it has moved a fitting's length along to make
+     room for the one before it. */
+  const d = missingReducers(spine125, after);
+  if (d.missing.length !== 2) {
+    fail(`${d.missing.length} reported as missing after widening, wanted 2`);
+  }
+  /* And the one that was there is now in the wrong place, so it goes
+     rather than being left as a third fitting nobody ordered. */
+  if (d.orphans.length !== 1 || d.orphans[0].Feature_ID !== 300) {
+    fail("the reducer left over from the narrower spine was not cleared");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Reducers behave (one per rung of the ladder, downstream from the POC, nose to tail).");
 process.exit(bad ? 1 : 0);

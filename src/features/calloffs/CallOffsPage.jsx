@@ -28,6 +28,7 @@ import {
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
+import { phasesToShow, phasesHidden } from "./callOffPhases.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
 /* Call-offs across the business.
@@ -2392,12 +2393,22 @@ function Assignments({ row }) {
     );
   }
 
+  /* An electric service is laid in the trench the mains call-off dug,
+     and the ground is reinstated once for the street rather than plot
+     by plot. So those two sections are not booked here.
+
+     Filtered rather than taken off the work type: the same mapping
+     drives the schedule and the cover states, and other utilities do
+     dig for their services. */
+  const shownPhases = phasesToShow(phases, row.Work_Type?.Work_Type_Name);
+  const notHere = phasesHidden(phases, row.Work_Type?.Work_Type_Name);
+
   return (
     <div className="co-card">
       <h3>
         Team assignments
         <span className="co-dim">
-          {` \u00b7 ${mine.length} across ${phases.length} phase${phases.length === 1 ? "" : "s"}`}
+          {` \u00b7 ${mine.length} across ${shownPhases.length} phase${shownPhases.length === 1 ? "" : "s"}`}
         </span>
       </h3>
       <p className="hint">
@@ -2406,9 +2417,24 @@ function Assignments({ row }) {
         craft the phase needs.
       </p>
 
+      {/* Said once, rather than two sections quietly missing.
+
+          A section that disappears reads as something broken to
+          whoever knew it was there and as nothing at all to whoever
+          did not — and the fact it carries, that the dig belongs to
+          the mains call-off, is what a planner needs to know. */}
+      {notHere.length > 0 && (
+        <p className="hint">
+          {notHere.map((p) => shortPhase(p.Task_Type_Name)).join(" and ")}
+          {notHere.length === 1 ? " is" : " are"} booked on the mains call-off,
+          not here &mdash; an electric service is laid in the trench the mains
+          gang dug.
+        </p>
+      )}
+
       {error && <p className="co-err">{error}</p>}
 
-      {phases.map((ph, i) => {
+      {shownPhases.map((ph, i) => {
         const rows = mine.filter((a) =>
           Number(a.Task_Type_ID) === Number(ph.Task_Type_ID));
         /* Teams holding the craft this phase needs, in the region the

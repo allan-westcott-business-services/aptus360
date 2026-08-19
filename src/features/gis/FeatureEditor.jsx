@@ -764,6 +764,35 @@ export default function FeatureEditor({
               take, and one on a main that has since been redrawn keeps
               the old one. Ninety degrees at a time covers nearly every
               case, and the box is there for the rest. */}
+          {/* What the DNO declared at the point of connection.
+
+              Volt drop starts at an impedance, not at zero. On a scheme
+              with a substation that comes from the transformer size; on
+              a connection to an existing network there is no
+              transformer, and this is the same number playing the same
+              part.
+
+              Electric only, and on the POC rather than anywhere else,
+              because it is a fact about somebody else's network at the
+              one point we touch it. */}
+          {feature.Feature_Role === "poc" && feature.Layer_Key === "electric" && (
+            <div className="fld">
+              <label htmlFor="fe-poc-z">Declared loop impedance (ohms)</label>
+              <input id="fe-poc-z" type="number" step="0.001" min="0"
+                value={f.Attributes.Source_Loop_Impedance_Ohm ?? ""}
+                placeholder="e.g. 0.035"
+                onChange={(e) => setAttr("Source_Loop_Impedance_Ohm")(
+                  e.target.value === "" ? null : Number(e.target.value))} />
+              <p className="hint">
+                {f.Attributes.Source_Loop_Impedance_Ohm == null
+                  ? "Without it the levels check reports cable only, so the figures "
+                    + "read better than they will be."
+                  : "The figure the DNO declared at this point of connection. Volt "
+                    + "drop and loop impedance are measured from it."}
+              </p>
+            </div>
+          )}
+
           {isTee && (<>
             <div className="fld">
               <label htmlFor="fe-tee-size">Size</label>

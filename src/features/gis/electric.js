@@ -883,3 +883,49 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
       [...circuits, { totalKva: 0 }].reduce((t, c) => t + (c.totalKva || 0), 0) * 10) / 10,
   };
 }
+
+/* ── The source the network is fed from ──
+
+   Volt drop starts at an impedance, not at zero. On a scheme we build
+   that is the transformer's, looked up from the size chosen on the
+   substation. On a connection to an existing network there is no
+   transformer: the DNO declares an impedance at the point of
+   connection, and that is the same number playing the same part.
+
+   So the source is whichever the drawing has, reduced to the one field
+   the volt drop reads. A substation supplies it through its transformer
+   size; a POC supplies it directly, because there is no catalogue of
+   somebody else's network to look it up in.
+
+   Null where neither is on the drawing. The calculation already knows
+   what to do with that — it starts from zero and says it did — and
+   inventing a figure here would replace a stated unknown with a wrong
+   answer nobody can see. */
+export function sourceImpedance(origin, transformerSizes = []) {
+  if (!origin) return null;
+
+  if (origin.Feature_Role === "substation") {
+    const id = origin.Attributes?.VD_Transformer_Size_ID;
+    if (id == null) return null;
+    return transformerSizes.find((t) =>
+      String(t.Transformer_Size_ID) === String(id)) || null;
+  }
+
+  /* A POC, carrying what the DNO declared. Returned in the shape the
+     volt drop expects rather than a shape of its own, so the two paths
+     are one path from there on. */
+  const z = origin.Attributes?.Source_Loop_Impedance_Ohm;
+  if (z == null || z === "" || !(Number(z) > 0)) return null;
+  return { Loop_Impedance_Ohm: Number(z), From_POC: true };
+}
+
+/* What to say when a check has run without one.
+
+   Said, not hidden. Every figure downstream is lower than the truth by
+   the same missing amount, so a marginal run reads as passing — and an
+   unqualified pass is worse than no check at all, because somebody
+   acts on it. */
+export const NO_SOURCE_NOTE = "No source impedance \u2014 volt drop and loop "
+  + "figures are cable only, so they read better than they will be. Set the "
+  + "transformer size on the substation, or the DNO\u2019s declared loop "
+  + "impedance on the POC.";

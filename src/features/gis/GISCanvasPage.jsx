@@ -32,6 +32,7 @@ import {
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
+  sourceImpedance, NO_SOURCE_NOTE,
   circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
@@ -14364,11 +14365,22 @@ export default function GISCanvasPage() {
       return;
     }
 
-    /* Volt drop per leg, on each circuit against its own substation. */
+    /* Volt drop per leg, against whatever the network is fed from.
+
+       Warned before the figures are read rather than after. Without a
+       source impedance every figure downstream is lower than the truth
+       by the same missing amount, so a marginal run reads as passing —
+       and an unqualified pass is worse than no check, because somebody
+       acts on it. */
     const cables = lookups?.cableSizes || [];
     let hasVd = false;
     if (cables.length) {
-      const station = src.find((f) => f.Feature_Role === "substation");
+      /* Whichever the network is fed from. A substation supplies its
+         impedance through its transformer size; a POC supplies the
+         DNO's declared figure directly. Read from lvOrigin, so this
+         cannot pick a different origin from the one the trace
+         started at. */
+      const station = lvOrigin(src);
       /* The same limits the levels come from — built here rather than
          referenced from the other function, and from the same lookup
          row, so the two cannot disagree about what "in tolerance"
@@ -14384,9 +14396,7 @@ export default function GISCanvasPage() {
         const ctx = {
           cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
           cableTypes: lookups?.cableTypes || [],
-          transformer: (lookups?.transformerSizes || []).find((t) =>
-            String(t.Transformer_Size_ID)
-              === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+          transformer: sourceImpedance(station, lookups?.transformerSizes || []),
           voltageV: Number(station?.Attributes?.Output_V) || 400,
           settings: limits,
         };
@@ -14498,10 +14508,12 @@ export default function GISCanvasPage() {
     r.startId = node.Feature_ID;
 
     if (cables.length) {
-      const station = src.find((f) => f.Feature_Role === "substation");
-      const transformer = (lookups?.transformerSizes || []).find((t) =>
-        String(t.Transformer_Size_ID)
-          === String(station?.Attributes?.VD_Transformer_Size_ID));
+      /* The same origin the other trace uses. This one is the single
+         node trace, and it had its own copy of the lookup \u2014 so fixing
+         the circuit trace alone would have left a POC-fed network still
+         reporting cable-only figures from here. */
+      const station = lvOrigin(src);
+      const transformer = sourceImpedance(station, lookups?.transformerSizes || []);
       const voltageV = Number(station?.Attributes?.Output_V) || 400;
 
       const ctx = {
@@ -18651,11 +18663,16 @@ export default function GISCanvasPage() {
                         {trace.hasVd && (l.vd?.missing ? (
                           /* Named rather than dashed: which spec is
                              missing decides where to go and put it. */
+                          /* Named for whichever origin the drawing has.
+                             On a POC there is no transformer to set,
+                             and telling somebody to set one sends them
+                             looking for a substation they deliberately
+                             have not got. */
                           <td colSpan={3} className="num vd-gap"
                             title={l.vd.missingTransformer
-                              ? "Set a transformer on the substation"
+                              ? NO_SOURCE_NOTE
                               : "Set a cable on every span node along this route"}>
-                            {l.vd.missingTransformer ? "transformer not set" : "cable not set"}
+                            {l.vd.missingTransformer ? "source not set" : "cable not set"}
                           </td>
                         ) : (
                           <>

@@ -204,11 +204,24 @@ export function missingTees(features = [], tees = [], nearM = HVTT_JOIN_M * 4) {
   const placed = features.filter((f) => f.Feature_Role === "hvtt"
     && (f.Geometry || []).length);
 
-  const missing = tees.filter((t) =>
-    !placed.some((f) => dist(f.Geometry[0], t.at) <= nearM));
+  /* Like for like.
 
-  const orphans = placed.filter((f) =>
-    !tees.some((t) => dist(f.Geometry[0], t.at) <= nearM));
+     A top tee within a metre of a junction is not that junction's tee,
+     and reading it as one left the junction unplaced — which is exactly
+     what happens on a real drawing, because a plot is often served
+     within a metre of where the main divides. Two fittings, two holes,
+     and the drawing was showing one.
+
+     A tee with no kind recorded is treated as a service one. Everything
+     placed before the junction tees existed was a top tee, so that is
+     what it was, and guessing the other way would double them up on the
+     first drawing to be backfilled. */
+  const kindOf = (f) => (f.Attributes?.Tee_Kind === "junction" ? "junction" : "service");
+  const wants = (t) => (t.kind === "junction" ? "junction" : "service");
+  const same = (f, t) => kindOf(f) === wants(t) && dist(f.Geometry[0], t.at) <= nearM;
+
+  const missing = tees.filter((t) => !placed.some((f) => same(f, t)));
+  const orphans = placed.filter((f) => !tees.some((t) => same(f, t)));
 
   return { missing, orphans };
 }
@@ -371,7 +384,18 @@ export function mainTees(features = [], opts = {}) {
 export function allTees(features = [], opts = {}) {
   const service = topTees(features, opts);
   const junction = mainTees(features, opts);
-  const near = (opts.joinM ?? HVTT_JOIN_M) * 4;
+  /* The same point, not merely near it.
+
+     A service leaving the main exactly where it divides is one hole
+     with one fitting in it. A service leaving half a metre along is two
+     holes and two fittings — which is common, and the generous radius
+     this used to carry silently dropped the junction tee whenever a
+     plot happened to be served close to a branch.
+
+     So the tolerance here is the one the drawing uses for "joined",
+     rather than four times it. Anything further apart is two fittings,
+     and drawing two is right. */
+  const near = opts.joinM ?? HVTT_JOIN_M;
 
   const kept = service.tees.map((t) => ({ ...t, kind: "service" }));
   for (const t of junction.tees) {

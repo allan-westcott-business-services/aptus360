@@ -332,6 +332,7 @@ export default function FeatureEditor({
   const isSeed = feature.Feature_Role === "plot";
   const isMeter = feature.Feature_Role === "meter";
   const isValve = feature.Feature_Role === "servicevalve";
+  const isTee = feature.Feature_Role === "hvtt";
 
   /* The circuits already on this drawing, with how many meters each
      holds — the count is what tells one circuit from another when the
@@ -578,6 +579,12 @@ export default function FeatureEditor({
     /* A span node is what the whole network is measured between, and
        "Point" told somebody nothing they did not already know. */
     : feature.Feature_Role === "spannode" ? "Span node"
+    /* The two are the same fitting and the same symbol, but one is a
+       service take-off and the other is the main dividing, and somebody
+       who has opened it wants to know which they are looking at. */
+    : feature.Feature_Role === "hvtt"
+      ? (feature.Attributes?.Tee_Kind === "junction"
+        ? "Main tee" : "High volume top tee")
     : isPoly ? "Area"
     : isLine ? (classLabel(f, lineTypes) || "Line")
     : "Point";
@@ -741,6 +748,73 @@ export default function FeatureEditor({
               take, and one on a main that has since been redrawn keeps
               the old one. Ninety degrees at a time covers nearly every
               case, and the box is there for the rest. */}
+          {isTee && (<>
+            <div className="fld">
+              <label htmlFor="fe-tee-size">Size</label>
+              {/* The size of the main it is clamped to.
+
+                  From the same list the pipe itself is sized from, so a
+                  fitting cannot be given a bore no pipe comes in. The
+                  routine copies the main's size when it places one; this
+                  is for correcting it, and for the tees on drawings
+                  where the main was never sized.
+
+                  The label travels with the id, the same as it does on
+                  the pipe, so a take-off reads without a lookup and a
+                  size later removed from the table still says what was
+                  specified. */}
+              <select id="fe-tee-size"
+                value={f.Attributes.Gas_Pipe_Size_ID ?? ""}
+                onChange={(e) => {
+                  const id = e.target.value ? Number(e.target.value) : null;
+                  const row = gasPipeChoices
+                    .find((x) => Number(x.Gas_Pipe_Size_ID) === id);
+                  setAttr("Gas_Pipe_Size_ID")(id);
+                  setAttr("Size")(row
+                    ? (row.Size_Label || `${Number(row.Diameter_mm)}mm`)
+                    : null);
+                }}>
+                <option value="">Not set</option>
+                {gasPipeChoices.map((x) => (
+                  <option key={x.Gas_Pipe_Size_ID} value={x.Gas_Pipe_Size_ID}>
+                    {x.Size_Label || `${Number(x.Diameter_mm)}mm`}
+                  </option>
+                ))}
+              </select>
+              <p className="hint">
+                {!gasPipeChoices.length
+                  ? "No low pressure gas pipe sizes yet \u2014 add them in Admin \u203a Gas Pipe Sizes."
+                  : f.Attributes.Gas_Pipe_Size_ID == null
+                    ? "The main this sits on has no size, so nothing was copied onto the fitting."
+                    : "Taken from the main it is clamped to. Change it here to override."}
+              </p>
+            </div>
+
+            <div className="fld">
+              <label htmlFor="fe-tee-angle">Angle of the main (degrees)</label>
+              <div className="fe-angle">
+                <input id="fe-tee-angle" type="number" step="1"
+                  value={f.Attributes.Angle_Deg ?? ""}
+                  placeholder="0"
+                  onChange={(e) => setAttr("Angle_Deg")(
+                    e.target.value === "" ? null : Number(e.target.value))} />
+                {/* The outlet is square to the body, so the only thing
+                    left to say is which side it leaves on. Flipping it
+                    is a button rather than a number, because \u201c1 or
+                    \u22121\u201d is not a question anybody should be asked. */}
+                <button className="btn ghost sm"
+                  onClick={() => setAttr("Stem_Side")(
+                    Number(f.Attributes.Stem_Side) === -1 ? 1 : -1)}>
+                  Flip outlet
+                </button>
+              </div>
+              <p className="hint">
+                Taken from the main it is clamped to. The body lies along it
+                and the outlet leaves at right angles.
+              </p>
+            </div>
+          </>)}
+
           {isValve && (
             <div className="fld">
               <label htmlFor="fe-angle">Angle of the main (degrees)</label>

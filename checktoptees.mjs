@@ -360,6 +360,75 @@ const MAIN = ln(1, "gas_main", "gas", [[0, 0], [30, 0]]);
   }
 }
 
+// 18. A junction close to a top tee still gets its own fitting.
+//
+//    A plot served within a metre of where the main divides is
+//    ordinary, and they are two holes with two fittings in them. Both
+//    the deduping and the already-placed test used a metre, so the
+//    junction was dropped as a duplicate of the top tee and the drawing
+//    showed one fitting where the ground needs two.
+{
+  const run = ln(300, "gas_main", "gas", [[0, 0], [40, 0]]);
+  const branch = ln(301, "gas_main", "gas", [[20, 0], [20, -9]]);
+  /* Served 0.6 m along from the branch. */
+  const svc = ln(302, "gas_service", "gas", [[20.6, 0], [20.6, 6]], { Plot_ID: 5 });
+  const world = [run, branch, svc];
+
+  const { tees } = allTees(world, { lineTypes: LT });
+  if (tees.length !== 2) {
+    fail(`${tees.length} tees where a plot is served beside a branch, wanted 2`);
+  }
+  if (!tees.some((t) => t.kind === "junction")) {
+    fail("the junction tee was dropped as a duplicate of the nearby top tee");
+  }
+
+  /* And with the top tee already on the drawing, the junction is still
+     outstanding rather than counted as done. */
+  const hvtt = {
+    Feature_ID: 303, Feature_Role: "hvtt", Geometry: [[20.6, 0]],
+    Attributes: { Tee_Kind: "service" },
+  };
+  const left = missingTees([...world, hvtt], tees).missing;
+  if (left.length !== 1 || left[0].kind !== "junction") {
+    fail(`a nearby top tee satisfied the junction: ${left.map((t) => t.kind).join(",")}`);
+  }
+  /* Nor is the top tee reported as an orphan for sitting near one. */
+  if (missingTees([...world, hvtt], tees).orphans.length) {
+    fail("a correctly placed top tee was called an orphan");
+  }
+}
+
+// 19. Exactly coincident is still one hole.
+//
+//    Tightening the radius must not lose the case it was there for: a
+//    service leaving the main at the very point it divides is one
+//    fitting, and the service one wins because it knows its plot.
+{
+  const run = ln(310, "gas_main", "gas", [[0, 0], [40, 0]]);
+  const branch = ln(311, "gas_main", "gas", [[20, 0], [20, -9]]);
+  const onTop = ln(312, "gas_service", "gas", [[20, 0], [20, 7]], { Plot_ID: 6 });
+  const { tees } = allTees([run, branch, onTop], { lineTypes: LT });
+  if (tees.length !== 1) fail(`${tees.length} tees in one hole`);
+  if (tees[0]?.kind !== "service") fail("the junction tee won over the service one");
+}
+
+// 20. A tee placed before the kinds existed counts as a top tee.
+//
+//    Everything placed by the first version was a service tee, so that
+//    is what it was. Guessing the other way would double them up on the
+//    first drawing to be backfilled.
+{
+  const run = ln(320, "gas_main", "gas", [[0, 0], [40, 0]]);
+  const svc = ln(321, "gas_service", "gas", [[10, 0], [10, 6]], { Plot_ID: 4 });
+  const { tees } = allTees([run, svc], { lineTypes: LT });
+  const old = {
+    Feature_ID: 322, Feature_Role: "hvtt", Geometry: [[10, 0]], Attributes: {},
+  };
+  if (missingTees([run, svc, old], tees).missing.length) {
+    fail("a tee with no kind recorded was ignored and would be doubled");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Top tees behave (on the services and where a main divides, never at an end or a bend).");
 process.exit(bad ? 1 : 0);

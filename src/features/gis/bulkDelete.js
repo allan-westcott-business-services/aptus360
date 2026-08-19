@@ -12,6 +12,8 @@
 
    Pure so it can be tested. Doing the deleting is the canvas's job. */
 
+import { JOINT_KINDS, isJointOfKind } from "./joints.js";
+
 const typeOf = (f) => String(f.Attributes?.Line_Type ?? "");
 const isLine = (f) => f.Feature_Type === "line";
 
@@ -158,6 +160,36 @@ export function bulkDeleteCategories(features = [], opts = {}) {
      the utilities — a gas connector and an electric joint are the same
      kind of feature and this takes them all. */
   add("joint", "All joints and connectors", (f) => f.Feature_Role === "joint", "Points");
+
+  /* And each kind on its own.
+
+     "All joints" is the wrong instrument for most of what somebody
+     actually wants here. Rebuilding the feeders replaces the straight
+     joints and the breeches; the service joints belong to the plots and
+     survive it. Clearing the lot and re-running put every service joint
+     back only where a service still ran to it, which is not the same
+     set — so the way to redo the feeder joints was to delete everything
+     and hope.
+
+     By kind rather than by code, and matched on either, because a joint
+     placed from the catalogue carries Joint_Code and one placed from
+     the menu carries Joint_Type.
+
+     Bottle ends are here too. They were not asked for, but leaving one
+     of the four kinds reachable only through "all joints" is an
+     asymmetry somebody would hit the first time they wanted to redo the
+     ends of the runs.
+
+     Children of "all joints and connectors", so ticking that ticks
+     these and unticking one of them means "all the joints except the
+     straights" — the behaviour keysToRemove already gives the utility
+     categories. The parent still covers more than its children do: a
+     gas connector carries no kind at all and belongs to none of the
+     four. */
+  for (const kind of ["service", "breech", "straight", "bottleend"]) {
+    add(`joint_${kind}`, `All ${JOINT_KINDS[kind].label.toLowerCase()}s`,
+      (f) => isJointOfKind(f, kind), "Points", ["joint"]);
+  }
   add("linkbox", "All link boxes", (f) => f.Feature_Role === "linkbox", "Points");
   add("column", "All lighting columns", (f) => f.Feature_Role === "column", "Points");
   add("seed", "All plot seeds", (f) => f.Feature_Role === "plot", "Points");

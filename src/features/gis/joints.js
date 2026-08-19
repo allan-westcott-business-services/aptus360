@@ -147,7 +147,7 @@ export const bottleEndSubmission = (feature) =>
     ? (feature.Attributes?.Submission_ID ?? null)
     : null);
 
-/* Whether a joint is a breech.
+/* Whether a joint is of a given kind.
 
    Beside isBottleEnd and for its reason: a test on Attributes.Joint_Type
    written out where it is wanted is a chance to compare against the
@@ -155,12 +155,27 @@ export const bottleEndSubmission = (feature) =>
 
    The code as well as the kind, because a joint placed from the
    catalogue carries Joint_Code and one placed from the menu carries
-   Joint_Type, and both are the same fitting. */
-export function isBreechJoint(feature) {
+   Joint_Type, and both are the same fitting. Cased both ways for the
+   same reason \u2014 the two routes have never agreed on it, and a delete
+   that missed half the joints because one wrote "Service" and the other
+   wrote "service" would look like the filter not working.
+
+   One function rather than four. isBreechJoint was the only kind that
+   needed asking about; the bulk delete now asks about all of them, and
+   four near-identical predicates is three chances for one of them to
+   drift. */
+export function isJointOfKind(feature, kind) {
   if (feature?.Feature_Role !== "joint") return false;
-  const kind = String(feature?.Attributes?.Joint_Type ?? "");
-  const code = String(feature?.Attributes?.Joint_Code ?? "");
-  return kind === "breech" || code === JOINT_KINDS.breech.code;
+  const want = JOINT_KINDS[kind];
+  if (!want) return false;
+
+  const type = String(feature?.Attributes?.Joint_Type ?? "").toLowerCase();
+  const code = String(feature?.Attributes?.Joint_Code ?? "").toUpperCase();
+  return type === kind || code === want.code;
+}
+
+export function isBreechJoint(feature) {
+  return isJointOfKind(feature, "breech");
 }
 
 /* Which wins where more than one cause meets at a point.

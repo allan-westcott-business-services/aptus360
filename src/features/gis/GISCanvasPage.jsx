@@ -50,7 +50,7 @@ import {
   planWholeDesign, describePlan, describeOutcome,
 } from "./wholeDesign.js";
 import {
-  topTees, missingTees, angleOf,
+  allTees, missingTees, angleOf, nodeCodeAt,
   HVTT_ALONG_M, HVTT_BODY_M, HVTT_STEM_M, HVTT_STEM_W_M,
 } from "./topTees.js";
 import * as XLSX from "xlsx";
@@ -12756,27 +12756,30 @@ export default function GISCanvasPage() {
     if (!projectId) return 0;
 
     const world = srcFeatures || features;
-    const { tees, unjoined } = topTees(world, { lineTypes });
+    const { tees, unjoined } = allTees(world, { lineTypes });
     const { missing, orphans } = missingTees(world, tees);
 
     if (!tees.length) {
       if (!silent) {
         setError(gasServicesOn(world)
-          ? "No gas service reaches a gas main, so there is nothing to tee into."
-          : "No gas services on the drawing yet \u2014 lay them first.");
+          ? "No gas service reaches a gas main and no main divides, so there is "
+            + "nothing to tee."
+          : "No gas pipe on the drawing yet \u2014 lay the mains and services first.");
       }
       return 0;
     }
     if (!missing.length) {
       if (!silent) {
-        setStatus(`Every gas service already has a top tee (${tees.length}).`);
+        setStatus(`Every gas join already has a tee (${tees.length}).`);
         setTimeout(() => setStatus(""), 8000);
       }
       return 0;
     }
 
     if (!silent && !window.confirm(
-      `Place ${missing.length} high volume top tee(s)?`
+      `Place ${missing.length} top tee(s)?`
+      + `\n\n${missing.filter((t) => t.kind !== "junction").length} on gas services, `
+      + `${missing.filter((t) => t.kind === "junction").length} where a main divides.`
       + (unjoined.length
         ? `\n\n${unjoined.length} gas service(s) do not reach a main and get none `
           + "\u2014 worth looking at, since a service joined to nothing is a plot "
@@ -12798,8 +12801,19 @@ export default function GISCanvasPage() {
             Feature_Type: "point",
             Feature_Role: "hvtt",
             Geometry: [t.at],
-            Label: t.plot != null ? `HVTT ${t.plot}` : "HVTT",
+            /* Named for what it serves where that is known, and for
+               the span node it stands at where it is not \u2014 "Tee A7" is
+               what somebody would say out loud about a junction, and a
+               bare number is not findable on a drawing. */
+            Label: t.kind === "junction"
+              ? `Tee ${nodeCodeAt(world, t.at) ?? ""}`.trim()
+              : (t.plot != null ? `HVTT ${t.plot}` : "HVTT"),
             Attributes: {
+              /* Which of the two it is. The same fitting and the same
+                 symbol, but one is a service take-off and the other is
+                 the main dividing, and a take-off schedule wants them
+                 apart. */
+              Tee_Kind: t.kind === "junction" ? "junction" : "service",
               /* The bearing of the main it is clamped to. The body lies
                  along this and the outlet leaves at right angles. */
               Angle_Deg: angleOf(t.dir),
@@ -15443,7 +15457,7 @@ export default function GISCanvasPage() {
                         them in. */}
                     <MenuItem label={busy === "hvtt"
                       ? "Placing\u2026" : "Place Gas Top Tees"}
-                      hint="A high volume top tee wherever a gas service meets a gas main, for any that have none"
+                      hint="A top tee wherever a gas service meets a main, and wherever one main branches off another"
                       disabled={!!busy || !projectId}
                       onClick={() => placeTopTees()} />
 

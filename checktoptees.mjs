@@ -5,8 +5,8 @@
    Every gas service has one, so a drawing showing the services and not
    the tees is short one fitting per plot on the take-off. */
 import {
-  topTees, missingTees, gasMains, gasServices, angleOf,
-  HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M,
+  topTees, mainTees, allTees, missingTees, gasMains, gasServices, angleOf,
+  nodeCodeAt, HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M,
 } from "./src/features/gis/topTees.js";
 
 let bad = 0;
@@ -187,6 +187,113 @@ const MAIN = ln(1, "gas_main", "gas", [[0, 0], [30, 0]]);
   }
 }
 
+// 10. A main branching off another main takes the same tee.
+//
+//    The other place the fitting goes: a gas pipe routed from a point
+//    along the length of another gas pipe. Not a service leaving the
+//    main but the main itself dividing.
+{
+  const run = ln(50, "gas_main", "gas", [[0, 0], [30, 0]]);
+  const branch = ln(51, "gas_main", "gas", [[10, 0], [10, -8]]);
+  const { tees } = mainTees([run, branch], { lineTypes: LT });
+
+  if (tees.length !== 1) fail(`${tees.length} tees where one main divides`);
+  const t = tees[0];
+  if (t?.at.join(",") !== "10,0") fail(`the junction tee landed at ${t?.at}`);
+  if (t?.kind !== "junction") fail(`it was recorded as ${t?.kind}`);
+  /* Body along the run that carries straight on, stem down the branch. */
+  if (Math.abs(angleOf(t.dir)) > 0.05) fail(`the body lay at ${angleOf(t.dir)}`);
+  if (t.stem[1] >= 0) fail("the outlet faced away from the branch");
+}
+
+// 11. An end gets nothing, and neither does a bend.
+//
+//    "These will be at the location of a span node but NOT an END span
+//    node." Arms are counted as junctionsOf counts them: one is where a
+//    run stops, two is one pipe turning a corner, three or more is a
+//    division.
+{
+  const single = ln(60, "gas_main", "gas", [[0, 0], [20, 0]]);
+  if (mainTees([single], { lineTypes: LT }).tees.length) {
+    fail("the free ends of a main were teed");
+  }
+
+  const bendA = ln(61, "gas_main", "gas", [[0, 0], [10, 0]]);
+  const bendB = ln(62, "gas_main", "gas", [[10, 0], [10, 10]]);
+  if (mainTees([bendA, bendB], { lineTypes: LT }).tees.length) {
+    fail("a bend was given a tee");
+  }
+
+  /* And two mains meeting end to end in a straight line is still a
+     bend, not a division. */
+  const runA = ln(63, "gas_main", "gas", [[0, 0], [10, 0]]);
+  const runB = ln(64, "gas_main", "gas", [[10, 0], [20, 0]]);
+  if (mainTees([runA, runB], { lineTypes: LT }).tees.length) {
+    fail("two mains joined end to end were teed");
+  }
+}
+
+// 12. A branch that ends against the middle of another main.
+//
+//    This is the "along the length of" case: the branch stops on the
+//    run rather than at one of its vertices, so counting only the ends
+//    of pipes would find nothing there at all.
+{
+  const run = ln(70, "gas_main", "gas", [[0, 0], [40, 0]]);
+  const off = ln(71, "gas_main", "gas", [[25, 0], [25, 9]]);
+  const { tees } = mainTees([run, off], { lineTypes: LT });
+  if (tees.length !== 1) fail(`${tees.length} tees where a branch meets mid-run`);
+  if (tees[0]?.at[0] !== 25) fail(`the mid-run tee landed at ${tees[0]?.at}`);
+}
+
+// 13. Water mains dividing are not gas fittings.
+{
+  const wRun = ln(80, "water_main", "water", [[0, 50], [30, 50]]);
+  const wBranch = ln(81, "water_main", "water", [[10, 50], [10, 58]]);
+  if (mainTees([wRun, wBranch], { lineTypes: LT }).tees.length) {
+    fail("a water main division was given a gas tee");
+  }
+}
+
+// 14. Both kinds together, and one hole where they coincide.
+//
+//    A service leaving at the same point the main divides is one
+//    fitting. The service tee wins: it knows which plot it belongs to,
+//    which is worth more on a take-off than knowing it was a junction.
+{
+  const run = ln(90, "gas_main", "gas", [[0, 0], [30, 0]]);
+  const branch = ln(91, "gas_main", "gas", [[20, 0], [20, -8]]);
+  const svc = ln(92, "gas_service", "gas", [[10, 0], [10, 6]], { Plot_ID: 7 });
+  const both = allTees([run, branch, svc], { lineTypes: LT });
+
+  if (both.tees.length !== 2) fail(`${both.tees.length} tees for a service and a division`);
+  if (!both.tees.some((t) => t.kind === "service" && t.plot === 7)) {
+    fail("the service tee was lost");
+  }
+  if (!both.tees.some((t) => t.kind === "junction")) fail("the junction tee was lost");
+
+  /* Coincident: a service leaving exactly where the main divides. */
+  const onTop = ln(93, "gas_service", "gas", [[20, 0], [20, 7]], { Plot_ID: 8 });
+  const merged = allTees([run, branch, onTop], { lineTypes: LT });
+  if (merged.tees.length !== 1) {
+    fail(`${merged.tees.length} tees in one hole where a service leaves at a division`);
+  }
+  if (merged.tees[0]?.kind !== "service") fail("the junction tee won over the service one");
+}
+
+// 15. The span node's letter is borrowed for the label, where there is one.
+{
+  const node = {
+    Feature_ID: 100, Feature_Type: "point", Feature_Role: "spannode",
+    Geometry: [[10, 0]], Label: "A7", Attributes: {},
+  };
+  if (nodeCodeAt([node], [10, 0]) !== "A7") fail("the span node letter was not found");
+  /* Only if it is actually there \u2014 a node across the site is not this
+     junction's name. */
+  if (nodeCodeAt([node], [80, 0]) !== null) fail("a distant span node was borrowed");
+  if (nodeCodeAt([], [10, 0]) !== null) fail("a letter appeared with no nodes placed");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
-  : "Top tees behave (one per joined gas service, along the main, outlet at the plot).");
+  : "Top tees behave (on the services and where a main divides, never at an end or a bend).");
 process.exit(bad ? 1 : 0);

@@ -198,3 +198,176 @@ export function missingTees(features = [], tees = [], nearM = HVTT_JOIN_M * 4) {
 export function angleOf(dir) {
   return Math.round((Math.atan2(dir[1], dir[0]) * 180) / Math.PI * 10) / 10;
 }
+
+/* ── Tees where one main branches off another ──
+
+   The other place the same fitting goes: a gas pipe routed from a point
+   along the length of another gas pipe. Not a service leaving the main
+   but the main itself dividing, and it takes the same tee.
+
+   ── Ends and bends get nothing ──
+
+   Arms are counted the way junctionsOf counts them: what ends at the
+   point, plus twice anything passing through it. Three or more is a
+   division and takes a tee. Exactly one is where a run stops — an end,
+   and the drawing says plainly that an end span node does not get one.
+   Exactly two is a bend, one pipe turning a corner, which needs no
+   fitting at all.
+
+   That count is why this is worked out from the pipe rather than read
+   off the span nodes. A span node is placed on the trench network, and
+   a trench junction is not a pipe junction: three trenches meet and one
+   of them may carry no gas, in which case the gas runs straight through
+   and there is nothing to tee. The nodes are where these land, not what
+   decides them — so the node's letter is borrowed for the label and
+   nothing more.
+
+   ── Which way the body lies ──
+
+   Along the run that carries straight on, with the stem down the
+   branch. At a division of three, the two legs most nearly opposite
+   each other are the run and the third is the branch: that is what
+   "routed from a point along the length of" means geometrically.
+
+   Where four or more meet there is no single branch, so the two most
+   opposite are still the body and the stem takes the widest gap left.
+   A cross is not really a tee, but drawing nothing at a crossroads
+   would leave the one junction on the drawing that has no fitting. */
+export function mainTees(features = [], opts = {}) {
+  const { lineTypes = [], eps = HVTT_JOIN_M } = opts;
+
+  const mains = gasMains(features, lineTypes);
+  if (mains.length < 2) return { tees: [] };
+
+  /* Interned points, so a junction found on two pipes is one place. */
+  const nodes = [];
+  const intern = (p) => {
+    for (let i = 0; i < nodes.length; i++) {
+      if (dist(nodes[i].at, p) <= eps) return nodes[i];
+    }
+    const n = { at: [p[0], p[1]], ends: 0, through: 0, legs: [] };
+    nodes.push(n);
+    return n;
+  };
+
+  const unit = (a, b) => {
+    const dx = b[0] - a[0];
+    const dy = b[1] - a[1];
+    const len = Math.hypot(dx, dy);
+    return len ? [dx / len, dy / len] : null;
+  };
+
+  /* Every pipe end, and every point another pipe ends against. */
+  for (const m of mains) {
+    const g = m.Geometry;
+    for (const [end, next] of [[g[0], g[1]], [g[g.length - 1], g[g.length - 2]]]) {
+      const n = intern(end);
+      n.ends += 1;
+      const u = unit(n.at, next);
+      if (u) n.legs.push(u);
+    }
+  }
+
+  /* And where one pipe passes through the point another ends at: the
+     "along the length of" case, which is the whole point of this. */
+  for (const m of mains) {
+    const g = m.Geometry;
+    for (const n of nodes) {
+      const atEnd = dist(g[0], n.at) <= eps || dist(g[g.length - 1], n.at) <= eps;
+      if (atEnd) continue;
+      const r = nearestOnLine(n.at, g);
+      if (!r || r.d > eps) continue;
+      n.through += 1;
+      n.legs.push([r.dir[0], r.dir[1]], [-r.dir[0], -r.dir[1]]);
+    }
+  }
+
+  const tees = [];
+  for (const n of nodes) {
+    const arms = n.ends + n.through * 2;
+    if (arms < 3) continue;              // an end, or a bend
+    if (n.legs.length < 3) continue;
+
+    /* The two most nearly opposite are the run. */
+    let run = null;
+    for (let i = 0; i < n.legs.length; i++) {
+      for (let j = i + 1; j < n.legs.length; j++) {
+        const dot = n.legs[i][0] * n.legs[j][0] + n.legs[i][1] * n.legs[j][1];
+        if (!run || dot < run.dot) run = { dot, i, j };
+      }
+    }
+    if (!run) continue;
+
+    /* And the branch is whatever is left that is furthest from both. */
+    let branch = null;
+    for (let k = 0; k < n.legs.length; k++) {
+      if (k === run.i || k === run.j) continue;
+      const along = Math.abs(n.legs[k][0] * n.legs[run.i][0] + n.legs[k][1] * n.legs[run.i][1]);
+      if (!branch || along < branch.along) branch = { along, k };
+    }
+    if (!branch) continue;
+
+    const dir = n.legs[run.i];
+    const leg = n.legs[branch.k];
+    /* Square to the run, on the branch's side: the body is clamped to
+       the pipe going through, so the outlet can only be at right angles
+       to it however the branch actually leaves. */
+    const nx = -dir[1];
+    const ny = dir[0];
+    const side = (leg[0] * nx + leg[1] * ny) >= 0 ? 1 : -1;
+
+    tees.push({
+      at: n.at,
+      dir,
+      stem: [nx * side, ny * side],
+      kind: "junction",
+      service: null,
+      main: null,
+      plot: null,
+      seed: null,
+    });
+  }
+
+  return { tees };
+}
+
+/* Every tee a gas drawing should have: the ones on the services and the
+   ones where the main divides.
+
+   Deduped by position, because a service leaving at the same point the
+   main divides is one hole with one fitting in it. The service tee wins
+   where they coincide: it knows which plot it belongs to, and that is
+   worth more on a take-off than knowing it was also a junction. */
+export function allTees(features = [], opts = {}) {
+  const service = topTees(features, opts);
+  const junction = mainTees(features, opts);
+  const near = (opts.joinM ?? HVTT_JOIN_M) * 4;
+
+  const kept = service.tees.map((t) => ({ ...t, kind: "service" }));
+  for (const t of junction.tees) {
+    if (kept.some((k) => dist(k.at, t.at) <= near)) continue;
+    kept.push(t);
+  }
+
+  return { tees: kept, unjoined: service.unjoined };
+}
+
+/* The span node a tee stands at, if there is one.
+
+   Only for the label. A junction tee reads better as "Tee A7" than as a
+   number nobody can find on the drawing, and A7 is what somebody would
+   say out loud. Absent where the nodes have not been placed, which is
+   not a reason to withhold the fitting. */
+export function nodeCodeAt(features = [], at, withinM = 2) {
+  let best = null;
+  for (const f of features) {
+    if (f.Feature_Role !== "spannode") continue;
+    const p = (f.Geometry || [])[0];
+    if (!p) continue;
+    const d = dist(p, at);
+    if (d <= withinM && (!best || d < best.d)) {
+      best = { d, code: f.Label || f.Attributes?.Code || null };
+    }
+  }
+  return best?.code ?? null;
+}

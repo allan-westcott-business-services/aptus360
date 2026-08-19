@@ -49,6 +49,10 @@ import {
 import {
   planWholeDesign, describePlan, describeOutcome,
 } from "./wholeDesign.js";
+import {
+  topTees, missingTees, angleOf,
+  HVTT_ALONG_M, HVTT_BODY_M, HVTT_STEM_M, HVTT_STEM_W_M,
+} from "./topTees.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
@@ -3361,6 +3365,62 @@ export default function GISCanvasPage() {
              square on a pipe running north or east, visibly wrong on
              anything diagonal, which is why the axis-aligned tests all
              passed. */
+          /* ── A high volume top tee ──
+
+             The body clamped along the main, the outlet standing off it
+             towards the plot. Drawn as one filled path rather than two
+             rectangles so the corner where they meet is solid: two
+             overlapping fills show their seam wherever the fill is not
+             fully opaque, and a fitting drawn with a line through it
+             reads as two fittings.
+
+             The same axis reasoning the valve records below: the
+             screen's y grows downward and toPx does not flip it, so the
+             normal is (-sin, cos) with no sign correction. The stem
+             direction is stored on the feature rather than recomputed,
+             so a tee keeps facing the plot after the main it came off
+             has been redrawn. */
+          if (f.Feature_Role === "hvtt") {
+            const deg = Number(f.Attributes?.Angle_Deg);
+            const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+            const side = Number(f.Attributes?.Stem_Side) === -1 ? -1 : 1;
+
+            /* Along the main, and square to it. */
+            const ux = Math.cos(rad);
+            const uy = Math.sin(rad);
+            const nx = -Math.sin(rad) * side;
+            const ny = Math.cos(rad) * side;
+
+            const half = (HVTT_ALONG_M / 2) * view.scale;
+            const body = (HVTT_BODY_M / 2) * view.scale;
+            const stem = HVTT_STEM_M * view.scale;
+            const stemW = (HVTT_STEM_W_M / 2) * view.scale;
+
+            const at = (a, b) => ({ x: p.x + ux * a + nx * b, y: p.y + uy * a + ny * b });
+            const pts = [
+              at(-half, -body), at(half, -body), at(half, body),
+              at(stemW, body), at(stemW, body + stem), at(-stemW, body + stem),
+              at(-stemW, body), at(-half, body),
+            ];
+
+            ctx.save();
+            ctx.fillStyle = on ? "#1d4ed8" : fill;
+            ctx.beginPath();
+            ctx.moveTo(pts[0].x, pts[0].y);
+            for (const q of pts.slice(1)) ctx.lineTo(q.x, q.y);
+            ctx.closePath();
+            ctx.fill();
+            /* Outlined as well, so it stays visible where the fill and
+               the main it sits on are the same colour \u2014 which on gas
+               they always are. */
+            ctx.strokeStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
+            ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * view.scale));
+            ctx.stroke();
+            ctx.restore();
+            /* Nothing else to draw: the tee is the symbol. */
+            return;
+          }
+
           if (f.Feature_Role === "servicevalve") {
             const deg = Number(f.Attributes?.Angle_Deg);
             const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
@@ -12571,6 +12631,12 @@ export default function GISCanvasPage() {
 
   const isServiceLine = (f) => /service/i.test(String(f.Attributes?.Line_Type ?? ""));
 
+  /* Whether the drawing has any gas service at all, to tell "none drawn
+     yet" from "drawn but joined to nothing" \u2014 two different jobs for
+     whoever is reading the message. */
+  const gasServicesOn = (world) => world.some((f) => f.Feature_Type === "line"
+    && isServiceLine(f) && f.Layer_Key === "gas");
+
   /* Every service cable and pipe, once the dig is in.
 
      Auto Lay Service Trench draws the dig and stops there, by design:
@@ -12590,7 +12656,19 @@ export default function GISCanvasPage() {
       doing: "services",
       counts: (world, u) => world.filter((f) => f.Feature_Type === "line"
         && f.Layer_Key === u && isServiceLine(f)).length,
-      run: (u, world) => autoLayServices(u, world),
+      run: async (u, world) => {
+        await autoLayServices(u, world);
+        /* Gas services come with a fitting. Placed here rather than
+           left to the backfill so a drawing laid today never needs it,
+           and read back fresh because the pipe was written a moment
+           ago. */
+        if (u === "gas") {
+          try {
+            const after = (await listGis(projectId)).features || [];
+            await placeTopTees({ silent: true, srcFeatures: after });
+          } catch { /* the backfill will catch it */ }
+        }
+      },
     });
   }
 
@@ -12649,6 +12727,112 @@ export default function GISCanvasPage() {
     });
   }
 
+  /* ── Top tees on the gas services ──
+
+     One fitting per service, at the point it meets the main. Run on its
+     own to backfill a drawing that has none, and run automatically
+     after gas services are laid so a new drawing never needs the
+     backfill.
+
+     ── Why placing them is its own pass ──
+
+     Not written when the service is drawn. A service can be drawn by
+     hand, laid by Auto Service, laid by Build Whole Gas Network or
+     brought in on a drawing made before any of this existed, and a
+     fitting written at only some of those points is a fitting missing
+     from the rest. Reading the drawing back and asking which joins have
+     no tee gets all of them, whatever put the pipe there.
+
+     ── What it leaves alone ──
+
+     A tee already at a join, wherever it came from. Matched by position
+     rather than by the Generated flag, so one somebody nudged half a
+     metre is still that join's tee and stays nudged.
+
+     Tees whose service has since gone are reported, not deleted.
+     Removing something somebody may have placed deliberately is not a
+     backfill, and the count tells them where to look. */
+  async function placeTopTees({ silent = false, srcFeatures = null } = {}) {
+    if (!projectId) return 0;
+
+    const world = srcFeatures || features;
+    const { tees, unjoined } = topTees(world, { lineTypes });
+    const { missing, orphans } = missingTees(world, tees);
+
+    if (!tees.length) {
+      if (!silent) {
+        setError(gasServicesOn(world)
+          ? "No gas service reaches a gas main, so there is nothing to tee into."
+          : "No gas services on the drawing yet \u2014 lay them first.");
+      }
+      return 0;
+    }
+    if (!missing.length) {
+      if (!silent) {
+        setStatus(`Every gas service already has a top tee (${tees.length}).`);
+        setTimeout(() => setStatus(""), 8000);
+      }
+      return 0;
+    }
+
+    if (!silent && !window.confirm(
+      `Place ${missing.length} high volume top tee(s)?`
+      + (unjoined.length
+        ? `\n\n${unjoined.length} gas service(s) do not reach a main and get none `
+          + "\u2014 worth looking at, since a service joined to nothing is a plot "
+          + "that cannot be connected."
+        : "")
+      + (orphans.length
+        ? `\n\n${orphans.length} existing tee(s) sit at no join. They are left `
+          + "alone in case they were placed deliberately."
+        : "")
+    )) return 0;
+
+    setBusy("hvtt");
+    setProgress({ done: 0, total: missing.length, label: "Placing top tees" });
+    try {
+      await withUndo("Place top tees", async () => {
+        for (const [i, t] of missing.entries()) {
+          await addFeature({
+            Layer_Key: "gas",
+            Feature_Type: "point",
+            Feature_Role: "hvtt",
+            Geometry: [t.at],
+            Label: t.plot != null ? `HVTT ${t.plot}` : "HVTT",
+            Attributes: {
+              /* The bearing of the main it is clamped to. The body lies
+                 along this and the outlet leaves at right angles. */
+              Angle_Deg: angleOf(t.dir),
+              /* Which side the service is on, as a sign rather than a
+                 second angle: the outlet is square to the main, so the
+                 only thing left to say is which way. */
+              Stem_Side: (-t.dir[1] * t.stem[0] + t.dir[0] * t.stem[1]) >= 0 ? 1 : -1,
+              /* What it joins, so a later pass can tell whose it is
+                 without measuring again. */
+              Service_Feature_ID: t.service,
+              Main_Feature_ID: t.main,
+              ...(t.seed != null ? { Seed_Feature_ID: t.seed } : {}),
+              Generated: true,
+            },
+            ...(t.plot != null ? { Plot_ID: t.plot } : {}),
+          });
+          setProgress({ done: i + 1, total: missing.length, label: `Top tee ${i + 1} of ${missing.length}` });
+        }
+      });
+    } finally {
+      setBusy("");
+      setProgress(null);
+    }
+
+    if (!silent) {
+      await load(projectId);
+      setStatus(`Placed ${missing.length} top tee(s).`);
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    }
+    return missing.length;
+  }
+
   async function runWholeDesign() {
     if (!projectId) return;
 
@@ -12690,6 +12874,7 @@ export default function GISCanvasPage() {
       meter: fs.filter((f) => f.Feature_Role === "meter").length,
       node: fs.filter((f) => f.Feature_Role === "spannode").length,
       joint: fs.filter((f) => f.Feature_Role === "joint").length,
+      point: fs.filter((f) => f.Feature_Role === "hvtt").length,
       line: fs.filter((f) => f.Feature_Type === "line").length,
     });
 
@@ -12792,6 +12977,11 @@ export default function GISCanvasPage() {
         for (const u of plan.services) {
           await step(`${u} services`, `Laying the ${u} services`, "line",
             (world) => autoLayServices(u, world));
+
+          if (u === "gas") {
+            await step("Gas top tees", "Placing the gas top tees", "point",
+              (world) => placeTopTees({ silent: true, srcFeatures: world }));
+          }
         }
 
         await step("Feeder joints", "Placing the feeder joints", "joint",
@@ -15245,6 +15435,17 @@ export default function GISCanvasPage() {
                       hint="LV network, gas main and water main \u2014 for every utility with an outline design and an AV agreement"
                       disabled={!!busy || !projectId}
                       onClick={() => runAllMains()} />
+
+                    {/* The gas fitting that goes with every service.
+                        Here as well as running itself after the gas
+                        services are laid, because a drawing made before
+                        this existed has none and nothing else would put
+                        them in. */}
+                    <MenuItem label={busy === "hvtt"
+                      ? "Placing\u2026" : "Place Gas Top Tees"}
+                      hint="A high volume top tee wherever a gas service meets a gas main, for any that have none"
+                      disabled={!!busy || !projectId}
+                      onClick={() => placeTopTees()} />
 
                     <MenuItem label={busy === "layall"
                       ? "Laying\u2026" : "Lay All Services"}

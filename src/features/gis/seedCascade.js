@@ -129,6 +129,13 @@ export function servicePartOf(f, lineTypes = [], stamped = false) {
      Not the lighting ones. A column's service joint is typed the same
      way but feeds a lamp, not a plot, and it carries For_Lighting to
      say so. */
+  /* A high volume top tee is the gas equivalent of a service joint:
+     the fitting on the main that exists solely because this plot's
+     service leaves there. It goes with the plot for the same reason,
+     and it is stamped with the seed and the service, so it needs no
+     measuring. */
+  if (f.Feature_Role === "hvtt") return "joint";
+
   if (f.Feature_Role === "joint") {
     if (f.Attributes?.For_Lighting) return null;
     const kind = String(f.Attributes?.Joint_Type ?? "").toLowerCase();
@@ -327,6 +334,17 @@ export function seedCascade(ids = [], features = [], lineTypes = []) {
   for (const { f } of parts.filter((x) => x.part === "joint")) {
     const id = Number(f.Feature_ID);
     if (asked.has(id) || taken.has(id)) continue;
+
+    /* A stamped fitting needs no measuring. A top tee is written with
+       the seed it was placed for, so it goes with that plot whatever
+       else is near it — which matters on a terrace, where the next
+       plot's service tees in within the radius below and would
+       otherwise hold this one in place. */
+    if (seeds.some((sd) => belongsToSeed(f, sd))) {
+      out.joint.push(f);
+      taken.add(id);
+      continue;
+    }
 
     const p = at(f);
     if (!p) continue;

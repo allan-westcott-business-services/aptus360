@@ -125,6 +125,12 @@ export function bulkDeleteCategories(features = [], opts = {}) {
         ["service", "service pipe", isService],
         ["meter", "meters", role("meter")],
         ["joint", "connectors", role("joint")],
+        /* Its own entry rather than folded into the connectors. A top
+           tee is placed one per service by a routine that can be run
+           again, so clearing them and re-running is a normal thing to
+           want — and doing it through "connectors" would take the
+           governors' fittings with them. */
+        ["hvtt", "top tees", role("hvtt")],
         ["poc", "POC", role("poc")],
         ["governor", "governors", role("governor")],
       ],

@@ -14429,7 +14429,12 @@ export default function GISCanvasPage() {
       levels: true,
       advanced: stopAt === "junctions",
       hasVd,
-      from: "the substation",
+      /* Named for what the network is actually fed from. It said "the
+         substation" whatever was there, so a POC-fed check reported
+         itself as measured from something not on the drawing \u2014 and the
+         warning underneath, telling somebody to set a transformer,
+         agreed with the heading and not with the site. */
+      from: lvOrigin(src)?.Feature_Role === "poc" ? "the POC" : "the substation",
       circuitName: parts.length === 1 ? parts[0].circuitName : `${parts.length} circuits`,
       legs: parts.flatMap((p) => p.legs.map((l) => ({ ...l, circuitName: p.circuitName }))),
       parts,

@@ -63,7 +63,7 @@ import BulkDelete from "./BulkDelete.jsx";
 import { SPAN_REACH_M } from "./feeder.js";
 import { nodeFedBy as nodeFedByLine } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
-  spanTrace, orderNodesFromRoot } from "./feeder.js";
+  spanTrace, orderNodesFromRoot, lvOrigin } from "./feeder.js";
 import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
@@ -7982,9 +7982,15 @@ export default function GISCanvasPage() {
      would drift, and the way allocation is the part that would drift
      silently. */
   async function createCircuitFrom(meters, how) {
-    const sub = features.find((f) => f.Feature_Role === "substation");
+    /* Or the electric POC, for the reason lvOrigin gives: on a
+       connection to an existing network there is no transformer, and
+       the circuits feed back to the point of connection. Circuits are
+       what the LV build needs, so a gate here that still demanded a
+       substation would refuse the same drawing one step earlier. */
+    const sub = lvOrigin(features);
     if (!sub) {
-      setError("Place a substation first \u2014 a circuit has to feed back to one.");
+      setError("Place a substation, or an electric POC \u2014 a circuit has to "
+        + "feed back to one of them.");
       return false;
     }
     if (!meters.length) {
@@ -8059,9 +8065,15 @@ export default function GISCanvasPage() {
      defining a circuit assigns its meters, and laying the feeders is a
      separate step. */
   async function finishCircuit(ring) {
-    const sub = features.find((f) => f.Feature_Role === "substation");
+    /* Or the electric POC, for the reason lvOrigin gives: on a
+       connection to an existing network there is no transformer, and
+       the circuits feed back to the point of connection. Circuits are
+       what the LV build needs, so a gate here that still demanded a
+       substation would refuse the same drawing one step earlier. */
+    const sub = lvOrigin(features);
     if (!sub) {
-      setError("Place a substation first \u2014 a circuit has to feed back to one.");
+      setError("Place a substation, or an electric POC \u2014 a circuit has to "
+        + "feed back to one of them.");
       return;
     }
     const seeds = metredSeedsInside(features, ring, pointInPolygon);
@@ -10300,8 +10312,14 @@ export default function GISCanvasPage() {
     const src = srcFeatures || features;
 
     const circuits = circuitsFrom(src);
-    if (!src.some((f) => f.Feature_Role === "substation")) {
-      return setError("Place a substation first \u2014 feeders route back to it.");
+    /* A substation, or an electric POC on the mains trench. On a
+       connection to an existing network there is no new transformer,
+       and the POC is where the site's electricity comes from \u2014 the
+       rule is in feeder.js so the guard and the router cannot disagree
+       about what counts as an origin. */
+    if (!lvOrigin(src)) {
+      return setError("Place a substation, or an electric POC on the mains "
+        + "trench \u2014 feeders route back to one of them.");
     }
     if (!circuits.length) {
       return setError("No circuits defined yet \u2014 use Link to Circuit first.");
@@ -10382,7 +10400,7 @@ export default function GISCanvasPage() {
            creates one, but a circuit made before that did, or one whose
            node has been deleted, would have none — so the build makes
            sure rather than assuming. */
-        const originAt = src.find((f) => f.Feature_Role === "substation")?.Geometry?.[0];
+        const originAt = lvOrigin(src)?.Geometry?.[0];
         const haveOrigin = !!originNodeFor(src, c.id);
 
         /* Numbered by a walk outward from the substation, nearest branch

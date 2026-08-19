@@ -111,8 +111,37 @@ const isTrench = (f, lineTypes = []) => {
 
 const isService = (f) => String(f.Attributes?.Line_Type || "").includes("service");
 
+/* ── Where the network starts ──
+
+   A substation, or an electric POC.
+
+   The build required a substation, because on a scheme we build the
+   feeders run back to one. They do not always: on a connection to an
+   existing network there is no new transformer, and the point of
+   connection to the DNO's cable is where the site's electricity comes
+   from. The drawing had the POC on it and the build refused to use it,
+   so the only way through was to place a substation nobody would build.
+
+   The substation wins where both are drawn, for the reason originsOf
+   gives about plant and POCs: a site with a transformer starts at the
+   transformer, and the POC beside it is where the incomer arrives
+   rather than where the feeders begin.
+
+   Only an electric one. A gas POC is on the drawing of nearly every
+   scheme and has nothing to say about where a cable routes back to. */
+export function lvOrigin(features = []) {
+  const has = (f) => (f.Geometry || []).length > 0;
+
+  const sub = features.find((f) => f.Feature_Role === "substation" && has(f));
+  if (sub) return sub;
+
+  return features.find((f) => f.Feature_Role === "poc"
+    && f.Layer_Key === "electric" && has(f)) || null;
+}
+
 /* ── The model ──
-   Nodes, a tree rooted at the substation, and the load beyond each node. */
+   Nodes, a tree rooted at the substation or the POC, and the load
+   beyond each node. */
 export function buildFeederModel(features = [], opts = {}) {
   const {
     lineTypes = [], plotById = () => null, seedIds = null,
@@ -199,8 +228,13 @@ export function buildFeederModel(features = [], opts = {}) {
   }
   if (!nodes.length) return { error: "No trenches to route cables along." };
 
-  const sub = features.find((f) => f.Feature_Role === "substation" && (f.Geometry || []).length);
-  if (!sub) return { error: "Place a substation first \u2014 feeders route back to it." };
+  const sub = lvOrigin(features);
+  if (!sub) {
+    return {
+      error: "Place a substation, or an electric POC on the mains trench "
+        + "\u2014 feeders route back to one of them.",
+    };
+  }
 
   const nearest = (p) => {
     let bi = -1, bd = Infinity;
@@ -212,7 +246,13 @@ export function buildFeederModel(features = [], opts = {}) {
   };
 
   const S = nearest(sub.Geometry[0]).i;
-  if (S < 0) return { error: "The substation isn\u2019t on the trench network." };
+  if (S < 0) {
+    return {
+      error: sub.Feature_Role === "substation"
+        ? "The substation isn\u2019t on the trench network."
+        : "The electric POC isn\u2019t on the trench network.",
+    };
+  }
 
   /* Load attaches where the plot meets the network. The meter glyph sits
      beside its seed rather than on the trench, so the seed is the better

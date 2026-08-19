@@ -1152,6 +1152,37 @@ export default function FeatureEditor({
                   it wrote the system field while leaving the override
                   standing, so the control could not correct what it was
                   displaying. */}
+              {/* ── What is actually at this node ──
+
+                  Two boxes showing different sizes is a node that reads
+                  as disagreeing with itself. It is not: one is the
+                  build's answer and the other is somebody's override,
+                  and every reader in the app — the trace, the levels
+                  report, the bill — takes the override where there is
+                  one. That rule was written down in six places and
+                  shown in none, so the answer to "what cable is at A5"
+                  had to be worked out from two fields and a convention.
+
+                  Said once, above the pair it settles. The two boxes
+                  stay, because which of them a number came from is the
+                  next question anybody asks. */}
+              {(() => {
+                const sys = f.Attributes.VD_Cable_Size_ID ?? null;
+                const man = f.Attributes.Manual_VD_Cable_Size_ID ?? null;
+                const eff = man ?? sys;
+                if (eff == null) return null;
+                return (
+                  <p className="fe-effective">
+                    <strong>{cableLabel(eff)}</strong>
+                    {man != null
+                      ? (sys != null && String(sys) !== String(man)
+                        ? " \u2014 set by hand, overriding the calculated size below"
+                        : " \u2014 set by hand")
+                      : " \u2014 as calculated"}
+                  </p>
+                );
+              })()}
+
               <div className="fld">
                 <label htmlFor="fe-cable-sys">System calculated</label>
                 <input id="fe-cable-sys" readOnly
@@ -2456,6 +2487,16 @@ export default function FeatureEditor({
 }
 
 const CSS = `
+/* The size actually in force at a span node, above the pair that
+   produce it.
+
+   Set apart rather than styled as another field, because it is not one:
+   nothing here is editable, and it is the answer the two controls below
+   are the workings for. */
+.fe-effective { margin: 0 0 10px; padding: 8px 10px; border-radius: 8px;
+  background: var(--bg); font-size: 13px; }
+.fe-effective strong { font-size: 14px; }
+
 /* .fe-backdrop lives in src/styles.css. RaiseInvoiceModal uses it
    too, and a class defined here only exists while the canvas is
    mounted — which on the invoices tab it never is. */

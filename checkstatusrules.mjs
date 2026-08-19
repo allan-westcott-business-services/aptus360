@@ -235,6 +235,54 @@ const line = (type, layer, attrs = {}) => ({
   if (!/needsGround\(/.test(canvas)) fail("the save path no longer enforces the rule");
 }
 
+// 11. A trench is not in a trench.
+//
+//    trenchesUnder matches a trench against itself — a trench follows
+//    its own line perfectly — so a trench still Planned came back as
+//    the thing holding itself back, and correcting one to As-Laid was
+//    refused on the grounds that it was Planned. Which it was, and
+//    which was the thing being corrected.
+{
+  const trench = {
+    Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_main", Build_Status: "planned" },
+  };
+
+  /* Handed itself, as the canvas hands it, and nothing is held back. */
+  const own = statusOptions(trench, LT, [trench]);
+  if (own.some((o) => o.disabled)) {
+    fail(`a trench held itself back from ${own.find((o) => o.disabled)?.key}`);
+  }
+  /* Including the stage that was being set when this was reported. */
+  if (own.find((o) => o.key === "asbuilt")?.disabled) {
+    fail("a trench could not be corrected to As-Laid");
+  }
+
+  /* And a service trench likewise \u2014 it is a dig, whatever it is
+     called. */
+  const svcTrench = {
+    ...trench,
+    Attributes: { Line_Type: "trench_service", Build_Status: "planned" },
+  };
+  if (statusOptions(svcTrench, LT, [svcTrench]).some((o) => o.disabled)) {
+    fail("a service trench held itself back");
+  }
+
+  /* The rule still bites on what actually lies in the ground. */
+  const svc = line("elec_service", "electric");
+  if (!statusOptions(svc, LT, [trench]).some((o) => o.disabled)) {
+    fail("scoping the rule to cables and pipes turned it off entirely");
+  }
+
+  /* The canvas scopes it the same way, so the save path and the field
+     cannot disagree about who the rule is for. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/isMainFeature\(before, lineTypes\) \|\| isServiceFeature\(before, lineTypes\)/
+    .test(canvas)) {
+    fail("the save path does not scope the rule to cables and pipes");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Statuses behave (a service has its own three, nothing is live before its ground is closed).");
 process.exit(bad ? 1 : 0);

@@ -501,7 +501,22 @@ export function withDefaultStatus(f, lineTypes = []) {
    already. Browsers grey a disabled option on their own; this is the
    part they cannot supply. */
 export function statusOptions(feature, lineTypes = [], trenches = []) {
-  const held = blocksLive(trenches);
+  /* Only what lies in a trench is held back by one.
+
+     A trench is not in a trench. trenchesUnder matches a trench against
+     itself \u2014 a trench follows its own line perfectly \u2014 so a trench
+     still Planned came back as the thing holding itself back, and
+     setting one As-Laid was refused on the grounds that it was Planned.
+     Which it was, and which is what was being corrected.
+
+     Asked as "is this a main or a service" rather than "is this not a
+     trench", because that is the actual scope of the rule: the stages
+     of a cable or pipe make a claim about the ground around it, and
+     nothing else on the drawing does. */
+  const inGround = isMainFeature(feature, lineTypes)
+    || isServiceFeature(feature, lineTypes);
+
+  const held = inGround ? blocksLive(trenches) : [];
 
   return statusesFor(feature, lineTypes).map((s) => {
     if (!needsGround(s.key) || !held.length) return { ...s, disabled: false };

@@ -109,7 +109,7 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
-  isOffSite, withDefaultStatus, blocksLive, needsGround,
+  isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
@@ -7205,7 +7205,13 @@ export default function GISCanvasPage() {
        anything back \u2014 one was never dug by this job and the other is
        being taken out. Only Planned does. */
     const wanted = changes?.Attributes?.Build_Status;
-    if (before && needsGround(wanted) && !needsGround(statusOf(before))) {
+    /* Only a cable or a pipe. A trench is not in a trench: trenchesUnder
+       matches one against itself, so a trench being corrected to As-Laid
+       came back as the thing blocking its own correction. */
+    const inGround = before
+      && (isMainFeature(before, lineTypes) || isServiceFeature(before, lineTypes));
+
+    if (inGround && needsGround(wanted) && !needsGround(statusOf(before))) {
       const proposed = { ...before, ...changes };
       const holding = blocksLive(trenchesUnder([proposed], features, lineFollows));
       if (holding.length) {

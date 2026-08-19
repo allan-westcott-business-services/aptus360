@@ -775,7 +775,23 @@ export default function FeatureEditor({
               Electric only, and on the POC rather than anywhere else,
               because it is a fact about somebody else's network at the
               one point we touch it. */}
-          {feature.Feature_Role === "poc" && feature.Layer_Key === "electric" && (
+          {feature.Feature_Role === "poc" && feature.Layer_Key === "electric" && (<>
+            <div className="fld">
+              <label htmlFor="fe-poc-v">Output voltage (V)</label>
+              <input id="fe-poc-v" type="number" step="1" min="0"
+                value={f.Attributes.Output_V ?? ""}
+                placeholder="400"
+                onChange={(e) => setAttr("Output_V")(
+                  e.target.value === "" ? null : Number(e.target.value))} />
+              <p className="hint">
+                {f.Attributes.Output_V == null
+                  ? "Assumed to be 400 V. Every amp and every volt drop percentage "
+                    + "is worked out against it, so set it if this connection is at "
+                    + "anything else."
+                  : "What the levels check works to. Amps are kVA over \u221a3 \u00d7 V, "
+                    + "and a volt drop is a proportion of it."}
+              </p>
+            </div>
             <div className="fld">
               <label htmlFor="fe-poc-z">Declared loop impedance (ohms)</label>
               <input id="fe-poc-z" type="number" step="0.001" min="0"
@@ -791,7 +807,7 @@ export default function FeatureEditor({
                     + "drop and loop impedance are measured from it."}
               </p>
             </div>
-          )}
+          </>)}
 
           {isTee && (<>
             <div className="fld">

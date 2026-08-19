@@ -11,7 +11,9 @@
    impedance for the cable alone — every figure lower than the truth by
    the same missing amount, so a marginal run read as passing. */
 import { readFileSync } from "node:fs";
-import { sourceImpedance, NO_SOURCE_NOTE } from "./src/features/gis/electric.js";
+import {
+  sourceImpedance, NO_SOURCE_NOTE, workingVoltage, voltageOf,
+} from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -127,6 +129,58 @@ const poc = (attrs = {}) => ({
   if (!/Feature_Role === "poc" && feature\.Layer_Key === "electric"/.test(editor)) {
     fail("the field is offered on every POC, not only the electric one");
   }
+}
+
+// 7. The voltage comes from the origin, and says when it did not.
+//
+//    Every amp and every percentage is worked out against it: amps are
+//    kVA over root-three times V, and a volt drop is a proportion of
+//    it. It was a literal in five places, each reading a field only a
+//    substation has \u2014 so on a POC-fed network all five found nothing
+//    and all five fell back to 400, stated nowhere.
+{
+  if (voltageOf({ Attributes: { Output_V: 415 } }) !== 415) {
+    fail("a stated voltage was ignored");
+  }
+  if (workingVoltage({ Attributes: { Output_V: 415 } }).assumed) {
+    fail("a stated voltage was reported as assumed");
+  }
+
+  /* 400 where nothing says otherwise \u2014 that is what an LV network runs
+     at, and refusing to calculate would help nobody. What matters is
+     that the caller can tell it was assumed. */
+  for (const origin of [null, undefined, { Attributes: {} },
+    { Attributes: { Output_V: "" } }, { Attributes: { Output_V: 0 } },
+    { Attributes: { Output_V: -5 } }, { Attributes: { Output_V: "abc" } }]) {
+    const got = workingVoltage(origin);
+    if (got.volts !== 400) fail(`a missing voltage gave ${got.volts}`);
+    if (!got.assumed) fail("a fallback voltage was not reported as assumed");
+  }
+}
+
+// 8. One copy of the fallback, not five.
+//
+//    Five copies is how a POC-fed check and the schematic drawn from it
+//    came to disagree with each other about the same network \u2014 the
+//    same duplication that produced two delete lists in the LV rebuild
+//    and two transformer lookups in this very function.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const left = (canvas.match(/Output_V\) \|\| 400/g) || []).length;
+  if (left) fail(`${left} copy(ies) of the voltage fallback remain in the canvas`);
+  if (!/voltageOf\(/.test(canvas)) fail("the canvas does not use the shared voltage");
+
+  /* Including the schematic, which had its own substation lookup, so a
+     POC-fed drawing was drawn at 400 whatever the check had used. */
+  if (/Feature_Role === "substation"\)\s*\n?\s*\?\.Attributes\?\.Output_V/.test(canvas)) {
+    fail("the schematic still reads the voltage from a substation");
+  }
+
+  /* And it is said where the figures are read. */
+  if (!/voltageAssumed/.test(canvas)) fail("nothing says when the voltage was assumed");
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/fe-poc-v/.test(editor)) fail("the POC has no field for its output voltage");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

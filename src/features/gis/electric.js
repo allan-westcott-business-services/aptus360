@@ -929,3 +929,37 @@ export const NO_SOURCE_NOTE = "No source impedance \u2014 volt drop and loop "
   + "figures are cable only, so they read better than they will be. Set the "
   + "transformer size on the substation, or the DNO\u2019s declared loop "
   + "impedance on the POC.";
+
+/* ── The voltage the network works at ──
+
+   Every amp and every percentage in a levels check is computed against
+   it: amps are kVA over root-three times V, and a volt drop is a
+   proportion of it.
+
+   It was a literal. Five copies of `Number(station?.Attributes?.Output_V)
+   || 400` across two files, each reading a field that only a substation
+   has — so on a POC-fed network all five found nothing and all five
+   fell back to 400. Right for an ordinary LV connection, and stated
+   nowhere: the drawing did not carry it, the export did not show it,
+   and a POC at anything else would have been calculated at 400 with no
+   sign of it.
+
+   So it comes from whichever origin the network has, and the fallback
+   is in one place. A POC carries its own because it is the DNO's
+   figure at the point we connect; a substation carries its output
+   voltage as it always did.
+
+   400 remains the answer when neither says otherwise, because that is
+   what an LV network runs at and refusing to calculate would help
+   nobody. What changes is that it is one assumption rather than five,
+   and the caller can ask whether it was assumed. */
+export function workingVoltage(origin) {
+  const said = origin?.Attributes?.Output_V;
+  const v = Number(said);
+  return Number.isFinite(v) && v > 0
+    ? { volts: v, assumed: false }
+    : { volts: SUB_DEFAULTS.Output_V, assumed: true };
+}
+
+/* Just the number, for the many callers that only want it. */
+export const voltageOf = (origin) => workingVoltage(origin).volts;

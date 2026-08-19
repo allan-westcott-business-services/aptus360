@@ -32,7 +32,7 @@ import {
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
-  sourceImpedance, NO_SOURCE_NOTE,
+  sourceImpedance, NO_SOURCE_NOTE, workingVoltage, voltageOf,
   circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
@@ -864,7 +864,7 @@ export default function GISCanvasPage() {
       transformer: (lookups?.transformerSizes || []).find((t) =>
         String(t.Transformer_Size_ID)
           === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
-      voltageV: Number(station?.Attributes?.Output_V) || 400,
+      voltageV: voltageOf(station),
       settings: trace?.limits || {},
     };
 
@@ -1248,7 +1248,7 @@ export default function GISCanvasPage() {
       transformer: (lookups?.transformerSizes || []).find((t) =>
         String(t.Transformer_Size_ID)
           === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
-      voltageV: Number(station?.Attributes?.Output_V) || 400,
+      voltageV: voltageOf(station),
       settings: limits,
     };
 
@@ -14397,7 +14397,7 @@ export default function GISCanvasPage() {
           cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
           cableTypes: lookups?.cableTypes || [],
           transformer: sourceImpedance(station, lookups?.transformerSizes || []),
-          voltageV: Number(station?.Attributes?.Output_V) || 400,
+          voltageV: voltageOf(station),
           settings: limits,
         };
         for (const leg of part.legs) {
@@ -14435,6 +14435,9 @@ export default function GISCanvasPage() {
          warning underneath, telling somebody to set a transformer,
          agreed with the heading and not with the site. */
       from: lvOrigin(src)?.Feature_Role === "poc" ? "the POC" : "the substation",
+      /* Whether the voltage everything was calculated against came from
+         the drawing or from the fallback. */
+      voltageAssumed: workingVoltage(lvOrigin(src)).assumed,
       circuitName: parts.length === 1 ? parts[0].circuitName : `${parts.length} circuits`,
       legs: parts.flatMap((p) => p.legs.map((l) => ({ ...l, circuitName: p.circuitName }))),
       parts,
@@ -14519,7 +14522,7 @@ export default function GISCanvasPage() {
          reporting cable-only figures from here. */
       const station = lvOrigin(src);
       const transformer = sourceImpedance(station, lookups?.transformerSizes || []);
-      const voltageV = Number(station?.Attributes?.Output_V) || 400;
+      const voltageV = voltageOf(station);
 
       const ctx = {
         cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
@@ -16502,8 +16505,10 @@ export default function GISCanvasPage() {
           schematic with the middle of every run missing is not one. */}
       {schematic && trace && (
         <SchematicModal trace={trace} onClose={() => setSchematic(false)}
-          voltageV={Number(features.find((f) => f.Feature_Role === "substation")
-            ?.Attributes?.Output_V) || 400} />
+          /* From the origin, like everything else. This one looked for a
+             substation of its own, so a POC-fed schematic was drawn at
+             400 whatever the check had used. */
+          voltageV={voltageOf(lvOrigin(features))} />
       )}
 
       {bulkDelOpen && projectId && (
@@ -18476,6 +18481,21 @@ export default function GISCanvasPage() {
                     <p className="gt-sub">
                       {trace.circuitName} &middot; {trace.legs.length} leg(s) &middot;{" "}
                       {trace.totalMeters} meter(s) beyond this point
+                      {/* Said where the figures are read.
+
+                          The voltage was a literal nobody could see, and
+                          every amp and percentage in this table is
+                          worked out against it. Shown only when nothing
+                          on the drawing states it, so a network that
+                          does carry one is not nagged about it. */}
+                      {trace.voltageAssumed && (
+                        <> &middot; <span className="gt-assumed"
+                          title="Nothing on the drawing states it. Set the output
+                            voltage on the POC, or on the substation, if this
+                            connection is at anything else.">
+                          400 V assumed
+                        </span></>
+                      )}
                     </p>
                   </div>
                   <button className="btn accent sm" onClick={exportTrace}>Export</button>
@@ -19047,6 +19067,10 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .vd-gap { font-size: 10.5px; color: #b45309; font-style: italic; }
 .vd-note { font-size: 10px; color: var(--muted); font-weight: 500; }
 .gt-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
+/* An assumption, marked as one. Not an error — 400 V is what an LV
+   network runs at — but every figure below is worked out against it and
+   nothing on the drawing says so. */
+.gt-assumed { color: #b45309; font-style: italic; cursor: help; }
 .gt-dead { color: var(--muted); font-style: italic; font-size: 11.5px; }
 .gt-hi { background: none; border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
   font: 600 10.5px inherit; padding: 2px 7px; color: var(--muted); }

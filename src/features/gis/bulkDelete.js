@@ -14,6 +14,16 @@
 
 import { JOINT_KINDS, isJointOfKind } from "./joints.js";
 
+/* The order the joint kinds are offered in, which is not the order the
+   catalogue happens to declare them.
+
+   Commonest first: a drawing has a service joint at every plot and a
+   handful of the rest. Bottle ends last because they are the one nobody
+   asked for. Written out rather than taken from JOINT_KINDS so that
+   adding a kind to the catalogue does not silently reshuffle a panel
+   somebody has learnt the shape of. */
+const JOINT_KIND_ORDER = ["service", "breech", "straight", "bottleend"];
+
 const typeOf = (f) => String(f.Attributes?.Line_Type ?? "");
 const isLine = (f) => f.Feature_Type === "line";
 
@@ -81,6 +91,31 @@ export function bulkDeleteCategories(features = [], opts = {}) {
         ["service", "service cable", isService],
         ["meter", "meters", role("meter")],
         ["joint", "joints", role("joint")],
+        /* And each kind of joint on its own.
+
+           Here rather than among the general Points entries, because a
+           joint kind is an electric idea. Gas and water have connectors
+           and no kinds to tell apart, so the same four entries offered
+           generally would be four permanent zeroes on any drawing
+           without electric on it.
+
+           They earn separate entries because they are replaced by
+           different things. Rebuilding the feeders puts the straights
+           and the breeches back; the service joints belong to the plots
+           and outlive it. Clearing all of them and re-running restored
+           a service joint only where a service still ran to it, which
+           is not the same set \u2014 so redoing the feeder joints meant
+           deleting everything and hoping.
+
+           Bottle ends included though not asked for: leaving one of the
+           four reachable only through "all joints" is an asymmetry
+           somebody hits the first time they redo the ends of the
+           runs. */
+        ...JOINT_KIND_ORDER.map((kind) => [
+          `joint_${kind}`,
+          `${JOINT_KINDS[kind].label.toLowerCase()}s`,
+          (f) => isJointOfKind(f, kind),
+        ]),
         ["spannode", "span nodes", role("spannode")],
         ["poc", "POC", role("poc")],
         ["substation", "substations", role("substation")],
@@ -124,10 +159,23 @@ export function bulkDeleteCategories(features = [], opts = {}) {
         main: "main", service: "service",
         meter: "meter", joint: "joint", poc: "poc", spannode: "spannode",
         column: "column",
+        /* Every kind rolls up into the one general joints entry, so
+           ticking "All joints and connectors" still takes them and
+           unticking a kind means "all the joints except those". */
+        ...Object.fromEntries(JOINT_KIND_ORDER.map((k) => [`joint_${k}`, "joint"])),
       }[key];
+      /* A kind of joint sits under this utility's joints entry as well.
+
+         "Electric — joints" covers the straights and the breeches and
+         the rest, so without naming it as a parent, unticking the
+         straights while it is ticked leaves them in: idsForKeys reads
+         the wider entry as a separate, deliberate claim on the same
+         features rather than as the thing being narrowed. */
+      const under = key.startsWith("joint_") ? [`${l.Layer_Key}:joint`] : [];
+
       add(`${l.Layer_Key}:${key}`, `${l.Label} \u2014 ${what}`,
         (f) => on(f) && pred(f), `${l.Label} only`,
-        [`layer:${l.Layer_Key}`, ...(general ? [general] : [])]);
+        [`layer:${l.Layer_Key}`, ...under, ...(general ? [general] : [])]);
     }
   }
 
@@ -161,47 +209,6 @@ export function bulkDeleteCategories(features = [], opts = {}) {
      kind of feature and this takes them all. */
   add("joint", "All joints and connectors", (f) => f.Feature_Role === "joint", "Points");
 
-  /* And each kind on its own.
-
-     "All joints" is the wrong instrument for most of what somebody
-     actually wants here. Rebuilding the feeders replaces the straight
-     joints and the breeches; the service joints belong to the plots and
-     survive it. Clearing the lot and re-running put every service joint
-     back only where a service still ran to it, which is not the same
-     set — so the way to redo the feeder joints was to delete everything
-     and hope.
-
-     By kind rather than by code, and matched on either, because a joint
-     placed from the catalogue carries Joint_Code and one placed from
-     the menu carries Joint_Type.
-
-     Bottle ends are here too. They were not asked for, but leaving one
-     of the four kinds reachable only through "all joints" is an
-     asymmetry somebody would hit the first time they wanted to redo the
-     ends of the runs.
-
-     Children of "all joints and connectors", so ticking that ticks
-     these and unticking one of them means "all the joints except the
-     straights" — the behaviour keysToRemove already gives the utility
-     categories. The parent still covers more than its children do: a
-     gas connector carries no kind at all and belongs to none of the
-     four. */
-  for (const kind of ["service", "breech", "straight", "bottleend"]) {
-    add(`joint_${kind}`, `All ${JOINT_KINDS[kind].label.toLowerCase()}s`,
-      (f) => isJointOfKind(f, kind), "Points", ["joint"]);
-  }
-  add("linkbox", "All link boxes", (f) => f.Feature_Role === "linkbox", "Points");
-  add("column", "All lighting columns", (f) => f.Feature_Role === "column", "Points");
-  add("seed", "All plot seeds", (f) => f.Feature_Role === "plot", "Points");
-  add("poc", "All POCs", (f) => f.Feature_Role === "poc", "Points");
-  add("spannode", "All span nodes", (f) => f.Feature_Role === "spannode", "Points");
-  add("servicevalve", "All service valves",
-    (f) => f.Feature_Role === "servicevalve", "Points");
-  /* Substations and gas governors are not here. Each belongs to one
-     utility, so "all of them" and "all of that utility's" are the same
-     list under two names — and two entries that always agree are one
-     more thing to read and one more place to tick the wrong box. They
-     appear under Electric and Gas respectively. */
 
   add("boundary", "Site boundary", (f) => f.Layer_Key === "boundary", "Everything");
   add("all", "Everything on the drawing", () => true, "Everything");

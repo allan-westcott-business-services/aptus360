@@ -37,7 +37,13 @@ const FEATURES = [
     Layer_Key: "gas", Attributes: {} },
 ];
 
-const cats = bulkDeleteCategories(FEATURES, { lineTypes: [], layers: [] });
+/* The layers matter now: the kind entries live under Electric only,
+   which is built from the layer list. */
+const LAYERS = [
+  { Layer_Key: "electric", Label: "Electric" },
+  { Layer_Key: "gas", Label: "Gas" },
+];
+const cats = bulkDeleteCategories(FEATURES, { lineTypes: [], layers: LAYERS });
 const cat = (key) => cats.find((c) => c.key === key);
 
 // 1. A category for each kind, counting both ways of recording it.
@@ -47,7 +53,7 @@ const cat = (key) => cats.find((c) => c.key === key);
 //    fitting. A filter that read only one would silently take half.
 {
   for (const kind of ["service", "breech", "straight", "bottleend"]) {
-    const c = cat(`joint_${kind}`);
+    const c = cat(`electric:joint_${kind}`);
     if (!c) { fail(`there is no category for ${kind} joints`); continue; }
     const want = kind === "service" ? 3 : 2;   // service has an extra
     if (c.count !== want) fail(`${kind} counted ${c.count}, wanted ${want}`);
@@ -56,21 +62,21 @@ const cat = (key) => cats.find((c) => c.key === key);
 
 // 2. Each takes only its own.
 {
-  if (idsForKeys(cats, ["joint_service"]).sort((a, b) => a - b).join(",") !== "1,2,6") {
-    fail(`the service joints came out as ${idsForKeys(cats, ["joint_service"]).join(",")}`);
+  if (idsForKeys(cats, ["electric:joint_service"]).sort((a, b) => a - b).join(",") !== "1,2,6") {
+    fail(`the service joints came out as ${idsForKeys(cats, ["electric:joint_service"]).join(",")}`);
   }
-  if (idsForKeys(cats, ["joint_breech"]).sort((a, b) => a - b).join(",") !== "3,7") {
-    fail(`the breech joints came out as ${idsForKeys(cats, ["joint_breech"]).join(",")}`);
+  if (idsForKeys(cats, ["electric:joint_breech"]).sort((a, b) => a - b).join(",") !== "3,7") {
+    fail(`the breech joints came out as ${idsForKeys(cats, ["electric:joint_breech"]).join(",")}`);
   }
-  if (idsForKeys(cats, ["joint_straight"]).sort((a, b) => a - b).join(",") !== "4,8") {
-    fail(`the straight joints came out as ${idsForKeys(cats, ["joint_straight"]).join(",")}`);
+  if (idsForKeys(cats, ["electric:joint_straight"]).sort((a, b) => a - b).join(",") !== "4,8") {
+    fail(`the straight joints came out as ${idsForKeys(cats, ["electric:joint_straight"]).join(",")}`);
   }
 }
 
 // 3. Nothing that is not a joint, whatever else it is.
 {
   for (const kind of ["service", "breech", "straight", "bottleend"]) {
-    if (idsForKeys(cats, [`joint_${kind}`]).includes(11)) {
+    if (idsForKeys(cats, [`electric:joint_${kind}`]).includes(11)) {
       fail(`the ${kind} category took a meter`);
     }
   }
@@ -84,11 +90,16 @@ const cat = (key) => cats.find((c) => c.key === key);
 {
   const all = cat("joint");
   if (all.count !== 10) fail(`all joints counted ${all.count}, wanted 10`);
-  if (!idsForKeys(cats, ["joint"]).includes(10)) {
+  /* Through keysToAdd, because that is what a tick does. Naming the
+     parent alone and none of its children is not a state the panel can
+     be in \u2014 and it means something else entirely: every child left
+     unticked under a ticked parent is subtracted, which is how "all of
+     it except that" works. */
+  if (!idsForKeys(cats, keysToAdd(cats, "joint")).includes(10)) {
     fail("a connector with no kind fell out of the catch-all");
   }
   const covered = new Set(["service", "breech", "straight", "bottleend"]
-    .flatMap((k) => idsForKeys(cats, [`joint_${k}`])));
+    .flatMap((k) => idsForKeys(cats, [`electric:joint_${k}`])));
   if (covered.has(10)) fail("a connector with no kind was claimed by a kind");
 }
 
@@ -96,9 +107,9 @@ const cat = (key) => cats.find((c) => c.key === key);
 {
   const on = keysToAdd(cats, "joint");
   for (const kind of ["service", "breech", "straight", "bottleend"]) {
-    if (!on.includes(`joint_${kind}`)) fail(`ticking all joints missed the ${kind} ones`);
+    if (!on.includes(`electric:joint_${kind}`)) fail(`ticking all joints missed the ${kind} ones`);
   }
-  if (!keysToRemove(cats, "joint").includes("joint_straight")) {
+  if (!keysToRemove(cats, "joint").includes("electric:joint_straight")) {
     fail("unticking all joints left the straight ones ticked");
   }
 }
@@ -109,7 +120,7 @@ const cat = (key) => cats.find((c) => c.key === key);
 //    child, which is what "all of them except that" means — and it must
 //    still leave the connector that belongs to no kind in.
 {
-  const keys = keysToAdd(cats, "joint").filter((k) => k !== "joint_straight");
+  const keys = keysToAdd(cats, "joint").filter((k) => k !== "electric:joint_straight");
   const got = idsForKeys(cats, keys).sort((a, b) => a - b).join(",");
   if (got !== "1,2,3,5,6,7,9,10") fail(`all-but-straight came out as ${got}`);
 }
@@ -122,10 +133,10 @@ const cat = (key) => cats.find((c) => c.key === key);
 //    JOINT_KINDS later should not quietly go missing here either.
 {
   for (const kind of Object.keys(JOINT_KINDS)) {
-    if (!cat(`joint_${kind}`)) fail(`${kind} is in the catalogue with no category`);
+    if (!cat(`electric:joint_${kind}`)) fail(`${kind} is in the catalogue with no category`);
   }
   for (const kind of Object.keys(JOINT_KINDS)) {
-    const label = cat(`joint_${kind}`)?.label ?? "";
+    const label = cat(`electric:joint_${kind}`)?.label ?? "";
     if (!label.toLowerCase().includes(JOINT_KINDS[kind].label.toLowerCase())) {
       fail(`the ${kind} category reads "${label}"`);
     }

@@ -10338,13 +10338,14 @@ export default function GISCanvasPage() {
        same layer by Auto Lay Services, so this deleted every one of
        them along with the feeders — the same fault gas and water had,
        found by somebody watching their gas services disappear. */
-    const old = src.filter((f) => f.Attributes?.Generated
+    const doomedFeeders = src.filter((f) => f.Attributes?.Generated
       && f.Layer_Key === "electric"
       && isMainType(f.Attributes?.Line_Type, lineTypes));
 
     if (!silent && !window.confirm(
       `Build the LV feeder network for ${circuits.length} circuit(s)?`
-      + (old.length ? `\n\nThis redraws ${old.length} existing feeder cable(s).` : "")
+      + (doomedFeeders.length
+        ? `\n\nThis redraws ${doomedFeeders.length} existing feeder cable(s).` : "")
     )) return;
 
     setBusy("feeder");
@@ -10472,8 +10473,23 @@ export default function GISCanvasPage() {
         return;
       }
 
-      const old = src.filter((f) => f.Attributes?.Generated
-        && f.Layer_Key === "electric");
+      /* The generated mains, and only those.
+
+         There were two of these. The one above the confirm has the
+         mains test on it and is what the question counts; this one,
+         which is what actually deletes, had lost it \u2014 so the box said
+         "this redraws 12 existing feeder cable(s)" and the build then
+         deleted every generated electric feature on the drawing,
+         services included.
+
+         The comment above the first list records this exact fault being
+         found once already, on gas and water, by somebody watching
+         their services disappear. It was fixed in the list that counts
+         and not in the list that deletes.
+
+         One list now, computed once and used for both, so the question
+         and the deletion cannot describe different sets again. */
+      const old = doomedFeeders;
       /* What somebody chose by hand, kept across the rebuild.
 
          A rebuild deletes the generated mains and lays them again, so
@@ -15418,13 +15434,27 @@ export default function GISCanvasPage() {
                           setTool(tool === "circuit" ? "select" : "circuit");
                           setSelected([]); setDraft([]);
                         }} />
+                      {/* Disabled with the reason on it.
+
+                          A circuit exists once an electric meter carries
+                          a Circuit_ID, which is what Link to Circuit
+                          writes \u2014 so with none drawn yet this is greyed,
+                          and said nothing about why. A greyed control
+                          with no reason is the problem runStep was
+                          written to avoid, one menu along. */}
                       <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
-                        hint="Routes each circuit's cables along the trenches"
+                        hint={circuitsFrom(features).length
+                          ? "Routes each circuit's cables along the trenches"
+                          : "No circuits yet \u2014 draw round the plot seeds with Link to "
+                            + "Circuit first, and this becomes available"}
                         disabled={busy === "feeder" || !circuitsFrom(features).length}
                         onClick={() => runStep("build",
                           () => withUndo("Build LV Network", () => buildLvNetwork()))} />
                       <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
-                        hint="Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
+                        hint={circuitsFrom(features).length
+                          ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
+                          : "No circuits yet \u2014 the joints are read off the routed "
+                            + "network, so the network has to be built first"}
                         disabled={!!busy || !circuitsFrom(features).length}
                         onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
                       {/* One at a time, for the joints the model cannot

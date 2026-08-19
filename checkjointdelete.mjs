@@ -162,6 +162,48 @@ const cat = (key) => cats.find((c) => c.key === key);
   if (isBreechJoint(j("service", null))) fail("the breech test now matches a service");
 }
 
+// 9. The two gas tees are cleared separately.
+//
+//    They share a role and a symbol, but they are placed by different
+//    routines at different times and cleared for different reasons: the
+//    main tees go in with the network, the top tees with the services.
+//    One entry for both was the same blunt instrument "all joints" was.
+{
+  const tee = (id, kind) => ({
+    Feature_ID: id, Feature_Type: "point", Feature_Role: "hvtt",
+    Layer_Key: "gas", Attributes: kind ? { Tee_Kind: kind } : {},
+  });
+  const world = [tee(1, "service"), tee(2, "junction"), tee(3, "junction"),
+    /* Written before the kinds were told apart. */
+    tee(4, null)];
+  const cs = bulkDeleteCategories(world, {
+    lineTypes: [], layers: [{ Layer_Key: "gas", Label: "Gas" }],
+  });
+
+  const svc = cs.find((c) => c.key === "gas:hvtt_service");
+  const jct = cs.find((c) => c.key === "gas:hvtt_junction");
+  if (!svc || !jct) { fail("the tees are not offered separately"); }
+  else {
+    if (svc.count !== 2) fail(`${svc.count} top tees counted, wanted 2`);
+    if (jct.count !== 2) fail(`${jct.count} main tees counted, wanted 2`);
+    /* Every tee falls in exactly one of the two, so none is unreachable
+       and none is deleted twice. */
+    const a = new Set(idsForKeys(cs, ["gas:hvtt_service"]));
+    const b = new Set(idsForKeys(cs, ["gas:hvtt_junction"]));
+    if ([...a].some((x) => b.has(x))) fail("a tee is in both entries");
+    if (a.size + b.size !== 4) fail(`${a.size + b.size} tees reachable, wanted 4`);
+    /* The one with no kind counts as a top tee. */
+    if (!a.has(4)) fail("a tee written before the kinds existed is unreachable");
+  }
+
+  /* And ticking the gas connectors does not take them: a tee is not a
+     joint, and the two are ordered as different parts. */
+  const conn = cs.find((c) => c.key === "gas:joint");
+  if (conn && idsForKeys(cs, keysToAdd(cs, "gas:joint")).some((x) => [1, 2, 3, 4].includes(x))) {
+    fail("clearing the gas connectors took the tees with them");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Joint delete behaves (each kind on its own, and the connectors with no kind still reachable).");
 process.exit(bad ? 1 : 0);

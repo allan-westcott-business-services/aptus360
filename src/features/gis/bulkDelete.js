@@ -125,12 +125,25 @@ export function bulkDeleteCategories(features = [], opts = {}) {
         ["service", "service pipe", isService],
         ["meter", "meters", role("meter")],
         ["joint", "connectors", role("joint")],
-        /* Its own entry rather than folded into the connectors. A top
-           tee is placed one per service by a routine that can be run
-           again, so clearing them and re-running is a normal thing to
-           want — and doing it through "connectors" would take the
-           governors' fittings with them. */
-        ["hvtt", "top tees", role("hvtt")],
+        /* Two entries, not one.
+
+           They share a role and a symbol, but they are placed by
+           different routines at different times and cleared for
+           different reasons: the main tees go in with the network and
+           the top tees with the services. Clearing all of them to redo
+           one is the same blunt instrument "all joints" was before the
+           kinds were split out.
+
+           Told apart by Tee_Kind. A tee written before that attribute
+           existed was a top tee \u2014 that is all the first version
+           placed \u2014 so an absent kind counts as one, and no fitting
+           falls outside both entries. */
+        ["hvtt_service", "top tees (HVTT)",
+          (f) => f.Feature_Role === "hvtt"
+            && f.Attributes?.Tee_Kind !== "junction"],
+        ["hvtt_junction", "main tees",
+          (f) => f.Feature_Role === "hvtt"
+            && f.Attributes?.Tee_Kind === "junction"],
         ["poc", "POC", role("poc")],
         ["governor", "governors", role("governor")],
       ],
@@ -169,6 +182,10 @@ export function bulkDeleteCategories(features = [], opts = {}) {
            ticking "All joints and connectors" still takes them and
            unticking a kind means "all the joints except those". */
         ...Object.fromEntries(JOINT_KIND_ORDER.map((k) => [`joint_${k}`, "joint"])),
+        /* Both kinds of tee roll up into nothing more general: a tee is
+           not a joint, and there is no "all tees" entry to sit under.
+           Left out of the map rather than pointed at "joint", which
+           would make ticking the connectors take the tees as well. */
       }[key];
       /* A kind of joint sits under this utility's joints entry as well.
 

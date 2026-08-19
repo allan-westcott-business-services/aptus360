@@ -101,7 +101,7 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
-  isOffSite,
+  isOffSite, withDefaultStatus,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
@@ -6296,7 +6296,7 @@ export default function GISCanvasPage() {
       if (nextUtility) setMeterFor({ ...meterFor, utility: nextUtility, placed: nextPlaced });
       else { setMeterFor(null); markPlaced(plot.plot_id); }
 
-      try { reconcile(tempId, await createFeature(projectId, draftFeature)); }
+      try { reconcile(tempId, await addFeature(draftFeature)); }
       catch (e) { rollback(tempId); setError(e.message); }
       return;
     }
@@ -6343,7 +6343,7 @@ export default function GISCanvasPage() {
         markPlaced(plot.plot_id);
       }
 
-      try { reconcile(tempId, await createFeature(projectId, draftFeature)); }
+      try { reconcile(tempId, await addFeature(draftFeature)); }
       catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
       return;
     }
@@ -6422,7 +6422,7 @@ export default function GISCanvasPage() {
         return;
       }
       try {
-        const made = await createFeature(projectId, {
+        const made = await addFeature({
           Layer_Key: "boundary", Feature_Type: "polygon",
           /* The geometry as finished, which for a closed loop includes
              the point that closes it. Reading draft here would drop it
@@ -6465,7 +6465,7 @@ export default function GISCanvasPage() {
     try {
       const made = [];
       for (const run of runs) {
-        made.push(await createFeature(projectId, {
+        made.push(await addFeature({
           Layer_Key: t?.Layer_Key ?? "note",
           Feature_Type: "line",
           Geometry: run.geometry,
@@ -7155,6 +7155,24 @@ export default function GISCanvasPage() {
     catch (e) { setError(e.message); await load(projectId); throw e; }
   }
 
+  /* Every feature this page creates goes through here.
+
+     A stage belongs on a trench and on a main, and it was only ever
+     written by the one path that drew a trench by hand. Everything else
+     — the mains the routines lay, a main drawn by hand, a trench dug by
+     Auto Service — arrived with the attribute missing, and the editor
+     showed a value that was not there.
+
+     One wrapper rather than the default repeated at thirty call sites,
+     because thirty places to remember is thirty places to forget, and
+     the next routine somebody writes gets it without knowing it needs
+     it. withDefaultStatus leaves anything already set alone, so this is
+     safe on paths that choose their own. */
+  const addFeature = useCallback(
+    (feature) => createFeature(projectId, withDefaultStatus(feature, lineTypes)),
+    [projectId, lineTypes],
+  );
+
   async function deleteFeature(id) {
     const gone = features.find((x) => x.Feature_ID === id);
 
@@ -7375,7 +7393,7 @@ export default function GISCanvasPage() {
           : `${utilityName} POC`;
 
     try {
-      await createFeature(projectId, {
+      await addFeature({
         Layer_Key: layerKey,
         Feature_Type: "point",
         Feature_Role: role,
@@ -7423,7 +7441,7 @@ export default function GISCanvasPage() {
   async function placeLightingColumn(point) {
     const n = features.filter((f) => f.Feature_Role === "column").length + 1;
     try {
-      await createFeature(projectId, {
+      await addFeature({
         Layer_Key: "lighting",
         Feature_Type: "point",
         Feature_Role: "column",
@@ -7515,7 +7533,7 @@ export default function GISCanvasPage() {
          joint on a main with nothing coming off it — visible, and
          somebody can delete it. The other order leaves a cable running
          to a main it is not jointed into, which looks finished. */
-      await createFeature(projectId, {
+      await addFeature({
         Layer_Key: "electric",
         Feature_Type: "point",
         Feature_Role: "joint",
@@ -7531,7 +7549,7 @@ export default function GISCanvasPage() {
         },
       });
 
-      await createFeature(projectId, {
+      await addFeature({
         Layer_Key: "lighting",
         Feature_Type: "line",
         Geometry: [foot.q, at],
@@ -7595,7 +7613,7 @@ export default function GISCanvasPage() {
     }
 
     try {
-      await createFeature(projectId, {
+      await addFeature({
         Layer_Key: "electric",
         Feature_Type: "point",
         Feature_Role: "joint",
@@ -7670,7 +7688,7 @@ export default function GISCanvasPage() {
          than appearing later when someone traces. The original does the
          same in gisEnsureCircuitOriginNode. */
       if (!originNodeFor(features, circuitId)) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: "electric",
           Feature_Type: "point",
           Feature_Role: "spannode",
@@ -8115,7 +8133,7 @@ export default function GISCanvasPage() {
     if (!silent) setBusy("joints");
     try {
       for (const j of add) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: "electric",
           Feature_Type: "point",
           Feature_Role: "joint",
@@ -8177,7 +8195,7 @@ export default function GISCanvasPage() {
       if (existing.length) {
         await deleteFeatures(projectId, existing.map((f) => f.Feature_ID));
       }
-      const made = await createFeature(projectId, {
+      const made = await addFeature({
         Layer_Key: "electric",
         Feature_Type: "line",
         Geometry: r.geometry,
@@ -8276,7 +8294,7 @@ export default function GISCanvasPage() {
           },
         });
         for (const r of tail) {
-          await createFeature(projectId, {
+          await addFeature({
             Layer_Key: s.feature.Layer_Key,
             Feature_Type: s.feature.Feature_Type,
             Feature_Role: s.feature.Feature_Role ?? null,
@@ -8461,7 +8479,7 @@ export default function GISCanvasPage() {
             ((x.Geometry || [])[0]?.[1] ?? 0) - at[1]) < 1.5);
         if (already) continue;
 
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: layer,
           Feature_Type: "point",
           Feature_Role: "spannode",
@@ -8637,7 +8655,7 @@ export default function GISCanvasPage() {
             ((x.Geometry || [])[0]?.[1] ?? 0) - at[1]) < 1.5);
         if (existing) continue;
 
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: layer,
           Feature_Type: "point",
           Feature_Role: "spannode",
@@ -8718,7 +8736,7 @@ export default function GISCanvasPage() {
           continue;
         }
 
-        await createFeature(projectId, {
+        await addFeature({
           /* On the trench layer, because that is what it belongs to —
              with its own class so it can be hidden without hiding the
              trenches it sits on. */
@@ -8786,7 +8804,7 @@ export default function GISCanvasPage() {
         for (const [i, sp] of splitPlan.splits.entries()) {
           for (const piece of sp.pieces) {
             const { lengthM, ...row } = piece;
-            const made = await createFeature(projectId, row);
+            const made = await addFeature(row);
             madePieces.push(made);
             next = [...next, made];
           }
@@ -9204,7 +9222,7 @@ export default function GISCanvasPage() {
          whole, which is recoverable; shortening it first and then
          failing would lose the rest of the run. */
       for (const piece of plan.creates) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: trench.Layer_Key,
           Feature_Type: "line",
           Geometry: piece.geometry,
@@ -9610,7 +9628,7 @@ export default function GISCanvasPage() {
          downstream — the bill, the levels check, Auto Service — treats
          them as what they are. */
       for (const link of plan.newLinks) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: "trench",
           Feature_Type: "line",
           Geometry: [link.from, link.to],
@@ -10134,7 +10152,7 @@ export default function GISCanvasPage() {
 
       for (const { circuit: c, sections, nodes } of planned) {
         for (const [i, sec] of sections.entries()) {
-          await createFeature(projectId, {
+          await addFeature({
             Layer_Key: "electric",
             Feature_Type: "line",
             Geometry: sec.pts,
@@ -11277,7 +11295,7 @@ export default function GISCanvasPage() {
           label: `Connecting plot ${i + 1} of ${cables.length}`,
         });
 
-        const f = await createFeature(projectId, {
+        const f = await addFeature({
           Layer_Key: utility,
           Feature_Type: "line",
           Geometry: c.geometry,
@@ -11615,7 +11633,7 @@ export default function GISCanvasPage() {
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       for (const [i, r] of plan.runs.entries()) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: "gas",
           Feature_Type: "line",
           Geometry: r.pts,
@@ -11974,7 +11992,7 @@ export default function GISCanvasPage() {
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
 
       for (const [i, r] of plan.runs.entries()) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: "water",
           Feature_Type: "line",
           Geometry: r.pts,
@@ -12037,7 +12055,7 @@ export default function GISCanvasPage() {
       const { valves } = serviceValves(all, { lineTypes });
       let valveCount = 0;
       for (const [i, v] of valves.entries()) {
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: "water",
           Feature_Type: "point",
           Feature_Role: "servicevalve",
@@ -12183,7 +12201,7 @@ export default function GISCanvasPage() {
     try {
       const [head, tail] = parts;
       await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: head }]);
-      const made = await createFeature(projectId, {
+      const made = await addFeature({
         Layer_Key: f.Layer_Key,
         Feature_Type: "line",
         Feature_Role: f.Feature_Role,
@@ -12375,7 +12393,7 @@ export default function GISCanvasPage() {
           },
         }]);
         for (const r of rest) {
-          await createFeature(projectId, {
+          await addFeature({
             Layer_Key: feature.Layer_Key,
             Feature_Type: "line",
             Feature_Role: feature.Feature_Role,
@@ -13129,7 +13147,7 @@ export default function GISCanvasPage() {
         const runs = splitByBoundary(plan.trench, polys);
         const madeTrenches = [];
         for (const run of runs) {
-          madeTrenches.push(await createFeature(projectId, {
+          madeTrenches.push(await addFeature({
             Layer_Key: serviceType.Layer_Key ?? "trench",
             Feature_Type: "line",
             Geometry: run.geometry,
@@ -13150,7 +13168,7 @@ export default function GISCanvasPage() {
           /* Already placed, with its meters. Leave them alone and run
              the service to where they actually are. */
           if (m.exists) { keptCount++; continue; }
-          await createFeature(projectId, {
+          await addFeature({
             Layer_Key: m.utility.layer_key,
             Feature_Type: "point",
             Feature_Role: "meter",
@@ -13169,7 +13187,7 @@ export default function GISCanvasPage() {
         }
 
         for (const c of (trenchesOnly ? [] : plan.cables)) {
-          await createFeature(projectId, {
+          await addFeature({
             Layer_Key: c.utility.layer_key,
             Feature_Type: "line",
             Geometry: c.geometry,
@@ -13239,7 +13257,7 @@ export default function GISCanvasPage() {
       let refilled = 0;
       for (const r of refill) {
         if (cancelRef.current) break;
-        await createFeature(projectId, {
+        await addFeature({
           Layer_Key: r.utility.layer_key,
           Feature_Type: "line",
           Geometry: r.geometry,

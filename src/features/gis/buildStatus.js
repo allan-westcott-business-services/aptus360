@@ -336,3 +336,68 @@ export const isOffSite = (f) => f?.Attributes?.Off_Site === true;
 export function anyOffSite(trenches = []) {
   return trenches.some((t) => isOffSite(t));
 }
+
+/* ── What stage a thing starts at ──
+
+   Planned. Everything drawn is proposed work until somebody says
+   otherwise: that is what drawing it means.
+
+   It was not stored. A trench drawn by hand got "planned" written into
+   it, and nothing else did — so a main laid by Build LV Network, a gas
+   main, a water main and every main drawn by hand all arrived with the
+   attribute absent. The editor covered for it by showing "Planned"
+   where nothing was set, which papered over the trench case and made
+   the mains case worse: that field was later changed to show a blank
+   instead, precisely because a main reading Planned on screen with an
+   empty attribute sent somebody looking for why their plots would not
+   connect and gave them no way to see that the drawing disagreed.
+
+   Writing the value settles both. The screen and the stored attribute
+   say the same thing because there is only one thing, and a main that
+   has genuinely never been given a stage stops being indistinguishable
+   from one that has.
+
+   ── Why not everything ──
+
+   Only what has somewhere to put it. A trench and a main each have a
+   stage field and a list of stages; a plot seed, a boundary, a POC do
+   not, and writing an attribute nothing reads onto them would be
+   litter that later has to be explained.
+
+   A service is left out for the reason isMainFeature gives: it takes
+   its liveness from the main feeding it, and asking somebody to set a
+   stage on every one of them would be a hundred fields nobody fills
+   in. */
+function isTrenchLine(f, lineTypes = []) {
+  if (!f || f.Feature_Type !== "line") return false;
+  const key = String(f.Attributes?.Line_Type ?? "");
+  if (!key) return false;
+  const t = lineTypes.find((x) => x.Type_Key === key);
+  const layer = t?.Layer_Key ?? f.Layer_Key;
+  return layer === "trench" || /^trench_/.test(key);
+}
+
+export function defaultStatusOf(f, lineTypes = []) {
+  if (!f) return null;
+  if (isTrenchLine(f, lineTypes)) return "planned";
+  if (isMainFeature(f, lineTypes)) return "planned";
+  return null;
+}
+
+/* The same feature, with a stage on it where one belongs and none was
+   given.
+
+   Whatever was set is left alone, so this can sit on the path every
+   created feature takes without overwriting a deliberate choice — a
+   length drawn as Existing stays Existing. An empty string counts as
+   unset: it is what a cleared select leaves behind. */
+export function withDefaultStatus(f, lineTypes = []) {
+  if (!f) return f;
+  const has = f.Attributes?.Build_Status;
+  if (has != null && has !== "") return f;
+
+  const status = defaultStatusOf(f, lineTypes);
+  if (!status) return f;
+
+  return { ...f, Attributes: { ...(f.Attributes || {}), Build_Status: status } };
+}

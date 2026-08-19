@@ -127,7 +127,11 @@ const filesUnder = (dir) => {
     const used = new Set(["shape"]);
     for (const f of ["src", "netlify"].flatMap(filesUnder)) {
       const t = readFileSync(f, "utf8");
-      for (const m of t.matchAll(/createFeature\(/g)) {
+      /* `addFeature` as well as `createFeature`. The canvas now creates
+         everything through a wrapper that gives a trench or a main its
+         starting stage, so a scan for the API call alone finds one site
+         — the wrapper — and none of the roles. */
+      for (const m of t.matchAll(/(?:createFeature|addFeature)\(/g)) {
         const open = t.indexOf("{", m.index);
         if (open < 0) continue;
         let depth = 0;

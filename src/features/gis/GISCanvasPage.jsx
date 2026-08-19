@@ -12882,8 +12882,21 @@ export default function GISCanvasPage() {
       setProgress(null);
     }
 
+    /* Read the drawing back whether or not this said anything.
+
+       `silent` means "do not talk to me": no confirm, no status line, no
+       error where there is nothing to do. It was also skipping the
+       reload, which is not a message \u2014 it is how what was just written
+       reaches the screen.
+
+       So the tees the gas build placed were in the database and absent
+       from the drawing, because the build reloads and then calls this,
+       and this then wrote features nothing went back for. The bar said
+       "Placing tees" and the plan had none, which is exactly what it
+       looked like. */
+    await load(projectId);
+
     if (!silent) {
-      await load(projectId);
       setStatus(`Placed ${wanted.length} tee(s).`);
       setTimeout(() => setStatus(""), 8000);
       setError("");

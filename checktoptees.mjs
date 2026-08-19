@@ -4,6 +4,7 @@
    clamped around the main with an outlet taking the service off it.
    Every gas service has one, so a drawing showing the services and not
    the tees is short one fitting per plot on the take-off. */
+import { readFileSync } from "node:fs";
 import {
   topTees, mainTees, allTees, missingTees, gasMains, gasServices, angleOf,
   nodeCodeAt, sizeOfMain, HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M,
@@ -426,6 +427,33 @@ const MAIN = ln(1, "gas_main", "gas", [[0, 0], [30, 0]]);
   };
   if (missingTees([run, svc, old], tees).missing.length) {
     fail("a tee with no kind recorded was ignored and would be doubled");
+  }
+}
+
+// 21. Placing tees always reads the drawing back.
+//
+//    `silent` means "do not talk to me": no confirm, no status line, no
+//    error where there is nothing to do. It once skipped the reload as
+//    well, which is not a message — it is how what was just written
+//    reaches the screen.
+//
+//    The gas build reloads and then places its tees, so with the reload
+//    inside the silent branch the fittings were written to the database
+//    and absent from the drawing. The bar said "Placing tees" and the
+//    plan had none.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (/if \(!silent\) \{\s*\n\s*await load\(projectId\);/.test(canvas)) {
+    fail("the reload after placing is inside the silent branch again");
+  }
+
+  /* And it is actually there. A guard against the old shape is worth
+     nothing if the reload has simply gone. */
+  const fn = canvas.slice(canvas.indexOf("async function placeTopTees"));
+  const body = fn.slice(0, fn.indexOf("\n  async function ", 10));
+  if (!/await load\(projectId\);/.test(body)) {
+    fail("placing tees no longer reads the drawing back at all");
   }
 }
 

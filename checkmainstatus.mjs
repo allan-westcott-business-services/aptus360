@@ -220,7 +220,14 @@ const line = (type, status) => ({
 {
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
   if (!/isMain && \(/.test(editor)) fail("a main has nowhere to set its stage");
-  if (!/MAIN_STATUSES\.map/.test(editor)) {
+  /* The list now comes through statusOptions, which picks it by asking
+     statusesFor — so a main is still offered the mains list and a trench
+     the trench one, and the field additionally greys the stages that
+     claim ground nobody has dug.
+
+     The guarantee is checked where it lives rather than by the shape of
+     the JSX: checkstatusrules asserts a main is handed MAIN_STATUSES. */
+  if (!/statusOptions\(/.test(editor)) {
     fail("the main's field offers the trench statuses");
   }
   /* The trench's own field is untouched. */

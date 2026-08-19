@@ -15,6 +15,7 @@ import { readFileSync } from "node:fs";
 import {
   BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES, statusesFor,
   isServiceFeature, isMainFeature, blocksLive, canGoLive, LIVE_KEY, statusOf,
+  statusOptions, needsGround, STAGES_NEEDING_GROUND,
 } from "./src/features/gis/buildStatus.js";
 
 let bad = 0;
@@ -112,7 +113,11 @@ const line = (type, layer, attrs = {}) => ({
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
 
   if (!/blocksLive\(/.test(canvas)) fail("the save path does not check the trench");
-  if (!/blocksLive\(/.test(editor)) fail("the editor does not grey Live");
+  /* The editor reaches the same rule through statusOptions, which is
+     what builds the greyed entries \u2014 it does not call blocksLive
+     itself, and should not: two callers of the underlying test are two
+     places for it to drift. */
+  if (!/statusOptions\(/.test(editor)) fail("the editor does not grey the stages");
   if (!/SERVICE_STATUSES/.test(editor)) fail("the editor offers no service status field");
   /* Both from the one place, so they cannot drift into disagreeing
      about which trench holds something back. */
@@ -149,6 +154,85 @@ const line = (type, layer, attrs = {}) => ({
   if (statusOf(line("elec_service", "electric")) !== null) {
     fail("a service with no stage read as something");
   }
+}
+
+// 8. As-Laid needs the ground closed too, not only Live.
+//
+//    A cable is As-Laid when it is in the ground, which cannot be true
+//    while the trench it lies in is still Planned — the claim is about
+//    the dig as much as about the cable. So both stages past Planned
+//    are held by the same fact.
+{
+  for (const key of ["aslaid", "asbuilt", "live"]) {
+    if (!needsGround(key)) fail(`${key} does not require the ground to be closed`);
+  }
+  for (const key of ["planned", "existing", "remove", "", null]) {
+    if (needsGround(key)) fail(`${JSON.stringify(key)} was treated as claiming the ground`);
+  }
+  if (STAGES_NEEDING_GROUND.includes("planned")) {
+    fail("Planned requires the ground to be closed, which leaves nothing selectable");
+  }
+}
+
+// 9. The options say why, rather than the save saying it afterwards.
+//
+//    An option that can be picked and then rejected teaches somebody
+//    the form is unreliable, and the reason arrives after the decision.
+{
+  const trench = (key) => ({
+    Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_service", Build_Status: key },
+  });
+  const svc = line("elec_service", "electric");
+  const main = line("elec_main", "electric");
+
+  for (const [what, f] of [["service", svc], ["main", main]]) {
+    const held = statusOptions(f, LT, [trench("planned")]);
+
+    /* Planned stays available: it is the only thing true of a length in
+       a hole that has not been dug. */
+    const open = held.filter((o) => !o.disabled).map((o) => o.key);
+    if (open.join(",") !== "planned") {
+      fail(`a ${what} over a planned trench offers ${open.join(",")}`);
+    }
+    /* And the ones that are not say so on themselves. */
+    for (const o of held.filter((o) => o.disabled)) {
+      if (!/trench/i.test(o.label)) {
+        fail(`a disabled ${what} option reads "${o.label}" with no reason on it`);
+      }
+      if (!o.why) fail(`a disabled ${what} option carries no explanation`);
+    }
+
+    /* Once the trench is laid, everything is on offer again and the
+       labels are back to their plain names. */
+    const free = statusOptions(f, LT, [trench("asbuilt")]);
+    if (free.some((o) => o.disabled)) fail(`a ${what} was still held back over laid ground`);
+    if (free.some((o) => /trench/i.test(o.label))) {
+      fail(`a ${what} option kept its reason after the ground was closed`);
+    }
+  }
+
+  /* Nothing is held back where there is no trench under it at all. */
+  if (statusOptions(svc, LT, []).some((o) => o.disabled)) {
+    fail("a line in no trench had its stages held back");
+  }
+}
+
+// 10. One builder, used by both fields.
+//
+//    The mains field had no guard at all while the service field did,
+//    so a main could be set live in a trench nobody had dug and be
+//    refused only on Save. A rule added in one place has to reach every
+//    dropdown.
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/statusOptions\(/.test(editor)) fail("the editor does not use the shared builder");
+  const selects = (editor.match(/statusChoices\.map\(/g) || []).length;
+  if (selects < 2) fail(`${selects} status field(s) use the builder, wanted both`);
+  /* And the canvas still refuses it, for edits that arrive from
+     anywhere else. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/needsGround\(/.test(canvas)) fail("the save path no longer enforces the rule");
 }
 
 console.log(bad ? `\n${bad} problem(s)`

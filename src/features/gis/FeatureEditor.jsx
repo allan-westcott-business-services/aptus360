@@ -3,7 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import {
   BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES,
-  isMainFeature, isServiceFeature, blocksLive,
+  isMainFeature, isServiceFeature, statusOptions,
 } from "./buildStatus.js";
 import FutureAllowance from "./FutureAllowance.jsx";
 import { utilityById } from "../../lib/utilities.js";
@@ -77,7 +77,10 @@ export default function FeatureEditor({
      answers it for the cascade that runs the other way. An editor that
      worked it out a second way would eventually disagree with the rule
      that enforces it. */
-  const liveBlockedBy = blocksLive(trenchesUnderThis || []);
+  const statusChoices = statusOptions(
+    { ...feature, Attributes: f.Attributes }, lineTypes, trenchesUnderThis || [],
+  );
+  const heldBack = statusChoices.find((o) => o.disabled)?.why ?? null;
   /* Whether this edit changed the cable, so the span node it feeds can
      be brought with it once the change is saved. */
   const [cableChanged, setCableChanged] = useState(false);
@@ -2334,26 +2337,17 @@ export default function FeatureEditor({
                 value={f.Attributes.Build_Status ?? ""}
                 onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
                 <option value="">&mdash; Not set &mdash;</option>
-                {SERVICE_STATUSES.map((ss) => (
-                  <option key={ss.key} value={ss.key}
-                    /* Live is not offered while the trench it lies in is
-                       still Planned. Greyed rather than refused after
-                       the fact: an option that can be chosen and then
-                       rejected teaches somebody the form is unreliable,
-                       and the reason is in the note below. */
-                    disabled={ss.key === "live" && liveBlockedBy.length > 0}>
+                {/* Greyed, and saying so on the option itself. An
+                    option that can be picked and then rejected on save
+                    teaches somebody the form is unreliable, and the
+                    reason arrives after the decision. */}
+                {statusChoices.map((ss) => (
+                  <option key={ss.key} value={ss.key} disabled={ss.disabled}>
                     {ss.label}
                   </option>
                 ))}
               </select>
-              {liveBlockedBy.length > 0 && (
-                <p className="hint">
-                  {liveBlockedBy.length === 1
-                    ? "The trench this lies in is still Planned, so it cannot be live yet."
-                    : `${liveBlockedBy.length} of the trenches this lies in are still `
-                      + "Planned, so it cannot be live yet."}
-                </p>
-              )}
+              {heldBack && <p className="hint">{heldBack}</p>}
             </div>
           )}
 
@@ -2372,10 +2366,13 @@ export default function FeatureEditor({
                     would not connect looked at this field, saw Planned,
                     and had no way to know the drawing disagreed. */}
                 <option value="">&mdash; Not set &mdash;</option>
-                {MAIN_STATUSES.map((ms) => (
-                  <option key={ms.key} value={ms.key}>{ms.label}</option>
+                {statusChoices.map((ms) => (
+                  <option key={ms.key} value={ms.key} disabled={ms.disabled}>
+                    {ms.label}
+                  </option>
                 ))}
               </select>
+              {heldBack && <p className="hint">{heldBack}</p>}
               {/* fe-sub, which already exists for exactly this — a line
                   of explanation under a field. A new class would have
                   been a second name for one thing. */}

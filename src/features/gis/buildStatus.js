@@ -129,6 +129,20 @@ export function statusesFor(feature, lineTypes = []) {
    Planned holds it back. */
 export const LIVE_KEY = "live";
 
+/* The stages that assert the ground is closed.
+
+   Not just Live. A cable is As-Laid when it is in the ground, which
+   cannot be true while the trench it lies in is still Planned — the
+   claim is about the dig as much as the cable. So both stages past
+   Planned are held back by the same fact, and only Planned is left
+   while the hole is only a plan.
+
+   `asbuilt` is here as well as `aslaid` because the trench list uses
+   the older key for the same moment: a length that carries either is
+   saying it has been dug in. */
+export const STAGES_NEEDING_GROUND = ["aslaid", "asbuilt", LIVE_KEY];
+
+/* The trenches under something that are still only planned. */
 export function blocksLive(trenches = []) {
   return trenches.filter((t) => statusOf(t) === "planned");
 }
@@ -136,6 +150,9 @@ export function blocksLive(trenches = []) {
 export function canGoLive(trenches = []) {
   return blocksLive(trenches).length === 0;
 }
+
+/* Whether a stage claims the ground is closed, and so needs it to be. */
+export const needsGround = (key) => STAGES_NEEDING_GROUND.includes(String(key ?? ""));
 
 /* A main: a mains cable or pipe on one of the three utility layers.
 
@@ -462,4 +479,43 @@ export function withDefaultStatus(f, lineTypes = []) {
   if (!status) return f;
 
   return { ...f, Attributes: { ...(f.Attributes || {}), Build_Status: status } };
+}
+
+/* The stages to offer on a feature, and which of them cannot be chosen.
+
+   One function for every status dropdown, so a rule added here reaches
+   all of them. The mains field had no guard at all while the service
+   field did, which is how a main could still be set live in a trench
+   nobody had dug and be refused only after pressing Save.
+
+   ── Said on the option, not after the fact ──
+
+   An option that can be picked and then rejected teaches somebody the
+   form is unreliable, and the reason arrives after the decision. A
+   greyed option with the reason on it says the same thing before, and
+   the field stops being a place where work is lost.
+
+   The marker is a dash and a few words rather than a symbol: a select
+   draws its options as plain text, so a glyph would have to carry the
+   whole explanation and "Live \u2014 dig the trench first" carries it
+   already. Browsers grey a disabled option on their own; this is the
+   part they cannot supply. */
+export function statusOptions(feature, lineTypes = [], trenches = []) {
+  const held = blocksLive(trenches);
+
+  return statusesFor(feature, lineTypes).map((s) => {
+    if (!needsGround(s.key) || !held.length) return { ...s, disabled: false };
+    return {
+      ...s,
+      disabled: true,
+      label: `${s.label} \u2014 ${held.length === 1
+        ? "trench still Planned"
+        : `${held.length} trenches still Planned`}`,
+      why: held.length === 1
+        ? "The trench this lies in is still Planned. Set the trench As-Laid "
+          + "first, and these become available."
+        : `${held.length} of the trenches this lies in are still Planned. `
+          + "Set them As-Laid first, and these become available.",
+    };
+  });
 }

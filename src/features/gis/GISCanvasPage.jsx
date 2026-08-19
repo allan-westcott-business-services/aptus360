@@ -109,7 +109,7 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
-  isOffSite, withDefaultStatus, blocksLive, LIVE_KEY,
+  isOffSite, withDefaultStatus, blocksLive, needsGround,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
@@ -7204,15 +7204,19 @@ export default function GISCanvasPage() {
        Existing ground and trenches marked for removal do not hold
        anything back \u2014 one was never dug by this job and the other is
        being taken out. Only Planned does. */
-    if (before && changes?.Attributes?.Build_Status === LIVE_KEY
-      && statusOf(before) !== LIVE_KEY) {
+    const wanted = changes?.Attributes?.Build_Status;
+    if (before && needsGround(wanted) && !needsGround(statusOf(before))) {
       const proposed = { ...before, ...changes };
       const holding = blocksLive(trenchesUnder([proposed], features, lineFollows));
       if (holding.length) {
-        setError(`Not live yet \u2014 ${holding.length === 1
-          ? "the trench this lies in is"
-          : `${holding.length} of the trenches this lies in are`} still Planned. `
-          + "Set the trench As-Laid first.");
+        /* The editor greys these, so this is only reached from
+           somewhere that does not \u2014 the bulk editor, or anything
+           written later. Kept short: it is a backstop, not the place
+           the reason is meant to be read. */
+        setError(`${statusLabel(wanted) || "That stage"} `
+          + `needs the ground closed \u2014 ${holding.length === 1
+            ? "the trench this lies in is"
+            : `${holding.length} of the trenches this lies in are`} still Planned.`);
         return;
       }
     }

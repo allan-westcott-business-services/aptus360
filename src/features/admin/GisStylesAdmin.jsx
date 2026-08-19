@@ -79,6 +79,7 @@ const ROLES = [
   ["governor", "Gas governor"],
   ["servicevalve", "Service valve"],
   ["hvtt", "Gas top tee"],
+  ["reducer", "Gas reducer"],
   ["pumping", "Pumping station"],
   ["spannode", "Span node"],
   ["linkbox", "Link box"],

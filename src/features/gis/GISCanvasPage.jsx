@@ -53,6 +53,10 @@ import {
   allTees, missingTees, angleOf, nodeCodeAt,
   HVTT_ALONG_M, HVTT_BODY_M, HVTT_STEM_M, HVTT_STEM_W_M, HVTT_MIN_PX,
 } from "./topTees.js";
+import {
+  reducersFor, missingReducers, angleOf as reducerAngle,
+  REDUCER_LEN_M, REDUCER_HALF_W_M, REDUCER_MIN_PX,
+} from "./reducers.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
@@ -178,6 +182,14 @@ const HIT_PX = 10;
    network stops and the property begins — so painting it green would
    say it was the gas one's. */
 const BOUNDARY_INK = "#334155";
+
+/* How close a click has to be to a handle, and how big the handle is
+   drawn.
+
+   One number for both, so the mark and the target are the same thing.
+   Six pixels of radius is a comfortable grab at any zoom and small
+   enough not to cover the geometry underneath it. */
+const HANDLE_PX = 6;
 
 export default function GISCanvasPage() {
   const wrapRef = useRef(null);
@@ -3380,6 +3392,51 @@ export default function GISCanvasPage() {
              direction is stored on the feature rather than recomputed,
              so a tee keeps facing the plot after the main it came off
              has been redrawn. */
+          /* ── A reducer ──
+
+             A triangle lying along the pipe, pointing the way the gas
+             goes. One per rung of the ladder, so a 125 dropping to 63
+             draws two of them nose to tail.
+
+             Held to a legible size when zoomed out, in proportion, for
+             the reason the tees carry the same floor: a fitting a metre
+             long at a site-wide zoom is three pixels and cannot be seen
+             against the pipe it sits on. */
+          if (f.Feature_Role === "reducer") {
+            const deg = Number(f.Attributes?.Angle_Deg);
+            const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+
+            const ux = Math.cos(rad);
+            const uy = Math.sin(rad);
+            const nx = -Math.sin(rad);
+            const ny = Math.cos(rad);
+
+            const k = Math.max(1, REDUCER_MIN_PX / Math.max(1e-6, REDUCER_LEN_M * view.scale));
+            const len = REDUCER_LEN_M * view.scale * k;
+            const halfW = REDUCER_HALF_W_M * view.scale * k;
+
+            /* Drawn from its back, so the point lands where the next one
+               begins and a chain of them meets exactly. */
+            const bx = p.x - ux * (len / 2);
+            const by = p.y - uy * (len / 2);
+            const at = (a, b) => ({ x: bx + ux * a + nx * b, y: by + uy * a + ny * b });
+            const tri = [at(0, -halfW), at(len, 0), at(0, halfW)];
+
+            ctx.save();
+            ctx.fillStyle = on ? "#1d4ed8" : fill;
+            ctx.beginPath();
+            ctx.moveTo(tri[0].x, tri[0].y);
+            ctx.lineTo(tri[1].x, tri[1].y);
+            ctx.lineTo(tri[2].x, tri[2].y);
+            ctx.closePath();
+            ctx.fill();
+            ctx.strokeStyle = on ? "#1d4ed8" : styleFor(f, { labelColour: fill }).labelColour;
+            ctx.lineWidth = Math.max(0.75, Math.min(2, 0.03 * view.scale));
+            ctx.stroke();
+            ctx.restore();
+            return;
+          }
+
           if (f.Feature_Role === "hvtt") {
             const deg = Number(f.Attributes?.Angle_Deg);
             const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
@@ -4690,17 +4747,27 @@ export default function GISCanvasPage() {
       const anchor = f.Attributes?.Span_Anchor;
       if (Array.isArray(anchor) && anchor.length === 2) {
         const away = Math.hypot(anchor[0] - g[0][0], anchor[1] - g[0][1]);
-        if (away > 0.4) {
+        /* Drawn while selected even where the node has not been moved.
+
+           The leader is hidden on an untouched node because it would be
+           a line from a point to itself. The handle is not clutter in
+           the same way: without it there is nothing to take hold of, so
+           an anchor could only be corrected on a node somebody had
+           already dragged \u2014 and the ones worth correcting are exactly
+           the ones nobody has touched. */
+        if (away > 0.4 || selected.includes(f.Feature_ID)) {
           const a = toPx(anchor);
           const b = toPx(g[0]);
           ctx.save();
           ctx.setLineDash([2, 3]);
           ctx.strokeStyle = "rgba(15,23,42,.45)";
           ctx.lineWidth = 1;
-          ctx.beginPath();
-          ctx.moveTo(a.x, a.y);
-          ctx.lineTo(b.x, b.y);
-          ctx.stroke();
+          if (away > 0.4) {
+            ctx.beginPath();
+            ctx.moveTo(a.x, a.y);
+            ctx.lineTo(b.x, b.y);
+            ctx.stroke();
+          }
           /* A tick where it belongs on the trench, so the end of the
              leader is a place rather than where a line happens to
              stop. */
@@ -4709,6 +4776,25 @@ export default function GISCanvasPage() {
           ctx.arc(a.x, a.y, 2, 0, Math.PI * 2);
           ctx.fillStyle = "rgba(15,23,42,.45)";
           ctx.fill();
+
+          /* Selected, the tick becomes a handle.
+
+             The anchor could always be seen and never moved. Drawn the
+             size it is grabbable at, so the target and the mark agree —
+             a two pixel dot that answers to a ten pixel reach is a
+             drawing that lies about what it will do, and one that
+             reaches only two pixels cannot be caught at all. Only on
+             the selected node, or every drawing gains a rash of handles
+             nobody asked for. */
+          if (selected.includes(f.Feature_ID)) {
+            ctx.beginPath();
+            ctx.arc(a.x, a.y, HANDLE_PX, 0, Math.PI * 2);
+            ctx.fillStyle = "rgba(29,78,216,.18)";
+            ctx.fill();
+            ctx.strokeStyle = "#1d4ed8";
+            ctx.lineWidth = 1.5;
+            ctx.stroke();
+          }
           ctx.restore();
         }
       }
@@ -5518,6 +5604,37 @@ export default function GISCanvasPage() {
       return;
     }
 
+    /* A selected span node shows its anchor, and dragging that moves
+       where the node is measured from rather than where its label sits.
+
+       Two points, two handles. The node's own position is a label moved
+       clear so it can be read; the anchor is the place on the dig it
+       stands for, and every length, trace and call-off measures to the
+       anchor. Until now only the label could be moved: the anchor was
+       written when the node was placed and there was no way to correct
+       it short of deleting the node and letting the routine place it
+       again — which renumbers.
+
+       Before the vertex test below, and unconditional on Feature_Type,
+       because a span node is a point and would never reach that block. */
+    if (tool === "select" && selected.length === 1) {
+      const sn = features.find((x) => x.Feature_ID === selected[0]);
+      const anch = sn?.Feature_Role === "spannode" ? sn.Attributes?.Span_Anchor : null;
+      if (Array.isArray(anch) && anch.length === 2) {
+        const q = toPx(anch);
+        if (Math.hypot(q.x - px, q.y - py) <= HANDLE_PX) {
+          if (locked(sn)) { setError(whyLocked(sn)); return; }
+          drag.current = {
+            mode: "anchor", featureId: sn.Feature_ID, startPx: [px, py],
+            /* Where it was, so undo has something to put back and a
+               drag that ends where it started writes nothing. */
+            startAnchor: [anch[0], anch[1]],
+          };
+          return;
+        }
+      }
+    }
+
     /* A selected line shows its vertices; dragging one reshapes the line
        rather than moving the whole thing. Alt turns the same click into
        remove-this-point, or add-one-here when it lands on a segment. */
@@ -5864,6 +5981,19 @@ export default function GISCanvasPage() {
       return;
     }
 
+    if (d.mode === "anchor") {
+      /* Snapped like anything else being placed on the dig. An anchor
+         is a point on a trench — that is what it means — so it should
+         land on one rather than near one, and the same snap that puts a
+         cable end on a trench puts this there too. */
+      const { point, hit } = resolve(raw[0], raw[1], { exclude: d.featureId });
+      setSnapHit(hit || null);
+      setFeatures((list) => list.map((f) => (f.Feature_ID === d.featureId
+        ? { ...f, Attributes: { ...f.Attributes, Span_Anchor: [point[0], point[1]] } }
+        : f)));
+      return;
+    }
+
     if (d.mode === "vertex") {
       const { featureId, index, isEnd, lineType: ownType } = d;
       /* An end vertex is how one line is joined to another, so it gets
@@ -6025,6 +6155,29 @@ export default function GISCanvasPage() {
           : x)));
         setError(e.message);
       }
+      return;
+    }
+
+    if (d?.mode === "anchor") {
+      setSnapHit(null);
+      const f = features.find((x) => x.Feature_ID === d.featureId);
+      if (!f) return;
+
+      const now = f.Attributes?.Span_Anchor;
+      const moved = Array.isArray(now)
+        && (now[0] !== d.startAnchor[0] || now[1] !== d.startAnchor[1]);
+      /* A click that did not move writes nothing. Touching a handle to
+         see what it is should not put a row through the database. */
+      if (!moved) return;
+
+      try {
+        const before = {
+          ...f,
+          Attributes: { ...f.Attributes, Span_Anchor: d.startAnchor },
+        };
+        await updateFeature(projectId, f.Feature_ID, { Attributes: f.Attributes });
+        await recordAction("Move span node anchor", [before], [f]);
+      } catch (e) { setError(e.message); await load(projectId); }
       return;
     }
 
@@ -7213,6 +7366,33 @@ export default function GISCanvasPage() {
       const after = { ...before, ...changes };
       const wasSize = sizeIdFor(before, "electric", "manual");
       const nowSize = sizeIdFor(after, "electric", "manual");
+
+      /* A changed gas size changes where the main steps down.
+
+         The same shape as the cable carry below it and for the same
+         reason: the edit has landed, and something drawn from it is now
+         out of date. A reducer stands for a step between two bores, so
+         changing either bore moves it, adds one, or takes one away.
+
+         Both sizes compared, not only the built one, because an
+         override is the commonest way a size changes here \u2014 the same
+         trap the cable carry records having fallen into.
+
+         Handed a patched drawing: state has not caught up with the
+         write that just landed, and reading it unpatched would place
+         reducers for the size that was there a moment ago. */
+      const isGasMain = before?.Feature_Type === "line"
+        && before?.Layer_Key === "gas"
+        && !/service/i.test(String(before?.Attributes?.Line_Type ?? ""));
+      const wasGas = sizeIdFor(before, "gas", "manual");
+      const nowGas = sizeIdFor(after, "gas", "manual");
+
+      if (isGasMain && String(wasGas ?? "") !== String(nowGas ?? "")) {
+        await placeReducers({
+          silent: true,
+          srcFeatures: features.map((x) => (x.Feature_ID === id ? after : x)),
+        });
+      }
 
       if (isFeeder && String(wasSize ?? "") !== String(nowSize ?? "")) {
         await carryCableToNode(after,
@@ -11877,6 +12057,12 @@ export default function GISCanvasPage() {
       try {
         const after = (await listGis(projectId)).features || [];
         await placeTopTees({ silent: true, srcFeatures: after, only: "junction" });
+        /* And the reducers, because the build is where the sizes come
+           from: every step down on the drawing was decided a moment
+           ago. Read back again \u2014 the tees above have just been
+           written and this walks the same drawing. */
+        const withTees = (await listGis(projectId)).features || [];
+        await placeReducers({ silent: true, srcFeatures: withTees });
       } catch { /* the backfill button will catch it */ }
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
@@ -12786,6 +12972,116 @@ export default function GISCanvasPage() {
      Tees whose service has since gone are reported, not deleted.
      Removing something somebody may have placed deliberately is not a
      backfill, and the count tells them where to look. */
+  /* ── Reducers where the main steps down ──
+
+     Run after anything that can change a gas size, and on demand for a
+     drawing that has none.
+
+     ── Why it reads the drawing rather than the edit ──
+
+     A size can be changed from the feature editor, by the gas build, by
+     an override, or by the rule that raises everything upstream to
+     match a widened pipe. Watching each of those would be four places
+     to remember and a fifth to forget. Reading the sizes that are
+     actually on the drawing catches every one of them, and catches a
+     drawing that arrived with the sizes already set.
+
+     ── What it leaves alone ──
+
+     A reducer already at that step, wherever it came from — matched on
+     the pair of bores as well as the place, so a 125/90 is not taken
+     for the 90/63 sitting a metre further along.
+
+     Reducers for a step that no longer exists are removed, not
+     reported. That is the difference between these and the tees: a tee
+     marks a join somebody drew and may have meant, but a reducer stands
+     for a change of size, and once the size has changed the fitting is
+     describing something that is not there. Leaving it would put a part
+     on the bill for a reduction nobody is making. */
+  async function placeReducers({ silent = false, srcFeatures = null } = {}) {
+    if (!projectId) return 0;
+
+    const world = srcFeatures || features;
+    const { reducers, unreached } = reducersFor(world, {
+      lineTypes, gasPipeSizes: lookups?.gasPipeSizes || [],
+    });
+    const { missing, orphans } = missingReducers(world, reducers);
+
+    if (!missing.length && !orphans.length) {
+      if (!silent) {
+        setStatus(reducers.length
+          ? `Every size change already has its reducers (${reducers.length}).`
+          : "No gas main steps down a size, so there is nothing to reduce.");
+        setTimeout(() => setStatus(""), 8000);
+      }
+      return 0;
+    }
+
+    if (!silent && !window.confirm(
+      `${missing.length} reducer(s) to place`
+      + (orphans.length ? `, ${orphans.length} to remove where the size has changed` : "")
+      + "."
+      + (unreached.length
+        ? `\n\n${unreached.length} gas main(s) are not joined to the POC, so which `
+          + "way the gas runs through them is unknown and they get none."
+        : "")
+      + "\n\nContinue?"
+    )) return 0;
+
+    setBusy("reducers");
+    setProgress({ done: 0, total: missing.length, label: "Placing reducers" });
+    try {
+      await withUndo("Place reducers", async () => {
+        if (orphans.length) {
+          await deleteFeatures(projectId, orphans.map((f) => f.Feature_ID));
+        }
+        for (const [i, r] of missing.entries()) {
+          await addFeature({
+            Layer_Key: "gas",
+            Feature_Type: "point",
+            Feature_Role: "reducer",
+            Geometry: [r.at],
+            Label: `${r.from}/${r.to}`,
+            Attributes: {
+              /* The way the gas goes, so the triangle points downstream
+                 without having to find its POC again every frame. */
+              Angle_Deg: reducerAngle(r.dir),
+              /* The two bores, which is what the fitting is: a 125/90 is
+                 a different part from a 90/63, and the bill orders by
+                 the pair rather than by the pipe it sits on. */
+              From_mm: r.from,
+              To_mm: r.to,
+              Size: `${r.from}/${r.to}mm`,
+              /* Which pipe it reduces and where that pipe tees off, so a
+                 later pass knows whose it is without measuring. */
+              Pipe_Feature_ID: r.pipe,
+              Upstream_Feature_ID: r.upstream,
+              Step: r.step,
+              Of: r.of,
+              Generated: true,
+            },
+          });
+          setProgress({ done: i + 1, total: missing.length, label: `Reducer ${i + 1} of ${missing.length}` });
+        }
+      });
+    } finally {
+      setBusy("");
+      setProgress(null);
+    }
+
+    /* Read back whether or not this said anything: a reload is how what
+       was just written reaches the screen, not a message. */
+    await load(projectId);
+
+    if (!silent) {
+      setStatus(`Placed ${missing.length} reducer(s)`
+        + (orphans.length ? `, removed ${orphans.length}` : "") + ".");
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    }
+    return missing.length;
+  }
+
   async function placeTopTees({
     silent = false, srcFeatures = null, only = null,
   } = {}) {
@@ -15294,6 +15590,14 @@ export default function GISCanvasPage() {
                               hint="A tee wherever one gas main branches off another, for any that have none"
                               disabled={!projectId || !!busy}
                               onClick={() => placeTopTees({ only: "junction" })} />
+                            {/* Runs itself after a size changes; here for
+                                drawings that arrived with the sizes
+                                already set. */}
+                            <MenuItem
+                              label={busy === "reducers" ? "Placing\u2026" : "Place Reducers"}
+                              hint="A triangle wherever the main steps down a size, one per size step, pointing downstream"
+                              disabled={!projectId || !!busy}
+                              onClick={() => placeReducers()} />
                           </>)}
 
                           {key === "gas" && (

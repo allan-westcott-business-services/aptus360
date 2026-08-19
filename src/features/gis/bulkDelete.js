@@ -231,7 +231,18 @@ export function bulkDeleteCategories(features = [], opts = {}) {
      the utilities — a gas connector and an electric joint are the same
      kind of feature and this takes them all. */
   add("joint", "All joints and connectors", (f) => f.Feature_Role === "joint", "Points");
-
+  add("linkbox", "All link boxes", (f) => f.Feature_Role === "linkbox", "Points");
+  add("column", "All lighting columns", (f) => f.Feature_Role === "column", "Points");
+  add("seed", "All plot seeds", (f) => f.Feature_Role === "plot", "Points");
+  add("poc", "All POCs", (f) => f.Feature_Role === "poc", "Points");
+  add("spannode", "All span nodes", (f) => f.Feature_Role === "spannode", "Points");
+  add("servicevalve", "All service valves",
+    (f) => f.Feature_Role === "servicevalve", "Points");
+  /* Substations and gas governors are not here. Each belongs to one
+     utility, so "all of them" and "all of that utility's" are the same
+     list under two names — and two entries that always agree are one
+     more thing to read and one more place to tick the wrong box. They
+     appear under Electric and Gas respectively. */
 
   add("boundary", "Site boundary", (f) => f.Layer_Key === "boundary", "Everything");
   add("all", "Everything on the drawing", () => true, "Everything");

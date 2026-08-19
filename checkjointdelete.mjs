@@ -204,6 +204,61 @@ const cat = (key) => cats.find((c) => c.key === key);
   }
 }
 
+// 10. Nothing that was on the menu has fallen off it.
+//
+//    Adding the joint kinds to this file once took "All span nodes" and
+//    "All service valves" with them — a text edit that reached three
+//    lines further than intended, deleting two entries and the comment
+//    explaining why substations are not among them. Nothing failed:
+//    the file parsed, the suite passed, and two ways of clearing a
+//    drawing had simply gone.
+//
+//    So the general entries are listed. A category deliberately removed
+//    is one line to delete here as well, which is a moment to think;
+//    one removed by accident is a failure.
+{
+  const world = [
+    { Feature_ID: 1, Feature_Type: "point", Feature_Role: "spannode",
+      Layer_Key: "electric", Attributes: {} },
+    { Feature_ID: 2, Feature_Type: "point", Feature_Role: "servicevalve",
+      Layer_Key: "water", Attributes: {} },
+    { Feature_ID: 3, Feature_Type: "point", Feature_Role: "meter",
+      Layer_Key: "gas", Attributes: {} },
+    { Feature_ID: 4, Feature_Type: "point", Feature_Role: "plot",
+      Layer_Key: "plot", Attributes: {} },
+    { Feature_ID: 5, Feature_Type: "point", Feature_Role: "joint",
+      Layer_Key: "electric", Attributes: {} },
+  ];
+  const cs = bulkDeleteCategories(world, {
+    lineTypes: [],
+    layers: [{ Layer_Key: "electric", Label: "Electric" },
+      { Layer_Key: "gas", Label: "Gas" }, { Layer_Key: "water", Label: "Water" }],
+  });
+
+  const expected = [
+    ["spannode", "Points"], ["servicevalve", "Points"], ["meter", "Points"],
+    ["joint", "Points"], ["seed", "Points"], ["linkbox", "Points"],
+    ["column", "Points"], ["poc", "Points"],
+    ["boundary", "Everything"], ["all", "Everything"],
+  ];
+  for (const [key, group] of expected) {
+    const c = cs.find((x) => x.key === key);
+    if (!c) { fail(`the "${key}" category has gone from the menu`); continue; }
+    if (c.group !== group) fail(`"${key}" moved to ${c.group}, wanted ${group}`);
+  }
+
+  /* And each still finds what it is for. A category that survives as a
+     label but counts nothing is no better than one deleted. */
+  /* Through keysToAdd, because that is what a tick does: a parent named
+     alone with its children unticked means "all of it except those". */
+  if (!idsForKeys(cs, keysToAdd(cs, "spannode")).includes(1)) {
+    fail("all span nodes matched no span node");
+  }
+  if (!idsForKeys(cs, keysToAdd(cs, "servicevalve")).includes(2)) {
+    fail("all service valves matched none");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Joint delete behaves (each kind on its own, and the connectors with no kind still reachable).");
 process.exit(bad ? 1 : 0);

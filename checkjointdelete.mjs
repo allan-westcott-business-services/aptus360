@@ -259,6 +259,83 @@ const cat = (key) => cats.find((c) => c.key === key);
   }
 }
 
+// 11. Everything the application can place can be cleared.
+//
+//    Three roles have been added since this dialog was written — the
+//    two gas tees and the reducer — and the reducer arrived with a
+//    symbol, a bill row, a migration and a placing routine but no way
+//    to delete it in bulk. Nothing failed; there was simply no entry,
+//    and a drawing whose sizes had been reworked could not be cleared
+//    and re-run.
+//
+//    So the roles are listed from the constraint that governs them, and
+//    each has to be reachable. Adding a role to the database and not to
+//    this menu is now a failure rather than something found later.
+{
+  const ROLES = [
+    "shape", "plot", "meter", "poc", "substation", "joint", "source",
+    "spannode", "linkbox", "column", "governor", "servicevalve", "pumping",
+    "hvtt", "reducer",
+  ];
+
+  const gas = new Set(["governor", "hvtt", "reducer"]);
+  const world = ROLES.map((r, i) => ({
+    Feature_ID: i + 1, Feature_Type: "point", Feature_Role: r,
+    Layer_Key: gas.has(r) ? "gas" : "electric", Attributes: {},
+  }));
+
+  const cs = bulkDeleteCategories(world, {
+    lineTypes: [],
+    layers: [{ Layer_Key: "electric", Label: "Electric" },
+      { Layer_Key: "gas", Label: "Gas" }],
+  });
+
+  const reachable = new Set();
+  for (const c of cs) for (const id of idsForKeys(cs, [c.key])) reachable.add(id);
+
+  for (const f of world) {
+    if (!reachable.has(f.Feature_ID)) {
+      fail(`a ${f.Feature_Role} cannot be deleted from this menu`);
+    }
+  }
+
+  /* Reachable is not enough. "Everything on the drawing" reaches every
+     role, and so does "All Gas objects" — a reducer was reachable
+     through both while having no entry of its own, which is the state
+     this is meant to catch.
+
+     So each role needs a category that selects it and nothing else: one
+     whose members are all of that role. That is what "clear the
+     reducers and run it again" requires, and a layer-wide entry cannot
+     do it without taking the pipe with them. */
+  /* Three roles have never had one, and did not before any of this
+     work: `shape`, `source` and `pumping`. Listed rather than the check
+     loosened to let them pass, because a list is a decision somebody
+     can look at and a loosened check is one that stops noticing.
+
+     Worth someone deciding on: a pumping station and a source are real
+     features that can be placed and cannot be cleared except by layer
+     or by everything. `shape` is likelier to be deliberate \u2014 it is the
+     catch-all for a drawn shape rather than a thing in the ground. */
+  const NO_OWN_ENTRY = ["shape", "source", "pumping"];
+
+  /* Asked of each category's own predicate rather than through
+     idsForKeys.
+
+     idsForKeys answers a different question: with a parent ticked and
+     its children left unticked it subtracts the children, so "All Gas
+     objects" came back holding nothing but the reducer and looked like
+     an entry of its own. It was the only role left once the governors
+     and the tees had been taken out — which is the opposite of what was
+     being asked. */
+  for (const f of world) {
+    if (NO_OWN_ENTRY.includes(f.Feature_Role)) continue;
+    const own = cs.some((c) => c.pred(f)
+      && world.every((x) => !c.pred(x) || x.Feature_Role === f.Feature_Role));
+    if (!own) fail(`a ${f.Feature_Role} has no entry of its own to clear it by`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Joint delete behaves (each kind on its own, and the connectors with no kind still reachable).");
 process.exit(bad ? 1 : 0);

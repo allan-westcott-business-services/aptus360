@@ -285,6 +285,86 @@ const run = (world) => reducersFor(world, { lineTypes: LT, gasPipeSizes: SZ });
   }
 }
 
+// 14. The overridden size wins, and the label is not consulted when an
+//     id is present.
+//
+//    A length carries two sizes: what the build worked out and what a
+//    designer set. `Size` is rewritten by the build with the calculated
+//    answer while the override is left alone, so on a length overridden
+//    and then rebuilt the label describes one size and the id the
+//    other.
+//
+//    Falling back to the label whenever the catalogue lookup came up
+//    short read the calculated size on exactly those lengths — which
+//    put a reducer on a pipe whose size had not changed, and missed the
+//    step on one whose had.
+{
+  const overridden = {
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "gas",
+    Attributes: {
+      Line_Type: "gas_main",
+      Gas_Pipe_Size_ID: 2, Size: "125mm",        // what the build said
+      Manual_Gas_Pipe_Size_ID: 3,                // what a designer set
+    },
+  };
+  if (boreOf(overridden, SZ) !== 90) {
+    fail(`an overridden length read as ${boreOf(overridden, SZ)}, wanted the manual 90`);
+  }
+
+  /* With no override, the built size is the size in force. */
+  const plain = { ...overridden, Attributes: { ...overridden.Attributes } };
+  delete plain.Attributes.Manual_Gas_Pipe_Size_ID;
+  if (boreOf(plain, SZ) !== 125) fail(`an unoverridden length read as ${boreOf(plain, SZ)}`);
+
+  /* An id the catalogue does not know gives no bore rather than the
+     label's number, which may be describing the other size. */
+  const unknown = {
+    ...overridden,
+    Attributes: { ...overridden.Attributes, Manual_Gas_Pipe_Size_ID: 999 },
+  };
+  if (boreOf(unknown, SZ) !== null) {
+    fail(`an unknown size id fell back to the label: ${boreOf(unknown, SZ)}`);
+  }
+
+  /* Typed text alone is still read \u2014 there is no id to disagree
+     with it. */
+  if (boreOf({ Attributes: { Line_Type: "gas_main", Size: "90mm" } }, SZ) !== 90) {
+    fail("a hand-typed size was lost");
+  }
+}
+
+// 15. No reducer where the size does not change, on a drawing that has
+//     been overridden throughout.
+//
+//    The junction from the report: a feed and two branches, all built
+//    as 125 and each overridden by hand. One branch drops to 63 and
+//    takes a reducer; the other stays at 90 and takes none. Reading the
+//    built size made both of them look like a drop from 125.
+{
+  const ov = (id, geom, builtId, manualId, label) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "gas", Geometry: geom,
+    Attributes: {
+      Line_Type: "gas_main", Gas_Pipe_Size_ID: builtId,
+      Manual_Gas_Pipe_Size_ID: manualId, Size: label,
+    },
+  });
+  const world = [
+    { Feature_ID: 99, Feature_Role: "poc", Layer_Key: "gas", Geometry: [[60, 0]] },
+    ov(1, [[60, 0], [30, 0]], 2, 3, "90mm"),
+    ov(2, [[30, 0], [10, 15]], 2, 4, "63mm"),
+    ov(3, [[30, 0], [10, -15]], 2, 3, "90mm"),
+  ];
+  const { reducers } = run(world);
+
+  if (reducers.length !== 1) {
+    fail(`${reducers.length} reducers at the junction, wanted 1`);
+  }
+  if (reducers[0]?.pipe !== 2) fail("the reducer went on the branch that did not change");
+  if (reducers[0]?.from !== 90 || reducers[0]?.to !== 63) {
+    fail(`the step read as ${reducers[0]?.from}/${reducers[0]?.to}, wanted 90/63`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Reducers behave (one per rung of the ladder, downstream from the POC, nose to tail).");
 process.exit(bad ? 1 : 0);

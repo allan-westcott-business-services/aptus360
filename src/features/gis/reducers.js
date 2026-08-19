@@ -34,6 +34,7 @@
    the placing routine decides which are missing. */
 
 import { gasMains } from "./topTees.js";
+import { sizeIdFor } from "./sizeMode.js";
 
 /* How far along, and how big.
 
@@ -70,14 +71,33 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
    ordered. */
 export function boreOf(f, sizes = []) {
   const a = f?.Attributes || {};
-  const id = a.Manual_Gas_Pipe_Size_ID ?? a.Gas_Pipe_Size_ID ?? null;
-  if (id != null) {
+
+  /* The size in force, through the accessor the rest of the drawing
+     uses: the override where there is one, the built size everywhere
+     else. Reading the keys directly is how the two come apart, and this
+     is the one question every part of the app has to answer the same
+     way. */
+  const id = sizeIdFor(f, "gas", "manual");
+  if (id != null && id !== "") {
     const row = sizes.find((x) => Number(x.Gas_Pipe_Size_ID) === Number(id));
     if (row && Number(row.Diameter_mm) > 0) return Number(row.Diameter_mm);
+    /* An id the catalogue does not know. No bore rather than a guess —
+       see below for why guessing from the label is worse than nothing. */
+    return null;
   }
-  /* Typed before the size became a choice from a table. Read as the
-     number in it, so an older drawing still steps correctly. */
-  const said = String(a.Manual_Size ?? a.Size ?? "");
+
+  /* No size id at all: typed by hand, before the size became a choice
+     from a table. The text is all there is, so it is read.
+
+     Only reached when there is no id. `Size` is rewritten by the gas
+     build with the system answer while the override in
+     Manual_Gas_Pipe_Size_ID is left alone — so on a length that has
+     been overridden and then rebuilt, the label describes the
+     calculated size and the id describes the chosen one. Falling back
+     to the label when an id exists read the system size on exactly
+     those lengths, which put a reducer on a pipe whose size had not
+     changed and missed the step on one whose had. */
+  const said = String(a.Size ?? "");
   const n = Number(said.replace(/[^\d.]/g, ""));
   return n > 0 ? n : null;
 }

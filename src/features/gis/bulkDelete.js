@@ -144,6 +144,14 @@ export function bulkDeleteCategories(features = [], opts = {}) {
         ["hvtt_junction", "main tees",
           (f) => f.Feature_Role === "hvtt"
             && f.Attributes?.Tee_Kind === "junction"],
+        /* The reducers, so a drawing whose sizes have been reworked can
+           be cleared and the routine re-run.
+
+           Its own entry rather than folded in with the tees. They are
+           different fittings placed for different reasons — a tee marks
+           a join, a reducer marks a change of size — and clearing all
+           the tees to redo the sizes would take the joins with them. */
+        ["reducer", "reducers", role("reducer")],
         ["poc", "POC", role("poc")],
         ["governor", "governors", role("governor")],
       ],

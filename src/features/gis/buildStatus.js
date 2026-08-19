@@ -65,14 +65,76 @@ export const MAIN_STATUSES = [
   { key: "live", label: "Live", colour: "#16a34a" },
 ];
 
+/* ── A service has its own three ──
+
+   The same keys a main uses, because they are the same three moments
+   and a service that reads "aslaid" should mean on a service what it
+   means on a main. Only the middle one is named differently.
+
+   "Laid - Dead Jointed" is what the trade calls a service that is in
+   the ground and jointed at the main but not yet made live. On a main
+   that state is just as-laid; on a service the jointing is the point of
+   the visit, and a fitter reading "As-Laid" against a service cannot
+   tell whether anybody has been to the joint.
+
+   A list rather than a relabelling of MAIN_STATUSES, so renaming this
+   does not rename it on every main on every drawing. */
+export const SERVICE_STATUSES = [
+  { key: "planned", label: "Planned", colour: "#8b5e34" },
+  { key: "aslaid", label: "Laid - Dead Jointed", colour: "#0891b2" },
+  { key: "live", label: "Live", colour: "#16a34a" },
+];
+
+/* Whether a line is a service cable or pipe on a utility layer. */
+export function isServiceFeature(f, lineTypes = []) {
+  if (!f || f.Feature_Type !== "line") return false;
+  const key = String(f.Attributes?.Line_Type ?? "");
+  if (!/service/i.test(key)) return false;
+  const t = lineTypes.find((x) => x.Type_Key === key);
+  const layer = t?.Layer_Key ?? f.Layer_Key;
+  /* Not the trench of that name. `trench_service` is a dig, and a dig
+     carries the trench list. */
+  return ["electric", "gas", "water", "lighting"].includes(layer);
+}
+
 /* Which list applies to a feature.
 
-   Mains carry their own; everything else — trenches, and anything that
-   has never had a stage — carries the trench list. A main set to
-   "existing" or a trench set to "live" is a value from the wrong list,
-   which is what keeping them apart is meant to prevent. */
+   Mains carry their own, services carry theirs, and everything else —
+   trenches, and anything that has never had a stage — carries the
+   trench list. A main set to "existing" or a trench set to "live" is a
+   value from the wrong list, which is what keeping them apart is meant
+   to prevent. */
 export function statusesFor(feature, lineTypes = []) {
-  return isMainFeature(feature, lineTypes) ? MAIN_STATUSES : BUILD_STATUSES;
+  if (isMainFeature(feature, lineTypes)) return MAIN_STATUSES;
+  if (isServiceFeature(feature, lineTypes)) return SERVICE_STATUSES;
+  return BUILD_STATUSES;
+}
+
+/* ── Nothing is live before the ground it is in is closed ──
+
+   A cable or pipe is live when it is carrying, and it cannot be
+   carrying while the trench it lies in is still open. The cascade the
+   other way already says so — setting a main live marks the ground
+   under it as-laid — but nothing stopped somebody setting the cable
+   live while the trench still read Planned, and the drawing then held
+   two facts that cannot both be true.
+
+   Answered here rather than in the canvas so the editor can grey the
+   option instead of letting it be chosen and then refused, and so the
+   two cannot drift apart.
+
+   A trench that is Existing or marked for removal is not in the way: one
+   was never dug by this job and the other is being taken out, and
+   neither says anything about whether what is in it can carry. Only
+   Planned holds it back. */
+export const LIVE_KEY = "live";
+
+export function blocksLive(trenches = []) {
+  return trenches.filter((t) => statusOf(t) === "planned");
+}
+
+export function canGoLive(trenches = []) {
+  return blocksLive(trenches).length === 0;
 }
 
 /* A main: a mains cable or pipe on one of the three utility layers.

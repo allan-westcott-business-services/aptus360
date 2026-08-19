@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo, Fragment } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import * as XLSX from "xlsx";
 import { isMainRun, mainName } from "./bomSubtotals.js";
-import { byItemSize } from "./bomSort.js";
+import { byItemSize, byTypeThenSize } from "./bomSort.js";
 import Banner from "../../components/Banner.jsx";
 import { getGisBom } from "../../api/gis.js";
 import { parseHex, tint, contrast } from "../../lib/pillColour.js";
@@ -510,7 +510,7 @@ export default function BomModal({
         || String(a.site ?? "").localeCompare(String(b.site ?? ""))
         || utilityRank(a.utility) - utilityRank(b.utility)
         || String(a.utility ?? "").localeCompare(String(b.utility ?? ""))
-        || byItemSize(a.item, b.item))
+        || byTypeThenSize(a.item, b.item))
       .map((r) => ({
       Site: r.site || "n/a",
       Utility: r.utility,
@@ -709,7 +709,7 @@ export default function BomModal({
                       <tbody>
                         {(() => {
                           const rows = [...g.items]
-                            .sort((a, b) => byItemSize(a.item, b.item));
+                            .sort((a, b) => byTypeThenSize(a.item, b.item));
                           /* Where the main rows end, so a subtotal can go
                              under them rather than under the section. */
                           const lastMain = rows.reduce(

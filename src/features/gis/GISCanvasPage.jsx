@@ -109,7 +109,7 @@ import {
   BUILD_STATUSES, planMark, statusOf, statusColour, statusLabel, alongLine,
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
-  isOffSite, withDefaultStatus,
+  isOffSite, withDefaultStatus, blocksLive, LIVE_KEY,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { trenchSize } from "./trenchSize.js";
@@ -7192,6 +7192,30 @@ export default function GISCanvasPage() {
 
   async function saveFeature(id, changes) {
     const before = features.find((x) => x.Feature_ID === id);
+
+    /* ── Nothing goes live before its ground is closed ──
+
+       A cable or pipe is live when it is carrying, and it cannot be
+       carrying while the trench it lies in is still Planned. The editor
+       greys the option, and this refuses it: greying is a courtesy to
+       whoever is looking at the form, not a rule, and the same edit
+       arrives from the bulk editor and from anything written later.
+
+       Existing ground and trenches marked for removal do not hold
+       anything back \u2014 one was never dug by this job and the other is
+       being taken out. Only Planned does. */
+    if (before && changes?.Attributes?.Build_Status === LIVE_KEY
+      && statusOf(before) !== LIVE_KEY) {
+      const proposed = { ...before, ...changes };
+      const holding = blocksLive(trenchesUnder([proposed], features, lineFollows));
+      if (holding.length) {
+        setError(`Not live yet \u2014 ${holding.length === 1
+          ? "the trench this lies in is"
+          : `${holding.length} of the trenches this lies in are`} still Planned. `
+          + "Set the trench As-Laid first.");
+        return;
+      }
+    }
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
     try {
       await updateFeature(projectId, id, changes);
@@ -7366,6 +7390,58 @@ export default function GISCanvasPage() {
       const after = { ...before, ...changes };
       const wasSize = sizeIdFor(before, "electric", "manual");
       const nowSize = sizeIdFor(after, "electric", "manual");
+
+      /* ── Putting a trench back to Planned empties it ──
+
+         A trench wrongly marked As-Laid takes its contents live with
+         it: the cascade above says a live main is in closed ground, and
+         a gang reads the pair and believes both. Correcting the trench
+         alone left the cable reading Live in a hole that had not been
+         dug, which is the same contradiction the other way round and
+         harder to spot, because the thing that was wrong now looks
+         right.
+
+         So the correction carries. Everything in that trench that is
+         further on than Planned comes back to Planned with it.
+
+         Only downwards. Setting a trench As-Laid does not make the
+         cable in it live \u2014 laying a duct and energising a cable are
+         different visits, often weeks apart, and a rule that did both
+         would be inventing work. Undoing a mistake is safe in a way
+         that asserting progress is not.
+
+         Recorded as one entry with the edit, so one undo puts the
+         trench and its contents back as they were. */
+      const wasStatus = before?.Attributes?.Build_Status ?? null;
+      const nowStatus = after?.Attributes?.Build_Status ?? null;
+
+      if (isTrenchType(after?.Attributes?.Line_Type, lineTypes)
+        && nowStatus === "planned" && wasStatus !== "planned") {
+        const world = features.map((x) => (x.Feature_ID === id ? after : x));
+        const inside = contentsOf(after, world, { lineTypes })
+          .filter((x) => x.Feature_Type === "line"
+            && statusOf(x) != null && statusOf(x) !== "planned");
+
+        if (inside.length) {
+          const rows = inside.map((x) => ({
+            Feature_ID: x.Feature_ID,
+            Attributes: { ...x.Attributes, Build_Status: "planned" },
+          }));
+          for (const u of rows) {
+            await updateFeature(projectId, u.Feature_ID, { Attributes: u.Attributes });
+          }
+          setFeatures((fs) => fs.map((x) => {
+            const hit = rows.find((u) => u.Feature_ID === x.Feature_ID);
+            return hit ? { ...x, Attributes: hit.Attributes } : x;
+          }));
+          await recordAction(
+            `Put ${rows.length} cable or pipe back to Planned`,
+            inside, rows.map((r, i) => ({ ...inside[i], Attributes: r.Attributes })),
+          );
+          setStatus(`${rows.length} cable or pipe in this trench put back to Planned.`);
+          setTimeout(() => setStatus(""), 8000);
+        }
+      }
 
       /* A changed gas size changes where the main steps down.
 
@@ -16244,6 +16320,14 @@ export default function GISCanvasPage() {
           circuitIsolated={editing?.Attributes?.Circuit_ID != null
             && String(isolatedCircuit) === String(editing.Attributes.Circuit_ID)}
           onDelete={deleteFeature}
+          /* Which trenches this line lies in, so the editor can grey
+             Live while any of them is still Planned. Worked out here
+             because the canvas already asks this question for the
+             cascade that runs the other way. */
+          trenchesUnderThis={selected.length === 1
+            ? trenchesUnder([features.find((x) => x.Feature_ID === selected[0])]
+              .filter(Boolean), features, lineFollows)
+            : []}
           onClose={() => setEditing(null)}
         />
       )}

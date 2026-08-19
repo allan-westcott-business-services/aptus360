@@ -7,7 +7,9 @@
    The number comes from the item text because that is where it is: by
    the time a row reaches the bill it is a name and a quantity, and the
    catalogue row that produced "63mm" is long gone. */
-import { sizeIn, byItemSize } from "./src/features/gis/bomSort.js";
+import {
+  sizeIn, byItemSize, typeRank, byTypeThenSize,
+} from "./src/features/gis/bomSort.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -56,6 +58,76 @@ if (byItemSize(null, null) !== 0) fail("two empty items did not compare equal");
 {
   const got = ["Water Main — 63mm", "Gas Main — 63mm"].sort(byItemSize);
   if (got[0] !== "Gas Main \u2014 63mm") fail("equal sizes are not ordered by name");
+}
+
+// Type before size.
+//
+//    Sorting on the number alone interleaved everything that had one: a
+//    gas section read 63mm main, 90mm main, a 90/63 reducer, a 125mm
+//    main, a 125/90 reducer, a 125mm tee. Sizes ascending and the types
+//    shuffled through each other, so finding what a scheme needs in
+//    tees meant picking them out of the run of pipe.
+{
+  const rows = [
+    "Gas Main \u2014 125mm", "Meter", "Reducer \u2014 125/90mm",
+    "Main Tee \u2014 180mm", "Gas Main \u2014 63mm", "POC", "Gas Governor",
+    "Gas Service \u2014 32mm", "Reducer \u2014 90/63mm", "Gas Main \u2014 180mm",
+    "Main Tee \u2014 125mm", "Gas Main \u2014 90mm",
+  ];
+  const got = rows.slice().sort(byTypeThenSize);
+
+  const want = [
+    "POC", "Gas Governor",
+    "Gas Main \u2014 63mm", "Gas Main \u2014 90mm", "Gas Main \u2014 125mm",
+    "Gas Main \u2014 180mm",
+    "Main Tee \u2014 125mm", "Main Tee \u2014 180mm",
+    "Reducer \u2014 90/63mm", "Reducer \u2014 125/90mm",
+    "Gas Service \u2014 32mm", "Meter",
+  ];
+  if (got.join(" | ") !== want.join(" | ")) {
+    fail(`the gas section reads:\n   ${got.join("\n   ")}`);
+  }
+}
+
+// A tee is not a length of pipe.
+//
+//    The patterns are tried most specific first, so "Main Tee" has to
+//    be tested before "Main" or every tee sorts in with the mains.
+{
+  if (typeRank("Main Tee \u2014 125mm") === typeRank("Gas Main \u2014 125mm")) {
+    fail("a main tee sorts as a length of main");
+  }
+  if (typeRank("Service Valve") === typeRank("Gas Service \u2014 32mm")) {
+    fail("a service valve sorts as a length of service");
+  }
+  if (typeRank("High Volume Top Tee \u2014 63mm") === typeRank("Main Tee \u2014 63mm")) {
+    fail("the two tees sort as one type");
+  }
+}
+
+// Within one type nothing changes.
+//
+//    A section holding one kind of thing sorted correctly before and
+//    has to sort the same way now, or this has fixed the gas section by
+//    breaking every other one.
+{
+  const mains = ["Gas Main \u2014 180mm", "Gas Main \u2014 63mm", "Gas Main \u2014 125mm"];
+  if (mains.slice().sort(byTypeThenSize).join("|")
+      !== mains.slice().sort(byItemSize).join("|")) {
+    fail("one type sorts differently from before");
+  }
+}
+
+// An unrecognised row goes last, not first.
+//
+//    Better at the foot of its section than wedged between the mains
+//    and their total, where it would read as a kind of pipe.
+{
+  const got = ["Something new \u2014 50mm", "Gas Main \u2014 63mm", "Meter"]
+    .sort(byTypeThenSize);
+  if (got[got.length - 1] !== "Something new \u2014 50mm") {
+    fail(`an unknown row sorted to ${got.indexOf("Something new \u2014 50mm")}`);
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

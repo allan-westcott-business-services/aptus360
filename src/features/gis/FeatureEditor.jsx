@@ -1,7 +1,10 @@
 import { useState, useMemo, useCallback } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
-import { BUILD_STATUSES, MAIN_STATUSES, isMainFeature } from "./buildStatus.js";
+import {
+  BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES,
+  isMainFeature, isServiceFeature, blocksLive,
+} from "./buildStatus.js";
 import FutureAllowance from "./FutureAllowance.jsx";
 import { utilityById } from "../../lib/utilities.js";
 import {
@@ -43,7 +46,7 @@ export default function FeatureEditor({
   /* Told when a cable is sized by hand, so the canvas can put the same
      size on the span node the run feeds. */
   onCableSized,
-  onSave, onSavePlot, onDelete, onClose, onRenameCircuits,
+  onSave, onSavePlot, onDelete, onClose, onRenameCircuits, trenchesUnderThis,
   onIsolateCircuit, circuitIsolated,
 }) {
   const [f, setF] = useState({
@@ -65,6 +68,16 @@ export default function FeatureEditor({
      changing a line's type to a main shows the field without saving
      first. */
   const isMain = isMainFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
+  const isService = isServiceFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
+
+  /* The trenches under this line that are still Planned.
+
+     Passed in rather than worked out here: which trench a line lies in
+     is a question about the whole drawing, and the canvas already
+     answers it for the cascade that runs the other way. An editor that
+     worked it out a second way would eventually disagree with the rule
+     that enforces it. */
+  const liveBlockedBy = blocksLive(trenchesUnderThis || []);
   /* Whether this edit changed the cable, so the span node it feeds can
      be brought with it once the change is saved. */
   const [cableChanged, setCableChanged] = useState(false);
@@ -2301,6 +2314,49 @@ export default function FeatureEditor({
               charged or energised separately, often weeks later. A gang
               sent to connect a plot off a main nobody has made live has
               been sent to do something that cannot be done. */}
+          {/* A service has its own three.
+
+              It had none: a service took its liveness from the main
+              feeding it, which is true of a plan and not of a job. A
+              service is dug in, jointed at the main, and made live on
+              three different visits, and the middle one is the whole
+              point of the second — so a fitter needs to be able to say
+              it happened.
+
+              "Laid - Dead Jointed" rather than "As-Laid" because that
+              is what the trade calls it, and against a service the
+              latter does not say whether anybody has been to the
+              joint. */}
+          {isService && (
+            <div className="fld">
+              <label htmlFor="fe-svc-status">Status</label>
+              <select id="fe-svc-status"
+                value={f.Attributes.Build_Status ?? ""}
+                onChange={(e) => setAttr("Build_Status")(e.target.value || null)}>
+                <option value="">&mdash; Not set &mdash;</option>
+                {SERVICE_STATUSES.map((ss) => (
+                  <option key={ss.key} value={ss.key}
+                    /* Live is not offered while the trench it lies in is
+                       still Planned. Greyed rather than refused after
+                       the fact: an option that can be chosen and then
+                       rejected teaches somebody the form is unreliable,
+                       and the reason is in the note below. */
+                    disabled={ss.key === "live" && liveBlockedBy.length > 0}>
+                    {ss.label}
+                  </option>
+                ))}
+              </select>
+              {liveBlockedBy.length > 0 && (
+                <p className="hint">
+                  {liveBlockedBy.length === 1
+                    ? "The trench this lies in is still Planned, so it cannot be live yet."
+                    : `${liveBlockedBy.length} of the trenches this lies in are still `
+                      + "Planned, so it cannot be live yet."}
+                </p>
+              )}
+            </div>
+          )}
+
           {isMain && (
             <div className="fld">
               <label htmlFor="fe-main-status">Status</label>

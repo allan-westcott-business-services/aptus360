@@ -11289,6 +11289,24 @@ export default function GISCanvasPage() {
      drawing as it was before the main was laid. Nothing here reads the
      main today, which is why chaining them appeared to work; it would
      stop appearing to work the first time it did. */
+  /* Laying gas service pipe places the tees that go with it.
+
+     Inside a wrapper rather than at the call sites, because there are
+     several \u2014 the gas menu, Lay All Services, Build the Whole Design
+     \u2014 and a fitting placed by two of them is a fitting missing from
+     the third. Whoever lays the pipe gets the tees.
+
+     Read back fresh, because the pipe was written a moment ago and the
+     drawing in state does not have it yet. */
+  async function layServicesThenTee(utility, src = null) {
+    await autoLayServices(utility, src);
+    if (utility !== "gas") return;
+    try {
+      const after = (await listGis(projectId)).features || [];
+      await placeTopTees({ silent: true, srcFeatures: after, only: "service" });
+    } catch { /* the backfill button will catch it */ }
+  }
+
   async function autoLayServices(utility, src = null) {
     if (!projectId) return;
     setBusy("laysvc");
@@ -11832,6 +11850,27 @@ export default function GISCanvasPage() {
         + (plan.strandedMeters.length
           ? ` \u2014 ${plan.strandedMeters.length} gas meter(s) on no service trench` : ""));
       setTimeout(() => setStatus(""), 14000);
+
+      /* The fittings that go with the pipe just laid.
+
+         Inside the build rather than at its call sites, for the reason
+         the service tees give: this is reached from the gas menu, from
+         Build All Mains, from Build the Whole Design and from Build
+         Whole Gas Network, and a tee placed by three of them is a tee
+         missing from the fourth.
+
+         Read back fresh \u2014 the mains were written a moment ago \u2014 and
+         quietly, because the status line above has already had its say
+         about the build. A tee that cannot be placed is not a reason to
+         report the main as failed; the backfill button will pick it up.
+
+         Junctions only. A service leaving a main it has just been given
+         is a top tee, and that goes in when the service is laid, not
+         when the main is. */
+      try {
+        const after = (await listGis(projectId)).features || [];
+        await placeTopTees({ silent: true, srcFeatures: after, only: "junction" });
+      } catch { /* the backfill button will catch it */ }
     } catch (e) { setError(e.message); await load(projectId); }
     finally { setBusy(""); setProgress(null); }
   }
@@ -12656,19 +12695,7 @@ export default function GISCanvasPage() {
       doing: "services",
       counts: (world, u) => world.filter((f) => f.Feature_Type === "line"
         && f.Layer_Key === u && isServiceLine(f)).length,
-      run: async (u, world) => {
-        await autoLayServices(u, world);
-        /* Gas services come with a fitting. Placed here rather than
-           left to the backfill so a drawing laid today never needs it,
-           and read back fresh because the pipe was written a moment
-           ago. */
-        if (u === "gas") {
-          try {
-            const after = (await listGis(projectId)).features || [];
-            await placeTopTees({ silent: true, srcFeatures: after });
-          } catch { /* the backfill will catch it */ }
-        }
-      },
+      run: (u, world) => layServicesThenTee(u, world),
     });
   }
 
@@ -12752,12 +12779,25 @@ export default function GISCanvasPage() {
      Tees whose service has since gone are reported, not deleted.
      Removing something somebody may have placed deliberately is not a
      backfill, and the count tells them where to look. */
-  async function placeTopTees({ silent = false, srcFeatures = null } = {}) {
+  async function placeTopTees({
+    silent = false, srcFeatures = null, only = null,
+  } = {}) {
     if (!projectId) return 0;
 
     const world = srcFeatures || features;
-    const { tees, unjoined } = allTees(world, { lineTypes });
-    const { missing, orphans } = missingTees(world, tees);
+    const all = allTees(world, { lineTypes });
+    const unjoined = only === "junction" ? [] : all.unjoined;
+
+    /* Both kinds are worked out either way, because they share a hole:
+       a service leaving where the main divides is one fitting, and
+       filtering before that is settled would place a second one on top
+       of the first. Narrowed afterwards instead. */
+    const tees = only ? all.tees.filter((t) => (t.kind === "junction") === (only === "junction"))
+      : all.tees;
+    const { missing, orphans } = missingTees(world, all.tees);
+    const wanted = only
+      ? missing.filter((t) => (t.kind === "junction") === (only === "junction"))
+      : missing;
 
     if (!tees.length) {
       if (!silent) {
@@ -12768,18 +12808,19 @@ export default function GISCanvasPage() {
       }
       return 0;
     }
-    if (!missing.length) {
+    if (!wanted.length) {
       if (!silent) {
-        setStatus(`Every gas join already has a tee (${tees.length}).`);
+        setStatus(`Every gas ${only === "junction" ? "junction" : "join"} `
+          + `already has a tee (${tees.length}).`);
         setTimeout(() => setStatus(""), 8000);
       }
       return 0;
     }
 
     if (!silent && !window.confirm(
-      `Place ${missing.length} top tee(s)?`
-      + `\n\n${missing.filter((t) => t.kind !== "junction").length} on gas services, `
-      + `${missing.filter((t) => t.kind === "junction").length} where a main divides.`
+      `Place ${wanted.length} tee(s)?`
+      + (only ? "" : `\n\n${wanted.filter((t) => t.kind !== "junction").length} on gas services, `
+        + `${wanted.filter((t) => t.kind === "junction").length} where a main divides.`)
       + (unjoined.length
         ? `\n\n${unjoined.length} gas service(s) do not reach a main and get none `
           + "\u2014 worth looking at, since a service joined to nothing is a plot "
@@ -12792,10 +12833,10 @@ export default function GISCanvasPage() {
     )) return 0;
 
     setBusy("hvtt");
-    setProgress({ done: 0, total: missing.length, label: "Placing top tees" });
+    setProgress({ done: 0, total: wanted.length, label: "Placing tees" });
     try {
       await withUndo("Place top tees", async () => {
-        for (const [i, t] of missing.entries()) {
+        for (const [i, t] of wanted.entries()) {
           await addFeature({
             Layer_Key: "gas",
             Feature_Type: "point",
@@ -12814,6 +12855,9 @@ export default function GISCanvasPage() {
                  the main dividing, and a take-off schedule wants them
                  apart. */
               Tee_Kind: t.kind === "junction" ? "junction" : "service",
+              /* The size of the main it is clamped to, copied at
+                 placement. A fitting is ordered by the pipe it goes on. */
+              ...(t.size || {}),
               /* The bearing of the main it is clamped to. The body lies
                  along this and the outlet leaves at right angles. */
               Angle_Deg: angleOf(t.dir),
@@ -12830,7 +12874,7 @@ export default function GISCanvasPage() {
             },
             ...(t.plot != null ? { Plot_ID: t.plot } : {}),
           });
-          setProgress({ done: i + 1, total: missing.length, label: `Top tee ${i + 1} of ${missing.length}` });
+          setProgress({ done: i + 1, total: wanted.length, label: `Tee ${i + 1} of ${wanted.length}` });
         }
       });
     } finally {
@@ -12840,11 +12884,11 @@ export default function GISCanvasPage() {
 
     if (!silent) {
       await load(projectId);
-      setStatus(`Placed ${missing.length} top tee(s).`);
+      setStatus(`Placed ${wanted.length} tee(s).`);
       setTimeout(() => setStatus(""), 8000);
       setError("");
     }
-    return missing.length;
+    return wanted.length;
   }
 
   async function runWholeDesign() {
@@ -12990,12 +13034,7 @@ export default function GISCanvasPage() {
 
         for (const u of plan.services) {
           await step(`${u} services`, `Laying the ${u} services`, "line",
-            (world) => autoLayServices(u, world));
-
-          if (u === "gas") {
-            await step("Gas top tees", "Placing the gas top tees", "point",
-              (world) => placeTopTees({ silent: true, srcFeatures: world }));
-          }
+            (world) => layServicesThenTee(u, world));
         }
 
         await step("Feeder joints", "Placing the feeder joints", "joint",
@@ -15181,7 +15220,7 @@ export default function GISCanvasPage() {
                             ? "Laying\u2026" : "Auto Lay Services"} indent
                             hint="Runs the pipe along service trenches already drawn"
                             disabled={!!busy}
-                            onClick={() => autoLayServices(key)} />
+                            onClick={() => layServicesThenTee(key)} />
                           {/* Gas and water each build their own.
 
                               They looked like one routine with a layer
@@ -15213,6 +15252,29 @@ export default function GISCanvasPage() {
                               onClick={() => withUndo("Build Whole Gas Network",
                                 () => buildWholeGasNetwork())} />
                           )}
+
+                          {/* The fittings that go with the pipe.
+
+                              Both run themselves \u2014 the top tees after
+                              the gas services are laid, the main tees
+                              after the gas network is built \u2014 so these
+                              are for drawings made before that existed
+                              and for picking up after pipe drawn by
+                              hand. Kept apart because they are
+                              backfilled at different times: the mains
+                              go in long before the plots are served. */}
+                          {key === "gas" && (<>
+                            <MenuItem
+                              label={busy === "hvtt" ? "Placing\u2026" : "Place Top Tees"}
+                              hint="A high volume top tee wherever a gas service meets a gas main, for any that have none"
+                              disabled={!projectId || !!busy}
+                              onClick={() => placeTopTees({ only: "service" })} />
+                            <MenuItem
+                              label={busy === "hvtt" ? "Placing\u2026" : "Place Main Tees"}
+                              hint="A tee wherever one gas main branches off another, for any that have none"
+                              disabled={!projectId || !!busy}
+                              onClick={() => placeTopTees({ only: "junction" })} />
+                          </>)}
 
                           {key === "gas" && (
                             <MenuItem
@@ -15449,17 +15511,6 @@ export default function GISCanvasPage() {
                       hint="LV network, gas main and water main \u2014 for every utility with an outline design and an AV agreement"
                       disabled={!!busy || !projectId}
                       onClick={() => runAllMains()} />
-
-                    {/* The gas fitting that goes with every service.
-                        Here as well as running itself after the gas
-                        services are laid, because a drawing made before
-                        this existed has none and nothing else would put
-                        them in. */}
-                    <MenuItem label={busy === "hvtt"
-                      ? "Placing\u2026" : "Place Gas Top Tees"}
-                      hint="A top tee wherever a gas service meets a main, and wherever one main branches off another"
-                      disabled={!!busy || !projectId}
-                      onClick={() => placeTopTees()} />
 
                     <MenuItem label={busy === "layall"
                       ? "Laying\u2026" : "Lay All Services"}

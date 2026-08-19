@@ -6,7 +6,7 @@
    the tees is short one fitting per plot on the take-off. */
 import {
   topTees, mainTees, allTees, missingTees, gasMains, gasServices, angleOf,
-  nodeCodeAt, HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M,
+  nodeCodeAt, sizeOfMain, HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M,
 } from "./src/features/gis/topTees.js";
 
 let bad = 0;
@@ -292,6 +292,72 @@ const MAIN = ln(1, "gas_main", "gas", [[0, 0], [30, 0]]);
      junction's name. */
   if (nodeCodeAt([node], [80, 0]) !== null) fail("a distant span node was borrowed");
   if (nodeCodeAt([], [10, 0]) !== null) fail("a letter appeared with no nodes placed");
+}
+
+// 16. A tee is sized by the main it is clamped to.
+//
+//    A fitting is ordered by the pipe it goes on, so it carries the
+//    main's size rather than one of its own \u2014 and the *through* main
+//    at a junction, not the branch. A 63 off a 180 is ordinary, and
+//    sizing the fitting from the branch would order the wrong part.
+{
+  const sized = (id, geom, size, sizeId) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "gas", Geometry: geom,
+    Attributes: { Line_Type: "gas_main", Size: size, Gas_Pipe_Size_ID: sizeId },
+  });
+  const run = sized(200, [[0, 0], [40, 0]], "180mm", 4);
+  const branch = sized(201, [[20, 0], [20, -9]], "63mm", 2);
+  const svc = ln(202, "gas_service", "gas", [[10, 0], [10, 6]], { Plot_ID: 3 });
+
+  const { tees } = allTees([run, branch, svc], { lineTypes: LT });
+  for (const t of tees) {
+    if (t.size?.Size !== "180mm") {
+      fail(`a ${t.kind} tee took size ${t.size?.Size}, wanted the main's 180mm`);
+    }
+    if (t.size?.Gas_Pipe_Size_ID !== 4) fail(`the ${t.kind} tee took size id ${t.size?.Gas_Pipe_Size_ID}`);
+  }
+
+  /* A hand-typed size on the main wins, as it does on the pipe. */
+  const manual = {
+    ...run,
+    Attributes: { ...run.Attributes, Manual_Gas_Pipe_Size_ID: 9, Manual_Size: "250mm" },
+  };
+  if (sizeOfMain(manual).Size !== "250mm") fail("an override did not win");
+  if (sizeOfMain(manual).Gas_Pipe_Size_ID !== 9) fail("the override id did not win");
+
+  /* And a main nobody has sized gives nothing rather than a guess: an
+     unsized fitting is visible, an invented size is not. */
+  const bare = ln(203, "gas_main", "gas", [[0, 60], [10, 60]]);
+  if (Object.keys(sizeOfMain(bare)).length) fail("a size was invented for an unsized main");
+}
+
+// 17. Backfilling one kind leaves the other alone.
+//
+//    The two are backfilled at different times \u2014 the mains go in long
+//    before the plots are served \u2014 so each button has to be able to
+//    run without waiting for the other.
+{
+  const run = ln(210, "gas_main", "gas", [[0, 0], [40, 0]]);
+  const branch = ln(211, "gas_main", "gas", [[20, 0], [20, -9]]);
+  const svc = ln(212, "gas_service", "gas", [[10, 0], [10, 6]], { Plot_ID: 3 });
+  const world = [run, branch, svc];
+  const { tees } = allTees(world, { lineTypes: LT });
+
+  const junctions = tees.filter((t) => t.kind === "junction");
+  const services = tees.filter((t) => t.kind === "service");
+  if (junctions.length !== 1 || services.length !== 1) {
+    fail(`${junctions.length} junction and ${services.length} service tees, wanted one each`);
+  }
+
+  /* With the junction placed, the service one is still outstanding. */
+  const placedJunction = {
+    Feature_ID: 213, Feature_Role: "hvtt", Geometry: [junctions[0].at],
+    Attributes: { Tee_Kind: "junction" },
+  };
+  const left = missingTees([...world, placedJunction], tees).missing;
+  if (left.length !== 1 || left[0].kind !== "service") {
+    fail("backfilling the main tees did not leave the service one outstanding");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

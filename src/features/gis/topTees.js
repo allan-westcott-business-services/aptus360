@@ -85,6 +85,28 @@ function nearestOnLine(p, geom) {
 
 const typeKey = (f) => String(f?.Attributes?.Line_Type ?? "");
 
+/* The size of the pipe a tee is clamped to.
+
+   A fitting is ordered by the main it goes on, so the tee carries the
+   main's size rather than a size of its own. Copied at placement rather
+   than looked up each time it is read: the take-off is a record of what
+   was specified, and a tee that silently changed size because somebody
+   resized the main afterwards would make yesterday's schedule wrong
+   without anything saying so. Re-run the routine and the new tees carry
+   the new size.
+
+   A manual override wins where there is one, for the same reason it
+   wins on the pipe: somebody typed it. */
+export function sizeOfMain(main) {
+  const a = main?.Attributes || {};
+  const id = a.Manual_Gas_Pipe_Size_ID ?? a.Gas_Pipe_Size_ID ?? null;
+  const label = a.Manual_Size ?? a.Size ?? null;
+  return {
+    ...(label != null ? { Size: label } : {}),
+    ...(id != null ? { Gas_Pipe_Size_ID: Number(id) } : {}),
+  };
+}
+
 /* Gas mains, by the layer the type belongs to rather than the spelling
    of the key — the same test the gas builder uses, so the two cannot
    disagree about what a main is. Trenches are not pipe. */
@@ -164,6 +186,7 @@ export function topTees(features = [], opts = {}) {
       main: best.main.Feature_ID,
       plot: svc.Plot_ID ?? null,
       seed: svc.Attributes?.Seed_Feature_ID ?? null,
+      size: sizeOfMain(best.main),
     });
   }
 
@@ -264,7 +287,7 @@ export function mainTees(features = [], opts = {}) {
       const n = intern(end);
       n.ends += 1;
       const u = unit(n.at, next);
-      if (u) n.legs.push(u);
+      if (u) n.legs.push({ u, main: m });
     }
   }
 
@@ -278,7 +301,8 @@ export function mainTees(features = [], opts = {}) {
       const r = nearestOnLine(n.at, g);
       if (!r || r.d > eps) continue;
       n.through += 1;
-      n.legs.push([r.dir[0], r.dir[1]], [-r.dir[0], -r.dir[1]]);
+      n.legs.push({ u: [r.dir[0], r.dir[1]], main: m },
+        { u: [-r.dir[0], -r.dir[1]], main: m });
     }
   }
 
@@ -292,7 +316,7 @@ export function mainTees(features = [], opts = {}) {
     let run = null;
     for (let i = 0; i < n.legs.length; i++) {
       for (let j = i + 1; j < n.legs.length; j++) {
-        const dot = n.legs[i][0] * n.legs[j][0] + n.legs[i][1] * n.legs[j][1];
+        const dot = n.legs[i].u[0] * n.legs[j].u[0] + n.legs[i].u[1] * n.legs[j].u[1];
         if (!run || dot < run.dot) run = { dot, i, j };
       }
     }
@@ -302,13 +326,14 @@ export function mainTees(features = [], opts = {}) {
     let branch = null;
     for (let k = 0; k < n.legs.length; k++) {
       if (k === run.i || k === run.j) continue;
-      const along = Math.abs(n.legs[k][0] * n.legs[run.i][0] + n.legs[k][1] * n.legs[run.i][1]);
+      const along = Math.abs(n.legs[k].u[0] * n.legs[run.i].u[0]
+        + n.legs[k].u[1] * n.legs[run.i].u[1]);
       if (!branch || along < branch.along) branch = { along, k };
     }
     if (!branch) continue;
 
-    const dir = n.legs[run.i];
-    const leg = n.legs[branch.k];
+    const dir = n.legs[run.i].u;
+    const leg = n.legs[branch.k].u;
     /* Square to the run, on the branch's side: the body is clamped to
        the pipe going through, so the outlet can only be at right angles
        to it however the branch actually leaves. */
@@ -322,9 +347,14 @@ export function mainTees(features = [], opts = {}) {
       stem: [nx * side, ny * side],
       kind: "junction",
       service: null,
-      main: null,
+      /* The pipe carrying straight through is the one the fitting is
+         clamped to, so its size is the tee's size. The branch may be
+         narrower — a 63 off a 180 is ordinary — and sizing the fitting
+         from the branch would order the wrong part. */
+      main: n.legs[run.i].main?.Feature_ID ?? null,
       plot: null,
       seed: null,
+      size: sizeOfMain(n.legs[run.i].main),
     });
   }
 

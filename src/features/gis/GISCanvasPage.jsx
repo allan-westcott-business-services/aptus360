@@ -112,6 +112,7 @@ import {
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
+import { teeInto, mainsOnLayer } from "./teeInto.js";
 import { trenchSize } from "./trenchSize.js";
 import { digEstimate, hoursText } from "./digRate.js";
 import { sizeIdFor, isOverridden, sizeLabelOf } from "./sizeMode.js";
@@ -8418,11 +8419,55 @@ export default function GISCanvasPage() {
      Electric menu's Joints row and Bulk Delete's "All joints" both look
      for it, so joints placed by that routine appear in neither. */
   async function placeFeederJoints({ silent = false, srcFeatures = null } = {}) {
-    const src = srcFeatures || features;
+    let src = srcFeatures || features;
     const circuits = circuitsFrom(src);
     if (!circuits.length) {
       if (!silent) setError("No circuits defined yet — use Link to Circuit first.");
       return 0;
+    }
+
+    /* ── Attach any service that is only touching ──
+
+       A service laid before this routine teed its cables has no vertex
+       on the main where it starts, so the model has no node there, the
+       node has no service child, and no service joint is placed. The
+       drawing looks right and the joint is simply absent.
+
+       Repaired here rather than left to a re-lay, because re-laying
+       replaces cable that is correct in order to fix a vertex that is
+       missing \u2014 and on a drawing already called off, the cable is the
+       thing not to touch.
+
+       Silent, and only where something actually changes. On a drawing
+       laid since the fix this finds nothing and writes nothing, which
+       is what re-running a repair should do. */
+    const repairs = new Map();
+    {
+      const services = src.filter((f) => f.Feature_Type === "line"
+        && /service/i.test(String(f.Attributes?.Line_Type ?? ""))
+        && f.Layer_Key === "electric"
+        && (f.Geometry || []).length >= 2);
+
+      const mains = mainsOnLayer(src, "electric");
+      const liveGeom = (f) => repairs.get(Number(f.Feature_ID)) || f.Geometry;
+
+      for (const svc of services) {
+        const hit = teeInto(mains, svc.Geometry[0], { geomOf: liveGeom });
+        if (hit) repairs.set(Number(hit.feature.Feature_ID), hit.geometry);
+      }
+
+      for (const [fid, geometry] of repairs) {
+        try { await updateFeature(projectId, fid, { Geometry: geometry }); }
+        catch (e) { setError(e.message); }
+      }
+    }
+
+    /* Planned from the drawing as repaired, not as it was read: the
+       vertices just added are the whole point, and a model built from
+       the old geometry would find the same missing nodes again. */
+    if (repairs.size) {
+      src = src.map((f) => (repairs.has(Number(f.Feature_ID))
+        ? { ...f, Geometry: repairs.get(Number(f.Feature_ID)) } : f));
     }
 
     const planned = planJoints(src, circuits, {
@@ -11716,6 +11761,44 @@ export default function GISCanvasPage() {
           },
         });
         made.push(f);
+      }
+
+      /* ── Make each cable meet the main it leaves ──
+
+         A service drawn to a main crosses it. What joins the two is a
+         vertex on the main at the point the service starts, and without
+         one they touch on screen and are unconnected to anything that
+         walks the network.
+
+         Auto Service has always added it. This routine never did, so
+         every service laid here ran to a feeder it was not attached to
+         — and Place Feeder Joints, which marks a service joint at any
+         node where a service leaves the run, found no node there and
+         placed none. That is why some services had a joint and others
+         did not: the ones that did were teed by a full Auto Service
+         run, or started where the feeder already had a vertex.
+
+         Done after the cables are written rather than as each is laid,
+         because two services can tee into the same main and the second
+         has to see the vertex the first added. Accumulated in a map and
+         written once per main, so a main serving forty plots is one
+         update rather than forty.
+
+         The mains-end, not both. A service runs from the main to the
+         meter; the far end belongs to the plot and has nothing to meet. */
+      const teeGeom = new Map();
+      const mains = mainsOnLayer(world, utility);
+      const liveGeom = (f) => teeGeom.get(Number(f.Feature_ID)) || f.Geometry;
+
+      for (const f of made) {
+        const start = (f.Geometry || [])[0];
+        const hit = teeInto(mains, start, { geomOf: liveGeom });
+        if (hit) teeGeom.set(Number(hit.feature.Feature_ID), hit.geometry);
+      }
+
+      for (const [fid, geometry] of teeGeom) {
+        try { await updateFeature(projectId, fid, { Geometry: geometry }); }
+        catch (e) { setError(e.message); }
       }
 
       setProgress({ done: made.length, total: cables.length, label: "Saving" });

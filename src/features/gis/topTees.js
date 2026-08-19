@@ -52,6 +52,24 @@ export const HVTT_BODY_M = 0.45;    // how thick that body is
 export const HVTT_STEM_M = 0.55;    // the outlet, out from the main
 export const HVTT_STEM_W_M = 0.4;   // how wide the outlet is
 
+/* And never smaller than this on screen, whatever the zoom.
+
+   A fitting is about a metre across, which at a site-wide view of three
+   pixels to the metre is a body three pixels long and one and a half
+   thick \u2014 thinner than the main it sits on, in the same red, and
+   swallowed by it. It was drawn, it was on top, and it could not be
+   seen until the main was deleted out from under it.
+
+   So below this the whole symbol stops shrinking and holds its shape.
+   That is what a map symbol does: a fitting is a fact about the drawing
+   before it is a size, and something a metre wide has to stay findable
+   at a zoom where a metre is nothing. Zoomed in past it the real size
+   takes over again and the tee sits truly on its main.
+
+   The same clamp the styles apply to symbols generally, with the floor
+   fixed here because these are not styled one by one. */
+export const HVTT_MIN_PX = 15;
+
 /* How close an end has to be to a main to count as joined to it.
 
    The same 0.25 m the drawing treats as connected everywhere else. A

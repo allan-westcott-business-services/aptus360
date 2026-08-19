@@ -7,7 +7,7 @@
 import { readFileSync } from "node:fs";
 import {
   topTees, mainTees, allTees, missingTees, gasMains, gasServices, angleOf,
-  nodeCodeAt, sizeOfMain, HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M,
+  nodeCodeAt, sizeOfMain, HVTT_JOIN_M, HVTT_ALONG_M, HVTT_STEM_M, HVTT_MIN_PX,
 } from "./src/features/gis/topTees.js";
 
 let bad = 0;
@@ -454,6 +454,45 @@ const MAIN = ln(1, "gas_main", "gas", [[0, 0], [30, 0]]);
   const body = fn.slice(0, fn.indexOf("\n  async function ", 10));
   if (!/await load\(projectId\);/.test(body)) {
     fail("placing tees no longer reads the drawing back at all");
+  }
+}
+
+// 22. The symbol stays findable when zoomed out.
+//
+//    A fitting is about a metre across, which at a site-wide three
+//    pixels to the metre is a body three pixels long and one and a half
+//    thick — thinner than the main it sits on, in the same red, and
+//    swallowed by it. It was drawn, it was on top, and it could not be
+//    seen until the main was deleted out from under it.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  if (!/HVTT_MIN_PX/.test(canvas)) fail("the symbol has no minimum size on screen");
+
+  /* One factor across all four measurements, so the shape is the same
+     shape at every zoom. Clamped separately they would give a stubby
+     tee at site level and a long thin one up close. */
+  const k = (scale) => Math.max(1, HVTT_MIN_PX / (HVTT_ALONG_M * scale));
+  for (const scale of [0.5, 1, 3, 5, 10]) {
+    const along = HVTT_ALONG_M * scale * k(scale);
+    if (Math.abs(along - HVTT_MIN_PX) > 0.01) {
+      fail(`at ${scale} px/m the body is ${along.toFixed(1)} px, wanted the floor`);
+    }
+    /* And in proportion: the stem keeps its ratio to the body. */
+    const stem = HVTT_STEM_M * scale * k(scale);
+    if (Math.abs(stem / along - HVTT_STEM_M / HVTT_ALONG_M) > 1e-9) {
+      fail(`at ${scale} px/m the shape is distorted`);
+    }
+  }
+
+  /* Zoomed in past the floor, the real size takes over so the tee sits
+     truly on its main. */
+  const big = HVTT_ALONG_M * 30 * k(30);
+  if (Math.abs(big - HVTT_ALONG_M * 30) > 1e-9) {
+    fail("the floor was still stretching the symbol when zoomed in");
+  }
+  if (!(HVTT_MIN_PX >= 10 && HVTT_MIN_PX <= 40)) {
+    fail(`a floor of ${HVTT_MIN_PX} px is not a legible symbol size`);
   }
 }
 

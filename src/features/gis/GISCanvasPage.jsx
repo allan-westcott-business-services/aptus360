@@ -51,7 +51,7 @@ import {
 } from "./wholeDesign.js";
 import {
   allTees, missingTees, angleOf, nodeCodeAt,
-  HVTT_ALONG_M, HVTT_BODY_M, HVTT_STEM_M, HVTT_STEM_W_M,
+  HVTT_ALONG_M, HVTT_BODY_M, HVTT_STEM_M, HVTT_STEM_W_M, HVTT_MIN_PX,
 } from "./topTees.js";
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
@@ -3391,10 +3391,17 @@ export default function GISCanvasPage() {
             const nx = -Math.sin(rad) * side;
             const ny = Math.cos(rad) * side;
 
-            const half = (HVTT_ALONG_M / 2) * view.scale;
-            const body = (HVTT_BODY_M / 2) * view.scale;
-            const stem = HVTT_STEM_M * view.scale;
-            const stemW = (HVTT_STEM_W_M / 2) * view.scale;
+            /* Held to a legible size when zoomed out, in proportion.
+
+               One factor across all four measurements rather than a
+               floor on each, so the shape is the same shape at every
+               zoom \u2014 clamping them separately would give a stubby tee
+               at site level and a long thin one up close. */
+            const k = Math.max(1, HVTT_MIN_PX / Math.max(1e-6, HVTT_ALONG_M * view.scale));
+            const half = (HVTT_ALONG_M / 2) * view.scale * k;
+            const body = (HVTT_BODY_M / 2) * view.scale * k;
+            const stem = HVTT_STEM_M * view.scale * k;
+            const stemW = (HVTT_STEM_W_M / 2) * view.scale * k;
 
             const at = (a, b) => ({ x: p.x + ux * a + nx * b, y: p.y + uy * a + ny * b });
             const pts = [

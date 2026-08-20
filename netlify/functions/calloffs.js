@@ -29,23 +29,25 @@ const SUB_COLS = [
      a machine or a phase that changed afterwards would move a booking
      somebody had already been given. */
   "Dig_Rate_ID", "Needs_Energisation",
-  /* The as-laid drawing taken when the call-off was raised (0184), and
-     when it was taken.
+  /* ── As_Laid_Path and As_Laid_Captured_At are deliberately NOT here ──
 
-     Listed here because this list is the whole of what comes back: a
-     column added to the database and not to it is neither saved nor
-     returned, which is fault 4 and has bitten three times. The work
-     instruction reads the path to draw its sketch over, and the date is
-     what lets a planner see the picture is older than the design and
-     take it again.
+     They were, briefly, and it broke raising a call-off outright with
+     `column Mains_Call_Off_Submission.As_Laid_Captured_At does not
+     exist` on any instance where 0184 had not reached the running
+     database — including one where the migration had been applied but
+     PostgREST was still holding the schema it started with.
 
-     Written by call-off-as-laid.js rather than through here — it is the
-     endpoint that uploaded the file, and the row must not claim a
-     picture exists before the object does. They are readable and
-     writable through this list all the same, because a call-off deleted
-     and re-raised over the same plots would otherwise keep a path to a
-     drawing of the old one. */
-  "As_Laid_Path", "As_Laid_Captured_At",
+     Fault 4 is about columns this endpoint saves and returns: a column
+     added to the database and not to the list is neither. Neither of
+     these is. The drawing is written by call-off-as-laid.js, which
+     uploaded the file and is the only thing that may claim it exists,
+     and it is read by field-queue.js, which selects it itself. Listing
+     them here bought nothing and put the whole raise path — the thing
+     the canvas exists to do — behind a column it never touches.
+
+     The rule that matters: a column belongs in an explicit list where
+     the endpoint reads or writes it, and nowhere else. A list that
+     names everything is not safer, it is just wider. */
 ].join(",");
 
 const WRITABLE = new Set(SUB_COLS.split(",")

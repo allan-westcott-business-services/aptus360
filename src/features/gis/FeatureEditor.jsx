@@ -793,6 +793,24 @@ export default function FeatureEditor({
               </p>
             </div>
             <div className="fld">
+              <label htmlFor="fe-poc-vd">Volt drop already used upstream (%)</label>
+              <input id="fe-poc-vd" type="number" step="0.01" min="0" max="100"
+                value={f.Attributes.Source_Volt_Drop_Pct ?? ""}
+                placeholder="e.g. 2.5"
+                onChange={(e) => setAttr("Source_Volt_Drop_Pct")(
+                  e.target.value === "" ? null : Number(e.target.value))} />
+              <p className="hint">
+                {f.Attributes.Source_Volt_Drop_Pct == null
+                  ? "A site on an existing network does not start at zero \u2014 the "
+                    + "DNO\u2019s cable has already spent some of the permitted drop "
+                    + "before it reaches here. Left blank, the check measures from "
+                    + "this point as though nothing had."
+                  : "Added to every figure downstream, so a plot is judged on the "
+                    + "whole drop rather than on this design\u2019s share of it. The "
+                    + "levels check can show either."}
+              </p>
+            </div>
+            <div className="fld">
               <label htmlFor="fe-poc-z">Declared loop impedance (ohms)</label>
               <input id="fe-poc-z" type="number" step="0.001" min="0"
                 value={f.Attributes.Source_Loop_Impedance_Ohm ?? ""}

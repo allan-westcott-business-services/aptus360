@@ -75,6 +75,22 @@ export function legVoltDrop({
 export function cumulativeToNode({
   model, targetIdx, spanNodes = [], cableById = () => null, partialCableId = null,
   transformer = null, voltageV = 400, settings = {},
+  /* ── What the feeding network has already used ──
+
+     A site connecting to an existing network does not start at zero.
+     The DNO's cable has already dropped some of the permitted volt
+     drop before it reaches the point of connection, and a design
+     checked from E0 as though it began there reads better than it is —
+     by exactly the amount somebody else already spent.
+
+     Declared on the POC, in percent, the same way the loop impedance
+     already is: `transformer.Loop_Impedance_Ohm` seeds `ohms` a few
+     lines below on precisely this argument, and this is the same
+     argument about the other figure.
+
+     Zero for a substation-fed scheme, where the transformer IS the
+     start and there is nothing upstream of it to account for. */
+  startPct = 0,
 }) {
   const s = { ...VD_DEFAULTS, ...settings };
   const { nodes, parent, cum, cumKva, meterKva, meterCount, S } = model;
@@ -86,6 +102,12 @@ export function cumulativeToNode({
      at zero would read better than the truth. */
   let ohms = transformer?.Loop_Impedance_Ohm != null
     ? Number(transformer.Loop_Impedance_Ohm) : 0;
+  /* Kept apart from the cable's own drop, and added at the end. Two
+     figures rather than one running total, because both are wanted: the
+     design's own contribution is what a cable change moves, and the
+     cumulative figure is what the limit is judged against. Adding
+     upstream in here would make the first unrecoverable. */
+  const upstream = Number(startPct) > 0 ? Number(startPct) : 0;
   let pct = 0;
   let missingCable = false;
   const missingTransformer = !transformer;
@@ -172,15 +194,39 @@ export function cumulativeToNode({
     legLenM = 0;
   }
 
+  /* Both figures, always computed, and named for what they are.
+
+     `pctOwn` is this design's own drop, from the origin node outward.
+     It is what a cable change moves and what a designer is working on.
+
+     `pct` is the cumulative figure including whatever the feeding
+     network already used. It is what the limit is judged against,
+     because a plot does not care which side of the POC a volt was lost
+     on.
+
+     `pct` stays the name of the cumulative one so that every existing
+     reader — the panel, the CSV, the node labels, the scenario search —
+     keeps judging against the right figure without being changed. On a
+     substation-fed scheme upstream is zero and the two are equal, which
+     is why nothing had to distinguish them before. */
+  const pctOwn = pct;
+  const pctTotal = pct + upstream;
+
   return {
-    ohms, pct, amps,
+    ohms,
+    pct: pctTotal,
+    pctOwn,
+    upstreamPct: upstream,
+    amps,
     missing: missingTransformer || missingCable,
     missingTransformer,
     missingCable,
     /* Length past the last span node, which no cable spec covers. */
     remainderM: Math.round(legLenM * 10) / 10,
     overOhms: s.maxLoopOhms != null && ohms > s.maxLoopOhms,
-    overPct: s.maxVoltDropPct != null && pct > s.maxVoltDropPct,
+    /* Judged on the cumulative figure. A run that passes on its own and
+       fails once the feeding network is counted is a run that fails. */
+    overPct: s.maxVoltDropPct != null && pctTotal > s.maxVoltDropPct,
   };
 }
 

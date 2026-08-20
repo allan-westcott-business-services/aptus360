@@ -1004,6 +1004,24 @@ export function sourceImpedance(origin, transformerSizes = []) {
   return { Loop_Impedance_Ohm: Number(z), From_POC: true };
 }
 
+/* ── What the feeding network has already used ──
+
+   Percent, declared on the POC by whoever read the DNO’s letter.
+
+   A substation is the start of the network and has nothing upstream to
+   account for, so it returns zero: the transformer’s own contribution
+   is impedance and is already handled by sourceImpedance above.
+
+   Guarded rather than trusted. This is typed into a box, and a negative
+   or unparseable figure would make every downstream reading better than
+   the truth — which is the one direction a wrong number here must not
+   go. */
+export function upstreamVoltDropPct(origin) {
+  if (!origin || origin.Feature_Role !== "poc") return 0;
+  const v = Number(origin.Attributes?.Source_Volt_Drop_Pct);
+  return Number.isFinite(v) && v > 0 ? v : 0;
+}
+
 /* What to say when a check has run without one.
 
    Said, not hidden. Every figure downstream is lower than the truth by

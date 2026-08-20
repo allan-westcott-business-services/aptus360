@@ -13,7 +13,9 @@
 import { readFileSync } from "node:fs";
 import {
   sourceImpedance, NO_SOURCE_NOTE, workingVoltage, voltageOf,
+  upstreamVoltDropPct,
 } from "./src/features/gis/electric.js";
+import { cumulativeToNode } from "./src/features/gis/voltDrop.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -181,6 +183,126 @@ const poc = (attrs = {}) => ({
 
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
   if (!/fe-poc-v/.test(editor)) fail("the POC has no field for its output voltage");
+}
+
+/* ── What the feeding network already used ──
+
+   A site connecting to an existing network does not start at zero. The
+   DNO's cable has spent some of the permitted volt drop before it
+   reaches the POC, and a design checked from E0 as though it began
+   there reads better than it is — by exactly the amount somebody else
+   already spent.
+
+   Declared on the POC in percent, on the same argument the loop
+   impedance beside it is already declared. */
+{
+  const poc = (v) => ({
+    Feature_Role: "poc", Layer_Key: "electric",
+    Attributes: v === undefined ? {} : { Source_Volt_Drop_Pct: v },
+  });
+
+  if (upstreamVoltDropPct(poc(2.5)) !== 2.5) fail("a declared upstream drop was not read");
+  if (upstreamVoltDropPct(poc()) !== 0) fail("a POC with nothing declared is not zero");
+
+  /* Guarded, not trusted. This is typed into a box, and a wrong figure
+     here has one direction it must not go: making every downstream
+     reading better than the truth. */
+  for (const junk of [-1, "", null, "abc", NaN, undefined]) {
+    if (upstreamVoltDropPct(poc(junk)) !== 0) {
+      fail(`${JSON.stringify(junk)} was accepted as an upstream volt drop`);
+    }
+  }
+
+  /* A substation IS the start of the network. Its own contribution is
+     impedance and sourceImpedance already handles it; there is nothing
+     upstream of it to account for. */
+  const sub = {
+    Feature_Role: "substation",
+    Attributes: { Source_Volt_Drop_Pct: 9 },
+  };
+  if (upstreamVoltDropPct(sub) !== 0) {
+    fail("a substation reported an upstream volt drop \u2014 it is the origin");
+  }
+  if (upstreamVoltDropPct(null) !== 0) fail("no origin produced an upstream drop");
+}
+
+/* ── And it reaches every figure downstream ── */
+{
+  const model = {
+    nodes: [[0, 0], [100, 0]], parent: [-1, 0],
+    cum: [0, 1], cumKva: [10, 10], meterKva: [0, 0], meterCount: [0, 1], S: 0,
+  };
+  const cable = { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.6, Volt_Drop_Base: 1.1 };
+  const base = {
+    model, targetIdx: 1, spanNodes: [{ index: 1, cableSizeId: 1 }],
+    cableById: () => cable, voltageV: 400, settings: { maxVoltDropPct: 6 },
+  };
+
+  const plain = cumulativeToNode(base);
+  const withUp = cumulativeToNode({ ...base, startPct: 2.5 });
+
+  /* The design's own drop is untouched by what happened upstream — it
+     is the only part a cable change moves, and a designer works in it. */
+  if (Math.abs(withUp.pctOwn - plain.pctOwn) > 1e-9) {
+    fail("declaring an upstream drop changed this design's own figure");
+  }
+  /* And the cumulative one carries it. */
+  if (Math.abs(withUp.pct - (plain.pctOwn + 2.5)) > 1e-9) {
+    fail(`the cumulative figure is ${withUp.pct}, not the design's plus 2.5`);
+  }
+  if (withUp.upstreamPct !== 2.5) fail("the upstream share is not reported separately");
+
+  /* `pct` stays the cumulative one, so every existing reader — the
+     panel, the CSV, the node labels, the scenario search — judges
+     against the right figure without being changed. */
+  if (withUp.pct <= withUp.pctOwn) {
+    fail("pct is not the cumulative figure \u2014 existing readers would"
+      + " judge against the design's share alone");
+  }
+
+  /* The limit is judged on the cumulative figure. A run that passes on
+     its own and fails once the feeding network is counted is a run that
+     fails, and a display switch must never be able to hide that. */
+  /* Pitched off this fixture's own drop rather than at a fixed 5.99:
+     the leg here drops about a thousandth of a percent, so a fixed
+     figure left the total just under the limit and the assertion passed
+     for the wrong reason. Just enough upstream to cross it. */
+  const justOver = 6 - plain.pctOwn + 0.001;
+  const over = cumulativeToNode({ ...base, startPct: justOver });
+  if (over.pctOwn >= 6) fail("the fixture is wrong \u2014 its own drop already fails");
+  if (over.pct <= 6) fail("the fixture is wrong \u2014 the total does not exceed the limit");
+  if (!over.overPct) {
+    fail("a run inside its own limit but over once upstream is counted"
+      + " was not marked over");
+  }
+
+  /* Zero upstream leaves the two equal, which is why nothing had to
+     distinguish them before. */
+  if (plain.pct !== plain.pctOwn || plain.upstreamPct !== 0) {
+    fail("with nothing upstream the two figures disagree");
+  }
+}
+
+/* ── The switch shows one or the other, and hides neither failure ── */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/vdBasis === "own" \? l\.vd\.pctOwn : l\.vd\.pct/.test(canvas)) {
+    fail("the panel does not draw whichever basis is chosen");
+  }
+  /* The over-limit mark reads the cumulative figure whichever number is
+     drawn. Tying it to the basis would let a display switch hide a
+     failing run, which is the worst thing this switch could do. */
+  if (!/className=\{l\.vd\.overPct \? "num vd-over" : "num"\}/.test(canvas)) {
+    fail("the over-limit mark follows the display switch");
+  }
+  /* Offered only where something upstream exists — a switch between one
+     number and the same number teaches somebody it does nothing. */
+  if (!/tracePlan\.some\(\(x\) => x\.leg\?\.vd\?\.upstreamPct > 0\)/.test(canvas)) {
+    fail("the basis switch is offered on schemes with nothing upstream");
+  }
+  /* And it is threaded in from the origin at both levels-check sites. */
+  const wired = [...canvas.matchAll(/startPct: upstreamVoltDropPct\(/g)].length;
+  if (wired < 2) fail(`only ${wired} levels path reads the upstream drop`);
 }
 
 console.log(bad ? `\n${bad} problem(s)`

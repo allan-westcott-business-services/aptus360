@@ -32,7 +32,7 @@ import {
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
-  sourceImpedance, NO_SOURCE_NOTE, workingVoltage, voltageOf,
+  sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
   circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
@@ -1571,6 +1571,22 @@ export default function GISCanvasPage() {
   /* The outline drawn by Link to Circuit, waiting to be told which
      circuit it belongs to. Null when nothing is being asked. */
   const [circuitPick, setCircuitPick] = useState(null);
+
+  /* ── Which volt drop the panel shows ──
+
+     "total" is the cumulative figure including whatever the feeding
+     network already used; "own" is this design's own drop from the
+     origin node outward.
+
+     Total by default, because that is what the limit is judged against
+     and what a plot actually experiences — a volt lost on the DNO\u2019s
+     side of the POC is lost just the same. Own is what a designer
+     works in when deciding which cable to change, since it is the only
+     part a cable change moves.
+
+     Both are computed every time; this chooses which is drawn. Nothing
+     is recalculated by flicking it, so the two can never disagree. */
+  const [vdBasis, setVdBasis] = useState("total");
 
   /* Sent here to raise a call-off, and nothing else.
 
@@ -14595,6 +14611,10 @@ export default function GISCanvasPage() {
           cableTypes: lookups?.cableTypes || [],
           transformer: sourceImpedance(station, lookups?.transformerSizes || []),
           voltageV: voltageOf(station),
+          /* What the feeding network already spent, from the POC. Zero
+             on a substation-fed scheme, where the transformer is the
+             start and there is nothing upstream of it. */
+          startPct: upstreamVoltDropPct(station),
           settings: limits,
         };
         for (const leg of part.legs) {
@@ -14726,6 +14746,7 @@ export default function GISCanvasPage() {
         cableTypes: lookups?.cableTypes || [],
         transformer: transformer || null,
         voltageV,
+        startPct: upstreamVoltDropPct(lvOrigin(src)),
         settings,
       };
       for (const leg of r.legs) {
@@ -18846,6 +18867,28 @@ export default function GISCanvasPage() {
                     onClick={() => setTraceOrder(traceOrder === "chain" ? "label" : "chain")}>
                     {traceOrder === "chain" ? "Along the cable" : "By node"}
                   </button>
+                  {/* ── Which volt drop the %VD column shows ──
+
+                      Offered only where there is something upstream to
+                      count. On a substation-fed scheme the two figures
+                      are identical, and a switch between one number and
+                      the same number is a control that teaches somebody
+                      it does nothing.
+
+                      Nothing is recalculated by pressing it: both
+                      figures come back from every leg, so they cannot
+                      disagree and flicking it is instant. */}
+                  {trace.hasVd && tracePlan.some((x) => x.leg?.vd?.upstreamPct > 0) && (
+                    <button className="btn sm tr-vdb"
+                      title={vdBasis === "total"
+                        ? "Showing the whole drop, including what the feeding "
+                          + "network used \u2014 switch to this design only"
+                        : "Showing this design's drop from the origin node \u2014 "
+                          + "switch to the whole drop"}
+                      onClick={() => setVdBasis(vdBasis === "total" ? "own" : "total")}>
+                      {vdBasis === "total" ? "Cumulative \u03a3" : "From E0"}
+                    </button>
+                  )}
                   {traceOver.size > 0 && (
                     <button className="btn sm tr-fix"
                       title="Work out what cable changes would bring the ringed nodes inside their limits"
@@ -18952,8 +18995,14 @@ export default function GISCanvasPage() {
                       {trace.hasVd && (
                         <>
                           <th className="num" title="Phase current at the end of this leg">A</th>
-                          <th className="num" title="Loop impedance from the substation">&#937;</th>
-                          <th className="num" title="Volt drop from the substation">%VD</th>
+                          <th className="num" title="Loop impedance from the origin">&#937;</th>
+                          <th className={vdBasis === "own" ? "num" : "num vd-cum"}
+                            title={vdBasis === "own"
+                              ? "Volt drop from the origin node, this design only"
+                              : "Volt drop including what the feeding network"
+                                + " already used"}>
+                            %VD{vdBasis === "own" ? "" : "\u03a3"}
+                          </th>
                         </>
                       )}
                       <th />
@@ -19002,8 +19051,19 @@ export default function GISCanvasPage() {
                             <td className={l.vd.overOhms ? "num vd-over" : "num"}>
                               {l.vd.ohms.toFixed(3)}
                             </td>
-                            <td className={l.vd.overPct ? "num vd-over" : "num"}>
-                              {l.vd.pct.toFixed(2)}
+                            {/* The over-limit mark stays on the
+                                cumulative figure whichever number is
+                                drawn: a run that passes on its own and
+                                fails once the feeding network is counted
+                                is a run that fails, and hiding that
+                                behind a display switch would be the
+                                worst thing this switch could do. */}
+                            <td className={l.vd.overPct ? "num vd-over" : "num"}
+                              title={l.vd.upstreamPct > 0
+                                ? `${l.vd.pctOwn.toFixed(2)}% this design`
+                                  + ` + ${l.vd.upstreamPct.toFixed(2)}% upstream`
+                                : undefined}>
+                              {(vdBasis === "own" ? l.vd.pctOwn : l.vd.pct).toFixed(2)}
                             </td>
                           </>
                         ))}
@@ -19337,6 +19397,17 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-right: 8px;
   color: var(--accent); }
 .tr-ord:hover { border-color: var(--accent); }
+
+/* The volt drop basis switch, styled as tr-ord is: it is the same kind
+   of control — a way of reading the same rows, not an action. */
+.tr-vdb { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
+  cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-right: 8px;
+  color: var(--accent); }
+.tr-vdb:hover { border-color: var(--accent); }
+
+/* The column header while the cumulative figure is shown, so the number
+   under it cannot be read as this design's own drop. */
+.vd-cum { color: var(--accent); }
 .tr-fix { background: #fef2f2; border: 1px solid #fca5a5; color: #b91c1c; border-radius: 6px;
   cursor: pointer; font: 700 11px inherit; padding: 4px 10px; margin-right: 8px; }
 .tr-fix:hover { border-color: #dc2626; }

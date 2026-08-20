@@ -315,7 +315,23 @@ const CONNECT_M = 0.25;
    A meter is a box on a wall and the service ends at the plot
    boundary, so they are metres apart on every drawing. Plant is not
    allowed this: a feeder leaving a substation starts on it. */
-const METER_REACH_M = 12;
+const METER_REACH_M = 30;
+
+/* ── The plot a feature belongs to ──
+
+   Carried as a column on the feature, not an attribute, and written all
+   the way down the chain: the seed knows its plot number, the boundary
+   point is placed with the seed, the meter inherits it, and Auto Lay
+   Services stamps it on the service trench and the cable it lays.
+
+   So a meter and the cable feeding it agree on a number, and the answer
+   to "which cable serves this meter" is recorded rather than inferred.
+   The attribute is read as a fallback, since nothing stops a feature
+   carrying it there. */
+const plotOf = (f) => {
+  const v = f?.Plot_ID ?? f?.Attributes?.Plot_ID;
+  return v == null ? null : Number(v);
+};
 
 export function buildGraph(features = []) {
   const byId = new Map(features.map((f) => [Number(f.Feature_ID), f]));
@@ -431,13 +447,44 @@ export function buildGraph(features = []) {
       }
       continue;
     }
+    /* ── Its own plot's cable, before the nearest one ──
+
+       Nearest was the only rule, and on a tight estate the nearest
+       cable to a meter is often the neighbour's: two plots either side
+       of a shared boundary have their meters metres apart and their
+       services running to different points on the main. The meter then
+       hung off a cable that does not feed it, and every distance,
+       volt drop and circuit membership downstream was measured along
+       the wrong route \u2014 silently, because the drawing looks right.
+
+       The number is already on both. A cable laid to plot 34 carries
+       Plot_ID 34 and so does plot 34's meter, so the match is recorded
+       rather than guessed, and the nearest rule is only needed where a
+       cable was drawn by hand and never given one.
+
+       This is also what lets the reach be 30 m rather than 12. Twelve
+       was a guard against grabbing the wrong cable, and a guess about
+       how far a meter sits from its service \u2014 which is a property of
+       the plot, not of the drawing. With the plot number deciding, a
+       long garden is no longer a reason to be unreachable. */
+    const mine = plotOf(f);
     let best = null;
+    let byPlot = null;
     for (const g of features) {
       if (g === f || isPoint(g) || !endsOf(g).length) continue;
       const d = gapBetween(f, g);
       if (d > METER_REACH_M) continue;
       if (!best || d < best.d) best = { g, d };
+      /* Same plot, and a service rather than a main: a main running
+         past the plot may carry the number of the plot it was laid for
+         and is not what feeds this meter. */
+      if (mine != null && plotOf(g) === mine
+        && /service/i.test(String(g.Attributes?.Line_Type ?? ""))
+        && (!byPlot || d < byPlot.d)) {
+        byPlot = { g, d };
+      }
     }
+    best = byPlot || best;
     if (!best) continue;
     const a = Number(f.Feature_ID);
     const b = Number(best.g.Feature_ID);

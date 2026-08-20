@@ -23,6 +23,7 @@ import {
   originsOf, planSpanNodes, plantLabel, nodeFedBy,
 } from "./src/features/gis/spanNodes.js";
 import { labelOf } from "./src/features/gis/mainsCallOff.js";
+import { buildGraph } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -1069,6 +1070,104 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
 
   if (labelOf({ Attributes: {} }) !== null) {
     fail("a node with nothing to go on was given a name anyway");
+  }
+}
+
+/* ── A meter is served by its own plot's cable ──
+
+   Nearest was the only rule, and on a tight estate the nearest cable to
+   a meter is often the neighbour's: two plots either side of a shared
+   boundary have their meters metres apart and their services running to
+   different points on the main. The meter hung off a cable that does
+   not feed it, and every distance, volt drop and circuit membership
+   downstream was measured along the wrong route \u2014 silently, because
+   the drawing looks right.
+
+   The number is already on both. A seed knows its plot, the boundary
+   point is placed with it, the meter inherits it, and Auto Lay Services
+   stamps it on the trench and the cable. So the match is recorded
+   rather than guessed. */
+{
+  const line = (id, geom, plot, type = "elec_service") => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: geom, Plot_ID: plot, Attributes: { Line_Type: type },
+  });
+  const meter = (id, at, plot) => ({
+    Feature_ID: id, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [at], Plot_ID: plot, Attributes: {},
+  });
+  const linked = (feats, id) => [...(buildGraph(feats).adj.get(id) || [])];
+
+  /* Plot 34's meter sits closer to plot 35's cable than to its own. */
+  const crowded = [
+    line(1, [[0, 0], [0, 5]], 34),
+    line(2, [[10, 0], [10, 5]], 35),
+    meter(3, [9.5, 5], 34),
+  ];
+  const got = linked(crowded, 3);
+  if (got.join() !== "1") {
+    fail(`plot 34's meter is served by feature ${got.join()}, not its own`
+      + " plot's cable \u2014 the nearest cable is the neighbour's");
+  }
+
+  /* A cable drawn by hand carries no number, so nearest still decides.
+     Removing that fallback would strand every meter on an older
+     drawing. */
+  const unnumbered = [
+    line(1, [[0, 0], [0, 5]], null),
+    line(2, [[10, 0], [10, 5]], null),
+    meter(3, [9.5, 5], 34),
+  ];
+  if (linked(unnumbered, 3).join() !== "2") {
+    fail("with no plot numbers on the cables the nearest one is not used");
+  }
+
+  /* A main carrying a plot number is not what feeds the meter \u2014 it may
+     have been laid for that plot and run straight past it.
+
+     ── Not proven to bite ──
+
+     Removing the mains test from buildGraph leaves this passing, so it
+     is not this case that the test is earning its place on. gapBetween
+     measures to a line's ENDS rather than to the nearest point along
+     it, so a long main is far from a meter standing beside its middle
+     and loses to the service on distance alone.
+
+     Which may mean the mains exclusion is redundant. Left in as the
+     cheaper of two mistakes \u2014 it cannot select a wrong cable, and a
+     main that happens to end near a meter is exactly the case
+     end-distance would get wrong. Worth settling with a fixture where
+     the main ENDS beside the meter, which is the shape this one should
+     have been. */
+  /* The main is the NEARER of the two here \u2014 0.5 m against 4.5 \u2014 so
+     only excluding mains gives the right answer. The first form of this
+     put the service nearer anyway, which meant it passed whether or not
+     mains were excluded. */
+  const past = [
+    line(1, [[0, 0], [0, 40]], 34, "elec_main"),
+    line(2, [[5, 20], [5, 21]], 34),
+    meter(3, [0.5, 20], 34),
+  ];
+  if (linked(past, 3).join() !== "2") {
+    fail("a meter was served by a main rather than by its service");
+  }
+
+  /* ── And the reach is 30 m ──
+
+     Twelve was a guard against grabbing the wrong cable, and a guess
+     about how far a meter sits from its service \u2014 which is a property
+     of the plot, not of the drawing. With the plot number deciding,
+     a long garden is no longer a reason to be unreachable. */
+  const far = [line(1, [[0, 0], [0, 25]], 34), meter(3, [0, 50], 34)];
+  if (!linked(far, 3).length) {
+    fail("a meter 25 m from its own service is not connected \u2014 the reach"
+      + " is meant to be 30 m");
+  }
+  /* Not unlimited: a meter on the far side of the site does not belong
+     to a cable just because the numbers match. */
+  const absurd = [line(1, [[0, 0], [0, 5]], 34), meter(3, [0, 200], 34)];
+  if (linked(absurd, 3).length) {
+    fail("a meter 195 m from its service was connected to it");
   }
 }
 

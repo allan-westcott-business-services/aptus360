@@ -517,6 +517,128 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
   }
 }
 
+/* ── The bottle end goes at the end of the tail ──
+
+   A run stops at the service joint serving the last plot. The gang digs
+   1.5 m further, lays a short tail and buries the bottle end in it.
+
+   ── Why this is a move and not a suppression ──
+
+   The obvious build was: place the bottle end at the tail end from the
+   canvas, and stop planJoints planning one at the take-off. That needs
+   a condition — "only where a tail was drawn" — and getting it wrong
+   puts two bottle ends on every leg, or none.
+
+   There is no condition here. planJoints plans the bottle end where it
+   always did, at the node ending the run, and then MOVES it to the end
+   of the tail where the cable arriving carries one. One bottle end
+   before, one after, in the same place in the code. A drawing with no
+   tail is untouched because there is nothing to move it to.
+
+   The service joint does not move: it belongs at the take-off, which is
+   where the service leaves. */
+{
+  const cable = (geom, tailM) => ({
+    Feature_ID: 700, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: geom,
+    Attributes: {
+      Line_Type: "elec_main", Circuit_ID: 1,
+      ...(tailM == null ? {} : { Tail_M: tailM }),
+    },
+  });
+
+  /* The run ends at [120, 0] where the last service leaves, and carries
+     on 1.5 m to [121.5, 0]. */
+  const withTail = planJoints(
+    [...features, cable([[0, 0], [50, 0], [120, 0], [121.5, 0]], 1.5)],
+    circuits, { lineTypes });
+
+  const btl = withTail.filter((j) => j.kind === "bottleend");
+  if (btl.length !== 1) {
+    fail(`${btl.length} bottle ends on one leg \u2014 exactly one seals a run`);
+  }
+  const at = btl[0]?.point;
+  if (at && Math.hypot(at[0] - 121.5, at[1]) > 0.01) {
+    fail(`the bottle end is at ${JSON.stringify(at)}, not at the end of the`
+      + " tail where it is buried");
+  }
+
+  /* And the service joint stayed put. Moving both would put the
+     service connection 1.5 m past the plot it serves. */
+  const svc = withTail.filter((j) => j.kind === "service"
+    && Math.hypot(j.point[0] - 120, j.point[1]) < 0.01);
+  if (svc.length !== 1) {
+    fail(`${svc.length} service joints at the take-off, expected 1`);
+  }
+
+  /* ── A drawing with no tail is untouched ──
+
+     Which is what a setting of 0 produces, and what every drawing made
+     before this existed looks like. */
+  const noTail = planJoints(
+    [...features, cable([[0, 0], [50, 0], [120, 0]], null)],
+    circuits, { lineTypes });
+  const btl2 = noTail.filter((j) => j.kind === "bottleend");
+  if (btl2.length !== 1) fail(`${btl2.length} bottle ends with no tail drawn`);
+  if (btl2[0] && Math.hypot(btl2[0].point[0] - 120, btl2[0].point[1]) > 0.01) {
+    fail("the bottle end moved on a drawing that has no tail");
+  }
+
+  /* A cable claiming a tail it does not have does not move anything: a
+     Tail_M on a run whose last vertex IS the take-off would otherwise
+     move the bottle end nowhere and look like it worked. */
+  const liar = planJoints(
+    [...features, cable([[0, 0], [50, 0], [120, 0]], 1.5)],
+    circuits, { lineTypes });
+  if (liar.filter((j) => j.kind === "bottleend").length !== 1) {
+    fail("a cable claiming a tail it has not got changed the count");
+  }
+}
+
+/* ── And the canvas asks for all of it ──
+
+   The geometry being right is no use where nothing asks. The tail was
+   shipped once as a function nothing called, and the drawing was
+   unchanged \u2014 which reads exactly like the change not working. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* The length comes from the settings row, not from a constant. */
+  if (!/bottleEndTailM: Number\(lookups\?\.vdSettings\?\.\[0\]\?\.Bottle_End_Tail_M\)/
+    .test(canvas)) {
+    fail("the build does not read Bottle_End_Tail_M \u2014 the tail is drawn"
+      + " to a length nobody set, or not at all");
+  }
+
+  /* The cable records it, which is what lets planJoints find the far
+     end. Without this the bottle end stays at the take-off however long
+     the tail is drawn. */
+  /* The cable's own spread, not `Tail_M: sec.tailM` anywhere \u2014 the
+     loose form matched the trench block below and passed while the
+     cable carried nothing, which is the half that actually moves the
+     bottle end. */
+  if (!/\.\.\.\(sec\.tailM \? \{ Tail_M: sec\.tailM \} : \{\}\)/.test(canvas)) {
+    fail("the cable does not record its tail, so the bottle end cannot"
+      + " be moved to the end of it");
+  }
+
+  /* And the trench. Cable without trench takes the fitting off the
+     drawing correctly and leaves the dig short by a tail a leg \u2014 the
+     tail is real work and has to be measured. */
+  const dug = /if \(sec\.tailM && sec\.tailAt\)[\s\S]{0,700}?Layer_Key: "trench"/
+    .test(canvas);
+  if (!dug) fail("the tail is laid as cable but never dug");
+
+  /* Generated, so a rebuild clears its own tails rather than stacking a
+     new one beside the last on every run. */
+  const block = /if \(sec\.tailM && sec\.tailAt\)[\s\S]{0,900}?\n          \}/
+    .exec(canvas);
+  if (block && !/Generated: true/.test(block[0])) {
+    fail("the tail trench is not marked Generated \u2014 a rebuild will leave"
+      + " the old one and lay another beside it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Bottle ends behave (at the end of the run, not on every dead end).");
 process.exit(bad ? 1 : 0);

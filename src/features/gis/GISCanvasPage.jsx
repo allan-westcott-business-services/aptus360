@@ -10728,6 +10728,11 @@ export default function GISCanvasPage() {
           lineTypes,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           seedIds,
+          /* The spare length past the last plot on a leg (0185). Read
+             from the settings row rather than compiled in: 1.5 m is a
+             working practice, not a law. Absent or zero draws no tail,
+             which is what every drawing made before this looks like. */
+          bottleEndTailM: Number(lookups?.vdSettings?.[0]?.Bottle_End_Tail_M) || 0,
         });
         if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
         if (!r.sections.length) {
@@ -10873,9 +10878,47 @@ export default function GISCanvasPage() {
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
               ...(startCable ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
+              /* How much of this run is the spare tail past the last
+                 service joint. Recorded so planJoints can put the
+                 bottle end at the end of it rather than at the take-off
+                 — see the note there. Absent on a run with no tail, so
+                 nothing has to read a zero as meaning "none". */
+              ...(sec.tailM ? { Tail_M: sec.tailM } : {}),
               Generated: true,
             },
           });
+          /* ── And dig it ──
+
+             The tail is real work: the gang digs past the last plot and
+             buries the bottle end in that extra length. Cable without
+             trench would take the fitting off the drawing correctly and
+             leave the dig short by 1.5 m a leg.
+
+             Its own short trench rather than an edit to the designer's:
+             a rebuild deletes what it generated and lays it again, and
+             a rebuild that shortened somebody's hand-drawn trench each
+             time would be unrecoverable. The build already creates
+             trench this way for the links it adds.
+
+             `Generated` so a rebuild clears its own tails, and
+             Line_Type "trench" so it is dug and measured as mains
+             trench, which is what it is. */
+          if (sec.tailM && sec.tailAt) {
+            const g = sec.pts;
+            await addFeature({
+              Layer_Key: "trench",
+              Feature_Type: "line",
+              Geometry: [g[g.length - 2].slice(), sec.tailAt.slice()],
+              Label: `${c.letter}${i + 1} tail`,
+              Attributes: {
+                Line_Type: "trench",
+                Circuit_ID: c.id, Circuit_Name: c.name,
+                Tail_M: sec.tailM,
+                Generated: true,
+              },
+            });
+          }
+
           runs += 1;
           cables += sec.cables;
           step += 1;

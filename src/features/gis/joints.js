@@ -535,6 +535,62 @@ export function planJoints(features = [], circuits = [], opts = {}) {
       reasons: j.reasons.filter((r) => r !== "service") });
     out.push({ ...j, kind: "service", reasons: ["service"] });
   }
+
+  /* ── The bottle end goes at the end of the tail ──
+
+     A run stops at the service joint serving the last plot. The gang
+     digs a little further, lays a short tail and buries the bottle end
+     in it, because a bottle end has to sit in trench like everything
+     else. feederSections draws that tail and the build records its
+     length on the cable as `Tail_M`.
+
+     ── Why this is a move and not a suppression ──
+
+     The obvious build was to place the bottle end from the canvas at
+     the tail end and stop this planning one at the take-off. That needs
+     a condition — "only where a tail was drawn" — and getting it wrong
+     puts two bottle ends on every leg, or none.
+
+     There is no condition here. The bottle end is planned where it
+     always was, at the node ending the run, and then moved to the end
+     of the cable that carries a tail. One before, one after. A drawing
+     with no tail has nothing to move it to and is untouched, which is
+     what a setting of 0 produces and what every drawing made before
+     this looks like.
+
+     The service joint does not move. It belongs at the take-off, which
+     is where the service leaves.
+
+     Matched on the cable's second-to-last vertex, not its last: the
+     take-off is where the tail STARTS, and the bottle end is going to
+     where it ends. A cable claiming a tail whose last vertex is already
+     the take-off therefore moves nothing, which is the right answer for
+     a run that was never extended. */
+  const tails = features.filter((f) => f.Feature_Type === "line"
+    && f.Layer_Key === "electric"
+    && Number(f.Attributes?.Tail_M) > 0
+    && (f.Geometry || []).length >= 3);
+
+  if (tails.length) {
+    for (const j of out) {
+      if (j.kind !== "bottleend") continue;
+      for (const t of tails) {
+        const g = t.Geometry;
+        const from = g[g.length - 2];
+        const to = g[g.length - 1];
+        if (Math.hypot(from[0] - j.point[0], from[1] - j.point[1]) > 0.25) continue;
+        /* Same circuit, so a tail on one circuit cannot move another's
+           bottle end where two runs end at one point. */
+        const c = t.Attributes?.Circuit_ID;
+        if (c != null && j.circuitId != null
+          && Number(c) !== Number(j.circuitId)) continue;
+        j.point = to.slice();
+        j.onTail = true;
+        break;
+      }
+    }
+  }
+
   return out;
 }
 

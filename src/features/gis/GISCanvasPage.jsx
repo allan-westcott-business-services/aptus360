@@ -14519,7 +14519,18 @@ export default function GISCanvasPage() {
     const failed = [];
     for (const c of circuits) {
       const origin = originNodeFor(src, c.id);
-      if (!origin) { failed.push(`${c.name}: no origin node`); continue; }
+      /* Said with the way out on it.
+
+         "no origin node" named the fault and not the fix, and read as
+         nonsense to somebody looking at E0 on the drawing — the label
+         is a name, the node is a feature, and only the second is
+         searched for. Now this only happens when there is genuinely no
+         electric origin node anywhere, which Build LV Network places. */
+      if (!origin) {
+        failed.push(`${c.name}: no origin node on the substation or POC `
+          + "\u2014 run Build LV Network, which places it");
+        continue;
+      }
       const r = spanTrace(src, origin.Feature_ID, {
         lineTypes,
         /* The circuit being checked. The origin serves them all and so

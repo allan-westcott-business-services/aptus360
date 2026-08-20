@@ -238,22 +238,54 @@ export function circuitsFrom(features = []) {
 export const spanLabel = (letter, seq) => `${letter}${seq}`;
 
 export function originNodeFor(features, circuitId) {
-  const nodes = features.filter((f) => f.Feature_Role === "spannode"
-    && Number(f.Attributes?.Span_Seq) === 0);
+  /* Electric only.
 
-  /* One node on the substation, shared by every circuit.
+     A gas or water drawing has a Span_Seq 0 node too — G0 and W0 sit on
+     their own POCs — and nothing here filtered by layer, so the
+     "names no circuit" fallback below could hand back the gas origin as
+     an electric circuit's starting point. Every caller of this is a
+     circuit, and a circuit is electric. */
+  const nodes = features
+    .filter((f) => f.Feature_Role === "spannode"
+      && Number(f.Attributes?.Span_Seq) === 0
+      && f.Layer_Key === "electric")
+    /* Ordered, so the last resort below is the same node every time.
+       Scan order is not insertion order, and a check that picked a
+       different origin on each run would be worse than one that picked
+       none. */
+    .sort((a, b) => Number(a.Feature_ID) - Number(b.Feature_ID));
+
+  /* One node on the origin, shared by every circuit.
 
      Requiring a matching Circuit_ID meant a site needed one origin per
      circuit, all stacked on the same spot. They are the same point on
-     the ground \u2014 the substation the whole network is measured from \u2014
-     and four copies of it is four things to keep in step for no gain.
+     the ground \u2014 the substation or POC the whole network is measured
+     from \u2014 and four copies of it is four things to keep in step for
+     no gain.
 
      A node naming this circuit still wins where one exists, so a
-     drawing that already has them keeps working. Otherwise the one
-     that names no circuit is the origin for all of them. */
+     drawing that already has them keeps working. Otherwise the one that
+     names no circuit is the origin for all of them.
+
+     ── And failing that, any of them ──
+
+     Two writers make these nodes and they disagree about naming:
+     defining a circuit writes one carrying that Circuit_ID, while the
+     Build LV run writes one carrying none, deliberately, so it can
+     serve every circuit. A drawing that got the first kind and not the
+     second ended up with origins that all named *some* circuit and none
+     that named this one — and the levels check then said "Circuit 1: no
+     origin node" with E0 sitting plainly on the POC.
+
+     Which is the same fact the paragraph above already states: they are
+     one point on the ground. If there is an electric origin node, it is
+     the origin, whatever Circuit_ID it happens to carry. Preferring the
+     two named cases first keeps a drawing with a real per-circuit
+     origin working exactly as it did. */
   return nodes.find((f) =>
     Number(f.Attributes?.Circuit_ID) === Number(circuitId))
     ?? nodes.find((f) => f.Attributes?.Circuit_ID == null)
+    ?? nodes[0]
     ?? null;
 }
 

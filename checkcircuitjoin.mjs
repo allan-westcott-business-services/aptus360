@@ -21,7 +21,7 @@
    question. */
 import { readFileSync } from "node:fs";
 import {
-  circuitsFrom, nextCircuitId, assignWay, circuitLetter,
+  circuitsFrom, nextCircuitId, assignWay, circuitLetter, originNodeFor,
 } from "./src/features/gis/electric.js";
 import { lvOrigin } from "./src/features/gis/feeder.js";
 
@@ -182,6 +182,74 @@ const meter = (id, circuitId, plotId) => ({
   }
   if (!/Circuit Report to move one from one circuit to another/.test(canvas)) {
     fail("an outline of meters already circuited does not say what to do instead");
+  }
+}
+
+/* ── Finding the origin every circuit is measured from ──
+
+   "Circuit 1: no origin node", on a drawing with E0 sitting plainly on
+   the POC and every meter linked back to it.
+
+   Two writers make these nodes and they disagree about naming.
+   Defining a circuit writes one carrying that Circuit_ID; the Build LV
+   run writes one carrying none, deliberately, so it can serve every
+   circuit. A drawing that got the first kind and not the second ends up
+   with origins that all name *some* circuit and none that names this
+   one — and the lookup, which tried the matching name then the unnamed
+   one, found neither and gave up.
+
+   Which contradicts the reasoning written above it: they are one point
+   on the ground. If there is an electric origin node, it is the origin.
+
+   And it never filtered by layer, so on a site with gas the unnamed
+   fallback could hand back G0 — a gas node — as an electric circuit's
+   starting point. */
+{
+  const node = (id, layer, circuitId) => ({
+    Feature_ID: id, Layer_Key: layer, Feature_Role: "spannode",
+    Attributes: {
+      Span_Seq: 0,
+      ...(circuitId == null ? {} : { Circuit_ID: circuitId }),
+    },
+  });
+
+  /* A node naming this circuit wins, so a drawing that already has
+     per-circuit origins keeps working exactly as it did. */
+  const named = originNodeFor([node(5, "electric", 1), node(6, "electric", 2)], 1);
+  if (Number(named?.Feature_ID) !== 5) {
+    fail(`circuit 1 took node ${named?.Feature_ID}, not the one naming it`);
+  }
+
+  /* Then the shared one Build LV writes. */
+  const shared = originNodeFor([node(6, "electric", 2), node(7, "electric", null)], 1);
+  if (Number(shared?.Feature_ID) !== 7) {
+    fail("the shared origin is not used when no node names this circuit");
+  }
+
+  /* The reported fault: origins exist, all naming other circuits. */
+  const other = originNodeFor([node(9, "electric", 2), node(8, "electric", 3)], 1);
+  if (!other) {
+    fail("a circuit with origins on the drawing still reports no origin node");
+  } else if (Number(other.Feature_ID) !== 8) {
+    fail(`the last resort picked node ${other.Feature_ID} — it must be`
+      + " the lowest id, or two runs disagree about where the network starts");
+  }
+
+  /* Gas and water have Span_Seq 0 nodes of their own. Neither may
+     answer for an electric circuit. */
+  if (originNodeFor([node(4, "gas", null), node(3, "water", null)], 1)) {
+    fail("a gas or water origin was returned as an electric circuit's origin");
+  }
+  /* Electric among them is still found. */
+  if (!originNodeFor([node(4, "gas", null), node(10, "electric", null)], 1)) {
+    fail("an electric origin was missed on a site that also has gas");
+  }
+
+  /* Nothing at all is still nothing — and that is when the message
+     matters, so it has to name the way out rather than the fault. */
+  if (originNodeFor([], 1)) fail("an origin appeared from an empty drawing");
+  if (!/run Build LV Network, which places it/.test(canvas)) {
+    fail("the missing-origin message does not say how to place one");
   }
 }
 

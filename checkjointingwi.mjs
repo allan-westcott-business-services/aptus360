@@ -318,6 +318,89 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     fail("a joint is named by its Feature_ID");
   }
 
+  /* ── And before anything is raised ──
+
+     Shown live in the service call-off dialog as plots go on and off,
+     not only once the call-off exists. Somebody choosing which plots to
+     put on a visit is deciding how much work it is, and they cannot do
+     that if the answer appears afterwards.
+
+     It is also the only place the trace can be checked before anything
+     is written: an expected joint that does not appear here is a
+     drawing to look at, rather than a work instruction that comes out
+     short a week later. */
+  {
+    const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (!/servicePlotBreech/.test(canvas)) {
+      fail("the service call-off dialog does not trace the plots being picked");
+    }
+    /* Recomputed as the plots change. Memoised on the raise handler's
+       inputs instead would leave it stale the moment a plot came off. */
+    if (!/\}, \[serviceOpen, servicePlots, features, plotList\]\)/.test(canvas)) {
+      fail("the live trace does not follow the plots being picked");
+    }
+    if (!/gco-breech/.test(canvas)) {
+      fail("the dialog has nowhere to show what is on the route");
+    }
+    /* Named by the one naming function, not spelled again. */
+    if (!/p\.joints\.map\(jointLabel\)/.test(canvas)) {
+      fail("the dialog names the joints its own way");
+    }
+  }
+
+  /* ── One name, in one place ──
+
+     Three screens show these joints now. Three spellings of one name is
+     the fault this repo keeps finding \u2014 the layer colours, the span
+     node cable sizes, the utility colour table. */
+  {
+    const { jointLabel: fromGis } = await import(
+      process.cwd() + "/src/features/gis/serviceBreech.js");
+    if (fromGis !== jointLabel) {
+      fail("the work instruction has its own copy of the joint naming");
+    }
+  }
+
+  /* ── The office sees it too ──
+
+     The trace was stored and shown on the field work instruction and
+     nowhere else, so a planner booking the visit \u2014 who is the person
+     deciding how long it takes \u2014 saw nothing at all. The instruction
+     is read on a road; the booking is made on the call-offs page.
+
+     And a call-off raised before any of this existed carries no trace,
+     which is every call-off already on the system. Offered as a
+     deliberate act rather than done on opening: it reads the whole
+     drawing and writes to the call-off, and a screen that rewrites a
+     record because somebody looked at it is the whole-drawing
+     reconciliation fault again. */
+  {
+    const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+    if (!/GIS_Data\?\.breech/.test(page)) {
+      fail("the call-off page does not read the traced joints");
+    }
+    if (!/co-breech/.test(page)) {
+      fail("the call-off page has nowhere to show the traced joints");
+    }
+    /* Named by node there as well, so the office and the gang are
+       reading one thing. */
+    if (!/Node \$\{j\.node\}/.test(page)) {
+      fail("the office view does not name the joints by their node");
+    }
+    /* The route it could not trace is not drawn like a clear run. */
+    if (!/p\.reachable === false/.test(page)) {
+      fail("the office view shows an untraceable route as a plot with no joints");
+    }
+    /* Offered only where nothing is stored \u2014 a button that overwrites
+       the record of the day would change a booking under somebody. */
+    if (!/breech == null && isElectricJointing/.test(page)) {
+      fail("the trace button is offered over a trace that already exists");
+    }
+    if (!/onClick=\{traceBreech\}/.test(page)) {
+      fail("nothing can trace a call-off raised before this existed");
+    }
+  }
+
   /* The queue carries it, and only on the released job. */
   const q = readFileSync("./netlify/functions/field-queue.js", "utf8");
   if (!/GIS_Data/.test(q)) fail("the field queue does not read the traced joints");

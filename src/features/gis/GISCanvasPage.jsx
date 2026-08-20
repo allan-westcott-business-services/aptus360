@@ -141,7 +141,7 @@ import {
 } from "../../api/calloffs.js";
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
-import { breechSummary } from "./serviceBreech.js";
+import { breechSummary, jointLabel } from "./serviceBreech.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -1568,6 +1568,32 @@ export default function GISCanvasPage() {
      layers arrive, since which layer belongs to a utility is something
      only the loaded data knows. */
   const [pendingIsolate, setPendingIsolate] = useState(null);
+
+  /* ── The breech joints on the plots picked, live ──
+
+     Worked out as plots go on and off the call-off, not at the moment
+     of raising. The gang works at each of these as well as at the
+     meter, and somebody choosing which plots to put on a visit is
+     deciding how much work it is \u2014 which they cannot do if the answer
+     only appears once the call-off exists.
+
+     It also makes the trace checkable before anything is written: an
+     expected joint that does not appear here is a drawing to look at,
+     rather than a work instruction that comes out short a week later.
+
+     Recomputed on the plots and the drawing, so moving a joint or
+     running Place Span Nodes shows here without reopening. */
+  const servicePlotBreech = useMemo(() => {
+    if (!serviceOpen || !servicePlots.length) return null;
+    const origin = lvOrigin(features);
+    if (!origin) return null;
+    const seeds = features.filter((f) => f.Feature_Role === "plot"
+      && servicePlots.includes(plotOfSeed(f, plotList)));
+    const meters = metersOfSeeds(features, seeds);
+    if (!meters.length) return null;
+    return breechSummary(features, meters, origin.Feature_ID,
+      (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? null);
+  }, [serviceOpen, servicePlots, features, plotList]);
 
   /* The outline drawn by Link to Circuit, waiting to be told which
      circuit it belongs to. Null when nothing is being asked. */
@@ -17724,6 +17750,39 @@ export default function GISCanvasPage() {
                     </p>
                   )}
 
+                  {/* ── What else is on the route ──
+
+                      Under the plot chips, because that is what they
+                      are about: these are the connections between those
+                      plots and the supply.
+
+                      Shown per plot rather than as a total, since a
+                      gang works plot by plot \u2014 and the same joint
+                      appearing against three plots is the truth about
+                      how the network divides, not a repetition to be
+                      tidied away. */}
+                  {servicePlotBreech?.plots?.length > 0 && (
+                    <div className="gco-breech">
+                      {servicePlotBreech.plots.map((p) => (
+                        <div className="gco-breech-row" key={p.plot ?? p.plotId}>
+                          <strong>{p.plot ?? p.plotId}</strong>
+                          {p.reachable === false ? (
+                            <span className="gco-breech-warn">
+                              route back could not be traced
+                            </span>
+                          ) : (
+                            <span>{p.joints.map(jointLabel).join(" \u00b7 ")}</span>
+                          )}
+                        </div>
+                      ))}
+                      <p className="gco-breech-tot">
+                        {`${servicePlotBreech.totalJoints} breech joint`}
+                        {servicePlotBreech.totalJoints === 1 ? "" : "s"}
+                        {" on the route, counted once each"}
+                      </p>
+                    </div>
+                  )}
+
                   <textarea className="gco-svc-note" rows={2}
                     placeholder="Anything the gang should know (optional)"
                     aria-label="Notes"
@@ -19570,6 +19629,21 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   font-size: 11.5px; color: var(--muted); }
 .gco-machine select { font: 500 12px inherit; padding: 4px 7px;
   border: 1px solid var(--border); border-radius: 7px; }
+/* ── Breech joints on the route, in the service call-off dialog ──
+
+   Under the plot chips and set apart from them: the chips are what is
+   being chosen, this is what choosing them entails. Amber rather than
+   red — it is work to plan for, not a problem. */
+.gco-breech { border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px;
+  padding: 8px 10px; margin: 10px 0 0; }
+.gco-breech-row { display: flex; gap: 10px; align-items: baseline;
+  font-size: 12.5px; padding: 3px 0; }
+.gco-breech-row strong { flex: 0 0 42px; }
+/* A plot the trace could not reach is a fault in the drawing, and must
+   not read like a plot with a clear run. */
+.gco-breech-warn { color: #991b1b; font-weight: 600; }
+.gco-breech-tot { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
+
 .gco-tot { font-size: 12.5px; font-weight: 700; margin: 12px 0 0;
   padding-top: 12px; border-top: 1px solid var(--border); }
 /* What a run carries, on its head line beside the length. Wraps rather

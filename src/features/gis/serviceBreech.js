@@ -213,3 +213,26 @@ export function breechSummary(features = [], meters = [], originId = null,
     unreachable: routes.filter((r) => !r.reachable).length,
   };
 }
+
+/* ── What a joint is called ──
+
+   "Breech Joint at Node A5". The node is how the drawing, the levels
+   check and the call-off all name that place, so it is how a gang finds
+   it \u2014 a breech joint is placed exactly where a span node is, because
+   both mark the point the feeder divides. A database id means nothing
+   to anybody standing in a hole.
+
+   Lives here rather than in the work instruction because three screens
+   now show these: the call-off dialog before raising, the call-off page
+   after, and the form on the road. Three spellings of one name is the
+   fault this repo keeps finding; one function is the fix.
+
+   Where there is no node, said so. A breech with no span node on it
+   means Place Span Nodes has not been run since the joint went in \u2014
+   so the levels check is not measuring to it either, and the omission
+   is worth more than the name. */
+export function jointLabel(j) {
+  if (j?.node) return `Breech Joint at Node ${j.node}`;
+  if (j?.label) return `Breech Joint ${j.label} \u2014 not on a node`;
+  return "Breech Joint \u2014 not on a node";
+}

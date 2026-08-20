@@ -13,9 +13,10 @@ import { readFileSync } from "node:fs";
 
    Run: node checkbottleends.mjs */
 import {
-  planJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
+  planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
 } from "./src/features/gis/joints.js";
 import { symbolPath, STROKE_ONLY, SYMBOLS } from "./src/lib/gisStyle.js";
+import { feederSections } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -118,13 +119,26 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
   }
 }
 
-// 4. The service is not lost. A terminal always has one — that is where
-//    the load arrives — so the kind is the bottle end and the service is
-//    kept as a reason rather than thrown away.
+// 4. The service is not lost — but it is no longer a reason ON the
+//    bottle end.
+//
+//    This used to assert the opposite: that the terminal's kind was
+//    bottleend with `service` kept among its reasons. That was the
+//    behaviour that lost the fitting. A bottle end seals a cable and
+//    nothing comes off it, so where a service leaves the same point the
+//    site needs both, and the take-off counted one.
+//
+//    The service is now its own joint at that point, asserted above.
+//    What matters here is that it went somewhere.
 {
   const b = bottles[0];
-  if (b && !b.reasons.includes("service")) {
-    fail("the bottle end forgot that a service leaves the same point");
+  if (b && b.reasons.includes("service")) {
+    fail("the bottle end still carries the service reason \u2014 the take-off"
+      + " reads one fitting where two are fitted");
+  }
+  if (!planned.some((j) => j.kind === "service"
+    && Math.hypot(j.point[0] - 120, j.point[1] - 0) < 0.5)) {
+    fail("the service at the end of the run went nowhere");
   }
   if (b && !b.reasons.includes("bottleend")) fail("the bottle end records no reason of its own");
 }
@@ -369,6 +383,137 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
       fail(`the bill still has "${squashed}" written into it`);
     }
   }
+  }
+}
+
+/* ── A bottle end cannot take a service off it ──
+
+   Where a service leaves the point a run ends, the site needs both
+   fittings. planJoints kept the strongest reason and filed the rest
+   under `reasons`, on the argument that the larger fitting does the
+   smaller one's job — which is true of a breech, and not of a bottle
+   end. A bottle end seals a cable; nothing comes off it.
+
+   So the service joint was missing from the drawing and from the
+   take-off, one per plot at the end of every run. The bottle end and
+   the breech were both being placed correctly, which is what made it
+   hard to see: the fault was only ever in the pairing. */
+{
+  const at120 = planned.filter((j) =>
+    Math.hypot(j.point[0] - 120, j.point[1] - 0) < 0.5);
+  const kinds = at120.map((j) => j.kind).sort();
+
+  if (kinds.join(",") !== "bottleend,service") {
+    fail(`the end of the run has ${kinds.join(" + ") || "nothing"} on it,`
+      + " not a bottle end AND the service joint the last plot needs");
+  }
+
+  /* Neither reads as doing the other's job. A bottle end listing
+     `service` among its reasons is what the take-off counted as one
+     fitting. */
+  const bottle = at120.find((j) => j.kind === "bottleend");
+  if (bottle?.reasons.includes("service")) {
+    fail("the bottle end still carries the service reason — the take-off"
+      + " reads one fitting where two are fitted");
+  }
+  const svc = at120.find((j) => j.kind === "service");
+  if (svc && svc.reasons.join() !== "service") {
+    fail(`the service joint carries ${svc.reasons.join(", ")}`);
+  }
+
+  /* A breech that also serves a plot is still ONE breech. The split is
+     for bottle ends alone, and widening it would double-count every
+     fork on the site. */
+  const mid = planned.filter((j) =>
+    Math.hypot(j.point[0] - 50, j.point[1] - 0) < 0.5);
+  if (mid.length !== 1) {
+    fail(`${mid.length} joints planned where one service leaves the run`);
+  }
+
+  /* ── And a re-run settles ──
+
+     Two fittings at one point, matched on position alone, let the
+     bottle end plan claim the service feature and the service plan
+     claim the bottle end. The pair swapped types on every run and
+     neither was ever settled. */
+  /* Reversed, so a match cannot succeed by the features happening to be
+     listed in plan order. The first form of this fixture was in plan
+     order and passed with the kind test removed \u2014 it was testing the
+     array, not the rule. */
+  const asPlaced = planned.map((j, i) => ({
+    Feature_ID: 900 + i,
+    Geometry: [j.point],
+    Attributes: { Circuit_ID: j.circuitId ?? 1, Joint_Type: j.kind },
+  })).reverse();
+  const again = reconcileJoints(planned, asPlaced, 0.25);
+  if (again.add.length || again.update.length || again.stale.length) {
+    fail(`running it twice adds ${again.add.length}, rewrites`
+      + ` ${again.update.length} and orphans ${again.stale.length}`
+      + " \u2014 the pair at one point is swapping types on every run");
+  }
+}
+
+/* ── The spare length past the last plot ──
+
+   A run stops at the service joint serving the last plot on the leg.
+   The gang digs a little further, lays a short tail and buries the
+   bottle end in it, because a bottle end has to sit in trench like
+   everything else. Drawn by the app rather than relied on from the
+   designer: a length nobody can forget beats a rule everybody knows.
+
+   Length from Electric_VD_Setting.Bottle_End_Tail_M (0185), not
+   compiled in \u2014 1.5 m is a working practice, not a law. */
+{
+  const run = (geom, tail) => feederSections(
+    [sub, trench(geom), trench([[geom[geom.length - 1][0],
+      geom[geom.length - 1][1]], [geom[geom.length - 1][0] + 10,
+      geom[geom.length - 1][1]]], "service_trench"),
+    p1, meter(101, p1.Feature_ID,
+      [geom[geom.length - 1][0] + 10, geom[geom.length - 1][1]])],
+    { lineTypes, bottleEndTailM: tail },
+  ).sections[0];
+
+  /* Straight run: the tail carries on in the same direction. */
+  const straight = run([[0, 0], [100, 0]], 1.5);
+  const end = straight?.pts[straight.pts.length - 1];
+  if (!end || Math.abs(end[0] - 101.5) > 1e-9 || Math.abs(end[1]) > 1e-9) {
+    fail(`the tail ends at ${JSON.stringify(end)}, not 1.5 m on from [100, 0]`);
+  }
+  if (Math.abs((straight?.tailM ?? 0) - 1.5) > 1e-9) {
+    fail("the section does not record how long its tail is, so the trench"
+      + " laid under it cannot know it runs past the last plot");
+  }
+
+  /* ── At a bend ──
+
+     The bearing of its OWN final segment, continued. Taking the bearing
+     from the start of the section would point the tail back across the
+     road the run came off. */
+  const bent = run([[0, 0], [100, 0], [100, 40]], 1.5);
+  const bendEnd = bent?.pts[bent.pts.length - 1];
+  if (!bendEnd || Math.abs(bendEnd[0] - 100) > 1e-9
+    || Math.abs(bendEnd[1] - 41.5) > 1e-9) {
+    fail(`after a 90° turn the tail ends at ${JSON.stringify(bendEnd)},`
+      + " not 1.5 m on from [100, 40] in the direction the run was going");
+  }
+
+  /* ── Zero means no tail ──
+
+     A legitimate setting, and what the drawing did before this existed.
+     Kept working so there is a way back without a release. */
+  const none = run([[0, 0], [100, 0]], 0);
+  const noneEnd = none?.pts[none.pts.length - 1];
+  if (!noneEnd || Math.abs(noneEnd[0] - 100) > 1e-9) {
+    fail(`a tail of 0 m still extended the run to ${JSON.stringify(noneEnd)}`);
+  }
+  if (none?.tailM != null) fail("a run with no tail still records one");
+
+  /* And a setting that is not a number is not a licence to guess. */
+  for (const junk of [undefined, null, "", "abc", -1, NaN]) {
+    const r = run([[0, 0], [100, 0]], junk);
+    if (r?.pts[r.pts.length - 1][0] !== 100) {
+      fail(`a tail setting of ${JSON.stringify(junk)} extended the run`);
+    }
   }
 }
 

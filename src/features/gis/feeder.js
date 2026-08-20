@@ -403,6 +403,68 @@ export function feederSections(features = [], opts = {}) {
     }
   }
 
+  /* ── The spare length past the last plot ──
+
+     A run stops at the service joint serving the last plot on the leg.
+     The cable does not stop there: the gang digs a little further, lays
+     a short tail and buries the bottle end in it, because a bottle end
+     has to sit in trench like everything else.
+
+     Drawn here rather than relied on from the designer. A length nobody
+     can forget is worth more than a rule everybody knows \u2014 and where
+     it was left to the drawing, the bottle end and the service joint
+     landed on one point and the app had to choose between them.
+
+     ── Which sections get one ──
+
+     Only a section that ENDS a run: nothing carries on past its end
+     node. A section ending at a fork carries on down the other branch
+     and has no end to seal.
+
+     ── Which direction ──
+
+     The bearing of its own final segment, continued. Not the bearing
+     from the start of the section, which on a run that turns into a
+     close would point the tail back across the road it came off.
+
+     A tail can therefore land somewhere nobody can dig \u2014 through a
+     boundary, across a carriageway. Drawn anyway and left to be seen:
+     1.5 m of trench in the wrong place is obvious on the drawing and
+     easy to move, and refusing to draw it would leave a bottle end
+     with nowhere to go and nothing saying why.
+
+     ── Zero ──
+
+     A legitimate setting, and what the drawing did before this existed:
+     no tail, and the bottle end sits at the service joint. Kept working
+     so there is a way back without a release. */
+  const tailM = Number(opts.bottleEndTailM);
+  if (Number.isFinite(tailM) && tailM > 0) {
+    for (const sec of sections) {
+      /* Nothing runs on from here. `mainsChildren` is what the walk
+         itself uses to decide where to carry on, so this asks the same
+         question rather than a second version of it. */
+      if (mainsChildren(sec.endNode).length) continue;
+
+      const pts = sec.pts;
+      const b = pts[pts.length - 1];
+      const a = pts[pts.length - 2];
+      const dx = b[0] - a[0];
+      const dy = b[1] - a[1];
+      const len = Math.hypot(dx, dy);
+      /* A final segment of no length has no bearing to continue. Rare,
+         and a zero-length tail is better than one pointing at NaN. */
+      if (!(len > 0)) continue;
+
+      pts.push([b[0] + (dx / len) * tailM, b[1] + (dy / len) * tailM]);
+      /* Marked, so the canvas knows where the bottle end goes without
+         re-deriving it, and so the trench laid under this section knows
+         it is longer than the run it serves. */
+      sec.tailM = tailM;
+      sec.tailAt = pts[pts.length - 1].slice();
+    }
+  }
+
   return {
     sections,
     S,

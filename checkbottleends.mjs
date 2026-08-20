@@ -329,10 +329,32 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
 
    So the copies are checked against each other rather than trusted. */
 {
-  const sql = readFileSync(
-    new URL("./supabase/migrations/0163_bom_bottle_end_name.sql", import.meta.url),
-    "utf8",
-  );
+  /* ── The migration this reads is not in the folder ──
+
+     0163_bom_bottle_end_name.sql is referenced here and absent from
+     supabase/migrations, so this whole file crashed on load and every
+     assertion in it \u2014 including the ones about where bottle ends
+     belong \u2014 stopped running. A check that cannot start is worse than
+     one that fails, because the suite reports it the same way a missing
+     dependency is reported and nobody reads further.
+
+     It is the same gap as 0138 and 0182: migrations are pasted in by
+     hand and the folder is the only record, so a file that never got
+     committed is invisible until something reads it.
+
+     Skipped with a named failure rather than deleted. Deleting would
+     lose the check that "Bottleend" cannot come back; skipping keeps
+     the rest of this file running and says what is missing. */
+  const url = new URL(
+    "./supabase/migrations/0163_bom_bottle_end_name.sql", import.meta.url);
+  let sql = null;
+  try {
+    sql = readFileSync(url, "utf8");
+  } catch {
+    fail("supabase/migrations/0163_bom_bottle_end_name.sql is missing \u2014 the"
+      + " bill's joint names cannot be checked against joints.js");
+  }
+  if (sql) {
 
   for (const [key, spec] of Object.entries(JOINT_KINDS)) {
     /* Named in the bill exactly as joints.js names it. */
@@ -346,6 +368,7 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
     if (spec.label !== squashed && sql.includes(`'${squashed}'`)) {
       fail(`the bill still has "${squashed}" written into it`);
     }
+  }
   }
 }
 

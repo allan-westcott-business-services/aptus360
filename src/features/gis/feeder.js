@@ -113,31 +113,22 @@ const isService = (f) => String(f.Attributes?.Line_Type || "").includes("service
 
 /* ── Where the network starts ──
 
-   A substation, or an electric POC.
+   Moved to electric.js and re-exported here, because circuitReport
+   needs it and lives there — electric.js imports nothing, so the
+   dependency only runs one way.
 
-   The build required a substation, because on a scheme we build the
-   feeders run back to one. They do not always: on a connection to an
-   existing network there is no new transformer, and the point of
-   connection to the DNO's cable is where the site's electricity comes
-   from. The drawing had the POC on it and the build refused to use it,
-   so the only way through was to place a substation nobody would build.
+   Re-exported rather than moved outright: eleven call sites and two
+   checks import it from this module, and a rename that touches them all
+   to move one function is a large diff hiding a small change. */
+/* Imported and re-exported, not `export { x } from`. That form makes
+   the name available to importers of this module and NOT to this
+   module — buildFeederModel below calls it, and the bare re-export left
+   it undeclared here. checkscope caught it; the browser would have
+   caught it as a blank canvas. */
+import { lvOrigin } from "./electric.js";
 
-   The substation wins where both are drawn, for the reason originsOf
-   gives about plant and POCs: a site with a transformer starts at the
-   transformer, and the POC beside it is where the incomer arrives
-   rather than where the feeders begin.
+export { lvOrigin };
 
-   Only an electric one. A gas POC is on the drawing of nearly every
-   scheme and has nothing to say about where a cable routes back to. */
-export function lvOrigin(features = []) {
-  const has = (f) => (f.Geometry || []).length > 0;
-
-  const sub = features.find((f) => f.Feature_Role === "substation" && has(f));
-  if (sub) return sub;
-
-  return features.find((f) => f.Feature_Role === "poc"
-    && f.Layer_Key === "electric" && has(f)) || null;
-}
 
 /* ── The model ──
    Nodes, a tree rooted at the substation or the POC, and the load

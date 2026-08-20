@@ -22,8 +22,12 @@
 import { readFileSync } from "node:fs";
 import {
   circuitsFrom, nextCircuitId, assignWay, circuitLetter, originNodeFor,
+  circuitReport, lvOrigin,
 } from "./src/features/gis/electric.js";
-import { lvOrigin } from "./src/features/gis/feeder.js";
+/* Through the re-export as well, because eleven call sites still import
+   it from feeder.js and a move that quietly broke them would show up as
+   a blank screen rather than as a build error. */
+import { lvOrigin as lvOriginViaFeeder } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -250,6 +254,64 @@ const meter = (id, circuitId, plotId) => ({
   if (originNodeFor([], 1)) fail("an origin appeared from an empty drawing");
   if (!/run Build LV Network, which places it/.test(canvas)) {
     fail("the missing-origin message does not say how to place one");
+  }
+}
+
+// 8. The report itself traces from either origin.
+//
+//    Enabling the menu item only opened the door: circuitReport still
+//    demanded a substation and traced from subs[0], so a POC-fed design
+//    got the menu item and then an error where the report should be.
+//    Two gates on one question, found one at a time.
+{
+  if (lvOriginViaFeeder !== lvOrigin) {
+    fail("feeder.js no longer re-exports the same lvOrigin \u2014 two would drift");
+  }
+
+  const poc = {
+    Feature_ID: 1, Feature_Role: "poc", Layer_Key: "electric",
+    Geometry: [[0, 0]], Attributes: {},
+  };
+  const sub = {
+    Feature_ID: 3, Feature_Role: "substation", Geometry: [[0, 0]], Attributes: {},
+  };
+  const meter = {
+    Feature_ID: 2, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[5, 0]],
+    Attributes: { Circuit_ID: 1, Circuit_Name: "Circuit 1" },
+  };
+
+  const onPoc = circuitReport([poc, meter]);
+  if (onPoc.error) fail(`a POC-fed design cannot open the report: ${onPoc.error}`);
+  /* And is not described as having a substation. The word went on
+     screen, into the CSV and beside every distance. */
+  if (/substation/i.test(String(onPoc.station))) {
+    fail(`a POC-fed report calls its origin "${onPoc.station}"`);
+  }
+  if (onPoc.stationRole !== "poc") fail("the report does not say which origin it used");
+
+  /* Where both are drawn the substation wins: the incomer arrives at
+     the POC and the feeders begin at the transformer. */
+  const both = circuitReport([poc, sub, meter]);
+  if (both.stationRole !== "substation") {
+    fail("with both drawn the report traced from the POC, not the substation");
+  }
+
+  /* With neither, the refusal names both ways out. */
+  const none = circuitReport([meter]);
+  if (!none.error) fail("a drawing with no origin produced a report");
+  else if (!/point of connection/i.test(none.error)) {
+    fail(`the refusal only mentions a substation: "${none.error}"`);
+  }
+
+  /* And the old wording is gone from the source entirely, so neither
+     gate can come back. */
+  const el = readFileSync("./src/features/gis/electric.js", "utf8");
+  if (/Place a substation first/.test(el)) {
+    fail("electric.js still refuses on a substation alone");
+  }
+  if (/const subs = features\.filter/.test(el)) {
+    fail("the report still collects substations rather than asking lvOrigin");
   }
 }
 

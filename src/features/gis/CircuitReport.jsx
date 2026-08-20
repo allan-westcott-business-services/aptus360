@@ -128,7 +128,10 @@ export default function CircuitReport({
     }
     for (const m of report.unreachable) {
       rows.push({
-        Circuit: "Not traced to a substation", Substation: "",
+        /* "not traced to the origin" rather than naming a substation
+           the scheme may not have. The column header stays as it is —
+           it is an export somebody has spreadsheets built on. */
+        Circuit: `Not traced to ${report.station}`, Substation: "",
         Meter: m.meter, Plot: m.plot, "House type": m.houseType,
         "Distance from substation (m)": null, kVA: m.kva,
       });

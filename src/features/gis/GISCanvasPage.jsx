@@ -1235,7 +1235,12 @@ export default function GISCanvasPage() {
     const cables = lookups?.cableSizes || [];
     if (!circuits.length || !cables.length) return null;
 
-    const station = src.find((f) => f.Feature_Role === "substation");
+    /* The origin, not the transformer. sourceImpedance takes whichever
+       is there — it is named for the origin and carries NO_SOURCE_NOTE
+       for the case where the figure is unknown — so on a POC-fed design
+       this found nothing and every node's levels were computed with no
+       source impedance at all, silently. */
+    const station = lvOrigin(src);
     const vs = lookups?.vdSettings?.[0];
     const limits = { ...VD_DEFAULTS, ...(vs ? {
       unbalanced: !!vs.Unbalanced,
@@ -10466,11 +10471,18 @@ export default function GISCanvasPage() {
         }
       }
 
-      /* The way it held goes back into the pool, or the substation fills
-         up with circuits that no longer exist. */
+      /* The way it held goes back into the pool, or the board fills up
+         with circuits that no longer exist.
+
+         Read from lvOrigin, because that is where assignWay put it. On
+         a POC-fed design the ways live on the POC, and looking for a
+         substation here found nothing, took the `if (sub)` branch and
+         freed nothing — so deleting circuits leaked a way each time
+         until "All 4 LV ways are taken" on a drawing with one circuit
+         on it. */
       step += 1;
-      say("Freeing the way on the substation");
-      const sub = features.find((f) => f.Feature_Role === "substation");
+      say("Freeing the way on the origin");
+      const sub = lvOrigin(features);
       if (sub) {
         const rel = releaseWays(sub, circuit.id);
         if (rel.changed) {

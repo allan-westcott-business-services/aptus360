@@ -807,21 +807,66 @@ export function distancesFrom(features, rootId) {
   return out;
 }
 
+/* ── Where the network starts ──
+
+   A substation, or an electric POC.
+
+   The build required a substation, because on a scheme we build the
+   feeders run back to one. They do not always: on a connection to an
+   existing network there is no new transformer, and the point of
+   connection to the DNO's cable is where the site's electricity comes
+   from. The drawing had the POC on it and the build refused to use it,
+   so the only way through was to place a substation nobody would build.
+
+   The substation wins where both are drawn, for the reason originsOf
+   gives about plant and POCs: a site with a transformer starts at the
+   transformer, and the POC beside it is where the incomer arrives
+   rather than where the feeders begin.
+
+   Only an electric one. A gas POC is on the drawing of nearly every
+   scheme and has nothing to say about where a cable routes back to. */
+export function lvOrigin(features = []) {
+  const has = (f) => (f.Geometry || []).length > 0;
+
+  const sub = features.find((f) => f.Feature_Role === "substation" && has(f));
+  if (sub) return sub;
+
+  return features.find((f) => f.Feature_Role === "poc"
+    && f.Layer_Key === "electric" && has(f)) || null;
+}
+
 export function circuitReport(features = [], plotById = () => null, opts = {}) {
   const { fallbackKva = 0 } = opts;
 
-  const subs = features.filter((f) => f.Feature_Role === "substation");
+  /* ── Traced from the substation, or from the POC ──
+
+     This asked for a substation and traced from `subs[0]`. Every other
+     part of the electric work asks lvOrigin, which takes a substation
+     OR an electric POC — because a connection to an existing network
+     has no new transformer and the site's electricity comes from the
+     point of connection to the DNO's cable.
+
+     Where a scheme has both, the substation wins: the incomer arrives
+     at the POC and the feeders begin at the transformer. That is
+     lvOrigin's rule and it is not restated here.
+
+     Left as it was, this refused the whole report on a POC-fed design —
+     and the report is the only place a meter is moved from one circuit
+     to another, so the one drawing that most needed it was the one that
+     could not open it. */
+  const station = lvOrigin(features);
   const meters = features.filter(
     (f) => f.Feature_Role === "meter" && f.Layer_Key === "electric");
 
-  if (!subs.length) {
-    return { error: "Place a substation first \u2014 circuits are traced from it." };
+  if (!station) {
+    return {
+      error: "Place a substation or an electric point of connection first "
+        + "\u2014 circuits are traced from one of them.",
+    };
   }
   if (!meters.length) {
     return { error: "No electric meters placed yet \u2014 nothing to report." };
   }
-
-  const station = subs[0];
   const dist = distancesFrom(features, station.Feature_ID);
 
   const rec = (m) => {
@@ -907,7 +952,15 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
   }
 
   return {
-    station: station.Label || "Substation",
+    /* Named for what it is where it has no label of its own. Falling
+       back to "Substation" on a POC-fed design put the word substation
+       across a report of a scheme that has none — on screen, in the
+       CSV, and beside every distance. */
+    station: station.Label
+      || (station.Feature_Role === "poc" ? "Point of connection" : "Substation"),
+    /* Which kind it is, so anything reading this can word itself
+       correctly rather than guessing from the label. */
+    stationRole: station.Feature_Role === "poc" ? "poc" : "substation",
     circuits,
     unreachable,
     totalMeters: meters.length,

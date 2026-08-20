@@ -10906,9 +10906,44 @@ export default function GISCanvasPage() {
           const num = nd.kind === "origin" ? 0 : (seq += 1);
           const label = spanLabel(c.letter, num);
 
-          const near = (f) => Math.hypot(f.Geometry[0][0] - nd.point[0],
-                                         f.Geometry[0][1] - nd.point[1]) < 1;
-          const match = adoptable.find((f) => !claimed.has(f.Feature_ID) && near(f));
+          /* ── The nearest candidate, not the first ──
+
+             `.find` took whichever unclaimed node came first in the
+             feature list, and on a drawing where two nodes sit inside
+             the metre \u2014 which happens: A28 and A30 on the live data are
+             0.something apart \u2014 that is array order deciding which
+             point a circuit is measured from. Reorder the features and
+             the schedule changes.
+
+             The same fault buildFeederModel's `intern` was fixed for,
+             and for the same reason: where two candidates are both in
+             range, "first found" is not an answer, it is whichever the
+             scan happened to reach.
+
+             Ties broken on the lower Feature_ID so two nodes at
+             genuinely the same point resolve the same way on every
+             run. */
+          const nodeAt = (f) => f.Attributes?.Span_Anchor ?? f.Geometry[0];
+          const gap = (f) => {
+            const p = nodeAt(f);
+            return Math.hypot(p[0] - nd.point[0], p[1] - nd.point[1]);
+          };
+          /* Still needed below, where "is there a node here already"
+             is the question rather than "which one". Kept as its own
+             name because the two ask different things: this one takes
+             any node in range, including one another circuit has
+             claimed. */
+          const near = (f) => gap(f) < 1;
+          let match = null;
+          let best = 1;
+          for (const f of adoptable) {
+            if (claimed.has(f.Feature_ID)) continue;
+            const d = gap(f);
+            if (d >= best) continue;
+            if (match && d === best && Number(f.Feature_ID) >= Number(match.Feature_ID)) continue;
+            match = f;
+            best = d;
+          }
 
           if (match) {
             claimed.add(match.Feature_ID);
@@ -11967,7 +12002,38 @@ export default function GISCanvasPage() {
       if (utility === "gas") {
         await placeTopTees({ silent: true, srcFeatures: after, only: "service" });
       } else {
-        await placeFeederJoints({ silent: true, srcFeatures: after });
+        /* ── Why this can place nothing, and has to say so ──
+
+           A service joint is planned from the feeder model, which is
+           built from the circuits and the routed feeders. Lay services
+           before Link to Circuit and Build LV Network and there is no
+           model to hang one on, so placeFeederJoints refuses \u2014 and
+           `silent` suppressed the reason along with the chatter.
+
+           The result was Auto Lay Services finishing with no joints and
+           nothing said, which is indistinguishable from the fault this
+           tail was added to fix. Silence is right for "nothing needed";
+           it is wrong for "cannot yet".
+
+           Said as a status rather than an error: the services were laid
+           and that part worked. */
+        const placed = await placeFeederJoints({ silent: true, srcFeatures: after });
+        if (!placed) {
+          const why = circuitsFrom(after).length
+            ? "Run Build LV Network, then Place Feeder Joints, to mark where "
+              + "each service leaves its main."
+            : "Link the plots to a circuit and run Build LV Network first, "
+              + "then Place Feeder Joints marks where each service leaves "
+              + "its main.";
+          /* Not `made.length` \u2014 that belongs to autoLayServices and is
+             not in scope here. Reading it would have thrown inside the
+             catch below, which would have swallowed it, and the symptom
+             would have been the joints silently not appearing: the very
+             thing this message exists to explain. checkscope caught it
+             before it shipped. */
+          setStatus("Services laid \u2014 no service joints placed. " + why);
+          setTimeout(() => setStatus(""), 12000);
+        }
       }
       /* Re-read once more: both routines write features, and the canvas
          is holding what it loaded before they ran. Without this the

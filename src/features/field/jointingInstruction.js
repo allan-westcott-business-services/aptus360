@@ -196,14 +196,27 @@ export function routeUnknownFor(job, plot) {
 
 /* What a joint is called on the form.
 
-   Two spellings reach here because the two ways a joint gets placed
-   have never agreed on which they write — one carries Joint_Type, the
-   other Joint_Code. The label wins where the drawing has one, since
-   that is what is written on the drawing the gang is holding. */
+   "Breech Joint at Node A5". The node is how the drawing, the levels
+   check and the call-off all name that place, so it is how a gang finds
+   it — a breech joint is placed exactly where a span node is, because
+   both mark the same event on the network: the point the feeder
+   divides. "Breech joint 4812" is a database id and means nothing to
+   anybody standing in a hole.
+
+   ── When there is no node ──
+
+   Said, not papered over. A breech with no span node on it means Place
+   Span Nodes has not been run since the joint went in — so the levels
+   check is not measuring to it either, and the omission is worth more
+   than the name. Falling back to a database id would hide that behind a
+   number nobody can act on.
+
+   The drawing's own label is used where it has one, since that is what
+   is printed on the plan they are holding. */
 export function jointLabel(j) {
-  return j?.label
-    || (j?.jointCode ? `Breech ${j.jointCode}` : null)
-    || (j?.featureId != null ? `Breech joint ${j.featureId}` : "Breech joint");
+  if (j?.node) return `Breech Joint at Node ${j.node}`;
+  if (j?.label) return `Breech Joint ${j.label} — not on a node`;
+  return "Breech Joint — not on a node";
 }
 
 /* An empty answer set for a plot, so a row that has been opened and not

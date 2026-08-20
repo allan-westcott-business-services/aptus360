@@ -288,7 +288,9 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
                       </span>
                     </h4>
                     {breechesFor(job, plot).map((j, i) => (
-                      <label className="wi-breech-row" key={j.featureId ?? i}>
+                      <label className={j.node
+                        ? "wi-breech-row" : "wi-breech-row nonode"}
+                        key={j.featureId ?? i}>
                         <input type="checkbox"
                           checked={!!payload?.plots?.[plot]?.breech?.[j.featureId]}
                           onChange={(e) => {
@@ -513,6 +515,9 @@ const CSS = `
   font-size: 14px; cursor: pointer; }
 .wi-breech-row input { width: 20px; height: 20px; flex: 0 0 auto; }
 .wi-breech .wi-hint { margin: 6px 0 0; }
+/* A joint with no span node on it. Marked, because it means the levels
+   check is not measuring to it either — not a formatting nicety. */
+.wi-breech-row.nonode span { color: #991b1b; font-weight: 600; }
 
 .wi-warn { border: 1px solid #fca5a5; background: #fef2f2; color: #991b1b;
   border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px;

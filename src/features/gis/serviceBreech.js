@@ -32,6 +32,15 @@
 import { buildGraph, rootAt } from "./electric.js";
 import { isBreechJoint } from "./joints.js";
 
+/* Two points this close are the same place.
+
+   The drawing's own connect tolerance, which is what decides whether
+   two cable ends meet — so a joint and a node the canvas treats as
+   coincident are treated as coincident here too. A looser figure would
+   name a joint after a node it merely sits near, and on a busy junction
+   that is a different node. */
+const SAME_PLACE_M = 0.25;
+
 /* The joints on the path from one feature back to the root.
 
    Walks the parent chain the rooting produced. `parent` is a Map keyed
@@ -87,6 +96,43 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
 
   const byId = new Map(features.map((f) => [Number(f.Feature_ID), f]));
 
+  /* ── The node a joint stands on ──
+
+     A breech joint is placed exactly where a span node is, because both
+     mark the same event on the network: the point the feeder divides.
+     The node is what the drawing, the levels check and the call-off all
+     call that place \u2014 A5, B2 \u2014 so it is what the work instruction
+     should name the joint by. "Breech joint 4812" is a database id and
+     means nothing to anybody in a hole.
+
+     Matched on position rather than on Connects: a joint and a node at
+     one point are not linked to each other, they are both linked to the
+     cable. Position is the only thing they share.
+
+     Electric only, and Span_Seq is not filtered \u2014 a breech on the
+     origin node itself is unusual and not impossible, and calling it E0
+     is right. */
+  const nodes = features.filter((f) => f.Feature_Role === "spannode"
+    && f.Layer_Key === "electric" && (f.Geometry || []).length);
+
+  const nodeAt = (at) => {
+    if (!at) return null;
+    let best = null;
+    let bestD = SAME_PLACE_M;
+    for (const n of nodes) {
+      const p = n.Geometry[0];
+      if (!p) continue;
+      const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
+      /* Strictly nearer, so two nodes at the same spot resolve to the
+         lower id rather than to whichever the scan reached last. */
+      if (d < bestD || (d === bestD && best && Number(n.Feature_ID) < Number(best.Feature_ID))) {
+        best = n;
+        bestD = d;
+      }
+    }
+    return best;
+  };
+
   return meters.map((m) => {
     const id = Number(m.Feature_ID);
     const plot = m.Attributes?.Plot_ID ?? null;
@@ -102,17 +148,32 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
     const joints = path
       .map((nid) => byId.get(nid))
       .filter((f) => f && isBreechJoint(f))
-      .map((f) => ({
+      .map((f) => {
+        const at = (f.Geometry || [])[0] ?? null;
+        const node = nodeAt(at);
+        return {
         featureId: Number(f.Feature_ID),
         label: f.Label || null,
+        /* The node this joint stands on, which is what it is called by.
+           Null where there is none within the tolerance \u2014 said rather
+           than guessed at, because a breech with no node on it is a
+           drawing that has not had Place Span Nodes run since the joint
+           went in, and the levels check will not be measuring to it
+           either. */
+        node: node
+          ? (node.Attributes?.Span_Label
+            || (node.Label ? String(node.Label).replace(/^Point\s+/i, "") : null))
+          : null,
+        nodeId: node ? Number(node.Feature_ID) : null,
         /* Both spellings, because the two ways a joint gets placed have
            never agreed on which it writes \u2014 see isJointOfKind. Kept as
            found rather than normalised, so what the work instruction
            shows is what the drawing says. */
         jointType: f.Attributes?.Joint_Type ?? null,
         jointCode: f.Attributes?.Joint_Code ?? null,
-        at: (f.Geometry || [])[0] ?? null,
-      }));
+        at,
+        };
+      });
 
     return { meterId: id, plotId: plot, reachable: true, joints };
   });

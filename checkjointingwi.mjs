@@ -206,6 +206,13 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
        agreed on which they write, and a trace that found only one kind
        would miss half the joints on a real drawing. */
     F(4, "joint", [3, 5], { Joint_Code: "BRE" }),
+    /* The span node joint 2 stands on. Placed at the same point,
+       because that is where a breech goes \u2014 both mark the point the
+       feeder divides. Joint 4 deliberately has none, so the
+       "not on a node" case is exercised on a real trace rather than
+       only on a hand-made object. */
+    { Feature_ID: 8, Layer_Key: "electric", Feature_Role: "spannode",
+      Geometry: [[2, 0]], Attributes: { Span_Seq: 5, Span_Label: "A5" } },
     F(5, "meter", [4], { Plot_ID: 105 }),
     F(6, "meter", [2], { Plot_ID: 106 }),
     F(7, "meter", [], { Plot_ID: 107 }),
@@ -237,6 +244,16 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
      is booked. */
   if (forPlot(107)?.reachable !== false) {
     fail("a plot with no route back was not flagged as unreachable");
+  }
+
+  /* The node comes off the drawing, matched on position: a joint and a
+     node at one point are not linked to each other, they are both
+     linked to the cable, so position is the only thing they share. */
+  if (far?.joints[0]?.node !== "A5") {
+    fail(`the breech on node A5 came back as node ${far?.joints[0]?.node}`);
+  }
+  if (far?.joints[1]?.node != null) {
+    fail("a joint with no node within tolerance was given one anyway");
   }
 
   const sum = breechSummary(feats, meters, 1,
@@ -274,10 +291,32 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   if (!routeUnknownFor(job, "14")) fail("the form does not say the route was untraceable");
   if (routeUnknownFor(job, "12")) fail("a traced plot was reported as untraceable");
 
-  /* Named from whichever spelling the drawing carries. */
-  if (jointLabel({ jointCode: "BRE" }) !== "Breech BRE") fail("a coded joint is unnamed");
-  if (jointLabel({ label: "BJ-7" }) !== "BJ-7") fail("the drawing's own label is not used");
-  if (!jointLabel({})) fail("a joint with nothing on it has no name at all");
+  /* ── Named by the node it stands on ──
+
+     A breech joint is placed exactly where a span node is, and the node
+     is what the drawing, the levels check and the call-off all call
+     that place. "Breech joint 4812" is a database id and means nothing
+     to anybody standing in a hole. */
+  if (jointLabel({ node: "A5" }) !== "Breech Joint at Node A5") {
+    fail(`a joint on node A5 is called "${jointLabel({ node: "A5" })}"`);
+  }
+  /* Including the origin. A breech on E0 itself is unusual and not
+     impossible, and calling it E0 is right. */
+  if (!/E0/.test(jointLabel({ node: "E0" }))) fail("a joint on the origin node is misnamed");
+
+  /* No node is admitted, not papered over: it means Place Span Nodes
+     has not been run since the joint went in, so the levels check is
+     not measuring to it either. */
+  for (const j of [{}, { featureId: 9, jointCode: "BRE" }, { label: "BJ-7" }]) {
+    if (!/not on a node/.test(jointLabel(j))) {
+      fail(`a joint with no node reads "${jointLabel(j)}" \u2014 the omission`
+        + " is worth more than the name");
+    }
+  }
+  /* And a database id never reaches the form. */
+  if (/\b9\b/.test(jointLabel({ featureId: 9 }))) {
+    fail("a joint is named by its Feature_ID");
+  }
 
   /* The queue carries it, and only on the released job. */
   const q = readFileSync("./netlify/functions/field-queue.js", "utf8");

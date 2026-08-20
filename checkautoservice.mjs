@@ -5,6 +5,7 @@
    drawing, so on any trench that is not a straight line the cable came
    out shorter than the dig it sits in — and every quantity taken off it
    was wrong in the cheap direction. */
+import { readFileSync } from "node:fs";
 import { planSeed, layServices } from "./src/features/gis/autoService.js";
 
 let bad = 0;
@@ -259,6 +260,102 @@ const utils = () => ["electric"];
   }];
   const again = layServices(laidAlready, "water", { isTrench });
   if (again.cables.length) fail("running it twice laid the service twice");
+}
+
+/* ── Laying a service is not finished until the fitting is on ──
+
+   A service touching its main with nothing marking the connection is a
+   take-off schedule short one fitting per plot.
+
+   Which fitting depends on the utility: gas gets a top tee, electric
+   gets a service joint. Gas has done this since top tees arrived;
+   electric never did, so Auto Lay Services left the joints off and the
+   only way to get them was to know that Place Feeder Joints, several
+   items down the same menu, would put them in. Nothing said so.
+
+   Read from the source: the canvas is nineteen thousand lines and does
+   not mount without a project, a basemap and a drawing. What is
+   checkable is that the tail exists, runs for both utilities, and works
+   from the drawing as it is after laying. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* Bounded by the next declaration, not by the first `\n  }`.
+
+     Non-greedy to a closing brace stopped inside the `if (utility ===
+     "gas")` block, so the body this read was truncated before the
+     electric branch \u2014 and the check failed on the fixed code, which
+     reads as the fix not working. */
+  const at = canvas.indexOf("async function layServicesThenTee");
+  const next = canvas.indexOf("\n  async function", at + 1);
+  const fn = at < 0 ? null : [canvas.slice(at, next < 0 ? undefined : next)];
+
+  if (!fn) fail("layServicesThenTee is not where this check can read it");
+  else {
+    const body = fn[0];
+
+    /* Electric is no longer shown the door on the first line. */
+    if (/if \(utility !== "gas"\) return;/.test(body)) {
+      fail("Auto Lay Services still finishes gas only \u2014 an electric service"
+        + " is left with no joint marking where it meets the main");
+    }
+    /* The word at all, rather than a particular spelling of it: the
+       guard admits electric and the branch is an `else`, so
+       `utility === "electric"` appears nowhere. Asserting that spelling
+       failed on the fixed code, which reads as the fix not working. */
+    if (!/electric/.test(body)) {
+      fail("nothing happens after an electric service is laid");
+    }
+
+    /* Each utility gets its own fitting. A top tee on an electric
+       service would be worse than none. */
+    if (!/placeFeederJoints\(/.test(body)) fail("no service joint is placed");
+    if (!/placeTopTees\(/.test(body)) fail("the gas top tee was lost");
+
+    /* Both work from the drawing as it is after laying. The tee
+       vertices the lay adds are what each routine looks for, and a
+       model built from what the canvas held before would find the same
+       nodes missing that the lay has just fixed. */
+    if (!/const after = \(await listGis\(projectId\)\)\.features/.test(body)) {
+      fail("the fitting is planned from the drawing as it was before laying");
+    }
+    /* Each call named, not "srcFeatures appears somewhere". The loose
+       form matched the gas call and passed while the electric one
+       planned from the stale drawing \u2014 which is the exact fault this
+       whole section is about, one utility along. */
+    for (const [what, re] of [
+      ["the service joint", /placeFeederJoints\(\{[^}]*srcFeatures: after/],
+      ["the gas top tee", /placeTopTees\(\{[^}]*srcFeatures: after/],
+    ]) {
+      if (!re.test(body)) {
+        fail(`${what} is planned from the drawing as it was before laying,`
+          + " so the tee vertices the lay just added are not there");
+      }
+    }
+
+    /* Silent: this is the tail of somebody's Auto Lay Services, not a
+       run of its own, and a second count they did not ask for reads as
+       something having gone wrong. */
+    if (!/silent: true/.test(body)) {
+      fail("the tail reports a count nobody asked for");
+    }
+
+    /* And the canvas is told. Both routines write features, so without
+       a reload the joints are in the database and not on screen \u2014
+       which reads exactly like them not having been placed, which is
+       the report this fixes. */
+    if (!/setFeatures\(/.test(body)) {
+      fail("the joints are written but the drawing is not re-read, so they"
+        + " do not appear until something else reloads");
+    }
+  }
+
+  /* placeFeederJoints has to be declared before the tail calls it. A
+     const read before its declaration blanks the page, and this file
+     has done it three times \u2014 fault 2. A function declaration hoists,
+     so what matters is that it stays one. */
+  if (!/async function placeFeederJoints\(/.test(canvas)) {
+    fail("placeFeederJoints is no longer a hoisted function declaration");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

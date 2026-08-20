@@ -11936,13 +11936,46 @@ export default function GISCanvasPage() {
 
      Read back fresh, because the pipe was written a moment ago and the
      drawing in state does not have it yet. */
+  /* ── Laying a service, and finishing it ──
+
+     A service is not laid until the fitting that connects it to the
+     main is on the drawing. Which fitting depends on the utility: gas
+     gets a top tee, electric gets a service joint.
+
+     Gas has done this since top tees arrived. Electric never did, so
+     Auto Lay Services left every service touching its main with nothing
+     marking the connection \u2014 and the only way to get the joints was to
+     know that Place Feeder Joints, several items down the same menu,
+     would put them in. Nothing said so, and a service with no joint is
+     a take-off schedule short one fitting per plot.
+
+     Both run against the drawing as it is after laying, re-read rather
+     than assumed: the tee vertices the lay adds are what each routine
+     looks for, and a model built from the features held before would
+     find the same nodes missing that the lay has just fixed.
+
+     Silent, and swallowed. This is the tail of somebody's Auto Lay
+     Services, not a run of its own \u2014 a second status line reporting a
+     count they did not ask for reads as something having gone wrong,
+     and a failure here must not lose the cables that were laid.
+     Place Feeder Joints on the menu says its piece properly. */
   async function layServicesThenTee(utility, src = null) {
     await autoLayServices(utility, src);
-    if (utility !== "gas") return;
+    if (utility !== "gas" && utility !== "electric") return;
     try {
       const after = (await listGis(projectId)).features || [];
-      await placeTopTees({ silent: true, srcFeatures: after, only: "service" });
-    } catch { /* the backfill button will catch it */ }
+      if (utility === "gas") {
+        await placeTopTees({ silent: true, srcFeatures: after, only: "service" });
+      } else {
+        await placeFeederJoints({ silent: true, srcFeatures: after });
+      }
+      /* Re-read once more: both routines write features, and the canvas
+         is holding what it loaded before they ran. Without this the
+         joints are in the database and not on screen until something
+         else reloads, which reads as them not having been placed. */
+      const done = await listGis(projectId);
+      setFeatures(done.features || []);
+    } catch { /* the menu items place them properly and say so */ }
   }
 
   async function autoLayServices(utility, src = null) {

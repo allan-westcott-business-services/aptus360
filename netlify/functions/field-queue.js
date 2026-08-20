@@ -124,7 +124,12 @@ export default withAuth(async function handler(req, context, user) {
       db.from("Task_Type").select("Task_Type_ID,Task_Type_Name"),
       ids.length
         ? db.from("Mains_Call_Off_Submission")
-          .select("Submission_ID,Site_Name,Site_Address,AP_Number,Project_ID")
+          /* As_Laid_Path so the jointing instruction can draw its
+             sketch over the design as laid (0184). The path, not a URL
+             — the public one is built below, so renaming the bucket
+             does not strand every row. */
+          .select("Submission_ID,Site_Name,Site_Address,AP_Number,Project_ID,"
+            + "As_Laid_Path,As_Laid_Captured_At")
           .in("Submission_ID",
             [...new Set(assignments.map((a) => a.Submission_ID).filter(Boolean))])
         : Promise.resolve({ data: [] }),
@@ -184,6 +189,23 @@ export default withAuth(async function handler(req, context, user) {
         plots: released ? (a.Plot_Range ?? null) : null,
         projectId: released ? (s.Project_ID ?? null) : null,
         apNumber: released ? (s.AP_Number ?? null) : null,
+        /* The as-laid drawing of the call-off's electric design, for
+           the jointing instruction to sketch over.
+
+           Released job only, as everything else here is: a waiting job
+           is withheld so it cannot be worked from in any order, and a
+           drawing of it gives away more than the address does.
+
+           Null where the call-off was raised before 0184, or where the
+           canvas could not take the picture. The form draws on a blank
+           page in that case and says why — a sketch with no plan under
+           it is worse than it was, and not a reason to withhold the
+           form. */
+        asLaid: released && s.As_Laid_Path
+          ? db.storage.from("call-off-as-laid")
+            .getPublicUrl(s.As_Laid_Path).data.publicUrl
+          : null,
+        asLaidAt: released ? (s.As_Laid_Captured_At ?? null) : null,
       };
     });
 

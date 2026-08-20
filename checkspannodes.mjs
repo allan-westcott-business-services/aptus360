@@ -18,9 +18,11 @@
    governor — left its gas POC unmatched, and it took a generic
    A-number. The origin of the gas network ended up numbered as an
    ordinary span, and the levels check had nothing to count from. */
+import { readFileSync } from "node:fs";
 import {
   originsOf, planSpanNodes, plantLabel, nodeFedBy,
 } from "./src/features/gis/spanNodes.js";
+import { labelOf } from "./src/features/gis/mainsCallOff.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -925,6 +927,149 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
     Manual_VD_Cable_Size_ID: null,
   };
   if (effective(cleared) !== SYS) fail("clearing the override left it on the node");
+}
+
+/* ── A node's name is its own ──
+
+   Build LV Network used to rename every node it adopted into its
+   circuit's letter and sequence. That was right when the build placed
+   nodes; it stopped placing them and the renaming stayed. So a node
+   placed on the trench as A28 became B7 when the build ran, and circuit
+   A's own sequence restarted at A1 on top of the site-wide A1..An that
+   Place Span Nodes had already issued.
+
+   Not hypothetical: project 15 has two nodes called A4 today, one from
+   each writer.
+
+   A name is the node's own. Its position on a circuit is a different
+   fact, recorded as Span_Seq beside it. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* The adopted node. Span_Seq, Circuit_ID and Span_Kind are the
+     build's to write; Span_Label is not. */
+  if (/Span_Seq: num, Span_Label: label/.test(canvas)) {
+    fail("the build still renames the nodes it adopts");
+  }
+  if (!/Span_Seq: num, Span_Kind: nd\.kind/.test(canvas)) {
+    fail("the build no longer records which position on the circuit a node is");
+  }
+  /* A node from an older build with no name of its own is still given
+     one, so nothing is left nameless. */
+  if (!/match\.Attributes\?\.Span_Label \? \{\} : \{ Span_Label: label \}/.test(canvas)) {
+    fail("a node with no name of its own is left without one");
+  }
+
+  /* And the leftover pass, which renamed anything the walk did not ask
+     for. Sequence only now. */
+  if (/Attributes: \{ \.\.\.f\.Attributes, Span_Seq: seq, Span_Label: label \}/.test(canvas)) {
+    fail("the build still renames nodes the walk did not ask for");
+  }
+  if (!/Attributes: \{ \.\.\.f\.Attributes, Span_Seq: seq \}/.test(canvas)) {
+    fail("the leftover pass no longer records a position on the circuit");
+  }
+
+  /* The origin is the one node the build may name, because it has no
+     prior name \u2014 Link to Circuit creates it. */
+  if (!/Span_Seq: 0, Span_Label: spanLabel\(letter, 0\)/.test(canvas)) {
+    fail("the origin node is no longer named when a circuit is created");
+  }
+
+  /* ── Adopted by distance, not by list order ──
+
+     Two nodes 0.05 m apart on the live data were both inside the
+     one-metre tolerance, so which one a circuit measured from was
+     decided by array order. Reorder the features and the schedule
+     changes. */
+  /* Any binding, not just `const` — the first form of this missed a
+     `let match = adoptable.find(...)` put back beside the loop. */
+  if (/match = adoptable\.find\(/.test(canvas)) {
+    fail("the build adopts whichever node comes first in the feature list");
+  }
+  /* The behaviour, not only the spelling. Adding `.find` back beside
+     the loop left the loop's answer winning and the source-grep above
+     passing, so the rule is exercised here instead: two candidates in
+     range, the nearer one wins whichever order they arrive in. */
+  {
+    const pick = (list, target) => {
+      const gap = (f) => Math.hypot(
+        (f.Attributes?.Span_Anchor ?? f.Geometry[0])[0] - target[0],
+        (f.Attributes?.Span_Anchor ?? f.Geometry[0])[1] - target[1]);
+      let best = null;
+      let bestD = 1;
+      for (const f of list) {
+        const d = gap(f);
+        if (d >= bestD) continue;
+        if (best && d === bestD && Number(f.Feature_ID) >= Number(best.Feature_ID)) continue;
+        best = f;
+        bestD = d;
+      }
+      return best;
+    };
+    /* The live pair: 23697 and 23699, 0.05 m apart, both inside the
+       metre. */
+    const a = { Feature_ID: 23697, Geometry: [[10.9, 0]], Attributes: {} };
+    const b = { Feature_ID: 23699, Geometry: [[10.05, 0]], Attributes: {} };
+    for (const order of [[a, b], [b, a]]) {
+      const got = pick(order, [10, 0]);
+      if (got?.Feature_ID !== 23699) {
+        fail(`two nodes in range resolved to ${got?.Feature_ID} in one order`
+          + " \u2014 the nearer one has to win whichever way the list arrives");
+      }
+    }
+    /* And the marker is not what is measured to: a node dragged clear
+       of the trench has not moved. */
+    const dragged = {
+      Feature_ID: 1, Geometry: [[40, 40]],
+      Attributes: { Span_Anchor: [10, 0] },
+    };
+    if (pick([dragged], [10, 0])?.Feature_ID !== 1) {
+      fail("a node dragged clear for legibility was treated as having moved");
+    }
+  }
+  /* Measured from the anchor, not the marker: a node dragged clear so
+     its label can be read has not moved. */
+  if (!/const nodeAt = \(f\) => f\.Attributes\?\.Span_Anchor \?\? f\.Geometry\[0\]/
+    .test(canvas)) {
+    fail("adoption measures to the marker rather than the node's anchor");
+  }
+
+  /* ── Two nodes with one name is said out loud ──
+
+     A spare keeps what it was called last time, and a re-run issues
+     those numbers again to different points. Reported rather than
+     resolved: renaming the spare is what this change just stopped, and
+     deleting it would throw away a node somebody placed. */
+  if (!/const clashing = /.test(canvas)) {
+    fail("a spare node sharing a name with a new one is not detected");
+  }
+  if (!/the name of two nodes/.test(canvas)) {
+    fail("a duplicate node name is not reported");
+  }
+}
+
+/* ── The readers take the stored name ──
+
+   Every document that names a run \u2014 the call-off, the levels check,
+   the circuit report \u2014 has to read the node's own label rather than
+   rebuild one from the circuit, or the name on the drawing and the name
+   on the paperwork are different names. */
+{
+  const stored = labelOf({
+    Attributes: { Span_Label: "A28", Circuit_ID: 2, Span_Seq: 7 },
+  });
+  if (stored !== "A28") {
+    fail(`a node called A28 is named "${stored}" on a call-off`);
+  }
+
+  /* The computed form survives for a node from an older build, which
+     carries a circuit and may carry no label. */
+  const older = labelOf({ Attributes: { Circuit_ID: 2, Span_Seq: 7 } });
+  if (older !== "B7") fail(`a node with no name of its own came out as "${older}"`);
+
+  if (labelOf({ Attributes: {} }) !== null) {
+    fail("a node with nothing to go on was given a name anyway");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

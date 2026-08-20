@@ -9312,9 +9312,32 @@ export default function GISCanvasPage() {
          leaves every node past that point unclaimed, and calling those
          "left alone" would report a hundred nodes as spare when they
          were simply never reached. */
-      const spare = stopped
-        ? 0
-        : existing.filter((f) => !claimed.has(f.Feature_ID)).length;
+      const spareNodes = stopped
+        ? []
+        : existing.filter((f) => !claimed.has(f.Feature_ID));
+      const spare = spareNodes.length;
+
+      /* ── Two nodes with one name ──
+
+         A spare keeps whatever it was called last time. This run
+         renumbers the nodes it claimed by distance along the trenches,
+         starting again at A1 \u2014 so a spare holding A8 collides with the
+         A8 this run has just issued to a different point.
+
+         Which is not hypothetical: project 11 has two nodes called A8
+         and two called A19 today, both spare, and a call-off naming a
+         run "A8 to A12" cannot say which A8 it means.
+
+         Reported, not resolved. Renaming the spare is what the build
+         used to do to adopted nodes and is the thing this change just
+         stopped; deleting it would throw away a node somebody placed on
+         purpose. Naming the duplicates is what lets whoever owns the
+         drawing decide. */
+      const nameOf = (f) => String(f.Attributes?.Span_Label ?? "").trim();
+      const issued = new Set(plan.nodes.map((nd) => nd.label));
+      const clashing = [...new Set(spareNodes
+        .map(nameOf)
+        .filter((n) => n && issued.has(n)))].sort();
 
       /* ── The cut ──
 
@@ -9414,7 +9437,17 @@ export default function GISCanvasPage() {
         + (plan.plant ? `, plant is ${plan.plant.label}` : "")
         + (stopped ? " \u2014 run it again to carry on where it stopped." : ""));
       setTimeout(() => setStatus(""), stopped ? 12000 : 10000);
-      setError("");
+      /* Said as an error, not folded into the status above.
+
+         A duplicate name is not a count of what happened; it is
+         something wrong with the drawing that somebody has to act on,
+         and a status line clears itself after ten seconds. */
+      setError(clashing.length
+        ? `${clashing.join(", ")} ${clashing.length === 1 ? "is" : "are"} now `
+          + `the name of two nodes \u2014 one this run placed and one left `
+          + `alone from before. Delete the spare, or rename it, before `
+          + `raising a call-off that names a run.`
+        : "");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); setProgress(null); cancelRef.current = false; }
   }
@@ -10948,6 +10981,23 @@ export default function GISCanvasPage() {
           if (match) {
             claimed.add(match.Feature_ID);
             takenNodes.add(match.Feature_ID);
+            /* ── The node keeps the name it was given ──
+
+               The build used to rename every node it adopted into its
+               circuit's letter and sequence, on the argument that
+               whoever decides where a node goes has to decide what it
+               is called. That argument was true when the build placed
+               nodes. It stopped placing them, and the renaming stayed.
+
+               So a node placed on the trench as A28 became B7 when the
+               build ran, and — worse — circuit A's own sequence
+               restarted at A1, landing on top of the site-wide A1..An
+               that Place Span Nodes had already issued. Project 15 has
+               two nodes called A4 today: one Place Span Nodes made, one
+               the build renamed.
+
+               A name is the node's own. Its position on a circuit is a
+               different fact and is recorded as Span_Seq beside it. */
             /* Only where something actually differs — a rebuild that
                changes nothing should write nothing. Membership counts as
                a difference: a node sitting in the right place with the
@@ -10959,11 +11009,17 @@ export default function GISCanvasPage() {
                 || Number(match.Attributes?.Circuit_ID) !== Number(c.id)) {
               renumber.push({
                 Feature_ID: match.Feature_ID,
-                Label: `Point ${label}`,
+                /* Label untouched. A node with no name of its own \u2014 one
+                   from an older build \u2014 is given the computed one, so
+                   nothing is left nameless; a node that has one keeps
+                   it. */
+                ...(match.Attributes?.Span_Label || match.Label
+                  ? {} : { Label: `Point ${label}` }),
                 Attributes: {
                   ...match.Attributes,
                   Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
-                  Span_Seq: num, Span_Label: label, Span_Kind: nd.kind,
+                  Span_Seq: num, Span_Kind: nd.kind,
+                  ...(match.Attributes?.Span_Label ? {} : { Span_Label: label }),
                   /* A node that had no cable gets the default; one that
                      has a cable someone chose keeps it. */
                   ...(startCable && nd.kind !== "origin"
@@ -11001,12 +11057,15 @@ export default function GISCanvasPage() {
           if (claimed.has(f.Feature_ID)) continue;
           if (Number(f.Attributes?.Span_Seq) === 0) continue;   // the origin
           seq += 1;
-          const label = spanLabel(c.letter, seq);
-          if (f.Attributes?.Span_Label === label) continue;
+          /* Sequence only, for the same reason as above: this node is
+             on the circuit at this position, and that is all the build
+             knows about it. It was put there by hand or left by an
+             earlier network, and whatever it is called is not the
+             build's to change. */
+          if (String(f.Attributes?.Span_Seq) === String(seq)) continue;
           renumber.push({
             Feature_ID: f.Feature_ID,
-            Label: `Point ${label}`,
-            Attributes: { ...f.Attributes, Span_Seq: seq, Span_Label: label },
+            Attributes: { ...f.Attributes, Span_Seq: seq },
           });
         }
 

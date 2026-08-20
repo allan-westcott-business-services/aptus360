@@ -73,6 +73,7 @@ import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
 } from "./joints.js";
 import { inLightingView } from "./lightingView.js";
+import { utilityMenuPress } from "./utilityMenu.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
@@ -2173,6 +2174,33 @@ export default function GISCanvasPage() {
     if (only) { applyShown([key]); return; }
     applyShown(solo === key && shownOnly.length === 1 ? [] : [key]);
   }, [applyShown, solo, shownOnly]);
+
+  /* A utility menu button: isolate first, open second.
+
+     Pressing Electric while the gas drawing is up means "show me the
+     electric" — it does not mean "show me the electric menu", because
+     the menu is a list of things to do to a drawing that is not on
+     screen yet. So the press isolates and stops. The next press has the
+     electric drawing under it and opens the menu.
+
+     Returning false is what holds the menu shut; see the note on
+     `onOpen` in GisMenus.jsx. The refusal is announced, because a
+     button that appears to do nothing sends somebody looking for a
+     control that already exists — the same fault the isolate-only-if-
+     it-has-something guard had, and the reason it went. Here the
+     drawing does visibly change, but nothing on screen says a second
+     press is what opens the menu, and nobody guesses that.
+
+     Named rather than keyed off the layer, so a utility with no layer
+     on this drawing still reads properly in the message. */
+  const utilityMenuOpen = useCallback((key, name) => {
+    if (utilityMenuPress(key, { solo, shownOnly }) === "open") return true;
+    soloClass(key, true);
+    const label = layers.find((l) => l.Layer_Key === key)?.Label ?? name;
+    setStatus(`Showing ${label} only \u2014 press ${label} again for its menu`);
+    setTimeout(() => setStatus(""), 6000);
+    return false;
+  }, [solo, shownOnly, soloClass, layers]);
 
   /* Show one circuit and hide the rest.
 
@@ -15490,8 +15518,17 @@ export default function GISCanvasPage() {
                          over the site plan says there is no water design
                          here, which is what somebody opening the menu
                          needs to know, and it cannot be mistaken for a
-                         drawing of anything else. */
-                      onOpen={() => soloClass("electric", true)}>
+                         drawing of anything else.
+
+                         ── And it takes two presses ──
+
+                         The isolate happens on the first press and the
+                         menu opens on the second. Pressing Electric
+                         from the gas drawing means "show me the
+                         electric"; the menu is a list of things to do
+                         to a drawing that was not on screen when the
+                         press was made. */
+                      onOpen={() => utilityMenuOpen("electric", "Electric")}>
                       {/* ── Network first ──
 
                           The order somebody works in: plant down, cable
@@ -15747,9 +15784,13 @@ export default function GISCanvasPage() {
                              reporting tools at the foot of gas and water
                              were the least-found things on the drawing. */
                           columns={2}
-                          /* Isolated whether or not there is any of it —
-                             see the note on Electric above. */
-                          onOpen={() => soloClass(key, true)}>
+                          /* Isolated whether or not there is any of it,
+                             and on the first press rather than in the
+                             same one that opens the menu — see the note
+                             on Electric above. `name` is passed for the
+                             message, since a utility with no layer on
+                             this drawing has no Label to read. */
+                          onOpen={() => utilityMenuOpen(key, name)}>
                           {/* ── Network first ──
 
                               The order somebody works in: put the origin

@@ -37,10 +37,31 @@ export function MenuBar({ children }) {
 
 export function Menu({
   id, label, open, setOpen, children, badge, columns = 1,
-  /* Run when the menu is opened, not when it closes. A utility menu
-     isolates its utility \u2014 somebody opening Gas is working on gas.
-     Closing it does not put the drawing back: walking away from a menu
-     is not a decision to show everything again. */
+  /* Run on a press that would open, before it opens \u2014 not when it
+     closes. A utility menu isolates its utility: somebody opening Gas
+     is working on gas. Closing it does not put the drawing back, since
+     walking away from a menu is not a decision to show everything
+     again.
+
+     ── It can refuse ──
+
+     Returning false means the press did its work on the drawing and
+     the menu stays shut. That is how the utility menus separate their
+     two jobs: the first press changes the subject of the drawing, the
+     second opens the menu over the drawing you are now on. Opening in
+     the same press as the isolate put a menu over a canvas that had
+     just become something else.
+
+     Anything else returned \u2014 including nothing, which is what every
+     handler that does not care returns \u2014 opens as before.
+
+     A refusal still closes whatever was open. The press changed the
+     drawing, and the menu belonging to the utility that is no longer
+     on screen must not be left standing over it: that is the exact
+     mismatch this is here to stop, arrived at from the other side.
+
+     Only a press that would OPEN is put to the handler. Closing is
+     never refused \u2014 a menu that will not dismiss is a trap. */
   onOpen,
 }) {
   const isOpen = open === id;
@@ -49,9 +70,9 @@ export function Menu({
       <button className={isOpen ? "gm-btn on" : "gm-btn"}
         aria-expanded={isOpen} aria-haspopup="true"
         onClick={() => {
-          const next = isOpen ? null : id;
-          setOpen(next);
-          if (next === id) onOpen?.();
+          if (isOpen) { setOpen(null); return; }
+          if (onOpen?.() === false) { setOpen(null); return; }
+          setOpen(id);
         }}>
         {label}
         {badge != null && badge !== 0 && <span className="gm-badge">{badge}</span>}

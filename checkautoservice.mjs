@@ -220,12 +220,23 @@ const utils = () => ["electric"];
   if (r.error) fail(`laying refused: ${r.error}`);
   else {
     if (r.cables.length !== 1) fail(`${r.cables.length} cables laid, wanted 1`);
-    const g = r.cables[0].geometry;
+    /* Guarded. This indexed straight in after asserting the count, so a
+       run that laid nothing threw here instead of failing \u2014 and a
+       check that crashes reads as broken tooling rather than as the
+       fault it found. */
+    const g = r.cables[0]?.geometry ?? [];
     /* It starts at the main, follows the dogleg, and ends at the
        meter. Four points: anything fewer means it cut a corner. */
     if (g.length !== 4) fail(`the run has ${g.length} points, wanted 4`);
-    if (g[0][0] !== 60 || g[0][1] !== 0) fail("the run does not start at the main");
-    if (Math.abs(g[g.length - 1][1] - 9) > 0.01) fail("the run does not reach the meter");
+    /* Only where there is a run to describe. Reporting "it has 0
+       points" and then reading point zero of it is two failures for one
+       fault, and the second is a crash. */
+    else {
+      if (g[0][0] !== 60 || g[0][1] !== 0) fail("the run does not start at the main");
+      if (Math.abs(g[g.length - 1][1] - 9) > 0.01) {
+        fail("the run does not reach the meter");
+      }
+    }
   }
 
   /* Only the utility asked for. A gas meter on the same trench is not
@@ -332,11 +343,36 @@ const utils = () => ["electric"];
       }
     }
 
-    /* Silent: this is the tail of somebody's Auto Lay Services, not a
-       run of its own, and a second count they did not ask for reads as
-       something having gone wrong. */
+    /* Silent about success: this is the tail of somebody's Auto Lay
+       Services, not a run of its own, and a second count they did not
+       ask for reads as something having gone wrong. */
     if (!/silent: true/.test(body)) {
       fail("the tail reports a count nobody asked for");
+    }
+
+    /* ── But not silent about a refusal ──
+
+       A service joint is planned from the feeder model, which is built
+       from the circuits and the routed feeders. Lay services before
+       Link to Circuit and Build LV Network and there is nothing to hang
+       one on, so placeFeederJoints refuses \u2014 and `silent` suppressed
+       the reason along with the chatter, leaving Auto Lay Services
+       finishing with no joints and nothing said. Which is
+       indistinguishable from the fault this tail was added to fix.
+
+       Silence is right for "nothing needed". It is wrong for
+       "cannot yet". */
+    if (!/const placed = await placeFeederJoints\(/.test(body)) {
+      fail("the tail throws away whether any joint was placed");
+    }
+    if (!/if \(!placed\)/.test(body)) {
+      fail("a refusal to place joints is swallowed \u2014 the run ends with no"
+        + " joints and nothing said, which is the fault it was added to fix");
+    }
+    /* And the reason names the step that is missing, rather than
+       reporting that something did not happen. */
+    if (!/Build LV Network/.test(body)) {
+      fail("the message does not name what has to be run first");
     }
 
     /* And the canvas is told. Both routines write features, so without
@@ -355,6 +391,93 @@ const utils = () => ["electric"];
      so what matters is that it stays one. */
   if (!/async function placeFeederJoints\(/.test(canvas)) {
     fail("placeFeederJoints is no longer a hoisted function declaration");
+  }
+}
+
+/* ── A service is laid to its own plot's meter ──
+
+   The number is on both already: a plot seed is placed by its number,
+   the boundary point goes down with it, the meter inherits it, and
+   layServices stamps it on the trench. So which meter belongs to which
+   service is recorded, not measured.
+
+   Nearest alone was wrong on any estate where plots sit close \u2014 the
+   meter nearest the end of plot 34's trench is often plot 35's, and the
+   service was laid to the neighbour's box. It looks right on the
+   drawing.
+
+   This is the second place the same fault lived: buildGraph attached
+   meters to the nearest line, and this laid cable to the nearest meter.
+   Fixing one left the other. */
+{
+  const isTrench = (f) => f.Layer_Key === "trench";
+  const main = {
+    Feature_ID: 99, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [100, 0]], Attributes: { Line_Type: "trench" },
+  };
+  const svc = (id, geom, plot) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: geom, Plot_ID: plot, Attributes: { Line_Type: "service_trench" },
+  });
+  const meter = (id, at, plot) => ({
+    Feature_ID: id, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [at], Plot_ID: plot, Attributes: {},
+  });
+
+  /* Plot 35's meter is nearer the end of plot 34's trench than plot
+     34's own is. */
+  const crowded = layServices(
+    [main, svc(1, [[10, 0], [10, 14]], 34), meter(2, [10.5, 14], 35),
+      meter(3, [13, 14], 34)],
+    "electric", { isTrench });
+  if (crowded.cables.length !== 1) {
+    fail(`${crowded.cables.length} cables laid where one plot needs one`);
+  }
+  if (crowded.cables[0]?.meter?.Feature_ID !== 3) {
+    fail(`plot 34's service was laid to meter `
+      + `${crowded.cables[0]?.meter?.Feature_ID} \u2014 the neighbour's box is`
+      + " nearer, and nearness is not what decides");
+  }
+
+  /* ── And the reach is 30 m ──
+
+     Twelve was doing two jobs: judging whether a meter is plausibly at
+     the end of this trench, and stopping the search grabbing the
+     neighbour's. The plot number does the second properly, so this is
+     left to do only the first \u2014 and a long garden stops being a reason
+     a service cannot be laid. Four trenches on one drawing were refused
+     at 13.7, 14.1, 14.2 and 14.3 m. */
+  const far = layServices(
+    [main, svc(1, [[20, 0], [20, 13.7]], 34), meter(3, [20, 27.4], 34)],
+    "electric", { isTrench });
+  if (far.cables.length !== 1) {
+    fail(`a meter 13.7 m past the end of its trench was refused: `
+      + `${far.skipped[0]?.why}`);
+  }
+
+  /* Not unlimited. A meter on the far side of the site is still a
+     missing meter, however the numbers match. */
+  const absurd = layServices(
+    [main, svc(1, [[40, 0], [40, 5]], 34), meter(3, [40, 90], 34)],
+    "electric", { isTrench });
+  if (absurd.cables.length) {
+    fail("a meter 85 m past the end of its trench was served");
+  }
+  /* And the refusal names that plot's own meter, not whichever is
+     nearest \u2014 the nearest belongs to somebody else and reads as an
+     answer when it is not. */
+  if (absurd.skipped[0] && !/plot 34/.test(absurd.skipped[0].why)) {
+    fail(`the refusal does not say whose meter it looked for:`
+      + ` "${absurd.skipped[0].why}"`);
+  }
+
+  /* A trench with no number still works on nearest, or every drawing
+     made before this would stop laying. */
+  const unnumbered = layServices(
+    [main, svc(1, [[60, 0], [60, 8]], null), meter(3, [60, 10], 34)],
+    "electric", { isTrench });
+  if (unnumbered.cables.length !== 1) {
+    fail("a trench carrying no plot number no longer lays to the nearest meter");
   }
 }
 

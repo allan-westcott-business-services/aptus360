@@ -329,8 +329,19 @@ const line = (type, status) => ({
   if (!/closest is /.test(auto)) {
     fail("a trench that misses the main does not say by how much");
   }
-  if (!/the nearest \$\{utility\} meter is /.test(auto)) {
+  /* The distance is still reported, but the message now says WHOSE
+     meter it measured to: a trench carrying a plot number is looking
+     for that plot's meter, and the nearest one belongs to somebody else
+     and reads as an answer when it is not.
+
+     Matched on the shape rather than the old literal \u2014 grepping
+     `the nearest ${utility} meter is` failed the moment the sentence
+     gained a subject, on a change that made it more informative. */
+  if (!/\$\{whose\} \$\{utility\} meter is /.test(auto)) {
     fail("a trench with no meter in range does not say how far the nearest is");
+  }
+  if (!/plot \$\{mine\}'s/.test(auto)) {
+    fail("the refusal does not say whose meter it looked for");
   }
   /* Both quote the tolerance, so the message says what to change. */
   if (!/within \$\{teeM\}m/.test(auto)) fail("the tee tolerance is not stated");

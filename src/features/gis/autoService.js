@@ -473,8 +473,15 @@ export function layServices(features = [], utility, opts = {}) {
     isService = (f) => /service/i.test(String(f.Attributes?.Line_Type ?? "")),
     /* How near a meter has to be to the trench's far end to be the one
        it serves. A meter is a box on a wall set back from the boundary,
-       so this is metres rather than centimetres. */
-    meterM = 12,
+       so this is metres rather than centimetres.
+
+       Thirty, not twelve. Twelve was doing two jobs: judging whether a
+       meter is plausibly at the end of this trench, and stopping the
+       search grabbing the neighbour's meter. The plot number does the
+       second job properly \u2014 see below \u2014 so this is left to do only the
+       first, and a long garden is no longer a reason a service cannot
+       be laid. */
+    meterM = 30,
     /* And how near the other end has to be to a main to count as teed
        in. That is a joint, so it is tight. */
     teeM = 0.5,
@@ -536,26 +543,64 @@ export function layServices(features = [], utility, opts = {}) {
     }
     const farEnd = ends.find((e) => e !== teeEnd) ?? ends[1];
 
-    const meter = meters
+    /* ── The meter belonging to this trench's plot ──
+
+       The number is on both already. A plot seed is placed by its
+       number, the boundary point goes down with it, the meter inherits
+       it, and this routine stamps it on the trench it lays \u2014 so the
+       trench and the meter it serves agree, and which meter belongs to
+       which service is recorded rather than measured.
+
+       Nearest alone was wrong on any estate where plots sit close: the
+       meter nearest the end of plot 34's trench is often plot 35's, and
+       the service was then laid to the neighbour's box. It looks right
+       on the drawing.
+
+       Nearest is kept as the fallback, for a trench drawn by hand that
+       carries no number \u2014 and among several meters of one plot, which
+       is the case it was always right for. */
+    const plotOf = (f) => {
+      const v = f?.Plot_ID ?? f?.Attributes?.Plot_ID;
+      return v == null ? null : Number(v);
+    };
+    const mine = plotOf(sv);
+
+    const withinReach = meters
       .map((m) => ({ m, d: Math.hypot(m.Geometry[0][0] - farEnd[0],
         m.Geometry[0][1] - farEnd[1]) }))
       .filter((x) => x.d <= meterM)
-      .sort((a, b) => a.d - b.d)[0]?.m;
+      .sort((a, b) => a.d - b.d);
+
+    const ownPlot = mine == null
+      ? [] : withinReach.filter((x) => plotOf(x.m) === mine);
+
+    const meter = (ownPlot[0] || withinReach[0])?.m;
 
     if (!meter) {
       /* The same again: a meter thirteen metres away is a tolerance
          problem, and no meter at all is a missing feature. They are
          fixed differently and the message used to be the same. */
-      const nearest = meters
-        .map((m) => Math.hypot(m.Geometry[0][0] - farEnd[0],
-          m.Geometry[0][1] - farEnd[1]))
-        .sort((a, b) => a - b)[0];
+      const ranked = meters
+        .map((m) => ({ m, d: Math.hypot(m.Geometry[0][0] - farEnd[0],
+          m.Geometry[0][1] - farEnd[1]) }))
+        .sort((a, b) => a.d - b.d);
+      /* Its own plot's meter where the trench has a number, because
+         that is the one that should have been found and its distance is
+         the number worth reporting. The nearest of any plot's is a
+         different fact and reads as an answer when it is not. */
+      const own = mine == null
+        ? null : ranked.find((x) => plotOf(x.m) === mine);
+      const nearest = (own || ranked[0])?.d;
+      const whose = own ? `plot ${mine}'s` : `the nearest`;
       skipped.push({
         trench: sv,
-        why: nearest != null && nearest < 60
-          ? `the nearest ${utility} meter is ${nearest.toFixed(1)}m from the `
+        why: nearest != null && nearest < 120
+          ? `${whose} ${utility} meter is ${nearest.toFixed(1)}m from the `
             + `end of this trench, and it has to be within ${meterM}m`
-          : `no ${utility} meter at the end of it`,
+          : mine != null && !own
+            ? `no ${utility} meter carries plot ${mine}, and none is near `
+              + `the end of this trench`
+            : `no ${utility} meter at the end of it`,
       });
       continue;
     }

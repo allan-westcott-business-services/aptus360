@@ -1563,6 +1563,10 @@ export default function GISCanvasPage() {
      only the loaded data knows. */
   const [pendingIsolate, setPendingIsolate] = useState(null);
 
+  /* The outline drawn by Link to Circuit, waiting to be told which
+     circuit it belongs to. Null when nothing is being asked. */
+  const [circuitPick, setCircuitPick] = useState(null);
+
   /* Sent here to raise a call-off, and nothing else.
 
      Somebody who chose "pick it off the drawing" on the call-offs page
@@ -8012,7 +8016,7 @@ export default function GISCanvasPage() {
      and they must produce identical circuits — a second implementation
      would drift, and the way allocation is the part that would drift
      silently. */
-  async function createCircuitFrom(meters, how) {
+  async function createCircuitFrom(meters, how, joinId = null) {
     /* Or the electric POC, for the reason lvOrigin gives: on a
        connection to an existing network there is no transformer, and
        the circuits feed back to the point of connection. Circuits are
@@ -8028,10 +8032,42 @@ export default function GISCanvasPage() {
       setError("No meters to put on a circuit.");
       return false;
     }
-    const circuitId = nextCircuitId(features);
-    const letter = circuitLetter(circuitId);
-    const name = `Circuit ${circuitId}`;
-    const kva = circuitKva(meters, (id) => plotList.find((p) => p.plot_id === id));
+    /* ── Joining one, or starting one ──
+
+       `joinId` names an existing circuit. Without it this makes a new
+       one, which is all it could ever do before: Link to Circuit called
+       nextCircuitId every time, so drawing round meters that belonged
+       with an existing circuit put them on a brand new one and there
+       was no way back except the Circuit Report — which was itself
+       greyed on a POC-fed design.
+
+       The name and letter come off the circuit being joined rather than
+       being recomputed. circuitLetter(id) would usually agree, but a
+       circuit renamed by hand would be silently renamed back, and one
+       fact spelled two ways is what the span node cable sizes kept
+       proving. */
+    const existing = joinId == null ? null
+      : circuitsFrom(features).find((c) => Number(c.id) === Number(joinId));
+    if (joinId != null && !existing) {
+      setError("That circuit no longer exists \u2014 it may have been deleted.");
+      return false;
+    }
+
+    const circuitId = existing ? existing.id : nextCircuitId(features);
+    const letter = existing ? existing.letter : circuitLetter(circuitId);
+    const name = existing ? existing.name : `Circuit ${circuitId}`;
+
+    /* Every meter on the circuit as it will be, not just the ones being
+       added. The way's load is a fact about the circuit, and measuring
+       it from the new meters alone would say a circuit gaining two
+       plots draws what two plots draw. */
+    const onCircuit = existing
+      ? [...existing.meters.filter((m) =>
+        !meters.some((x) => Number(x.Feature_ID) === Number(m.Feature_ID))), ...meters]
+      : meters;
+    const kva = circuitKva(onCircuit, (id) => plotList.find((p) => p.plot_id === id));
+    /* Reuses the way the circuit already holds — assignWay looks for it
+       before allocating — so joining does not consume a second one. */
     const way = assignWay(sub, circuitId, kva);
 
     if (way.full) {
@@ -8113,11 +8149,53 @@ export default function GISCanvasPage() {
       return;
     }
     const meters = metersOfSeeds(features, seeds);
-    const made = await createCircuitFrom(meters, `${seeds.length} plot(s)`);
-    if (made) {
-      setTool("select");
-      setDraft([]);
+
+    /* ── New circuit, or one that already exists ──
+
+       Asked rather than assumed. Adding plots to a scheme that is
+       already circuited is the ordinary case once a design is under
+       way, and this always made a new circuit — so the second phase of
+       an estate came out on its own circuit, with its own way on the
+       board, and nothing said so.
+
+       Not asked when there is nothing to join: with no circuits yet the
+       only answer is a new one, and a dialog offering one option is a
+       click somebody has to make for no reason.
+
+       Meters already on a circuit are left out of the count the dialog
+       shows, because moving them is a different act — the Circuit
+       Report is where a meter is taken off one circuit and put on
+       another, and doing it silently here would reassign without
+       freeing the old circuit's way. */
+    const free = meters.filter((m) => m.Attributes?.Circuit_ID == null);
+    const taken = meters.length - free.length;
+
+    if (!free.length) {
+      setError(taken
+        ? "Every meter in that outline is already on a circuit. Use the "
+          + "Circuit Report to move one from one circuit to another."
+        : "No electric meters on those plot seeds.");
+      return;
     }
+
+    const circuits = circuitsFrom(features);
+    if (!circuits.length) {
+      const made = await createCircuitFrom(free, `${seeds.length} plot(s)`);
+      if (made) { setTool("select"); setDraft([]); }
+      return;
+    }
+
+    setCircuitPick({ meters: free, seeds: seeds.length, taken, circuits });
+  }
+
+  /* Answering that dialog. `joinId` null means a new circuit. */
+  async function finishCircuitPick(joinId) {
+    const pick = circuitPick;
+    setCircuitPick(null);
+    if (!pick) return;
+    const made = await createCircuitFrom(pick.meters,
+      `${pick.seeds} plot(s)`, joinId);
+    if (made) { setTool("select"); setDraft([]); }
   }
 
   /* The same thing, reached from the Circuit Report by ticking meters
@@ -15706,9 +15784,33 @@ export default function GISCanvasPage() {
 
                       <div className="gm-sep" />
                       <MenuGroup label="Tools & Reporting" />
+                      {/* ── Greyed on the same rule as everything else ──
+
+                          This asked for a substation. Every other thing
+                          that needs a source asks lvOrigin, which takes
+                          a substation OR an electric POC — because a
+                          connection to an existing network has no
+                          transformer and the circuits feed back to the
+                          point of connection.
+
+                          So on a POC-fed design the report was the one
+                          control still refusing, with circuits drawn,
+                          meters on them and a hint describing what it
+                          would do rather than why it would not. And it
+                          is the only way to move a meter from one
+                          circuit to another, so the way out of a
+                          mislinked circuit was the thing that was
+                          disabled.
+
+                          The reason is on it now. A greyed control with
+                          no reason is what runStep was written to
+                          avoid, one menu along. */}
                       <MenuItem label="Circuit Report"
-                        hint="Meters by feeder, with distances from the substation"
-                        disabled={!features.some((f) => f.Feature_Role === "substation")}
+                        hint={lvOrigin(features)
+                          ? "Meters by feeder, with distances from the origin"
+                          : "Place a substation or an electric POC first \u2014 the "
+                            + "report measures every circuit from one"}
+                        disabled={!lvOrigin(features)}
                         onClick={() => setReportOpen(true)} />
                       {/* Every circuit, from its own origin node outward.
 
@@ -16487,6 +16589,60 @@ export default function GISCanvasPage() {
           </>
         )}
       </div>
+
+      {/* ── Which circuit ──
+
+          Rendered here, beside the Circuit Report, and not inside the
+          canvas wrapper: that wrapper clips, and a dialog inside it is
+          cut off at the edge of the drawing. checkmodals.py fails on
+          exactly that. */}
+      {circuitPick && (
+        <div className="cpick-backdrop" onClick={() => setCircuitPick(null)}>
+          <div className="cpick" onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-label="Which circuit">
+            <h3>Which circuit?</h3>
+            <p className="hint">
+              {circuitPick.meters.length} meter
+              {circuitPick.meters.length === 1 ? "" : "s"} on{" "}
+              {circuitPick.seeds} plot{circuitPick.seeds === 1 ? "" : "s"}.
+              {circuitPick.taken > 0 && (
+                <>
+                  {" "}
+                  {circuitPick.taken} already on a circuit{" "}
+                  {circuitPick.taken === 1 ? "was" : "were"} left alone &mdash;
+                  use the Circuit Report to move those.
+                </>
+              )}
+            </p>
+
+            <div className="cpick-list">
+              {circuitPick.circuits.map((c) => (
+                <button key={c.id} className="cpick-item"
+                  onClick={() => finishCircuitPick(c.id)}>
+                  <span className="cpick-name">{c.name}</span>
+                  <span className="cpick-n">
+                    {c.meters.length} meter{c.meters.length === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))}
+              {/* Last, so the existing circuits are what the eye lands
+                  on: adding to one is the reason this dialog exists,
+                  and starting another is what happened by default
+                  before it did. */}
+              <button className="cpick-item new"
+                onClick={() => finishCircuitPick(null)}>
+                <span className="cpick-name">+ New circuit</span>
+              </button>
+            </div>
+
+            <div className="cpick-actions">
+              <button className="btn ghost" onClick={() => setCircuitPick(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {reportOpen && (() => {
         const r = circuitReport(features, (id) => plotList.find((p) => p.plot_id === id));
@@ -19051,6 +19207,33 @@ export default function GISCanvasPage() {
 }
 
 const CSS = `
+/* ── Which circuit ──
+
+   Same shape as the other GIS dialogs — a fixed backdrop and a centred
+   panel — rather than a new idiom for one question. Fixed, so it is not
+   clipped by the canvas wrapper; see checkmodals.py. */
+.cpick-backdrop { position: fixed; inset: 0; background: rgba(15,23,42,.34);
+  z-index: 1000; display: flex; align-items: center; justify-content: center;
+  padding: 24px; }
+.cpick { background: var(--white); border-radius: 14px; width: min(420px, 92vw);
+  max-height: 80vh; display: flex; flex-direction: column; padding: 18px;
+  box-shadow: 0 18px 50px rgba(15,23,42,.32); }
+.cpick h3 { margin: 0 0 6px; font-size: 15px; }
+.cpick .hint { margin: 0 0 12px; }
+
+.cpick-list { display: flex; flex-direction: column; gap: 6px; overflow-y: auto; }
+.cpick-item { display: flex; align-items: center; justify-content: space-between;
+  gap: 10px; width: 100%; text-align: left; font: 600 13px inherit;
+  color: var(--text); background: var(--white); border: 1px solid var(--border);
+  border-radius: 8px; padding: 10px 12px; cursor: pointer; }
+.cpick-item:hover { background: var(--bg); border-color: var(--accent); }
+.cpick-n { font-weight: 500; font-size: 12px; color: var(--muted); }
+/* Set apart and last: joining one is what this dialog is for, and a new
+   one is what used to happen without being asked. */
+.cpick-item.new { margin-top: 6px; border-style: dashed; color: var(--muted); }
+.cpick-item.new:hover { color: var(--accent); }
+
+.cpick-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
 .gis { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 520px; }
 .gis-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .gis-proj { display: flex; gap: 8px; align-items: center; }

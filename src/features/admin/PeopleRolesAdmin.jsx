@@ -1,6 +1,6 @@
 import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
-import { adminList, adminCreate, adminDelete } from "../../api/admin.js";
+import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admin.js";
 import { NAV_SECTIONS } from "../../lib/navigation.js";
 
 /* People and roles, master-detail rather than a matrix.
@@ -60,6 +60,27 @@ export default function PeopleRolesAdmin() {
   const [search, setSearch] = useState("");
   const [draft, setDraft] = useState({ Person_Name: "", Email: "", Telephone: "" });
   const [adding, setAdding] = useState(false);
+
+  /* ── Editing one person ──
+
+     A draft held apart from the row, so a half-typed name is not what
+     the list shows and abandoning an edit costs nothing. Null means not
+     editing. */
+  const [editing, setEditing] = useState(null);
+  const [edit, setEdit] = useState({ Person_Name: "", Email: "", Telephone: "" });
+
+  /* ── Picking several ──
+
+     A Set of Person_IDs. Only meaningful in person view, and cleared
+     when the view changes: a selection carried across to roles would be
+     a list of ids that mean something else there.
+
+     Held here rather than as a flag on each row, because the answer to
+     "what is selected" has to be one thing. Two people ticked and a
+     third half-ticked because a re-render dropped a flag is the fault
+     this shape cannot have. */
+  const [picked, setPicked] = useState(() => new Set());
+  const [bulkRole, setBulkRole] = useState("");
 
   /* Where somebody works, and when they are not working. Both belong on
      the person rather than in pages of their own: they are answered
@@ -294,6 +315,158 @@ export default function PeopleRolesAdmin() {
     }
   }
 
+  /* ── Saving an edit ──
+
+     Only the three fields this screen shows. A person also carries HR
+     columns, a planner colour and an employee number, and sending the
+     whole row back would write whatever this screen happened to be
+     holding over them — which is fault 5 in the handover: an upsert
+     that replaces a row nulls every field it was not given. */
+  async function savePerson() {
+    const name = String(edit.Person_Name || "").trim();
+    if (!name) return setError("Name is required.");
+    setBusy("person");
+    try {
+      await adminUpdate("Person", editing, {
+        Person_Name: name,
+        Email: edit.Email?.trim() || null,
+        Telephone: edit.Telephone?.trim() || null,
+      });
+      setPeople((xs) => xs.map((x) => (x.Person_ID === editing
+        ? { ...x, Person_Name: name, Email: edit.Email?.trim() || null,
+          Telephone: edit.Telephone?.trim() || null }
+        : x)));
+      setEditing(null);
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(null); }
+  }
+
+  /* ── Active, or not ──
+
+     The gentle end of removing somebody. A person who has left is
+     referenced by everything they ever did — bookings, submissions,
+     holidays, HR records — and the useful act is to stop them being
+     offered, not to erase the history that names them.
+
+     Nothing on this screen filtered on Is_Active before, so a
+     deactivated person stayed in this list looking identical. They are
+     dimmed and labelled now: a list that hides them would leave no way
+     to bring anybody back. */
+  async function setActive(ids, active) {
+    setBusy("bulk");
+    try {
+      for (const id of ids) {
+        await adminUpdate("Person", id, { Is_Active: active });
+      }
+      setPeople((xs) => xs.map((x) => (ids.includes(x.Person_ID)
+        ? { ...x, Is_Active: active } : x)));
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(null); }
+  }
+
+  /* ── Deleting ──
+
+     The configuration this screen owns goes first: roles, regions, menu
+     grants and absences. Those are this screen's own rows and exist
+     only to point at the person, so leaving them behind would be rows
+     referencing somebody who is gone.
+
+     Then the person. The database refuses where anything else still
+     names them — a team membership, a booking, an HR record — and that
+     refusal is the right answer rather than something to work around.
+     Cascading through it would delete somebody's employment history to
+     tidy up a list.
+
+     So the message on failure offers the thing that was actually
+     wanted: stop offering them. */
+  async function deletePeople(ids) {
+    const names = people.filter((x) => ids.includes(x.Person_ID))
+      .map((x) => x.Person_Name);
+    if (!window.confirm(
+      `Delete ${names.length === 1 ? names[0] : `${names.length} people`}?\n\n`
+      + "Their roles, regions, menu access and absences go too. This "
+      + "cannot be undone.\n\nSomebody who has done work on the system "
+      + "cannot be deleted \u2014 make them inactive instead."
+    )) return;
+
+    setBusy("bulk");
+    const refused = [];
+    try {
+      for (const id of ids) {
+        for (const r of map.filter((x) => Number(x.Person_ID) === Number(id))) {
+          await adminDelete("Person_Role", r.Person_Role_ID, "Person_Role_ID")
+            .catch(() => {});
+        }
+        for (const r of personRegions.filter((x) => Number(x.Person_ID) === Number(id))) {
+          await adminDelete("Person_Region", r.Person_Region_ID).catch(() => {});
+        }
+        for (const r of menuVisible.filter((x) => Number(x.Person_ID) === Number(id))) {
+          await adminDelete("Person_Menu_Visible", r.Person_Menu_Visible_ID)
+            .catch(() => {});
+        }
+        for (const r of holidays.filter((x) => Number(x.Person_ID) === Number(id))) {
+          await adminDelete("Person_Holiday", r.Person_Holiday_ID).catch(() => {});
+        }
+        try {
+          await adminDelete("Person", id);
+        } catch {
+          /* Named, so "some could not be deleted" is not the whole
+             message. Which one, and what to do instead. */
+          refused.push(people.find((x) => x.Person_ID === id)?.Person_Name ?? id);
+        }
+      }
+      setPicked(new Set());
+      setSelected(null);
+      setEditing(null);
+      await load();
+      if (refused.length) {
+        setError(`${refused.join(", ")} ${refused.length === 1 ? "has" : "have"}`
+          + " work recorded against them and cannot be deleted."
+          + " Make them inactive instead \u2014 they stop being offered"
+          + " and the record stays.");
+      } else {
+        setError("");
+      }
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(null); }
+  }
+
+  /* ── A role, across everybody picked ──
+
+     Add skips those who already hold it and remove skips those who do
+     not, so pressing either twice is harmless. The alternative — a
+     toggle — would mean the result depended on what each person already
+     had, which is not something anybody can predict from a list of
+     twelve names. */
+  async function bulkSetRole(roleId, add) {
+    if (!roleId) return;
+    const ids = [...picked];
+    setBusy("bulk");
+    try {
+      for (const personId of ids) {
+        const existing = map.find((x) => Number(x.Person_ID) === Number(personId)
+          && Number(x.Role_ID) === Number(roleId));
+        if (add && !existing) {
+          const created = await adminCreate("Person_Role",
+            { Person_ID: personId, Role_ID: Number(roleId) });
+          setMap((xs) => [...xs, created]);
+        } else if (!add && existing) {
+          await adminDelete("Person_Role", existing.Person_Role_ID, "Person_Role_ID");
+          setMap((xs) => xs.filter((x) =>
+            x.Person_Role_ID !== existing.Person_Role_ID));
+        }
+      }
+      setError("");
+    } catch (e) {
+      setError(e.message);
+    } finally { setBusy(null); }
+  }
+
   if (loading) return <div className="loading">Loading people&hellip;</div>;
 
   const list = by === "person" ? people : roles;
@@ -316,7 +489,8 @@ export default function PeopleRolesAdmin() {
             <button
               key={k}
               className={by === k ? "seg-btn on" : "seg-btn"}
-              onClick={() => { setBy(k); setSelected(null); setSearch(""); }}
+              onClick={() => { setBy(k); setSelected(null); setSearch("");
+                setPicked(new Set()); setEditing(null); }}
             >
               By {k}
             </button>
@@ -338,17 +512,88 @@ export default function PeopleRolesAdmin() {
           {shown.map((x) => {
             const id = x[idKey];
             const count = by === "person" ? rolesOf(id).length : peopleIn(id).length;
+            const inactive = by === "person" && x.Is_Active === false;
+            /* The row is a button and the tick is a button inside it,
+               which nesting will not allow — so the row is a div with
+               the name as its own button. The whole row was never the
+               target anyway: a click on the tick must not also select
+               the person, or picking six people would leave the last
+               one open in the panel beside them. */
             return (
-              <button
-                key={id}
-                className={selected === id ? "pr-item on" : "pr-item"}
-                onClick={() => setSelected(id)}
-              >
-                <span className="pr-name">{x[labelKey]}</span>
-                <span className={count ? "pr-count" : "pr-count zero"}>{count}</span>
-              </button>
+              <div key={id}
+                className={[
+                  "pr-row",
+                  selected === id ? "on" : "",
+                  inactive ? "off" : "",
+                ].filter(Boolean).join(" ")}>
+                {by === "person" && (
+                  <input type="checkbox" className="pr-tick"
+                    aria-label={`Select ${x[labelKey]}`}
+                    checked={picked.has(id)}
+                    onChange={(e) => setPicked((cur) => {
+                      const next = new Set(cur);
+                      if (e.target.checked) next.add(id); else next.delete(id);
+                      return next;
+                    })} />
+                )}
+                <button className="pr-item" onClick={() => setSelected(id)}>
+                  <span className="pr-name">
+                    {x[labelKey]}
+                    {inactive && <span className="pr-off-tag">inactive</span>}
+                  </span>
+                  <span className={count ? "pr-count" : "pr-count zero"}>{count}</span>
+                </button>
+              </div>
             );
           })}
+
+          {/* ── What to do with the ones picked ──
+
+              Shown only when something is, and inside the list rather
+              than over it: a bar that floats across the page hides the
+              names it is about, which are the thing somebody is
+              checking before they press Delete. */}
+          {by === "person" && picked.size > 0 && (
+            <div className="pr-bulk">
+              <div className="pr-bulk-head">
+                <strong>{picked.size} selected</strong>
+                <button className="btn ghost sm"
+                  onClick={() => setPicked(new Set())}>Clear</button>
+              </div>
+
+              <label className="pr-bulk-role">
+                <span className="sr-only">Role</span>
+                <select value={bulkRole} onChange={(e) => setBulkRole(e.target.value)}>
+                  <option value="">Choose a role&hellip;</option>
+                  {roles.map((r) => (
+                    <option key={r.Role_ID} value={r.Role_ID}>{r.Role}</option>
+                  ))}
+                </select>
+              </label>
+              <div className="pr-bulk-actions">
+                <button className="btn sm" disabled={!bulkRole || busy === "bulk"}
+                  onClick={() => bulkSetRole(bulkRole, true)}>Add role</button>
+                <button className="btn sm" disabled={!bulkRole || busy === "bulk"}
+                  onClick={() => bulkSetRole(bulkRole, false)}>Remove role</button>
+              </div>
+
+              <div className="pr-bulk-actions">
+                <button className="btn sm" disabled={busy === "bulk"}
+                  onClick={() => setActive([...picked], true)}>Make active</button>
+                <button className="btn sm" disabled={busy === "bulk"}
+                  onClick={() => setActive([...picked], false)}>Make inactive</button>
+              </div>
+
+              {/* Last, and apart. Making somebody inactive is what is
+                  usually wanted and is offered first; this is the one
+                  that cannot be undone. */}
+              <button className="btn delete sm pr-bulk-del"
+                disabled={busy === "bulk"}
+                onClick={() => deletePeople([...picked])}>
+                Delete {picked.size} {picked.size === 1 ? "person" : "people"}
+              </button>
+            </div>
+          )}
           {by === "person" && (
             adding ? (
               <div className="pr-add">
@@ -394,12 +639,72 @@ export default function PeopleRolesAdmin() {
           ) : (
             <>
               <div className="pr-detail-head">
-                <h3>{current[labelKey]}</h3>
-                {by === "person" && (
-                  <p className="pr-mail">
-                    {current.Email || "no email"}
-                    {current.Telephone ? ` \u00b7 ${current.Telephone}` : ""}
-                  </p>
+                {/* ── Editing, in place ──
+
+                    Rather than a modal. The three fields are the three
+                    already on screen, and a dialog over them would hide
+                    the roles and absences somebody is usually checking
+                    the name against. */}
+                {by === "person" && editing === current.Person_ID ? (
+                  <div className="pr-edit">
+                    <input autoFocus aria-label="Name" placeholder="Name"
+                      value={edit.Person_Name}
+                      onChange={(e) => setEdit((d) => ({ ...d, Person_Name: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && savePerson()} />
+                    <input aria-label="Email" placeholder="Email (optional)"
+                      value={edit.Email}
+                      onChange={(e) => setEdit((d) => ({ ...d, Email: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && savePerson()} />
+                    <input aria-label="Telephone" placeholder="Telephone (optional)"
+                      value={edit.Telephone}
+                      onChange={(e) => setEdit((d) => ({ ...d, Telephone: e.target.value }))}
+                      onKeyDown={(e) => e.key === "Enter" && savePerson()} />
+                    <div className="pr-add-actions">
+                      <button className="btn ghost"
+                        onClick={() => setEditing(null)}>Cancel</button>
+                      <button className="btn accent" disabled={busy === "person"}
+                        onClick={savePerson}>Save</button>
+                    </div>
+                  </div>
+                ) : (
+                  <>
+                    <h3>
+                      {current[labelKey]}
+                      {by === "person" && current.Is_Active === false && (
+                        <span className="pr-off-tag big">inactive</span>
+                      )}
+                    </h3>
+                    {by === "person" && (
+                      <p className="pr-mail">
+                        {current.Email || "no email"}
+                        {current.Telephone ? ` \u00b7 ${current.Telephone}` : ""}
+                      </p>
+                    )}
+                    {by === "person" && (
+                      <div className="pr-person-actions">
+                        <button className="btn edit sm"
+                          onClick={() => {
+                            setEdit({
+                              Person_Name: current.Person_Name ?? "",
+                              Email: current.Email ?? "",
+                              Telephone: current.Telephone ?? "",
+                            });
+                            setEditing(current.Person_ID);
+                          }}>Edit</button>
+                        {/* Offered before Delete, because it is what is
+                            usually meant: somebody who has left should
+                            stop being offered, not be erased from the
+                            work they did. */}
+                        <button className="btn sm" disabled={busy === "bulk"}
+                          onClick={() => setActive([current.Person_ID],
+                            current.Is_Active === false)}>
+                          {current.Is_Active === false ? "Make active" : "Make inactive"}
+                        </button>
+                        <button className="btn delete sm" disabled={busy === "bulk"}
+                          onClick={() => deletePeople([current.Person_ID])}>Delete</button>
+                      </div>
+                    )}
+                  </>
                 )}
                 {by === "role" && current.Role_Code && (
                   <p className="pr-mail mono">{current.Role_Code}</p>
@@ -728,7 +1033,48 @@ const CSS = `
   color: var(--text); margin-bottom: 1px;
 }
 .pr-item:hover { background: var(--bg); }
-.pr-item.on { background: var(--accent-light); color: var(--accent); font-weight: 600; }
+
+/* The selected row is the row, not the button inside it — the tick
+   sits outside that button and would otherwise be left unhighlighted
+   beside a highlighted name. */
+.pr-row { display: flex; align-items: center; gap: 6px; border-radius: 6px;
+  margin-bottom: 1px; }
+.pr-row.on { background: var(--accent-light); }
+.pr-row.on .pr-item { background: none; color: var(--accent); font-weight: 600; }
+.pr-tick { flex: 0 0 auto; width: 16px; height: 16px; margin: 0 0 0 4px;
+  cursor: pointer; }
+
+/* Dimmed rather than hidden. A list that hid inactive people would
+   leave no way to bring anybody back. */
+.pr-row.off .pr-item { opacity: .55; }
+.pr-off-tag { margin-left: 6px; font: 700 9px inherit; text-transform: uppercase;
+  letter-spacing: .04em; padding: 1px 5px; border-radius: 3px;
+  background: var(--border); color: var(--muted); vertical-align: middle; }
+.pr-off-tag.big { font-size: 10px; margin-left: 8px; }
+
+.pr-person-actions { display: flex; gap: 6px; flex-wrap: wrap; margin-top: 8px; }
+
+/* Editing in place: the same three boxes the add form uses, so the
+   two do not drift into looking like different screens. */
+.pr-edit { display: flex; flex-direction: column; gap: 6px; }
+.pr-edit input { font: inherit; font-size: 13px; padding: 7px 9px;
+  border: 1px solid var(--border); border-radius: 6px; width: 100%; }
+
+/* Inside the list, under the names it is about. A bar floating across
+   the page would hide the very names somebody is checking before they
+   press Delete. */
+.pr-bulk { border: 1px solid var(--border); border-radius: 8px; padding: 10px;
+  margin-top: 10px; background: var(--bg); display: flex; flex-direction: column;
+  gap: 8px; }
+.pr-bulk-head { display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; font-size: 12.5px; }
+.pr-bulk-role select { font: inherit; font-size: 12.5px; padding: 6px 8px;
+  border: 1px solid var(--border); border-radius: 6px; width: 100%;
+  background: var(--white); }
+.pr-bulk-actions { display: flex; gap: 6px; flex-wrap: wrap; }
+.pr-bulk-actions .btn { flex: 1 1 auto; }
+/* Apart from the rest, because it is the one that cannot be undone. */
+.pr-bulk-del { margin-top: 2px; }
 .pr-name { min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
 .pr-count {
   flex: none; font-size: 10.5px; font-weight: 700; background: var(--accent);

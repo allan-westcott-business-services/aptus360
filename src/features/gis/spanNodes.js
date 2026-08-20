@@ -43,15 +43,34 @@ export const PLANT = {
 
    Gas is measured from the governor, but a site fed at low pressure
    from an existing main has no governor \u2014 the POC is the origin. The
-   same for water without a pumping station. Electric is measured from
-   the substation, which is always drawn, so its POC is not a fallback:
-   the incomer runs POC to substation and the network starts at the
-   substation.
+   same for water without a pumping station.
 
-   Without this a gas POC matched nothing and took a generic A-number,
-   which put the origin of the gas network in the middle of the span
-   numbering and left the levels check with nothing to start from. */
-const STANDS_IN = { gas: "governor", water: "pumping" };
+   ── And electric ──
+
+   This said electric was different: "measured from the substation,
+   which is always drawn, so its POC is not a fallback". It is not
+   always drawn. On a connection to an existing network there is no new
+   transformer, the incomer arrives at the POC and the LV network starts
+   there \u2014 which is the whole of what lvOrigin says, and it says it
+   because the same assumption had already been found wrong in the
+   feeder build, the levels check, the circuit report and the way
+   allocation.
+
+   Left out here, an electric POC matched nothing and was numbered as an
+   ordinary junction: Place Span Nodes put A5 on it instead of E0, so
+   the origin of the LV network sat in the middle of the span numbering
+   and originNodeFor found no Span_Seq 0 node to start from. Exactly the
+   fault the paragraph below describes for gas, on the one utility that
+   was excused from the fix.
+
+   Plant still wins where both are drawn \u2014 originsOf checks PLANT
+   first \u2014 so a scheme with a substation is numbered from the
+   substation and the POC beside it is where the incomer arrives.
+
+   Without this a POC matched nothing and took a generic A-number, which
+   put the origin of the network in the middle of the span numbering and
+   left the levels check with nothing to start from. */
+const STANDS_IN = { electric: "substation", gas: "governor", water: "pumping" };
 
 export function plantLabel(feature) {
   for (const p of Object.values(PLANT)) {

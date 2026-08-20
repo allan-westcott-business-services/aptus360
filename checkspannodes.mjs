@@ -52,11 +52,105 @@ const SERVICES = { serviceTypes: new Set(["trench_service"]) };
   }
 }
 
-// 3. An electric POC is not an origin: the incomer runs POC to
-//    substation and the network starts at the substation.
+// 3. An electric POC IS an origin, where there is no substation.
+//
+//    This asserted the opposite, on the argument that the incomer runs
+//    POC to substation and the network starts at the substation. That
+//    is true of a scheme with a transformer and false of a connection
+//    to an existing network, which has none — the same assumption
+//    lvOrigin was written to overturn, still standing here on the one
+//    utility excused from the fix.
+//
+//    Left as it was, Place Span Nodes numbered an electric POC as an
+//    ordinary junction — A5 on the drawing where E0 belongs — so the
+//    origin of the LV network sat in the middle of the span numbering
+//    and originNodeFor had no Span_Seq 0 node to start from.
 {
   const o = originsOf([{ Feature_Role: "poc", Layer_Key: "electric", Geometry: [[0, 0]] }]);
-  if (o.has("electric")) fail("an electric POC was treated as E0");
+  if (!o.has("electric")) {
+    fail("an electric POC with no substation is not an origin \u2014 it is"
+      + " numbered as a span and the LV network starts nowhere");
+  }
+  if (o.get("electric")?.label !== "E0") {
+    fail(`an electric POC standing in is labelled ${o.get("electric")?.label}, not E0`);
+  }
+  if (!o.get("electric")?.standingIn) {
+    fail("an electric POC is not marked as standing in");
+  }
+
+  /* And the substation still wins where both are drawn: the incomer
+     arrives at the POC and the feeders begin at the transformer. That
+     half of the original argument is right and is what stays. */
+  const both = originsOf([
+    { Feature_ID: 1, Feature_Role: "poc", Layer_Key: "electric", Geometry: [[0, 0]] },
+    { Feature_ID: 2, Feature_Role: "substation", Layer_Key: "electric", Geometry: [[9, 9]] },
+  ]);
+  if (both.get("electric")?.feature.Feature_Role !== "substation") {
+    fail("electric is measured from the POC although a substation is drawn");
+  }
+  if (both.get("electric")?.standingIn) {
+    fail("the electric POC stood in although a substation is drawn");
+  }
+
+  /* Two incomers, as gas already allows: E0 then E0b. A site fed from
+     two sides has two networks that never meet, and one origin left the
+     second unable to be traced. */
+  const two = originsOf([
+    { Feature_ID: 1, Feature_Role: "poc", Layer_Key: "electric", Geometry: [[0, 0]] },
+    { Feature_ID: 2, Feature_Role: "poc", Layer_Key: "electric", Geometry: [[80, 0]] },
+  ]);
+  if (two.get("electric")?.label !== "E0") fail("the first electric POC is not E0");
+  if (two.get("electric:2")?.label !== "E0b") {
+    fail(`the second electric POC is ${two.get("electric:2")?.label}, not E0b`);
+  }
+}
+
+/* ── And the planner leaves that point alone ──
+
+   The two halves of the same fault. Being an origin is what keeps a
+   point out of the A-numbering: the canvas builds `plant` from
+   originsOf and hands it to planSpanNodes, which skips where a main
+   meets plant. An electric POC that was not an origin was therefore
+   also not plant, so it got a generic A-number — A5 on the drawing
+   where E0 belongs.
+
+   Driven end to end rather than asserted on the map, because the map
+   being right is only half of it. */
+{
+  const poc = {
+    Feature_ID: 1, Feature_Role: "poc", Layer_Key: "electric", Geometry: [[0, 0]],
+  };
+  const main = (id, g) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_main" }, Geometry: g,
+  });
+  /* A main from the POC to a junction, then two branches off it. */
+  const trenches = [
+    main(10, [[0, 0], [50, 0]]),
+    main(11, [[50, 0], [50, 40]]),
+    main(12, [[50, 0], [90, 0]]),
+  ];
+
+  const plant = [...originsOf([poc]).values()].map((o) => o.feature);
+  if (!plant.length) fail("the electric POC is not passed to the planner as plant");
+
+  const plan = planSpanNodes(trenches, plant,
+    { serviceTypes: new Set(["trench_service"]) });
+  if (plan.error) fail(`the planner refused a POC-fed drawing: ${plan.error}`);
+  else {
+    const onPoc = (plan.nodes || []).some((n) =>
+      Math.hypot(n.at[0] - 0, n.at[1] - 0) < 0.5);
+    if (onPoc) {
+      fail("a generic span node was placed on the electric POC \u2014 that point"
+        + " is E0, and two names for one place is what this prevents");
+    }
+    /* The junction and the two dead ends still get theirs, so skipping
+       the origin has not skipped everything. */
+    if ((plan.nodes || []).length !== 3) {
+      fail(`${(plan.nodes || []).length} span nodes planned, not the junction`
+        + " and two ends");
+    }
+  }
 }
 
 // 4. Every utility gets its own origin. Taking the first plant found

@@ -25,6 +25,25 @@
    any node along a route makes the total for everything beyond it
    unknowable rather than merely approximate. */
 
+/* Three-phase line current: I = kVA × 1000 ÷ (√3 × V), with V the line
+   voltage.
+
+   The same form as electric.js's `ampsFor`, which the substation
+   way-fuse comparison uses. Written once here and once there rather
+   than shared, because voltDrop.js imports nothing and making it import
+   electric.js to borrow four lines of arithmetic would tie the two
+   together for no gain \u2014 checksourceimpedance asserts the two agree,
+   which is what stops them drifting.
+
+   Zero volts gives zero rather than infinity: a substation with no
+   output voltage recorded is a drawing that has not been finished, and
+   an infinite current in the panel says less than a zero does. */
+export function ampsOf(kva, voltageV) {
+  const v = Number(voltageV);
+  if (!(v > 0)) return 0;
+  return (Number(kva) || 0) * 1000 / (Math.sqrt(3) * v);
+}
+
 export const VD_DEFAULTS = {
   unbalanced: false,
   maxLoopOhms: 0.28,
@@ -40,9 +59,30 @@ export function legVoltDrop({
   unbalanced = false, distFactor = 0.5, unbalConst = 4.14, voltageV = 400,
 }) {
   const v = voltageV > 0 ? voltageV : 400;
-  /* Three-phase, so the current in one phase. Both loads at full weight:
-     the cable carries everything passing through it. */
-  const amps = ((distributedKva || 0) + (terminalKva || 0)) * 1000 / 3 / v;
+  /* ── Three-phase line current ──
+
+       I = kVA × 1000 ÷ (√3 × V)
+
+     Both loads at full weight: the cable carries everything passing
+     through it, wherever it leaves.
+
+     ── What this was, and why it was wrong ──
+
+     `kVA × 1000 ÷ 3 ÷ V`. That is a correct per-phase form and it wants
+     the PHASE voltage. It was being handed `Output_V`, which is the
+     substation's line voltage and defaults to 400 \u2014 so it divided a
+     per-phase power by a line voltage and came out low by exactly √3.
+
+     Thirty kVA at 400 V read 25.0 A where the answer is 43.3 A: 42%
+     under, on the figure a designer sizes a cable against. The
+     substation way-fuse comparison, ampsFor, has always used the form
+     above, so the two disagreed by √3 across the app \u2014 which is what
+     surfaced it.
+
+     Volt drop and loop impedance do not use this. `pct` and `ohms` are
+     worked out from kVA and length below and are unchanged; only the
+     reported current moves. */
+  const amps = ampsOf((distributedKva || 0) + (terminalKva || 0), v);
 
   if (!cable || !lengthM) return { ohms: 0, pct: 0, amps, missingSpec: !cable };
 
@@ -126,7 +166,7 @@ export function cumulativeToNode({
   const v = voltageV > 0 ? voltageV : 400;
   /* The load passing through the target itself — its whole subtree,
      unweighted. */
-  const amps = ((cumKva?.[targetIdx]) || 0) * 1000 / 3 / v;
+  const amps = ampsOf((cumKva?.[targetIdx]) || 0, v);
 
   let legLenM = 0, distKva = 0, distCount = 0;
   for (let i = 1; i < path.length; i++) {

@@ -13,9 +13,11 @@
 import { readFileSync } from "node:fs";
 import {
   sourceImpedance, NO_SOURCE_NOTE, workingVoltage, voltageOf,
-  upstreamVoltDropPct,
+  upstreamVoltDropPct, ampsFor,
 } from "./src/features/gis/electric.js";
-import { cumulativeToNode } from "./src/features/gis/voltDrop.js";
+import {
+  cumulativeToNode, legVoltDrop, ampsOf,
+} from "./src/features/gis/voltDrop.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -303,6 +305,79 @@ const poc = (attrs = {}) => ({
   /* And it is threaded in from the origin at both levels-check sites. */
   const wired = [...canvas.matchAll(/startPct: upstreamVoltDropPct\(/g)].length;
   if (wired < 2) fail(`only ${wired} levels path reads the upstream drop`);
+}
+
+/* ── One current formula, in two modules ──
+
+   The levels check reported 25.0 A where the substation way-fuse
+   comparison reported 43.3 A for the same 30 kVA at 400 V \u2014 low by
+   exactly √3, on the figure a designer sizes a cable against.
+
+   Not a modelling difference. `kVA × 1000 ÷ 3 ÷ V` is a correct
+   per-phase form and wants the PHASE voltage; it was handed `Output_V`,
+   which is the substation's line voltage and defaults to 400. A
+   per-phase power divided by a line voltage.
+
+   Both now use I = kVA × 1000 ÷ (√3 × V). Written once in each module
+   rather than shared, because voltDrop.js imports nothing and tying it
+   to electric.js to borrow four lines of arithmetic would cost more
+   than it saves. This is what keeps them honest instead. */
+{
+  /* Across the range, not at one point: two formulas differing by a
+     constant agree at zero and nowhere else, and one differing by a
+     factor agrees nowhere. A single sample proves neither. */
+  for (const [kva, volts] of [
+    [30, 400], [100, 400], [75, 415], [1, 230], [0, 400], [250, 400],
+  ]) {
+    const a = ampsOf(kva, volts);
+    const b = ampsFor(kva, volts);
+    if (Math.abs(a - b) > 1e-9) {
+      fail(`${kva} kVA at ${volts} V: the levels check says ${a.toFixed(2)} A`
+        + ` and the fuse comparison says ${b.toFixed(2)} A`);
+    }
+  }
+
+  /* And the value is right, not merely consistent. Two copies of one
+     wrong formula agree perfectly. */
+  const want = 30 * 1000 / (Math.sqrt(3) * 400);
+  if (Math.abs(ampsOf(30, 400) - want) > 1e-9) {
+    fail(`30 kVA at 400 V gives ${ampsOf(30, 400).toFixed(2)} A,`
+      + ` not the ${want.toFixed(2)} A a three-phase line carries`);
+  }
+  /* The old form, named so it cannot come back unnoticed. */
+  if (Math.abs(ampsOf(30, 400) - (30 * 1000 / 3 / 400)) < 1e-9) {
+    fail("the levels check is back to dividing a per-phase power by the"
+      + " line voltage \u2014 42% under on every current it reports");
+  }
+
+  /* No output voltage recorded is a drawing that has not been finished.
+     Zero says that; infinity says nothing. */
+  for (const bad of [0, -1, null, undefined, "", "abc"]) {
+    if (ampsOf(30, bad) !== 0) {
+      fail(`${JSON.stringify(bad)} volts produced ${ampsOf(30, bad)} A`);
+    }
+  }
+
+  /* ── And nothing else moved ──
+
+     Volt drop and loop impedance are worked out from kVA and length and
+     never from current, so correcting this must leave every existing
+     result exactly where it was. */
+  const cable = { Loop_Impedance_Ohm: 0.32, Volt_Drop_Base: 0.41 };
+  const leg = legVoltDrop({
+    cable, lengthM: 100, terminalKva: 30, voltageV: 400,
+  });
+  if (Math.abs(leg.ohms - 0.032) > 1e-9) {
+    fail(`loop impedance moved: ${leg.ohms} for 100 m of 0.32 Ω/km`);
+  }
+  if (Math.abs(leg.pct - (30 * 0.41e-6 * 100)) > 1e-12) {
+    fail(`volt drop moved: ${leg.pct} for 30 kVA over 100 m`);
+  }
+  /* The reported current did move, and by √3 \u2014 which is the whole
+     point of the change. */
+  if (Math.abs(leg.amps - want) > 1e-9) {
+    fail(`the leg reports ${leg.amps.toFixed(2)} A, not ${want.toFixed(2)}`);
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

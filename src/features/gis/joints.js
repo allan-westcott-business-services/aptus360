@@ -501,7 +501,41 @@ export function planJoints(features = [], circuits = [], opts = {}) {
        plot. */
     if (rank(j.kind) < rank(prev.kind)) prev.kind = j.kind;
   }
-  return [...found.values()].map(({ _circuit, ...j }) => j);
+  /* ── A bottle end cannot take a service off it ──
+
+     The merge above keeps the strongest reason and files the rest under
+     `reasons`, on the argument that the larger fitting does the smaller
+     one's job: a breech joint can take a service off it, so a fork that
+     also serves a plot is one breech.
+
+     That does not extend to a bottle end. A bottle end seals the end of
+     a cable; it is a termination, not a tee, and nothing comes off it.
+     Where a service leaves the point a run ends, the site needs both
+     fittings \u2014 and the merge issued one, so the service joint was
+     missing from the drawing and from the take-off, one per plot at the
+     end of every run.
+
+     Split rather than re-ranked: making service beat bottleend would
+     lose the bottle end instead, which is the same fault the other way
+     round. Two fittings at one point, because two fittings is what gets
+     fitted.
+
+     reconcileJoints matches on position AND circuit and will not match
+     one existing joint twice, so the second plan at a point is added
+     rather than swallowed. */
+  const out = [];
+  for (const { _circuit, ...j } of found.values()) {
+    const both = j.reasons?.includes("bottleend") && j.reasons?.includes("service");
+    if (!both) { out.push(j); continue; }
+
+    /* The bottle end keeps the other reasons \u2014 a fork that also ends a
+       run is still one breech plus this \u2014 and the service joint carries
+       only its own, so nothing reads either as doing two jobs. */
+    out.push({ ...j, kind: "bottleend",
+      reasons: j.reasons.filter((r) => r !== "service") });
+    out.push({ ...j, kind: "service", reasons: ["service"] });
+  }
+  return out;
 }
 
 /* What is already on the drawing, so a second run adds nothing and
@@ -523,11 +557,22 @@ export function reconcileJoints(planned = [], existing = [], tolM = 0.25) {
        same point need a joint each, and matching on position alone let
        the second find the first, update it, and leave the drawing one
        joint short. */
-    const hit = existing.find((e) =>
+    const here = (e) =>
       (e.Geometry || [])[0]
       && near(e.Geometry[0], p.point)
       && String(e.Attributes?.Circuit_ID ?? "") === String(p.circuitId ?? "")
-      && !matched.has(e.Feature_ID));
+      && !matched.has(e.Feature_ID);
+
+    /* Its own kind first, then any unmatched joint at the point.
+
+       Two fittings can share a point \u2014 a bottle end and the service
+       joint beside it \u2014 and matching on position alone let the bottle
+       end plan claim the service feature and rewrite it, while the
+       service plan claimed the bottle end and rewrote that. The pair
+       swapped types on every run and neither was ever settled. */
+    const hit = existing.find((e) =>
+      here(e) && String(e.Attributes?.Joint_Type ?? "") === p.kind)
+      || existing.find(here);
     if (!hit) { add.push(p); continue; }
     matched.add(hit.Feature_ID);
     /* Already the right kind: leave it entirely alone rather than

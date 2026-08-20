@@ -191,31 +191,56 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
    here cannot disagree with what the canvas shows when the same plot is
    traced by hand. */
 {
-  const F = (id, role, conn, extra = {}) => ({
-    Feature_ID: id, Layer_Key: "electric", Feature_Role: role,
-    Geometry: [[id, 0]], Attributes: { Connects: conn, ...extra },
+  /* ── Drawn the way a drawing is drawn ──
+
+     Cables as lines, joints and meters as points on them. The first
+     version of this fixture chained joints to each other through
+     Connects, which no real drawing does \u2014 and that is why it passed
+     while production found nothing at all.
+
+     The graph attaches a point to the one line nearest it, so a joint
+     hangs off a cable as a leaf and is never *between* the meter and
+     the origin. The parent chain from a meter is meter \u2192 service \u2192
+     main \u2192 origin, all lines. A rule that looked for joints on that
+     chain found none on every drawing, and reported it as "no breech
+     joints on the route", which is indistinguishable from the truth.
+
+     A fixture that cannot reproduce that is a fixture that proves
+     nothing. This one is cables. */
+  const L = (id, g) => ({
+    Feature_ID: id, Layer_Key: "electric", Feature_Type: "line",
+    Geometry: g, Attributes: { Line_Type: "elec_main" },
   });
-  /* POC 1 → breech 2 → straight 3 → breech 4 → meter 5 (plot 12).
-     Breech 2 also feeds meter 6 (plot 13). Meter 7 (plot 14) is
-     connected to nothing. */
+  const P = (id, role, at, extra = {}) => ({
+    Feature_ID: id, Layer_Key: "electric", Feature_Role: role,
+    Geometry: [at], Attributes: extra,
+  });
+
+  /* POC ── cable ── A4 (breech) ── cable ── A9 (breech) ── cable ── meter 105
+                       │
+                       └── cable to a breech on another branch, which must
+                           not appear on this plot's route.
+     Meter 106 hangs off the first cable, so it passes A4 and not A9. */
   const feats = [
-    F(1, "poc", [2]),
-    F(2, "joint", [1, 3, 6], { Joint_Type: "breech" }),
-    F(3, "joint", [2, 4], { Joint_Type: "straight" }),
+    P(1, "poc", [0, 0]),
+    L(10, [[0, 0], [10, 0]]),
+    L(11, [[10, 0], [20, 0]]),
+    L(12, [[20, 0], [30, 0]]),
+    P(28269, "spannode", [10, 0], { Span_Seq: 4, Span_Label: "A4" }),
+    P(100, "joint", [10, 0], { Joint_Type: "breech" }),
+    P(28270, "spannode", [20, 0], { Span_Seq: 9, Span_Label: "A9" }),
     /* The other spelling. The two ways a joint gets placed have never
-       agreed on which they write, and a trace that found only one kind
-       would miss half the joints on a real drawing. */
-    F(4, "joint", [3, 5], { Joint_Code: "BRE" }),
-    /* The span node joint 2 stands on. Placed at the same point,
-       because that is where a breech goes \u2014 both mark the point the
-       feeder divides. Joint 4 deliberately has none, so the
-       "not on a node" case is exercised on a real trace rather than
-       only on a hand-made object. */
-    { Feature_ID: 8, Layer_Key: "electric", Feature_Role: "spannode",
-      Geometry: [[2, 0]], Attributes: { Span_Seq: 5, Span_Label: "A5" } },
-    F(5, "meter", [4], { Plot_ID: 105 }),
-    F(6, "meter", [2], { Plot_ID: 106 }),
-    F(7, "meter", [], { Plot_ID: 107 }),
+       agreed on which they write. */
+    P(101, "joint", [20, 0], { Joint_Code: "BRE" }),
+    /* A straight joint on the route, which is not a connection this
+       gang makes. */
+    P(103, "joint", [15, 0], { Joint_Type: "straight" }),
+    P(5, "meter", [31, 0], { Plot_ID: 105 }),
+    P(6, "meter", [9, 3], { Plot_ID: 106 }),
+    L(13, [[10, 0], [10, 60]]),
+    P(102, "joint", [10, 60], { Joint_Type: "breech" }),
+    /* Connected to nothing at all. */
+    P(7, "meter", [900, 900], { Plot_ID: 107 }),
   ];
   const meters = feats.filter((f) => f.Feature_Role === "meter");
   const routes = breechesOnRoutes(feats, meters, 1);
@@ -225,17 +250,27 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   /* Both breeches on the far plot's route, and the straight joint on it
      left out — a straight joint is not a connection this gang makes. */
   const far = forPlot(105);
-  if (far?.joints.map((j) => j.featureId).join(",") !== "2,4") {
-    fail(`plot 105's route found joints ${far?.joints.map((j) => j.featureId)}`);
+  if (far?.joints.map((j) => j.featureId).join(",") !== "100,101") {
+    fail(`plot 105's route found joints ${far?.joints.map((j) => j.featureId)}`
+      + " \u2014 a joint hangs off a cable, it is not on the chain between"
+      + " the meter and the origin");
+  }
+  /* The straight joint on the same route is left out. */
+  if (far?.joints.some((j) => j.featureId === 103)) {
+    fail("a straight joint was reported as a connection to make");
+  }
+  /* And the breech on the other branch is not on this route. */
+  if (far?.joints.some((j) => j.featureId === 102)) {
+    fail("a breech on a different branch was put on this plot's route");
   }
   /* Origin outward, not plot backward: a gang works along the cable
      from where the supply comes in, and a list read the other way has
      to be reversed in somebody's head while they stand in a hole. */
-  if (far?.joints[0]?.featureId !== 2) {
+  if (far?.joints[0]?.featureId !== 100) {
     fail("the joints are listed from the plot back, not from the origin out");
   }
   /* The nearer plot passes through one of them and not the other. */
-  if (forPlot(106)?.joints.map((j) => j.featureId).join(",") !== "2") {
+  if (forPlot(106)?.joints.map((j) => j.featureId).join(",") !== "100") {
     fail("a plot was given a joint that is not on its route");
   }
   /* A plot with no route back is reported, not dropped. Left out it
@@ -249,11 +284,16 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   /* The node comes off the drawing, matched on position: a joint and a
      node at one point are not linked to each other, they are both
      linked to the cable, so position is the only thing they share. */
-  if (far?.joints[0]?.node !== "A5") {
-    fail(`the breech on node A5 came back as node ${far?.joints[0]?.node}`);
+  if (far?.joints[0]?.node !== "A4" || far?.joints[1]?.node !== "A9") {
+    fail(`the breeches came back as nodes ${far?.joints.map((j) => j.node)}`
+      + " \u2014 they stand on A4 and A9");
   }
-  if (far?.joints[1]?.node != null) {
-    fail("a joint with no node within tolerance was given one anyway");
+  /* The node comes off the drawing, matched on position: a joint and a
+     node at one point are not linked to each other, they are both
+     linked to the cable, so position is the only thing they share. */
+  if (breechesOnRoutes(feats.filter((f) => f.Feature_Role !== "spannode"),
+    meters, 1)[0]?.joints[0]?.node != null) {
+    fail("a joint with no span node on it was given one anyway");
   }
 
   const sum = breechSummary(feats, meters, 1,

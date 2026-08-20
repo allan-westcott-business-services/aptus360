@@ -145,10 +145,52 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
        root and the list is read away from it. */
     const path = pathToRoot(parent, id).reverse();
 
-    const joints = path
-      .map((nid) => byId.get(nid))
-      .filter((f) => f && isBreechJoint(f))
-      .map((f) => {
+    /* ── Why the joints are found by position and not on the path ──
+
+       The path is a chain of cables. A joint is a point feature and the
+       graph attaches a point to the one line nearest it, so a joint
+       hangs off a cable as a leaf \u2014 it is in the tree and it is never
+       *between* the meter and the origin. Filtering the path for joints
+       therefore found none, on every drawing, and said so by returning
+       an empty list rather than by failing: a call-off with breeches on
+       it looked exactly like one without.
+
+       So the route is the cables, and a joint is on it if it stands on
+       one of their points. Which is the same statement the naming makes
+       \u2014 a breech joint is placed exactly where a span node is \u2014 read
+       from the other end.
+
+       Every vertex, not only the ends: a breech divides the feeder and
+       the cables meet at that division, but which vertex of which cable
+       records it depends on how the run was drawn. */
+    const routePoints = [];
+    path.forEach((nid, order) => {
+      const f = byId.get(nid);
+      for (const v of (f?.Geometry || [])) {
+        if (Array.isArray(v) && v.length >= 2) routePoints.push({ at: v, order });
+      }
+    });
+
+    /* How far along the route a point is, or null if it is not on it.
+       The order is the path position of the first cable carrying it, so
+       joints come out from the origin outward rather than in whatever
+       order the features happened to be stored. */
+    const orderOf = (at) => {
+      if (!at) return null;
+      let best = null;
+      for (const rp of routePoints) {
+        if (Math.hypot(rp.at[0] - at[0], rp.at[1] - at[1]) > SAME_PLACE_M) continue;
+        if (best == null || rp.order < best) best = rp.order;
+      }
+      return best;
+    };
+
+    const joints = features
+      .filter((f) => isBreechJoint(f) && (f.Geometry || []).length)
+      .map((f) => ({ f, order: orderOf((f.Geometry || [])[0]) }))
+      .filter((x) => x.order != null)
+      .sort((a, b) => a.order - b.order)
+      .map(({ f }) => {
         const at = (f.Geometry || [])[0] ?? null;
         const node = nodeAt(at);
         return {

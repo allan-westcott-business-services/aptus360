@@ -1808,6 +1808,41 @@ function Assignments({ row }) {
      alternative — waiting for the round trip — makes a click on a pill
      feel like it did nothing, which is how the same click gets made
      three times. */
+  /* Which bookings have had their instruction raised.
+
+     A set of ids rather than a flag read off the row, because the rows
+     come from a column list that does not include it — adding it there
+     would have every screen reading assignments carry a field only this
+     one uses. Seeded from whatever the rows do carry, so a booking
+     instructed from the Planning page shows as instructed here. */
+  const [wi, setWi] = useState(() => new Set());
+  useEffect(() => {
+    setWi(new Set(all
+      .filter((a) => a.Work_Instruction_Created)
+      .map((a) => Number(a.Assignment_ID))));
+  }, [all]);
+
+  async function createInstruction(a) {
+    const id = Number(a.Assignment_ID);
+    if (wi.has(id)) return;
+    setBusy(`w:${id}`);
+    setError("");
+    try {
+      await adminUpdate("Call_Off_Assignment", id,
+        { Work_Instruction_Created: true });
+      /* Marked only once the write has come back. Shown first and
+         rolled back on failure would be the right trade for a toggle
+         nobody depends on; this one sends people to site. */
+      setWi((cur) => new Set(cur).add(id));
+      setAll((xs) => xs.map((x) => (Number(x.Assignment_ID) === id
+        ? { ...x, Work_Instruction_Created: true } : x)));
+    } catch (e) {
+      setError(e.message || "The work instruction could not be raised.");
+    } finally {
+      setBusy("");
+    }
+  }
+
   async function moveStatus(a, next) {
     const was = a.Status;
     if (next === was) return;
@@ -2280,6 +2315,22 @@ function Assignments({ row }) {
           ? null : (serialisePlots(bookingPlots) || null),
       };
 
+      /* ── A new booking is Scheduled by the act of making it ──
+
+         The column defaults to Pending Review, which is the call-off's
+         first state and was never the booking's: a call-off is pending
+         review until somebody looks at it, but a booking does not exist
+         until a planner has put a team on a date. There is nothing left
+         to review at the moment it is created, and every one of them
+         had to be walked forward by hand through a dropdown that only
+         ever went the same way.
+
+         Only on create. An edit leaves the status alone — a booking
+         that has reached In Progress and then has its dates changed is
+         still in progress, and resetting it here would undo the field
+         app's own reporting from the office. */
+      if (editing == null) payload.Status = "Scheduled";
+
       let saved;
       if (editing != null) {
         saved = await adminUpdate("Call_Off_Assignment", editing, payload);
@@ -2705,6 +2756,37 @@ function Assignments({ row }) {
                     ? <span className="asg-off-tag">&#10003; Off site</span>
                     : null;
                 })()}
+                {/* ── The paperwork that sends the gang to site ──
+
+                    Raised per booking, not per call-off: an instruction
+                    names a team, a date and a set of plots, and a
+                    call-off worked by two teams over three days is
+                    several instructions.
+
+                    Already on the Planning page's booking modal, and
+                    nowhere near where the bookings are actually made —
+                    so raising one meant leaving this page, finding the
+                    booking on a timeline and opening it again. Same
+                    field, same call, said where the work is.
+
+                    It does not toggle. Withdrawing an instruction a
+                    gang may already be holding is a different act from
+                    not having raised one, and wants a reason and a
+                    trail rather than a second press of the same button
+                    — see the note in the release file. */}
+                <button className={wi.has(Number(a.Assignment_ID))
+                  ? "btn sm asg-wi on" : "btn sm asg-wi"}
+                  disabled={wi.has(Number(a.Assignment_ID))
+                    || busy === `w:${a.Assignment_ID}`}
+                  title={wi.has(Number(a.Assignment_ID))
+                    ? "The work instruction for this booking has been raised"
+                    : "Raise the work instruction for this booking"}
+                  onClick={() => createInstruction(a)}>
+                  {wi.has(Number(a.Assignment_ID))
+                    ? "\u2713 Work Instruction"
+                    : (busy === `w:${a.Assignment_ID}`
+                      ? "Creating\u2026" : "Create Work Instruction")}
+                </button>
                 <button className="btn edit sm"
                   onClick={() => editFor(a)}>Edit</button>
                 <button className="btn delete sm"
@@ -3569,6 +3651,21 @@ const CSS = FILTER_CSS + `
   opacity: .55; }
 .asg-edit { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10.5px inherit; padding: 2px 9px; color: var(--accent); }
+/* Raise the work instruction, and say once it has been raised.
+
+   Outlined until it is done and filled after, rather than two buttons
+   or a button that becomes a tick on its own — the row is scanned, and
+   "has this gang been sent" is the question being asked of it.
+
+   Disabled once raised. It is not a toggle: withdrawing an instruction
+   a gang may already be holding is a different act from never having
+   raised one. */
+.asg-wi { border: 1px solid var(--accent); background: none; color: var(--accent);
+  font-weight: 700; }
+.asg-wi:hover:not(:disabled) { background: var(--bg); }
+.asg-wi.on { border-color: #16a34a; background: #dcfce7; color: #166534;
+  opacity: 1; cursor: default; }
+
 .asg-off-tag { font: 700 10px inherit; padding: 2px 7px; border-radius: 4px;
   background: #fef3c7; color: #92400e; }
 .asg-problems { flex: 1 0 100%; margin: 4px 0 0; padding-left: 18px;

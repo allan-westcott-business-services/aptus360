@@ -84,3 +84,16 @@ export async function setPlotEnergisation(servicePlotId, utilities) {
 export async function saveSpanImage({ spanId, dataUrl }) {
   return http.post("/call-off-span-image", { spanId, dataUrl });
 }
+
+/* The as-laid drawing of an Electric Service call-off.
+
+   Sent to a function rather than uploaded from here, for the same
+   reason the span pictures are: the browser's key has no policies and
+   can write nothing, so storage goes the way everything else does.
+
+   Which is also the answer to the credentials question the old
+   standalone work instruction raised — it carried an insert-only
+   Supabase token compiled into the page. Nothing here needs one. */
+export async function saveAsLaidImage({ submissionId, dataUrl }) {
+  return http.post("/call-off-as-laid", { submissionId, dataUrl });
+}

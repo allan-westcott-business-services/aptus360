@@ -137,9 +137,10 @@ import {
   isEasement, easementBand, hatchPattern, EASEMENT_WIDTH_M, EASEMENT_COLOUR,
 } from "./easement.js";
 import {
-  createCallOff, updateCallOff, listCallOffs, saveSpanImage,
+  createCallOff, updateCallOff, listCallOffs, saveSpanImage, saveAsLaidImage,
 } from "../../api/calloffs.js";
 import { spanImage, spanBounds } from "./spanImage.js";
+import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -9436,6 +9437,73 @@ export default function GISCanvasPage() {
             electricUtilityId(lookups?.utilities || [])),
         Notes: serviceNote || null,
       });
+
+      /* ── The as-laid drawing, taken now ──
+
+         Every jointing work instruction raised from this call-off draws
+         its sketch over this picture, so the joint positions a gang
+         marks are marked against the run as laid.
+
+         Taken here because here is where the canvas is. It is the only
+         thing in the application that can draw this network — the same
+         argument the span pictures make — and it is not open when the
+         jointing assignment is made days later on the Call-offs page.
+         So the drawing belongs to the call-off and every assignment
+         under it reads the same one.
+
+         Electric only. A service call-off may carry gas and water too,
+         and their pipes are not what a jointing gang is looking at.
+
+         Failure is said and not thrown. A missing picture is a sketch
+         drawn on a blank page, which is worse than it was and is not a
+         reason to lose a call-off that has already been written. */
+      if (created?.Submission_ID) {
+        try {
+          const electric = asLaidFeatures(features).filter((f) =>
+            f.Feature_Type !== "point");
+          const joints = features.filter((f) =>
+            String(f.Layer_Key || "") === "electric"
+            && f.Feature_Role === "joint");
+          const seeds = features.filter((f) => f.Feature_Role === "plot");
+
+          if (electric.length) {
+            /* The plan under it, at the design's extent. Asked for
+               specifically because a PDF is rendered for a region, and
+               this region is not the one on screen. */
+            const bounds = spanBounds([...electric, ...seeds]
+              .map((f) => f.Geometry).filter(Array.isArray));
+            const plan = await planLayer({
+              basemap,
+              bounds,
+              image: bgImage,
+              renderRegion: pdf.renderRegion,
+              isPdf: isPdfMap,
+              scale: view.scale,
+            }).catch(() => null);
+
+            /* Coloured from the layer, which since 0183 inherits the
+               utility's colour — so the picture and the canvas cannot
+               disagree, and no hex is written here. */
+            const colour = layers
+              .find((l) => l.Layer_Key === "electric")?.Colour ?? null;
+
+            const dataUrl = asLaidImage({
+              electric: electric.map((f) => ({ ...f, Colour: colour })),
+              seeds,
+              joints,
+              plan,
+            });
+            if (dataUrl) {
+              await saveAsLaidImage({
+                submissionId: created.Submission_ID, dataUrl,
+              });
+            }
+          }
+        } catch {
+          setStatus("Call-off raised \u2014 the as-laid drawing could not be "
+            + "saved. It can be taken again from the call-off.");
+        }
+      }
 
       setServiceOpen(false);
       setServicePlots([]);

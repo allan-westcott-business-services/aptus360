@@ -29,6 +29,23 @@ const SUB_COLS = [
      a machine or a phase that changed afterwards would move a booking
      somebody had already been given. */
   "Dig_Rate_ID", "Needs_Energisation",
+  /* The as-laid drawing taken when the call-off was raised (0184), and
+     when it was taken.
+
+     Listed here because this list is the whole of what comes back: a
+     column added to the database and not to it is neither saved nor
+     returned, which is fault 4 and has bitten three times. The work
+     instruction reads the path to draw its sketch over, and the date is
+     what lets a planner see the picture is older than the design and
+     take it again.
+
+     Written by call-off-as-laid.js rather than through here — it is the
+     endpoint that uploaded the file, and the row must not claim a
+     picture exists before the object does. They are readable and
+     writable through this list all the same, because a call-off deleted
+     and re-raised over the same plots would otherwise keep a path to a
+     drawing of the old one. */
+  "As_Laid_Path", "As_Laid_Captured_At",
 ].join(",");
 
 const WRITABLE = new Set(SUB_COLS.split(",")

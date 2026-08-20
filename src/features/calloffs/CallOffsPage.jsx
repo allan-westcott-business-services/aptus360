@@ -29,6 +29,10 @@ import {
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
 import { phasesToShow, phasesHidden } from "./callOffPhases.js";
+import { breechSummary } from "../gis/serviceBreech.js";
+import { lvOrigin } from "../gis/electric.js";
+import { listGis } from "../../api/gis.js";
+import { listPlots } from "../../api/plots.js";
 import { dependencyProblems, dependencyFloor } from "../planning/dependencies.js";
 
 /* Call-offs across the business.
@@ -2469,6 +2473,84 @@ function Assignments({ row }) {
      book them either. Filtered rather than taken off the work type,
      because the same mapping drives the schedule and the cover states —
      the phases still happen, they are booked on the mains call-off. */
+  /* ── What was traced when this call-off was raised ──
+
+     Read off the row rather than recomputed, because it is a record of
+     the drawing on the day: the design may have moved since, and a
+     booking somebody has already been given must not change under
+     them. `traceBreech` below is the deliberate act of taking it
+     again.
+
+     Held in state as well as read from the row, so a trace run here
+     shows without waiting for the whole list to reload. */
+  const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
+  useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
+    [row.Submission_ID, row.GIS_Data]);
+
+  /* Only worth offering where there is a route to trace: an electric
+     service call-off with jointing on it. A mains call-off digs the
+     trench the breeches sit in and does not connect through them. */
+  const isElectricJointing = /service/i.test(String(row.Work_Type?.Work_Type_Name || ""));
+
+  async function traceBreech() {
+    setBusy("breech");
+    setError("");
+    try {
+      /* The drawing and the plot numbers, both needed: the meters carry
+         Plot_ID and the call-off carries plot numbers, and nothing on
+         this screen holds the map between them. */
+      const [gis, plots] = await Promise.all([
+        listGis(row.Project_ID),
+        listPlots(row.Project_ID),
+      ]);
+      const features = gis?.features || [];
+      const plotRows = plots?.rows || plots || [];
+
+      const origin = lvOrigin(features);
+      if (!origin) {
+        setError("No substation or electric POC on the drawing to trace back to.");
+        return;
+      }
+
+      /* The plot numbers on this call-off, as text: a call-off carries
+         "18" and a plot record carries 18, and they are one plot. */
+      const wanted = new Set((row.items || [])
+        .map((it) => String(it.Plots ?? it.Plot ?? "").trim())
+        .filter(Boolean));
+      const plotIds = new Set(plotRows
+        .filter((p) => wanted.has(String(p.plot_number ?? p.Plot_Number ?? "").trim()))
+        .map((p) => Number(p.plot_id ?? p.Plot_ID)));
+
+      /* Plot_ID is a column on the feature, not an attribute \u2014 the
+         endpoint selects it by name and circuitReport reads it as
+         `m.Plot_ID`. Read from Attributes it matched nothing and the
+         trace found no meters at all. */
+      const meters = features.filter((f) => f.Feature_Role === "meter"
+        && f.Layer_Key === "electric"
+        && plotIds.has(Number(f.Plot_ID ?? f.Attributes?.Plot_ID)));
+
+      if (!meters.length) {
+        setError("No electric meters found on this call-off\u2019s plots.");
+        return;
+      }
+
+      const found = breechSummary(features, meters, origin.Feature_ID,
+        (id) => plotRows.find((p) => Number(p.plot_id ?? p.Plot_ID) === Number(id))
+          ?.plot_number ?? null);
+
+      /* Written back, so it is the record from here on and the work
+         instruction reads the same thing this screen shows. */
+      await updateCallOff(row.Project_ID, row.Submission_ID,
+        { GIS_Data: { ...(row.GIS_Data || {}), breech: found } });
+      setBreech(found);
+      if (!found.plots.length) {
+        setError("Traced \u2014 no breech joints on the route to any of these plots.");
+      }
+    } catch (e) {
+      setError(e.message || "The route could not be traced.");
+    } finally { setBusy(null); }
+  }
+
   const shownPhases = phasesToShow(phases, row.Work_Type?.Work_Type_Name);
   const notHere = phasesHidden(phases, row.Work_Type?.Work_Type_Name);
 
@@ -2498,6 +2580,64 @@ function Assignments({ row }) {
           {notHere.length === 1 ? " is" : " are"} booked on the mains call-off,
           not here &mdash; the dig and the cable are done before jointing
           starts, and the ground goes back once for the street.
+        </p>
+      )}
+
+      {/* ── The breech joints on the way back ──
+
+          Traced from the drawing when the call-off was raised: the gang
+          works at each of these as well as at the meter, so a planner
+          booking the visit needs to see them before the gang finds
+          them.
+
+          Shown here as well as on the work instruction because this is
+          where the booking is made. The instruction is read on a road;
+          the decision about how long the visit takes is made on this
+          screen. */}
+      {breech?.plots?.length > 0 && (
+        <div className="co-breech">
+          <h4>
+            Breech joints on the route
+            <span className="co-breech-n">{breech.totalJoints}</span>
+          </h4>
+          <p className="hint">
+            Counted once each. One joint feeding several plots is one
+            connection to make.
+          </p>
+          {breech.plots.map((p) => (
+            <div className="co-breech-row" key={p.plot ?? p.plotId}>
+              <strong>Plot {p.plot ?? p.plotId}</strong>
+              {p.reachable === false ? (
+                <span className="co-breech-warn">
+                  route could not be traced
+                </span>
+              ) : (
+                <span>
+                  {p.joints.map((j) => (j.node
+                    ? `Node ${j.node}`
+                    : "not on a node")).join(", ")}
+                </span>
+              )}
+            </div>
+          ))}
+        </div>
+      )}
+
+      {/* Traced on demand for a call-off raised before this existed.
+
+          Not done quietly on opening: it reads the whole drawing and
+          writes to the call-off, and a screen that rewrites a record
+          because somebody looked at it is the fault the whole-drawing
+          reconciliation was. Offered, and only where there is nothing
+          stored yet. */}
+      {breech == null && isElectricJointing && (
+        <p className="hint">
+          <button className="btn sm" disabled={busy === "breech"}
+            onClick={traceBreech}>
+            {busy === "breech" ? "Tracing\u2026" : "Trace breech joints"}
+          </button>
+          {" "}This call-off was raised before the route was traced.
+          Tracing reads the drawing as it is now, not as it was on the day.
         </p>
       )}
 
@@ -3665,6 +3805,26 @@ const CSS = FILTER_CSS + `
 .asg-wi:hover:not(:disabled) { background: var(--bg); }
 .asg-wi.on { border-color: #16a34a; background: #dcfce7; color: #166534;
   opacity: 1; cursor: default; }
+
+/* ── Breech joints on the route ──
+
+   Boxed and ahead of the phase sections, because it is a fact about the
+   visit rather than a booking to make: how many connections the gang
+   has to make before they reach the meter, which is what decides how
+   long the visit takes. */
+.co-breech { border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 14px; }
+.co-breech h4 { margin: 0 0 4px; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px; }
+.co-breech-n { font-size: 11px; font-weight: 700; background: #f59e0b; color: #fff;
+  border-radius: 20px; padding: 1px 7px; }
+.co-breech .hint { margin: 0 0 8px; }
+.co-breech-row { display: flex; gap: 10px; padding: 5px 0; font-size: 13px;
+  border-top: 1px solid #fde68a; }
+.co-breech-row strong { flex: 0 0 90px; }
+/* A plot the trace could not reach is a fault in the drawing, not a
+   plot with a clear run — and the two must not read alike. */
+.co-breech-warn { color: #991b1b; font-weight: 600; }
 
 .asg-off-tag { font: 700 10px inherit; padding: 2px 7px; border-radius: 4px;
   background: #fef3c7; color: #92400e; }

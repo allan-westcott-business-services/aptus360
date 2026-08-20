@@ -112,16 +112,34 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
      Electric only, and Span_Seq is not filtered \u2014 a breech on the
      origin node itself is unusual and not impossible, and calling it E0
      is right. */
+  /* Every span node, whatever layer it is on.
+
+     Place Span Nodes writes them on the **trench** layer \u2014 the node
+     belongs to the trench and carries its own class so it can be hidden
+     without hiding the trenches. Only the origin is written on the
+     utility's layer, by the circuit and origin writers. Filtering to
+     electric here therefore matched the origin and nothing else, so
+     every joint on a run came back "not on a node" while A4 and A9 sat
+     on the drawing. */
   const nodes = features.filter((f) => f.Feature_Role === "spannode"
-    && f.Layer_Key === "electric" && (f.Geometry || []).length);
+    && (f.Geometry || []).length);
+
+  /* Where a node IS, as against where its marker is drawn.
+
+     The marker gets moved a metre or two clear so its label can be
+     read; Span_Anchor is where on the trench it belongs, and the
+     network is measured from that. A joint stands at the anchor, so
+     comparing against the marker put the two more than a tolerance
+     apart on any node somebody had nudged. */
+  const nodePoint = (n) => n.Attributes?.Span_Anchor ?? n.Geometry[0];
 
   const nodeAt = (at) => {
     if (!at) return null;
     let best = null;
     let bestD = SAME_PLACE_M;
     for (const n of nodes) {
-      const p = n.Geometry[0];
-      if (!p) continue;
+      const p = nodePoint(n);
+      if (!Array.isArray(p) || p.length < 2) continue;
       const d = Math.hypot(p[0] - at[0], p[1] - at[1]);
       /* Strictly nearer, so two nodes at the same spot resolve to the
          lower id rather than to whichever the scan reached last. */
@@ -135,7 +153,16 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
 
   return meters.map((m) => {
     const id = Number(m.Feature_ID);
-    const plot = m.Attributes?.Plot_ID ?? null;
+    /* A column on the feature, not an attribute.
+
+       GIS_Feature carries Plot_ID beside Layer_Key and Feature_Role \u2014
+       the endpoint selects it by name and circuitReport reads it as
+       `m.Plot_ID`. Reading it out of Attributes returned undefined for
+       every meter ever drawn, so every row came back with no plot
+       number against it and the office could not tell which plot a
+       joint belonged to. The attribute is still read as a fallback,
+       because nothing stops a feature carrying it there. */
+    const plot = m.Plot_ID ?? m.Attributes?.Plot_ID ?? null;
 
     if (!parent.has(id)) {
       return { meterId: id, plotId: plot, reachable: false, joints: [] };
@@ -275,6 +302,18 @@ export function breechSummary(features = [], meters = [], originId = null,
    is worth more than the name. */
 export function jointLabel(j) {
   if (j?.node) return `Breech Joint at Node ${j.node}`;
-  if (j?.label) return `Breech Joint ${j.label} \u2014 not on a node`;
-  return "Breech Joint \u2014 not on a node";
+
+  /* The drawing's own label, where it says anything the words "Breech
+     Joint" do not already say.
+
+     Most joints are labelled "Breech Joint" on the drawing, which read
+     out as "Breech Joint Breech Joint \u2014 not on a node". A label that
+     repeats the kind adds nothing, so it is only used where it
+     identifies the particular joint \u2014 "BJ-7", a plot number, whatever
+     somebody wrote on it. */
+  const own = String(j?.label ?? "").trim();
+  const adds = own && own.toLowerCase().replace(/[^a-z]/g, "") !== "breechjoint";
+  return adds
+    ? `Breech Joint ${own} \u2014 not on a node`
+    : "Breech Joint \u2014 not on a node";
 }

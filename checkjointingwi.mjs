@@ -226,21 +226,42 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     L(10, [[0, 0], [10, 0]]),
     L(11, [[10, 0], [20, 0]]),
     L(12, [[20, 0], [30, 0]]),
-    P(28269, "spannode", [10, 0], { Span_Seq: 4, Span_Label: "A4" }),
-    P(100, "joint", [10, 0], { Joint_Type: "breech" }),
-    P(28270, "spannode", [20, 0], { Span_Seq: 9, Span_Label: "A9" }),
+    /* ── Span nodes as Place Span Nodes actually writes them ──
+
+       On the **trench** layer, not the utility's: the node belongs to
+       the trench and carries its own class so it can be hidden without
+       hiding the trenches. Only the origin goes on the utility layer.
+       A fixture that put them on `electric` matched a filter that was
+       wrong, and every joint on a real drawing came back
+       "not on a node".
+
+       And A4's marker is nudged clear of the trench so its label can be
+       read, with Span_Anchor holding where it really is. The joint
+       stands at the anchor. */
+    { Feature_ID: 28269, Layer_Key: "trench", Feature_Role: "spannode",
+      Geometry: [[11.5, 1.5]],
+      Attributes: { Span_Seq: 4, Span_Label: "A4", Span_Anchor: [10, 0] } },
+    /* Labelled as the drawing labels them, which is what produced
+       "Breech Joint Breech Joint \u2014 not on a node". */
+    { ...P(100, "joint", [10, 0], { Joint_Type: "breech" }), Label: "Breech Joint" },
+    { Feature_ID: 28270, Layer_Key: "trench", Feature_Role: "spannode",
+      Geometry: [[20, 0]], Attributes: { Span_Seq: 9, Span_Label: "A9" } },
     /* The other spelling. The two ways a joint gets placed have never
        agreed on which they write. */
     P(101, "joint", [20, 0], { Joint_Code: "BRE" }),
     /* A straight joint on the route, which is not a connection this
        gang makes. */
     P(103, "joint", [15, 0], { Joint_Type: "straight" }),
-    P(5, "meter", [31, 0], { Plot_ID: 105 }),
-    P(6, "meter", [9, 3], { Plot_ID: 106 }),
+    /* Plot_ID is a column on the feature, beside Layer_Key and
+       Feature_Role \u2014 not an attribute. Putting it in Attributes here
+       was what let a reader of `m.Attributes.Plot_ID` pass while every
+       real meter came back with no plot against it. */
+    { ...P(5, "meter", [31, 0]), Plot_ID: 105 },
+    { ...P(6, "meter", [9, 3]), Plot_ID: 106 },
     L(13, [[10, 0], [10, 60]]),
     P(102, "joint", [10, 60], { Joint_Type: "breech" }),
     /* Connected to nothing at all. */
-    P(7, "meter", [900, 900], { Plot_ID: 107 }),
+    { ...P(7, "meter", [900, 900]), Plot_ID: 107 },
   ];
   const meters = feats.filter((f) => f.Feature_Role === "meter");
   const routes = breechesOnRoutes(feats, meters, 1);
@@ -331,6 +352,14 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   if (!routeUnknownFor(job, "14")) fail("the form does not say the route was untraceable");
   if (routeUnknownFor(job, "12")) fail("a traced plot was reported as untraceable");
 
+  /* Every plot came back with a number against it. Reading Plot_ID out
+     of Attributes returned undefined for every meter ever drawn, and
+     the office could not tell which plot a joint belonged to. */
+  if (routes.some((r) => r.plotId == null)) {
+    fail("a meter came back with no plot against it \u2014 Plot_ID is a column"
+      + " on the feature, not an attribute");
+  }
+
   /* ── Named by the node it stands on ──
 
      A breech joint is placed exactly where a span node is, and the node
@@ -343,6 +372,17 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   /* Including the origin. A breech on E0 itself is unusual and not
      impossible, and calling it E0 is right. */
   if (!/E0/.test(jointLabel({ node: "E0" }))) fail("a joint on the origin node is misnamed");
+
+  /* And the drawing's own label does not double up. Most joints are
+     labelled "Breech Joint", which read out as "Breech Joint Breech
+     Joint \u2014 not on a node" five times over. A label that repeats the
+     kind adds nothing. */
+  if (/Breech Joint Breech/i.test(jointLabel({ label: "Breech Joint" }))) {
+    fail("the drawing's label doubles the words already in the name");
+  }
+  if (!/BJ-7/.test(jointLabel({ label: "BJ-7" }))) {
+    fail("a label that identifies the joint was thrown away with the rest");
+  }
 
   /* No node is admitted, not papered over: it means Place Span Nodes
      has not been run since the joint went in, so the levels check is

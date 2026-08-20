@@ -5,6 +5,7 @@ import {
 import {
   CHECKLIST, MARKS, OUTCOMES, TESTS, JOB_FIELDS,
   isJointingJob, plotsOf, emptyPlot, missingFrom,
+  breechesFor, routeUnknownFor, jointLabel,
 } from "./jointingInstruction.js";
 
 /* The work instruction, filled in on site.
@@ -268,6 +269,56 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
               <div className="wi-plot" key={plot}>
                 <h3>Plot {plot}</h3>
 
+                {/* ── The joints on the way back ──
+
+                    Traced from the drawing when the call-off was
+                    raised. The gang works at each of these as well as
+                    at the meter, so they are on the instruction rather
+                    than something to notice on site.
+
+                    First on the plot, because they come first on the
+                    ground: the connection is made from the origin
+                    outward, and the meter is the last thing done. */}
+                {breechesFor(job, plot).length > 0 && (
+                  <div className="wi-breech">
+                    <h4>
+                      Breech joints on the way back
+                      <span className="wi-breech-n">
+                        {breechesFor(job, plot).length}
+                      </span>
+                    </h4>
+                    {breechesFor(job, plot).map((j, i) => (
+                      <label className="wi-breech-row" key={j.featureId ?? i}>
+                        <input type="checkbox"
+                          checked={!!payload?.plots?.[plot]?.breech?.[j.featureId]}
+                          onChange={(e) => {
+                            const was = payload?.plots?.[plot]?.breech || {};
+                            setPlot(plot, "breech",
+                              { ...was, [j.featureId]: e.target.checked });
+                          }} />
+                        <span>{jointLabel(j)}</span>
+                      </label>
+                    ))}
+                    <p className="wi-hint">
+                      Tick each one as it is made. Listed from the supply
+                      outward, which is the order they are worked in.
+                    </p>
+                  </div>
+                )}
+
+                {/* Said, not left looking like a clear run. A plot the
+                    trace could not reach is a fault in the drawing, and
+                    the gang standing at it is the first person able to
+                    notice — but only if the form admits the route was
+                    never found. */}
+                {routeUnknownFor(job, plot) && (
+                  <p className="wi-warn">
+                    The route back from this plot could not be traced when
+                    this call-off was raised, so any breech joints on it
+                    are not listed. Check before you start.
+                  </p>
+                )}
+
                 <div className="wi-fld">
                   <label htmlFor={`wi-cot-${plot}`}>Cut Out Termination</label>
                   <input id={`wi-cot-${plot}`} type="text"
@@ -448,6 +499,24 @@ const CSS = `
 .wi-plot { border: 1px solid #e6eaf0; border-radius: 10px; padding: 12px;
   margin-bottom: 12px; background: #fbfcfe; }
 .wi-plot h3 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
+
+/* Set apart from the fields below it: these are work to do, not
+   answers to give, and a row of ticks reading like the test boxes
+   beneath would be filled in the same absent way. */
+.wi-breech { border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px;
+  padding: 10px 12px; margin-bottom: 12px; }
+.wi-breech h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px; }
+.wi-breech-n { font-size: 11px; font-weight: 700; background: #f59e0b; color: #fff;
+  border-radius: 20px; padding: 1px 7px; }
+.wi-breech-row { display: flex; align-items: center; gap: 10px; padding: 8px 0;
+  font-size: 14px; cursor: pointer; }
+.wi-breech-row input { width: 20px; height: 20px; flex: 0 0 auto; }
+.wi-breech .wi-hint { margin: 6px 0 0; }
+
+.wi-warn { border: 1px solid #fca5a5; background: #fef2f2; color: #991b1b;
+  border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px;
+  line-height: 1.4; }
 
 .wi-sec { background: #fff; border: 1px solid #e6eaf0; border-radius: 12px;
   padding: 16px; margin-bottom: 12px; }

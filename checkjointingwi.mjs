@@ -16,7 +16,9 @@ import { JSDOM } from "jsdom";
 import {
   CHECKLIST, MARKS, OUTCOMES, TESTS,
   isJointingJob, plotsOf, emptyPlot, missingFrom,
+  breechesFor, routeUnknownFor, jointLabel,
 } from "./src/features/field/jointingInstruction.js";
+import { breechSummary, breechesOnRoutes } from "./src/features/gis/serviceBreech.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -145,6 +147,146 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   if (!/getPublicUrl/.test(q)) fail("the as-laid path is not turned into a URL");
   if (!/asLaid:\s*released\s*&&/.test(q)) {
     fail("the as-laid drawing is served on jobs that are not released");
+  }
+}
+
+/* ── An explicit column list names only what its endpoint touches ──
+
+   Listing As_Laid_Captured_At on the call-offs endpoint broke raising a
+   call-off outright — `column ... does not exist` — on an instance
+   where the migration had not reached the running database. That
+   endpoint neither reads nor writes the drawing: it is written by
+   call-off-as-laid.js and read by field-queue.js.
+
+   Fault 4 is about columns an endpoint saves and returns. A list that
+   names everything is not safer, it is wider, and every extra name is
+   one more thing a stale schema can fail on. */
+{
+  const co = readFileSync("./netlify/functions/calloffs.js", "utf8")
+    .replace(/\/\*[\s\S]*?\*\//g, "");
+  for (const col of ["As_Laid_Path", "As_Laid_Captured_At"]) {
+    if (co.includes(col)) {
+      fail(`the call-offs endpoint lists ${col}, which it never reads or writes`
+        + " \u2014 that broke raising a call-off once already");
+    }
+  }
+
+  /* And the two that DO touch it still do. Removing the column from the
+     wrong list must not take it out of the right ones. */
+  const asLaid = readFileSync("./netlify/functions/call-off-as-laid.js", "utf8");
+  for (const col of ["As_Laid_Path", "As_Laid_Captured_At"]) {
+    if (!asLaid.includes(col)) fail(`call-off-as-laid.js no longer writes ${col}`);
+  }
+}
+
+/* ── The breech joints on the way back ──
+
+   A gang connecting a plot works at the meter and at every breech joint
+   between it and the origin, where the feeder divides to reach that
+   plot. Those are connections to make and fittings to carry, and a
+   call-off naming the plots and not the joints sends somebody out
+   short.
+
+   Traced from the same graph everything else reads, so a route found
+   here cannot disagree with what the canvas shows when the same plot is
+   traced by hand. */
+{
+  const F = (id, role, conn, extra = {}) => ({
+    Feature_ID: id, Layer_Key: "electric", Feature_Role: role,
+    Geometry: [[id, 0]], Attributes: { Connects: conn, ...extra },
+  });
+  /* POC 1 → breech 2 → straight 3 → breech 4 → meter 5 (plot 12).
+     Breech 2 also feeds meter 6 (plot 13). Meter 7 (plot 14) is
+     connected to nothing. */
+  const feats = [
+    F(1, "poc", [2]),
+    F(2, "joint", [1, 3, 6], { Joint_Type: "breech" }),
+    F(3, "joint", [2, 4], { Joint_Type: "straight" }),
+    /* The other spelling. The two ways a joint gets placed have never
+       agreed on which they write, and a trace that found only one kind
+       would miss half the joints on a real drawing. */
+    F(4, "joint", [3, 5], { Joint_Code: "BRE" }),
+    F(5, "meter", [4], { Plot_ID: 105 }),
+    F(6, "meter", [2], { Plot_ID: 106 }),
+    F(7, "meter", [], { Plot_ID: 107 }),
+  ];
+  const meters = feats.filter((f) => f.Feature_Role === "meter");
+  const routes = breechesOnRoutes(feats, meters, 1);
+
+  const forPlot = (pid) => routes.find((r) => r.plotId === pid);
+
+  /* Both breeches on the far plot's route, and the straight joint on it
+     left out — a straight joint is not a connection this gang makes. */
+  const far = forPlot(105);
+  if (far?.joints.map((j) => j.featureId).join(",") !== "2,4") {
+    fail(`plot 105's route found joints ${far?.joints.map((j) => j.featureId)}`);
+  }
+  /* Origin outward, not plot backward: a gang works along the cable
+     from where the supply comes in, and a list read the other way has
+     to be reversed in somebody's head while they stand in a hole. */
+  if (far?.joints[0]?.featureId !== 2) {
+    fail("the joints are listed from the plot back, not from the origin out");
+  }
+  /* The nearer plot passes through one of them and not the other. */
+  if (forPlot(106)?.joints.map((j) => j.featureId).join(",") !== "2") {
+    fail("a plot was given a joint that is not on its route");
+  }
+  /* A plot with no route back is reported, not dropped. Left out it
+     would look like a plot with a clear run, which is the ordinary
+     case — and it is a fault in the drawing worth knowing before a gang
+     is booked. */
+  if (forPlot(107)?.reachable !== false) {
+    fail("a plot with no route back was not flagged as unreachable");
+  }
+
+  const sum = breechSummary(feats, meters, 1,
+    (id) => ({ 105: "12", 106: "13", 107: "14" })[id]);
+  /* One breech feeding two plots is one connection to make. Summing
+     across plots would put a number on the call-off no gang
+     recognises. */
+  if (sum.totalJoints !== 2) fail(`${sum.totalJoints} joints counted, not 2`);
+  if (sum.unreachable !== 1) fail("the unreachable plot was not counted");
+  /* Plots with a clear run and nothing to say are left out entirely: a
+     record that always exists and is usually empty is one nobody
+     reads. */
+  if (sum.plots.some((p) => p.reachable && !p.joints.length)) {
+    fail("a plot with a clear run was listed with no joints");
+  }
+
+  /* No origin, or no meters, is not an error — it is a call-off with
+     nothing to trace. */
+  if (breechesOnRoutes(feats, meters, null).length) fail("a null origin produced routes");
+  if (breechesOnRoutes(feats, [], 1).length) fail("no meters produced routes");
+  if (breechesOnRoutes(feats, meters, 999).length) {
+    fail("an origin not on the drawing produced routes");
+  }
+
+  /* And the form reads it back per plot, on the plot number as
+     printed. */
+  const job = { breech: sum };
+  if (breechesFor(job, "12").length !== 2) fail("the form lost plot 12's joints");
+  if (breechesFor(job, 12).length !== 2) {
+    fail("the form matches the plot number by type — \"12\" and 12 are one plot");
+  }
+  if (breechesFor(job, "13").length !== 1) fail("the form lost plot 13's joint");
+  if (breechesFor(job, "99").length) fail("a plot not on the list was given joints");
+  if (breechesFor({}, "12").length) fail("a call-off with no trace produced joints");
+  if (!routeUnknownFor(job, "14")) fail("the form does not say the route was untraceable");
+  if (routeUnknownFor(job, "12")) fail("a traced plot was reported as untraceable");
+
+  /* Named from whichever spelling the drawing carries. */
+  if (jointLabel({ jointCode: "BRE" }) !== "Breech BRE") fail("a coded joint is unnamed");
+  if (jointLabel({ label: "BJ-7" }) !== "BJ-7") fail("the drawing's own label is not used");
+  if (!jointLabel({})) fail("a joint with nothing on it has no name at all");
+
+  /* The queue carries it, and only on the released job. */
+  const q = readFileSync("./netlify/functions/field-queue.js", "utf8");
+  if (!/GIS_Data/.test(q)) fail("the field queue does not read the traced joints");
+  /* Ternary, as the fields around it are — matching `released &&`
+     was matching a spelling this file does not use, and the check
+     failed on correct code. */
+  if (!/breech: released \?/.test(q)) {
+    fail("the joints are served on jobs that are not released");
   }
 }
 

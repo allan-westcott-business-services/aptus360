@@ -129,7 +129,7 @@ export default withAuth(async function handler(req, context, user) {
              — the public one is built below, so renaming the bucket
              does not strand every row. */
           .select("Submission_ID,Site_Name,Site_Address,AP_Number,Project_ID,"
-            + "As_Laid_Path,As_Laid_Captured_At")
+            + "As_Laid_Path,As_Laid_Captured_At,GIS_Data")
           .in("Submission_ID",
             [...new Set(assignments.map((a) => a.Submission_ID).filter(Boolean))])
         : Promise.resolve({ data: [] }),
@@ -206,6 +206,14 @@ export default withAuth(async function handler(req, context, user) {
             .getPublicUrl(s.As_Laid_Path).data.publicUrl
           : null,
         asLaidAt: released ? (s.As_Laid_Captured_At ?? null) : null,
+        /* The breech joints traced back to the origin when the call-off
+           was raised, per plot. The gang works at each of them as well
+           as at the meter, so they are lines on the work instruction
+           rather than something to spot on site.
+
+           Released job only, as everything else here is. Null where the
+           call-off predates this or the route was clear. */
+        breech: released ? (s.GIS_Data?.breech ?? null) : null,
       };
     });
 

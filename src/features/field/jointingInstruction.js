@@ -157,6 +157,55 @@ export function plotsOf(range) {
   return out;
 }
 
+/* The breech joints on this plot's route back to the origin.
+
+   Traced when the call-off was raised and carried on the job — the gang
+   does not work them out on site, and could not: the route from a plot
+   back to the substation or POC is whatever the network tracing says,
+   and on an estate it is not the route anybody would pick by eye.
+
+   Matched on the plot number as printed, because that is what both
+   sides have: the queue sends the number the drawing carries and the
+   form is drawing rows keyed on it. Loose equality on the string form,
+   since "12" from a range and 12 from a plot record are the same plot.
+
+   An empty list where the run is clear. A plot with no breech on the
+   way is the ordinary case and shows nothing rather than an empty
+   heading. */
+export function breechesFor(job, plot) {
+  const rows = job?.breech?.plots;
+  if (!Array.isArray(rows)) return [];
+  const want = String(plot);
+  const hit = rows.find((r) => String(r.plot) === want);
+  return Array.isArray(hit?.joints) ? hit.joints : [];
+}
+
+/* Whether the trace could not reach this plot at all.
+
+   Worth saying loudly on the form. A plot with no route back to the
+   origin is a fault in the drawing, and the gang standing at it is the
+   first person in a position to notice — but only if the form admits
+   the route was never found, rather than showing it as a plot with no
+   joints, which is what a clear run looks like. */
+export function routeUnknownFor(job, plot) {
+  const rows = job?.breech?.plots;
+  if (!Array.isArray(rows)) return false;
+  const hit = rows.find((r) => String(r.plot) === String(plot));
+  return !!hit && hit.reachable === false;
+}
+
+/* What a joint is called on the form.
+
+   Two spellings reach here because the two ways a joint gets placed
+   have never agreed on which they write — one carries Joint_Type, the
+   other Joint_Code. The label wins where the drawing has one, since
+   that is what is written on the drawing the gang is holding. */
+export function jointLabel(j) {
+  return j?.label
+    || (j?.jointCode ? `Breech ${j.jointCode}` : null)
+    || (j?.featureId != null ? `Breech joint ${j.featureId}` : "Breech joint");
+}
+
 /* An empty answer set for a plot, so a row that has been opened and not
    filled in is distinguishable from one never reached. */
 export const emptyPlot = () => ({

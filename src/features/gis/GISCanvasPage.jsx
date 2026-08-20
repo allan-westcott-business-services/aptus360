@@ -141,6 +141,7 @@ import {
 } from "../../api/calloffs.js";
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
+import { breechSummary } from "./serviceBreech.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -9535,6 +9536,42 @@ export default function GISCanvasPage() {
           && firstElectricCallOff(priorServices,
             electricUtilityId(lookups?.utilities || [])),
         Notes: serviceNote || null,
+        /* ── The breech joints on the way back ──
+
+           A gang connecting a plot works at the meter and at every
+           breech joint between it and the origin, where the feeder
+           divides to reach that plot. Those are connections to make and
+           fittings to carry, and a call-off naming the plots and not
+           the joints sends somebody out short.
+
+           Traced rather than guessed: the route from a plot back to the
+           substation or POC is whatever the network tracing says, and
+           on an estate it is not the route anybody would pick by eye.
+
+           Taken now, at the moment of raising, for the reason the span
+           pictures are: if the design is redrawn afterwards the gang
+           still gets what was called off. A call-off that recomputed
+           itself on opening would change under a booking somebody had
+           already been given.
+
+           Stored in GIS_Data, which is jsonb and was carrying nothing.
+           A column per joint would be a migration for every question
+           the work instruction ever gains \u2014 the same argument
+           Field_Submission.Payload makes for the form itself. */
+        GIS_Data: (() => {
+          const origin = lvOrigin(features);
+          if (!origin) return null;
+          const meters = metersOfSeeds(features,
+            features.filter((f) => f.Feature_Role === "plot"
+              && servicePlots.includes(plotOfSeed(f, plotList))));
+          const b = breechSummary(features, meters, origin.Feature_ID,
+            (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? null);
+          /* Null rather than an empty shape where there is nothing to
+             say. A record that always exists and is usually empty is one
+             nobody reads. */
+          if (!b.plots.length) return null;
+          return { breech: b };
+        })(),
       });
 
       /* ── The as-laid drawing, taken now ──

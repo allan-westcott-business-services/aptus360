@@ -421,7 +421,23 @@ export default function CallOffsPage() {
             (Number(a.Display_Order) || 0) - (Number(b.Display_Order) || 0));
         }
       }
-      const states = phases.map((t) => ({
+      /* ── The same two phases the detail page leaves out ──
+
+         The Assigned column listed Excavation & Lay and Reinstatement
+         on every service call-off, neither of which is booked there,
+         and both of which therefore sat permanently uncovered. That
+         made the column read Unassigned on a call-off whose jointing
+         was fully booked, and — because `worst` below drives the sort
+         and the filter — put every finished service call-off at the top
+         of a list of things needing attention.
+
+         Filtered through the same function the detail page uses rather
+         than by repeating the two patterns here. The list and the
+         detail page were showing different phase sets for one call-off
+         for exactly as long as this was missing. */
+      const listed = phasesToShow(phases, r.Work_Type?.Work_Type_Name);
+
+      const states = listed.map((t) => ({
         taskTypeId: t.Task_Type_ID,
         name: t.Task_Type_Name,
         state: phaseCover(r.items || [],
@@ -2393,13 +2409,15 @@ function Assignments({ row }) {
     );
   }
 
-  /* An electric service is laid in the trench the mains call-off dug,
-     and the ground is reinstated once for the street rather than plot
-     by plot. So those two sections are not booked here.
+  /* A service goes into a trench that is already open — the dig and the
+     cable are done before jointing starts — and the ground is
+     reinstated once for the street rather than plot by plot. So those
+     two sections are not booked here.
 
-     Filtered rather than taken off the work type: the same mapping
-     drives the schedule and the cover states, and other utilities do
-     dig for their services. */
+     Every utility, not only electric: a gas and water service does not
+     book them either. Filtered rather than taken off the work type,
+     because the same mapping drives the schedule and the cover states —
+     the phases still happen, they are booked on the mains call-off. */
   const shownPhases = phasesToShow(phases, row.Work_Type?.Work_Type_Name);
   const notHere = phasesHidden(phases, row.Work_Type?.Work_Type_Name);
 
@@ -2427,8 +2445,8 @@ function Assignments({ row }) {
         <p className="hint">
           {notHere.map((p) => shortPhase(p.Task_Type_Name)).join(" and ")}
           {notHere.length === 1 ? " is" : " are"} booked on the mains call-off,
-          not here &mdash; an electric service is laid in the trench the mains
-          gang dug.
+          not here &mdash; the dig and the cable are done before jointing
+          starts, and the ground goes back once for the street.
         </p>
       )}
 

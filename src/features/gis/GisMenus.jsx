@@ -1,4 +1,5 @@
 import { useState, useRef, useEffect } from "react";
+import { alpha } from "../../lib/colour.js";
 
 /* The canvas menu bar.
 
@@ -63,11 +64,32 @@ export function Menu({
      Only a press that would OPEN is put to the handler. Closing is
      never refused \u2014 a menu that will not dismiss is a trap. */
   onOpen,
+  /* The utility colour to shade this button in, or null/undefined for
+     an ordinary button. Set only on the design currently on screen —
+     see `utilityTint` in utilityMenu.js, which decides it from the
+     drawing rather than from which button was pressed last.
+
+     Passed as a colour rather than as a boolean plus a lookup here,
+     because the bar has no business knowing which of its buttons are
+     utilities. */
+  tint,
 }) {
   const isOpen = open === id;
+  /* Built in JS as eight-digit hex, which is the house idiom for a
+     translucent variant — `color-mix()` was backed out of the area
+     tiles because a browser that does not know it drops the whole
+     declaration, taking the background with it. */
+  const shade = tint ? {
+    "--gm-tint": alpha(tint, 16),
+    "--gm-glow": alpha(tint, 30),
+    "--gm-edge": alpha(tint, 45),
+    "--gm-line": tint,
+  } : undefined;
   return (
     <div className="gm-wrap">
-      <button className={isOpen ? "gm-btn on" : "gm-btn"}
+      <button className={[isOpen ? "gm-btn on" : "gm-btn", tint ? "util" : ""]
+        .filter(Boolean).join(" ")}
+        style={shade}
         aria-expanded={isOpen} aria-haspopup="true"
         onClick={() => {
           if (isOpen) { setOpen(null); return; }
@@ -249,6 +271,29 @@ const CSS = `
   align-items: center; gap: 6px; white-space: nowrap; }
 .gm-btn:hover { background: var(--bg); }
 .gm-btn.on { background: var(--accent); color: #fff; border-color: var(--accent); }
+
+/* The design currently on screen.
+
+   Shaded over the same area that greys on hover, so the button reads as
+   one control in two states rather than as a button with a badge on it.
+
+   Hover stays, in the utility's own colour rather than the grey: a
+   button that stopped answering the mouse would read as disabled, which
+   is the opposite of what being the live design means. Same reason the
+   open state below keeps the shading instead of handing the whole
+   button to the accent — the accent says "this menu is open", which is
+   already obvious from the menu being open, and it would hide the one
+   thing the shading is here to say at exactly the moment somebody is
+   working in that utility.
+
+   Text stays dark throughout. These are light tints of saturated
+   colours; white on a 30% red is unreadable, and #ffbb00 is the kind of
+   amber that defeats white text at any strength. */
+.gm-btn.util { background: var(--gm-tint); border-color: var(--gm-edge); }
+.gm-btn.util:hover { background: var(--gm-glow); }
+.gm-btn.util.on { background: var(--gm-glow); border-color: var(--gm-line);
+  color: var(--text); }
+.gm-btn.util.on .gm-badge { background: var(--accent); color: #fff; }
 .gm-badge { background: rgba(255,255,255,.25); border-radius: 20px; padding: 0 6px;
   font-size: 10px; font-weight: 700; }
 .gm-btn:not(.on) .gm-badge { background: var(--accent); color: #fff; }

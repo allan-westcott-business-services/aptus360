@@ -73,7 +73,7 @@ import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
 } from "./joints.js";
 import { inLightingView } from "./lightingView.js";
-import { utilityMenuPress } from "./utilityMenu.js";
+import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
 import { routePocToSubstation } from "./route.js";
 import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
@@ -15528,7 +15528,8 @@ export default function GISCanvasPage() {
                          electric"; the menu is a list of things to do
                          to a drawing that was not on screen when the
                          press was made. */
-                      onOpen={() => utilityMenuOpen("electric", "Electric")}>
+                      onOpen={() => utilityMenuOpen("electric", "Electric")}
+                      tint={utilityTint("electric", { solo, shownOnly }, layers)}>
                       {/* ── Network first ──
 
                           The order somebody works in: plant down, cable
@@ -15790,7 +15791,8 @@ export default function GISCanvasPage() {
                              on Electric above. `name` is passed for the
                              message, since a utility with no layer on
                              this drawing has no Label to read. */
-                          onOpen={() => utilityMenuOpen(key, name)}>
+                          onOpen={() => utilityMenuOpen(key, name)}
+                          tint={utilityTint(key, { solo, shownOnly }, layers)}>
                           {/* ── Network first ──
 
                               The order somebody works in: put the origin
@@ -16004,11 +16006,18 @@ export default function GISCanvasPage() {
                     })}
 
                     <Menu id="lighting" label="Street Lighting" open={open} setOpen={setOpen}
-                      /* Isolated on opening, as the other utility menus
-                         are. It had no isolate at all rather than a
-                         guarded one, so opening it left whatever was on
-                         screen exactly where it was. */
-                      onOpen={() => soloClass("lighting", true)}>
+                      /* Isolated on the first press and opened on the
+                         second, as the other three utility menus are.
+
+                         It was the odd one out twice over: it had no
+                         isolate at all to begin with, and then kept the
+                         one-press form after the others were split. A
+                         bar where three buttons take two presses and the
+                         fourth takes one is worse than either rule
+                         applied throughout — the exception is invisible
+                         until it surprises somebody. */
+                      onOpen={() => utilityMenuOpen("lighting", "Street Lighting")}
+                      tint={utilityTint("lighting", { solo, shownOnly }, layers)}>
                       {/* Drawing first, as on the other utility menus: it
                           is what somebody opens this to do. */}
                       <MenuGroup label="Draw" />

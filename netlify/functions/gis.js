@@ -50,10 +50,14 @@ export default withAuth(async function handler(req, context) {
          have needed the same fallback written again — and the one that
          got missed would be the one drawing in grey.
 
-         Done at read time rather than by rewriting the rows, because
-         Colour is NOT NULL on both tables and neither is editable
-         anywhere in the application. Nothing is destroyed: clearing the
-         utility's colour puts every drawing back exactly as it was.
+         This used to be a correction: the rows held a stale palette
+         from 0051 and this overlaid the right colour on the way past.
+         0183 deleted those copies, so it is an inheritance now — the
+         column is nullable and NULL on every layer a utility owns, and
+         there is nothing left to overwrite. The coalesce stays because
+         an instance that has not run 0183 must still draw correctly,
+         and because it is what makes the colour optional rather than
+         absent: a layer with no utility keeps its own.
 
          A layer takes its utility's colour outright. It stands
          one-to-one with the utility — the electric layer is the

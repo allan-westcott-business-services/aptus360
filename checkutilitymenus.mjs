@@ -63,14 +63,20 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     fail("nothing isolates electric when its menu button is pressed");
   }
 
-  /* Street Lighting still isolates and opens in one press. It is the
-     one menu the two-press rule was not asked for, so it is pinned
-     here rather than left to drift into whichever behaviour the next
-     edit happens to give it. If it is brought into line, this line
-     changes to match the electric one above and the mount below gains
-     a lighting case — do not simply delete it. */
-  if (!canvas.includes(`soloClass("lighting", true)`)) {
-    fail("nothing isolates lighting when its menu opens");
+  /* Street lighting, on the same rule as the rest since it was brought
+     into line. It was the exception twice — no isolate at all to begin
+     with, then the one-press form after the others were split — so it
+     is named separately rather than covered by a count, which is how
+     the missing isolate hid the first time.
+
+     `soloClass("lighting", true)` must NOT come back: that is the
+     one-press form, and it would leave three buttons wanting two
+     presses and a fourth wanting one. */
+  if (!/onOpen=\{[^}]*utilityMenuOpen\("lighting"/.test(canvas)) {
+    fail("street lighting does not isolate on the first press like the others");
+  }
+  if (canvas.includes(`soloClass("lighting", true)`)) {
+    fail("street lighting is back to isolating and opening in one press");
   }
 
   /* Gas and water are one handler over a list of two. Both halves are
@@ -380,6 +386,94 @@ const onScreen = (keys) => {
   if (utilityMenuPress("gas", { solo: "gas", shownOnly: ["gas"] }) !== "open") {
     fail("a utility isolated from the Layers menu still demanded two presses");
   }
+
+  /* ── Every utility menu is shaded, and only while it is live ──
+
+     The colour comes off the layer, which is what the drawing is
+     rendered in, so the button and the lines under it cannot disagree.
+     There is no table of hexes to check against any more: 0183 made
+     Utility.Colour the only record of a utility's colour, and the
+     endpoint hands it over on the layer. */
+  const { utilityTint } = await import(
+    process.cwd() + "/src/features/gis/utilityMenu.js");
+
+  /* Layers as the endpoint delivers them — colour already resolved. */
+  const LAYERS = [
+    { Layer_Key: "electric", Colour: "#ffbb00" },
+    { Layer_Key: "gas", Colour: "#ff0000" },
+    { Layer_Key: "water", Colour: "#2ccc00" },
+    { Layer_Key: "lighting", Colour: "#ffbb00" },
+    { Layer_Key: "trench", Colour: "#a855f7" },
+  ];
+
+  for (const key of ["electric", "gas", "water", "lighting"]) {
+    const want = LAYERS.find((l) => l.Layer_Key === key).Colour;
+    if (utilityTint(key, { solo: key, shownOnly: [key] }, LAYERS) !== want) {
+      fail(`the ${key} button is not shaded in its layer's colour`);
+    }
+    if (utilityTint(key, { solo: "trench", shownOnly: ["trench"] }, LAYERS) !== null) {
+      fail(`the ${key} button is shaded while another design is on screen`);
+    }
+  }
+
+  /* The colour is read, not recognised: recolour the layer and the
+     shading follows. This is what catches a lookup table creeping back
+     in beside it. */
+  if (utilityTint("gas", { solo: "gas", shownOnly: ["gas"] },
+    [{ Layer_Key: "gas", Colour: "#123456" }]) !== "#123456") {
+    fail("the shading does not follow the layer's colour");
+  }
+
+  /* A utility with no layer on this drawing shades nothing rather than
+     falling back to a colour invented here. An empty utility is a real
+     answer, and a hardcoded fallback is the copy 0183 removed. */
+  if (utilityTint("water", { solo: "water", shownOnly: ["water"] },
+    LAYERS.filter((l) => l.Layer_Key !== "water")) !== null) {
+    fail("a utility with no layer on the drawing still shaded its button");
+  }
+
+  /* Only one at a time, which is what tells electric from lighting
+     given they share a shade. */
+  const lit = ["electric", "gas", "water", "lighting"]
+    .filter((k) => utilityTint(k, { solo: "gas", shownOnly: ["gas"] }, LAYERS));
+  if (lit.length !== 1 || lit[0] !== "gas") {
+    fail(`${lit.length} buttons shaded at once: ${lit.join(", ")}`);
+  }
+
+  /* All four are wired in, and each is handed the layers — a tint call
+     without them shades nothing, silently and for ever. */
+  for (const call of ['utilityTint("electric"', "utilityTint(key,",
+    'utilityTint("lighting"']) {
+    if (!canvas.includes(call)) fail(`no menu asks for a tint via ${call}...)`);
+  }
+  for (const m of canvas.matchAll(/utilityTint\([^)]*\)/g)) {
+    if (!/,\s*layers\)$/.test(m[0])) {
+      fail(`a tint is asked for without the layers to read: ${m[0]}`);
+    }
+  }
+
+  /* ── And no utility colour is written into the application ──
+
+     The whole point of 0183. These may appear in the mock fixtures,
+     which stand in for a response that has already resolved them, and
+     nowhere else. Comments are stripped first so that describing a
+     colour does not count as recording one. */
+  {
+    const { readdirSync, statSync } = await import("node:fs");
+    const walk = (dir) => readdirSync(dir).flatMap((n) => {
+      const f = `${dir}/${n}`;
+      return statSync(f).isDirectory() ? walk(f) : [f];
+    });
+    const HEX = /#(?:ffbb00|ff0000|2ccc00)/i;
+    for (const f of walk("./src").filter((x) => /\.(js|jsx)$/.test(x))) {
+      if (f.endsWith("/api/gis.js") || f.endsWith("/lib/mockData.js")) continue;
+      const body = readFileSync(f, "utf8")
+        .replace(/\/\*[\s\S]*?\*\//g, "").replace(/\/\/[^\n]*/g, "");
+      if (HEX.test(body)) {
+        fail(`${f.slice(2)} writes a utility colour — it belongs to Utility.Colour`);
+      }
+    }
+  }
 }
 
 /* ── And the button obeys it ──
@@ -428,11 +522,18 @@ const onScreen = (keys) => {
   new Function("require", "module", "exports", "globalThis",
     bundle.outputFiles[0].text)(shim, mod, mod.exports, globalThis);
   const { MenuBar, Menu, MenuItem } = mod.exports;
+  /* The drawing's colours, as the canvas receives them. */
+  const COLOUR = { gas: "#ff0000", electric: "#ffbb00" };
 
   /* A drawing with two utility menus on it, sharing one isolate. The
      handler is the canvas's, in miniature: isolate and refuse, or allow
      the open — the branch under test, without the other twelve thousand
-     lines around it. */
+     lines around it.
+
+     `tint` is derived from the same `isolated` the handler reads, which
+     is how the canvas does it: both come off the drawing, so the shaded
+     button and the open-on-first-press button are the same button by
+     construction rather than by agreement. */
   const h = React.createElement;
   let isolated = "gas";                    // looking at gas
   const presses = [];
@@ -443,12 +544,13 @@ const onScreen = (keys) => {
       isolated = key;                      // change the subject, refuse
       return false;
     };
+    const tintFor = (key) => (isolated === key ? COLOUR[key] : null);
     return h(MenuBar, null, ({ open, setOpen }) => [
       h(Menu, { key: "gas", id: "gas", label: "Gas", open, setOpen,
-        onOpen: () => press("gas") },
+        onOpen: () => press("gas"), tint: tintFor("gas") },
       h(MenuItem, { label: "Gas thing" })),
       h(Menu, { key: "electric", id: "electric", label: "Electric", open, setOpen,
-        onOpen: () => press("electric") },
+        onOpen: () => press("electric"), tint: tintFor("electric") },
       h(MenuItem, { label: "Electric thing" })),
     ]);
   }
@@ -482,6 +584,97 @@ const onScreen = (keys) => {
   // Pressed again, with electric on screen, it opens.
   await click("Electric");
   if (!shows("Electric thing")) fail("the electric menu did not open on the second press");
+
+  /* ── Shaded in the utility's colour while it is the live design ──
+
+     Read off the rendered button, not off the source: the shading is
+     three CSS rules and a custom property, and every way this can break
+     — a class not applied, a variable not set, the open state painting
+     over it — is invisible to a grep. */
+  {
+    const e = btn("Electric");
+    if (!e.classList.contains("util")) {
+      fail("the electric button is not shaded while electric is the live design");
+    }
+    /* The full colour, and the tint derived from it. Checking only that
+       something is set would pass on an empty string. */
+    const line = e.style.getPropertyValue("--gm-line").trim();
+    if (line !== COLOUR.electric) {
+      fail(`the electric button is shaded ${line || "nothing"}, not ${COLOUR.electric}`);
+    }
+    const tint = e.style.getPropertyValue("--gm-tint").trim();
+    if (!tint.startsWith(COLOUR.electric) || tint.length !== 9) {
+      fail(`the electric tint is not an eight-digit hex of its colour: ${tint}`);
+    }
+
+    /* And the button for the utility that is NOT on screen is not
+       shaded. A bar with every utility lit says nothing at all. */
+    const g = btn("Gas");
+    if (g.classList.contains("util")) {
+      fail("the gas button is shaded while the electric design is on screen");
+    }
+    if (g.style.getPropertyValue("--gm-line")) {
+      fail("the gas button carries a colour it should not");
+    }
+
+    /* Open does not paint over it. The accent would say "menu open",
+       which the open menu already says, and would hide the utility at
+       the moment somebody is working in it. */
+    if (!e.classList.contains("on")) fail("the electric button is not marked open");
+    if (!e.classList.contains("util")) {
+      fail("opening the menu dropped the shading");
+    }
+  }
+
+  /* ── And the stylesheet actually paints it ──
+
+     The classes above being right proves nothing about what is drawn:
+     `.gm-btn.on` and `.gm-btn.util` have the same specificity, so which
+     one wins is decided by which is written last, and `.on` sets white
+     text that is unreadable on every one of these tints. jsdom cannot
+     settle it — it does not resolve custom properties, so the computed
+     background of a `var(--gm-tint)` rule comes back transparent and a
+     test that read it would pass on anything. So the rules are read
+     instead, for the three hazards that are invisible in the classes. */
+  {
+    const menus = readFileSync("./src/features/gis/GisMenus.jsx", "utf8");
+    const css = menus.slice(menus.indexOf("const CSS = `"));
+
+    const at = (sel) => css.indexOf(sel + " {");
+    const rule = (sel) => {
+      const i = at(sel);
+      return i < 0 ? null : css.slice(i, css.indexOf("}", i));
+    };
+
+    const shaded = rule(".gm-btn.util");
+    if (!shaded) fail("nothing shades the live design's button");
+    else if (!/background:\s*var\(--gm-tint\)/.test(shaded)) {
+      fail("the shading is not the tint the button is given");
+    }
+
+    /* Same specificity, so source order decides. `.util` after `.on`. */
+    if (at(".gm-btn.util") >= 0 && at(".gm-btn.on") >= 0
+      && at(".gm-btn.util") < at(".gm-btn.on")) {
+      fail("`.gm-btn.on` is written after `.gm-btn.util`, so the accent wins");
+    }
+
+    /* The open state keeps the shading AND takes back the white text.
+       Without this rule the button is a light tint carrying `color:
+       #fff` from `.on` — the label disappears. */
+    const open = rule(".gm-btn.util.on");
+    if (!open) {
+      fail("no rule for a shaded button with its menu open — the accent paints over it");
+    } else {
+      if (!/color:/.test(open)) fail("the open shaded button keeps `.on`'s white text");
+      if (/var\(--accent\)/.test(open)) fail("the open shaded button reverts to the accent");
+    }
+
+    /* Hover stays. A button that stopped answering the mouse would read
+       as disabled, which is the opposite of being the live design. */
+    if (!rule(".gm-btn.util:hover")) {
+      fail("the shaded button has no hover state");
+    }
+  }
 
   /* Pressing it once more closes it. A refusal must never be able to
      make a menu that will not dismiss — the button that opened it is

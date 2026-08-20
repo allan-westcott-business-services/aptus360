@@ -4,23 +4,46 @@ const delay = (ms) => new Promise((r) => setTimeout(r, ms));
 let store = [];
 let nid = 20000;
 
+/* The layers as the endpoint hands them over, not as the tables hold
+   them.
+
+   These fixtures stand in for the response, and the response has the
+   utility's colour already applied — see the note in
+   netlify/functions/gis.js. So the utility layers carry the resolved
+   colour here rather than a NULL and a Utility_ID for something to
+   resolve. Mocking the raw rows instead would mean mocking the
+   inheritance too, which is a second implementation of it and the thing
+   that lets a mock drift from what it stands for.
+
+   The colours themselves live in Utility.Colour and nowhere else (0183).
+   These four are a copy of what the four rows say, in the one place a
+   copy is unavoidable: mock data has no database behind it. If the
+   utilities are recoloured in Admin, these are the only lines in the
+   application that need following, and only VITE_USE_MOCKS sees them.
+
+   Street lighting shares electric's amber, as it does in the utility
+   table — a lighting cable is an electric cable to anyone reading a
+   drawing. */
 const MOCK_LAYERS = [
   { Layer_Key: "boundary", Label: "Site boundary", Colour: "#0f172a", Sort_Order: 10 },
   { Layer_Key: "plot", Label: "Plots", Colour: "#2563eb", Sort_Order: 20 },
-  { Layer_Key: "electric", Label: "Electric", Colour: "#f59e0b", Sort_Order: 30 },
-  { Layer_Key: "gas", Label: "Gas", Colour: "#10b981", Sort_Order: 40 },
-  { Layer_Key: "water", Label: "Water", Colour: "#3b82f6", Sort_Order: 50 },
+  { Layer_Key: "electric", Label: "Electric", Colour: "#ffbb00", Utility_ID: 1, Sort_Order: 30 },
+  { Layer_Key: "gas", Label: "Gas", Colour: "#ff0000", Utility_ID: 2, Sort_Order: 40 },
+  { Layer_Key: "water", Label: "Water", Colour: "#2ccc00", Utility_ID: 3, Sort_Order: 50 },
+  { Layer_Key: "lighting", Label: "Street Lighting", Colour: "#ffbb00", Utility_ID: 4, Sort_Order: 55 },
   { Layer_Key: "trench", Label: "Trenches", Colour: "#a855f7", Sort_Order: 60 },
   { Layer_Key: "note", Label: "Notes", Colour: "#64748b", Sort_Order: 70 },
 ];
 
 const MOCK_LINE_TYPES = [
-  { Type_Key: "elec_main", Label: "Electric main", Layer_Key: "electric", Colour: "#f59e0b", Width_px: 3.5, Dashed: false },
-  { Type_Key: "elec_service", Label: "Electric service", Layer_Key: "electric", Colour: "#f59e0b", Width_px: 1.8, Dashed: false },
-  { Type_Key: "gas_main", Label: "Gas main", Layer_Key: "gas", Colour: "#10b981", Width_px: 3.5, Dashed: false },
-  { Type_Key: "gas_service", Label: "Gas service", Layer_Key: "gas", Colour: "#10b981", Width_px: 1.8, Dashed: false },
-  { Type_Key: "water_main", Label: "Water main", Layer_Key: "water", Colour: "#3b82f6", Width_px: 3.5, Dashed: false },
-  { Type_Key: "water_service", Label: "Water service", Layer_Key: "water", Colour: "#3b82f6", Width_px: 1.8, Dashed: false },
+  { Type_Key: "elec_main", Label: "Electric main", Layer_Key: "electric", Colour: "#ffbb00", Width_px: 3.5, Dashed: false },
+  { Type_Key: "elec_service", Label: "Electric service", Layer_Key: "electric", Colour: "#ffbb00", Width_px: 1.8, Dashed: false },
+  { Type_Key: "gas_main", Label: "Gas main", Layer_Key: "gas", Colour: "#ff0000", Width_px: 3.5, Dashed: false },
+  { Type_Key: "gas_service", Label: "Gas service", Layer_Key: "gas", Colour: "#ff0000", Width_px: 1.8, Dashed: false },
+  { Type_Key: "water_main", Label: "Water main", Layer_Key: "water", Colour: "#2ccc00", Width_px: 3.5, Dashed: false },
+  { Type_Key: "water_service", Label: "Water service", Layer_Key: "water", Colour: "#2ccc00", Width_px: 1.8, Dashed: false },
+  { Type_Key: "light_main", Label: "Lighting cable", Layer_Key: "lighting", Colour: "#ffbb00", Width_px: 2.2, Dashed: false },
+  { Type_Key: "light_service", Label: "Lighting service", Layer_Key: "lighting", Colour: "#ffbb00", Width_px: 1.4, Dashed: false },
   { Type_Key: "trench_joint", Label: "Joint trench", Layer_Key: "trench", Colour: "#a855f7", Width_px: 6, Dashed: false },
   { Type_Key: "trench_sep", Label: "Separate trench", Layer_Key: "trench", Colour: "#a855f7", Width_px: 6, Dashed: true },
 ];

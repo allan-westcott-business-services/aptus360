@@ -45,3 +45,40 @@ export function isIsolatedTo(key, { solo, shownOnly = [] }) {
 export function utilityMenuPress(key, state) {
   return isIsolatedTo(key, state) ? "open" : "isolate";
 }
+
+/* ── The colour a utility is known by ──
+
+   The menu button for the design you are in is shaded in it, so the bar
+   answers "which drawing am I looking at" without being read.
+
+   Taken off the layer, which is the colour the drawing is rendered in,
+   so the button and the lines under it cannot disagree. The layer no
+   longer stores one: 0183 deleted the stale palette and the endpoint
+   hands over the utility's, which is now the only record of it. That is
+   why there is no table of hexes here. There was one, briefly, holding
+   the four colours because no single field yielded all four — and it
+   was a fourth copy of a fact three tables already held, which is the
+   fault that made 0183 necessary. Do not put it back: if a utility
+   comes out the wrong colour the row is wrong, and Admin is where to
+   fix it.
+
+   Electric and street lighting share an amber. Only one utility is ever
+   isolated at a time, so which button is shaded is what distinguishes
+   them, not the shade. */
+
+/* The colour to shade a menu button in, or null for no shading.
+
+   `layers` is the list the canvas already holds. A key with no layer on
+   this drawing shades nothing rather than guessing — an empty utility
+   is still a real answer, and a button shaded in a colour invented here
+   would be the copy this just got rid of.
+
+   Keyed on the same condition that decides whether the button opens its
+   menu, so the shaded button and the two-press button cannot disagree:
+   the drawing is the one record both read. A button that looked active
+   but still demanded a first press would be the worse half of both
+   behaviours. */
+export function utilityTint(key, state, layers = []) {
+  if (!isIsolatedTo(key, state)) return null;
+  return layers.find((l) => l.Layer_Key === key)?.Colour ?? null;
+}

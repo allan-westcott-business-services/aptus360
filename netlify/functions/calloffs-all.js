@@ -128,7 +128,13 @@ export default withAuth(async function handler(req) {
 
       if (assignments.length) {
         const { data: wd } = await db.from("Call_Off_Work_Day")
-          .select("Work_Day_ID,Assignment_ID,Work_Date,Part")
+          /* Off_Site and Plot_Range were already read by the page and not
+             selected here, so a day's part-day and per-day plots came
+             back undefined — fault 4, and present before Node_Range
+             joined them. Node_Range is the mains joints made on the day
+             (0186). */
+          .select("Work_Day_ID,Assignment_ID,Work_Date,Part,Off_Site,"
+            + "Plot_Range,Node_Range")
           .in("Assignment_ID", assignments.map((a) => a.Assignment_ID))
           .then((r) => r, () => ({ data: [] }));
         workDays = wd || [];

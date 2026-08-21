@@ -290,6 +290,76 @@ for (const phase of ["Excavation and Lay", "Reinstatement"]) {
   }
 }
 
+/* ── Mains joints booked per day ──
+
+   A breech joint is a mains joint and is made on its own: a gang makes
+   A1 on the Monday and connects the plots past it on the Tuesday. So
+   the joints a day covers are chosen separately from its plots, and
+   neither is derived from the other \u2014 deriving them would be wrong in
+   exactly the case a planner most needs, the day where a joint is made
+   and nothing is connected. */
+{
+  const { parseNodes, serialiseNodes } = await import(
+    process.cwd() + "/src/features/calloffs/assignments.js");
+
+  /* Node labels, not plot numbers. parsePlots expands "18-22" into a
+     run; a hyphen in a node label is part of the name. */
+  if (parseNodes("A1, A4").join("|") !== "A1|A4") {
+    fail(`"A1, A4" parsed to ${parseNodes("A1, A4").join("|")}`);
+  }
+  if (parseNodes("A1-A4").length !== 1) {
+    fail("a node label containing a hyphen was expanded as a range");
+  }
+  /* A joint is made once, whatever the text says twice. */
+  if (parseNodes("A1, A4, A1").length !== 2) fail("a repeated joint appeared twice");
+  for (const junk of ["", null, undefined, " , "]) {
+    if (parseNodes(junk).length) fail(`${JSON.stringify(junk)} produced joints`);
+  }
+
+  /* Empty is null, never "": a day with none booked and a day whose
+     selection was cleared are the same thing. */
+  if (serialiseNodes([]) !== null) fail("an empty selection stored as text");
+  if (serialiseNodes(["A1", "A1"]) !== "A1") fail("a duplicate was stored");
+
+  /* Round trip. */
+  if (serialiseNodes(parseNodes("A1, A4")) !== "A1, A4") {
+    fail("a day's joints do not survive being stored and read back");
+  }
+
+  /* ── And it reaches the database and comes back ──
+
+     A column added and not selected is neither saved nor returned,
+     which is fault 4 and has bitten this repo repeatedly. */
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  /* The per-day write specifically. `Node_Range: splitByDay` also
+     matches the assignment-level one, so the loose form passed with the
+     day write deleted — which is the half that matters here. */
+  if (!/Node_Range: splitByDay\s*\n\s*\? serialiseNodes\(draft\.dayNodes/.test(page)) {
+    fail("a day's mains joints are never written");
+  }
+  if (!/Node_Range: splitByDay \? null : serialiseNodes\(/.test(page)) {
+    fail("a booking that is not split by day records no mains joints");
+  }
+  if (!/parseNodes\(d\.Node_Range\)/.test(page)) {
+    fail("a day's mains joints are never read back");
+  }
+  for (const f of ["./netlify/functions/calloffs-all.js",
+    "./netlify/functions/planning.js"]) {
+    if (!/Node_Range/.test(readFileSync(f, "utf8"))) {
+      fail(`${f.split("/").pop()} does not return Node_Range, so the`
+        + " selection is written and never seen again");
+    }
+  }
+
+  /* Nothing chosen means NONE, not all of them \u2014 which differs from
+     the plots on purpose. Every plot is connected sooner or later, so an
+     empty plot selection means "the rest"; a joint is made once, so an
+     empty joint selection means none that day. */
+  if (!/none this day/.test(page)) {
+    fail("a day with no joints chosen reads as covering all of them");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Call-off phases behave (a service call-off books no dig and no reinstatement).");
 process.exit(bad ? 1 : 0);

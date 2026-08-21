@@ -27,6 +27,32 @@ export function fmtDate(d) {
    Text is how the work is described on site and how the original stores
    it. Expanding is needed to tell whether two assignments overlap;
    collapsing is needed so what is saved reads the way somebody wrote it. */
+/* The mains joints on a booking, from the text a day stores.
+
+   Node labels, not plot numbers: A1, A4, E0. Split on commas and
+   nothing else — parsePlots expands "18-22" into a run, and a hyphen in
+   a node label is part of the name, not a range. Passing these through
+   it would turn one joint into gibberish or several.
+
+   Order kept as written, and duplicates dropped: a joint is made once,
+   whatever the text says twice. */
+export function parseNodes(text) {
+  const out = [];
+  for (const part of String(text || "").split(",")) {
+    const n = part.trim();
+    if (n && !out.includes(n)) out.push(n);
+  }
+  return out;
+}
+
+/* And back, for storing. Empty is null, never "": a day with no joints
+   booked and a day whose selection was cleared are the same thing, and
+   two spellings of nothing is one more thing to test for. */
+export function serialiseNodes(nodes = []) {
+  const list = [...new Set(nodes.map((n) => String(n).trim()).filter(Boolean))];
+  return list.length ? list.join(", ") : null;
+}
+
 export function parsePlots(text) {
   const out = [];
   for (const part of String(text ?? "").split(",")) {

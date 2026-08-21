@@ -45,7 +45,7 @@ const SUB_COLS = [
 
 const ASGN_COLS = [
   "Assignment_ID", "Submission_ID", "Task_Type_ID", "Team_ID", "Span_ID",
-  "Start_Date", "End_Date", "Plot_Range", "Status",
+  "Start_Date", "End_Date", "Plot_Range", "Node_Range", "Status",
   /* Whether the paperwork that sends a gang to site has been raised
      (0150). Not the status: a booking can be scheduled with no
      instruction written yet. */
@@ -141,7 +141,7 @@ export default withAuth(async function handler(req) {
     let workDays = [];
     if (assignments.length) {
       const { data } = await db.from("Call_Off_Work_Day")
-        .select("Work_Day_ID,Assignment_ID,Work_Date,Part,Off_Site")
+        .select("Work_Day_ID,Assignment_ID,Work_Date,Part,Off_Site,Plot_Range,Node_Range")
         .in("Assignment_ID", assignments.map((a) => a.Assignment_ID))
         .order("Work_Date");
       workDays = data || [];

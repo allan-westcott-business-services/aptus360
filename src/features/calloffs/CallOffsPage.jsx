@@ -22,7 +22,7 @@ import { adminList, adminCreate, adminUpdate, adminDelete } from "../../api/admi
 import { pillStyle } from "../../lib/pillColour.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import {
-  eligibleTeams, earliestStart, parsePlots, serialisePlots,
+  eligibleTeams, earliestStart, parsePlots, serialisePlots, parseNodes, serialiseNodes,
   validate as checkAssignment, daysBetween, dayTotal, takenPlots,
   bookedParts, partIsFree, plotDayOwner,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
@@ -1895,6 +1895,19 @@ function Assignments({ row }) {
       dayPlots: Object.fromEntries(mineDays
         .filter((d) => d.Plot_Range)
         .map((d) => [d.Work_Date, parsePlots(d.Plot_Range)])),
+      /* The mains joints made on each day (0186).
+
+         A breech joint is a mains joint and is made on its own: a gang
+         makes A1 on the Monday and connects the plots past it on the
+         Tuesday. So the two selections are independent and neither is
+         derived from the other.
+
+         Split on commas rather than through parsePlots \u2014 node labels
+         are A1, A4, E0, not a numeric range, and "A1-A4" is not a run
+         of anything. */
+      dayNodes: Object.fromEntries(mineDays
+        .filter((d) => d.Node_Range)
+        .map((d) => [d.Work_Date, parseNodes(d.Node_Range)])),
       /* On when any day was saved differing from the rest \u2014 the tick
          box reflects what was saved rather than resetting each time. */
       byDay: mineDays.some((d) => d.Plot_Range),
@@ -2041,6 +2054,7 @@ function Assignments({ row }) {
          form that opens already split asks two questions nobody had. */
       byDay: false,
       dayPlots: {},
+      dayNodes: {},
       byUtility: false,
       utility_ids: [],
     });
@@ -2197,6 +2211,26 @@ function Assignments({ row }) {
     ? plotDayOwner(draft.dayPlots || {})
     : new Map();
 
+  /* The mains joints this call-off's routes pass through, as labels.
+
+     Taken from the trace rather than from the drawing: these are the
+     joints on the way to THESE plots, which is what a gang booked on
+     this call-off will make. Every breech on the site would be a list
+     nobody could use.
+
+     Empty where the trace found none, and the chips do not appear \u2014 a
+     row of nothing to choose is a row that teaches somebody the control
+     does nothing. */
+  const nodeChoices = (breech?.joints || [])
+    .map((j) => j.node)
+    .filter(Boolean);
+
+  /* Which day holds each joint, so it cannot be booked twice. Same rule
+     as the plots: a joint is made once. */
+  const dayNodeOwner = splitByDay
+    ? plotDayOwner(draft.dayNodes || {})
+    : new Map();
+
   /* A mains call-off divides spans, not plots, so the plot rule does not
      apply to it — requiring at least one plot would make every mains
      assignment impossible to save. */
@@ -2317,6 +2351,11 @@ function Assignments({ row }) {
            there is nothing to record here. */
         Plot_Range: row.Selection_Mode === "Span"
           ? null : (serialisePlots(bookingPlots) || null),
+        /* The mains joints on this booking (0186). Only where the days
+           do not carry their own \u2014 the same rule Plot_Range follows
+           below, so one fact is not written in two places. */
+        Node_Range: splitByDay ? null : serialiseNodes(
+          Object.values(draft.dayNodes || {}).flat()),
       };
 
       /* ── A new booking is Scheduled by the act of making it ──
@@ -2373,6 +2412,11 @@ function Assignments({ row }) {
                fact into five that can fall out of step. */
             Plot_Range: splitByDay
               ? ((draft.dayPlots?.[d.date] || []).join(", ") || null)
+              : null,
+            /* The mains joints made on this day. Null where the days do
+               not differ, for the same reason as the plots above. */
+            Node_Range: splitByDay
+              ? serialiseNodes(draft.dayNodes?.[d.date] || [])
               : null,
           }));
         }
@@ -3371,6 +3415,60 @@ function Assignments({ row }) {
                                 <span className="asg-day-all">
                                   nothing chosen &mdash; all of them
                                 </span>
+                              )}
+                            </div>
+                          )}
+
+                          {/* ── The mains joints made on this day ──
+
+                              A breech joint is a mains joint and is
+                              made on its own: a gang makes A1 on the
+                              Monday and connects the plots past it on
+                              the Tuesday. So this is chosen separately
+                              from the plots and neither implies the
+                              other.
+
+                              Nothing chosen means none, not all of
+                              them. That differs from the plots above on
+                              purpose — every plot on a call-off is
+                              connected sooner or later, so an empty
+                              selection there means "the rest"; a joint
+                              is made once, so an empty selection here
+                              means the gang makes none that day. */}
+                          {splitByDay && nodeChoices.length > 0 && (
+                            <div className="asg-day-plots">
+                              <span className="asg-day-lbl">Mains joints</span>
+                              {nodeChoices.map((nd) => {
+                                const on = (draft.dayNodes?.[d] || []).includes(nd);
+                                /* Held by another day, the same way a
+                                   plot is: a joint is made once. */
+                                const heldBy = !on ? dayNodeOwner.get(nd) : null;
+                                return (
+                                  <button key={nd} type="button"
+                                    className={`asg-pill sm${on ? " on" : ""}`
+                                      + (heldBy ? " held" : "")}
+                                    disabled={!!heldBy}
+                                    title={heldBy
+                                      ? `Already on ${fmt(heldBy)} \u2014 a joint is made once`
+                                      : ""}
+                                    onClick={() => setDraft((dd) => {
+                                      const cur = dd.dayNodes?.[d] || [];
+                                      return {
+                                        ...dd,
+                                        dayNodes: {
+                                          ...(dd.dayNodes || {}),
+                                          [d]: on
+                                            ? cur.filter((x) => x !== nd)
+                                            : [...cur, nd],
+                                        },
+                                      };
+                                    })}>
+                                    {nd}
+                                  </button>
+                                );
+                              })}
+                              {!(draft.dayNodes?.[d] || []).length && (
+                                <span className="asg-day-all">none this day</span>
                               )}
                             </div>
                           )}

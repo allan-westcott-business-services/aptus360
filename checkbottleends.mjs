@@ -202,11 +202,33 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
   if (horiz.length !== 1) fail(`${horiz.length} horizontal strokes, expected 1 (the stem)`);
   if (vert.length !== 3) fail(`${vert.length} vertical strokes, expected 3 (the bars)`);
 
-  /* The stem starts where the cable arrives, at -r, so the fitting sits
-     beyond the end of the run rather than back along it. */
+  /* ── The stem starts AT the point, not a radius behind it ──
+
+     Every other symbol here is centred on the feature's point, and this
+     was drawn the same way: the stem ran from -r to +0.15r, so the
+     point sat between the stem and the bars and the tip hung a radius
+     back along the cable. A bottle end is not a marker beside the
+     cable, it is the end of it — so the point is the tip and the whole
+     fitting sits beyond it.
+
+     This asserted the old anchor, which is why it read "the stem does
+     not reach back": reaching back was the fault. */
   const stem = horiz[0];
-  if (stem && Math.min(stem[0][0], stem[1][0]) > -R * 0.9) {
-    fail("the stem does not reach back to where the cable arrives");
+  if (stem) {
+    const near = Math.min(stem[0][0], stem[1][0]);
+    const far = Math.max(stem[0][0], stem[1][0]);
+    if (Math.abs(near) > 0.01) {
+      fail(`the stem starts at ${near}, not at the point where the cable ends`);
+    }
+    if (far <= 0) fail("the fitting is drawn back along the cable, not beyond it");
+  }
+
+  /* And every part of it is forward of the point, so nothing overlaps
+     the run it seals. */
+  for (const [a, b] of seg) {
+    if (Math.min(a[0], b[0]) < -0.01) {
+      fail("part of the bottle end is drawn behind its own anchor");
+    }
   }
 
   /* Bars in decreasing length, going outward. Reversed, the symbol

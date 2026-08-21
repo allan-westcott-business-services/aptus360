@@ -286,14 +286,29 @@ export function symbolPath(ctx, symbol, x, y, r) {
 
        Stroke only. There is no inside to fill. */
     case "bottleend": {
-      const tip = x - r;                 // where the cable arrives
-      const face = x + r * 0.15;         // the first and longest bar
-      ctx.moveTo(tip, y); ctx.lineTo(face, y);
+      /* ── Anchored where the cable arrives, not at its own middle ──
+
+         Every other symbol here is centred on the feature's point, and
+         this was drawn the same way: the stem ran from x - r to
+         x + r*0.15, so the point sat between the stem and the bars and
+         the tip hung a radius back along the cable.
+
+         A bottle end is not a marker beside the cable, it is the end of
+         the cable. The point has to be the tip, or the symbol sits off
+         the run by a radius at every zoom — worse the further you zoom
+         out, because r is in pixels.
+
+         So the whole thing is drawn forward of x: the tip at x, the
+         bars beyond it. bottleEndAngle rotates about the same point, so
+         with the tip there the seal turns on the cable end rather than
+         swinging around it. */
+      const face = x + r * 1.15;         // the first and longest bar
+      ctx.moveTo(x, y); ctx.lineTo(face, y);
       ctx.moveTo(face, y - r); ctx.lineTo(face, y + r);
-      ctx.moveTo(x + r * 0.57, y - r * 0.62);
-      ctx.lineTo(x + r * 0.57, y + r * 0.62);
-      ctx.moveTo(x + r * 0.99, y - r * 0.26);
-      ctx.lineTo(x + r * 0.99, y + r * 0.26);
+      ctx.moveTo(x + r * 1.57, y - r * 0.62);
+      ctx.lineTo(x + r * 1.57, y + r * 0.62);
+      ctx.moveTo(x + r * 1.99, y - r * 0.26);
+      ctx.lineTo(x + r * 1.99, y + r * 0.26);
       break;
     }
     default:

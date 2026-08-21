@@ -536,6 +536,52 @@ const utils = () => ["electric"];
   }
 }
 
+/* ── Dragging a service joint stretches the feeder it joins ──
+
+   A service joint sits on the tee the service was let into, which is a
+   vertex in the MIDDLE of the main, not an end. The rubber band caught
+   line ends only \u2014 so nudging the joint moved the service cable and
+   left the feeder where it was, and the fitting no longer sat on the
+   cable it joins.
+
+   Read from the source: the rule runs inside a pointer handler in a
+   nineteen-thousand-line component and cannot be called from here. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("── Which vertices follow the point ──");
+  const body = at < 0 ? "" : canvas.slice(at, at + 1600);
+
+  if (!body) fail("nothing decides which vertices follow a dragged point");
+  else {
+    /* Interior vertices, for a joint on a feeder. */
+    if (!/const isJoint = pt\.Feature_Role === "joint"/.test(body)) {
+      fail("a dragged joint is treated like any other point, so the feeder"
+        + " it sits on does not follow it");
+    }
+    if (!/g\.map\(\(_, i\) => i\)/.test(body)) {
+      fail("only the ends of a line follow a joint \u2014 a service joint sits"
+        + " on a vertex in the middle of the main");
+    }
+    /* And only for a feeder. Every line through the point would mean
+       dragging a joint pulled the trench under it out of shape, which
+       is the fault span nodes were excluded from this for. */
+    if (!/const isFeeder = line\.Layer_Key === "electric"/.test(body)) {
+      fail("any line under a joint follows it, including the trench");
+    }
+    /* Everything else keeps the old rule. */
+    if (!/: \[0, g\.length - 1\]/.test(body)) {
+      fail("a point that is not a joint no longer catches line ends");
+    }
+  }
+
+  /* The stretch itself: the caught vertices move and the rest stay, so
+     the run bends rather than sliding along. */
+  if (!/ends\.includes\(i\) \? \[pnt\[0\] \+ dm\[0\], pnt\[1\] \+ dm\[1\]\] : pnt/
+    .test(canvas)) {
+    fail("a line caught by a moved point slides whole instead of stretching");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service behaves (the cable follows the dig it is laid in).");
 process.exit(bad ? 1 : 0);

@@ -5866,7 +5866,31 @@ export default function GISCanvasPage() {
           if (next.includes(line.Feature_ID)) continue;   // already moving whole
           const g = line.Geometry || [];
           if (g.length < 2) continue;
-          for (const idx of [0, g.length - 1]) {
+          /* ── Which vertices follow the point ──
+
+             The ends of a line, always: a cable that starts at a joint
+             is attached to it, and leaving the end behind breaks the
+             connection the moment somebody nudges the marker.
+
+             And the interior vertices of an LV feeder under a JOINT.
+             A service joint sits on the tee the service was let into,
+             which is a vertex in the middle of the main, not an end \u2014
+             so dragging the joint moved the service cable and left the
+             feeder where it was, and the fitting no longer sat on the
+             cable it joins.
+
+             Interior vertices only for a joint, and only on a feeder.
+             Every line passing through a point would mean dragging a
+             joint pulled the trench under it out of shape, which is the
+             fault span nodes were excluded from this for. */
+          const isJoint = pt.Feature_Role === "joint";
+          const isFeeder = line.Layer_Key === "electric"
+            && /main/i.test(String(line.Attributes?.Line_Type ?? ""));
+          const candidates = isJoint && isFeeder
+            ? g.map((_, i) => i)
+            : [0, g.length - 1];
+
+          for (const idx of candidates) {
             if (Math.hypot(g[idx][0] - at[0], g[idx][1] - at[1]) <= CONNECT_M) {
               drag.current.rubber.push({ id: line.Feature_ID, index: idx });
               if (!drag.current.origin[line.Feature_ID]) {

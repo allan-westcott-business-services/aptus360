@@ -247,6 +247,49 @@ for (const phase of ["Excavation and Lay", "Reinstatement"]) {
   }
 }
 
+/* ── No hook below an early return ──
+
+   React counts the hooks a component runs and throws #310 \u2014 "rendered
+   more hooks than during the previous render" \u2014 when the count
+   changes between renders.
+
+   The breech panel's `useState` and `useEffect` were added below
+   `if (!row.Work_Type_ID) return ...`, so a call-off with no work type
+   ran two fewer hooks than one with it. Opening a newly raised call-off
+   from the table, after having had a different kind open, was enough to
+   change the count and blank the page.
+
+   Checked by position rather than by mounting: the fault is structural
+   and shows in the source, and mounting would need a call-off of each
+   kind and the render to happen in the wrong order to catch it. */
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+
+  /* Every component in the file, not only the one that broke. */
+  const starts = [...page.matchAll(/\nfunction ([A-Z][A-Za-z0-9_]*)\s*\(/g)];
+  for (let i = 0; i < starts.length; i++) {
+    const from = starts[i].index;
+    const to = i + 1 < starts.length ? starts[i + 1].index : page.length;
+    const body = page.slice(from, to);
+    const name = starts[i][1];
+
+    /* An early return: a guard at the top level of the component that
+       returns markup. Nested returns inside handlers are indented
+       further and are not this. */
+    const guard = body.search(/\n  if \([^)]*\) \{\n    return \(/);
+    if (guard < 0) continue;
+
+    const below = [...body.matchAll(/\buse(State|Effect|Memo|Callback|Ref|Reducer)\(/g)]
+      .filter((m) => m.index > guard);
+    if (below.length) {
+      const which = [...new Set(below.map((m) => `use${m[1]}`))].join(", ");
+      fail(`${name} calls ${below.length} hook(s) (${which}) below an early`
+        + " return \u2014 a render that takes the early path runs fewer of them,"
+        + " which is React #310 and a blank page");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Call-off phases behave (a service call-off books no dig and no reinstatement).");
 process.exit(bad ? 1 : 0);

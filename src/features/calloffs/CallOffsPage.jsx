@@ -2443,6 +2443,34 @@ function Assignments({ row }) {
     finally { setBusy(null); }
   }
 
+  /* ── Above the early returns, because a hook cannot be conditional ──
+
+     These sat below `if (!row.Work_Type_ID)` and `if (!phases.length)`,
+     so a call-off with no work type ran two fewer hooks than one with
+     it. React counts them and threw #310 the moment somebody opened a
+     call-off after a call-off of the other kind \u2014 which is what
+     opening a newly raised one from the table does.
+
+     Nothing else moved: the returns still fire, they just fire after
+     the state is declared rather than instead of it. */
+  /* ── What was traced when this call-off was raised ──
+
+     Read off the row rather than recomputed, because it is a record of
+     the drawing on the day: the design may have moved since, and a
+     booking somebody has already been given must not change under
+     them. `traceBreech` below is the deliberate act of taking it
+     again.
+
+     Held in state as well as read from the row, so a trace run here
+     shows without waiting for the whole list to reload. */
+  const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
+  useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
+    [row.Submission_ID, row.GIS_Data]);
+
+  /* Only worth offering where there is a route to trace: an electric
+     service call-off with jointing on it. A mains call-off digs the
+     trench the breeches sit in and does not connect through them. */
+
   if (!row.Work_Type_ID) {
     return (
       <div className="co-card co-todo">
@@ -2473,23 +2501,6 @@ function Assignments({ row }) {
      book them either. Filtered rather than taken off the work type,
      because the same mapping drives the schedule and the cover states —
      the phases still happen, they are booked on the mains call-off. */
-  /* ── What was traced when this call-off was raised ──
-
-     Read off the row rather than recomputed, because it is a record of
-     the drawing on the day: the design may have moved since, and a
-     booking somebody has already been given must not change under
-     them. `traceBreech` below is the deliberate act of taking it
-     again.
-
-     Held in state as well as read from the row, so a trace run here
-     shows without waiting for the whole list to reload. */
-  const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
-  useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
-    [row.Submission_ID, row.GIS_Data]);
-
-  /* Only worth offering where there is a route to trace: an electric
-     service call-off with jointing on it. A mains call-off digs the
-     trench the breeches sit in and does not connect through them. */
   const isElectricJointing = /service/i.test(String(row.Work_Type?.Work_Type_Name || ""));
 
   async function traceBreech() {

@@ -10675,6 +10675,32 @@ export default function GISCanvasPage() {
      running it twice gives the same answer as running it once. Only
      generated ones — a cable drawn by hand is somebody's decision and
      survives. */
+  /* What status a tail trench starts at.
+
+     The status of the trench it grows out of: the tail is dug in the
+     same visit, by the same gang, in the same hole. Starting every tail
+     at Planned meant a leg whose ground was closed was held back by the
+     1.5 m of it this app had just drawn \u2014 the cable could not go Live
+     over a trench that existed only because the cable did.
+
+     Read from the trench at the point the tail leaves, which is the
+     last node of the run. Planned where there is nothing there to read,
+     which is a drawing nobody has started building. */
+  function tailStatusAt(src, at, lineTypes) {
+    if (!Array.isArray(at)) return "planned";
+    let best = null;
+    let bestD = 1.5;
+    for (const f of src) {
+      if (f.Layer_Key !== "trench" || f.Feature_Type !== "line") continue;
+      if (!isTrenchType(f.Attributes?.Line_Type, lineTypes)) continue;
+      for (const v of (f.Geometry || [])) {
+        const d = Math.hypot(v[0] - at[0], v[1] - at[1]);
+        if (d < bestD) { best = f; bestD = d; }
+      }
+    }
+    return statusOf(best) ?? "planned";
+  }
+
   async function buildLvNetwork(opts = {}) {
     /* Points the walk wanted and did not find. See below: the build no
        longer creates span nodes. */
@@ -10738,10 +10764,27 @@ export default function GISCanvasPage() {
       && f.Layer_Key === "electric"
       && isMainType(f.Attributes?.Line_Type, lineTypes));
 
+    /* ── And the tails it dug last time ──
+
+       The removal above is scoped to the electric layer, which is right
+       for cables. A tail trench is on the trench layer, so it survived
+       every rebuild and another was dug beside it \u2014 two "B8 tail"
+       lengths in one place after two runs, and one more on each.
+
+       Identified by Tail_M, not by Generated alone: Generated on the
+       trench layer also marks trenches the router added to reach a
+       plot, and those are not this routine's to remove. Only a length
+       this build dug as a tail comes back out. */
+    const doomedTails = src.filter((f) => f.Attributes?.Generated
+      && f.Layer_Key === "trench"
+      && f.Attributes?.Tail_M != null);
+
     if (!silent && !window.confirm(
       `Build the LV feeder network for ${circuits.length} circuit(s)?`
       + (doomedFeeders.length
         ? `\n\nThis redraws ${doomedFeeders.length} existing feeder cable(s).` : "")
+      + (doomedTails.length
+        ? `\n${doomedTails.length} bottle end tail(s) are re-dug with them.` : "")
     )) return;
 
     setBusy("feeder");
@@ -10913,6 +10956,13 @@ export default function GISCanvasPage() {
       }
 
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
+      /* The tails dug by the last run, out with the cables they
+         extended. Without this each rebuild left the old length in the
+         ground and dug another beside it — two "B8 tail" trenches in
+         one place after two runs, and one more on every run after. */
+      if (doomedTails.length) {
+        await deleteFeatures(projectId, doomedTails.map((f) => f.Feature_ID));
+      }
 
       let step = 0;
       const total = totalRuns + totalNodes;
@@ -10974,10 +11024,17 @@ export default function GISCanvasPage() {
                 Line_Type: "trench_main",
                 Circuit_ID: c.id, Circuit_Name: c.name,
                 Tail_M: sec.tailM,
-                /* Dug at the same moment as the run it extends. Without
-                   a status it reads as "not set", and a cable cannot go
-                   Live over ground that never says it was closed. */
-                Build_Status: "planned",
+                /* ── The tail takes the status of the run it extends ──
+
+                   It is dug in the same visit, by the same gang, in the
+                   same hole. Starting it at Planned meant every leg
+                   gained a second trench to set, and a cable that had
+                   its ground closed was held back by the 1.5 m of it
+                   the app had just drawn.
+
+                   Falls back to Planned where the run has no status of
+                   its own, which is a new drawing. */
+                Build_Status: tailStatusAt(src, g[g.length - 2], lineTypes),
                 Generated: true,
               },
             });
@@ -18046,18 +18103,43 @@ export default function GISCanvasPage() {
                       tidied away. */}
                   {servicePlotBreech?.plots?.length > 0 && (
                     <div className="gco-breech">
-                      {servicePlotBreech.plots.map((p) => (
-                        <div className="gco-breech-row" key={p.plot ?? p.plotId}>
-                          <strong>{p.plot ?? p.plotId}</strong>
-                          {p.reachable === false ? (
+                      {/* One line per joint, not one per plot.
+
+                          A joint feeding six plots was listed against
+                          all six, so a call-off over a terrace read as
+                          the same two joints repeated down the screen —
+                          under a total that said "counted once each",
+                          which made the repetition look like a
+                          contradiction.
+
+                          The plots it serves sit beside it instead,
+                          which is the shape of the work: the gang makes
+                          the joint once and it feeds those plots. */}
+                      {(servicePlotBreech.joints || []).map((j) => (
+                        <div className="gco-breech-row" key={j.featureId}>
+                          <strong>{jointLabel(j)}</strong>
+                          <span className="gco-breech-plots">
+                            plot{j.plots.length === 1 ? "" : "s"}{" "}
+                            {j.plots.join(", ")}
+                          </span>
+                        </div>
+                      ))}
+
+                      {/* A plot the trace could not reach has no joints
+                          to list, so it would vanish from a list keyed
+                          on joints. Kept separate, because it is a
+                          fault in the drawing and the one thing worth
+                          knowing before a gang is booked. */}
+                      {servicePlotBreech.plots
+                        .filter((p) => p.reachable === false)
+                        .map((p) => (
+                          <div className="gco-breech-row" key={`x${p.plot ?? p.plotId}`}>
+                            <strong>Plot {p.plot ?? p.plotId}</strong>
                             <span className="gco-breech-warn">
                               route back could not be traced
                             </span>
-                          ) : (
-                            <span>{p.joints.map(jointLabel).join(" \u00b7 ")}</span>
-                          )}
-                        </div>
-                      ))}
+                          </div>
+                        ))}
                       <p className="gco-breech-tot">
                         {`${servicePlotBreech.totalJoints} breech joint`}
                         {servicePlotBreech.totalJoints === 1 ? "" : "s"}
@@ -19921,7 +20003,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   padding: 8px 10px; margin: 10px 0 0; }
 .gco-breech-row { display: flex; gap: 10px; align-items: baseline;
   font-size: 12.5px; padding: 3px 0; }
-.gco-breech-row strong { flex: 0 0 42px; }
+.gco-breech-row strong { flex: 0 0 auto; }
+.gco-breech-plots { color: var(--muted); }
 /* A plot the trace could not reach is a fault in the drawing, and must
    not read like a plot with a clear run. */
 .gco-breech-warn { color: #991b1b; font-weight: 600; }

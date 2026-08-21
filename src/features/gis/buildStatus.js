@@ -523,14 +523,21 @@ export function statusOptions(feature, lineTypes = [], trenches = []) {
     return {
       ...s,
       disabled: true,
+      /* Named, not counted.
+
+         "2 trenches still Planned" says something is wrong and nothing
+         about where, so every instance of this became a database query
+         to find out which. The ids are on the features already. */
       label: `${s.label} \u2014 ${held.length === 1
-        ? "trench still Planned"
+        ? `trench #${held[0].Feature_ID} still Planned`
         : `${held.length} trenches still Planned`}`,
       why: held.length === 1
-        ? "The trench this lies in is still Planned. Set the trench As-Laid "
-          + "first, and these become available."
-        : `${held.length} of the trenches this lies in are still Planned. `
-          + "Set them As-Laid first, and these become available.",
+        ? `Trench #${held[0].Feature_ID} (${held[0].Attributes?.Line_Type
+          ?? "trench"}) is still Planned. Set it As-Laid first, and these `
+          + "become available."
+        : `Trenches ${held.map((t) => `#${t.Feature_ID}`).join(", ")} are `
+          + "still Planned. Set them As-Laid first, and these become "
+          + "available.",
     };
   });
 }

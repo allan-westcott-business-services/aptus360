@@ -719,6 +719,34 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
      new one beside the last on every run. */
   const block = /if \(sec\.tailM && sec\.tailAt\)[\s\S]{0,900}?\n          \}/
     .exec(canvas);
+  /* ── And the last run's tails come out ──
+
+     The rebuild's removal is scoped to the electric layer, which is
+     right for cables. A tail trench is on the trench layer, so it
+     survived every rebuild and another was dug beside it \u2014 two
+     "B8 tail" lengths in one place after two runs, one more on each.
+
+     Identified by Tail_M rather than by Generated alone: Generated on
+     the trench layer also marks trenches the router added to reach a
+     plot, and those are not this routine's to remove. */
+  if (!/doomedTails = src\.filter[\s\S]{0,200}?Tail_M/.test(canvas)) {
+    fail("the rebuild does not find the tails it dug last time");
+  }
+  if (!/deleteFeatures\(projectId, doomedTails\.map/.test(canvas)) {
+    fail("the old tails are found but never removed \u2014 every rebuild digs"
+      + " another beside the last");
+  }
+
+  /* ── The tail takes the status of the run it extends ──
+
+     It is dug in the same visit, in the same hole. Starting it at
+     Planned held its own cable back: the cable could not go Live over
+     a trench that existed only because the cable did. */
+  if (!/Build_Status: tailStatusAt\(/.test(canvas)) {
+    fail("the tail trench starts at Planned rather than taking the status"
+      + " of the run it extends \u2014 it holds back its own cable");
+  }
+
   if (block && !/Generated: true/.test(block[0])) {
     fail("the tail trench is not marked Generated \u2014 a rebuild will leave"
       + " the old one and lay another beside it");

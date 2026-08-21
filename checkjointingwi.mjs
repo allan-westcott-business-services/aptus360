@@ -422,9 +422,23 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     if (!/gco-breech/.test(canvas)) {
       fail("the dialog has nowhere to show what is on the route");
     }
-    /* Named by the one naming function, not spelled again. */
-    if (!/p\.joints\.map\(jointLabel\)/.test(canvas)) {
+    /* Named by the one naming function, not spelled again. The dialog
+       lists each joint once with the plots it serves, rather than
+       repeating it per plot, so it calls jointLabel on the joint
+       itself. */
+    if (!/jointLabel\(j\)/.test(canvas)) {
       fail("the dialog names the joints its own way");
+    }
+    /* One row per joint. A joint feeding six plots was listed against
+       all six, under a total saying "counted once each" \u2014 which read
+       as a contradiction. */
+    if (!/servicePlotBreech\.joints \|\| \[\]/.test(canvas)) {
+      fail("the dialog lists a joint once per plot it serves");
+    }
+    /* And a plot the trace could not reach still appears: it has no
+       joints, so a list keyed on joints would drop it silently. */
+    if (!/p\.reachable === false/.test(canvas)) {
+      fail("a plot with no traceable route vanished from the dialog");
     }
   }
 

@@ -273,8 +273,38 @@ export function breechSummary(features = [], meters = [], originId = null,
     });
   }
 
+  /* ── One line per joint, not one per plot ──
+
+     A joint feeding six plots was listed against all six, so a call-off
+     over a terrace read as the same two joints repeated down the
+     screen. The count underneath already said "counted once each",
+     which made the repetition look like a contradiction.
+
+     Listed once, in the order they are met walking out from the origin,
+     with the plots each one serves beside it. That is the shape of the
+     work: a gang makes the joint once and it feeds those plots.
+
+     `plots` above is kept as it is. The work instruction is read plot
+     by plot on a road \u2014 somebody at number 22 needs the joints on
+     number 22's route and nobody else's \u2014 so the two views want
+     different shapes and each gets its own. */
+  const byJoint = new Map();
+  for (const p of plots) {
+    if (!p.reachable) continue;
+    for (const j of p.joints) {
+      const key = j.featureId;
+      if (!byJoint.has(key)) byJoint.set(key, { ...j, plots: [] });
+      const seen = byJoint.get(key).plots;
+      const name = p.plot ?? p.plotId;
+      if (name != null && !seen.includes(name)) seen.push(name);
+    }
+  }
+
   return {
     plots,
+    /* Each joint once. Ordered by where it was first met on a route,
+       which is outward from the origin \u2014 the order a gang works. */
+    joints: [...byJoint.values()],
     /* Counted over distinct joints, not summed across plots: one breech
        feeding six plots is one connection to make, and six would put a
        number on the call-off that no gang recognises. */

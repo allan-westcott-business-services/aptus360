@@ -2211,6 +2211,91 @@ function Assignments({ row }) {
     ? plotDayOwner(draft.dayPlots || {})
     : new Map();
 
+  /* ── Above everything that reads it ──
+
+     `nodeChoices` just below is a const that reads `breech`, and this
+     sat nearly three hundred lines further down — so opening a call-off
+     threw "Cannot access 'breech' before initialization" and the page
+     did not render at all.
+
+     Fault 2, and checkorder.py did not catch it: that check tracks
+     function declarations, and this is a const inside a component. */
+  /* ── What was traced when this call-off was raised ──
+
+     Read off the row rather than recomputed, because it is a record of
+     the drawing on the day: the design may have moved since, and a
+     booking somebody has already been given must not change under
+     them.
+
+     Held in state as well as read from the row, so the trace below can
+     fill it in without waiting for the whole list to reload. */
+  const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
+  useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
+    [row.Submission_ID, row.GIS_Data]);
+
+  /* ── And traced where the call-off has none stored ──
+
+     Every call-off raised before this existed carries nothing, which is
+     most of them. There was a button and a sentence explaining why it
+     had to be pressed, which is a workaround wearing the clothes of a
+     feature: the planner does not care when the trace was taken, only
+     what is on the route.
+
+     So it is worked out on opening. Read only \u2014 nothing is written
+     back. The objection to doing this quietly was that it rewrites a
+     record because somebody looked at it, and that objection stands;
+     showing a figure is not the same as storing one.
+
+     Where a trace WAS stored at raise time it wins, because that is the
+     drawing as it was on the day and the record a gang was given. */
+  useEffect(() => {
+    if (breech != null || !isServiceCallOff(row.Work_Type?.Work_Type_Name)) return;
+    let gone = false;
+    (async () => {
+      try {
+        const [gis, plots] = await Promise.all([
+          listGis(row.Project_ID), listPlots(row.Project_ID),
+        ]);
+        if (gone) return;
+        const features = gis?.features || [];
+        const plotRows = plots?.rows || plots || [];
+        const origin = lvOrigin(features);
+        if (!origin) return;
+
+        const wanted = new Set((row.items || [])
+          .map((it) => String(it.Plots ?? it.Plot ?? "").trim())
+          .filter(Boolean));
+        const plotIds = new Set(plotRows
+          .filter((pl) => wanted.has(
+            String(pl.plot_number ?? pl.Plot_Number ?? "").trim()))
+          .map((pl) => Number(pl.plot_id ?? pl.Plot_ID)));
+
+        const meters = features.filter((f) => f.Feature_Role === "meter"
+          && f.Layer_Key === "electric"
+          && plotIds.has(Number(f.Plot_ID ?? f.Attributes?.Plot_ID)));
+        if (!meters.length) return;
+
+        const found = breechSummary(features, meters, origin.Feature_ID,
+          (id) => plotNumberFrom(plotRows, id));
+        if (!gone) setBreech(found);
+      } catch { /* the panel simply does not appear */ }
+    })();
+    /* A planner clicking down a list opens several call-offs in a few
+       seconds, and each of these reads a whole drawing. Without this
+       the slowest answer wins rather than the latest. */
+    return () => { gone = true; };
+  }, [breech, row.Submission_ID, row.Project_ID, row.Work_Type?.Work_Type_Name]);
+
+  /* ── Nothing to assign to ──
+
+     Restored: these two were deleted with the trace button when its
+     orphaned handler was cut out, and a call-off with no work type or
+     no phases then fell through to code expecting both. A ninety-line
+     removal took four lines it should not have.
+
+     Below every hook, which is where they have to be — React counts
+     hooks and a return above one changes the count between renders. */
+
   /* The mains joints this call-off's routes pass through, as labels.
 
      Taken from the trace rather than from the drawing: these are the
@@ -2497,71 +2582,26 @@ function Assignments({ row }) {
 
      Nothing else moved: the returns still fire, they just fire after
      the state is declared rather than instead of it. */
-  /* ── What was traced when this call-off was raised ──
+  if (!row.Work_Type_ID) {
+    return (
+      <div className="co-card co-todo">
+        <h3>Team assignments</h3>
+        <p>No work type on this call-off, so there are no phases to assign to.</p>
+      </div>
+    );
+  }
 
-     Read off the row rather than recomputed, because it is a record of
-     the drawing on the day: the design may have moved since, and a
-     booking somebody has already been given must not change under
-     them.
-
-     Held in state as well as read from the row, so the trace below can
-     fill it in without waiting for the whole list to reload. */
-  const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
-  useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
-    [row.Submission_ID, row.GIS_Data]);
-
-  /* ── And traced where the call-off has none stored ──
-
-     Every call-off raised before this existed carries nothing, which is
-     most of them. There was a button and a sentence explaining why it
-     had to be pressed, which is a workaround wearing the clothes of a
-     feature: the planner does not care when the trace was taken, only
-     what is on the route.
-
-     So it is worked out on opening. Read only \u2014 nothing is written
-     back. The objection to doing this quietly was that it rewrites a
-     record because somebody looked at it, and that objection stands;
-     showing a figure is not the same as storing one.
-
-     Where a trace WAS stored at raise time it wins, because that is the
-     drawing as it was on the day and the record a gang was given. */
-  useEffect(() => {
-    if (breech != null || !isServiceCallOff(row.Work_Type?.Work_Type_Name)) return;
-    let gone = false;
-    (async () => {
-      try {
-        const [gis, plots] = await Promise.all([
-          listGis(row.Project_ID), listPlots(row.Project_ID),
-        ]);
-        if (gone) return;
-        const features = gis?.features || [];
-        const plotRows = plots?.rows || plots || [];
-        const origin = lvOrigin(features);
-        if (!origin) return;
-
-        const wanted = new Set((row.items || [])
-          .map((it) => String(it.Plots ?? it.Plot ?? "").trim())
-          .filter(Boolean));
-        const plotIds = new Set(plotRows
-          .filter((pl) => wanted.has(
-            String(pl.plot_number ?? pl.Plot_Number ?? "").trim()))
-          .map((pl) => Number(pl.plot_id ?? pl.Plot_ID)));
-
-        const meters = features.filter((f) => f.Feature_Role === "meter"
-          && f.Layer_Key === "electric"
-          && plotIds.has(Number(f.Plot_ID ?? f.Attributes?.Plot_ID)));
-        if (!meters.length) return;
-
-        const found = breechSummary(features, meters, origin.Feature_ID,
-          (id) => plotNumberFrom(plotRows, id));
-        if (!gone) setBreech(found);
-      } catch { /* the panel simply does not appear */ }
-    })();
-    /* A planner clicking down a list opens several call-offs in a few
-       seconds, and each of these reads a whole drawing. Without this
-       the slowest answer wins rather than the latest. */
-    return () => { gone = true; };
-  }, [breech, row.Submission_ID, row.Project_ID, row.Work_Type?.Work_Type_Name]);
+  if (!phases.length) {
+    return (
+      <div className="co-card co-todo">
+        <h3>Team assignments</h3>
+        <p>
+          This work type has no phases mapped. Set them under
+          {" "}<strong>Admin &rarr; Work Phases</strong>.
+        </p>
+      </div>
+    );
+  }
 
   const shownPhases = phasesToShow(phases, row.Work_Type?.Work_Type_Name);
   const notHere = phasesHidden(phases, row.Work_Type?.Work_Type_Name);

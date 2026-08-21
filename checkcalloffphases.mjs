@@ -290,6 +290,53 @@ for (const phase of ["Excavation and Lay", "Reinstatement"]) {
   }
 }
 
+/* ── Nothing read before it is declared ──
+
+   `nodeChoices` is a const that reads `breech`, and `breech` was
+   declared three hundred lines below it: opening a call-off threw
+   "Cannot access 'breech' before initialization" and the page did not
+   render at all.
+
+   Fault 2, and checkorder.py did not see it \u2014 that check tracks
+   function declarations, and these are consts inside a component. So
+   the pair that broke is pinned here by position.
+
+   ── And the guards that returned ──
+
+   The two early returns for a call-off with no work type, and one with
+   no phases, were deleted with the trace button when its orphaned
+   handler was cut out: a ninety-line removal took four lines it should
+   not have. Without them the component runs on expecting phases it does
+   not have. */
+{
+  const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+  const at = (re) => {
+    const m = re.exec(page);
+    return m ? m.index : -1;
+  };
+
+  const breechAt = at(/\n  const \[breech, setBreech\]/);
+  const choicesAt = at(/\n  const nodeChoices =/);
+  if (breechAt < 0) fail("the breech state is gone");
+  else if (choicesAt >= 0 && choicesAt < breechAt) {
+    fail("nodeChoices reads `breech` before it is declared \u2014 opening a"
+      + " call-off throws and the page does not render");
+  }
+
+  /* The guards exist, and sit below the hooks rather than above them. */
+  const guardAt = at(/\n  if \(!row\.Work_Type_ID\) \{/);
+  if (guardAt < 0) {
+    fail("a call-off with no work type has no guard \u2014 the component runs"
+      + " on expecting phases it does not have");
+  }
+  if (!/if \(!phases\.length\) \{/.test(page)) {
+    fail("a work type with no phases mapped has no guard");
+  }
+  if (guardAt >= 0 && breechAt >= 0 && guardAt < breechAt) {
+    fail("the early return sits above the hooks \u2014 React #310");
+  }
+}
+
 /* ── Mains joints booked per day ──
 
    A breech joint is a mains joint and is made on its own: a gang makes

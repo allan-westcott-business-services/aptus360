@@ -10964,9 +10964,20 @@ export default function GISCanvasPage() {
               Geometry: [g[g.length - 2].slice(), sec.tailAt.slice()],
               Label: `${c.letter}${i + 1} tail`,
               Attributes: {
-                Line_Type: "trench",
+                /* `trench_main`, which is what a mains trench is called
+                   — seeded by 0050 and what every other generated
+                   trench here writes. This said "trench", which is not
+                   a configured type at all: the tail was not recognised
+                   as a mains trench, so it was not measured, not found
+                   by trenchesUnder, and the cable's tail lay over
+                   nothing. */
+                Line_Type: "trench_main",
                 Circuit_ID: c.id, Circuit_Name: c.name,
                 Tail_M: sec.tailM,
+                /* Dug at the same moment as the run it extends. Without
+                   a status it reads as "not set", and a cable cannot go
+                   Live over ground that never says it was closed. */
+                Build_Status: "planned",
                 Generated: true,
               },
             });

@@ -29,7 +29,7 @@ import {
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
 import { phasesToShow, phasesHidden } from "./callOffPhases.js";
-import { breechSummary } from "../gis/serviceBreech.js";
+import { breechSummary, plotNumberFrom } from "../gis/serviceBreech.js";
 import { lvOrigin } from "../gis/electric.js";
 import { listGis } from "../../api/gis.js";
 import { listPlots } from "../../api/plots.js";
@@ -2546,8 +2546,7 @@ function Assignments({ row }) {
       }
 
       const found = breechSummary(features, meters, origin.Feature_ID,
-        (id) => plotRows.find((p) => Number(p.plot_id ?? p.Plot_ID) === Number(id))
-          ?.plot_number ?? null);
+        (id) => plotNumberFrom(plotRows, id));
 
       /* Written back, so it is the record from here on and the work
          instruction reads the same thing this screen shows. */
@@ -2617,7 +2616,11 @@ function Assignments({ row }) {
           </p>
           {breech.plots.map((p) => (
             <div className="co-breech-row" key={p.plot ?? p.plotId}>
-              <strong>Plot {p.plot ?? p.plotId}</strong>
+              {/* The number, or a plain admission. Showing the raw
+                                  Plot_ID where the number is missing reads as a
+                                  plot: 34 and 35 came out as "Plot 74" and
+                                  "Plot 75" on a call-off that has neither. */}
+                            <strong>{p.plot ? `Plot ${p.plot}` : "A plot with no number"}</strong>
               {p.reachable === false ? (
                 <span className="co-breech-warn">
                   route could not be traced

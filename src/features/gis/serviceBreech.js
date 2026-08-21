@@ -369,6 +369,29 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
    and what the work instruction already prints. `plotNumberOf` is
    passed in rather than looked up here, since the plot list belongs to
    the canvas and this module has no business holding one. */
+/* The plot number for a plot id, from whichever shape the list is in.
+
+   Two spellings reach this. The GIS canvas holds plots with lowercase
+   keys and the plots endpoint returns `Plot_ID` / `Plot_Number`, and
+   the canvas already reads both in places — so a lookup that knows only
+   one finds nothing for a list of the other kind.
+
+   Compared as numbers, because one side is an id off a feature and the
+   other a column, and "74" and 74 are the same plot.
+
+   Null where there is no match, never the id: a raw database id shown
+   where a plot number belongs reads as a plot. Plots 34 and 35 came out
+   as "Plot 74" and "Plot 75" on a call-off that has no such plots, and
+   nothing about it looked like a failed lookup. */
+export function plotNumberFrom(plotList = [], plotId) {
+  if (plotId == null) return null;
+  const want = Number(plotId);
+  const hit = plotList.find((p) =>
+    Number(p?.plot_id ?? p?.Plot_ID) === want);
+  const n = hit?.plot_number ?? hit?.Plot_Number;
+  return n == null || n === "" ? null : String(n);
+}
+
 export function breechSummary(features = [], meters = [], originId = null,
   plotNumberOf = () => null) {
   const routes = breechesOnRoutes(features, meters, originId);
@@ -377,7 +400,8 @@ export function breechSummary(features = [], meters = [], originId = null,
   for (const r of routes) {
     if (r.reachable && !r.joints.length) continue;
     plots.push({
-      plot: plotNumberOf(r.plotId) ?? r.plotId ?? null,
+      /* The number, or nothing. Never the id \u2014 see plotNumberFrom. */
+      plot: plotNumberOf(r.plotId) ?? null,
       plotId: r.plotId ?? null,
       reachable: r.reachable,
       joints: r.joints,

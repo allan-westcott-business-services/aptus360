@@ -141,7 +141,7 @@ import {
 } from "../../api/calloffs.js";
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
-import { breechSummary, jointLabel } from "./serviceBreech.js";
+import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -1592,7 +1592,7 @@ export default function GISCanvasPage() {
     const meters = metersOfSeeds(features, seeds);
     if (!meters.length) return null;
     return breechSummary(features, meters, origin.Feature_ID,
-      (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? null);
+      (id) => plotNumberFrom(plotList, id));
   }, [serviceOpen, servicePlots, features, plotList]);
 
   /* The outline drawn by Link to Circuit, waiting to be told which
@@ -9673,7 +9673,7 @@ export default function GISCanvasPage() {
             features.filter((f) => f.Feature_Role === "plot"
               && servicePlots.includes(plotOfSeed(f, plotList))));
           const b = breechSummary(features, meters, origin.Feature_ID,
-            (id) => plotList.find((p) => p.plot_id === id)?.plot_number ?? null);
+            (id) => plotNumberFrom(plotList, id));
           /* Null rather than an empty shape where there is nothing to
              say. A record that always exists and is usually empty is one
              nobody reads. */
@@ -18134,7 +18134,11 @@ export default function GISCanvasPage() {
                         .filter((p) => p.reachable === false)
                         .map((p) => (
                           <div className="gco-breech-row" key={`x${p.plot ?? p.plotId}`}>
-                            <strong>Plot {p.plot ?? p.plotId}</strong>
+                            {/* The number, or a plain admission. Showing the raw
+                                  Plot_ID where the number is missing reads as a
+                                  plot: 34 and 35 came out as "Plot 74" and
+                                  "Plot 75" on a call-off that has neither. */}
+                            <strong>{p.plot ? `Plot ${p.plot}` : "A plot with no number"}</strong>
                             <span className="gco-breech-warn">
                               route back could not be traced
                             </span>

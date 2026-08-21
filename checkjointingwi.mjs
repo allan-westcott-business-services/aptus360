@@ -513,6 +513,52 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     }
   }
 
+  /* ── A plot number is never a database id ──
+
+     `plotNumberOf` failed for two plots and the code fell back to
+     `r.plotId`, so plots 34 and 35 were listed as "Plot 74" and
+     "Plot 75" \u2014 their row ids \u2014 on a call-off that has no such plots.
+     Nothing about it looked like a failed lookup; it looked like two
+     extra plots.
+
+     The lookup failed because plot lists come in two shapes: the canvas
+     holds lowercase keys, the plots endpoint returns Plot_ID and
+     Plot_Number, and the canvas already reads both in places. A lookup
+     that knew one found nothing for a list of the other. */
+  {
+    const { plotNumberFrom } = await import(
+      process.cwd() + "/src/features/gis/serviceBreech.js");
+
+    for (const [what, list] of [
+      ["lowercase", [{ plot_id: 74, plot_number: "34" }]],
+      ["capitalised", [{ Plot_ID: 74, Plot_Number: "34" }]],
+      ["a numeric plot number", [{ plot_id: "74", plot_number: 34 }]],
+    ]) {
+      if (plotNumberFrom(list, 74) !== "34") {
+        fail(`a ${what} plot list did not resolve id 74 to plot 34`);
+      }
+    }
+
+    /* And a miss is null, not the id. This is the whole of the fault:
+       a raw id shown where a number belongs reads as a plot. */
+    if (plotNumberFrom([{ plot_id: 74, plot_number: "34" }], 999) != null) {
+      fail("a plot id with no match came back as something \u2014 it must be"
+        + " null, or it is shown as a plot that does not exist");
+    }
+    if (plotNumberFrom([], 74) != null) fail("an empty plot list produced a number");
+    if (plotNumberFrom(undefined, 74) != null) fail("no plot list produced a number");
+
+    /* Nothing falls back to the id at the display either. */
+    for (const [name, file] of [
+      ["the call-off page", "./src/features/calloffs/CallOffsPage.jsx"],
+      ["the service call-off dialog", "./src/features/gis/GISCanvasPage.jsx"],
+    ]) {
+      if (/Plot \{p\.plot \?\? p\.plotId\}/.test(readFileSync(file, "utf8"))) {
+        fail(`${name} shows the raw Plot_ID where the number is missing`);
+      }
+    }
+  }
+
   /* ── The office sees it too ──
 
      The trace was stored and shown on the field work instruction and

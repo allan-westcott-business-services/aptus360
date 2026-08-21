@@ -142,6 +142,7 @@ import {
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
 import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
+import { sealPoint } from "./bottleEnd.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -9596,6 +9597,10 @@ export default function GISCanvasPage() {
 
     setBusy("service");
     try {
+      /* What the trace found, kept so the seals can be drawn after the
+         call-off exists without tracing the drawing twice. */
+      let traced = null;
+
       const created = await createCallOff(projectId, {
         Project_ID: projectId,
         Work_Type_ID: workType.Work_Type_ID,
@@ -9667,6 +9672,10 @@ export default function GISCanvasPage() {
            the work instruction ever gains \u2014 the same argument
            Field_Submission.Payload makes for the form itself. */
         GIS_Data: (() => {
+          /* Assigned to `traced` below as well as returned, so the
+             seals can be drawn once the call-off exists without working
+             them out a second time from a drawing that may have moved
+             between the two. */
           const origin = lvOrigin(features);
           if (!origin) return null;
           const meters = metersOfSeeds(features,
@@ -9674,11 +9683,47 @@ export default function GISCanvasPage() {
               && servicePlots.includes(plotOfSeed(f, plotList))));
           const b = breechSummary(features, meters, origin.Feature_ID,
             (id) => plotNumberFrom(plotList, id));
+
+          /* ── Where the programme stops before the design does ──
+
+             This call-off connects some of the plots on a feeder. The
+             ones past them are not being built yet, but the feeder is
+             drawn all the way to them \u2014 so the cable just laid ends in
+             mid-air and has to be sealed until somebody comes back.
+
+             Five metres past the last plot connected, along the feeder.
+             sealPoint works that out, and returns nothing where there
+             is nothing to seal: a feeder with every plot connected runs
+             to its designed end and what goes there is a design bottle
+             end, not this.
+
+             It also records which plots it is holding the cable for, so
+             the next call-off to reach one of them turns the seal into
+             a straight joint rather than leaving it in the ground. */
+          const seals = [];
+          for (const feeder of features.filter((f) => f.Feature_Type === "line"
+            && f.Layer_Key === "electric"
+            && /main/i.test(String(f.Attributes?.Line_Type ?? "")))) {
+            const served = features
+              .filter((f) => f.Feature_Role === "meter"
+                && f.Layer_Key === "electric"
+                && (f.Geometry || []).length)
+              .map((f) => ({
+                plot: plotNumberFrom(plotList, f.Plot_ID ?? f.Attributes?.Plot_ID),
+                at: f.Geometry[0],
+              }))
+              .filter((r) => r.plot != null);
+
+            const seal = sealPoint({ feeder, served, connected: servicePlots });
+            if (seal) seals.push(seal);
+          }
+
           /* Null rather than an empty shape where there is nothing to
              say. A record that always exists and is usually empty is one
              nobody reads. */
-          if (!b.plots.length) return null;
-          return { breech: b };
+          if (!b.plots.length && !seals.length) return null;
+          traced = { breech: b, ...(seals.length ? { seals } : {}) };
+          return traced;
         })(),
       });
 
@@ -9702,6 +9747,52 @@ export default function GISCanvasPage() {
          drawn on a blank page, which is worse than it was and is not a
          reason to lose a call-off that has already been written. */
       if (created?.Submission_ID) {
+        /* ── The seals, onto the drawing ──
+
+            Worked out above with the rest of the trace; written here,
+            once the call-off exists, because each one records which
+            call-off put it there. That is what lets a later call-off
+            find its own seals apart from anybody else's, and what makes
+            them removable rather than permanent.
+
+            Marked Temporary, which is the whole of the difference from
+            a design bottle end: the design one is where the feeder
+            genuinely ends and nothing is fed beyond it ever; this one
+            is where the programme stops, and one day the next call-off
+            reaches the plot beyond it and the seal becomes a straight
+            joint.
+
+            Failure is said and not thrown \u2014 a call-off already written
+            must not be lost because a joint could not be drawn. */
+        try {
+          for (const seal of (traced?.seals ?? [])) {
+            await addFeature({
+              Layer_Key: "electric",
+              Feature_Type: "point",
+              Feature_Role: "joint",
+              Geometry: [seal.at],
+              Label: "Bottle End",
+              Attributes: {
+                Joint_Type: "bottleend",
+                Joint_Code: JOINT_KINDS.bottleend?.code ?? "BTL",
+                Joint_Reasons: ["bottleend"],
+                Temporary: true,
+                Submission_ID: created.Submission_ID,
+                Feeder_ID: seal.feederId,
+                After_Plot: seal.afterPlot,
+                /* The plots it is holding the cable for. A later
+                   call-off connecting any of them is the one this was
+                   waiting for. */
+                Waiting_For: seal.waitingFor,
+                Generated: true,
+              },
+            });
+          }
+        } catch {
+          setStatus("Call-off raised \u2014 a temporary bottle end could not be "
+            + "placed. Check the end of each feeder before the gang goes out.");
+        }
+
         try {
           const electric = asLaidFeatures(features).filter((f) =>
             f.Feature_Type !== "point");

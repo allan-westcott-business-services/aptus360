@@ -559,6 +559,86 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     }
   }
 
+  /* ── Sealing a cable where the programme stops ──
+
+     A call-off connects some of the plots on a feeder. The ones past
+     them are not built yet, but the feeder is drawn all the way to
+     them, so the cable just laid ends in mid-air and is sealed five
+     metres past the last plot connected.
+
+     bottleEnd.js was written, tested and never called from anywhere in
+     the app \u2014 a complete feature nothing could reach. */
+  {
+    const { sealPoint, sealsNowJoined } = await import(
+      process.cwd() + "/src/features/gis/bottleEnd.js");
+
+    const feeder = { Feature_ID: 10, Geometry: [[0, 0], [100, 0]] };
+    const served = [
+      { plot: "S1", at: [10, 0] }, { plot: "S2", at: [25, 0] },
+      { plot: "S3", at: [40, 0] }, { plot: "S4", at: [70, 0] },
+    ];
+
+    /* Five metres past the last plot connected, along the feeder. */
+    const seal = sealPoint({ feeder, served, connected: ["S1", "S2", "S3"] });
+    if (!seal) fail("no seal where plots further along are left for later");
+    else {
+      if (Math.abs(seal.at[0] - 45) > 0.01) {
+        fail(`the seal is at ${seal.at[0]}m, not five metres past S3 at 40m`);
+      }
+      if (seal.afterPlot !== "S3") fail("the seal does not say which plot it follows");
+      /* What it is holding the cable for, which is what makes it
+         removable: the next call-off to connect S4 turns it into a
+         straight joint. */
+      if (!seal.waitingFor?.includes("S4")) {
+        fail("the seal does not record the plots it is waiting for");
+      }
+    }
+
+    /* Every plot connected means the feeder runs to its designed end,
+       and what goes there is a design bottle end, not this. */
+    if (sealPoint({ feeder, served, connected: ["S1", "S2", "S3", "S4"] })) {
+      fail("a feeder with every plot connected was given a temporary seal");
+    }
+    /* And a plot skipped in the middle is a gap, not a section left for
+       later \u2014 sealing the far end would say nothing about it. */
+    if (sealPoint({ feeder, served, connected: ["S1", "S3", "S4"] })) {
+      fail("a gap in the middle was treated as the end of the programme");
+    }
+
+    /* Reached past by a later call-off, so it becomes a straight joint. */
+    if (seal && !sealsNowJoined([seal], ["S4"]).length) {
+      fail("a seal the next call-off has reached past is not released");
+    }
+    if (seal && sealsNowJoined([seal], ["S9"]).length) {
+      fail("a seal was released by a call-off it was not waiting for");
+    }
+
+    /* ── And it is actually called ──
+
+       The whole of what was wrong: written, tested, unreachable. */
+    const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (!/sealPoint\(\{ feeder, served, connected: servicePlots \}\)/.test(canvas)) {
+      fail("raising a service call-off does not work out where to seal");
+    }
+    if (!/Temporary: true/.test(canvas)) {
+      fail("the seal is placed as a design bottle end \u2014 nothing marks it as"
+        + " the programme stopping rather than the feeder ending");
+    }
+    if (!/Waiting_For: seal\.waitingFor/.test(canvas)) {
+      fail("the seal does not record what it is holding the cable for, so"
+        + " no later call-off can release it");
+    }
+
+    /* Shown where the booking is made, and bookable. */
+    const page = readFileSync("./src/features/calloffs/CallOffsPage.jsx", "utf8");
+    if (!/Temporary Bottle Ends/.test(page)) {
+      fail("the call-off page does not show the seals it puts in");
+    }
+    if (!/Seal after \$\{sl\.afterPlot\}/.test(page)) {
+      fail("a seal cannot be booked on a day \u2014 installing it is work");
+    }
+  }
+
   /* ── The office sees it too ──
 
      The trace was stored and shown on the field work instruction and

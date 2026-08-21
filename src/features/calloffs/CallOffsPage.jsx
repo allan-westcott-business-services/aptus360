@@ -2230,6 +2230,18 @@ function Assignments({ row }) {
      Held in state as well as read from the row, so the trace below can
      fill it in without waiting for the whole list to reload. */
   const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
+
+  /* ── The temporary bottle ends this call-off puts in ──
+
+     Where the programme stops before the design does: the feeder is
+     drawn on to plots not being built yet, so the cable just laid is
+     sealed five metres past the last plot connected until somebody
+     comes back.
+
+     Work to do, so it belongs on the booking beside the breech joints
+     rather than only on the drawing \u2014 a gang goes out and installs it,
+     and a planner counting connections is counting this one too. */
+  const seals = row.GIS_Data?.seals ?? [];
   useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
     [row.Submission_ID, row.GIS_Data]);
 
@@ -2306,9 +2318,13 @@ function Assignments({ row }) {
      Empty where the trace found none, and the chips do not appear \u2014 a
      row of nothing to choose is a row that teaches somebody the control
      does nothing. */
-  const nodeChoices = (breech?.joints || [])
-    .map((j) => j.node)
-    .filter(Boolean);
+  const nodeChoices = [
+    ...(breech?.joints || []).map((j) => j.node).filter(Boolean),
+    /* The seals, as connections to book. Named for where they sit
+       rather than by an id: "Seal after 22" is what a gang reads, and
+       it is the plot they will have just connected. */
+    ...seals.map((sl) => `Seal after ${sl.afterPlot}`),
+  ];
 
   /* Which day holds each joint, so it cannot be booked twice. Same rule
      as the plots: a joint is made once. */
@@ -2673,6 +2689,25 @@ function Assignments({ row }) {
               ))}
             </div>
           </div>
+
+          {seals.length > 0 && (
+            <div className="co-conn">
+              <h4>
+                Temporary Bottle Ends
+                <span className="co-breech-n">{seals.length}</span>
+              </h4>
+              <div className="co-chips">
+                {seals.map((sl) => (
+                  <span className="co-chip" key={`${sl.feederId}:${sl.afterPlot}`}
+                    title={`Five metres past plot ${sl.afterPlot}, holding the `
+                      + `cable for plot${sl.waitingFor?.length === 1 ? "" : "s"} `
+                      + (sl.waitingFor || []).join(", ")}>
+                    after {sl.afterPlot}
+                  </span>
+                ))}
+              </div>
+            </div>
+          )}
 
           <div className="co-conn">
             <h4>

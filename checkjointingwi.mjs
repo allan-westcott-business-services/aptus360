@@ -578,6 +578,82 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
       { plot: "S3", at: [40, 0] }, { plot: "S4", at: [70, 0] },
     ];
 
+    /* ── One seal per leg, and never off the end of laid cable ──
+
+       A leg is several cable features joined end to end, and both
+       earlier attempts got this wrong in opposite directions.
+
+       Handing every cable the whole site's plots put a seal on nearly
+       every cable. Handing each cable only its own plots put NONE on a
+       leg whose transition falls at a join — each half sees either
+       "all connected" or "none connected". Both because the question is
+       about the leg, not the cable. */
+    const { sealLeg } = await import(
+      process.cwd() + "/src/features/gis/bottleEnd.js");
+
+    const A = { Feature_ID: 10, Geometry: [[0, 0], [50, 0]] };
+    const B = { Feature_ID: 11, Geometry: [[50, 0], [100, 0]] };
+    const onCable = new Map([
+      [10, [{ plot: "S1", at: [10, 0] }, { plot: "S2", at: [25, 0] },
+        { plot: "S3", at: [47, 0] }]],
+      [11, [{ plot: "S4", at: [70, 0] }]],
+    ]);
+    const servedOn = (c) => onCable.get(c.Feature_ID) || [];
+
+    /* The case that broke the second attempt: every plot on cable A is
+       connected and the only one left is on cable B. One seal, on A. */
+    const across = sealLeg({
+      cables: [A, B], servedOn, connected: ["S1", "S2", "S3"],
+    });
+    if (!across) {
+      fail("a leg whose last connected plot ends its cable got no seal at all"
+        + " — each half sees all-connected or none-connected");
+    } else {
+      /* ── Held back to the join ──
+
+         Five metres past S3 at 47 m would land at 52 m, two metres into
+         cable B, which has not been laid. The seal sits on cable that
+         exists: at the join, three metres past. */
+      if (Math.abs(across.at[0] - 50) > 0.01) {
+        fail(`the seal is at ${across.at[0]}m — five metres past S3 lands on`
+          + " cable nobody has laid; it belongs at the join at 50m");
+      }
+      if (across.tailM !== 3) {
+        fail(`the seal reports ${across.tailM}m past the plot, not the 3m it is`);
+      }
+      if (!across.heldBack) {
+        fail("a seal cut short does not say so \u2014 a planner reading 5m when"
+          + " it is 3m is being told something untrue");
+      }
+      if (across.afterPlot !== "S3") fail("the seal follows the wrong plot");
+      if (!across.waitingFor?.includes("S4")) {
+        fail("the seal does not know it is holding the cable for S4");
+      }
+    }
+
+    /* Room for the full five, mid-cable: unchanged. */
+    const roomy = new Map([[10, [{ plot: "S1", at: [10, 0] },
+      { plot: "S3", at: [20, 0] }, { plot: "S4", at: [40, 0] }]], [11, []]]);
+    const mid = sealLeg({
+      cables: [A, B], servedOn: (c) => roomy.get(c.Feature_ID) || [],
+      connected: ["S1", "S3"],
+    });
+    if (Math.abs((mid?.at?.[0] ?? 0) - 25) > 0.01) {
+      fail(`with room to spare the seal is at ${mid?.at?.[0]}m, not 25m`);
+    }
+    if (mid?.heldBack) fail("a seal with room for five metres was cut short");
+
+    /* Nothing left for later on the leg: the feeder runs to its
+       designed end and a design bottle end goes there, not this. */
+    if (sealLeg({ cables: [A, B], servedOn,
+      connected: ["S1", "S2", "S3", "S4"] })) {
+      fail("a leg with every plot connected was given a temporary seal");
+    }
+    /* And nothing connected at all means nothing laid to seal. */
+    if (sealLeg({ cables: [A, B], servedOn, connected: [] })) {
+      fail("a leg with nothing connected was sealed");
+    }
+
     /* Five metres past the last plot connected, along the feeder. */
     const seal = sealPoint({ feeder, served, connected: ["S1", "S2", "S3"] });
     if (!seal) fail("no seal where plots further along are left for later");
@@ -617,8 +693,19 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
 
        The whole of what was wrong: written, tested, unreachable. */
     const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-    if (!/sealPoint\(\{ feeder, served, connected: servicePlots \}\)/.test(canvas)) {
+    if (!/sealLeg\(\{/.test(canvas)) {
       fail("raising a service call-off does not work out where to seal");
+    }
+    /* Per leg, not per cable. Calling sealPoint straight from the
+       canvas is what put a seal on nearly every cable. */
+    if (/sealPoint\(\{ feeder/.test(canvas)) {
+      fail("the canvas seals per cable again \u2014 one leg is several cables"
+        + " and gets one seal");
+    }
+    /* The legs assembled from the build's own walk, so a leg here and a
+       run there cannot mean different things. */
+    if (!/feederSections\(features, \{/.test(canvas)) {
+      fail("the legs are not taken from the walk the build itself uses");
     }
     if (!/Temporary: true/.test(canvas)) {
       fail("the seal is placed as a design bottle end \u2014 nothing marks it as"

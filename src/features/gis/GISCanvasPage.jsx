@@ -142,7 +142,7 @@ import {
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
 import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
-import { sealPoint } from "./bottleEnd.js";
+import { sealLeg } from "./bottleEnd.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
@@ -9700,21 +9700,97 @@ export default function GISCanvasPage() {
              It also records which plots it is holding the cable for, so
              the next call-off to reach one of them turns the seal into
              a straight joint rather than leaving it in the ground. */
-          const seals = [];
-          for (const feeder of features.filter((f) => f.Feature_Type === "line"
-            && f.Layer_Key === "electric"
-            && /main/i.test(String(f.Attributes?.Line_Type ?? "")))) {
-            const served = features
-              .filter((f) => f.Feature_Role === "meter"
-                && f.Layer_Key === "electric"
-                && (f.Geometry || []).length)
-              .map((f) => ({
-                plot: plotNumberFrom(plotList, f.Plot_ID ?? f.Attributes?.Plot_ID),
-                at: f.Geometry[0],
-              }))
-              .filter((r) => r.plot != null);
+          /* ── One seal per leg ──
 
-            const seal = sealPoint({ feeder, served, connected: servicePlots });
+             A leg is a branch of the circuit from the origin out to
+             where the run ends, made of several cable features joined
+             end to end. The seal belongs where the programme stops on
+             that leg, once.
+
+             Two earlier attempts got this wrong in opposite directions.
+             Handing every cable the whole site's plots put a seal on
+             nearly every cable. Handing each cable only its own plots
+             put none on a leg whose transition falls at a join, because
+             each half sees either "all connected" or "none connected".
+             Both because the question is about the leg, not the cable.
+
+             The legs come from feederSections, which is the walk the
+             build itself uses: sections in order from the origin, and a
+             leg ends where nothing loaded runs on. */
+          /* Every plot seed on the drawing, not only the ones on this
+             call-off: the leg has to be walked whole, including the
+             plots left for later, or there is nothing beyond the last
+             connected one and no reason to seal. */
+          const allSeedIds = new Set(features
+            .filter((f) => f.Feature_Role === "plot")
+            .map((f) => Number(f.Feature_ID)));
+
+          const model = feederSections(features, {
+            lineTypes,
+            plotById: (id) => plotList.find((pp) => pp.plot_id === id),
+            seedIds: allSeedIds,
+          });
+
+          /* Which plots each cable serves, by the service that tees
+             into it. A meter belongs to the feeder its own service
+             reaches \u2014 the service carries the plot number and its end
+             sits on the main. A meter beside a cable that does not feed
+             it is not on it. */
+          const servicesOf = new Map();
+          for (const svc of features.filter((f) => f.Feature_Type === "line"
+            && f.Layer_Key === "electric"
+            && /service/i.test(String(f.Attributes?.Line_Type ?? "")))) {
+            const plot = plotNumberFrom(plotList,
+              svc.Plot_ID ?? svc.Attributes?.Plot_ID);
+            const ends = svc.Geometry || [];
+            if (plot == null || !ends.length) continue;
+            for (const sec of (model.sections || [])) {
+              const pts = sec.pts || [];
+              if (!pts.some((v) => ends.some((e) =>
+                Math.hypot(v[0] - e[0], v[1] - e[1]) <= 0.25))) continue;
+              const key = sec;
+              if (!servicesOf.has(key)) servicesOf.set(key, []);
+              servicesOf.get(key).push({ plot, at: ends[0] });
+              break;
+            }
+          }
+
+          /* Sections grouped into legs: each run of sections ending
+             where nothing loaded carries on. `endNode` is the section's
+             far end, and a section whose end is another section's start
+             is mid-leg. */
+          const startsAt = new Map();
+          for (const sec of (model.sections || [])) {
+            startsAt.set(String(sec.upNode), sec);
+          }
+          const legs = [];
+          const used = new Set();
+          for (const sec of (model.sections || [])) {
+            if (used.has(sec)) continue;
+            if (startsAt.has(String(sec.upNode))
+              && startsAt.get(String(sec.upNode)) !== sec) continue;
+            const chain = [];
+            let cur = sec;
+            while (cur && !used.has(cur)) {
+              used.add(cur);
+              chain.push(cur);
+              cur = startsAt.get(String(cur.endNode));
+            }
+            if (chain.length) legs.push(chain);
+          }
+
+          const seals = [];
+          for (const leg of legs) {
+            const cables = leg.map((sec) => ({
+              Feature_ID: sec.upNode,
+              Geometry: sec.pts,
+              _sec: sec,
+            }));
+            const seal = sealLeg({
+              cables,
+              servedOn: (c) => servicesOf.get(c._sec) || [],
+              connected: servicePlots,
+            });
             if (seal) seals.push(seal);
           }
 

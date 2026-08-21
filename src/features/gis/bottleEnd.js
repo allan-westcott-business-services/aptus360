@@ -128,10 +128,34 @@ export function sealPoint({ feeder, served = [], connected = [], tailM = TAIL_M 
      as two rules where there is one. */
   if (!off.some((r) => r.along > last.along)) return null;
 
+  /* ── Five metres, but never off the end of this cable ──
+
+     A leg is several cable features joined end to end, so five metres
+     measured along it can cross a join and land on cable that has not
+     been laid. The seal has to sit on cable that exists and is
+     energised, so it is held back to the end of the one carrying the
+     last connected plot.
+
+     Which makes five a maximum rather than a fixed distance: a plot two
+     metres from its cable's end is sealed two metres past, at the
+     join. A plot with more than five metres of its own cable beyond it
+     gets the full five, unchanged.
+
+     `legLength` is the whole of this feature, because the leg beyond it
+     is a different feature and not this one's to reach into. */
+  const legLength = distanceAlong(g, g[g.length - 1]);
+  const want = last.along + tailM;
+  const put = Math.min(want, legLength);
+
   return {
-    at: alongFrom(g, g[0], last.along + tailM),
+    at: alongFrom(g, g[0], put),
     feederId: feeder.Feature_ID,
     afterPlot: last.plot,
+    /* How far past the plot it actually landed, and whether it was cut
+       short. A planner reading "5 m past 22" when it is two is being
+       told something untrue, and the gang measures from the plot. */
+    tailM: Math.round((put - last.along) * 10) / 10,
+    heldBack: put < want,
     /* The plots this is holding the cable for, which is what makes it
        removable later: when a call-off connects the first of them, the
        seal becomes a straight joint. */
@@ -153,4 +177,91 @@ export function sealsNowJoined(seals = [], connected = []) {
   const picked = new Set(connected.map((p) => String(p).trim()));
   return seals.filter((s) =>
     (s.waitingFor || []).some((p) => picked.has(String(p).trim())));
+}
+
+/* ── One seal per leg ──
+
+   A leg is a branch of the circuit from the origin out to where the run
+   ends, and it is several cable features joined end to end. The seal
+   belongs where the programme stops on that leg — once — not on every
+   cable the leg is made of.
+
+   Called per cable, sealPoint answers about that cable alone: a cable
+   whose plots are all connected has nothing beyond it and returns
+   null, and so does one with nothing connected on it. On a leg where
+   the transition falls at a join, both halves say null and the leg gets
+   no seal at all. Handing every cable the whole site's plots instead
+   put a seal on nearly every one. Both were wrong, in opposite
+   directions, for the same reason: the question is about the leg.
+
+   So the plots are gathered across the leg, the last connected one is
+   found, and the seal is placed on the cable carrying THAT plot —
+   which is what keeps it on cable that has been laid.
+
+   `cables` is the leg in walk order, origin first. `servedOn` gives the
+   plots on one cable. Both come from the caller, because assembling a
+   leg is the canvas's job and this module has no view of the drawing.*/
+export function sealLeg({ cables = [], servedOn = () => [], connected = [],
+  tailM = TAIL_M }) {
+  const picked = new Set(connected.map((p) => String(p).trim()));
+
+  /* The last cable carrying a connected plot. Walking from the origin
+     out, so "last" is furthest along the leg. */
+  let lastIdx = -1;
+  for (let i = 0; i < cables.length; i++) {
+    if (servedOn(cables[i]).some((r) => picked.has(String(r.plot).trim()))) {
+      lastIdx = i;
+    }
+  }
+  if (lastIdx < 0) return null;
+
+  /* Anything left for later, anywhere further out on the leg. A plot
+     skipped behind is a gap, not the programme stopping \u2014 the same
+     rule sealPoint applies within one cable, applied across the leg. */
+  const beyond = [];
+  for (let i = lastIdx; i < cables.length; i++) {
+    for (const r of servedOn(cables[i])) {
+      if (!picked.has(String(r.plot).trim())) beyond.push(r);
+    }
+  }
+  if (!beyond.length) return null;
+
+  /* Placed on the cable carrying the last connected plot, where
+     sealPoint clamps it to that cable's end. The plots handed over are
+     that cable's own, plus the ones further out on the leg so it knows
+     something is left \u2014 named by plot, so a plot on a later cable is
+     still "beyond" without needing its position on this one. */
+  const cable = cables[lastIdx];
+  const own = servedOn(cable);
+  const seal = sealPoint({
+    feeder: cable,
+    served: [...own, ...beyond.filter((b) => !own.includes(b))],
+    connected,
+    tailM,
+  });
+  if (seal) return seal;
+
+  /* sealPoint refused, which happens where every plot on this cable is
+     connected and everything left for later is on the next one. The
+     seal then belongs at the end of this cable: that is as far as laid
+     cable goes. */
+  const g = cable.Geometry || [];
+  if (g.length < 2) return null;
+  const rows = own
+    .map((r) => ({ ...r, along: distanceAlong(g, r.at) }))
+    .filter((r) => picked.has(String(r.plot).trim()))
+    .sort((a, b) => a.along - b.along);
+  const last = rows[rows.length - 1];
+  if (!last) return null;
+
+  const end = distanceAlong(g, g[g.length - 1]);
+  const put = Math.min(last.along + tailM, end);
+  return {
+    at: alongFrom(g, g[0], put),
+    feederId: cable.Feature_ID,
+    afterPlot: last.plot,
+    tailM: Math.round((put - last.along) * 10) / 10,
+    heldBack: put < last.along + tailM,
+    waitingFor: beyond.map((r) => r.plot),
+  };
 }

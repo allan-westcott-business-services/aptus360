@@ -121,7 +121,8 @@ export default function CircuitReport({
           Meter: m.meter, Plot: m.plot, "House type": m.houseType,
           /* Numeric, not "400.8 m" — a column of text returns zero from
              every sum built on it downstream. */
-          "Distance from substation (m)": m.distM,
+          [`Distance from ${report.stationRole === "poc"
+            ? "POC" : "substation"} (m)`]: m.distM,
           kVA: m.kva,
         });
       }
@@ -133,7 +134,9 @@ export default function CircuitReport({
            it is an export somebody has spreadsheets built on. */
         Circuit: `Not traced to ${report.station}`, Substation: "",
         Meter: m.meter, Plot: m.plot, "House type": m.houseType,
-        "Distance from substation (m)": null, kVA: m.kva,
+        [`Distance from ${report.stationRole === "poc"
+          ? "POC" : "substation"} (m)`]: null,
+        kVA: m.kva,
       });
     }
     const wb = XLSX.utils.book_new();
@@ -378,7 +381,14 @@ export default function CircuitReport({
                               onChange={(e) => setMany(ids, e.target.checked)} />
                         </th>
                         {[["meter", "Meter"], ["plot", "Plot"], ["houseType", "House type"],
-                          ["distM", "Dist. from substation"], ["kva", "kVA"]].map(([k, l]) => (
+                          /* Named for whatever the network is measured
+                             from. On a connection to an existing
+                             network there is no transformer, so a
+                             column headed "from substation" is naming
+                             something the scheme does not have.
+                             circuitReport says which it used. */
+                          ["distM", `Dist. from ${report.stationRole === "poc"
+                            ? "POC" : "substation"}`], ["kva", "kVA"]].map(([k, l]) => (
                             <th key={k} onClick={() => setSort((s) => ({
                               key: k, dir: s.key === k && s.dir === "asc" ? "desc" : "asc",
                             }))}>

@@ -12,6 +12,7 @@
      because correcting the trench alone leaves the cable reading Live
      in a hole that has not been dug. */
 import { readFileSync } from "node:fs";
+import { contentsOf } from "./src/features/gis/trenchContents.js";
 import {
   BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES, statusesFor,
   isServiceFeature, isMainFeature, blocksLive, canGoLive, LIVE_KEY, statusOf,
@@ -280,6 +281,80 @@ const line = (type, layer, attrs = {}) => ({
   if (!/isMainFeature\(before, lineTypes\) \|\| isServiceFeature\(before, lineTypes\)/
     .test(canvas)) {
     fail("the save path does not scope the rule to cables and pipes");
+  }
+}
+
+/* ── Putting a trench back to Planned ──
+
+   A trench that goes back to Planned takes what is in it with it: a
+   cable cannot be As-Laid in a trench that has not been dug.
+
+   That branch called `contentsOf(...).filter(...)`. `contentsOf`
+   answers with a REPORT — `{ ok, trench, trenchM, contents, passing,
+   byUtility }`, or `{ error }` where the geometry is not a line — so
+   the filter threw and the save failed outright. As-Laid to Planned was
+   impossible on any trench, which is the one direction that branch
+   exists to handle.
+
+   Every other caller in the app reads `.contents` off it. This was the
+   only one that did not, and nothing caught it because the shape is
+   only wrong at the moment somebody uses it. */
+{
+  const lineTypes = [
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+    { Type_Key: "elec_main", Layer_Key: "electric" },
+  ];
+  const trench = {
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [50, 0]],
+    Attributes: { Line_Type: "trench_main", Build_Status: "planned" },
+  };
+  const cable = {
+    Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [50, 0]],
+    Attributes: { Line_Type: "elec_main", Build_Status: "aslaid" },
+  };
+
+  const res = contentsOf(trench, [trench, cable], { lineTypes });
+
+  /* The shape, stated. If contentsOf ever becomes an array this fails
+     and whoever changed it finds every caller. */
+  if (Array.isArray(res)) {
+    fail("contentsOf returns an array now \u2014 its callers read .contents");
+  }
+  if (!Array.isArray(res?.contents)) {
+    fail("contentsOf(...).contents is not a list of what is in the trench");
+  }
+  /* And the thing that actually broke: it has no .filter of its own. */
+  if (typeof res?.filter === "function") {
+    fail("contentsOf answers something filterable \u2014 this check no longer"
+      + " guards what it was written for");
+  }
+
+  /* Bad geometry answers with a reason, not a throw, and not a list. */
+  const bad = contentsOf({ ...trench, Geometry: [[0, 0]] }, [], { lineTypes });
+  if (!bad?.error) fail("a trench that is not a line did not say so");
+  if (Array.isArray(bad?.contents) && bad.contents.length) {
+    fail("a refused report still listed contents");
+  }
+
+  /* The canvas reads it correctly. Source-read, because the branch runs
+     inside a save handler in a nineteen-thousand-line component and
+     cannot be called from here. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/contentsOf\([^;]*\)\s*\n?\s*\.filter\(/.test(canvas)) {
+    fail("the canvas filters the report contentsOf returns, rather than"
+      + " its .contents \u2014 the save throws and the trench cannot go back"
+      + " to Planned");
+  }
+  if (!/res\?\.ok \? res\.contents : \[\]/.test(canvas)) {
+    fail("the put-back-to-Planned branch does not read .contents");
+  }
+  /* `passing` stays out: those lines turn at a junction near the
+     stretch rather than lying in it, and pulling a neighbour's cable
+     back because it rounds a corner here would be wrong. */
+  if (/res\.passing/.test(canvas)) {
+    fail("lines merely passing the trench are being put back to Planned");
   }
 }
 

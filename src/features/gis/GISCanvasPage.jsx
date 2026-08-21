@@ -7511,7 +7511,22 @@ export default function GISCanvasPage() {
       if (isTrenchType(after?.Attributes?.Line_Type, lineTypes)
         && nowStatus === "planned" && wasStatus !== "planned") {
         const world = features.map((x) => (x.Feature_ID === id ? after : x));
-        const inside = contentsOf(after, world, { lineTypes })
+        /* `contentsOf` answers with a report, not a list: `{ ok, trench,
+           trenchM, contents, passing, ... }`, or `{ error }` where the
+           geometry is not a line. Filtering the report itself threw
+           "contentsOf(...).filter is not a function" and lost the save
+           — so putting a trench back to Planned failed outright, which
+           is the one direction this branch exists to handle.
+
+           Every other caller in the app reads `.contents` off it. This
+           was the only one that did not.
+
+           `passing` is deliberately not included: those are lines
+           turning at a junction near the stretch rather than laid in
+           it, and pulling a neighbour's cable back to Planned because
+           it rounds a corner here would be wrong. */
+        const res = contentsOf(after, world, { lineTypes });
+        const inside = (res?.ok ? res.contents : [])
           .filter((x) => x.Feature_Type === "line"
             && statusOf(x) != null && statusOf(x) !== "planned");
 

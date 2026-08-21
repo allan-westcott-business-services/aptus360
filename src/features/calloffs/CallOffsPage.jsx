@@ -2082,7 +2082,7 @@ function Assignments({ row }) {
     );
   };
 
-  /* Different plots each day, and there is more than one day. The tick
+  /* Different connections each day, and there is more than one day. The tick
      is hidden on a one-day booking, but the flag survives from when the
      dates were wider. Derived once so the form, the validation and the
      save take the same view. */
@@ -2564,34 +2564,47 @@ function Assignments({ row }) {
           screen. */}
       {breech?.plots?.length > 0 && (
         <div className="co-breech">
-          <h4>
-            Breech joints on the route
-            <span className="co-breech-n">{breech.totalJoints}</span>
-          </h4>
-          <p className="hint">
-            Counted once each. One joint feeding several plots is one
-            connection to make.
-          </p>
-          {breech.plots.map((p) => (
-            <div className="co-breech-row" key={p.plot ?? p.plotId}>
-              {/* The number, or a plain admission. Showing the raw
-                                  Plot_ID where the number is missing reads as a
-                                  plot: 34 and 35 came out as "Plot 74" and
-                                  "Plot 75" on a call-off that has neither. */}
-                            <strong>{p.plot ? `Plot ${p.plot}` : "A plot with no number"}</strong>
-              {p.reachable === false ? (
-                <span className="co-breech-warn">
-                  route could not be traced
+          {/* ── The two sets of connections, as sets ──
+
+              This was a row per plot listing the same two nodes over
+              and over, under a total saying "counted once each" — which
+              made the repetition read as a contradiction.
+
+              What a planner is counting is connections: how many plots
+              to connect, and how many joints to make on the way. Two
+              lists of chips says that in a glance; a table of
+              repetitions makes it something to work out. */}
+          <div className="co-conn">
+            <h4>Service Connections at Plots</h4>
+            <div className="co-chips">
+              {breech.plots.map((p) => (
+                <span className={p.reachable === false
+                  ? "co-chip warn" : "co-chip"}
+                  key={p.plot ?? p.plotId}
+                  title={p.reachable === false
+                    ? "The route back from this plot could not be traced"
+                    : undefined}>
+                  {p.plot ?? "?"}
                 </span>
-              ) : (
-                <span>
-                  {p.joints.map((j) => (j.node
-                    ? `Node ${j.node}`
-                    : "not on a node")).join(", ")}
-                </span>
-              )}
+              ))}
             </div>
-          ))}
+          </div>
+
+          <div className="co-conn">
+            <h4>
+              Breech Joint Connections at Nodes
+              <span className="co-breech-n">{breech.totalJoints}</span>
+            </h4>
+            <div className="co-chips">
+              {(breech.joints || []).map((j) => (
+                <span className="co-chip" key={j.featureId}
+                  title={`Serves plot${j.plots.length === 1 ? "" : "s"} `
+                    + j.plots.join(", ")}>
+                  {j.node ?? "not on a node"}
+                </span>
+              ))}
+            </div>
+          </div>
         </div>
       )}
 
@@ -3148,7 +3161,7 @@ function Assignments({ row }) {
                             byDay: e.target.checked,
                             dayPlots: e.target.checked ? (dd.dayPlots || {}) : {},
                           }))} />
-                        Different plots each day
+                        Different connections each day
                       </label>
                     )}
 
@@ -3773,6 +3786,20 @@ const CSS = FILTER_CSS + `
 .co-breech-n { font-size: 11px; font-weight: 700; background: #f59e0b; color: #fff;
   border-radius: 20px; padding: 1px 7px; }
 .co-breech .hint { margin: 0 0 8px; }
+/* Two sets of connections, as sets. A planner is counting how many
+   plots to connect and how many joints to make on the way, and chips
+   say that at a glance where a table of repetitions did not. */
+.co-conn + .co-conn { margin-top: 12px; }
+.co-conn h4 { margin: 0 0 6px; font-size: 13px; font-weight: 700;
+  display: flex; align-items: center; gap: 8px; }
+.co-chips { display: flex; flex-wrap: wrap; gap: 6px; }
+.co-chip { border: 1px solid var(--border); background: var(--white);
+  border-radius: 8px; padding: 5px 12px; font: 600 13px inherit;
+  color: var(--text); }
+/* A plot whose route could not be traced is a fault in the drawing and
+   must not read like one that is simply connected. */
+.co-chip.warn { border-color: #fca5a5; background: #fef2f2; color: #991b1b; }
+
 .co-breech-row { display: flex; gap: 10px; padding: 5px 0; font-size: 13px;
   border-top: 1px solid #fde68a; }
 .co-breech-row strong { flex: 0 0 90px; }

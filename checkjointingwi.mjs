@@ -582,8 +582,23 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     }
     /* Named by node there as well, so the office and the gang are
        reading one thing. */
-    if (!/Node \$\{j\.node\}/.test(page)) {
+    /* Named by node. The panel is two sets of chips now rather than a
+       row per plot, so the node is the chip's own text \u2014 the earlier
+       spelling `Node ${j.node}` was the old markup and failed on a
+       change that only moved it. */
+    if (!/\{j\.node \?\? "not on a node"\}/.test(page)) {
       fail("the office view does not name the joints by their node");
+    }
+    /* Two sets, not a row per plot repeating the same joints. */
+    if (!/Service Connections at Plots/.test(page)
+      || !/Breech Joint Connections at Nodes/.test(page)) {
+      fail("the office view no longer separates the plot connections from"
+        + " the joint connections");
+    }
+    if (/co-breech-row/.test(page.replace(/\/\*[\s\S]*?\*\//g, "")
+      .replace(/^\.co-breech-row[^\n]*$/gm, ""))) {
+      fail("the per-plot table is still rendered \u2014 the same joints repeat"
+        + " down the screen under a total saying counted once each");
     }
     /* The route it could not trace is not drawn like a clear run. */
     if (!/p\.reachable === false/.test(page)) {

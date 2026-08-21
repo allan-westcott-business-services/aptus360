@@ -481,6 +481,61 @@ const utils = () => ["electric"];
   }
 }
 
+/* ── Laying a service places the joint that connects it ──
+
+   A service teed into a main is jointed to it. The tee vertex attaches
+   the two on the drawing; the joint is the fitting that does it on the
+   ground, and it is a line on the take-off and a task for a gang.
+
+   It was left to Place Feeder Joints, which plans from the feeder model
+   — so it needed circuits linked and the LV network built first, and a
+   service laid before either had a cable running to a main with nothing
+   marking where they met. Laying the cable is the moment the joint
+   exists; nothing else has to have happened first. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("── And the joint that makes the connection ──");
+  const body = at < 0 ? "" : canvas.slice(at, at + 2600);
+
+  if (!body) fail("laying a service places no joint where it meets the main");
+  else {
+    if (!/Joint_Type: "service"/.test(body)) {
+      fail("the fitting placed with a service is not a service joint");
+    }
+    /* At the cable's start, which is where it leaves the main \u2014 not at
+       the meter end. */
+    if (!/const start = \(f\.Geometry \|\| \[\]\)\[0\]/.test(body)) {
+      fail("the joint is not placed where the service leaves the main");
+    }
+
+    /* Not where one is already there. A drawing where the joint was
+       placed by hand, or by an earlier run, keeps the one it has \u2014
+       re-laying must not leave two fittings at one point. */
+    if (!/if \(near\) continue;/.test(body)) {
+      fail("a second run places another joint beside the one already there");
+    }
+    /* And each one placed counts towards that test, or a run laying two
+       services to one point would place two joints in the same instant
+       the check said none was there. */
+    if (!/already\.push\(/.test(body)) {
+      fail("a joint placed by this run is not seen by the rest of it");
+    }
+
+    /* Electric only. A gas service gets a top tee and a water one a
+       ferrule, both placed by their own routines. */
+    if (!/utility === "electric"/.test(body)) {
+      fail("a joint is placed for every utility \u2014 gas takes a top tee");
+    }
+
+    /* Said out loud. Zero where they were all already there is a
+       different answer from none having been placed, and the two are
+       indistinguishable on the drawing. */
+    if (!/service joint\(s\) placed/.test(canvas)) {
+      fail("the run does not say how many joints it placed");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service behaves (the cable follows the dig it is laid in).");
 process.exit(bad ? 1 : 0);

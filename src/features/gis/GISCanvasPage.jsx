@@ -12492,6 +12492,8 @@ export default function GISCanvasPage() {
       setProgress({ done: 0, total: cables.length, label: "Connecting" });
 
       let stopped = false;
+      /* Service joints placed with the cables, so the run can say so. */
+      let jointCount = 0;
       const made = [];
       for (const [i, c] of cables.entries()) {
         /* Stopping part-way is safe and worth offering: the bar already
@@ -12574,12 +12576,72 @@ export default function GISCanvasPage() {
         catch (e) { setError(e.message); }
       }
 
+      /* ── And the joint that makes the connection ──
+
+         A service teed into a main is jointed to it. The vertex above
+         is what attaches the two on the drawing; the joint is the
+         fitting that does it on the ground, and it is a line on the
+         take-off and a task for a gang.
+
+         It was left to Place Feeder Joints, which plans from the feeder
+         model \u2014 so it needed circuits linked and the LV network built,
+         and a service laid before either had a cable running to a main
+         with nothing marking where they met. Laying the cable is the
+         moment the joint exists; nothing else has to have happened
+         first.
+
+         Electric only. A gas service gets a top tee and a water one a
+         ferrule, and both are placed by their own routines.
+
+         Not where one is already there. A drawing where the joint was
+         placed by hand, or by an earlier run, keeps the one it has \u2014
+         re-laying a cable must not leave two fittings at one point. */
+      if (utility === "electric") {
+        const already = world.filter((f) => f.Feature_Role === "joint"
+          && f.Layer_Key === "electric" && (f.Geometry || []).length);
+        for (const f of made) {
+          const start = (f.Geometry || [])[0];
+          if (!start) continue;
+          const near = already.some((j) => Math.hypot(
+            j.Geometry[0][0] - start[0], j.Geometry[0][1] - start[1]) <= 0.25);
+          if (near) continue;
+          try {
+            const j = await addFeature({
+              Layer_Key: "electric",
+              Feature_Type: "point",
+              Feature_Role: "joint",
+              Geometry: [start],
+              Label: JOINT_KINDS.service?.label ?? "Service Joint",
+              Attributes: {
+                Joint_Type: "service",
+                Joint_Code: JOINT_KINDS.service?.code ?? "SVC",
+                Joint_Reasons: ["service"],
+                /* The plot it connects, taken from the cable, so the
+                   joint answers the same question the cable does. */
+                Plot_ID: f.Plot_ID ?? null,
+                Generated: true,
+              },
+            });
+            /* Counted as placed so a second run sees it and does not
+               add another beside it. */
+            already.push(j ?? { Geometry: [start] });
+            jointCount += 1;
+          } catch (e) { setError(e.message); }
+        }
+      }
+
       setProgress({ done: made.length, total: cables.length, label: "Saving" });
 
       await recordAction(`Lay ${made.length} ${utility} service(s)`, [], made);
       const fresh = await listGis(projectId);
       setFeatures(fresh.features || []);
       setStatus(`${made.length} ${utility} service(s) laid`
+        /* Said, because it is a fitting on the take-off and work for a
+           gang. Zero where they were all already there, which is the
+           ordinary case on a second run and worth being able to tell
+           apart from none having been placed. */
+        + (utility === "electric"
+          ? ` \u00b7 ${jointCount} service joint(s) placed` : "")
         + (stopped ? " \u00b7 stopped early, run it again for the rest" : "")
         + (skipped.length ? ` \u00b7 ${skipped.length} trench(es) skipped` : ""));
 

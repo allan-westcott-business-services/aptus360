@@ -88,7 +88,49 @@ function pathToRoot(parent, fromId) {
 export function breechesOnRoutes(features = [], meters = [], originId = null) {
   if (originId == null || !meters.length) return [];
 
-  const graph = buildGraph(features);
+  /* ── The LV network starts at the origin, and does not run through
+         anything upstream of it ──
+
+     rootAt walks the graph breadth first, so it finds the fewest-hops
+     route rather than the electrical one. Where a scheme has a
+     substation AND a point of connection, the incomer joins the two —
+     so the graph has a way round through the POC, and a plot whose own
+     leg is long came back routed through it. Plot 34 listed five
+     breech joints nobody would meet walking its actual feeder, while
+     every other plot on the call-off shared two.
+
+     The POC is upstream of a substation: the incomer arrives there and
+     the LV network begins at the transformer. So where the origin is a
+     substation, the POC is taken out of the graph and no route can pass
+     through it.
+
+     Where the POC IS the origin \u2014 a connection to an existing network,
+     with no transformer \u2014 it stays, because that is where the network
+     starts. Nothing is excluded then, because there is nothing upstream
+     of it on the drawing. */
+  const origin = features.find((f) =>
+    Number(f.Feature_ID) === Number(originId));
+  const upstream = origin?.Feature_Role === "substation"
+    ? new Set(features
+      .filter((f) => (f.Feature_Role === "poc" && f.Layer_Key === "electric")
+        /* And the incomer itself. Taking the POC point out was not
+           enough: the cable from the POC to the substation still joined
+           the two ends, so a route could still go round through it.
+
+           Marked two ways by the routine that lays it — `Poc_Route` on
+           the feature and `elec_hv` as its type — and both are checked,
+           because an incomer drawn by hand carries the type and not the
+           flag. HV is not the LV network by definition. */
+        || f.Attributes?.Poc_Route === true
+        || String(f.Attributes?.Line_Type ?? "").toLowerCase() === "elec_hv")
+      .map((f) => Number(f.Feature_ID)))
+    : new Set();
+
+  const graph = buildGraph(
+    upstream.size
+      ? features.filter((f) => !upstream.has(Number(f.Feature_ID)))
+      : features,
+  );
   const root = Number(originId);
   if (!graph.byId.has(root)) return [];
 

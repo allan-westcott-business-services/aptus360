@@ -455,6 +455,64 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     }
   }
 
+  /* ── The LV network starts at the origin ──
+
+     rootAt walks breadth first, so it finds the fewest-hops route
+     rather than the electrical one. Where a scheme has a substation AND
+     a point of connection, the incomer joins the two — so the graph has
+     a way round, and a plot on a long leg came back routed through the
+     POC. Plot 34 listed five breech joints nobody would meet walking
+     its own feeder while every other plot shared two.
+
+     The POC and the incomer are upstream of a substation. Taking the
+     POC point out alone was not enough: the cable still joined the two
+     ends. */
+  {
+    const line = (id, geom, type = "elec_main", attrs = {}) => ({
+      Feature_ID: id, Layer_Key: "electric", Feature_Type: "line",
+      Geometry: geom, Attributes: { Line_Type: type, ...attrs },
+    });
+    const sub = { Feature_ID: 1, Layer_Key: "electric", Feature_Role: "substation",
+      Geometry: [[0, 0]], Attributes: {} };
+    const poc = { Feature_ID: 2, Layer_Key: "electric", Feature_Role: "poc",
+      Geometry: [[100, 0]], Attributes: {} };
+    const node = (id, at, label) => ({
+      Feature_ID: id, Layer_Key: "trench", Feature_Role: "spannode",
+      Geometry: [at], Attributes: { Span_Label: label } });
+    const far = { Feature_ID: 6, Layer_Key: "electric", Feature_Role: "meter",
+      Geometry: [[100, 11]], Plot_ID: 34, Attributes: {} };
+
+    const both = [
+      sub, poc,
+      line(10, [[0, 0], [100, 0]], "elec_hv", { Poc_Route: true }),
+      line(14, [[100, 0], [100, 10]]),
+      node(902, [100, 10], "A9"),
+      { Feature_ID: 102, Layer_Key: "electric", Feature_Role: "joint",
+        Geometry: [[100, 10]], Attributes: { Joint_Type: "breech" } },
+      far,
+    ];
+
+    /* Only reachable through the POC, so from the substation it is not
+       reachable at all — and saying so is right. Routing it round the
+       incomer and listing the joints it met on the way is not. */
+    const fromSub = breechesOnRoutes(both, [far], 1)[0];
+    if (fromSub?.reachable) {
+      fail("a plot reachable only through the POC was traced from the"
+        + " substation, round the incomer \u2014 its joints are not on its feeder");
+    }
+
+    /* And on a scheme with no transformer the POC IS the origin, so
+       nothing is excluded and the plot traces normally. */
+    const pocFed = both.filter((f) => f.Feature_ID !== 1 && f.Feature_ID !== 10);
+    const fromPoc = breechesOnRoutes(pocFed, [far], 2)[0];
+    if (!fromPoc?.reachable) {
+      fail("a POC-fed scheme cannot trace back to its own POC");
+    }
+    if (fromPoc?.joints[0]?.node !== "A9") {
+      fail("a POC-fed trace lost the joint on its route");
+    }
+  }
+
   /* ── The office sees it too ──
 
      The trace was stored and shown on the field work instruction and

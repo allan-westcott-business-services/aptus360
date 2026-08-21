@@ -8638,6 +8638,23 @@ export default function GISCanvasPage() {
       f.Feature_Role === "joint" || f.Attributes?.Joint_Type != null);
     const { add, update, stale } = reconcileJoints(planned, existing, CONNECT_M);
 
+    /* ── A joint this app placed, that the network has moved ──
+
+       Stale joints were all left alone, which is right for one somebody
+       drew: deleting a hand-placed joint because the model did not ask
+       for it would throw away a decision.
+
+       It is wrong for one this app placed itself. When the bottle end
+       moved to the end of the tail, the plan put a new one 3 m along
+       and the old one at the take-off matched nothing \u2014 so it stayed,
+       sitting under the service joint, and the drawing had two bottle
+       ends on every leg with the wrong one where anybody was looking.
+
+       `Generated` is set on every joint this routine writes, so the two
+       can be told apart. Its own go; everybody else's stay. */
+    const staleMine = stale.filter((f) => f.Attributes?.Generated === true);
+    const staleTheirs = stale.filter((f) => f.Attributes?.Generated !== true);
+
     if (!add.length && !update.length) {
       if (!silent) {
         setStatus(planned.length
@@ -8658,8 +8675,12 @@ export default function GISCanvasPage() {
       `Place joints on the LV feeders?\n\n`
       + (add.length ? `Add: ${tally(add, (j) => j.kind)}\n` : "")
       + (update.length ? `Reclassify: ${tally(update, (u) => u.plan.kind)}\n` : "")
-      + (stale.length ? `\n${stale.length} existing joint(s) the network no longer calls for `
-        + "will be left alone.\n" : "")
+      + (staleMine.length
+        ? `\nRemove: ${tally(staleMine, (j) => j.Attributes?.Joint_Type ?? "joint")}`
+          + " (placed by an earlier run, no longer called for)\n" : "")
+      + (staleTheirs.length
+        ? `\n${staleTheirs.length} joint(s) somebody placed by hand will be `
+          + "left alone.\n" : "")
     )) return 0;
 
     const attrsFor = (j) => ({
@@ -8697,10 +8718,23 @@ export default function GISCanvasPage() {
           await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
         }
       }
+      /* The app's own joints that the network has moved off. Batched
+         the way the other bulk removals here are, and last: a joint
+         removed before its replacement is written leaves the drawing
+         momentarily without one, and a failure between the two would
+         leave it that way. */
+      if (staleMine.length) {
+        const ids = staleMine.map((f) => f.Feature_ID);
+        for (let i = 0; i < ids.length; i += 100) {
+          await deleteFeatures(projectId, ids.slice(i, i + 100));
+        }
+      }
+
       if (!silent) await load(projectId);
       setStatus(`${add.length} joint(s) placed`
         + (update.length ? `, ${update.length} reclassified` : "")
-        + (stale.length ? `, ${stale.length} left alone` : ""));
+        + (staleMine.length ? `, ${staleMine.length} removed` : "")
+        + (staleTheirs.length ? `, ${staleTheirs.length} left alone` : ""));
       setTimeout(() => setStatus(""), 9000);
       setError("");
       return add.length + update.length;
@@ -10630,6 +10664,9 @@ export default function GISCanvasPage() {
     /* Points the walk wanted and did not find. See below: the build no
        longer creates span nodes. */
     let missingNodes = 0;
+    /* How many spare lengths were laid past a last plot. Reported, so a
+       zero is a fact rather than a silence. */
+    let tails = 0;
     /* Nodes already spoken for by a circuit earlier in this run.
 
        `src` is a snapshot taken before any of this, so a node adopted by
@@ -10904,6 +10941,7 @@ export default function GISCanvasPage() {
              Line_Type "trench" so it is dug and measured as mains
              trench, which is what it is. */
           if (sec.tailM && sec.tailAt) {
+            tails += 1;
             const g = sec.pts;
             await addFeature({
               Layer_Key: "trench",
@@ -11181,7 +11219,25 @@ export default function GISCanvasPage() {
       if (failed.length) setError(`Couldn\u2019t route: ${failed.join(" \u00B7 ")}`);
       else setError("");
 
+      /* ── What the tail did, said out loud ──
+
+         A tail that is not drawn leaves the bottle end at the service
+         joint, which looks like the two are on top of each other and
+         reads as a placement fault. It has been chased three times from
+         the drawing and once from the database, and every time the
+         thing that would have answered it in one go is the build
+         saying what it read and what it drew.
+
+         The length as well as the count: reading zero from the settings
+         and drawing none is a different fault from reading 3 and
+         drawing none, and the two are indistinguishable on the canvas.
+         Zero is a legitimate setting, so it is reported rather than
+         warned about. */
+      const tailSet = Number(lookups?.vdSettings?.[0]?.Bottle_End_Tail_M) || 0;
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
+        + (tailSet > 0
+          ? `, ${tails} bottle end tail(s) at ${tailSet}m`
+          : ", no bottle end tails (Bottle_End_Tail_M is 0 or unset)")
         + (jointsMade ? `, ${jointsMade} joint(s)` : "")
         /* What the build wanted and could not find, so the gap is
            reported rather than filled in silently. */

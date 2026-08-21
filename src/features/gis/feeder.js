@@ -441,10 +441,26 @@ export function feederSections(features = [], opts = {}) {
   const tailM = Number(opts.bottleEndTailM);
   if (Number.isFinite(tailM) && tailM > 0) {
     for (const sec of sections) {
-      /* Nothing runs on from here. `mainsChildren` is what the walk
-         itself uses to decide where to carry on, so this asks the same
-         question rather than a second version of it. */
-      if (mainsChildren(sec.endNode).length) continue;
+      /* Nothing LOADED runs on from here.
+
+         `loadChildren`, which is the question the walk itself asks —
+         it carries on while a child has load and stops when none has.
+         This tested `mainsChildren`, which is any non-service child
+         whether it carries load or not.
+
+         The two differ on exactly the drawing this feature is for. A
+         mains trench usually runs on past the last plot: 49 mains
+         trenches to 44 mains on the site this was reported from. That
+         onward trench carries no load, so the run stops at the take-off
+         and the section ends there \u2014 but `mainsChildren` saw the
+         trench and said something runs on, so no tail was drawn, the
+         bottle end stayed at the take-off, and it sat under the service
+         joint exactly as before.
+
+         A tail was therefore only ever drawn where the trench stopped
+         dead at the last plot, which is the one case where the designer
+         had already done it by hand. */
+      if (loadChildren(sec.endNode).length) continue;
 
       const pts = sec.pts;
       const b = pts[pts.length - 1];

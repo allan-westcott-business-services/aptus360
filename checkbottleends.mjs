@@ -497,6 +497,43 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
       + " not 1.5 m on from [100, 40] in the direction the run was going");
   }
 
+  /* ── The trench carries on past the last plot ──
+
+     Which is the ordinary drawing, not an edge case: 49 mains trenches
+     to 44 mains on the site this was reported from. The run stops at
+     the last plot because that is where the load stops; the dig
+     carries on because somebody drew it that way.
+
+     The first version of this tested `mainsChildren` \u2014 any non-service
+     child, loaded or not \u2014 so the onward trench counted as "something
+     runs on from here" and no tail was drawn. A tail then appeared only
+     where the trench stopped dead at the last plot, which is the one
+     case where the designer had already extended it by hand.
+
+     `loadChildren` is what the walk itself asks. */
+  const carriesOn = feederSections(
+    [sub, trench([[0, 0], [100, 0], [160, 0]]),
+      trench([[100, 0], [100, 10]], "service_trench"),
+      p1, meter(101, p1.Feature_ID, [100, 10])],
+    { lineTypes, bottleEndTailM: 1.5 },
+  ).sections[0];
+
+  if (!carriesOn?.tailM) {
+    fail("no tail where the mains trench carries on past the last plot"
+      + " \u2014 which is most of them");
+  }
+  const on = carriesOn?.pts[carriesOn.pts.length - 1];
+  if (!on || Math.abs(on[0] - 101.5) > 1e-9 || Math.abs(on[1]) > 1e-9) {
+    fail(`the tail ends at ${JSON.stringify(on)}, not 1.5 m past the last`
+      + " plot at [100, 0]");
+  }
+  /* And it stops at the take-off plus the tail, not at the far end of
+     the trench somebody drew. */
+  if (on && on[0] > 110) {
+    fail("the run followed the trench past the last plot instead of"
+      + " stopping and laying a tail");
+  }
+
   /* ── Zero means no tail ──
 
      A legitimate setting, and what the drawing did before this existed.
@@ -628,6 +665,55 @@ const bottles = planned.filter((j) => j.kind === "bottleend");
   const dug = /if \(sec\.tailM && sec\.tailAt\)[\s\S]{0,700}?Layer_Key: "trench"/
     .test(canvas);
   if (!dug) fail("the tail is laid as cable but never dug");
+
+  /* ── A joint this app placed, that the network has moved off ──
+
+     Stale joints were all left alone. Right for one somebody drew:
+     deleting a hand-placed joint because the model did not ask for it
+     throws away a decision.
+
+     Wrong for one this app placed. When the bottle end moved to the end
+     of the tail, the plan put a new one 3 m along and the old one at
+     the take-off matched nothing \u2014 so it stayed, sitting under the
+     service joint, and every leg had two bottle ends with the wrong one
+     where anybody was looking. Which is exactly what kept being
+     reported, through four rounds of looking somewhere else. */
+  if (!/staleMine = stale\.filter\(\(f\) => f\.Attributes\?\.Generated === true\)/
+    .test(canvas)) {
+    fail("stale joints are not split by who placed them");
+  }
+  /* And actually removed, not merely counted \u2014 a message saying
+     "removed" while the row stays is worse than saying nothing. */
+  if (!/staleMine\.map\(\(f\) => f\.Feature_ID\)[\s\S]{0,300}?deleteFeatures\(/
+    .test(canvas)) {
+    fail("the app's own superseded joints are counted but never deleted");
+  }
+  /* Hand-placed ones survive. */
+  if (!/staleTheirs[\s\S]{0,200}?left alone/.test(canvas)) {
+    fail("a joint somebody placed by hand is no longer left alone");
+  }
+  if (/deleteFeatures\(projectId, stale\b/.test(canvas)) {
+    fail("every stale joint is deleted, including hand-placed ones");
+  }
+
+  /* ── And it says what it did ──
+
+     A tail that is not drawn leaves the bottle end at the service joint
+     and reads as a placement fault. That was chased three times from
+     the drawing and once from the database before anybody could tell
+     whether the length had been read at all.
+
+     The count AND the length: reading 0 and drawing none is a different
+     fault from reading 3 and drawing none, and the canvas cannot tell
+     them apart. */
+  if (!/\$\{tails\} bottle end tail\(s\) at \$\{tailSet\}m/.test(canvas)) {
+    fail("the build does not say how many tails it drew and at what length,"
+      + " so a zero is a silence rather than a fact");
+  }
+  if (!/Bottle_End_Tail_M is 0 or unset/.test(canvas)) {
+    fail("a tail length of zero is not distinguished from one that was"
+      + " never read");
+  }
 
   /* Generated, so a rebuild clears its own tails rather than stacking a
      new one beside the last on every run. */

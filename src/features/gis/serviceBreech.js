@@ -232,12 +232,81 @@ export function breechesOnRoutes(features = [], meters = [], originId = null) {
        Every vertex, not only the ends: a breech divides the feeder and
        the cables meet at that division, but which vertex of which cable
        records it depends on how the run was drawn. */
+    /* ── Only the part of each cable the route actually walks ──
+
+       Every vertex of every feature on the path was counted, which is
+       wrong for the one feature the route joins in the middle.
+
+       A service taps a main between two span nodes. The route runs from
+       the tap towards the origin — so it walks half that main and never
+       reaches the other end. Taking the whole geometry put the far end
+       on the route as well, and the breech joint standing there came
+       out on the call-off. Plot 34 listed A4, which is the far end of
+       the main its service taps, in the direction away from the
+       substation.
+
+       So each feature contributes the stretch between where the route
+       enters it and where it leaves. Entry is the point it shares with
+       the feature before it in the chain, exit the point it shares with
+       the one after. The first feature is the meter, and the last is
+       the origin; both are points and contribute themselves. */
+    const ptsOf = (f) => (f?.Geometry || [])
+      .filter((v) => Array.isArray(v) && v.length >= 2);
+
+    /* Where two features meet: the pair of points, one from each, that
+       are closest together. Exact for lines that join end to end, and
+       the nearest approach where a service tees into the middle of a
+       main. */
+    const meetAt = (a, b) => {
+      const pa = ptsOf(a);
+      const pb = ptsOf(b);
+      let best = null;
+      let bestD = Infinity;
+      for (const x of pa) {
+        for (const y of pb) {
+          const d = Math.hypot(x[0] - y[0], x[1] - y[1]);
+          if (d < bestD) { bestD = d; best = x; }
+        }
+      }
+      return best;
+    };
+
     const routePoints = [];
     path.forEach((nid, order) => {
       const f = byId.get(nid);
-      for (const v of (f?.Geometry || [])) {
-        if (Array.isArray(v) && v.length >= 2) routePoints.push({ at: v, order });
+      const pts = ptsOf(f);
+      if (!pts.length) return;
+
+      /* A point feature is one place and contributes it. */
+      if (pts.length === 1) {
+        routePoints.push({ at: pts[0], order });
+        return;
       }
+
+      const prev = order > 0 ? byId.get(path[order - 1]) : null;
+      const next = order + 1 < path.length ? byId.get(path[order + 1]) : null;
+      const enter = prev ? meetAt(f, prev) : null;
+      const leave = next ? meetAt(f, next) : null;
+
+      /* Nothing to bound it by — the whole of it is on the route. */
+      if (!enter && !leave) {
+        for (const v of pts) routePoints.push({ at: v, order });
+        return;
+      }
+
+      const idxOf = (p) => (p == null ? null : pts.findIndex((v) =>
+        Math.hypot(v[0] - p[0], v[1] - p[1]) <= SAME_PLACE_M));
+      let a = idxOf(enter);
+      let b = idxOf(leave);
+      if (a == null || a < 0) a = b;
+      if (b == null || b < 0) b = a;
+      if (a == null || a < 0) {
+        for (const v of pts) routePoints.push({ at: v, order });
+        return;
+      }
+      const lo = Math.min(a, b);
+      const hi = Math.max(a, b);
+      for (let i = lo; i <= hi; i++) routePoints.push({ at: pts[i], order });
     });
 
     /* How far along the route a point is, or null if it is not on it.

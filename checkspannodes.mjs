@@ -1163,6 +1163,74 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
     fail("a meter 25 m from its own service is not connected \u2014 the reach"
       + " is meant to be 30 m");
   }
+  /* ── Where the numbers are there, they decide, and nothing else does ──
+
+     Meter to line is the one fuzzy hop in the trace. Line to line is
+     exact — two cables meeting within a quarter of a metre is how the
+     network connects — so the route is exact everywhere except its
+     first step, and that is where it went wrong.
+
+     A seed knows its plot, the boundary point is placed with it, the
+     meter inherits it, and Auto Lay Services stamps it on the trench
+     and the cable. Meter to its own service is a recorded fact, not a
+     distance. Guessing produced a confident and wrong list of breech
+     joints for plot 34, taken off a main on another branch. */
+  {
+    const svc = (id, geom, plot) => line(id, geom, plot, "elec_service");
+    const mainLine = (id, geom) => line(id, geom, null, "elec_main");
+
+    /* Its own service wins over a nearer main. */
+    const own = [svc(1, [[0, 0], [0, 5]], 34), mainLine(2, [[9, 0], [9, 9]]),
+      meter(3, [9, 5], 34)];
+    if (linked(own, 3).join() !== "1") {
+      fail("a meter took the nearer main over the service carrying its"
+        + " own plot number");
+    }
+
+    /* No service of its own is not "nearly the neighbour's" — it is a
+       plot with no service on the drawing, and saying so is the useful
+       answer. */
+    const orphan = [svc(1, [[0, 0], [0, 5]], 35), mainLine(2, [[9, 0], [9, 9]]),
+      meter(3, [9, 5], 34)];
+    if (linked(orphan, 3).length) {
+      fail("a meter with no service of its own was attached to something"
+        + " else \u2014 its route back is a guess and its joints are wrong");
+    }
+
+    /* And a drawing made before services were stamped still traces, or
+       every meter on it would be stranded. */
+    const older = [mainLine(2, [[9, 0], [9, 9]]), meter(3, [9, 5], 34)];
+    if (!linked(older, 3).length) {
+      fail("a drawing with no plot numbers on its services lost every meter");
+    }
+  }
+
+  /* ── The extra reach is bought by the plot number, not given away ──
+
+     Thirty metres is safe when the number decides which cable is which.
+     It is not safe as a fallback: on a drawing where Auto Lay Services
+     has not been run there are no service cables at all, so the meter
+     takes the nearest line of ANY kind — and at thirty metres that
+     reaches a main on another branch. A plot then hung off a main that
+     is not on its route back, and the breech joints on that main came
+     out on its call-off.
+
+     So an unnumbered match gets twelve metres, which is what the single
+     reach was and is about how far a meter sits from its own service. */
+  const noService = [line(1, [[0, 0], [0, 25]], null, "elec_main"),
+    meter(3, [0, 50], 34)];
+  if (linked(noService, 3).length) {
+    fail("a meter reached 25 m to a main carrying no plot number \u2014 that is"
+      + " a main on another branch, and its joints are not on this route");
+  }
+  /* But a main genuinely beside it still serves it, or a drawing with
+     no service cables would lose every meter. */
+  const closeMain = [line(1, [[0, 0], [0, 42]], null, "elec_main"),
+    meter(3, [0, 50], 34)];
+  if (!linked(closeMain, 3).length) {
+    fail("a meter 8 m from the only line near it was left unconnected");
+  }
+
   /* Not unlimited: a meter on the far side of the site does not belong
      to a cable just because the numbers match. */
   const absurd = [line(1, [[0, 0], [0, 5]], 34), meter(3, [0, 200], 34)];

@@ -317,6 +317,12 @@ const CONNECT_M = 0.25;
    allowed this: a feeder leaving a substation starts on it. */
 const METER_REACH_M = 30;
 
+/* How far a meter may sit from a cable that does NOT carry its plot
+   number. Twelve, as the single reach was before the number started
+   deciding: it is roughly how far a meter is from the service feeding
+   it, and short enough that it cannot reach a main on another branch. */
+const METER_FALLBACK_M = 12;
+
 /* ── The plot a feature belongs to ──
 
    Carried as a column on the feature, not an attribute, and written all
@@ -335,6 +341,18 @@ const plotOf = (f) => {
 
 export function buildGraph(features = []) {
   const byId = new Map(features.map((f) => [Number(f.Feature_ID), f]));
+
+  /* Does this drawing carry plot numbers on its services?
+
+     Asked once, of the drawing, rather than assumed. Where it does, a
+     meter's own service is a recorded fact and proximity has no part in
+     it. Where it does not — a drawing made before Auto Lay Services
+     stamped them — proximity is all there is, and refusing to trace
+     would strand every meter on it. */
+  const numbered = features.some((f) => f.Feature_Type === "line"
+    && f.Layer_Key === "electric"
+    && /service/i.test(String(f.Attributes?.Line_Type ?? ""))
+    && (f.Plot_ID ?? f.Attributes?.Plot_ID) != null);
   const adj = new Map();
   const link = (a, b) => {
     if (!byId.has(a) || !byId.has(b)) return;
@@ -467,13 +485,62 @@ export function buildGraph(features = []) {
        how far a meter sits from its service \u2014 which is a property of
        the plot, not of the drawing. With the plot number deciding, a
        long garden is no longer a reason to be unreachable. */
+    /* ── Two reaches, because they answer different questions ──
+
+       Thirty metres is safe when the plot number decides which cable is
+       which: a long garden stops being a reason to be unreachable, and
+       the number rules out the neighbour's.
+
+       It is not safe as a fallback. Where a plot has no service cable
+       of its own — a drawing where Auto Lay Services has not been run,
+       and there are drawings with 139 service trenches and no cable in
+       any of them — the meter takes the nearest line of any kind, and
+       at thirty metres that reaches a MAIN on another branch entirely.
+       Plot 34 hung off the main by A4, which is not on its route back,
+       so A4 came out as a breech joint on its call-off.
+
+       So the number buys the extra reach and nothing else does. Without
+       one, twelve metres, which is what it was and is about how far a
+       meter sits from the service that feeds it. */
     const mine = plotOf(f);
     let best = null;
     let byPlot = null;
+    /* ── Where the numbers are there, they decide, and nothing else does ──
+
+       Meter to line is the one fuzzy hop in the whole trace. Line to
+       line is exact — two cables meeting within 0.25 m of each other is
+       how the network connects — so the route is exact everywhere
+       except its first step, and that first step is where it goes
+       wrong.
+
+       It should not be a guess. A seed knows its plot, the boundary
+       point is placed with it, the meter inherits it, and Auto Lay
+       Services stamps it on the trench and the cable. Meter to its own
+       service is a recorded fact.
+
+       So where the drawing has services carrying numbers, a meter with
+       a number joins its own service or nothing. A meter that finds no
+       cable of its own is not "nearly connected to the neighbour's" —
+       it has no service on the drawing, and saying so is the useful
+       answer. Guessing produced a confident and wrong list of breech
+       joints for plot 34.
+
+       ── And where they are not ──
+
+       A drawing made before services were stamped has no numbers to go
+       on, and refusing to trace it would strand every meter on it. So
+       the numbers are only authoritative where they exist: `numbered`
+       asks whether this drawing uses them at all, once, rather than
+       assuming. */
+    const decisive = numbered && mine != null;
     for (const g of features) {
       if (g === f || isPoint(g) || !endsOf(g).length) continue;
       const d = gapBetween(f, g);
       if (d > METER_REACH_M) continue;
+      const ownPlot = mine != null && plotOf(g) === mine;
+      /* Its own service, or nothing at all. */
+      if (decisive && !ownPlot) continue;
+      if (d > METER_FALLBACK_M && !ownPlot) continue;
       if (!best || d < best.d) best = { g, d };
       /* Same plot, and a service rather than a main: a main running
          past the plot may carry the number of the plot it was laid for

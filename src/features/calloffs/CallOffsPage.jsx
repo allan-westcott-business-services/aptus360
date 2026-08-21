@@ -28,7 +28,7 @@ import {
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
   splitsByUtility, endAfterHalves, layHalves,
 } from "./assignments.js";
-import { phasesToShow, phasesHidden } from "./callOffPhases.js";
+import { phasesToShow, phasesHidden, isServiceCallOff } from "./callOffPhases.js";
 import { breechSummary, plotNumberFrom } from "../gis/serviceBreech.js";
 import { lvOrigin } from "../gis/electric.js";
 import { listGis } from "../../api/gis.js";
@@ -2458,108 +2458,66 @@ function Assignments({ row }) {
      Read off the row rather than recomputed, because it is a record of
      the drawing on the day: the design may have moved since, and a
      booking somebody has already been given must not change under
-     them. `traceBreech` below is the deliberate act of taking it
-     again.
+     them.
 
-     Held in state as well as read from the row, so a trace run here
-     shows without waiting for the whole list to reload. */
+     Held in state as well as read from the row, so the trace below can
+     fill it in without waiting for the whole list to reload. */
   const [breech, setBreech] = useState(() => row.GIS_Data?.breech ?? null);
   useEffect(() => { setBreech(row.GIS_Data?.breech ?? null); },
     [row.Submission_ID, row.GIS_Data]);
 
-  /* Only worth offering where there is a route to trace: an electric
-     service call-off with jointing on it. A mains call-off digs the
-     trench the breeches sit in and does not connect through them. */
+  /* ── And traced where the call-off has none stored ──
 
-  if (!row.Work_Type_ID) {
-    return (
-      <div className="co-card co-todo">
-        <h3>Team assignments</h3>
-        <p>No work type on this call-off, so there are no phases to assign to.</p>
-      </div>
-    );
-  }
+     Every call-off raised before this existed carries nothing, which is
+     most of them. There was a button and a sentence explaining why it
+     had to be pressed, which is a workaround wearing the clothes of a
+     feature: the planner does not care when the trace was taken, only
+     what is on the route.
 
-  if (!phases.length) {
-    return (
-      <div className="co-card co-todo">
-        <h3>Team assignments</h3>
-        <p>
-          This work type has no phases mapped. Set them under
-          {" "}<strong>Admin &rarr; Work Phases</strong>.
-        </p>
-      </div>
-    );
-  }
+     So it is worked out on opening. Read only \u2014 nothing is written
+     back. The objection to doing this quietly was that it rewrites a
+     record because somebody looked at it, and that objection stands;
+     showing a figure is not the same as storing one.
 
-  /* A service goes into a trench that is already open — the dig and the
-     cable are done before jointing starts — and the ground is
-     reinstated once for the street rather than plot by plot. So those
-     two sections are not booked here.
+     Where a trace WAS stored at raise time it wins, because that is the
+     drawing as it was on the day and the record a gang was given. */
+  useEffect(() => {
+    if (breech != null || !isServiceCallOff(row.Work_Type?.Work_Type_Name)) return;
+    let gone = false;
+    (async () => {
+      try {
+        const [gis, plots] = await Promise.all([
+          listGis(row.Project_ID), listPlots(row.Project_ID),
+        ]);
+        if (gone) return;
+        const features = gis?.features || [];
+        const plotRows = plots?.rows || plots || [];
+        const origin = lvOrigin(features);
+        if (!origin) return;
 
-     Every utility, not only electric: a gas and water service does not
-     book them either. Filtered rather than taken off the work type,
-     because the same mapping drives the schedule and the cover states —
-     the phases still happen, they are booked on the mains call-off. */
-  const isElectricJointing = /service/i.test(String(row.Work_Type?.Work_Type_Name || ""));
+        const wanted = new Set((row.items || [])
+          .map((it) => String(it.Plots ?? it.Plot ?? "").trim())
+          .filter(Boolean));
+        const plotIds = new Set(plotRows
+          .filter((pl) => wanted.has(
+            String(pl.plot_number ?? pl.Plot_Number ?? "").trim()))
+          .map((pl) => Number(pl.plot_id ?? pl.Plot_ID)));
 
-  async function traceBreech() {
-    setBusy("breech");
-    setError("");
-    try {
-      /* The drawing and the plot numbers, both needed: the meters carry
-         Plot_ID and the call-off carries plot numbers, and nothing on
-         this screen holds the map between them. */
-      const [gis, plots] = await Promise.all([
-        listGis(row.Project_ID),
-        listPlots(row.Project_ID),
-      ]);
-      const features = gis?.features || [];
-      const plotRows = plots?.rows || plots || [];
+        const meters = features.filter((f) => f.Feature_Role === "meter"
+          && f.Layer_Key === "electric"
+          && plotIds.has(Number(f.Plot_ID ?? f.Attributes?.Plot_ID)));
+        if (!meters.length) return;
 
-      const origin = lvOrigin(features);
-      if (!origin) {
-        setError("No substation or electric POC on the drawing to trace back to.");
-        return;
-      }
-
-      /* The plot numbers on this call-off, as text: a call-off carries
-         "18" and a plot record carries 18, and they are one plot. */
-      const wanted = new Set((row.items || [])
-        .map((it) => String(it.Plots ?? it.Plot ?? "").trim())
-        .filter(Boolean));
-      const plotIds = new Set(plotRows
-        .filter((p) => wanted.has(String(p.plot_number ?? p.Plot_Number ?? "").trim()))
-        .map((p) => Number(p.plot_id ?? p.Plot_ID)));
-
-      /* Plot_ID is a column on the feature, not an attribute \u2014 the
-         endpoint selects it by name and circuitReport reads it as
-         `m.Plot_ID`. Read from Attributes it matched nothing and the
-         trace found no meters at all. */
-      const meters = features.filter((f) => f.Feature_Role === "meter"
-        && f.Layer_Key === "electric"
-        && plotIds.has(Number(f.Plot_ID ?? f.Attributes?.Plot_ID)));
-
-      if (!meters.length) {
-        setError("No electric meters found on this call-off\u2019s plots.");
-        return;
-      }
-
-      const found = breechSummary(features, meters, origin.Feature_ID,
-        (id) => plotNumberFrom(plotRows, id));
-
-      /* Written back, so it is the record from here on and the work
-         instruction reads the same thing this screen shows. */
-      await updateCallOff(row.Project_ID, row.Submission_ID,
-        { GIS_Data: { ...(row.GIS_Data || {}), breech: found } });
-      setBreech(found);
-      if (!found.plots.length) {
-        setError("Traced \u2014 no breech joints on the route to any of these plots.");
-      }
-    } catch (e) {
-      setError(e.message || "The route could not be traced.");
-    } finally { setBusy(null); }
-  }
+        const found = breechSummary(features, meters, origin.Feature_ID,
+          (id) => plotNumberFrom(plotRows, id));
+        if (!gone) setBreech(found);
+      } catch { /* the panel simply does not appear */ }
+    })();
+    /* A planner clicking down a list opens several call-offs in a few
+       seconds, and each of these reads a whole drawing. Without this
+       the slowest answer wins rather than the latest. */
+    return () => { gone = true; };
+  }, [breech, row.Submission_ID, row.Project_ID, row.Work_Type?.Work_Type_Name]);
 
   const shownPhases = phasesToShow(phases, row.Work_Type?.Work_Type_Name);
   const notHere = phasesHidden(phases, row.Work_Type?.Work_Type_Name);
@@ -2635,24 +2593,6 @@ function Assignments({ row }) {
             </div>
           ))}
         </div>
-      )}
-
-      {/* Traced on demand for a call-off raised before this existed.
-
-          Not done quietly on opening: it reads the whole drawing and
-          writes to the call-off, and a screen that rewrites a record
-          because somebody looked at it is the fault the whole-drawing
-          reconciliation was. Offered, and only where there is nothing
-          stored yet. */}
-      {breech == null && isElectricJointing && (
-        <p className="hint">
-          <button className="btn sm" disabled={busy === "breech"}
-            onClick={traceBreech}>
-            {busy === "breech" ? "Tracing\u2026" : "Trace breech joints"}
-          </button>
-          {" "}This call-off was raised before the route was traced.
-          Tracing reads the drawing as it is now, not as it was on the day.
-        </p>
       )}
 
       {error && <p className="co-err">{error}</p>}

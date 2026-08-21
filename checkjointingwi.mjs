@@ -589,13 +589,43 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
     if (!/p\.reachable === false/.test(page)) {
       fail("the office view shows an untraceable route as a plot with no joints");
     }
-    /* Offered only where nothing is stored \u2014 a button that overwrites
-       the record of the day would change a booking under somebody. */
-    if (!/breech == null && isElectricJointing/.test(page)) {
-      fail("the trace button is offered over a trace that already exists");
+    /* ── Traced on opening, not on a button ──
+
+       Every call-off raised before this existed carries nothing, which
+       is most of them. A button and a sentence explaining why it had to
+       be pressed is a workaround wearing the clothes of a feature: a
+       planner does not care when the trace was taken, only what is on
+       the route. */
+    if (/onClick=\{traceBreech\}/.test(page)) {
+      fail("the breech joints still need a button pressed to appear");
     }
-    if (!/onClick=\{traceBreech\}/.test(page)) {
-      fail("nothing can trace a call-off raised before this existed");
+    if (/raised before the route was traced/.test(page)) {
+      fail("the page still explains a workaround that no longer exists");
+    }
+    if (!/if \(breech != null \|\| !isServiceCallOff\(/.test(page)) {
+      fail("the call-off page does not trace a call-off that has none stored");
+    }
+
+    /* Read only. The objection to doing it quietly was that it rewrites
+       a record because somebody looked at it, and that stands \u2014
+       showing a figure is not storing one. */
+    const auto = /useEffect\(\(\) => \{\s*if \(breech != null[\s\S]*?\}, \[breech/
+      .exec(page);
+    if (auto && /updateCallOff\(/.test(auto[0])) {
+      fail("opening a call-off writes the trace back to it");
+    }
+
+    /* A stored trace wins: it is the drawing as it was on the day, and
+       the record a gang was given. */
+    if (auto && !/if \(breech != null/.test(auto[0])) {
+      fail("a trace stored at raise time is recomputed and overwritten");
+    }
+
+    /* And a slow answer cannot land after a newer one. A planner
+       clicking down a list opens several in a few seconds, each reading
+       a whole drawing. */
+    if (auto && !/gone = true/.test(auto[0])) {
+      fail("a trace from a call-off already closed can still land");
     }
   }
 

@@ -1258,6 +1258,15 @@ export default function GISCanvasPage() {
         String(t.Transformer_Size_ID)
           === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
       voltageV: voltageOf(station),
+      /* What the feeding network already used, from the POC.
+
+         The report modal has passed this since it was added; this path
+         — the labels drawn beside each span node on the canvas — did
+         not. So every node label had upstreamPct 0, pctOwn equal to
+         pct, and the Cumulative / From E0 switch moved between two
+         identical numbers. It looked like the switch was not wired to
+         the drawing; it was, and the drawing had nothing to switch. */
+      startPct: upstreamVoltDropPct(station),
       settings: limits,
     };
 
@@ -15141,6 +15150,11 @@ export default function GISCanvasPage() {
            node — the drop to this point includes the run up to it. */
         partialCableId: leg.cableSizeId ?? null,
         cableById: ctx.cableById, transformer: ctx.transformer,
+        /* The feeding network's share too. The voltage arriving at a
+           point is what is actually there, and a volt lost on the
+           DNO's side of the POC is lost just the same \u2014 leaving it out
+           reported a voltage higher than the one a meter would see. */
+        startPct: ctx.startPct ?? 0,
         voltageV: startV, settings: ctx.settings,
       });
       volts = Math.round(startV * (1 - (Number(at.pct) || 0) / 100) * 10) / 10;

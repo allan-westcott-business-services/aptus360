@@ -324,9 +324,31 @@ const poc = (attrs = {}) => ({
   if (!/tracePlan\.some\(\(x\) => x\.leg\?\.vd\?\.upstreamPct > 0\)/.test(canvas)) {
     fail("the basis switch is offered on schemes with nothing upstream");
   }
-  /* And it is threaded in from the origin at both levels-check sites. */
-  const wired = [...canvas.matchAll(/startPct: upstreamVoltDropPct\(/g)].length;
-  if (wired < 2) fail(`only ${wired} levels path reads the upstream drop`);
+  /* ── Every path that computes levels reads it ──
+
+     There are three, and one was missed for a fortnight: the report
+     modal had it, the advanced check had it, and levelsByNode — which
+     draws the label beside each span node on the canvas — did not. So
+     every node label had upstreamPct 0 and pctOwn equal to pct, and the
+     Cumulative / From E0 switch moved between two identical numbers.
+
+     It read as the switch not being wired to the drawing. It was; the
+     drawing had nothing to switch. Counted rather than merely present,
+     because two of three passing is exactly what that looked like. */
+  /* Any way of supplying it, not one spelling. Three sites read it from
+     the origin directly and one takes it off the shared ctx, and a
+     check that counted only the first form failed on correct code. */
+  const wired = [...canvas.matchAll(/startPct:/g)].length;
+  const paths = [...canvas.matchAll(/cumulativeToNode\(/g)].length;
+  /* And at least one still reads it from the origin, or every site
+     could be passing a zero to itself. */
+  if (!/startPct: upstreamVoltDropPct\(/.test(canvas)) {
+    fail("nothing reads the upstream drop off the POC");
+  }
+  if (wired < paths) {
+    fail(`${paths} paths compute levels and only ${wired} read the upstream`
+      + " drop \u2014 the ones that do not show a figure that cannot be switched");
+  }
 }
 
 /* ── One current formula, in two modules ──

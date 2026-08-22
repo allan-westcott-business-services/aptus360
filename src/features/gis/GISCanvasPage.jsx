@@ -15292,6 +15292,11 @@ export default function GISCanvasPage() {
         maxVoltDropPct: Number(lookups.vdSettings[0].Max_Volt_Drop_Pct),
         unbalancedConstant: Number(lookups.vdSettings[0].Unbalanced_Constant),
         distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
+        /* What a plot connection is charged as (0187). This object is
+           built three times in this file and the field was added to one
+           of them, so the canvas labels moved and the levels check
+           report did not \u2014 the same shape of miss as startPct. */
+        jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
       } : {}) };
       for (const part of parts) {
         const ctx = {
@@ -15416,6 +15421,8 @@ export default function GISCanvasPage() {
       maxVoltDropPct: Number(lookups.vdSettings[0].Max_Volt_Drop_Pct),
       unbalancedConstant: Number(lookups.vdSettings[0].Unbalanced_Constant),
       distributedLoadFactor: Number(lookups.vdSettings[0].Distributed_Load_Factor),
+      /* As above: the advanced check builds its own settings too. */
+      jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
     } : {}) };
 
     r.startId = node.Feature_ID;

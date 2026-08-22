@@ -510,9 +510,27 @@ const poc = (attrs = {}) => ({
       + " every connection on a real drawing");
   }
 
-  /* And the setting reaches the calculation from the settings row. */
+  /* ── And every settings object carries it ──
+
+     This file builds the settings for the calculation THREE times: once
+     for the canvas node labels, once for the levels check report, once
+     for the advanced check. The field went into one of them, so the
+     labels moved and the report did not — and the report is where
+     anybody would look.
+
+     The same shape as startPct, missed the same way, one release apart.
+     So it is counted against the objects rather than looked for: every
+     one that sets a distributed load factor is a settings object for
+     this calculation, and every one of them needs the allowance. */
   const canvasSrc = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/jointEquivM: Number\(vs\.Joint_Equivalent_M\)/.test(canvasSrc)) {
+  const objects = [...canvasSrc.matchAll(/distributedLoadFactor:/g)].length;
+  const carrying = [...canvasSrc.matchAll(/jointEquivM:/g)].length;
+  if (carrying < objects) {
+    fail(`${objects} settings objects feed the calculation and only`
+      + ` ${carrying} carry the joint allowance — the ones that do not`
+      + " show figures with no allowance in them");
+  }
+  if (!/Joint_Equivalent_M/.test(canvasSrc)) {
     fail("the allowance is never read from Electric_VD_Setting");
   }
 }

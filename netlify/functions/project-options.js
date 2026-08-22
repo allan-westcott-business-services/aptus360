@@ -29,11 +29,18 @@ export default withAuth(async function handler(req) {
          is copied from the one before rather than all from the original,
          which makes no difference now and keeps working if copying ever
          becomes incremental. */
-      const { count = 1 } = await req.json().catch(() => ({}));
+      const { count = 1, copy_gis = false } = await req.json().catch(() => ({}));
       const wanted = Math.max(1, Math.min(Number(count) || 1, 26));
       const made = [];
       for (let i = 0; i < wanted; i++) {
-        const { data, error } = await db.rpc("create_project_option", { p_project: projectId });
+        /* The drawing comes only when asked (0188). An option raised for
+           a commercial variation does not want several thousand
+           features duplicated, and copying is much the heaviest part of
+           the operation \u2014 so the default is off and the caller says. */
+        const { data, error } = await db.rpc("create_project_option", {
+          p_project: projectId,
+          p_copy_gis: copy_gis === true,
+        });
         if (error) throw error;
         made.push(data);
       }

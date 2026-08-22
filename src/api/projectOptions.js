@@ -7,9 +7,13 @@ export async function listOptions(projectId) {
   return http.get(`/project-options?project=${projectId}`);
 }
 
-export async function addOptions(projectId, count = 1) {
+/* `copyGis` duplicates the drawing onto the new option (0188). Off by
+   default: an option raised for a commercial variation does not want
+   several thousand features copied, and it is the heaviest part of the
+   operation. */
+export async function addOptions(projectId, count = 1, copyGis = false) {
   if (USE_MOCKS) return { created: [] };
-  return http.post(`/project-options?project=${projectId}`, { count });
+  return http.post(`/project-options?project=${projectId}`, { count, copy_gis: copyGis });
 }
 
 export async function removeOption(projectId, optionId) {

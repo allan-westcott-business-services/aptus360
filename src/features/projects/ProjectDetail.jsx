@@ -119,8 +119,31 @@ export default function ProjectDetail({
   useEffect(() => { loadOptions(); }, [loadOptions]);
 
   async function addOne() {
+    /* ── With the drawing, or without ──
+
+       An option is a parallel version of the same enquiry, and what it
+       varies decides whether the drawing should come. A commercial
+       variation wants the plots and the scopes and nothing else; a
+       design option \u2014 the same site with different cable sizes \u2014 is
+       useless without the drawing to change.
+
+       Asked rather than assumed either way. Copying several thousand
+       features is the heaviest thing this button does, and doing it
+       silently on an option raised for a price change would be a
+       surprise; not doing it on a design option means redrawing the
+       site by hand.
+
+       Confirm rather than a second button: this is rare enough that a
+       question is clearer than a control somebody has to learn. */
+    const withGis = window.confirm(
+      "Copy the GIS drawing onto the new option?\n\n"
+      + "OK \u2014 copies every feature, so you can change the design and "
+      + "compare the two.\n"
+      + "Cancel \u2014 plots and scopes only, with an empty drawing.\n\n"
+      + "Call-offs are never copied.",
+    );
     setBusyOpt(true);
-    try { await addOptions(project.Project_ID, 1); await loadOptions(); }
+    try { await addOptions(project.Project_ID, 1, withGis); await loadOptions(); }
     finally { setBusyOpt(false); }
   }
 

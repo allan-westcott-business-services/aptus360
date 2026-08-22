@@ -424,6 +424,99 @@ const poc = (attrs = {}) => ({
   }
 }
 
+/* ── What a plot connection costs ──
+
+   A service joint is not free: cutting a main and jointing a service
+   onto it puts resistance in the run that undisturbed cable does not
+   have. Nothing counted it — the word "joint" appeared nowhere in the
+   calculation.
+
+   Charged as an equivalent length of the joint's OWN cable, three
+   metres by default (0187), because the cost depends on the cable it is
+   in and because length moves the volt drop and the loop impedance
+   together without a second constant that could disagree. */
+{
+  const cable = { Cable_Size_ID: 1, Loop_Impedance_Ohm: 0.32, Volt_Drop_Base: 0.41 };
+
+  /* One leg, 100 m, four connections on it. */
+  const leg = (jointEquivM, jointCount) => legVoltDrop({
+    cable, lengthM: 100, distributedKva: 30, meterCount: 4,
+    voltageV: 400, jointEquivM, jointCount,
+  });
+
+  const off = leg(0, 4);
+  const on = leg(3, 4);
+
+  /* 112 m charged for 100 laid. Both figures move, and by the same
+     proportion, because both are computed from length. */
+  for (const [what, a, b] of [["volt drop", off.pct, on.pct],
+    ["loop impedance", off.ohms, on.ohms]]) {
+    if (Math.abs(b / a - 1.12) > 1e-9) {
+      fail(`the allowance moved the ${what} by ${(b / a).toFixed(4)}, not the`
+        + " 1.12 that four three-metre joints on a 100 m leg come to");
+    }
+  }
+  if (on.jointAllowM !== 12) {
+    fail(`the leg reports ${on.jointAllowM}m of joint allowance, not 12`);
+  }
+
+  /* Zero gives the calculation this app had before, which is the way
+     back if a design was submitted on the old numbers. */
+  if (leg(0, 4).pct !== off.pct) fail("zero is not the same as no allowance");
+  /* And a setting that is not a number is not a licence to guess. */
+  for (const junk of [-5, "x", null, undefined, NaN]) {
+    if (leg(junk, 4).jointAllowM !== 0) {
+      fail(`a setting of ${JSON.stringify(junk)} charged an allowance`);
+    }
+  }
+
+  /* ── Charged once, on the leg the connection is on ──
+
+     `meterCount` counts the customers on the section AND everything
+     downstream, because the unbalanced correction wants the lot. Using
+     it for the allowance would charge one plot's joint once per leg all
+     the way back to the origin — a run of ten legs would charge the
+     last plot ten times. */
+  const model = {
+    nodes: [[0, 0], [100, 0], [200, 0]], parent: [-1, 0, 1],
+    cum: [0, 1, 2], cumKva: [30, 30, 15],
+    meterKva: [0, 15, 15], meterCount: [0, 1, 1], S: 0,
+  };
+  const walk = (jointEquivM, targetIdx) => cumulativeToNode({
+    model, targetIdx, cableById: () => cable, voltageV: 400,
+    spanNodes: [{ index: 1, cableSizeId: 1 }, { index: 2, cableSizeId: 1 }],
+    settings: jointEquivM ? { jointEquivM } : {},
+  });
+
+  /* Two legs of 100 m, one connection at the end of each: 206 m. */
+  if (Math.abs(walk(3, 2).ohms / walk(0, 2).ohms - 206 / 200) > 1e-9) {
+    fail("two connections over two legs are not charged as six metres");
+  }
+  /* And the first leg alone is 103, not 106 — the second connection is
+     not charged on a leg it is not on. */
+  if (Math.abs(walk(3, 1).ohms / walk(0, 1).ohms - 103 / 100) > 1e-9) {
+    fail("a connection downstream is charged on the legs above it too");
+  }
+
+  /* ── The connection at a node counts ──
+
+     `distCount` alone counts only meters tapped BETWEEN span nodes, and
+     on a real drawing a service tees in where Place Span Nodes puts a
+     node — so the connection is at a node, distCount is zero, and the
+     allowance fired nowhere. It showed up only in a fixture with meters
+     deliberately placed mid-leg. */
+  if (walk(3, 2).ohms <= walk(0, 2).ohms) {
+    fail("a connection made at a span node is charged nothing \u2014 which is"
+      + " every connection on a real drawing");
+  }
+
+  /* And the setting reaches the calculation from the settings row. */
+  const canvasSrc = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/jointEquivM: Number\(vs\.Joint_Equivalent_M\)/.test(canvasSrc)) {
+    fail("the allowance is never read from Electric_VD_Setting");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Source impedance behaves (from the substation or the POC, and said plainly when absent).");
 process.exit(bad ? 1 : 0);

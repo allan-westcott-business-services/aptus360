@@ -50,6 +50,11 @@ export const VD_DEFAULTS = {
   maxVoltDropPct: 7,
   unbalancedConstant: 4.14,
   distributedLoadFactor: 0.5,
+  /* Metres of its own cable charged for each plot connection (0187).
+     Zero here so a caller that has not read the setting gets the
+     calculation as it was, rather than an allowance it did not ask
+     for. */
+  jointEquivM: 0,
   ragAmberPct: 80,
 };
 
@@ -57,6 +62,39 @@ export const VD_DEFAULTS = {
 export function legVoltDrop({
   cable, lengthM = 0, distributedKva = 0, terminalKva = 0, meterCount = 0,
   unbalanced = false, distFactor = 0.5, unbalConst = 4.14, voltageV = 400,
+  /* ── What a plot connection costs ──
+
+     A service joint is not free: cutting a main and jointing a service
+     onto it puts resistance in the run that undisturbed cable does not
+     have. Nothing counted it \u2014 the word "joint" appeared nowhere in
+     this calculation.
+
+     Charged as an EQUIVALENT LENGTH of the joint's own cable, three
+     metres by default (0187). Two reasons for that shape rather than a
+     figure in ohms.
+
+     The cost depends on the cable: a joint in 300mm waveform is not the
+     same as one in 95mm. A length of the leg's own cable carries that
+     dependency for nothing, because the leg is already charged at its
+     own cable's figures.
+
+     And it lands in both answers at once. Volt drop and loop impedance
+     are each computed from length here, so the allowance moves both by
+     the right amount without a second constant that could disagree with
+     the first.
+
+     Zero switches it off and gives the calculation this app had before,
+     which is the way back if a design was submitted on the old numbers. */
+  jointEquivM = 0,
+  /* How many plot connections are made ON this leg.
+
+     Its own, not `meterCount`. That one counts the customers on the
+     section AND everything downstream, because the unbalanced
+     correction wants the lot — but a joint downstream is made on the
+     leg it is on, and charging it here as well would count one plot
+     connection once per leg all the way back to the origin. A run of
+     ten legs would charge the last plot's joint ten times. */
+  jointCount = 0,
 }) {
   const v = voltageV > 0 ? voltageV : 400;
   /* ── Three-phase line current ──
@@ -86,8 +124,24 @@ export function legVoltDrop({
 
   if (!cable || !lengthM) return { ohms: 0, pct: 0, amps, missingSpec: !cable };
 
+  /* The leg as the calculation sees it: the cable actually laid, plus
+     the equivalent length of the plot connections made along it.
+
+     `jointCount` is the connections tapped on THIS leg, between the
+     previous span node and this one. Deliberately not `meterCount`,
+     which includes everything downstream: a joint downstream is made on
+     the leg it is on, and charging it here too would count one plot
+     connection once per leg all the way back to the origin.
+
+     Guarded, because a negative or unparseable setting would shorten
+     the run and report a drop better than the truth. */
+  const perJoint = Number(jointEquivM);
+  const allowM = Number.isFinite(perJoint) && perJoint > 0
+    ? perJoint * (Number(jointCount) || 0) : 0;
+  const chargedM = lengthM + allowM;
+
   const ohms = cable.Loop_Impedance_Ohm != null
-    ? (lengthM / 1000) * Number(cable.Loop_Impedance_Ohm)
+    ? (chargedM / 1000) * Number(cable.Loop_Impedance_Ohm)
     : 0;
 
   const base = cable.Volt_Drop_Base != null ? Number(cable.Volt_Drop_Base) : null;
@@ -99,11 +153,14 @@ export function legVoltDrop({
     const corr = unbalanced && meterCount > 0
       ? 1 + unbalConst / Math.sqrt(meterCount)
       : 1;
-    pct = weightedKva * (base * 1e-6) * lengthM * corr;
+    pct = weightedKva * (base * 1e-6) * chargedM * corr;
   }
 
   return {
     ohms, pct, amps,
+    /* What the joints added, so a designer can see how much of a figure
+       is cable and how much is connections. */
+    jointAllowM: Math.round(allowM * 10) / 10,
     /* A cable with neither figure contributes nothing and cannot be
        distinguished from one that genuinely drops nothing, so it is
        reported rather than silently counted as zero. */
@@ -181,6 +238,20 @@ export function cumulativeToNode({
         distributedKva: distKva,
         terminalKva: (cumKva?.[cur]) || 0,
         meterCount: distCount + ((cum?.[cur]) || 0),
+        /* The connections made on this leg: the ones tapped between the
+           previous span node and this one, PLUS the ones at this node
+           itself.
+
+           `distCount` alone was zero on every real drawing. A service
+           tees into the main and Place Span Nodes puts a node where it
+           leaves, so the connection is AT a node rather than between
+           two \u2014 and the allowance never fired anywhere. It only showed
+           up in a fixture with meters deliberately placed mid-leg.
+
+           The node's own meters belong to the leg arriving at it,
+           which is the leg being charged here, and to no other. */
+        jointCount: distCount + ((meterCount?.[cur]) || 0),
+        jointEquivM: s.jointEquivM,
         unbalanced: s.unbalanced,
         distFactor: s.distributedLoadFactor,
         unbalConst: s.unbalancedConstant,

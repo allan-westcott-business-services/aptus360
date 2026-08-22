@@ -1250,6 +1250,10 @@ export default function GISCanvasPage() {
       maxVoltDropPct: Number(vs.Max_Volt_Drop_Pct),
       unbalancedConstant: Number(vs.Unbalanced_Constant),
       distributedLoadFactor: Number(vs.Distributed_Load_Factor),
+      /* What a plot connection is charged as, in metres of its own
+         cable (0187). Absent on an instance that has not run it, and
+         zero then means the calculation as it was. */
+      jointEquivM: Number(vs.Joint_Equivalent_M) || 0,
     } : {}) };
     const ctx = {
       cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,

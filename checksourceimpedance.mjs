@@ -121,6 +121,28 @@ const poc = (attrs = {}) => ({
   if (/"Set a transformer on the substation"/.test(canvas)) {
     fail("the warning still names the substation only");
   }
+
+  /* ── The drawing shows the same figure as the panel ──
+
+     The node labels drew the cumulative percentage always, so a
+     designer working in "From E0" read one number in the panel and a
+     different one on the drawing for the same node, with nothing saying
+     why they differed. */
+  if (!/const shownPct = vdBasis === "own" && vd\.pctOwn != null/.test(canvas)) {
+    fail("the node labels ignore the basis the levels check is showing");
+  }
+  /* And the canvas repaints when it is switched. A memo that does not
+     list it keeps painting the old figure until something else moves. */
+  const deps = /\}, \[visible, selected, view[^\]]*\]\);/.exec(canvas);
+  if (deps && !/vdBasis/.test(deps[0])) {
+    fail("the drawing does not repaint when the basis is switched, so the"
+      + " labels keep the old figure until something else moves");
+  }
+  /* Impedance is not switchable: there is no upstream/own split for it.
+     The source impedance is a baseline the whole run sits on. */
+  if (/ohmsOwn/.test(canvas)) {
+    fail("impedance is being split into own and cumulative");
+  }
 }
 
 // 6. The POC has somewhere to put it.

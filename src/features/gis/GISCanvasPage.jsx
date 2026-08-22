@@ -5174,7 +5174,21 @@ export default function GISCanvasPage() {
           && fontPx >= 7 && view.scale > 1.2) {
         const vd = elecLevelsAt.get(Number(f.Feature_ID));
         if (vd) {
-          const text = `${vd.pct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`;
+          /* Whichever figure the levels check is showing.
+
+             The panel offers cumulative — including what the feeding
+             network already used — or this design's own drop from the
+             origin. The node labels always drew the cumulative one, so
+             a designer working in "From E0" read one number in the
+             panel and a different one on the drawing for the same node,
+             with nothing saying why they differed.
+
+             Impedance is not switchable: there is no upstream/own split
+             for it. The source impedance is a baseline the whole run
+             sits on, and it is in the figure either way. */
+          const shownPct = vdBasis === "own" && vd.pctOwn != null
+            ? vd.pctOwn : vd.pct;
+          const text = `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`;
           ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
           ctx.textAlign = "left";
           ctx.textBaseline = "middle";
@@ -5238,7 +5252,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;

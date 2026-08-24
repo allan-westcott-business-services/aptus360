@@ -23,7 +23,7 @@ import { pillStyle } from "../../lib/pillColour.js";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import {
   eligibleTeams, earliestStart, parsePlots, serialisePlots, parseNodes, serialiseNodes,
-  validate as checkAssignment, daysBetween, dayTotal, takenPlots,
+  validate as checkAssignment, daysBetween, dayTotal, takenPlots, takenNodes,
   bookedParts, partIsFree, plotDayOwner,
   WEEKEND_PARTS, worksAnyWeekend, availablePart, laySchedule, workedDaysIn,
   splitsByUtility, endAfterHalves, layHalves,
@@ -1908,6 +1908,16 @@ function Assignments({ row }) {
       dayNodes: Object.fromEntries(mineDays
         .filter((d) => d.Node_Range)
         .map((d) => [d.Work_Date, parseNodes(d.Node_Range)])),
+      /* And the booking's own joints, where the days do not carry their
+         own — the counterpart of `plots` above.
+
+         This was not read back at all. The save wrote Node_Range on the
+         assignment and nothing ever loaded it, so reopening a booking
+         and pressing Save changes wrote the joints away again: the form
+         had no record of them, so it saved none. A field written once
+         and silently cleared on the next edit is worse than one that
+         was never stored. */
+      nodes: parseNodes(a.Node_Range),
       /* On when any day was saved differing from the rest \u2014 the tick
          box reflects what was saved rather than resetting each time. */
       byDay: mineDays.some((d) => d.Plot_Range),
@@ -2055,6 +2065,18 @@ function Assignments({ row }) {
       byDay: false,
       dayPlots: {},
       dayNodes: {},
+
+      /* No joints ticked to begin with, which is the opposite of the
+         plots above and deliberate — the same rule the per-day picker
+         follows.
+
+         Every plot on a call-off is connected sooner or later, so
+         opening with the free ones chosen saves a planner the work of
+         choosing them. A joint is made once, by one gang, on one visit:
+         a form that pre-ticked A1 and A2 on the first booking would put
+         them on whichever team happened to be booked first, and it
+         would look like a decision somebody had made. */
+      nodes: [],
       byUtility: false,
       utility_ids: [],
     });
@@ -2092,6 +2114,22 @@ function Assignments({ row }) {
       {
         utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
         mine: forUtilities ?? (draft.byUtility ? (draft.utility_ids || []) : []),
+      },
+    );
+  };
+
+  /* The same question about the mains joints: which are already on
+     another team's booking for this phase. Same utility rule, because
+     it is the same rule — laying the gas does not take a joint for the
+     water. */
+  const takenNodesFor = (taskTypeId, exceptId = null, opts = {}) => {
+    const { named = false } = opts;
+    return takenNodes(
+      mine, taskTypeId, exceptId,
+      named ? ((id) => teamName(id)) : (() => null),
+      {
+        utilitiesOf: (a) => assignmentUtils.get(Number(a.Assignment_ID)) || [],
+        mine: draft.byUtility ? (draft.utility_ids || []) : [],
       },
     );
   };
@@ -2454,9 +2492,17 @@ function Assignments({ row }) {
           ? null : (serialisePlots(bookingPlots) || null),
         /* The mains joints on this booking (0186). Only where the days
            do not carry their own \u2014 the same rule Plot_Range follows
-           below, so one fact is not written in two places. */
-        Node_Range: splitByDay ? null : serialiseNodes(
-          Object.values(draft.dayNodes || {}).flat()),
+           below, so one fact is not written in two places.
+
+           From `draft.nodes`, the booking's own selection. It used to
+           flatten `dayNodes`, which had two faults: nothing could set
+           it, because the only picker for dayNodes is the per-day one
+           that appears when the booking IS split — so a booking that
+           was not split always saved null. And where somebody ticked
+           the split on, chose joints, then ticked it off again, the
+           abandoned per-day picks were written as the booking's range
+           without appearing anywhere on the form. */
+        Node_Range: splitByDay ? null : serialiseNodes(draft.nodes || []),
       };
 
       /* ── A new booking is Scheduled by the act of making it ──
@@ -3707,6 +3753,97 @@ function Assignments({ row }) {
                   </div>
                 )}
 
+                {/* ── The breech joints, under the plots ──
+
+                    The yellow panel at the top of the call-off says
+                    which joints the routes pass through; this is where
+                    one booking claims them. Without it the joints were
+                    visible on the call-off and impossible to put on a
+                    team, and the phase that makes them — jointing — is
+                    booked from this form.
+
+                    Under the plots rather than beside them because that
+                    is the order the work reads in: connect these plots,
+                    make these joints on the way.
+
+                    Not while the days carry their own, for the same
+                    reason the plots are not: the per-day grid asks the
+                    same question, and asking it twice leaves two
+                    answers and no rule for which wins.
+
+                    Independent of `plotUniverse` — a joint is worth
+                    booking whether or not this phase divides plots. */}
+                {!splitByDay && nodeChoices.length > 0 && (
+                  <div className="asg-plots-pick">
+                    <div className="asg-days-head">
+                      <strong>Breech Joints</strong>
+                      <span className="asg-days-tot">
+                        {`${(draft.nodes || []).length} of ${nodeChoices.length}`}
+                      </span>
+                      <button type="button" className="asg-all"
+                        onClick={() => setDraft((d) => {
+                          const free = nodeChoices.filter((nd) =>
+                            !takenNodesFor(ph.Task_Type_ID, editing).has(nd));
+                          return {
+                            ...d,
+                            nodes: (d.nodes || []).length >= free.length ? [] : free,
+                          };
+                        })}>
+                        {(draft.nodes || []).length
+                          >= nodeChoices.filter((nd) =>
+                            !takenNodesFor(ph.Task_Type_ID, editing).has(nd)).length
+                          ? "Clear" : "All free"}
+                      </button>
+                    </div>
+                    <div className="asg-pills">
+                      {(() => {
+                        /* Joints another team already has on this
+                           phase. Disabled rather than hidden, the same
+                           as the plots: a joint missing from the row
+                           looks like a joint missing from the call-off. */
+                        const held = takenNodesFor(
+                          ph.Task_Type_ID, editing, { named: true });
+                        return nodeChoices.map((nd) => {
+                          const on = (draft.nodes || []).includes(nd);
+                          const by = !on ? held.get(nd) : null;
+                          /* What the joint serves, so a planner can see
+                             why it is on the route without opening the
+                             drawing. Seals name their own plot already. */
+                          const j = (breech?.joints || []).find((x) => x.node === nd);
+                          return (
+                            <button key={nd} type="button"
+                              className={[
+                                "asg-pill", on ? "on" : "", by ? "off" : "",
+                              ].filter(Boolean).join(" ")}
+                              disabled={!!by}
+                              aria-pressed={on}
+                              title={by
+                                ? `Already assigned to ${by} \u2014 a joint is made once`
+                                : (j?.plots?.length
+                                  ? `Serves plot${j.plots.length === 1 ? "" : "s"} `
+                                    + j.plots.join(", ")
+                                  : nd)}
+                              onClick={() => setDraft((d) => ({
+                                ...d,
+                                nodes: on
+                                  ? (d.nodes || []).filter((x) => x !== nd)
+                                  : [...(d.nodes || []), nd],
+                              }))}>
+                              {nd}
+                            </button>
+                          );
+                        });
+                      })()}
+                    </div>
+                    {!(draft.nodes || []).length && (
+                      <p className="asg-none-hint">
+                        None on this booking &mdash; a joint is made once, so
+                        nothing ticked means another team makes them.
+                      </p>
+                    )}
+                  </div>
+                )}
+
                 <div className="asg-line asg-actions">
                   {/* Enabled even where there are problems, so pressing
                       it says why rather than doing nothing.
@@ -3899,6 +4036,11 @@ const CSS = FILTER_CSS + `
   line-height: 1.6; max-width: 70ch; color: #7c4a03; }
 .asg-days-tot { margin-left: auto; }
 .asg-days-tot { font-size: 11px; color: var(--muted); margin-right: auto; }
+/* Said under the joints when none are ticked, because an empty row
+   there means something — nothing chosen is "another team makes them",
+   not "not decided yet". The plots need no such line: empty there is
+   caught by the validator before a booking can be saved. */
+.asg-none-hint { margin: 6px 0 0; font-size: 11.5px; color: var(--muted); }
 .asg-all { background: none; border: 1px solid var(--border); border-radius: 5px;
   cursor: pointer; font: 600 10px inherit; padding: 2px 9px; color: var(--accent); }
 .asg-day { display: flex; align-items: center; gap: 7px; margin-bottom: 5px;

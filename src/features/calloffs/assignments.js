@@ -397,8 +397,18 @@ export function clashesFor(teamId, start, end, assignments = [], exceptId = null
 
    Returns plot to the team holding it, so the panel can say which
    rather than only that the plot is unavailable. */
-export function takenPlots(assignments = [], taskTypeId, exceptId = null,
-  teamName = () => null, opts = {}) {
+/* ── A joint is claimed the same way a plot is ──
+
+   `takenNodes` below answers the same question about mains joints that
+   this answers about plots: which are already on another team's booking
+   for this phase. Written as one body with the field and the parser
+   passed in, rather than as two functions that look alike.
+
+   Two copies would be fault 13 in miniature — the utility rule here has
+   edges (a booking with no utilities recorded clashes with everything)
+   and a second copy would hold whichever version of that rule was true
+   the day it was written. */
+function takenBy(assignments, taskTypeId, exceptId, teamName, opts, field, parse) {
   /* ── And per utility, where the phase has been split ──
 
      Laying the gas on all six plots does not take those plots for the
@@ -425,11 +435,32 @@ export function takenPlots(assignments = [], taskTypeId, exceptId = null,
     if (Number(a.Task_Type_ID) !== Number(taskTypeId)) continue;
     if (!overlaps(a)) continue;
     if (exceptId != null && Number(a.Assignment_ID) === Number(exceptId)) continue;
-    for (const p of parsePlots(a.Plot_Range)) {
+    for (const p of parse(a[field])) {
       if (!out.has(p)) out.set(p, teamName(a.Team_ID) ?? `team ${a.Team_ID}`);
     }
   }
   return out;
+}
+
+export function takenPlots(assignments = [], taskTypeId, exceptId = null,
+  teamName = () => null, opts = {}) {
+  return takenBy(assignments, taskTypeId, exceptId, teamName, opts,
+    "Plot_Range", parsePlots);
+}
+
+/* The mains joints already on another team's booking for this phase.
+
+   Parsed with parseNodes, not parsePlots: a node label is A1, A4, E0,
+   and "A1-A4" is a name rather than a run of anything.
+
+   The same rule as the plots — a joint is made once — but it is worth
+   saying why that rule is per phase and not per call-off. Two phases
+   may both touch the same joint: the gang that makes it and the gang
+   that reinstates over it are doing different work at one place. */
+export function takenNodes(assignments = [], taskTypeId, exceptId = null,
+  teamName = () => null, opts = {}) {
+  return takenBy(assignments, taskTypeId, exceptId, teamName, opts,
+    "Node_Range", parseNodes);
 }
 
 /* ── A plot belongs to one day of a booking ──

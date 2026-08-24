@@ -142,6 +142,7 @@ import {
 import { spanImage, spanBounds } from "./spanImage.js";
 import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
 import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
+import { cableSizes } from "./cableSizes.js";
 import { sealLeg } from "./bottleEnd.js";
 import { planLayer } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
@@ -9849,7 +9850,27 @@ export default function GISCanvasPage() {
              say. A record that always exists and is usually empty is one
              nobody reads. */
           if (!b.plots.length && !seals.length) return null;
-          traced = { breech: b, ...(seals.length ? { seals } : {}) };
+
+          /* ── The cable sizes, taken now ──
+
+             In and out at every joint, read off the drawing while the
+             drawing is here. The tablet gets the design as a picture
+             and cannot work these out for itself, and a jointing gang
+             asked to type them is being asked to copy two numbers off a
+             drawing they are not holding.
+
+             Null where the design does not say. A wrong size on a
+             jointing sheet is worse than a blank one: blank gets asked
+             about, and 185mm printed against a 95mm main gets jointed. */
+          const sizes = cableSizes(
+            features, b,
+            b.plots.map((r) => r.plotId).filter((id) => id != null));
+
+          traced = {
+            breech: b,
+            ...(Object.keys(sizes).length ? { sizes } : {}),
+            ...(seals.length ? { seals } : {}),
+          };
           return traced;
         })(),
       });

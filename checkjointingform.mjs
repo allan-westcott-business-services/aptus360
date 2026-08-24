@@ -59,7 +59,7 @@ const { createRoot } = await import("react-dom/client");
 const { act } = React;
 const { default: JointingForm } = await import("./.jfbundle.mjs");
 const {
-  CHECKLIST, OUTCOMES, TESTS, sketchTargets, breechJointsOf, missingFrom, plotsOf,
+  CHECKLIST, OUTCOMES, TESTS, jointPages, breechJointsOf, missingFrom, plotsOf,
 } = await import("./src/features/field/jointingInstruction.js");
 
 const root = createRoot(dom.window.document.getElementById("root"));
@@ -71,6 +71,12 @@ const JOB = {
   plots: "18-19",
   nodeRange: "A1, A2",
   siteName: "Foo Meadows",
+  asLaid: "https://example.test/as-laid.png",
+  sizes: {
+    "plot:18": { in: "185mm AL WF", out: "35mm CNE" },
+    "plot:19": { in: null, out: null },
+    "breech:20": { in: "185mm AL WF", out: "35mm CNE" },
+  },
   breech: {
     joints: [{ featureId: 20, node: "A1", jointType: "breech", plots: [18, 19] }],
     plots: [{
@@ -103,6 +109,14 @@ const render = async (job = JOB, { fresh = true } = {}) => {
 const text = () => dom.window.document.body.textContent;
 const $ = (sel) => [...dom.window.document.querySelectorAll(sel)];
 const click = async (el) => { await act(async () => { el.click(); }); };
+const tabs = () => $(".jf-tab");
+/* Open a page by the label on its tab. */
+const open = async (label) => {
+  const t = tabs().find((b) => b.textContent.includes(label));
+  if (!t) { fail(`no page tab for "${label}"`); return false; }
+  await click(t);
+  return true;
+};
 
 /* Type into a controlled input the way a person does.
 
@@ -156,9 +170,14 @@ await render();
     if (!CHECKLIST.includes(t)) fail(`the checklist no longer says: "${t.slice(0, 44)}…"`);
     if (!text().includes(t)) fail(`the form does not show: "${t.slice(0, 44)}…"`);
   }
-  for (const h of ["Job Details", "Task Checklist", "Sign-off",
-    "Service Breech Joints", "Cut Out Termination"]) {
-    if (!text().includes(h)) fail(`the form has no "${h}" section`);
+  /* The site page carries these and only these. Sign-off and the joint
+     detail have their own pages now — asserting them here would have
+     passed a form that put everything back on one sheet. */
+  for (const h of ["Job Details", "Task Checklist"]) {
+    if (!text().includes(h)) fail(`the site page has no "${h}" section`);
+  }
+  for (const h of ["Sign-off", "Cut Out Termination", "Cable size in"]) {
+    if (text().includes(h)) fail(`"${h}" is on the site page — it belongs on its own`);
   }
   if (!/C\s*=\s*Complete/.test(text())) fail("the C / I / NR key is not on the form");
 
@@ -168,143 +187,183 @@ await render();
   }
 }
 
-// 2. Yellow for a judgement, green for a measurement.
+// 2. Site page first: the details and the six questions, and nothing else.
 //
-//    The paper form colours the boxes the operative fills in, and the
-//    colouring is the instruction: a gang looks for the coloured boxes
-//    and fills those in.
+//    The joints are not on it. A gang standing at a hole should not be
+//    scrolling past the developer's address to reach the readings.
 {
-  /* One plot and one joint are open at a time, so the count is the
-     checklist plus the open joint's completion. */
-  if ($(".jf-cinr").length !== CHECKLIST.length + 1) {
-    fail(`expected ${CHECKLIST.length + 1} C/I/NR boxes, found ${$(".jf-cinr").length}`);
+  if ($(".jf-cinr").length !== CHECKLIST.length) {
+    fail(`the site page has ${$(".jf-cinr").length} C/I/NR boxes, not the six tasks`);
   }
-  const green = $(".jf-num, .jf-numsel").length;
-  if (green !== TESTS.length) {
-    fail(`expected ${TESTS.length} test boxes for the open plot, found ${green}`);
-  }
-}
-
-// 3. A block per plot, and the office's fields locked.
-{
-  /* ── A tab each, one open ──
-
-     Stacked, the test boxes for plot 19 sat directly under the ones for
-     plot 18 with a border between them, and filling in the row below
-     the one you meant is the easiest mistake on this form to make and
-     the hardest to spot after the fact: every number is plausible, just
-     against the wrong house. */
-  const plotTabs = $(".jf-strip")[0];
-  if (!plotTabs) fail("the plots are not tabbed");
-  else {
-    const labels = [...plotTabs.querySelectorAll(".jf-striptab")]
-      .map((b) => b.textContent.replace(/[^\w ]/g, "").trim());
-    for (const p of ["18", "19"]) {
-      if (!labels.some((l) => l === `Plot ${p}`)) fail(`plot ${p} has no tab`);
-    }
-  }
-  if ($(".jf-outcome").length !== 1) {
-    fail(`expected one plot open at a time, found ${$(".jf-outcome").length}`);
-  }
-  if (!$("#jf-cot-18").length) fail("the first plot is not the one open");
+  if ($(".jf-num, .jf-numsel").length) fail("test boxes are on the site page");
+  if ($(".jf-sketch").length) fail("a sketch is on the site page");
   const locked = $("#jf-jobNo")[0];
-  if (!locked) fail("the job number is not on the form");
+  if (!locked) fail("the job number is not on the site page");
   else if (!locked.readOnly) fail("the office's job number is editable on site");
 }
 
-// 4. Breech joints stand on their own, one block each.
-//
-//    The point of this round. Nested under a plot, one joint feeding
-//    three plots appeared three times and read as three jobs.
+// 3. A page per joint, then the declaration, in that order.
 {
-  const joints = breechJointsOf(JOB);
-  if (joints.length !== 2) fail(`expected 2 breech joints, got ${joints.length}`);
-  if ($(".jf-breech").length !== 1) {
-    fail(`expected one joint open at a time, found ${$(".jf-breech").length}`);
-  }
-  /* Every joint reachable from the strip, whether or not it is open. */
-  const jointTabs = [...($(".jf-strip")[1]?.querySelectorAll(".jf-striptab") || [])]
-    .map((b) => b.textContent);
-  for (const n of ["A1", "A2"]) {
-    if (!jointTabs.some((t) => t.includes(`Node ${n}`))) {
-      fail(`breech joint ${n} has no tab`);
-    }
-  }
-  /* One block each. A1 serves both plots and used to be drawn under
-     both of them, which read as two jobs at one hole.
+  const pages = jointPages(JOB);
+  /* Two plots and two booked breech joints. */
+  if (pages.length !== 4) fail(`expected 4 joint pages, got ${pages.length}`);
 
-     Counted as blocks rather than as mentions of the name: the plot
-     block carries a reference line listing what is on its route, which
-     is deliberate and is not a second place to answer for the joint. */
-  const a1Tabs = jointTabs.filter((t) => /Node A1/.test(t)).length;
-  if (a1Tabs !== 1) fail(`Node A1 has ${a1Tabs} tabs — it should have one`);
-  /* And each carries its own from/to/completion. */
-  if (!$(".jf-breech .jf-cinr").length) fail("a breech joint has no completion box");
+  const labels = tabs().map((b) => b.textContent);
+  if (labels.length !== pages.length + 2) {
+    fail(`expected ${pages.length + 2} pages, found ${labels.length}`);
+  }
+  if (!/Site/.test(labels[0])) fail(`the first page is "${labels[0]}", not Site`);
+  if (!/Declaration/.test(labels[labels.length - 1])) {
+    fail(`the last page is "${labels[labels.length - 1]}", not the Declaration`);
+  }
+  for (const want of ["Plot 18", "Plot 19", "Node A1", "Node A2"]) {
+    if (!labels.some((l) => l.includes(want))) fail(`no page for ${want}`);
+  }
+  /* Service joints before breech joints — the order the paperwork
+     reads, plots then the way back to the main. */
+  const p18 = labels.findIndex((l) => l.includes("Plot 18"));
+  const a1 = labels.findIndex((l) => l.includes("Node A1"));
+  if (a1 < p18) fail("breech joints come before the service joints");
 }
 
-// 5. Dead Jointed clears and locks the readings.
-//
-//    The joint is made and the service is not live, so there is nothing
-//    to measure — and a number left over from before the outcome changed
-//    would read as a reading taken on a dead service.
+// 4. A service joint page carries the readings.
 {
+  if (!await open("Plot 18")) { /* reported */ }
+  if ($(".jf-outcome").length !== 1) {
+    fail(`expected one outcome on a joint page, found ${$(".jf-outcome").length}`);
+  }
+  if ($(".jf-num, .jf-numsel").length !== TESTS.length) {
+    fail(`expected ${TESTS.length} test boxes, found ${$(".jf-num, .jf-numsel").length}`);
+  }
+  if (!$("#jf-cot-18").length) fail("no cut out termination on the plot page");
+  if ($("#jf-cot-19").length) fail("another plot is on the same page");
+  if ($(".jf-sketch").length !== 1) {
+    fail(`expected one sketch on a joint page, found ${$(".jf-sketch").length}`);
+  }
+  if ($(".jf-photo-add").length !== 3) fail("the three photo buttons are not on the joint page");
+  /* The keys carry a colon (plot:18), which is legal in an id and not
+     in a selector, so these are found by prefix rather than by #id. */
+  if (!$("select").some((el) => el.id.startsWith("jf-type-"))) {
+    fail("no joint type on the joint page");
+  }
+}
+
+// 5. A breech joint page asks the same, minus the readings.
+//
+//    It is on the main and terminates nothing, so there is nothing to
+//    test at it — but it is still a hole with a joint in it, and it
+//    gets a completion, a cable size, photos and a sketch.
+{
+  if (!await open("Node A1")) { /* reported */ }
+  if ($(".jf-num, .jf-numsel").length) {
+    fail("a breech joint page is asking for test readings");
+  }
+  if ($(".jf-cinr").length !== 1) {
+    fail(`expected one completion box, found ${$(".jf-cinr").length}`);
+  }
+  if ($(".jf-sketch").length !== 1) fail("a breech joint has no sketch");
+  if ($(".jf-photo-add").length !== 3) fail("a breech joint has no photo buttons");
+  if (!text().includes("Node A1")) fail("the breech joint page is not named");
+}
+
+// 6. Cable sizes come off the design, and are not typed.
+//
+//    The plot knows the LV feeder supplying it and the service running
+//    to its meter. Asking a gang to type them is asking them to copy
+//    two numbers off a drawing they are not holding.
+{
+  if (!await open("Plot 18")) { /* reported */ }
+  const inp = $("input").find((el) => el.id.startsWith("jf-in-"));
+  const out = $("input").find((el) => el.id.startsWith("jf-outsz-"));
+  if (!inp || !out) fail("cable size in/out are not on the joint page");
+  else {
+    if (inp.value !== "185mm AL WF") fail(`cable size in reads "${inp.value}"`);
+    if (out.value !== "35mm CNE") fail(`cable size out reads "${out.value}"`);
+    if (!inp.readOnly) fail("a size the design knows is editable on site");
+  }
+
+  /* Where the design does not say, the box is open rather than
+     pre-filled with a guess. */
+  if (!await open("Plot 19")) { /* reported */ }
+  const blank = $("input").find((el) => el.id.startsWith("jf-in-"));
+  if (blank?.value) fail(`an unknown cable size was filled in with "${blank.value}"`);
+  if (blank?.readOnly) fail("an unknown cable size is locked, so it cannot be recorded");
+}
+
+// 7. The sketch sits over the as-laid electric drawing.
+{
+  if (!await open("Plot 18")) { /* reported */ }
+  const bg = $(".jf-sketchbg")[0];
+  if (!bg) fail("the sketch has no drawing behind it");
+  else if (bg.getAttribute("src") !== JOB.asLaid) fail("the sketch backdrop is not the as-laid drawing");
+  if (!$(".jf-sketchbar").length) fail("the sketch has no zoom controls");
+
+  /* Zoom moves the plan. */
+  const zoomIn = $(".jf-chip").find((b) => b.textContent === "+");
+  await click(zoomIn);
+  const after = $(".jf-sketchbg")[0];
+  if (after && !/scale\(1\.25\)/.test(after.style.transform)) {
+    fail(`zooming did not scale the plan (${after.style.transform})`);
+  }
+
+  /* And it can be turned off — a gang marking a joint on open ground
+     does not always want a plan under it. */
+  const none = $(".jf-chip").find((b) => b.textContent === "None");
+  await click(none);
+  if ($(".jf-sketchbg").length) fail("the backdrop cannot be turned off");
+}
+
+// 8. Dead Jointed clears and locks the readings.
+{
+  payload = {};
   await render();
+  await open("Plot 18");
   const sel = $(".jf-outcome")[0];
   sel.value = "Dead Jointed";
   await act(async () => {
     sel.dispatchEvent(new dom.window.Event("change", { bubbles: true }));
   });
   await render(JOB, { fresh: false });
+  await open("Plot 18");
   for (const k of ["eli", "polarity", "voltage"]) {
     const el = $(`#jf-${k}-18`)[0];
     if (!el) { fail(`plot 18 has no ${k} box`); continue; }
     if (!el.disabled) fail(`${k} is still editable on a dead joint`);
     if (el.value) fail(`${k} kept "${el.value}" after Dead Jointed`);
   }
-  /* IR is still asked: it is taken on the cable, not on a live supply. */
   if ($("#jf-ir-18")[0]?.disabled) fail("the IR test was locked by Dead Jointed");
 }
 
-// 6. A sketch for every joint — plots and breech joints alike.
+// 9. One joint's answers do not appear under another's heading.
+//
+//    The whole point of a page each.
 {
   payload = {};
   await render();
-  const tabs = $(".jf-tab");
-  await click(tabs[1]);
+  await open("Plot 18");
+  await type($("#jf-ir-18")[0], "99");
+  if (payload.plots?.[18]?.ir !== "99") {
+    fail(`typing an IR reading did not reach the payload (${JSON.stringify(payload.plots)})`);
+  }
+  await render(JOB, { fresh: false });
 
-  const targets = sketchTargets(JOB);
-  if (targets.length !== 4) fail(`expected 4 sketch targets, got ${targets.length}`);
-
-  /* A tab per joint, plots and breech joints alike, and one pad open. */
-  const skTabs = [...($(".jf-strip")[0]?.querySelectorAll(".jf-striptab") || [])]
-    .map((b) => b.textContent);
-  if (skTabs.length !== targets.length) {
-    fail(`expected ${targets.length} sketch tabs, found ${skTabs.length}`);
-  }
-  for (const n of ["Plot 18", "Plot 19", "Node A1", "Node A2"]) {
-    if (!skTabs.some((t) => t.includes(n))) fail(`no sketch tab for ${n}`);
-  }
-  if ($(".jf-sketch").length !== 1) {
-    fail(`expected one sketch pad open, found ${$(".jf-sketch").length}`);
-  }
-  /* Photos by purpose, and somewhere to say where the joint is. */
-  if ($(".jf-photo-add").length !== 3) {
-    fail(`expected 3 photo buttons on the open sketch, found ${$(".jf-photo-add").length}`);
-  }
-  if ($("textarea").length !== 1) {
-    fail(`expected a description on the open sketch, found ${$("textarea").length}`);
-  }
-
-  /* And the tabs move between them. */
-  const second = $(".jf-striptab")[1];
-  await click(second);
-  if (!text().includes("Plot 19")) fail("switching sketch tabs did not open the next joint");
+  await open("Plot 19");
+  if ($("#jf-ir-19")[0]?.value === "99") fail("plot 18's reading appeared under plot 19");
+  await open("Plot 18");
+  if ($("#jf-ir-18")[0]?.value !== "99") fail("plot 18's reading was lost when its page was left");
 }
 
-// 7. Nothing is submitted with a joint unanswered.
-//
-//    An unanswered breech joint is a hole nobody has said anything
-//    about, and it is the one the office is asked about later.
+// 10. The tabs say what is outstanding.
+{
+  payload = { plots: { 18: { outcome: "Completed" } } };
+  await render();
+  const t18 = tabs().find((b) => b.textContent.includes("Plot 18"));
+  const t19 = tabs().find((b) => b.textContent.includes("Plot 19"));
+  if (!t18?.querySelector(".jf-tick")) fail("an answered plot is not ticked");
+  if (!t19?.querySelector(".jf-dot")) fail("an unanswered plot carries no dot");
+}
+
+// 11. Nothing is submitted with a joint unanswered.
 {
   const outstanding = missingFrom({}, plotsOf(JOB.plots), JOB);
   for (const want of ["Outcome for plot 18", "The declaration"]) {
@@ -315,64 +374,35 @@ await render();
   }
   const done = missingFrom({
     plots: { 18: { outcome: "Completed" }, 19: { outcome: "Completed" } },
-    breech: { "breech:20": { done: "C" }, "breech:node:A2": { done: "C" } },
+    joints: { "breech:20": { done: "C" }, "breech:node:A2": { done: "C" } },
     declaration: true,
   }, plotsOf(JOB.plots), JOB);
   if (done.length) fail(`a complete form still reports outstanding: ${done.join(", ")}`);
 }
 
-// 8. A booking with no breech joints says so rather than showing an
-//    empty card, and still renders its plots.
+// 12. A booking with no breech joints still has its plots and its
+//     declaration.
 {
   payload = {};
   await render({ ...JOB, nodeRange: null, breech: null });
-  if ($(".jf-breech").length) fail("a booking with no joints drew joint blocks");
-  if (!/No breech joints booked/.test(text())) {
-    fail("a booking with no joints does not say so");
-  }
-  if ($(".jf-outcome").length !== 1) fail("the plots stopped rendering without joints");
+  const labels = tabs().map((b) => b.textContent);
+  if (labels.length !== 4) fail(`expected Site + 2 plots + Declaration, got ${labels.length}`);
+  if (labels.some((l) => /Node/.test(l))) fail("a joint page appeared with no joints booked");
+  if (!labels.some((l) => /Declaration/.test(l))) fail("the declaration page was lost");
 }
 
-// 9. Switching a plot tab swaps the block, and does not swap the answers.
-//
-//    The whole point of tabbing: one plot's readings must not appear
-//    under another's heading.
+// 13. The declaration is its own page, and last.
 {
   payload = {};
   await render();
-  const tabs = $(".jf-strip")[0].querySelectorAll(".jf-striptab");
-  if (tabs.length !== 2) fail(`expected 2 plot tabs, found ${tabs.length}`);
-
-  /* Type an IR reading against plot 18. */
-  await type($("#jf-ir-18")[0], "99");
-  if (payload.plots?.[18]?.ir !== "99") {
-    fail(`typing an IR reading did not reach the payload (${JSON.stringify(payload.plots)})`);
-  }
-  await render(JOB, { fresh: false });
-
-  await click($(".jf-strip")[0].querySelectorAll(".jf-striptab")[1]);
-  if (!$("#jf-cot-19").length) fail("the second plot tab did not open plot 19");
-  if ($("#jf-cot-18").length) fail("both plots are on screen at once");
-  if ($("#jf-ir-19")[0]?.value === "99") {
-    fail("plot 18's reading appeared under plot 19");
-  }
-
-  await click($(".jf-strip")[0].querySelectorAll(".jf-striptab")[0]);
-  if ($("#jf-ir-18")[0]?.value !== "99") {
-    fail("plot 18's reading was lost when its tab was left");
-  }
-}
-
-// 10. The strip says what is outstanding.
-{
-  payload = { plots: { 18: { outcome: "Completed" } } };
-  await render();
-  const tabs = [...$(".jf-strip")[0].querySelectorAll(".jf-striptab")];
-  if (!tabs[0].classList.contains("done")) fail("an answered plot is not marked done");
-  if (tabs[1].classList.contains("done")) fail("an unanswered plot is marked done");
+  await open("Declaration");
+  if (!/Sign-off/.test(text())) fail("the declaration page has no sign-off");
+  if (!$("#jf-completedby").length) fail("no Completed By on the declaration");
+  if ($(".jf-outcome").length) fail("a joint is on the declaration page");
+  if ($(".jf-sketch").length !== 1) fail("the signature pad is not on the declaration");
 }
 
 rmSync("./.jfbundle.mjs", { force: true });
 console.log(bad ? `\n${bad} problem(s)`
-  : "The jointing form is the paper form (plots and breech joints, a sketch each).");
+  : "The jointing form paginates (site, a page per joint, declaration).");
 process.exit(bad ? 1 : 0);

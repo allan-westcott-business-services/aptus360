@@ -323,6 +323,58 @@ export const plotKey = (plot) => `plot:${plot}`;
 
    One list rather than two, so the sketch page can be a straight map
    over it and the count on the tab is the count of holes on the job. */
+/* ── The joints, as pages ──
+
+   One page each, in the order the paperwork reads: the service joints
+   at the plots, then the breech joints on the way back to the main.
+
+   A service joint and a breech joint are the same kind of thing to a
+   gang — a hole with a joint in it — and the form asks the same
+   questions of both. What differs is that a service joint terminates at
+   a meter, so it carries the test results; a breech joint is on the
+   main and has nothing to test.
+
+   `tests` says which. Everything else on the page is common. */
+export function jointPages(job) {
+  const out = plotsOf(job?.plots).map((p) => ({
+    key: plotKey(p),
+    kind: "plot",
+    tests: true,
+    plot: p,
+    title: `Plot ${p}`,
+    tag: "Service Joint",
+  }));
+
+  for (const j of breechJointsOf(job)) {
+    out.push({
+      key: jointKey(j),
+      kind: "breech",
+      tests: false,
+      joint: j,
+      title: j.node ? `Node ${j.node}` : jointLabelOf(j),
+      tag: "Breech Joint",
+      serves: j.plots || [],
+    });
+  }
+  return out;
+}
+
+/* The joint types a gang picks from. Read off the drawing where it
+   knows, chosen here where it does not. */
+export const JOINT_TYPES = [
+  "Straight", "Breech", "Service Tee", "Trifurcating", "Pot End", "Bottle End",
+];
+
+/* Cable size in and out for one page, as taken off the design when the
+   call-off was raised.
+
+   Null where the drawing did not say, which the form shows as an empty
+   box a gang can fill in — not as a guess. */
+export function sizesFor(job, key) {
+  const s = job?.sizes?.[key];
+  return { in: s?.in ?? null, out: s?.out ?? null };
+}
+
 export function sketchTargets(job) {
   const out = plotsOf(job?.plots).map((p) => ({
     key: plotKey(p),
@@ -398,8 +450,13 @@ export function missingFrom(payload = {}, plots = [], job = null) {
   /* Each breech joint answered in its own right. A joint left blank is
      a hole nobody has said anything about, and it is the one the office
      is asked about six weeks later. */
+  /* Every breech joint answered on its own page. Written under
+     `joints`, which is where the joint pages keep their answers — the
+     old `breech` key held the same thing when joints were rows inside a
+     plot, and two homes for one answer is how a completed joint reads
+     as outstanding. */
   for (const j of breechJointsOf(job)) {
-    const a = payload?.breech?.[jointKey(j)];
+    const a = payload?.joints?.[jointKey(j)];
     if (!a?.done) out.push(`Completion for ${jointLabelOf(j)}`);
   }
 

@@ -235,6 +235,13 @@ export default withAuth(async function handler(req, context, user) {
            Released job only, as everything else here is. Null where the
            call-off predates this or the route was clear. */
         breech: released ? (s.GIS_Data?.breech ?? null) : null,
+
+        /* Cable size in and out at every joint, read off the design when
+           the call-off was raised. The tablet has the drawing as a
+           picture and cannot derive these, and the alternative is a
+           gang typing sizes from memory onto the sheet that records
+           what was jointed. */
+        sizes: released ? (s.GIS_Data?.sizes ?? null) : null,
       };
     });
 

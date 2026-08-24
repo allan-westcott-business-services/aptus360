@@ -461,7 +461,17 @@ const CSS = `
 /* The abort sheet. Not a dialog over the queue — the queue is gone
    while this is up, because the decision it asks for is not a small
    one. */
-.fq-sheet { position: absolute; inset: 0; background: #f2f4f7; z-index: 10;
+/* Fixed to the viewport, not absolute inside .fq.
+
+   .fq is the queue column and is capped at 560px — a phone-width list
+   of jobs, which is right for the queue and wrong for everything opened
+   over it. The work instruction is a document: it wants the width of
+   the tablet, and inside .fq it was being squeezed into a column
+   narrower than the form it is a copy of.
+
+   The inner boxes keep their own widths, so the abort sheet is still a
+   centred card. */
+.fq-sheet { position: fixed; inset: 0; background: #f2f4f7; z-index: 10;
   padding: 14px; overflow-y: auto; }
 .fq-sheet-box { max-width: 560px; margin: 0 auto; background: #fff;
   border: 1px solid #e6eaf0; border-radius: 12px; padding: 18px 16px; }

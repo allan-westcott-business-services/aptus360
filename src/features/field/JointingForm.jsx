@@ -39,6 +39,40 @@ import {
    joint commonly feeds several, so the same hole appeared three times
    and looked like three jobs. */
 
+/* ── One item at a time ──
+
+   Plots, breech joints and sketches are each a tab strip over a single
+   block rather than a stack.
+
+   Stacked, a six-plot visit was a page a gang scrolled through looking
+   for the one they were standing at, and the test boxes for plot 19 sat
+   directly under the ones for plot 18 with nothing between them but a
+   border. Filling in the row below the one you meant is the easiest
+   mistake on this form to make and the hardest to spot afterwards —
+   the numbers are all plausible, just against the wrong house.
+
+   One at a time, named at the top, and the tab carries a dot when that
+   item still has something outstanding. So the strip doubles as the
+   list of what is left to do. */
+function Strip({ items, active, onPick, ariaLabel }) {
+  if (items.length <= 1) return null;
+  return (
+    <div className="jf-strip" role="tablist" aria-label={ariaLabel}>
+      {items.map((it) => (
+        <button key={it.key} type="button" role="tab"
+          aria-selected={it.key === active}
+          className={`jf-striptab${it.done ? " done" : ""}`}
+          onClick={() => onPick(it.key)}>
+          {it.label}
+          {it.done
+            ? <span className="jf-tick" aria-label="answered">&#10003;</span>
+            : <span className="jf-dot" aria-label="outstanding" />}
+        </button>
+      ))}
+    </div>
+  );
+}
+
 const setIn = (obj, key, patch) => ({
   ...(obj || {}),
   [key]: { ...((obj || {})[key] || {}), ...patch },
@@ -189,6 +223,20 @@ export default function JointingForm({ job, payload, set, setPlot, locked }) {
   const joints = breechJointsOf(job);
   const targets = sketchTargets(job);
 
+  /* Which plot, joint and sketch are open. Held here rather than per
+     card so switching to the sketch page and back does not lose the
+     plot somebody was working on. */
+  const [openPlot, setOpenPlot] = useState(plots[0] ?? null);
+  const [openJoint, setOpenJoint] = useState(joints[0] ? jointKey(joints[0]) : null);
+  const [openSketch, setOpenSketch] = useState(targets[0]?.key ?? null);
+
+  /* A booking's plots can change under an open form — the office moves
+     one to another team mid-morning. Fall back to the first rather than
+     showing an empty card for a plot that is no longer here. */
+  const plot = plots.includes(openPlot) ? openPlot : (plots[0] ?? null);
+  const jointOpen = joints.find((j) => jointKey(j) === openJoint) ?? joints[0] ?? null;
+  const sketchOpen = targets.find((t) => t.key === openSketch) ?? targets[0] ?? null;
+
   const jobDetail = payload?.job || {};
   const setJob = (k, v) => set("job", { ...jobDetail, [k]: v });
 
@@ -331,7 +379,13 @@ export default function JointingForm({ job, payload, set, setPlot, locked }) {
               </p>
             )}
 
-            {plots.map((p) => {
+            <Strip ariaLabel="Plots" active={plot} onPick={setOpenPlot}
+              items={plots.map((p) => ({
+                key: p, label: `Plot ${p}`,
+                done: !!payload?.plots?.[p]?.outcome,
+              }))} />
+
+            {[plot].filter((x) => x != null).map((p) => {
               const a = payload?.plots?.[p] ?? emptyPlot();
               const dead = a.outcome === "Dead Jointed";
               return (
@@ -420,7 +474,15 @@ export default function JointingForm({ job, payload, set, setPlot, locked }) {
               </p>
             )}
 
-            {joints.map((j) => {
+            <Strip ariaLabel="Breech joints" active={jointOpen && jointKey(jointOpen)}
+              onPick={setOpenJoint}
+              items={joints.map((j) => ({
+                key: jointKey(j),
+                label: j.node ? `Node ${j.node}` : jointLabel(j),
+                done: !!payload?.breech?.[jointKey(j)]?.done,
+              }))} />
+
+            {[jointOpen].filter(Boolean).map((j) => {
               const k = jointKey(j);
               const a = payload?.breech?.[k] || {};
               return (
@@ -514,7 +576,20 @@ export default function JointingForm({ job, payload, set, setPlot, locked }) {
             </div>
           )}
 
-          {targets.map((t) => {
+          <div className="jf-card jf-stripcard">
+            <Strip ariaLabel="Joint sketches" active={sketchOpen?.key}
+              onPick={setOpenSketch}
+              items={targets.map((t) => ({
+                key: t.key,
+                label: t.kind === "breech" ? t.title.replace(/^Breech Joint at /, "") : t.title,
+                /* Answered means drawn. A photograph is not a location
+                   and a description without a sketch is the thing this
+                   page exists to replace. */
+                done: !!payload?.sketches?.[t.key]?.image,
+              }))} />
+          </div>
+
+          {[sketchOpen].filter(Boolean).map((t) => {
             const s = payload?.sketches?.[t.key] || {};
             return (
               <div className="jf-card" key={t.key}>
@@ -583,7 +658,7 @@ const CSS = `
 .jf-tab-n{ font-size:11px; font-weight:700; background:rgba(0,0,0,.18);
   border-radius:999px; padding:1px 7px; }
 
-.jf-sheet{ max-width:1040px; margin:22px auto 60px; padding:0 16px; }
+.jf-sheet{ max-width:1100px; margin:22px auto 60px; padding:0 16px; }
 .jf-sheet-head{ background:var(--ink); color:#fff;
   border-radius:var(--radius) var(--radius) 0 0; padding:18px 22px; }
 .jf-sheet-head h1{ margin:0; font-weight:600; font-size:20px; letter-spacing:.3px; }
@@ -631,6 +706,27 @@ const CSS = `
   font-weight:600; text-align:center; }
 .jf-num:disabled, .jf-numsel:disabled{ background:#eef1f5 !important;
   border-color:var(--line) !important; color:#9aa7b4; }
+
+/* ── The tab strip over plots, joints and sketches ── */
+.jf-strip{ display:flex; flex-wrap:wrap; gap:6px; margin:0 0 14px; }
+.jf-striptab{ border:1px solid var(--line); background:var(--surface);
+  color:var(--ink-soft); font:600 13px inherit; padding:7px 13px;
+  border-radius:999px; cursor:pointer; display:inline-flex; align-items:center;
+  gap:7px; white-space:nowrap; }
+.jf-striptab[aria-selected="true"]{ background:var(--accent);
+  border-color:var(--accent); color:#fff; }
+/* Outstanding, at a glance. The strip is also the list of what is left,
+   so a gang can see from the top of the card whether anything has been
+   missed rather than opening six tabs to find out. */
+.jf-dot{ width:7px; height:7px; border-radius:50%; background:#d97706; }
+.jf-striptab[aria-selected="true"] .jf-dot{ background:#fcd34d; }
+.jf-tick{ font-size:12px; color:var(--accent); font-weight:700; }
+.jf-striptab[aria-selected="true"] .jf-tick{ color:#fff; }
+.jf-striptab.done{ border-color:var(--green-line); }
+.jf-stripcard{ padding-bottom:6px; }
+/* One block open at a time, so it takes the card rather than sitting in
+   a stack. */
+.jf-block{ margin-bottom:0; }
 
 .jf-check-row{ display:grid; grid-template-columns:1fr 120px; gap:14px;
   align-items:center; padding:11px 0; border-top:1px solid var(--line); }
@@ -683,10 +779,21 @@ const CSS = `
 .jf-btn-sm{ padding:6px 11px; font-size:12px; }
 .jf-actions{ display:flex; gap:10px; flex-wrap:wrap; margin-top:18px; }
 
+/* A tablet held landscape is the working case and gets the full sheet.
+   Portrait and phones fold, in that order — the test grid is the last
+   thing to give up its row, because reading five results across is how
+   the paper form is checked. */
+@media (max-width:1000px){
+  .jf-block-top{ grid-template-columns:100px 1fr 160px; }
+}
 @media (max-width:820px){
   .jf-grid, .jf-signoff{ grid-template-columns:1fr; }
   .jf-block-top, .jf-breech-row{ grid-template-columns:1fr; }
-  .jf-tests{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .jf-tests{ grid-template-columns:repeat(3,minmax(0,1fr)); }
   .jf-pcats{ grid-template-columns:1fr; }
+}
+@media (max-width:560px){
+  .jf-tests{ grid-template-columns:repeat(2,minmax(0,1fr)); }
+  .jf-strip{ flex-wrap:nowrap; overflow-x:auto; padding-bottom:4px; }
 }
 `;

@@ -189,7 +189,7 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
   if (!payload && !error) return <p className="fq-note">Opening&hellip;</p>;
 
   return (
-    <div className="wi">
+    <div className={jointing ? "wi wi-wide" : "wi"}>
       <style>{CSS}</style>
 
       <header className="wi-top">
@@ -315,6 +315,11 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
 
 const CSS = `
 .wi { max-width: 560px; margin: 0 auto; padding: 0 14px 40px; }
+/* The jointing form is a document, not a phone list. It carries its own
+   sheet width (1040px, as the paper form is set) and must not be clamped
+   to the queue column on the way through. */
+.wi-wide { max-width: none; padding: 0 0 40px; }
+.wi-wide .wi-top { padding: 16px 18px 14px; }
 .wi-top { display: flex; align-items: flex-start; justify-content: space-between;
   gap: 12px; padding: 16px 0 14px; }
 .wi-task { font-size: 18px; font-weight: 600; }

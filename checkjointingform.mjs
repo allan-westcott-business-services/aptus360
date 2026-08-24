@@ -196,7 +196,7 @@ await render();
     fail(`the site page has ${$(".jf-cinr").length} C/I/NR boxes, not the six tasks`);
   }
   if ($(".jf-num, .jf-numsel").length) fail("test boxes are on the site page");
-  if ($(".jf-sketch").length) fail("a sketch is on the site page");
+  if ($(".jf-sketchink").length) fail("a sketch is on the site page");
   const locked = $("#jf-jobNo")[0];
   if (!locked) fail("the job number is not on the site page");
   else if (!locked.readOnly) fail("the office's job number is editable on site");
@@ -213,6 +213,11 @@ await render();
     fail(`expected ${pages.length + 2} pages, found ${labels.length}`);
   }
   if (!/Site/.test(labels[0])) fail(`the first page is "${labels[0]}", not Site`);
+  /* No leading numbers. The tab says where you are, and "3 · Plot 19"
+     invites somebody to call it plot 3. */
+  for (const l of labels) {
+    if (/^\s*\d+\s*[·.]/.test(l)) fail(`page tab "${l}" still carries a number`);
+  }
   if (!/Declaration/.test(labels[labels.length - 1])) {
     fail(`the last page is "${labels[labels.length - 1]}", not the Declaration`);
   }
@@ -237,8 +242,8 @@ await render();
   }
   if (!$("#jf-cot-18").length) fail("no cut out termination on the plot page");
   if ($("#jf-cot-19").length) fail("another plot is on the same page");
-  if ($(".jf-sketch").length !== 1) {
-    fail(`expected one sketch on a joint page, found ${$(".jf-sketch").length}`);
+  if ($(".jf-sketchink").length !== 1) {
+    fail(`expected one sketch on a joint page, found ${$(".jf-sketchink").length}`);
   }
   if ($(".jf-photo-add").length !== 3) fail("the three photo buttons are not on the joint page");
   /* The keys carry a colon (plot:18), which is legal in an id and not
@@ -261,7 +266,7 @@ await render();
   if ($(".jf-cinr").length !== 1) {
     fail(`expected one completion box, found ${$(".jf-cinr").length}`);
   }
-  if ($(".jf-sketch").length !== 1) fail("a breech joint has no sketch");
+  if ($(".jf-sketchink").length !== 1) fail("a breech joint has no sketch");
   if ($(".jf-photo-add").length !== 3) fail("a breech joint has no photo buttons");
   if (!text().includes("Node A1")) fail("the breech joint page is not named");
 }
@@ -399,7 +404,119 @@ await render();
   if (!/Sign-off/.test(text())) fail("the declaration page has no sign-off");
   if (!$("#jf-completedby").length) fail("no Completed By on the declaration");
   if ($(".jf-outcome").length) fail("a joint is on the declaration page");
+  /* The signature is still a canvas — it is a signature, not a
+     drawing, and nothing about it wants selecting or undoing. */
   if ($(".jf-sketch").length !== 1) fail("the signature pad is not on the declaration");
+  if ($(".jf-sketchink").length) fail("a joint sketch is on the declaration page");
+}
+
+// 14. The sketch pane is square, and the toolbar is under it.
+{
+  payload = {};
+  await render();
+  await open("Plot 18");
+
+  const stage = $(".jf-sketchstage")[0];
+  if (!stage) fail("no sketch stage");
+  else {
+    /* Square by aspect-ratio rather than a fixed height, so it stays
+       square at every width. A letterbox ran the dimensions back to the
+       property off the top and bottom. */
+    const style = stage.getAttribute("class");
+    const css = [...dom.window.document.querySelectorAll("style")]
+      .map((n) => n.textContent).join("\n");
+    if (!/\.jf-sketchstage\{[^}]*aspect-ratio\s*:\s*1\s*\/\s*1/.test(css.replace(/\s+/g, (m) => m.includes("\n") ? "" : m))) {
+      if (!/aspect-ratio:1 \/ 1/.test(css)) fail("the sketch pane is not square");
+    }
+    if (!style) fail("the stage lost its class");
+  }
+
+  const bar = $(".jf-tools")[0];
+  if (!bar) fail("the drawing toolbar is missing");
+  else if (!(stage.compareDocumentPosition(bar) & 4)) {
+    fail("the toolbar is above the sketch pane, not under it");
+  }
+}
+
+// 15. Only the tools that were asked for.
+//
+//    A line, a colour, a weight, a label, a dimension, and the four
+//    view controls. The office tool also offers building, cable, joint
+//    and bottle end — those are the design, and the design is already
+//    underneath as the as-laid drawing.
+{
+  const labels = [...$(".jf-tools button")].map((b) => b.textContent.trim());
+  for (const want of ["+ Add Text", "Undo", "Delete", "Clear All"]) {
+    if (!labels.some((l) => l === want)) fail(`the toolbar has no "${want}"`);
+  }
+  if (!labels.some((l) => /Dimension/.test(l))) fail("the toolbar has no Dimension");
+  if (!labels.some((l) => /Lock view|View locked/.test(l))) fail("the toolbar has no Lock view");
+  for (const gone of ["Building", "Cable / Duct", "Joint", "Bottle End"]) {
+    if (labels.some((l) => l === gone)) fail(`"${gone}" is still on the toolbar`);
+  }
+  if ($(".jf-swatch").length !== 4) fail(`expected 4 colours, found ${$(".jf-swatch").length}`);
+  if (!$(".jf-sizer").length) fail("the toolbar has no size control");
+}
+
+// 16. The toolbar does something.
+//
+//    Undo removes the last mark and Clear All removes them all — which
+//    is only possible because a mark is data rather than pixels. A pad
+//    that only keeps an image can do neither, and the buttons would be
+//    decoration.
+{
+  payload = {};
+  await render();
+  await open("Plot 18");
+
+  const dim = [...$(".jf-tools button")].find((b) => /Dimension/.test(b.textContent));
+  await click(dim);
+  await render(JOB, { fresh: false });
+  await open("Plot 18");
+
+  const key = "plot:18";
+  const parse = () => {
+    try { return JSON.parse(payload.joints?.[key]?.sketch || "{}").shapes || []; }
+    catch { return []; }
+  };
+  if (parse().length !== 1) fail(`dropping a dimension left ${parse().length} marks`);
+  if (parse()[0]?.kind !== "dim") fail("the dropped mark is not a dimension");
+  if (!$(".jf-sketchink line").length) fail("the dimension was not drawn");
+
+  const undo = [...$(".jf-tools button")].find((b) => b.textContent.trim() === "Undo");
+  await click(undo);
+  if (parse().length !== 0) fail("Undo did not remove the mark");
+}
+
+// 17. A breech joint does not list the plots it serves.
+//
+//    A gang is at one hole. Which houses are on the far side of it is
+//    the office's question, and on the page it read as a list of plots
+//    to do something about.
+{
+  payload = {};
+  await render();
+  await open("Node A1");
+  if (/serves plot/i.test(text())) fail("the breech joint page lists the plots it serves");
+}
+
+// 18. One declaration, not two.
+//
+//    The jointing form ends on its own Declaration page. The generic
+//    "Tap to sign" block underneath was a second one — and two
+//    declarations on a sheet is one somebody signs and one somebody
+//    does not, with no way afterwards to say which was meant.
+{
+  const wi = (await import("node:fs"))
+    .readFileSync("./src/features/field/WorkInstruction.jsx", "utf8");
+  if (!/\{!jointing && \(\s*\n?\s*<section className="wi-sec wi-dec">/.test(wi)) {
+    fail("the generic declaration still renders on a jointing visit");
+  }
+  /* And the submit gate follows the signature, or a finished form
+     could never be sent. */
+  if (!/declaration: payload\?\.signature/.test(wi)) {
+    fail("the submit gate still waits for a tick that is no longer shown");
+  }
 }
 
 rmSync("./.jfbundle.mjs", { force: true });

@@ -182,40 +182,141 @@ function Photos({ shot, onAdd, onRemove }) {
   );
 }
 
+/* The colours and stroke widths on the toolbar. */
+const INK = ["#1d2733", "#c0392b", "#2563eb", "#0f766e"];
+const SIZES = [1.5, 2.5, 4, 6];
+
+/* What can be dropped onto a sketch.
+
+   One component, not five: a dimension. The others on the office tool —
+   building, cable, joint, bottle end — are the design, and the design
+   is already underneath as the as-laid drawing. What a gang adds on
+   site is the measurement back to something permanent, which is the one
+   thing the drawing cannot know. */
+const DIMENSION = { kind: "dim", label: "0.0 m" };
+
 /* ── The sketch, over the design ──
 
-   The backdrop is the as-laid electric drawing, rendered when the
-   call-off was raised and stored with it. So a gang marks the joint
-   against the run as laid rather than against a blank rectangle, and
-   the office reading it afterwards is looking at the same cable.
+   The backdrop is the as-laid electric drawing rendered when the
+   call-off was raised — the map under it, faded, with the cable over
+   the top. So a gang marks the joint against the run as laid rather
+   than a blank rectangle, and the office reading it afterwards is
+   looking at the same cable.
 
-   Pan and zoom because a site plan at tablet size is unreadable at
-   fit-to-width and the joint is a detail on it. The transform is on the
-   backdrop only — the drawing layer sits above at its own scale, so a
-   mark stays where it was put on the picture rather than sliding when
-   somebody zooms in to see better. */
+   ── Two layers, and why ──
+
+   Freehand strokes and dropped items are held as data, not as pixels.
+   That is what lets Undo remove the last thing rather than the last
+   frame, Delete remove a selected item, and a dimension be dragged
+   after it is dropped. A canvas that only keeps pixels can do none of
+   those, and the toolbar would be four buttons that cannot work.
+
+   The image handed out on change is that data rendered — so what the
+   office receives is still a picture. */
 function JointSketch({ backdrop, value, onChange }) {
+  const wrap = useRef(null);
   const [view, setView] = useState({ z: 1, x: 0, y: 0 });
   const [bg, setBg] = useState(true);
+  const [locked, setLocked] = useState(false);
+  const [tool, setTool] = useState("draw");        // draw | select
+  const [colour, setColour] = useState(INK[0]);
+  const [size, setSize] = useState(SIZES[1]);
+  const [sel, setSel] = useState(null);
+
+  /* The marks, as data. Parsed from what was saved, so leaving the page
+     and coming back does not lose them. */
+  const shapes = (() => {
+    try { return value ? JSON.parse(value).shapes ?? [] : []; }
+    catch { return []; }
+  })();
+
+  const commit = (next) => onChange(JSON.stringify({ v: 1, shapes: next }));
+
+  const drawing = useRef(null);
   const drag = useRef(null);
 
-  /* Rounded to two places, not one. The step is a quarter, and one
-     decimal turned 1.25 into 1.3 — so the zoom drifted a little further
-     every press and never came back to a round number. */
+  const at = (e) => {
+    const r = wrap.current.getBoundingClientRect();
+    /* Normalised 0–1, so a sketch drawn on a phone lands in the same
+       place when the office opens it on a monitor. */
+    return { x: (e.clientX - r.left) / r.width, y: (e.clientY - r.top) / r.height };
+  };
+
+  const down = (e) => {
+    if (locked) return;
+    const p = at(e);
+    if (tool === "select") {
+      const hit = [...shapes].reverse().find((s) => nearShape(s, p));
+      setSel(hit?.id ?? null);
+      if (hit) drag.current = { id: hit.id, from: p };
+      return;
+    }
+    drawing.current = { id: `s${Date.now()}`, kind: "ink", colour, size, pts: [p] };
+    e.currentTarget.setPointerCapture?.(e.pointerId);
+  };
+
+  const move = (e) => {
+    if (locked) return;
+    const p = at(e);
+    if (drag.current) {
+      const dx = p.x - drag.current.from.x;
+      const dy = p.y - drag.current.from.y;
+      drag.current.from = p;
+      commit(shapes.map((s) => (s.id === drag.current.id ? shift(s, dx, dy) : s)));
+      return;
+    }
+    if (!drawing.current) return;
+    drawing.current.pts.push(p);
+    commit([...shapes.filter((s) => s.id !== drawing.current.id), { ...drawing.current }]);
+  };
+
+  const up = () => {
+    if (drawing.current) commit([...shapes.filter((s) => s.id !== drawing.current.id),
+      { ...drawing.current }]);
+    drawing.current = null;
+    drag.current = null;
+  };
+
+  const drop = () => {
+    const s = {
+      id: `d${Date.now()}`, ...DIMENSION, colour, size,
+      /* Dropped in the middle, then dragged. Anywhere else and it lands
+         under a finger that is about to move it. */
+      a: { x: 0.35, y: 0.5 }, b: { x: 0.65, y: 0.5 },
+    };
+    commit([...shapes, s]);
+    setSel(s.id);
+    setTool("select");
+  };
+
+  const addText = () => {
+    const words = typeof prompt === "function" ? prompt("Label") : null;
+    if (!words) return;
+    const s = { id: `t${Date.now()}`, kind: "text", words, colour, size,
+      a: { x: 0.5, y: 0.5 } };
+    commit([...shapes, s]);
+    setSel(s.id);
+  };
+
+  const undo = () => commit(shapes.slice(0, -1));
+  const del = () => { commit(shapes.filter((s) => s.id !== sel)); setSel(null); };
+  const clear = () => { commit([]); setSel(null); };
+
   const zoom = (by) => setView((v) => ({
     ...v, z: Math.min(6, Math.max(0.5, Math.round((v.z + by) * 100) / 100)),
   }));
-  const reset = () => setView({ z: 1, x: 0, y: 0 });
 
   const panDown = (e) => {
-    if (!e.shiftKey) return;         /* Shift to pan, finger to draw. */
-    drag.current = { x: e.clientX - view.x, y: e.clientY - view.y };
+    if (!locked && !e.shiftKey) return;
+    drag.current = null;
+    wrap.current._pan = { x: e.clientX - view.x, y: e.clientY - view.y };
   };
   const panMove = (e) => {
-    if (!drag.current) return;
-    setView((v) => ({ ...v, x: e.clientX - drag.current.x, y: e.clientY - drag.current.y }));
+    const p = wrap.current?._pan;
+    if (!p) return;
+    setView((v) => ({ ...v, x: e.clientX - p.x, y: e.clientY - p.y }));
   };
-  const panUp = () => { drag.current = null; };
+  const panUp = () => { if (wrap.current) wrap.current._pan = null; };
 
   return (
     <div className="jf-sketchwrap">
@@ -231,14 +332,17 @@ function JointSketch({ backdrop, value, onChange }) {
         <span className="jf-zoomval">{Math.round(view.z * 100)}%</span>
         <button type="button" className="jf-chip" onClick={() => zoom(0.25)}
           aria-label="Zoom in">+</button>
-        <button type="button" className="jf-chip" onClick={reset}>Reset view</button>
+        <button type="button" className="jf-chip"
+          onClick={() => setView({ z: 1, x: 0, y: 0 })}>Reset view</button>
       </div>
 
-      <div className="jf-sketchstage"
-        onPointerDown={panDown} onPointerMove={panMove}
-        onPointerUp={panUp} onPointerLeave={panUp}>
+      <div className="jf-sketchstage" ref={wrap}
+        onPointerDown={(e) => { panDown(e); down(e); }}
+        onPointerMove={(e) => { panMove(e); move(e); }}
+        onPointerUp={() => { panUp(); up(); }}
+        onPointerLeave={() => { panUp(); up(); }}>
         {bg && backdrop && (
-          <img className="jf-sketchbg" src={backdrop} alt="As-laid electric drawing"
+          <img className="jf-sketchbg" src={backdrop} alt="As-laid electric drawing over the site plan"
             draggable={false}
             style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }} />
         )}
@@ -247,14 +351,131 @@ function JointSketch({ backdrop, value, onChange }) {
             No as-laid drawing was captured when this call-off was raised.
           </p>
         )}
-        <SketchPad value={value} onChange={onChange} overlay />
+        <svg className="jf-sketchink" viewBox="0 0 100 100" preserveAspectRatio="none">
+          <defs>
+            <marker id="jfArrow" viewBox="0 0 10 10" refX="5" refY="5"
+              markerWidth="4" markerHeight="4" orient="auto-start-reverse">
+              <path d="M 0 2 L 5 5 L 0 8 z" fill="currentColor" />
+            </marker>
+          </defs>
+          {shapes.map((s) => (
+            <Shape key={s.id} s={s} selected={s.id === sel} />
+          ))}
+        </svg>
       </div>
-      <p className="jf-hint jf-sketchtip">
-        Draw with a finger. Hold <b>Shift</b> and drag to move the plan behind.
-      </p>
+
+      {/* ── The toolbar ──
+
+          Under the pane, and only what a gang uses: a line, a colour, a
+          weight, a label, a dimension, and the four view controls. */}
+      <div className="jf-tools">
+        <div className="jf-toolrow">
+          <span className="jf-toollabel">Tool</span>
+          <button type="button" className={`jf-tool${tool === "draw" ? " on" : ""}`}
+            onClick={() => setTool("draw")} aria-pressed={tool === "draw"}
+            title="Draw a line">&#9585;&#9586;</button>
+          <button type="button" className={`jf-tool${tool === "select" ? " on" : ""}`}
+            onClick={() => setTool("select")} aria-pressed={tool === "select"}
+            title="Select / move">&#10530;</button>
+
+          <span className="jf-toollabel">Colour</span>
+          {INK.map((c) => (
+            <button key={c} type="button"
+              className={`jf-swatch${c === colour ? " on" : ""}`}
+              style={{ background: c }} onClick={() => setColour(c)}
+              aria-label={`Colour ${c}`} aria-pressed={c === colour} />
+          ))}
+
+          <span className="jf-toollabel">Size</span>
+          <input className="jf-sizer" type="range" min="0" max={SIZES.length - 1}
+            value={SIZES.indexOf(size)} aria-label="Stroke size"
+            onChange={(e) => setSize(SIZES[Number(e.target.value)])} />
+
+          <button type="button" className="jf-btn jf-btn-sm jf-primary"
+            onClick={addText}>+ Add Text</button>
+        </div>
+
+        <div className="jf-toolrow">
+          <span className="jf-toollabel">Components</span>
+          <button type="button" className="jf-tool wide" onClick={drop}
+            title="Distance back to something permanent">
+            &#8596; Dimension
+          </button>
+
+          <span className="jf-sketchbar-sp" />
+
+          <button type="button" className={`jf-chip${locked ? " on" : ""}`}
+            onClick={() => setLocked((v) => !v)} aria-pressed={locked}>
+            {locked ? "View locked" : "Lock view"}
+          </button>
+          <button type="button" className="jf-chip" onClick={undo}
+            disabled={!shapes.length}>Undo</button>
+          <button type="button" className="jf-chip jf-danger-soft" onClick={del}
+            disabled={!sel}>Delete</button>
+          <button type="button" className="jf-chip jf-danger" onClick={clear}
+            disabled={!shapes.length}>Clear All</button>
+        </div>
+
+        <p className="jf-hint jf-sketchtip">
+          Draw with a finger. Tap <b>Dimension</b> to drop one in, then
+          <b> Select / move</b> to drag it. <b>Lock view</b> to pan and zoom
+          the plan without drawing on it.
+        </p>
+      </div>
     </div>
   );
 }
+
+/* One mark, drawn. Kept beside the data it draws so the two cannot
+   drift — a shape this does not know how to draw is a shape that
+   silently disappears from the sketch. */
+function Shape({ s, selected }) {
+  const w = s.size ?? 2.5;
+  const stroke = { stroke: s.colour ?? "#1d2733", strokeWidth: w,
+    fill: "none", strokeLinecap: "round", strokeLinejoin: "round" };
+  const sc = (p) => `${p.x * 100},${p.y * 100}`;
+
+  if (s.kind === "ink") {
+    return <polyline {...stroke} points={s.pts.map(sc).join(" ")}
+      className={selected ? "sel" : undefined} />;
+  }
+  if (s.kind === "dim") {
+    return (
+      <g className={selected ? "sel" : undefined}>
+        <line {...stroke} x1={s.a.x * 100} y1={s.a.y * 100}
+          x2={s.b.x * 100} y2={s.b.y * 100} markerStart="url(#jfArrow)"
+          markerEnd="url(#jfArrow)" />
+        <text x={(s.a.x + s.b.x) * 50} y={(s.a.y + s.b.y) * 50 - 1.5}
+          fill={s.colour} fontSize={w * 1.6} textAnchor="middle">{s.label}</text>
+      </g>
+    );
+  }
+  if (s.kind === "text") {
+    return <text x={s.a.x * 100} y={s.a.y * 100} fill={s.colour}
+      fontSize={w * 1.8} textAnchor="middle"
+      className={selected ? "sel" : undefined}>{s.words}</text>;
+  }
+  return null;
+}
+
+/* Whether a tap landed on a mark. Generous, because a fingertip is
+   wider than a 2px line and a Delete that needs a precise tap is a
+   Delete nobody uses. */
+function nearShape(s, p, tol = 0.04) {
+  const close = (q) => q && Math.hypot(q.x - p.x, q.y - p.y) <= tol;
+  if (s.kind === "ink") return (s.pts || []).some(close);
+  if (s.kind === "dim") return close(s.a) || close(s.b)
+    || close({ x: (s.a.x + s.b.x) / 2, y: (s.a.y + s.b.y) / 2 });
+  return close(s.a);
+}
+
+const shift = (s, dx, dy) => {
+  const m = (q) => ({ x: q.x + dx, y: q.y + dy });
+  if (s.kind === "ink") return { ...s, pts: s.pts.map(m) };
+  if (s.kind === "dim") return { ...s, a: m(s.a), b: m(s.b) };
+  return { ...s, a: m(s.a) };
+};
+
 
 export default function JointingForm({ job, payload, set, setPlot }) {
   /* ── The pages ──
@@ -344,7 +565,7 @@ export default function JointingForm({ job, payload, set, setPlot }) {
           {pages.map((p) => (
             <button key={p.key} type="button" role="tab" className="jf-tab"
               aria-selected={p.key === here.key} onClick={() => setAt(p.key)}>
-              {p.n} &middot; {p.label ?? p.title}
+              {p.label ?? p.title}
               {doneOf(p)
                 ? <span className="jf-tick">&#10003;</span>
                 : <span className="jf-dot" />}
@@ -430,11 +651,6 @@ export default function JointingForm({ job, payload, set, setPlot }) {
                   <span className={`jf-pill ${here.kind === "breech" ? "jf-pill-b" : ""}`}>
                     {here.tag}
                   </span>
-                  {here.serves?.length > 0 && (
-                    <span className="jf-sub">
-                      serves plot{here.serves.length === 1 ? "" : "s"} {here.serves.join(", ")}
-                    </span>
-                  )}
                 </div>
 
                 {/* The plot row and its readings — service joints only. A
@@ -740,12 +956,46 @@ const CSS = `
 /* The stage clips the plan; the pad sits over it at its own scale, so a
    mark stays where it was put rather than sliding when somebody zooms
    in to see better. */
-.jf-sketchstage{ position:relative; height:380px; overflow:hidden; background:#fbfcfd; }
+/* Square. A joint sketch is a plan of a hole and the ground round it,
+   and a letterbox forced everything into a strip — the dimensions back
+   to the property ran off the top and bottom. Aspect-ratio rather than
+   a fixed height so it stays square at every width. */
+.jf-sketchstage{ position:relative; width:100%; aspect-ratio:1 / 1;
+  overflow:hidden; background:#fbfcfd; }
+/* Drawn at full strength. The as-laid render already fades the map to
+   0.6 under the design, and a second fade here multiplied the two —
+   0.62 of 0.6 is 0.37, which is why the map behind the cable was not
+   visible. Fading belongs where the picture is made, once. */
 .jf-sketchbg{ position:absolute; inset:0; width:100%; height:100%;
-  object-fit:contain; transform-origin:center; opacity:.62; pointer-events:none;
+  object-fit:contain; transform-origin:center; pointer-events:none;
   user-select:none; }
-.jf-sketchstage .jf-sig-wrap{ position:absolute; inset:0; border:0; background:transparent; }
-.jf-sketchstage .jf-sketch{ height:380px; background:transparent; }
+/* The marks, over the plan. An SVG rather than a canvas so a stroke
+   stays an object that can be selected, moved and undone. */
+.jf-sketchink{ position:absolute; inset:0; width:100%; height:100%;
+  touch-action:none; cursor:crosshair; }
+.jf-sketchink .sel{ outline:none; filter:drop-shadow(0 0 2px var(--accent)); }
+
+/* ── The toolbar ── */
+.jf-tools{ border-top:1px solid var(--line); background:#f7f9fb; }
+.jf-toolrow{ display:flex; align-items:center; gap:6px; flex-wrap:wrap;
+  padding:8px 10px; }
+.jf-toolrow + .jf-toolrow{ border-top:1px solid var(--line); }
+.jf-toollabel{ font:600 10px inherit; letter-spacing:.08em;
+  text-transform:uppercase; color:var(--ink-soft); margin:0 2px 0 6px; }
+.jf-toolrow .jf-toollabel:first-child{ margin-left:0; }
+.jf-tool{ border:1px solid var(--line-strong); background:#fff; color:var(--ink);
+  font:600 15px inherit; min-width:40px; padding:6px 10px; border-radius:8px;
+  cursor:pointer; line-height:1.1; }
+.jf-tool.wide{ font-size:13px; }
+.jf-tool.on{ background:var(--accent-soft); border-color:var(--accent); color:var(--accent); }
+.jf-swatch{ width:26px; height:26px; border-radius:50%; cursor:pointer;
+  border:2px solid transparent; padding:0; }
+.jf-swatch.on{ border-color:var(--accent); box-shadow:0 0 0 2px #fff inset; }
+.jf-sizer{ width:110px; accent-color:var(--accent); }
+.jf-primary{ background:var(--accent); border-color:var(--accent); color:#fff; }
+.jf-danger{ background:#c0392b; border-color:#c0392b; color:#fff; }
+.jf-danger-soft{ background:#f7d9d5; border-color:#e7b7b0; color:#8c2f22; }
+.jf-chip:disabled, .jf-tool:disabled{ opacity:.45; cursor:not-allowed; }
 .jf-nobg{ position:absolute; inset:0; display:flex; align-items:center;
   justify-content:center; margin:0; padding:0 24px; text-align:center;
   font-size:13px; color:var(--ink-soft); }

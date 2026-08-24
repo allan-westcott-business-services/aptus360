@@ -163,8 +163,12 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
   /* What is outstanding, asked of whichever form is on screen. The
      jointing one wants an outcome per plot as well as the declaration;
      the generic one wants the declaration only. */
+  /* On a jointing visit the signature on the Declaration page IS the
+     declaration — the tick below is not rendered, so waiting for it
+     would leave a completed form permanently unsendable. */
   const missing = jointing
-    ? missingFrom(payload || {}, plots, job)
+    ? missingFrom({ ...(payload || {}), declaration: payload?.signature || "" },
+      plots, job)
     : REQUIRED.filter((k) => !payload?.[k]).map(() => "The declaration");
 
   async function send() {
@@ -273,7 +277,15 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
 
           It is a statement about site conditions made by a named person,
           which is what the office is checking — so it is not one tick
-          among nine in a section called "the work". */}
+          among nine in a section called "the work".
+
+          Not shown on a jointing visit: that form ends on its own
+          Declaration page, and this appeared underneath it as a second
+          one. Two declarations on a sheet is one somebody signs and one
+          somebody does not, and no way afterwards to say which was
+          meant. The jointing page carries the signature; this carries
+          the tick, and only where there is no page to carry it. */}
+      {!jointing && (
       <section className="wi-sec wi-dec">
         <h2>Declaration</h2>
         <p>
@@ -286,6 +298,7 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
           {payload?.declaration ? "Signed" : "Tap to sign"}
         </button>
       </section>
+      )}
 
       <div className="wi-foot">
         {/* What has and has not reached the office. Said plainly:

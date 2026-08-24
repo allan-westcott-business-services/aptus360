@@ -40,6 +40,36 @@ const toPage = (basemap, x, y) => {
      renderRegion  usePdfPage's, where it is a PDF
 
    Returns { opacity, draw } for spanImage, or null. */
+/* ── Why there is no plan ──
+
+   planLayer returns null in six different circumstances and says which
+   in none of them, and every caller wraps it in `.catch(() => null)`.
+   So a drawing captured without its site plan looked exactly like a
+   drawing captured with one, and the only way to tell was to open the
+   picture and notice the map was missing.
+
+   This answers the same question out loud. It is deliberately a
+   separate function taking the same arguments rather than a second
+   return value: nothing calling planLayer has to change, and a caller
+   that wants to tell somebody what went wrong can ask.
+
+   Returns null where a plan IS expected — that is, where the answer is
+   "nothing is wrong". */
+export function planReason({
+  basemap, bounds, image = null, renderRegion = null, isPdf = false,
+} = {}) {
+  if (!basemap) return "no background plan is set up on this project";
+  if (!basemap.Metres_Per_Pixel) {
+    return "the background plan has no scale — run Calibrate scale on it";
+  }
+  if (!bounds) return "the design has no extent to cover";
+  if (isPdf && !renderRegion) {
+    return "the PDF plan was not ready to render — open the drawing and try again";
+  }
+  if (!isPdf && !image) return "the plan image has not finished loading";
+  return null;
+}
+
 export async function planLayer({
   basemap, bounds, image = null, renderRegion = null, isPdf = false, scale = 1,
 } = {}) {

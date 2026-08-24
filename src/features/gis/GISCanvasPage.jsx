@@ -144,7 +144,7 @@ import { asLaidImage, asLaidFeatures } from "./asLaidImage.js";
 import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
 import { cableSizes } from "./cableSizes.js";
 import { sealLeg } from "./bottleEnd.js";
-import { planLayer } from "./planLayer.js";
+import { planLayer, planReason } from "./planLayer.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -9955,14 +9955,34 @@ export default function GISCanvasPage() {
                this region is not the one on screen. */
             const bounds = spanBounds([...electric, ...seeds]
               .map((f) => f.Geometry).filter(Array.isArray));
-            const plan = await planLayer({
+            const planArgs = {
               basemap,
               bounds,
               image: bgImage,
               renderRegion: pdf.renderRegion,
               isPdf: isPdfMap,
               scale: view.scale,
-            }).catch(() => null);
+            };
+
+            /* Asked before, and again after.
+
+               Before, because planLayer's six ways of returning null all
+               look alike from here. After, because it can also come back
+               empty having passed every guard — a region off the edge of
+               the page renders nothing.
+
+               Either way the drawing is still saved: a picture of the
+               cable without the plan under it is worth more than no
+               picture. What changes is that somebody is told, instead of
+               finding out weeks later when a gang opens the sketch and
+               there is no map behind the design. */
+            let planWhy = planReason(planArgs);
+            const plan = planWhy ? null
+              : await planLayer(planArgs).catch((e) => {
+                planWhy = `the plan could not be rendered (${e.message})`;
+                return null;
+              });
+            if (!plan && !planWhy) planWhy = "the plan covered none of the design";
 
             /* Coloured from the layer, which since 0183 inherits the
                utility's colour — so the picture and the canvas cannot
@@ -9980,6 +10000,12 @@ export default function GISCanvasPage() {
               await saveAsLaidImage({
                 submissionId: created.Submission_ID, dataUrl,
               });
+              if (planWhy) {
+                setStatus("Call-off raised \u2014 the as-laid drawing was taken "
+                  + `without the site plan behind it, because ${planWhy}. `
+                  + "Fix that and use Re-take drawing on the call-off.");
+                setTimeout(() => setStatus(""), 20000);
+              }
             }
           }
         } catch {
@@ -10161,6 +10187,87 @@ export default function GISCanvasPage() {
       }).catch(() => {});
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
+  }
+
+  /* ── Taking the as-laid drawing again ──
+
+     The picture behind every jointing sketch is rendered once, when the
+     call-off is raised, and stored as a PNG. Until now that was the only
+     time it was ever taken: saveAsLaidImage had exactly one call site,
+     so a drawing captured before the site plan was set up — or captured
+     while the PDF was still loading — was wrong permanently, and the
+     message on the failure path told people it "can be taken again from
+     the call-off" when nothing offered that.
+
+     This is that. Same rendering as the raise, against the drawing as it
+     stands now, so a call-off whose sketch has no map behind it can be
+     put right without raising it again.
+
+     Deliberately not automatic. Re-taking changes what a gang sees
+     against work that may already be booked, and doing that quietly
+     when somebody opens a project is worse than leaving it wrong. */
+  async function retakeAsLaid(submissionId) {
+    setBusy("retake");
+    setError("");
+    try {
+      const electric = asLaidFeatures(features).filter((f) =>
+        f.Feature_Type !== "point");
+      if (!electric.length) {
+        setError("There is no electric design on this drawing to take.");
+        return;
+      }
+      const joints = features.filter((f) =>
+        String(f.Layer_Key || "") === "electric" && f.Feature_Role === "joint");
+      const seeds = features.filter((f) => f.Feature_Role === "plot");
+
+      const bounds = spanBounds([...electric, ...seeds]
+        .map((f) => f.Geometry).filter(Array.isArray));
+      const planArgs = {
+        basemap,
+        bounds,
+        image: bgImage,
+        renderRegion: pdf.renderRegion,
+        isPdf: isPdfMap,
+        scale: view.scale,
+      };
+
+      /* Said before anything is overwritten. Replacing a drawing that
+         has the plan with one that does not is the one outcome worse
+         than leaving it alone. */
+      const why = planReason(planArgs);
+      if (why) {
+        setError(`The drawing was not re-taken: ${why}.`);
+        return;
+      }
+
+      const plan = await planLayer(planArgs).catch(() => null);
+      if (!plan) {
+        setError("The drawing was not re-taken: the plan covered none of "
+          + "the design. Check the plan is positioned over it.");
+        return;
+      }
+
+      const colour = layers.find((l) => l.Layer_Key === "electric")?.Colour ?? null;
+      const dataUrl = asLaidImage({
+        electric: electric.map((f) => ({ ...f, Colour: colour })),
+        seeds,
+        joints,
+        plan,
+      });
+      if (!dataUrl) {
+        setError("The drawing was not re-taken: nothing rendered.");
+        return;
+      }
+
+      await saveAsLaidImage({ submissionId, dataUrl });
+      setStatus("As-laid drawing re-taken, with the site plan behind it. "
+        + "Any jointing sketch on this call-off will show it from now on.");
+      setTimeout(() => setStatus(""), 12000);
+    } catch (e) {
+      setError(e.message);
+    } finally {
+      setBusy("");
+    }
   }
 
   /* Applying a build status to a length of trench.

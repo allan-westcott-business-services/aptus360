@@ -48,7 +48,17 @@ import { supabase, withAuth, json, fail } from "./_supabase.js";
 
 const ASSIGNMENT_COLS = [
   "Assignment_ID", "Submission_ID", "Task_Type_ID", "Team_ID", "Span_ID",
-  "Start_Date", "End_Date", "Plot_Range", "Status",
+  "Start_Date", "End_Date", "Plot_Range",
+  /* The breech joints booked to this team (0186).
+     
+     Missing from this list, which is why the work instruction showed no
+     joints: the column was written by the call-off page and never read
+     by the field. Fault 4 — an explicit column list that did not grow
+     with the table, and the symptom is a blank section rather than an
+     error. Plot_Range beside it is the reason it looked fine: the plots
+     came through, so the form rendered and only the joints were
+     missing. */
+  "Node_Range", "Status",
 ].join(",");
 
 /* The states a job has left the queue in. Both release what follows;
@@ -187,6 +197,17 @@ export default withAuth(async function handler(req, context, user) {
            paper, which is the thing the ordering is for. */
         siteAddress: released ? (s.Site_Address ?? null) : null,
         plots: released ? (a.Plot_Range ?? null) : null,
+        /* The joints this team is booked to make, as stored.
+
+           Handed over as the range rather than a parsed list, exactly
+           as Plot_Range is: parseNodes lives in the call-off module and
+           the functions do not import from src, so parsing here would
+           mean a second parser and eventually a second opinion about
+           what "A1, A2" means. The tablet parses it with the same
+           function the office wrote it with.
+
+           Released job only, as everything else here is. */
+        nodeRange: released ? (a.Node_Range ?? null) : null,
         projectId: released ? (s.Project_ID ?? null) : null,
         apNumber: released ? (s.AP_Number ?? null) : null,
         /* The as-laid drawing of the call-off's electric design, for

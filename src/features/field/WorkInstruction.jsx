@@ -2,10 +2,9 @@ import { useState, useEffect, useRef, useCallback } from "react";
 import {
   startInstruction, saveInstruction, submitInstruction,
 } from "../../api/field.js";
+import JointingForm from "./JointingForm.jsx";
 import {
-  CHECKLIST, MARKS, OUTCOMES, TESTS, JOB_FIELDS,
   isJointingJob, plotsOf, emptyPlot, missingFrom,
-  breechesFor, routeUnknownFor, jointLabel,
 } from "./jointingInstruction.js";
 
 /* The work instruction, filled in on site.
@@ -165,7 +164,7 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
      jointing one wants an outcome per plot as well as the declaration;
      the generic one wants the declaration only. */
   const missing = jointing
-    ? missingFrom(payload || {}, plots)
+    ? missingFrom(payload || {}, plots, job)
     : REQUIRED.filter((k) => !payload?.[k]).map(() => "The declaration");
 
   async function send() {
@@ -214,173 +213,21 @@ export default function WorkInstruction({ job, onDone, onCancel }) {
           jointing visit is a different job and a different record, and
           asking "length dug" against one is not a smaller version of
           this question but the wrong one. */}
+      {/* ── The jointing form ──
+
+          Its own component, and its own stylesheet. This is the paper
+          Work Instruction the business already uses, rebuilt field for
+          field: the same six tasks, the same yellow C/I/NR boxes and
+          green test boxes, the same sign-off, and a Joint Location
+          Sketch page behind a tab.
+
+          Lifted out of this file rather than grown inside it. The form
+          is a document with two pages and a sketch pad on each joint;
+          the surrounding component is the draft-saving, the queue and
+          the submit. Those are different jobs and the file was already
+          long enough that the second was hard to find. */}
       {jointing && (
-        <>
-          <section className="wi-sec">
-            <h2>Job details</h2>
-            {/* Read-only. Every one of these is on the call-off, and
-                asking a gang to retype what the office holds is how a
-                plot number gets transposed on the one document
-                carrying the test results. */}
-            <dl className="wi-job">
-              {JOB_FIELDS.map((f) => (
-                <div key={f.key}>
-                  <dt>{f.label}</dt>
-                  <dd>{job?.[f.key] || "\u2014"}</dd>
-                </div>
-              ))}
-              <div>
-                <dt>Plots</dt>
-                <dd>{job?.plots || "\u2014"}</dd>
-              </div>
-            </dl>
-          </section>
-
-          <section className="wi-sec">
-            <h2>Task checklist</h2>
-            <p className="wi-hint">
-              C complete &middot; I incomplete &middot; NR not required.
-              Leave a task blank if you did not get to it.
-            </p>
-            {CHECKLIST.map((task, i) => (
-              <div className="wi-chk" key={i}>
-                <span className="wi-chk-task">{task}</span>
-                <span className="wi-yn">
-                  {MARKS.map((m) => (
-                    <button key={m} type="button"
-                      className={`wi-opt${payload?.checklist?.[i] === m ? " on" : ""}`}
-                      aria-pressed={payload?.checklist?.[i] === m}
-                      onClick={() => setMark(i, m)}>{m}</button>
-                  ))}
-                </span>
-              </div>
-            ))}
-          </section>
-
-          <section className="wi-sec">
-            <h2>Plots</h2>
-            {!plots.length && (
-              <p className="wi-hint">
-                No plots on this booking. Ring the office before starting
-                &mdash; the test results have nowhere to go.
-              </p>
-            )}
-            {plots.map((plot) => (
-              <div className="wi-plot" key={plot}>
-                <h3>Plot {plot}</h3>
-
-                {/* ── The joints on the way back ──
-
-                    Traced from the drawing when the call-off was
-                    raised. The gang works at each of these as well as
-                    at the meter, so they are on the instruction rather
-                    than something to notice on site.
-
-                    First on the plot, because they come first on the
-                    ground: the connection is made from the origin
-                    outward, and the meter is the last thing done. */}
-                {breechesFor(job, plot).length > 0 && (
-                  <div className="wi-breech">
-                    <h4>
-                      Breech joints on the way back
-                      <span className="wi-breech-n">
-                        {breechesFor(job, plot).length}
-                      </span>
-                    </h4>
-                    {breechesFor(job, plot).map((j, i) => (
-                      <label className={j.node
-                        ? "wi-breech-row" : "wi-breech-row nonode"}
-                        key={j.featureId ?? i}>
-                        <input type="checkbox"
-                          checked={!!payload?.plots?.[plot]?.breech?.[j.featureId]}
-                          onChange={(e) => {
-                            const was = payload?.plots?.[plot]?.breech || {};
-                            setPlot(plot, "breech",
-                              { ...was, [j.featureId]: e.target.checked });
-                          }} />
-                        <span>{jointLabel(j)}</span>
-                      </label>
-                    ))}
-                    <p className="wi-hint">
-                      Tick each one as it is made. Listed from the supply
-                      outward, which is the order they are worked in.
-                    </p>
-                  </div>
-                )}
-
-                {/* Said, not left looking like a clear run. A plot the
-                    trace could not reach is a fault in the drawing, and
-                    the gang standing at it is the first person able to
-                    notice — but only if the form admits the route was
-                    never found. */}
-                {routeUnknownFor(job, plot) && (
-                  <p className="wi-warn">
-                    The route back from this plot could not be traced when
-                    this call-off was raised, so any breech joints on it
-                    are not listed. Check before you start.
-                  </p>
-                )}
-
-                <div className="wi-fld">
-                  <label htmlFor={`wi-cot-${plot}`}>Cut Out Termination</label>
-                  <input id={`wi-cot-${plot}`} type="text"
-                    value={payload?.plots?.[plot]?.cutout ?? ""}
-                    onChange={(e) => setPlot(plot, "cutout", e.target.value)} />
-                </div>
-
-                <div className="wi-fld">
-                  <label>Outcome</label>
-                  <div className="wi-yn wrap">
-                    {OUTCOMES.map((o) => (
-                      <button key={o} type="button"
-                        className={`wi-opt${payload?.plots?.[plot]?.outcome === o ? " on" : ""}`}
-                        onClick={() => setPlot(plot, "outcome", o)}>{o}</button>
-                    ))}
-                  </div>
-                </div>
-
-                {TESTS.map((t) => (
-                  <div className="wi-fld" key={t.key}>
-                    <label htmlFor={`wi-${t.key}-${plot}`}>{t.label}</label>
-                    {t.type === "choice" ? (
-                      <div className="wi-yn wrap">
-                        {t.options.filter(Boolean).map((v) => (
-                          <button key={v} type="button"
-                            className={`wi-opt${payload?.plots?.[plot]?.[t.key] === v ? " on" : ""}`}
-                            onClick={() => setPlot(plot, t.key,
-                              payload?.plots?.[plot]?.[t.key] === v ? "" : v)}>
-                            {v}
-                          </button>
-                        ))}
-                      </div>
-                    ) : (
-                      <input id={`wi-${t.key}-${plot}`} type="number"
-                        inputMode="decimal"
-                        value={payload?.plots?.[plot]?.[t.key] ?? ""}
-                        onChange={(e) => setPlot(plot, t.key, e.target.value)} />
-                    )}
-                  </div>
-                ))}
-              </div>
-            ))}
-          </section>
-
-          <section className="wi-sec">
-            <h2>Sign-off</h2>
-            <div className="wi-fld">
-              <label htmlFor="wi-completedby">Completed by</label>
-              <input id="wi-completedby" type="text"
-                value={payload?.completedBy ?? ""}
-                onChange={(e) => set("completedBy", e.target.value)} />
-            </div>
-            {/* The drawn signature, the photographs and the joint
-                location sketch all need a canvas and somewhere to put
-                an image. That is one piece of work and it follows this
-                one. The declaration below is the tap this form already
-                uses; it is not a signature and does not pretend to
-                be. */}
-          </section>
-        </>
+        <JointingForm job={job} payload={payload} set={set} setPlot={setPlot} />
       )}
 
       {!jointing && SECTIONS.map((s) => (
@@ -489,7 +336,6 @@ const CSS = `
   letter-spacing: .04em; color: #64748b; margin: 0; }
 .wi-job dd { margin: 2px 0 0; font-size: 15px; }
 
-.wi-hint { font-size: 13px; color: #64748b; margin: 0 0 12px; line-height: 1.4; }
 
 .wi-chk { display: flex; align-items: center; gap: 10px; flex-wrap: wrap;
   padding: 10px 0; border-bottom: 1px solid #eef1f5; }
@@ -498,28 +344,16 @@ const CSS = `
 
 /* Boxed, and titled with the plot number, because the number is what
    somebody standing on a drive is matching against. */
-.wi-plot { border: 1px solid #e6eaf0; border-radius: 10px; padding: 12px;
   margin-bottom: 12px; background: #fbfcfe; }
-.wi-plot h3 { margin: 0 0 10px; font-size: 15px; font-weight: 700; }
 
 /* Set apart from the fields below it: these are work to do, not
    answers to give, and a row of ticks reading like the test boxes
    beneath would be filled in the same absent way. */
-.wi-breech { border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px;
   padding: 10px 12px; margin-bottom: 12px; }
-.wi-breech h4 { margin: 0 0 8px; font-size: 13px; font-weight: 700;
   display: flex; align-items: center; gap: 8px; }
-.wi-breech-n { font-size: 11px; font-weight: 700; background: #f59e0b; color: #fff;
   border-radius: 20px; padding: 1px 7px; }
-.wi-breech-row { display: flex; align-items: center; gap: 10px; padding: 8px 0;
   font-size: 14px; cursor: pointer; }
-.wi-breech-row input { width: 20px; height: 20px; flex: 0 0 auto; }
-.wi-breech .wi-hint { margin: 6px 0 0; }
-/* A joint with no span node on it. Marked, because it means the levels
-   check is not measuring to it either — not a formatting nicety. */
-.wi-breech-row.nonode span { color: #991b1b; font-weight: 600; }
 
-.wi-warn { border: 1px solid #fca5a5; background: #fef2f2; color: #991b1b;
   border-radius: 8px; padding: 10px 12px; margin-bottom: 12px; font-size: 13px;
   line-height: 1.4; }
 

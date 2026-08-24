@@ -34,6 +34,9 @@
    tap the existing form already uses; it is not a signature and does
    not pretend to be. */
 
+/* The office's parser, not a second one. See bookedJointsOf. */
+import { parseNodes } from "../calloffs/assignments.js";
+
 /* The checklist, marked C / I / NR against each task.
 
    Complete, Incomplete, Not Required. Left blank until the gang marks
@@ -100,12 +103,63 @@ export const TESTS = [
    original and are being left until the office side is built. A field
    shown here with nothing behind it reads as something the gang forgot
    to fill in. */
+/* The job details, as the paper form lays them out.
+
+   Two columns, read down: the left is the job, the right is who to ring
+   about it. Network Owner / Ref and both contact pairs sit on one line
+   as a wide box and a narrow one, which is how they are printed.
+
+   `wide` is the pair — the second field rides beside the first at half
+   its width. `office` marks the ones the office fills in before the
+   pack is issued; the tablet shows them and does not let a gang change
+   them, because they are what the office holds and retyping them on
+   site is how a job number gets transposed onto the one document that
+   carries the test results. */
 export const JOB_FIELDS = [
-  { key: "apNumber", label: "Aptus Job No" },
-  { key: "siteName", label: "Project / Site" },
-  { key: "siteAddress", label: "Address" },
-  { key: "startDate", label: "Date Required" },
+  { key: "developer", label: "Developer", office: true },
+  { key: "address", label: "Project Title / Address", office: true },
+  { key: "jobNo", label: "Aptus Job No", office: true },
+  {
+    key: "networkOwner",
+    label: "Network Owner / Network Ref",
+    office: true,
+    wide: { key: "networkRef", placeholder: "Network Ref" },
+  },
+  { key: "plots", label: "Plot Number(s)", office: true },
+  {
+    key: "aptusContact",
+    label: "Aptus Contact / Tel",
+    office: true,
+    wide: { key: "aptusTel", placeholder: "Tel No." },
+  },
+  { key: "dateRequired", label: "Date Required", type: "date", office: true },
+  {
+    key: "siteContact",
+    label: "Site Contact / Tel",
+    office: true,
+    wide: { key: "siteTel", placeholder: "Tel No." },
+  },
 ];
+
+/* What a cut out is unless somebody says otherwise. The overwhelming
+   majority of services, and typed identically onto every sheet before
+   this was prefilled. */
+export const DEFAULT_CUTOUT = "2c x 35 sq mm CNE";
+
+/* The three photographs asked for at every joint.
+
+   By purpose rather than a single pile: the office looking at a
+   remedial claim wants the remedial shots, and "photo 7 of 19" is not
+   an answer. */
+export const PHOTO_KINDS = [
+  { key: "joint", label: "Joint" },
+  { key: "cutout", label: "Cut Out" },
+  { key: "remedial", label: "Remedial" },
+];
+
+/* The marks a checklist task carries. Blank is the fourth state and
+   means "not reached", which is a real answer. */
+export const CINR = ["", "C", "I", "NR"];
 
 /* Whether this job takes the jointing form.
 
@@ -180,6 +234,116 @@ export function breechesFor(job, plot) {
   return Array.isArray(hit?.joints) ? hit.joints : [];
 }
 
+/* ── The joints this team is booked to make ──
+
+   Different from breechesFor above, and both belong on the form.
+
+   breechesFor answers "what is on the way back from plot 22" — traced
+   from the drawing when the call-off was raised, listed under the plot
+   it serves. bookedJointsOf answers "what is this gang here to do",
+   which is what the office put on the booking. A jointing visit can be
+   booked the joints and no plots at all, and on that visit the per-plot
+   lists are empty and the whole section vanished.
+
+   Parsed with parseNodes — the same function the call-off page writes
+   the range with. Not a copy: three screens now agree on what "A1, A2"
+   means because they all ask one function, and the day a node is called
+   "1-3" a second parser would turn one joint into three.
+
+   Where the drawing knows the joint, its traced entry is used, so the
+   label reads the same on the instruction as on the call-off. Where it
+   does not — a joint booked by hand, or a drawing redrawn since — the
+   node name still shows rather than the line being dropped. */
+export function bookedJointsOf(job) {
+  const names = parseNodes(job?.nodeRange);
+  if (!names.length) return [];
+
+  const traced = new Map();
+  for (const j of job?.breech?.joints || []) {
+    if (j?.node != null) traced.set(String(j.node), j);
+  }
+
+  return names.map((n) => traced.get(String(n))
+    /* A stable key for the tick box. Not the bare name: the payload is
+       keyed by featureId everywhere else, and a joint that later gains
+       a feature would otherwise be ticked twice under two keys. */
+    ?? { featureId: `node:${n}`, node: n, label: null, jointType: null });
+}
+
+/* ── Every breech joint on this visit, one entry each ──
+
+   Listed in its own right, the way the plots are. A breech joint is a
+   hole in the ground with a gang in it: it has a from spec, a to spec,
+   an outcome and a sketch, and nesting it under a plot made it read as
+   a detail of that plot. It is not — one joint commonly feeds several,
+   and the same joint appearing under three plots is one connection
+   drawn three times.
+
+   ── Where they come from ──
+
+   Two sources, and the booking wins. The office books joints onto the
+   assignment by node (A1, A2); the drawing separately traced what lies
+   on the way back from each plot when the call-off was raised. Where
+   the office has booked, that is the job. Where it has not, the traced
+   joints are shown so a gang is not sent out blind on a call-off raised
+   before joints were bookable.
+
+   Deduplicated on the node, because the two sources describe the same
+   holes and listing A1 twice is how a joint gets dug twice. */
+export function breechJointsOf(job) {
+  const booked = bookedJointsOf(job);
+  if (booked.length) return booked;
+
+  const traced = (job?.breech?.joints || []).filter(Boolean);
+  const seen = new Set();
+  const out = [];
+  for (const j of traced) {
+    const k = j.node != null ? `node:${j.node}` : `id:${j.featureId}`;
+    if (seen.has(k)) continue;
+    seen.add(k);
+    out.push(j);
+  }
+  return out;
+}
+
+/* A stable key for a joint's answers and its sketch.
+
+   featureId where the drawing knows it, the node name where it does
+   not. Not the position in the list: a joint added or removed would
+   shuffle every sketch after it onto the wrong hole. */
+export const jointKey = (j) =>
+  `breech:${j?.featureId ?? j?.node ?? "unknown"}`;
+export const plotKey = (plot) => `plot:${plot}`;
+
+/* ── Everything that needs a sketch ──
+
+   A sketch each, for the plot joints and the breech joints alike. Both
+   are joints somebody has to find again — the difference is what is in
+   the hole, not whether its location matters.
+
+   One list rather than two, so the sketch page can be a straight map
+   over it and the count on the tab is the count of holes on the job. */
+export function sketchTargets(job) {
+  const out = plotsOf(job?.plots).map((p) => ({
+    key: plotKey(p),
+    kind: "plot",
+    title: `Plot ${p}`,
+    subtitle: "Service joint and cut out",
+  }));
+
+  for (const j of breechJointsOf(job)) {
+    out.push({
+      key: jointKey(j),
+      kind: "breech",
+      title: jointLabelOf(j),
+      subtitle: j.plots?.length
+        ? `Serves plot${j.plots.length === 1 ? "" : "s"} ${j.plots.join(", ")}`
+        : "Breech joint",
+    });
+  }
+  return out;
+}
+
 /* Whether the trace could not reach this plot at all.
 
    Worth saying loudly on the form. A plot with no route back to the
@@ -203,6 +367,10 @@ export function routeUnknownFor(job, plot) {
    made to know where it lives. */
 export { jointLabel } from "../gis/serviceBreech.js";
 
+/* The same function, bound locally so this module can call it too. A
+   bare re-export is not in scope in the file that writes it. */
+import { jointLabel as jointLabelOf } from "../gis/serviceBreech.js";
+
 /* An empty answer set for a plot, so a row that has been opened and not
    filled in is distinguishable from one never reached. */
 export const emptyPlot = () => ({
@@ -221,11 +389,20 @@ export const emptyPlot = () => ({
    The checklist is not required. A task left blank is a task nobody got
    to, which is a real answer and one the office would rather see than
    six C's entered to make a button light up. */
-export function missingFrom(payload = {}, plots = []) {
+export function missingFrom(payload = {}, plots = [], job = null) {
   const out = [];
   for (const p of plots) {
     if (!payload?.plots?.[p]?.outcome) out.push(`Outcome for plot ${p}`);
   }
+
+  /* Each breech joint answered in its own right. A joint left blank is
+     a hole nobody has said anything about, and it is the one the office
+     is asked about six weeks later. */
+  for (const j of breechJointsOf(job)) {
+    const a = payload?.breech?.[jointKey(j)];
+    if (!a?.done) out.push(`Completion for ${jointLabelOf(j)}`);
+  }
+
   if (!payload?.declaration) out.push("The declaration");
   return out;
 }

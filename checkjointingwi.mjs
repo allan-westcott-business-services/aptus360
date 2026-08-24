@@ -822,136 +822,28 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
   }
 }
 
-// 6. Mounted, and driven the way a gang would.
-{
-  const bundle = await build({
-    entryPoints: ["src/features/field/WorkInstruction.jsx"],
-    bundle: true, write: false, format: "cjs", jsx: "automatic",
-    platform: "browser", logLevel: "silent",
-    external: ["react", "react-dom", "react-dom/client", "react/jsx-runtime"],
-    define: {
-      "process.env.NODE_ENV": '"development"',
-      "import.meta.env": JSON.stringify({ VITE_USE_MOCKS: "true", MODE: "test" }),
-    },
-  });
+// 6. Mounted, and driven — moved to checkjointingform.mjs.
+//
+//    This section drove the old markup: `.wi-plot` rows, `.wi-chk
+//    .wi-opt` mark buttons, a heading reading "Task checklist". None of
+//    those exist any more. The jointing form was rebuilt to match the
+//    paper Work Instruction the business uses — its own component, its
+//    own stylesheet, breech joints as blocks in their own right, and a
+//    sketch page behind a tab.
+//
+//    Rewriting the selectors here would have left two checks mounting
+//    the same component and disagreeing about which one owned it. The
+//    rendering assertions live in checkjointingform.mjs, which is
+//    richer than this section was: it pins the checklist wording
+//    against its own copy of the paper form rather than against the
+//    module, so a task cannot be quietly reworded.
+//
+//    What stays here is everything above — the definitions, which
+//    visits take the form, how a plot range parses, what has to be
+//    answered, and what the queue hands over. Those are the form's
+//    contract and they are not about markup.
 
-  const dom = new JSDOM("<!doctype html><html><body><div id=root></div></body></html>",
-    { url: "http://localhost/", pretendToBeVisual: true, runScripts: "outside-only" });
-  const { window } = dom;
-  for (const k of ["window", "document", "navigator", "HTMLElement", "Element",
-    "Node", "Event", "MouseEvent", "getComputedStyle", "requestAnimationFrame",
-    "cancelAnimationFrame", "sessionStorage", "localStorage"]) {
-    if (globalThis[k] === undefined) globalThis[k] = window[k];
-  }
-  globalThis.IS_REACT_ACT_ENVIRONMENT = true;
-  /* The draft round-trip, in memory. What matters here is what the form
-     draws and what it writes, not that a request went out. */
-  const saved = [];
-  globalThis.fetch = async (url, opts) => {
-    saved.push({ url: String(url), body: opts?.body ? JSON.parse(opts.body) : null });
-    return {
-      ok: true, status: 200,
-      json: async () => ({ Payload: {} }),
-      text: async () => "{}",
-    };
-  };
-
-  const React = (await import("react")).default;
-  const { act } = await import("react");
-  const { createRoot } = await import("react-dom/client");
-  const shared = {
-    react: React,
-    "react-dom": await import("react-dom"),
-    "react-dom/client": await import("react-dom/client"),
-    "react/jsx-runtime": await import("react/jsx-runtime"),
-  };
-  const shim = (id) => {
-    const m = shared[id];
-    if (!m) throw new Error("unexpected external: " + id);
-    return m.default && m.default.createElement ? m.default : m;
-  };
-  const mod = { exports: {} };
-  new Function("require", "module", "exports", "globalThis",
-    bundle.outputFiles[0].text)(shim, mod, mod.exports, globalThis);
-  const WorkInstruction = mod.exports.default;
-
-  const root = createRoot(document.getElementById("root"));
-  const txt = () => document.body.textContent;
-  const click = async (el) => {
-    await act(async () => {
-      el.dispatchEvent(new window.MouseEvent("click", { bubbles: true }));
-    });
-  };
-
-  /* The job from the screenshot: jointing, plots 18-22 and 35. */
-  const job = {
-    assignmentId: 1, task: "Jointing", plots: "18-22, 35",
-    apNumber: "AP-1234", siteName: "Sample Site", startDate: "2026-08-20",
-  };
-
-  await act(async () => {
-    root.render(React.createElement(WorkInstruction, { job, onDone() {}, onCancel() {} }));
-  });
-
-  // The jointing sections, and not the generic ones.
-  for (const want of ["Task checklist", "Plots", "Sign-off", "Plot 18", "Plot 35"]) {
-    if (!txt().includes(want)) fail(`the jointing form is missing "${want}"`);
-  }
-  for (const wrong of ["Length dug", "Surface dug", "On arrival"]) {
-    if (txt().includes(wrong)) fail(`the jointing form asks "${wrong}", which is a dig question`);
-  }
-  /* Every plot on the booking gets a row, not just the first. */
-  if (document.querySelectorAll(".wi-plot").length !== 6) {
-    fail(`${document.querySelectorAll(".wi-plot").length} plot rows for 18-22, 35`);
-  }
-
-  /* A mark is a mark, and pressing it again clears it — blank means
-     "not reached" and there has to be a way back from a mis-tap. */
-  const marks = [...document.querySelectorAll(".wi-chk .wi-opt")];
-  if (marks.length !== CHECKLIST.length * MARKS.length) {
-    fail(`${marks.length} checklist buttons for ${CHECKLIST.length} tasks`);
-  }
-  await click(marks[0]);
-  if (marks[0].getAttribute("aria-pressed") !== "true") fail("a checklist mark did not take");
-  await click(marks[0]);
-  if (marks[0].getAttribute("aria-pressed") === "true") {
-    fail("a checklist mark cannot be cleared — a mis-tap is permanent");
-  }
-
-  /* One plot's answers must not land on another. This is the fault the
-     shape exists to prevent: a hundred flat keys and an off-by-one. */
-  const outcomeBtn = (plot, label) => {
-    const box = [...document.querySelectorAll(".wi-plot")]
-      .find((d) => d.querySelector("h3")?.textContent === `Plot ${plot}`);
-    return [...box.querySelectorAll(".wi-opt")].find((b) => b.textContent === label);
-  };
-  await click(outcomeBtn("18", "Completed"));
-  await click(outcomeBtn("35", "Aborted"));
-  if (outcomeBtn("19", "Completed").className.includes("on")) {
-    fail("answering plot 18 marked plot 19 as well");
-  }
-  if (!outcomeBtn("35", "Aborted").className.includes("on")) {
-    fail("plot 35's outcome did not take");
-  }
-  if (!outcomeBtn("18", "Completed").className.includes("on")) {
-    fail("plot 18's outcome was overwritten by plot 35's");
-  }
-
-  /* And a generic job still gets the generic form. */
-  await act(async () => {
-    root.render(React.createElement(WorkInstruction, {
-      job: { assignmentId: 2, task: "Excavation and Lay", plots: "1-3" },
-      onDone() {}, onCancel() {},
-    }));
-  });
-  if (txt().includes("Task checklist")) {
-    fail("a dig was given the jointing form");
-  }
-  if (!txt().includes("Length dug")) fail("the generic form was lost");
-
-  await act(async () => { root.unmount(); });
-}
 
 console.log(bad ? `\n${bad} problem(s)`
-  : "Jointing work instruction behaves (checklist, a row per plot, tests recorded).");
+  : "Jointing work instruction behaves (definitions, plot ranges, what must be answered).");
 process.exit(bad ? 1 : 0);

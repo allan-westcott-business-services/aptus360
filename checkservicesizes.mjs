@@ -114,8 +114,32 @@ function defaultsFor({ lineTypeKey, layerKey, utilityId = 1, scope = null }) {
 //    rather than trusted.
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/serviceSizeFor/.test(canvas)) fail("the canvas does not use the service floor");
-  if (!/import \{ serviceSizeFor \}/.test(canvas)) fail("the canvas does not import it");
+
+  /* Called, not merely mentioned. A bare search for the name matches
+     the import line on its own, so the canvas could import the floor
+     and never apply it and this would still pass. */
+  if (!/serviceSizeFor\(/.test(canvas)) fail("the canvas does not use the service floor");
+
+  /* And imported from the module that defines it.
+
+     Read as a list rather than matched as a line: this was
+     `/import \{ serviceSizeFor \}/`, which failed the day pipeRowFor
+     was added to the same import and the braces stopped holding one
+     name. The check was right about the fact and wrong about the
+     spelling, and reported a canvas that imports the floor correctly
+     as one that does not import it at all.
+
+     What matters is that the name is bound from serviceDefaults.js —
+     alongside anything else, in any order, under an alias or not. */
+  const bound = [...canvas.matchAll(
+    /import\s*\{([^}]*)\}\s*from\s*["']\.\/serviceDefaults\.js["']/g)]
+    .flatMap((m) => m[1].split(",").map((s) => s.trim().split(/\s+as\s+/)[0].trim()))
+    .filter(Boolean);
+  if (!bound.includes("serviceSizeFor")) {
+    fail(bound.length
+      ? `the canvas imports ${bound.join(", ")} from serviceDefaults.js, but not serviceSizeFor`
+      : "the canvas does not import it");
+  }
 
   const sql = readFileSync(
     "./supabase/migrations/0164_service_pipe_sizes.sql", "utf8");

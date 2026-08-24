@@ -16240,7 +16240,7 @@ export default function GISCanvasPage() {
                                 label={`\uD83D\uDD12  ${t.label}`}
                                 active
                                 keepOpen
-                                hint="Locked \u2014 cannot be moved"
+                                hint={"Locked \u2014 cannot be moved"}
                                 onClick={() => setLockedClasses((x) =>
                                   toggleClassLock(x, t.key))} />
                             ))}
@@ -16812,7 +16812,7 @@ export default function GISCanvasPage() {
                           {key === "gas" && (
                             <MenuItem
                               label={busy === "gasnet" ? "Building\u2026" : "Build Gas Network"}
-                              hint="Mains only \u2014 lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"
+                              hint={"Mains only \u2014 lays gas main from the POC along mains trench that has a gas service to a meter beyond it. Needs a gas design and a gas asset value agreement"}
                               disabled={!projectId || !!busy}
                               onClick={() => withUndo("Build Gas Network", () => buildGasNetwork())} />
                           )}
@@ -16932,7 +16932,7 @@ export default function GISCanvasPage() {
                       <MenuGroup label="Draw" />
                       <MenuItem label={lightingPlace === "column"
                         ? "Placing Columns\u2026" : "Place Lighting Columns"}
-                        hint="Click where each column goes \u00b7 Esc to stop"
+                        hint={"Click where each column goes \u00b7 Esc to stop"}
                         active={lightingPlace === "column"}
                         disabled={!projectId}
                         keepOpen
@@ -17032,7 +17032,7 @@ export default function GISCanvasPage() {
                         down. */}
                     <MenuItem label={busy === "wholedesign"
                       ? "Building\u2026" : "Build the Whole Design"}
-                      hint="Service trenches, meters, span nodes, mains, services and joints \u2014 for every utility that is contracted"
+                      hint={"Service trenches, meters, span nodes, mains, services and joints \u2014 for every utility that is contracted"}
                       disabled={!!busy || !projectId}
                       onClick={() => runWholeDesign()} />
 
@@ -17048,7 +17048,7 @@ export default function GISCanvasPage() {
                         actually contracted. */}
                     <MenuItem label={busy === "mainsall"
                       ? "Building\u2026" : "Build All Mains"}
-                      hint="LV network, gas main and water main \u2014 for every utility with an outline design and an AV agreement"
+                      hint={"LV network, gas main and water main \u2014 for every utility with an outline design and an AV agreement"}
                       disabled={!!busy || !projectId}
                       onClick={() => runAllMains()} />
 

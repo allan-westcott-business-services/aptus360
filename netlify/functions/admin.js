@@ -36,6 +36,16 @@ const TABLES = {
   /* Teams: the gang, who is on it, and what it is qualified and
      permitted to do. */
   Craft:           { pk: "Craft_ID",           order: "Sort_Order" },
+  /* Which utilities a craft covers (0151). Missing from this list since
+     the table was created, so every read 404'd — and the call site
+     tolerates that by design, on the argument that a database without
+     0151 should fall back to the older rule rather than refuse every
+     team. It does the same thing on a database that *has* 0151, so the
+     craft scope has never once been applied anywhere.
+
+     That is the shape to watch for with this allowlist: not an error on
+     screen, but a feature that stays politely inert. */
+  Craft_Utility:   { pk: "Craft_Utility_ID",   order: "Craft_Utility_ID" },
   Team:            { pk: "Team_ID",            order: "Team_Name" },
   Team_Member:     { pk: "Team_Member_ID",     order: "Team_Member_ID" },
   Team_Craft:      { pk: "Team_Craft_ID",      order: "Team_Craft_ID" },

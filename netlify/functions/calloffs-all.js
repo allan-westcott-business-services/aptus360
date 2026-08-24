@@ -140,8 +140,20 @@ export default withAuth(async function handler(req) {
         workDays = wd || [];
       }
 
+      /* Display_Order as well as the name.
+
+         Every other phase is ordered by Work_Type_Task_Type below,
+         which says where a phase sits within its work type. The
+         energisation phase belongs to no work type — it is put on a
+         single call-off by a flag — so the only order it has is the
+         task type's own, and without this column the page's sort had
+         nothing to sort on and left it wherever it was pushed: after
+         reinstatement, reading as work done once the ground was closed.
+
+         Fault 4. The column existed, the page read it, and the list
+         that fetches it did not name it. */
       const { data: tt } = await db.from("Task_Type")
-        .select("Task_Type_ID,Task_Type_Name")
+        .select("Task_Type_ID,Task_Type_Name,Display_Order")
         .then((r) => r, () => ({ data: [] }));
       taskTypes = tt || [];
 

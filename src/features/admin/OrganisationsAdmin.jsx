@@ -23,6 +23,40 @@ import { UTILITIES } from "../../lib/utilities.js";
 
 const EM_DASH = "\u2014";
 
+/* Which roles get asked what utilities they work in.
+
+   Every role that operates a network. The question was asked of an idno
+   or a dno and of nothing else, which is the world Organisation_Utility
+   was written for in 0069 and stopped being true four roles ago —
+   Cadent is a gas transporter, and its record had nowhere to say it
+   works in gas. The Gas DNO picker on a project then offered nothing at
+   all and said so: "No DNO is marked as working in this utility", about
+   a company set up entirely correctly.
+
+   ── The same list, in two places, deliberately ──
+
+   0172 widened the Operator_Utility view to these six. This screen is
+   the other half: the view decides whether the answer is used, this
+   decides whether the question is asked, and a role in one and not the
+   other is a company that can be described and never offered, or
+   offered and never described. `node checkrolefilter.mjs` reads both
+   and fails if they disagree, which is the only reason two copies is
+   tolerable here — the view is SQL and cannot import this.
+
+   Listed rather than derived, for the reason 0172 gives: whether a
+   trade operates a network is a judgement, not something the shape of
+   the table can answer. A role added later wants adding here on
+   purpose.
+
+   ── Not the map in StakeholderTab ──
+
+   That one is also called OPERATOR_ROLES and answers a different
+   question: which single role is the incumbent for a utility, so gas
+   maps to gt and not to igt. This is the wider set — an igt operates a
+   network and records the utilities it works in, it is just never the
+   incumbent. */
+const OPERATOR_ROLES = ["dno", "idno", "gt", "igt", "wu", "iwu"];
+
 /* Named rather than spread from the row, so a derived column can never
    ride along into a PATCH and be rejected by the database. */
 const branchFields = (b) => ({
@@ -173,7 +207,7 @@ export default function OrganisationsAdmin() {
   /* Only asked for where it changes anything. A subcontractor does not
      operate a network, so the question would be noise on most records. */
   const isOperator = (detail?.roles || []).some((r) =>
-    ["idno", "dno"].includes(typeById(r.Organisation_Type_ID)?.Type_Key));
+    OPERATOR_ROLES.includes(typeById(r.Organisation_Type_ID)?.Type_Key));
 
   async function toggleUtility(utilityId) {
     const next = utilities.includes(utilityId)

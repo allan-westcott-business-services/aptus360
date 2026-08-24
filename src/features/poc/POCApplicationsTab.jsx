@@ -774,13 +774,13 @@ export default function POCApplicationsTab({ projectId }) {
                     box the designer cannot type in would be no use for
                     recording somebody else's answer. */}
                 <div className="fld"><label>Agreed output</label>
-                  <input type="number" step="any" min="0" placeholder="\u2014"
+                  <input type="number" step="any" min="0" placeholder={"\u2014"}
                     value={f.Agreed_Output ?? ""}
                     onChange={(e) => set("Agreed_Output")(e.target.value)} />
                   <p className="hint">capacity the connection is agreed at</p></div>
 
                 <div className="fld"><label>Output pressure (mbar)</label>
-                  <input type="number" step="any" min="0" placeholder="\u2014"
+                  <input type="number" step="any" min="0" placeholder={"\u2014"}
                     value={f.Output_Pressure_mBar ?? ""}
                     onChange={(e) => set("Output_Pressure_mBar")(e.target.value)} />
                   <p className="hint">

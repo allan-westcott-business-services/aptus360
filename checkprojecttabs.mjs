@@ -60,30 +60,61 @@ for (const [view, areaKey] of Object.entries(PROJECT_VIEWS)) {
 if (!isProjectView("ops-projects")) fail("ops-projects not recognised as a projects view");
 if (isProjectView("call-offs")) fail("call-offs wrongly recognised as a projects view");
 
-// 7. The seed names tabs and areas that actually exist. A typo here
-//    hides nothing and reports nothing, which is the worst outcome:
-//    the setting looks applied and is not.
-const sql = readFileSync("supabase/migrations/0138_project_tabs.sql", "utf8");
-const seeded = [...sql.matchAll(/\('([a-z]+)',\s*'([a-z-]+)'\)/g)].map((m) => [m[1], m[2]]);
-if (seeded.length < 20) fail(`only parsed ${seeded.length} seeded rows — check the migration`);
-for (const [area, tab] of seeded) {
-  if (!AREAS.some((a) => a.id === area)) fail(`seed names area "${area}", which does not exist`);
-  if (!ids.includes(tab)) fail(`seed names tab "${tab}", which does not exist`);
-  if (tab === PINNED_TAB) fail(`seed tries to hide "${tab}", which is pinned`);
+/* ── The migration these read is not in the folder ──
+
+   0138_project_tabs.sql is referenced here and absent from
+   supabase/migrations, so this file crashed on load — and because
+   `npm test` chains its steps with &&, a crash on step twenty stops the
+   sixty after it. Every one of those was reported to anybody watching
+   as the same missing-file error, which reads as one broken script
+   rather than as a suite that never ran.
+
+   It is the same gap as 0163 and 0182: migrations are pasted into the
+   SQL editor by hand and the folder is the only record there is, so a
+   file that never got committed is invisible until something reads it.
+
+   Skipped with a named failure rather than deleted, which is what
+   checkbottleends.mjs already does for 0163. Deleting would lose the
+   check that a seed cannot name a tab or an area that does not exist —
+   a typo there hides nothing and reports nothing, which is the worst
+   outcome, because the setting looks applied and is not. Skipping keeps
+   sections 1 to 6 running and says what is missing. */
+let sql = null;
+try {
+  sql = readFileSync("supabase/migrations/0138_project_tabs.sql", "utf8");
+} catch {
+  fail("supabase/migrations/0138_project_tabs.sql is missing — the seeded tab"
+    + " visibility cannot be checked against the tabs and areas that exist");
 }
 
-// 8. The seed leaves every section something beyond Details.
-for (const area of new Set(seeded.map(([a]) => a))) {
-  const seedRows = seeded.filter(([a]) => a === area)
-    .map(([, tab]) => ({ Area_Key: area, Tab_Key: tab, Is_Visible: false }));
-  for (const stage of ["tender", "contract"]) {
-    const shown = visibleTabs(stage, area, seedRows);
-    if (shown.length < 2) fail(`${area} at ${stage} stage shows only ${shown.length} tab(s)`);
+const seeded = sql
+  ? [...sql.matchAll(/\('([a-z]+)',\s*'([a-z-]+)'\)/g)].map((m) => [m[1], m[2]])
+  : [];
+
+if (sql) {
+  // 7. The seed names tabs and areas that actually exist. A typo here
+  //    hides nothing and reports nothing, which is the worst outcome:
+  //    the setting looks applied and is not.
+  if (seeded.length < 20) fail(`only parsed ${seeded.length} seeded rows — check the migration`);
+  for (const [area, tab] of seeded) {
+    if (!AREAS.some((a) => a.id === area)) fail(`seed names area "${area}", which does not exist`);
+    if (!ids.includes(tab)) fail(`seed names tab "${tab}", which does not exist`);
+    if (tab === PINNED_TAB) fail(`seed tries to hide "${tab}", which is pinned`);
   }
-}
 
-// 9. Tendering & Design keeps everything — it is not in the seed.
-if (seeded.some(([a]) => a === "design")) fail("the seed hides tabs from Tendering & Design");
+  // 8. The seed leaves every section something beyond Details.
+  for (const area of new Set(seeded.map(([a]) => a))) {
+    const seedRows = seeded.filter(([a]) => a === area)
+      .map(([, tab]) => ({ Area_Key: area, Tab_Key: tab, Is_Visible: false }));
+    for (const stage of ["tender", "contract"]) {
+      const shown = visibleTabs(stage, area, seedRows);
+      if (shown.length < 2) fail(`${area} at ${stage} stage shows only ${shown.length} tab(s)`);
+    }
+  }
+
+  // 9. Tendering & Design keeps everything — it is not in the seed.
+  if (seeded.some(([a]) => a === "design")) fail("the seed hides tabs from Tendering & Design");
+}
 
 const cover = new Set(seeded.map(([a]) => a));
 console.log(bad

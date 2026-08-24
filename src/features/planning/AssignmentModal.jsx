@@ -336,7 +336,7 @@ export default function AssignmentModal({ item, data, utilities = [], onClose })
             <p className="pam-days-t">Comments</p>
             {err && <p className="pam-warn">{err}</p>}
             <div className="pam-add">
-              <input value={note} placeholder="Add a note\u2026"
+              <input value={note} placeholder={"Add a note\u2026"}
                 onChange={(e) => setNote(e.target.value)}
                 onKeyDown={(e) => { if (e.key === "Enter") addComment(); }} />
               <button className="btn accent sm" disabled={busy || !note.trim()}

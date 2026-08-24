@@ -1,10 +1,17 @@
 # Aptus360 — handover notes
 
-Rewritten at the end of the session that added the landing page and
-area-scoped navigation. Migrations run to **0157**.
+Migrations run to **0187**.
 
-The body below still describes the state at 0136 and has not been
-re-checked against everything that landed since — call-off utility,
+**Last session was a test-suite session**, not a feature one. `npm test`
+now runs — it did not before, and this file used to record that as a
+standing fact. See **Testing** for what changed and what still fails.
+Four faults it uncovered are fixed: the `reducer` feature role (0187),
+`Craft_Utility` in the admin allowlist, the energisation phase order
+(0180 amended), and two stale duplicate modules that were serving live
+traffic. Fault 22 below is the shape all of those shared.
+
+The body below still describes the state at 0136 in places and has not
+been re-checked against everything that landed since — call-off utility,
 assignment split, gas pressure, craft scope, project organisation branch
 and multiple gas/water POCs are all in `supabase/migrations/` and are not
 described here. Read the migrations before trusting the "open work" list.
@@ -70,14 +77,29 @@ becomes live work, it needs an area in `navigation.js` first.
 
 ## Testing
 
+```bash
+npm test          # every check*.mjs
+npm run check     # the above plus the Python source checks
+```
+
+Both go through `checkall.mjs`, which **runs everything and reports
+everything** rather than stopping at the first red one. Individual
+scripts still work: `node checkspannodes.mjs`, or
+`node checkall.mjs --only span` for a subset.
+
+As of this session: **89 of 92 pass in about 40 seconds.** The three
+that don't are listed at the foot of this section.
+
 Run these after touching the relevant area. They exist because each one
 caught a fault that had already shipped at least once.
 
 | Script | What it checks |
 |---|---|
+| `node checkall.mjs` | The runner. Discovers the others; `--py`, `--only`, `--quiet` |
 | `node checknav.mjs` | Every rendered view sits in an area; no view in two areas; area colours distinct; areas open on a built screen |
 | `node checkhome.mjs` | Mounts the shell in jsdom and drives it — landing page, per-area menus, back navigation, reload restore |
 | `node checkhr.mjs` | Mounts all sixteen HR modules; icons, modals, sidebar bridge |
+| `node checklazy.mjs` | Lazy pages recover from a deploy: one reload on a stale chunk, none on anything else |
 | `node checkspannodes.mjs` | Span node origins, and which node a cable run feeds |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
@@ -91,21 +113,75 @@ caught a fault that had already shipped at least once.
 | `python3 checkbuttons.py` | Button classes against the house set |
 | `python3 checkdead.py` | Unreachable statements |
 
-`checkorder.py` currently reports two hits, `rollback` and
-`zoomToPoints`. Both are false positives: each is referenced inside a
-`function` body that only runs on user action, by which time the `const`
-is initialised. Don't "fix" them.
+`checkseedlive.mjs` is **not** in the suite and should not be added: it
+is a diagnostic that takes a drawing JSON and a `Feature_ID` and reports
+why a seed cascade rejected something. It has nothing to assert without
+an argument. `checkall.mjs` names it, and the reason, in
+`NOT_A_SUITE_CHECK`.
 
-**`npm test` does not currently run.** Its first step is
-`checkimports.mjs`, which is not in the repo and is not in git history
-either; `checklazy.mjs` is missing the same way, and
-`checkprojecttabs.mjs` reads `supabase/migrations/0138_project_tabs.sql`,
-which is also absent. The suite dies on step one, so anyone who has been
-running `npm test` and seeing it stop has been reading a missing-file
-error as a pass. Run the scripts individually until those three are
-restored. Related: the migrations folder has 78 files but 0002-0049 and
-a scatter of later numbers are missing — since migrations are pasted in
-by hand, that folder is the only record there is.
+`checkorder.py` currently reports **four** hits — `missingMetersFor`,
+`rollback`, `addFeature` and `zoomToPoints`. All four are false
+positives, and for the same reason: each is referenced inside a
+`function` body — `onDown`, `placeAt` — that only runs on user action,
+by which time the `const` is initialised. It exits 0. Don't "fix" them.
+
+### Why `npm test` was a chain, and why it isn't any more
+
+The previous version of this file recorded, correctly at the time, that
+**`npm test` did not run at all.** It was eighty-three `node checkX.mjs`
+calls joined with `&&` inside a JSON string, and it died on step one.
+Two things were wrong with that shape, both of which cost a session.
+
+**It stopped at the first failure.** A run that died on step twenty
+looked exactly like a run that died on step eighty-three: one error,
+then the prompt. Nothing said how many checks never ran.
+
+Worse, an `&&` chain cannot tell a *crash* from a *failure*.
+`checkprojecttabs.mjs` read a migration that is not in the repo and
+threw ENOENT on load — and a missing-file error at step twenty reads as
+one broken script rather than as a suite that never started. That is
+how "npm test does not run" became a standing fact about this repo
+instead of a bug somebody fixed.
+
+**The list was hand-kept**, which is the same fault as the `ALL_VIEWS`
+array the README describes: a second place to remember something.
+`checklazy.mjs` was in the chain and not on disk for weeks, and
+`checkseedlive.mjs` was on disk and not in the chain. The runner derives
+the list from the folder, so neither can happen again, and anything
+left out has to say why.
+
+`checkall.mjs` also reports CRASH separately from FAIL, because the
+difference matters: a check reporting "3 problem(s)" looked at
+something, and one that throws never got to look.
+
+### The three that still fail
+
+Two are **migrations that were pasted into Supabase by hand and never
+committed.** The folder has 101 files across 0001–0187 and about twenty
+numbers are absent; since there is no migration runner, that folder is
+the only record there is.
+
+- `checkprojecttabs.mjs` — needs `0138_project_tabs.sql`, the seed
+  saying which tabs each area hides.
+- `checkbottleends.mjs` — needs `0163_bom_bottle_end_name.sql`, the
+  bill's joint-name `CASE`.
+
+`0182` is missing the same way and nothing reads it yet. **Do not
+reconstruct these from the checks.** 0138 encodes decisions about what
+each part of the business sees, and 0163 replaces a function whose body
+is not in the repo; inventing either writes a guess into the only record
+the schema has. They want recovering from the Supabase project.
+
+Both checks now degrade to a **named failure** rather than throwing, so
+they no longer take the rest of the suite down with them. That pattern —
+`try` the read, `fail("... is missing")`, skip the section — is the one
+to copy for any check that reads a file it does not own.
+
+The third, `checkbuttons.py`, is 30 house-style deviations across the
+admin screens and two GIS panels. Cosmetic, pre-existing, and never
+gating before now: the old `check` script ran the Python checks in a
+shell loop that discarded their exit codes, so none of them had ever
+failed a build.
 
 **A check that re-implements the thing it tests proves nothing.**
 `checkspannodes.mjs` carried local copies of `nodeFedBy` and the node
@@ -113,6 +189,15 @@ sync and went on passing through every fault listed under 13 below,
 because the copies were right and the functions they stood for had
 moved. It imports them now. When adding a check, import the real
 function or move the logic somewhere it can be imported from.
+
+**A check that cries wolf stops being run**, which is the same failure
+by a slower route. `checkdefs.py` reported two permanent false
+positives — `blight`, from the regex `/\blight(ing)?\b/i`, and
+`signIn`, an object method shorthand it read as a call. Neither was ever
+a fault, and a report that is always two lines long teaches everyone to
+skim it. It blanks regex literals and understands method shorthand now.
+If a check's output includes a hit nobody intends to act on, fix the
+check or write the exemption down here.
 
 ## Recurring faults — all of these bit more than once
 
@@ -256,6 +341,36 @@ function or move the logic somewhere it can be imported from.
     where two are both in range. Build LV Network, Place Feeder Joints
     and the call-offs all sit on this path.
 
+22. **A tolerant fallback that hides a permanent failure.** Three
+    features shipped, ran, and did nothing at all — each behind a
+    `catch` written for a different reason.
+
+    `placeReducers` writes `Feature_Role: "reducer"`, and 'reducer' was
+    never added to the `GIS_Feature` role constraint, so every insert was
+    rejected. `adminList("Craft_Utility")` 404s because the table is not
+    in the endpoint's allowlist, and the call site catches that with
+    `.catch(() => ({ rows: [] }))` under a comment explaining that a
+    database without 0151 should fall back to the older rule — which it
+    also does on a database *with* 0151, so the craft scope has never
+    been applied anywhere. The energisation phase sorted last because the
+    list endpoint never selected the `Display_Order` the page sorts on.
+
+    The shape to watch for is not an error on screen. It is a feature
+    that stays politely inert, indistinguishable from one that is
+    correctly deciding it has nothing to do. **A fallback for a missing
+    migration must not also swallow a missing allowlist entry**, and if a
+    catch exists to tolerate absence, something has to prove presence —
+    a check, or a log line, or a status the screen can show.
+
+23. **A hand-kept list beside a folder that already knows.** `npm test`
+    named its eighty-three scripts in a string; the migration seed order,
+    the role constraint and `ALL_VIEWS` have all had the same problem.
+    Every instance drifted, and drift is silent in this direction: the
+    thing on disk and not in the list simply never runs, and nothing
+    reports a script that was not asked for. Derive the list, and where
+    something genuinely must be excluded, make the exclusion carry its
+    reason — see `NOT_A_SUITE_CHECK` in `checkall.mjs`.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from
@@ -342,7 +457,25 @@ plus generic table editors.
    Aptus360 can open payroll and sickness records. This is the only item
    on this list that is a disclosure risk rather than a missing feature.
 
-2. **Move the pickers to `Organisation_ID`.** Columns and views exist
+2. **Recover the missing migrations from Supabase.** `0138_project_tabs`,
+   `0163_bom_bottle_end_name` and `0182` were pasted into the SQL editor
+   and never committed. About twenty numbers are absent across 0001–0187
+   and those three are the ones something reads. With no migration
+   runner, that folder is the only record of the schema there is — so
+   every absent file is a change nobody can reapply to a fresh database,
+   and a rebuild would silently come up short.
+
+   Get them out of the live project (`pg_dump --schema-only`, or the
+   Supabase dashboard's migration history) rather than writing them from
+   the checks that read them: 0138 encodes decisions about what each
+   part of the business sees, 0163 replaces a function whose body is not
+   in the repo, and a plausible guess in that folder is worse than a gap,
+   because a gap is visible. Two checks fail until this is done.
+
+   Worth doing at the same time: a `checkmigrations.mjs` that fails on a
+   numbering gap would have caught all three the week they happened.
+
+3. **Move the pickers to `Organisation_ID`.** Columns and views exist
    (`0048`), lookups are served (`orgIdnos`, `orgDnos`,
    `orgFireAuthorities`, `orgSubcontractors`, `orgSuppliers`,
    `customerBranches`) — and are currently referenced by **nothing** in
@@ -354,7 +487,7 @@ plus generic table editors.
    Customer / IDNO / DNO / Fire Service admin screens and run the drop
    statements at the foot of `0048`.
 
-3. **Four navigation decisions left open** by the landing-page change,
+4. **Four navigation decisions left open** by the landing-page change,
    all one-line edits in `navigation.js`:
    - **Organisations** sits under Business Development. It isn't in the
      original brief for that area; it went there rather than be
@@ -366,24 +499,46 @@ plus generic table editors.
      screens. Nothing in it is built.
    - **Equipment absorbed Generator Hire.** Says so on the placeholder.
 
-4. **`GISCanvasPage.jsx` is 12,169 lines** and 806 kB built — the
+5. **`GISCanvasPage.jsx` is 12,169 lines** and 806 kB built — the
    largest chunk in the app by a wide margin, and where most new work
    lands. Not a bug, but it is now the biggest structural risk in the
    repo. The extracted modules beside it (`feeder.js`, `gasNetwork.js`,
    `routing.js`) are the pattern to keep pulling on.
 
-5. **Contract Designs tab** is still a placeholder pending a modelling
+6. **Contract Designs tab** is still a placeholder pending a modelling
    decision: `CD_*` columns on `Project_Scope` versus a separate
    `Detailed_Design` table. The tab itself sets out both options and
    when each is right. Needs an answer from whoever runs design, not a
    developer.
 
-6. **AV invoicing: PDF generation and email drafts** were deliberately
+7. **AV invoicing: PDF generation and email drafts** were deliberately
    not built. The original uses jsPDF and a `mailto:` draft; no PDF
    library is in `package.json`.
 
-7. `Carried_Forward` on designs means "copied from the previous revision
+8. `Carried_Forward` on designs means "copied from the previous revision
    rather than redrawn" — set by the revision flow, read by nothing.
    Decide whether it should affect points.
 
-8. `Manual_Total_Points` exists; nothing writes to it.
+9. `Manual_Total_Points` exists; nothing writes to it.
+
+10. **Three pickers still filter operators to `["dno", "idno"]`.**
+    `orgOperators` in `netlify/functions/lookups.js` keeps the two-role
+    list that 0172 widened to six everywhere else, and it feeds Drawing
+    Standard on the GIS canvas, GIS Styles and Raise Invoice. So Cadent
+    can now record that it works in gas — that was fixed in
+    `OrganisationsAdmin.jsx` this session — and still cannot be chosen
+    as a drawing standard.
+
+    Left alone deliberately: widening it changes what appears in three
+    pickers including AV invoicing, and whether a gas transporter should
+    be selectable there is a question for whoever runs commercial, not a
+    one-line edit. `checkrolefilter.mjs` covers the admin screen and the
+    view; it does not cover this lookup.
+
+11. **`checkbuttons.py`: 30 house-style deviations.** `.row-edit` and
+    `.row-del` where the house set wants `btn edit sm` / `btn delete sm`,
+    bare `×` buttons that remove things, and a duplicate `.row-del`
+    rule in `OrganisationsAdmin.jsx` that the shared stylesheet already
+    defines. All cosmetic and all pre-existing — the Python checks never
+    gated anything before this session, because the old `check` script
+    ran them in a shell loop that discarded their exit codes.

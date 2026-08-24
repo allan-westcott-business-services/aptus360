@@ -64,6 +64,24 @@ def declared(src):
     # every parameter after it and they were reported as undefined. A
     # check that cries wolf stops being run, which is worse than the
     # fault it was looking for.
+    # Method shorthand: `async signIn() {` in an object literal, and the
+    # same shape in a class body. A declaration, not a call — but it is
+    # spelled exactly like one, so the scan below reported hrPortal's
+    # api.signIn as an undefined function.
+    #
+    # There was a hand-kept list of four React lifecycle names further
+    # down doing this job for class components. That is a second place to
+    # remember a method, and it only ever covered the four somebody had
+    # been bitten by. This covers the shape instead.
+    #
+    # Safe because the trailing `{` is what makes it a definition: a call
+    # is followed by `;`, `)`, `,` or an operator, never by a block. The
+    # keywords that do take `(...) {` — if, for, while, switch, catch —
+    # are all in GLOBALS already, so matching them costs nothing.
+    names |= set(re.findall(
+        r'(?:^|[{;,]|\basync\b|\bstatic\b|\bget\b|\bset\b)\s*'
+        r'([A-Za-z_$][\w$]*)\s*\([^()]*\)\s*\{', src, re.M))
+
     for m in re.finditer(r'function\s*[\w$]*\s*\(\s*\{', src):
         i = src.index('{', m.start())
         depth = 0
@@ -111,7 +129,30 @@ for path in sorted(glob.glob("src/**/*.jsx", recursive=True)
                       (r'>[^<>{}]*\{', ">", "{"),
                       (r'\}[^<>{}]*\{', "}", "{")):
         src = re.sub(pat, blank(a, b), src, flags=re.S)
-    # Class methods are declarations, not calls.
+    # Regex literals. `/\blight(ing)?\b/i` is a pattern, and the only
+    # thing in it that looks like code is an accident: strip the escape
+    # from `\b` and the source reads `blight(`, which was duly reported
+    # as a call to a function named blight.
+    #
+    # A `/` starts a pattern only where a value is expected — after an
+    # opening bracket, an operator, a comma, a semicolon, or one of the
+    # keywords below. Anywhere else it is division. Anchoring on that is
+    # what keeps `a / b` and `total / count` out of this.
+    #
+    # Replaced with spaces rather than removed: a pattern cannot span a
+    # newline, so the line count is unchanged and the line numbers this
+    # reports stay true.
+    #
+    # Runs after the comment pass, so a `//` here is never the start of
+    # a comment that has already gone.
+    src = re.sub(
+        r'(?:(?<=[(,=:\[!&|?{};+\-*%~^<>])|(?<=\breturn)|(?<=\btypeof)|(?<=\bcase))'
+        r'\s*/(?![*/])(?:[^/\\\n\[]|\\.|\[(?:[^\]\\\n]|\\.)*\])+/[gimsuyd]*',
+        lambda m: " " * len(m.group(0)), src)
+
+    # Class methods are declarations, not calls. Kept for the `render() {`
+    # that the shorthand rule above already covers — harmless, and the
+    # two disagree about nothing.
     src = re.sub(r'\b(constructor|render|componentDidCatch|getDerivedStateFromError)\s*\(',
                  'X(', src)
     seen = set()

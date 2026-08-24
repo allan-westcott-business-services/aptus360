@@ -34,10 +34,40 @@
 -- The phase itself. Not mapped against a work type, because it is not
 -- true of every call-off of that type — the flag below is what puts it
 -- on the one that carries it.
+--
+-- ── Where it sits, and why 15 ──
+--
+-- In the order the work happens: the cable goes in, the substation is
+-- switched on, the joints are made onto a live network, and the ground
+-- is reinstated last. 15 puts it after excavate-and-lay and before
+-- jointing.
+--
+-- Every other phase takes its order from Work_Type_Task_Type, which
+-- says where a phase sits within its work type. This one belongs to no
+-- work type, so the task type's own Display_Order is the only order it
+-- has, and the page sorts on it.
+--
+-- The first version of this file seeded it at 40 — the end of the list
+-- — and the phase read as work happening after the ground was closed.
 INSERT INTO "Task_Type" ("Task_Type_Name", "Display_Order", "Is_Active")
-SELECT 'Energisation', 40, true
+SELECT 'Energisation', 15, true
  WHERE NOT EXISTS (
    SELECT 1 FROM "Task_Type" WHERE "Task_Type_Name" = 'Energisation');
+
+-- And moved, where an earlier run of this file seeded it at 40.
+--
+-- The insert above is guarded on the name, so on any database that has
+-- already had this file pasted into it the row exists and the insert
+-- does nothing — leaving the phase exactly where the fault put it. The
+-- correction has to be a separate statement or it never runs anywhere
+-- it is needed.
+--
+-- Safe to run twice: it sets the value rather than adjusting it, and
+-- does nothing on a row already at 15.
+UPDATE "Task_Type"
+   SET "Display_Order" = 15
+ WHERE "Task_Type_Name" = 'Energisation'
+   AND "Display_Order" IS DISTINCT FROM 15;
 
 ALTER TABLE "Mains_Call_Off_Submission"
   -- Whether this call-off carries the substation energisation. Set when

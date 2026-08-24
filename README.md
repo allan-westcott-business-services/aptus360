@@ -74,13 +74,25 @@ Two rules that are easy to trip over:
 ## Checks
 
 ```bash
-npm test          # navigation model, shell, HR modules
+npm test          # every check*.mjs — navigation model, shell, HR, GIS, call-offs
 npm run check     # the above plus the Python source checks
+node checkall.mjs --only span     # just the ones matching "span"
 ```
 
+Both scripts go through `checkall.mjs`, which runs every check it finds
+and reports all of them rather than stopping at the first failure. It
+also tells a crash apart from a failure, because those mean different
+things: a check reporting "3 problem(s)" looked at something, and one
+that throws never got to look.
+
+The list of checks is **derived from the folder**, not hand-kept — a
+script on disk and not in a list never runs, and nothing notices. That
+had already happened twice. Anything deliberately excluded says why, in
+`NOT_A_SUITE_CHECK`.
+
 These aren't decoration: each one caught a fault that had already
-shipped. `HANDOVER.md` lists what each covers and which two
-`checkorder.py` hits are known false positives.
+shipped. `HANDOVER.md` lists what each covers, which `checkorder.py`
+hits are known false positives, and which checks currently fail and why.
 
 ## Going live against real data
 
@@ -176,6 +188,8 @@ in `src/features/hr/`.
 
 See the open work list at the foot of `HANDOVER.md`, which is kept
 current. In short: HR has no sign-in and that's the one item that's a
-disclosure risk rather than a missing feature; the pickers still need
-moving to `Organisation_ID`; and `GISCanvasPage.jsx` has reached 12,000
-lines and wants breaking up.
+disclosure risk rather than a missing feature; three SQL migrations were
+pasted into Supabase by hand and never committed, so the repo is not a
+complete record of the schema; the pickers still need moving to
+`Organisation_ID`; and `GISCanvasPage.jsx` has reached 12,000 lines and
+wants breaking up.

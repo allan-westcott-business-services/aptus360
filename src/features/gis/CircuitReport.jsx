@@ -203,6 +203,23 @@ export default function CircuitReport({
               {" \u00B7 "}{kvaF(report.totalKva)} total
               {pocOutput != null && ` (POC capacity ${kvaF(pocOutput)})`}
             </p>
+            {/* The gap between the origin and the network.
+
+                Said out loud where it is real, because the reach that
+                lets a POC sit across a footway is also wide enough to
+                reach the wrong cable. Every distance below includes
+                this, so a designer who disagrees with the number knows
+                the whole column is out by it.
+
+                Silent under a quarter of a metre: that is the drawing
+                tolerance, and a substation is held to it. */}
+            {report.stationGapM > 0.25 && (
+              <p className="cr-gap">
+                {report.stationRole === "poc" ? "POC" : "Substation"} sits{" "}
+                {report.stationGapM} m from the nearest cable
+                {" \u2014 "}included in every distance below.
+              </p>
+            )}
           </div>
           <label className="cr-all">
             <input type="checkbox"
@@ -493,6 +510,9 @@ const CSS = `
 .cr-head > div { flex: 1; }
 .cr-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .cr-sub { margin: 2px 0 0; font-size: 11.5px; color: var(--muted); }
+/* Amber, not red: a POC across a footway is normal and the report is
+   correct. It is worth reading, not worth stopping for. */
+.cr-gap { margin: 4px 0 0; font-size: 11.5px; color: var(--warn, #92400e); }
 .cr-body { padding: 4px 18px 18px; overflow-y: auto; flex: 1; }
 .cr-warn { background: #fef2f2; border: 1px solid #fca5a5; color: #991b1b; border-radius: 8px;
   padding: 9px 13px; font-size: 12.5px; font-weight: 600; margin: 12px 0; }

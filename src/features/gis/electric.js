@@ -317,6 +317,18 @@ const CONNECT_M = 0.25;
    allowed this: a feeder leaving a substation starts on it. */
 const METER_REACH_M = 30;
 
+/* How far a POC may sit from the cable running back to it.
+
+   Not CONNECT_M, which is the plant rule: a feeder leaving a substation
+   starts on it. A POC marks somebody else's cable — across a footway,
+   at an existing joint bay — and the site cable starts near it rather
+   than on it. Fifteen is about the width of a road and its verges,
+   which is the gap this is for.
+
+   Wide enough to cross the thing that is actually in the way, and short
+   enough that it cannot reach past it to a cable on another street. */
+const POC_REACH_M = 15;
+
 /* How far a meter may sit from a cable that does NOT carry its plot
    number. Twelve, as the single reach was before the number started
    deciding: it is roughly how far a meter is from the service feeding
@@ -840,7 +852,14 @@ export function distancesFrom(features, rootId) {
     return { q, d: Math.hypot(p[0] - q[0], p[1] - q[1]) };
   };
 
-  const joinAt = (p, reach) => {
+  /* Returns the spliced node AND how far the point sat from the line.
+
+     joinAt below is this with the gap thrown away, which is what every
+     meter wants — a meter's distance from its service is not network
+     and must not be added. The origin wants the gap, so the two are one
+     function with the caller deciding, rather than two that splice
+     lines slightly differently. */
+  const joinAtWithGap = (p, reach) => {
     let best = null;
     for (const f of lines) {
       const g = f.Geometry;
@@ -865,17 +884,59 @@ export function distancesFrom(features, rootId) {
       Math.hypot(best.q[0] - best.a[0], best.q[1] - best.a[1]) * best.scale);
     edge(id, ib,
       Math.hypot(best.b[0] - best.q[0], best.b[1] - best.q[1]) * best.scale);
-    return id;
+    return { id, d: best.d };
   };
 
-  /* Plant joins exactly: a feeder leaving a substation starts on it,
-     and a gap there is a drawing not joined up. A meter is a box on a
-     wall and sits back from its service. */
-  const rootNode = joinAt(at, CONNECT_M);
-  if (rootNode == null) return new Map();
+  const joinAt = (p, reach) => joinAtWithGap(p, reach)?.id ?? null;
+
+  /* ── How close the origin has to be to the network ──
+
+     Plant joins exactly: a feeder leaving a substation starts on it,
+     and a gap there is a drawing not joined up rather than a tolerance
+     to widen. A meter is a box on a wall and sits back from its
+     service, so it is allowed its own reach.
+
+     A POC is neither, and applying the substation rule to it is what
+     broke this.
+
+     lvOrigin was widened to accept an electric POC — a connection to an
+     existing network has no new transformer, so the site's electricity
+     comes from the point of connection to the DNO's cable. The reach
+     here was never revisited, so the POC inherited the rule written for
+     plant: join within a quarter of a metre or not at all.
+
+     But a POC marker is not something the designer draws the cable out
+     of. It marks where somebody else's cable already is — across a
+     footway, at an existing joint bay, the far side of a boundary. The
+     site cable starts *near* it, metres away, and that gap is real
+     geography rather than a mistake.
+
+     Over 0.25 m and joinAt returned null, distancesFrom returned an
+     empty Map, and every meter on the drawing reported no distance at
+     all. Not a wrong number — a column of dashes, on every POC-fed
+     design, every time. */
+  const rootIsPoc = start.Feature_Role === "poc";
+  const rootJoin = joinAtWithGap(at, rootIsPoc ? POC_REACH_M : CONNECT_M);
+  if (rootJoin == null) return new Map();
+  const rootNode = rootJoin.id;
+
+  /* ── The gap counts ──
+
+     A meter's gap does not: the service ends at the plot boundary and
+     the tails to the box are not network. The origin's is different —
+     between the POC and where the site cable starts there is cable, and
+     it is cable this job lays.
+
+     Dropping it understated every distance on the site by the width of
+     the road, and moving the POC marker changed nothing on the report,
+     which is the part that would have made this hard to believe.
+
+     For a substation the gap is under a quarter of a metre by the rule
+     above, so this adds nothing there. One rule, not two. */
+  const rootGap = rootJoin.d;
 
   /* ── Shortest route to every point ── */
-  const dist = new Map([[rootNode, 0]]);
+  const dist = new Map([[rootNode, rootGap]]);
   const done = new Set();
   for (;;) {
     let cur = null;
@@ -917,7 +978,20 @@ export function distancesFrom(features, rootId) {
     }
     if (near != null) out.set(Number(f.Feature_ID), near);
   }
+  /* The origin is zero from itself, whatever the walk made of the node
+     it joined at. */
   out.set(root, 0);
+
+  /* How far the origin sat from the network, carried out as a property
+     rather than an entry — the entries are keyed by Feature_ID and this
+     is not a feature.
+
+     Here so the report can say "the POC is 8.4 m from the nearest
+     cable" instead of quietly snapping to whatever was in range. A
+     reach wide enough to cross a road is wide enough to cross to the
+     wrong road, and the fix for a blank report should not be a
+     confidently wrong one. */
+  out.rootGapM = Math.round(rootGap * 10) / 10;
   return out;
 }
 
@@ -1075,6 +1149,15 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
     /* Which kind it is, so anything reading this can word itself
        correctly rather than guessing from the label. */
     stationRole: station.Feature_Role === "poc" ? "poc" : "substation",
+
+    /* How far the origin sat from the nearest cable.
+
+       Shown where it is more than the drawing tolerance, because a POC
+       is allowed to reach across a road and reaching across a road is
+       also how it could reach the wrong one. The number is on the
+       report so the gap is a thing the designer sees and agrees with,
+       rather than something absorbed quietly into every distance. */
+    stationGapM: dist.rootGapM ?? 0,
     circuits,
     unreachable,
     totalMeters: meters.length,

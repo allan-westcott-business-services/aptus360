@@ -112,6 +112,15 @@ function clears(model, spanNodes, targets, ctx) {
       cableById: ctx.cableById,
       transformer: ctx.transformer,
       voltageV: ctx.voltageV,
+      /* What the feeding network already spent.
+
+         Dropped here, so a node was judged on this design's own share
+         of the volt drop while the levels check that flagged it judged
+         the cumulative figure. On a POC-fed scheme the two differ by
+         the declared percentage, and the search would call a node
+         cleared that the check still fails — a suggestion that does
+         not work, offered with a cost against it. */
+      startPct: ctx.startPct,
       settings: ctx.settings,
     });
     if (r.overOhms || r.overPct) return false;
@@ -132,6 +141,11 @@ function clears(model, spanNodes, targets, ctx) {
 export function suggestCableChanges({
   trace, cables = [], cableTypes = [], transformer = null,
   voltageV = 400, settings = {}, maxSuggestions = 4,
+  /* The volt drop the feeding network has already used, from the POC.
+     Accepted rather than assumed zero: a suggestion is only useful if
+     it is judged against the same figure the levels check flagged the
+     node on, and that one is cumulative. */
+  startPct = 0,
 } = {}) {
   if (!trace?.model || !trace?.spanNodes?.length) {
     return { error: "Run Full Trace first — there is nothing to work from." };
@@ -151,7 +165,7 @@ export function suggestCableChanges({
   }
   const ctx = {
     cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
-    transformer, voltageV, settings,
+    transformer, voltageV, settings, startPct,
   };
 
   /* Every span node feeding a failing one, nearest the substation first.

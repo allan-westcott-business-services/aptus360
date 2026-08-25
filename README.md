@@ -1,195 +1,175 @@
-# Aptus360
+# Aptus360 — electric levels fixes, 25 Aug 2026
 
-React rewrite of the Aptus360 single-file app, with an API layer and a merged
-Project model replacing the separate Tender and Contract records.
+Five files. The paths in this zip mirror the repo, so they can be copied
+over the top of a checkout as they are.
 
-Runs on sample data out of the box — no database needed to see the screens.
+Apply the two migrations first, then the three source files, then hard
+refresh. `getLookups()` caches for the whole session, so a tab that has
+been open since before the migrations will still hold the old catalogue.
 
-## Quick start
+---
 
-```bash
-npm install
-cp .env.example .env
-npm run dev            # http://localhost:5173
-```
+## Order
 
-That's enough to see both forms. `VITE_USE_MOCKS=true` in `.env.example` means
-the API client returns in-memory sample data instead of calling the backend.
+| # | File | What it does |
+|---|------|--------------|
+| 1 | `supabase/migrations/0189_electric_catalogue_seed.sql` | Loads the cable catalogue, transformers and impedance matrix |
+| 2 | `supabase/migrations/0190_joint_equivalent_length.sql` | Creates `Electric_VD_Setting.Joint_Equivalent_M` |
+| 3 | `src/features/admin/ElectricSpecsAdmin.jsx` | Exposes that setting in Admin |
+| 4 | `src/features/gis/GISCanvasPage.jsx` | Source impedance on the node labels and the scenario search |
+| 5 | `src/features/gis/scenario.js` | Upstream volt drop in the clearance test |
 
-To run the API functions as well, use the Netlify CLI instead of `npm run dev`:
+---
 
-```bash
-npm install -g netlify-cli
-netlify dev
-```
+## 1 — `0189_electric_catalogue_seed.sql`
 
-## What's here
+Carries the original app's catalogue across. The two apps read tables of
+the same NAME with different column names inside them, so every key and
+three value columns are renamed on the way in.
 
-```
-src/
-  api/          fetch wrappers — the only place that talks to /api/*
-  components/   Field, Section, Select, Toggle, Banner, StagePill, Sidebar
-  features/
-    home/       the landing page
-    projects/   projects list, tabs, revisions
-    gis/        the drawing canvas
-    ...
-  lib/          navigation, utilities, statuses, sample data
-netlify/
-  functions/    the API layer — service-role key lives here only
-supabase/
-  migrations/   versioned schema
-```
+IDs are preserved deliberately: every span node stores its cable in
+`GIS_Feature.Attributes.VD_Cable_Size_ID`, and letting the sequence
+allocate fresh ones would leave each drawing pointing at a different
+cable — which reports a wrong number rather than an error.
 
-## Navigation
+Idempotent throughout. Re-run it after a correction to the source data.
 
-The app opens on a landing page of eight squares, one per area of the
-business: Business Development, Tendering & Design, Operations,
-Commercial, Human Resources, HSQE, Finance and Admin. Choosing one scopes
-the sidebar to that area's screens and nothing else, so a planner sees
-eight operations screens rather than the whole app.
+**Two things to read before running.**
 
-`src/lib/navigation.js` is the single source of truth for what the
-landing page offers, what the sidebar shows, and which menu items People
-& Roles can grant. Add a screen there and it appears in all three.
+`Electric_Impedance.Volt_Drop_Factor` is **not a volt drop figure**. The
+workbook settles it — `regulat.xls!L9` labels the pivot's result "Mx
+impedance value for selected fuse (ohms)", and the values run 0.045 to
+0.337, which is the range of a loop impedance limit and nothing like a
+percentage. It loads into `Loop_Impedance_Ohms`, and `Volt_Drop_Pct` is
+left null rather than filled with a number that is not a percentage.
 
-```js
-{ view: "vehicles", label: "Vehicles" }              // placeholder
-{ view: "planning", label: "Planning", built: true } // real screen
-```
+The transformer rows were recovered from the workbook, not exported.
+Each ID's set of fuse ratings matches a pivot column block one for one,
+and the highest fuse against each matches that transformer's Max Fuse
+(315, 400, 630, 630). One judgement call is flagged in the file: the
+workbook lists `315` and `300/315` separately, and `800` and `750/800`
+separately; the slash variants are used because that is what the
+selectable list at `data!C39:C43` offers. Two `UPDATE`s in the file
+switch them.
 
-`built: true` means the React version exists. Everything else renders a
-placeholder, which is why each square can honestly report `3 of 8 live`
-rather than promising eight screens and delivering three.
+**Only 6 of the 37 cables can be calculated on.** The 3c and 4c WAVE in
+95, 185 and 300 carry figures. Every service, HV, LSZH, pilot and earth
+cable has neither, so a span node set to one reports "cable not set".
+That is the original's data as it stands, not a fault in the import. A
+query at the foot of the file lists the affected span nodes.
 
-Two rules that are easy to trip over:
+## 2 — `0190_joint_equivalent_length.sql`
 
-- **The sidebar is not on every screen** — the landing page has none. Any
-  CSS the whole app depends on belongs in `src/styles.css`, not in the
-  sidebar's own `<style>` block.
-- **Don't list views anywhere else.** `ALL_VIEWS` is derived. A
-  hand-kept copy is a second place to remember a screen, and the two
-  drifting means a page you can navigate to but not reload back into.
+`GISCanvasPage.jsx` reads `Joint_Equivalent_M` in three places and
+`voltDrop.js` charges it, but nothing created the column — so
+`Number(vs.Joint_Equivalent_M) || 0` has resolved to 0 since the code
+went in, and the allowance has never fired.
 
-## Checks
+**The default is 3, and that changes existing figures.** Loop impedance
+and volt drop both move upward the first time a drawing is opened, in
+proportion to how many plot connections are on the route. The direction
+is the safe one — readings become more pessimistic — but it is a change
+to numbers that may already have been submitted. The file carries the
+one-line way to default it to 0 instead, and a query showing how much
+length each circuit will gain.
 
-```bash
-npm test          # every check*.mjs — navigation model, shell, HR, GIS, call-offs
-npm run check     # the above plus the Python source checks
-node checkall.mjs --only span     # just the ones matching "span"
-```
+## 3 — `ElectricSpecsAdmin.jsx`
 
-Both scripts go through `checkall.mjs`, which runs every check it finds
-and reports all of them rather than stopping at the first failure. It
-also tells a crash apart from a failure, because those mean different
-things: a check reporting "3 problem(s)" looked at something, and one
-that throws never got to look.
+Adds the field to Admin › Electric Specs › Volt Drop Limits. `.vd-grid`
+changes from `align-items: end` to `start`, because the new field
+carries a line of hint text and bottom-alignment pushed its input out of
+line with the rest of the row.
 
-The list of checks is **derived from the folder**, not hand-kept — a
-script on disk and not in a list never runs, and nothing notices. That
-had already happened twice. Anything deliberately excluded says why, in
-`NOT_A_SUITE_CHECK`.
+Run migration 2 first or the field renders empty and saving errors.
 
-These aren't decoration: each one caught a fault that had already
-shipped. `HANDOVER.md` lists what each covers, which `checkorder.py`
-hits are known false positives, and which checks currently fail and why.
+## 4 — `GISCanvasPage.jsx`
 
-## Going live against real data
+Two separate bugs, both the same shape: a context object built by hand
+instead of calling `sourceImpedance()`.
 
-1. **Apply the schema.**
-   ```bash
-   npm install -g supabase
-   supabase login
-   supabase link --project-ref <your-project-ref>
-   supabase db push
-   ```
-   `0001_project_model.sql` creates `Project`, `Project_Scope` and the status
-   tables alongside your existing ones. It drops nothing — the current app
-   keeps working.
+**The node labels** (~line 1284) read `VD_Transformer_Size_ID` off the
+station directly, which only a substation carries. On a POC-fed scheme
+the lookup found nothing, the cascade started at zero, and every label
+was low by exactly the declared loop impedance — while the levels check
+beside it showed the right figure. Two numbers for the same node.
 
-2. **Add your keys to `.env`.**
-   ```
-   VITE_SUPABASE_URL=https://<project>.supabase.co
-   VITE_SUPABASE_ANON_KEY=<anon key>
-   SUPABASE_SERVICE_ROLE_KEY=<service role key>
-   VITE_USE_MOCKS=false
-   ```
-   The `VITE_` prefix is a security boundary, not a naming convention. Prefixed
-   variables are bundled into the browser; unprefixed ones stay server-side.
-   The service role key must never gain a prefix.
+Observed on 2608/006: node A3 read `0.032 Ω` on the drawing and
+`0.0709 Ω` in the export. The difference, 0.0389, is the POC's declared
+0.039.
 
-   Human Resources reads two more, because it points at its own Supabase
-   project rather than this one — see **Human Resources** below:
-   ```
-   VITE_HR_SUPABASE_URL=https://<hr project>.supabase.co
-   VITE_HR_SUPABASE_ANON_KEY=<hr anon key>
-   ```
-   Both fall back to the values the standalone portal shipped with, so the
-   section works before either is set.
+`startPct` had precisely this problem on this same object and was fixed
+one release earlier, which is why the volt drop matched while the
+impedance did not.
 
-3. **Run `netlify dev`** and check the forms load real lookups.
+**`runScenario`** (~line 877) was worse: it searched for
+`Feature_Role === "substation"` and found nothing at all on a POC-fed
+scheme, so suggestions were worked out with no source impedance, no
+upstream volt drop, and the fallback voltage.
 
-4. **Migrate the data** — see `aptus360-project-model.md` §5 for the ordered
-   steps. Not scripted here; it needs decisions about the child-tender fold.
+All four call sites now use `sourceImpedance()` and carry `startPct`.
 
-## Deploying
+## 5 — `scenario.js`
 
-Push to GitHub, then in Netlify: **Add new site → Import an existing project**.
-Netlify detects Vite and fills in `npm run build` / `dist`. Add the same four
-environment variables under **Site configuration → Environment variables**.
+`suggestCableChanges` never accepted `startPct`, so `clears()` judged a
+node on the design's own volt drop while the levels check that flagged
+it judged the cumulative figure. On a POC-fed scheme the two differ by
+the declared percentage, and the search could call a node cleared that
+the check still fails — a suggestion that does not work, offered with a
+cost against it.
 
-After that, pushing to `main` deploys to production, and every pull request
-gets its own preview URL.
+---
 
-## Human Resources
+## Verification
 
-The **Human Resources** section is the former standalone HR Portal, mounted
-inside the shell rather than rewritten. It is still vanilla JS: React gives it
-a pane and it draws into it. `src/features/hr/hrPortal.js` explains the port in
-full; the short version is that rewriting sixteen modules as components would
-have been weeks of work and a regression in each, and any one module can be
-converted later without touching the other fifteen.
+Both migrations were run against PostgreSQL 16 on a schema built from
+`lookups.js`, `admin.js` and `ElectricSpecsAdmin.jsx`; both are
+idempotent and were re-run to confirm. Row counts land at 4 / 13 / 4 /
+37 / 66 / 1. The negative-value guard on `Joint_Equivalent_M` was tested
+and rejects.
 
-Two things about it differ from the rest of the app, and both are inherited
-from the standalone portal rather than introduced by the port:
+Both source files compile under esbuild. `checksourceimpedance.mjs`,
+`checkcablesizes.mjs` and `checkelectricsteps.mjs` all pass.
 
-- **It talks to a different Supabase project, directly from the browser**, with
-  the anon key, not through `/api/*`. So the note below about RLS and the anon
-  key does not hold for these screens: their access is governed entirely by
-  that project's own policies. Bringing HR onto this database is a migration
-  with about forty endpoints behind it, not a refactor.
-- **There is no sign-in on it.** The portal bypassed its own login and used the
-  anon key as the bearer token. Anyone who can open Aptus360 can open payroll
-  and sickness records. Worth closing before this reaches people who should not
-  see them.
+Worth knowing: `checksourceimpedance.mjs` passed **before** these fixes
+too. It asserts that `sourceImpedance` behaves, not that every caller
+uses it, which is how three call sites drifted apart. A check that
+counted the callers would have caught this.
 
-`node checkhr.mjs` mounts all sixteen modules in a simulated DOM with `fetch`
-stubbed and checks each one renders, icons draw, modals open in the right root,
-and the sidebar bridge does not double-render. Run it after touching anything
-in `src/features/hr/`.
+---
 
-## Notes
+## Not fixed — still open
 
-- **RLS is on with no policies** in the migration. That means the anon key can
-  read nothing, and all access goes through the functions. This is deliberate:
-  the legacy app disabled RLS and shipped the anon key in the browser.
-- **Functions time out at 10 seconds.** Heavy operations — bulk plot scans, the
-  Audacia invoice import — belong in Postgres functions called via RPC, not
-  here.
-- **No router.** `App.jsx` switches on a `view` string held in state and
-  remembered in session storage, so a reload returns you to the screen
-  you were on. Add `react-router-dom` when the URL needs to be
-  shareable — deep links and the back button are what you're trading away.
-- **JavaScript, not TypeScript.** Deliberate, to keep the ramp gentle. When you
-  do switch, `supabase gen types typescript --linked` generates types from the
-  schema, which is what stops the phantom-column problem recurring.
+**Output voltage is set to 240 on the POC.** This app treats `Output_V`
+as a LINE voltage and computes amps as `kVA × 1000 ÷ (√3 × V)`. The
+workbook's 240 is a PHASE voltage. Every current on 2608/006 is inflated
+by 67% — E0→A1 reads 328.4 A where 400 V gives 197 A. This is a data
+change, not a code one: set it to 400 or clear it. A validation warning
+on the field would be worth adding.
 
-## Next steps
+**The service cable is not in the ELI.** `voltDrop.js` walks span nodes
+on the main only and never adds the service from the main to the
+cut-out. The workbook does — `SUBMIT` row 27 is a separate Services
+line, and the total at `E30` is mains + service + POC. The INA standard
+measures its 250 mΩ limit to the end of the service, so a mains-only
+figure is being compared against the limit in the lenient direction. A
+15–25 m service adds roughly 0.015–0.030 Ω.
 
-See the open work list at the foot of `HANDOVER.md`, which is kept
-current. In short: HR has no sign-in and that's the one item that's a
-disclosure risk rather than a missing feature; three SQL migrations were
-pasted into Supabase by hand and never committed, so the repo is not a
-complete record of the schema; the pickers still need moving to
-`Organisation_ID`; and `GISCanvasPage.jsx` has reached 12,000 lines and
-wants breaking up.
+**Block load and small-group diversity are not modelled.** The workbook
+adds both to every section's weighted load. Reproducing section 1 of the
+sample sheet: workbook 1.9416%, app 1.7372% — 10.5% low, and that is the
+best case where per-plot kVA equals the 5.01 ADMD.
+
+**One volt drop limit, not two.** The workbook splits it 5% to end of
+main + 2% service. The app applies a single 7% to the main alone.
+
+**Balanced/unbalanced is global, not per scheme.** The workbook sets it
+per calculation at `regulat.xls!J5`. Here it is one row in
+`Electric_VD_Setting` applied to every project, so a mixed portfolio
+cannot be represented and no record survives of which setting a given
+design was checked under. It would sit naturally on the POC or
+substation, beside `Source_Loop_Impedance_Ohm`.
+
+**Migration `0082` contradicts the running code.** It creates
+`Electric_Cable_Size_ID` where `lookups.js` reads `Cable_Size_ID`, and
+notes the column names are "0027's" — a migration not present in the
+repo. Stale and misleading against a fresh database.

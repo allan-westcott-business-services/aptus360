@@ -863,14 +863,23 @@ export default function GISCanvasPage() {
      become since. Nothing is written: it is a suggestion, and applying
      it is a decision. */
   function runScenario() {
-    const station = features.find((f) => f.Feature_Role === "substation");
+    /* Whichever the network is fed from, not a substation specifically.
+       This searched for `Feature_Role === "substation"` and found
+       nothing on a POC-fed scheme — so the suggestions were worked out
+       with no source impedance, no upstream volt drop and the fallback
+       voltage, and could report a cable change as clearing a node that
+       it does not clear. The levels check being judged against has used
+       lvOrigin since sourceImpedance was added; this did not. */
+    const station = lvOrigin(features);
     const common = {
       cables: lookups?.cableSizes || [],
       cableTypes: lookups?.cableTypes || [],
-      transformer: (lookups?.transformerSizes || []).find((t) =>
-        String(t.Transformer_Size_ID)
-          === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+      transformer: sourceImpedance(station, lookups?.transformerSizes || []),
       voltageV: voltageOf(station),
+      /* What the feeding network already spent. Without it a node that
+         fails only once the POC's share is counted looks like it is
+         already inside its limit, and no change is suggested for it. */
+      startPct: upstreamVoltDropPct(station),
       settings: trace?.limits || {},
     };
 
@@ -1260,9 +1269,19 @@ export default function GISCanvasPage() {
     const ctx = {
       cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
       cableTypes: lookups?.cableTypes || [],
-      transformer: (lookups?.transformerSizes || []).find((t) =>
-        String(t.Transformer_Size_ID)
-          === String(station?.Attributes?.VD_Transformer_Size_ID)) || null,
+      /* Whichever the network is fed from.
+
+         This read VD_Transformer_Size_ID off the station directly, which
+         only a substation carries. On a POC-fed scheme the find returned
+         nothing, the cascade started at zero, and every label on the
+         drawing was low by exactly the declared loop impedance — while
+         the levels check beside it, which calls sourceImpedance, showed
+         the right figure. Two numbers for the same node.
+
+         The same miss as startPct on the line below, which was fixed
+         here and left the impedance behind: the volt drop on the labels
+         has been right since, and the ohms have not. */
+      transformer: sourceImpedance(station, lookups?.transformerSizes || []),
       voltageV: voltageOf(station),
       /* What the feeding network already used, from the POC.
 

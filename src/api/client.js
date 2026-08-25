@@ -81,7 +81,14 @@ export const http = {
   post: (p, body, o) => request(p, { ...o, method: "POST", body }),
   patch: (p, body, o) => request(p, { ...o, method: "PATCH", body }),
   put: (p, body, o) => request(p, { ...o, method: "PUT", body }),
-  del: (p, o) => request(p, { ...o, method: "DELETE" }),
+  /* A body, optionally. Every other verb here takes one in the second
+     argument and this did not, so `del(path, { submissionId })` read
+     the body as options and sent nothing — an endpoint asking "which
+     one?" and a caller that thought it had said. Kept optional, so the
+     existing callers passing options still work. */
+  del: (p, body, o) => (body && typeof body === "object" && !("headers" in body)
+    ? request(p, { ...o, method: "DELETE", body })
+    : request(p, { ...body, method: "DELETE" })),
 };
 
 export { ApiError };

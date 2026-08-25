@@ -187,7 +187,108 @@ function DesignLayer({ vector, size }) {
   );
 }
 
-export default function SketchBackdrop({ vector, plan, fallback, size = 1000, zoom = 1 }) {
+/* The office's attachment, rendered whole and fit to the pane.
+
+   No calibration: this is a sheet, not a layer registered against the
+   drawing's coordinates. It is shown as issued and the gang marks on
+   top of it — which is what the original application did, and what
+   three rounds of deriving a backdrop from the GIS canvas failed to
+   do reliably.
+
+   A PDF is re-rendered at the zoom being shown, so it stays sharp
+   however far in somebody goes. That is the whole reason to prefer a
+   PDF over an export of one. */
+function AttachedDrawing({ drawing, size, zoom }) {
+  const ref = useRef(null);
+  const docRef = useRef(null);
+  const busy = useRef(false);
+  const want = useRef(null);
+  const [err, setErr] = useState("");
+
+  async function draw() {
+    const doc = docRef.current;
+    const cv = ref.current;
+    if (!doc || !cv) return;
+    if (busy.current) { want.current = zoom; return; }
+    busy.current = true;
+    try {
+      const page = await doc.getPage(1);
+      const base = page.getViewport({ scale: 1 });
+      /* Fit the sheet into the square, then multiply by the zoom. The
+         ceiling is what stops a pinch to 6x asking for a canvas the
+         browser refuses to make — the failure there is a blank pane
+         rather than an error, which is the worst way to fail. */
+      const fit = Math.min(size / base.width, size / base.height);
+      const s = Math.min(8, fit * zoom);
+      const vp = page.getViewport({ scale: s });
+
+      cv.width = Math.max(1, Math.round(vp.width));
+      cv.height = Math.max(1, Math.round(vp.height));
+      const ctx = cv.getContext("2d", { alpha: false });
+      ctx.fillStyle = "#ffffff";
+      ctx.fillRect(0, 0, cv.width, cv.height);
+      await page.render({ canvasContext: ctx, viewport: vp }).promise;
+    } catch (e) {
+      setErr(e.message || "The drawing could not be drawn.");
+    } finally {
+      busy.current = false;
+      const q = want.current;
+      want.current = null;
+      if (q != null && q !== zoom) draw();
+    }
+  }
+
+  useEffect(() => {
+    let live = true;
+    if (drawing?.kind !== "pdf" || !drawing?.url) return undefined;
+    (async () => {
+      try {
+        const pdfjs = await import("pdfjs-dist");
+        const worker = await import("pdfjs-dist/build/pdf.worker.min.mjs?url");
+        pdfjs.GlobalWorkerOptions.workerSrc = worker.default;
+        const doc = await pdfjs.getDocument({ url: drawing.url }).promise;
+        if (!live) return;
+        docRef.current = doc;
+        draw();
+      } catch (e) {
+        if (live) setErr(e.message || "The drawing could not be opened.");
+      }
+    })();
+    return () => { live = false; docRef.current = null; };
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [drawing?.url]);
+
+  useEffect(() => {
+    const t = setTimeout(draw, 120);
+    return () => clearTimeout(t);
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [zoom, size]);
+
+  if (drawing?.kind !== "pdf") {
+    return <img className="jf-planlayer" src={drawing.url}
+      alt={drawing.name || "Design drawing"} draggable={false} />;
+  }
+  return (
+    <>
+      <canvas ref={ref} className="jf-planlayer jf-fitted" />
+      {err && <p className="jf-planerr">{err}</p>}
+    </>
+  );
+}
+
+export default function SketchBackdrop({
+  drawing, vector, plan, fallback, size = 1000, zoom = 1,
+}) {
+  /* ── The office's drawing wins ──
+
+     It is the issued design, at the revision the office chose, and it
+     is the sheet the gang is working from. Everything below it is
+     derived from the GIS canvas — useful, and three rounds of faults
+     deep before anybody noticed it had never once shown a map. */
+  if (drawing?.url) {
+    return <AttachedDrawing drawing={drawing} size={size} zoom={zoom} />;
+  }
+
   /* No vector payload: every call-off raised before this existed. The
      PNG pixelates, which is why this work happened — but a pixelated
      drawing beats no drawing, and re-taking is a choice somebody makes

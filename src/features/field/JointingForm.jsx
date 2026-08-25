@@ -214,7 +214,7 @@ const DIMENSION = { kind: "dim", label: "0.0 m" };
 
    The image handed out on change is that data rendered — so what the
    office receives is still a picture. */
-function JointSketch({ vector, plan, fallback, value, onChange }) {
+function JointSketch({ drawing, vector, plan, fallback, value, onChange }) {
   const wrap = useRef(null);
   const [view, setView] = useState({ z: 1, x: 0, y: 0 });
   const [bg, setBg] = useState(true);
@@ -233,7 +233,11 @@ function JointSketch({ vector, plan, fallback, value, onChange }) {
 
   const commit = (next) => onChange(JSON.stringify({ v: 1, shapes: next }));
 
-  const drawing = useRef(null);
+  /* The stroke being drawn right now. Named `stroke` rather than
+     `drawing`, which is the noun this feature uses for the sheet the
+     office attached — one word for two things in one component is how
+     the wrong one gets read. */
+  const stroke = useRef(null);
   const drag = useRef(null);
 
   const at = (e) => {
@@ -252,7 +256,7 @@ function JointSketch({ vector, plan, fallback, value, onChange }) {
       if (hit) drag.current = { id: hit.id, from: p };
       return;
     }
-    drawing.current = { id: `s${Date.now()}`, kind: "ink", colour, size, pts: [p] };
+    stroke.current = { id: `s${Date.now()}`, kind: "ink", colour, size, pts: [p] };
     e.currentTarget.setPointerCapture?.(e.pointerId);
   };
 
@@ -266,15 +270,15 @@ function JointSketch({ vector, plan, fallback, value, onChange }) {
       commit(shapes.map((s) => (s.id === drag.current.id ? shift(s, dx, dy) : s)));
       return;
     }
-    if (!drawing.current) return;
-    drawing.current.pts.push(p);
-    commit([...shapes.filter((s) => s.id !== drawing.current.id), { ...drawing.current }]);
+    if (!stroke.current) return;
+    stroke.current.pts.push(p);
+    commit([...shapes.filter((s) => s.id !== stroke.current.id), { ...stroke.current }]);
   };
 
   const up = () => {
-    if (drawing.current) commit([...shapes.filter((s) => s.id !== drawing.current.id),
-      { ...drawing.current }]);
-    drawing.current = null;
+    if (stroke.current) commit([...shapes.filter((s) => s.id !== stroke.current.id),
+      { ...stroke.current }]);
+    stroke.current = null;
     drag.current = null;
   };
 
@@ -342,18 +346,19 @@ function JointSketch({ vector, plan, fallback, value, onChange }) {
         onPointerMove={(e) => { panMove(e); move(e); }}
         onPointerUp={() => { panUp(); up(); }}
         onPointerLeave={() => { panUp(); up(); }}>
-        {bg && (vector || fallback) && (
+        {bg && (drawing || vector || fallback) && (
           <div className="jf-sketchbg"
             style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
             {/* The zoom goes in, so the plan is re-rendered from the PDF
                 at the size it is being shown rather than stretched. */}
-            <SketchBackdrop vector={vector} plan={plan} fallback={fallback}
-              zoom={view.z} />
+            <SketchBackdrop drawing={drawing} vector={vector} plan={plan}
+              fallback={fallback} zoom={view.z} />
           </div>
         )}
-        {bg && !vector && !fallback && (
+        {bg && !drawing && !vector && !fallback && (
           <p className="jf-nobg">
-            No as-laid drawing was captured when this call-off was raised.
+            No drawing on this call-off. The office attaches one from the
+            Call Offs page.
           </p>
         )}
         <svg className="jf-sketchink" viewBox="0 0 100 100" preserveAspectRatio="none">
@@ -803,8 +808,8 @@ export default function JointingForm({ job, payload, set, setPlot }) {
               {/* ── The sketch, over the as-laid drawing ── */}
               <div className="jf-card jf-last">
                 <div className="jf-card-title">Joint Location Sketch</div>
-                <JointSketch vector={job?.vector} plan={job?.plan}
-                  fallback={job?.asLaid}
+                <JointSketch drawing={job?.drawing} vector={job?.vector}
+                  plan={job?.plan} fallback={job?.asLaid}
                   value={a.sketch || ""}
                   onChange={(v) => setAns(k, { sketch: v })} />
                 <div className="jf-field jf-full" style={{ marginTop: 12 }}>
@@ -979,6 +984,10 @@ const CSS = `
   pointer-events:none; user-select:none; }
 .jf-sketchbg > *{ position:absolute; inset:0; width:100%; height:100%; }
 .jf-planlayer{ object-fit:contain; }
+/* The attached sheet is fitted, not stretched — a drawing squashed to a
+   square is a drawing whose dimensions lie. */
+.jf-fitted{ width:100% !important; height:100% !important; object-fit:contain;
+  inset:0; margin:auto; }
 .jf-designlayer{ overflow:visible; }
 .jf-planerr{ position:absolute; left:0; right:0; bottom:6px; margin:0;
   text-align:center; font-size:11.5px; color:#991b1b; }

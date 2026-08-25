@@ -97,3 +97,25 @@ export async function saveSpanImage({ spanId, dataUrl }) {
 export async function saveAsLaidImage({ submissionId, dataUrl }) {
   return http.post("/call-off-as-laid", { submissionId, dataUrl });
 }
+
+/* The design drawing the office attaches to a call-off.
+
+   Sent as a data URL through a function, for the same reason the
+   as-laid picture is: the browser's key can write nothing, so storage
+   goes the way everything else does. */
+export async function saveCallOffDrawing({ submissionId, dataUrl, name }) {
+  return http.post("/call-off-drawing", { submissionId, dataUrl, name });
+}
+
+/* What is attached, asked of the endpoint that owns the columns.
+
+   Not read off the call-off row: calloffs.js keeps an explicit column
+   list and leaves these out on purpose, because naming a column the
+   running database might not have broke the raise path once already. */
+export async function getCallOffDrawing({ submissionId }) {
+  return http.get(`/call-off-drawing?submissionId=${submissionId}`);
+}
+
+export async function removeCallOffDrawing({ submissionId }) {
+  return http.del("/call-off-drawing", { submissionId });
+}

@@ -139,7 +139,11 @@ export default withAuth(async function handler(req, context, user) {
              — the public one is built below, so renaming the bucket
              does not strand every row. */
           .select("Submission_ID,Site_Name,Site_Address,AP_Number,Project_ID,"
-            + "As_Laid_Path,As_Laid_Captured_At,GIS_Data")
+            + "As_Laid_Path,As_Laid_Captured_At,GIS_Data,"
+            /* The drawing the office attached (0188). The sheet the
+               gang actually works from, and the one the sketch page
+               renders behind itself. */
+            + "Drawing_Path,Drawing_Name")
           .in("Submission_ID",
             [...new Set(assignments.map((a) => a.Submission_ID).filter(Boolean))])
         : Promise.resolve({ data: [] }),
@@ -251,6 +255,28 @@ export default withAuth(async function handler(req, context, user) {
            the zoom being shown. asLaid stays for the fallback and for
            every call-off raised before this existed. */
         vector: released ? (s.GIS_Data?.vector ?? null) : null,
+
+        /* ── The drawing behind the sketch ──
+
+           The office's attachment wins where there is one. It is the
+           issued design, at the revision the office chose, and being a
+           PDF it stays sharp however far a gang zooms in — where the
+           rendered plan below is derived, can go stale, and had three
+           separate faults in it before anybody noticed it had never
+           worked.
+
+           The derived one stays as the fallback: it is what every
+           call-off raised before 0188 has, and a stale drawing beats a
+           blank page over a hole. */
+        drawing: released && s.Drawing_Path
+          ? {
+            url: db.storage.from("call-off-drawing")
+              .getPublicUrl(s.Drawing_Path).data.publicUrl,
+            name: s.Drawing_Name ?? null,
+            kind: /\.pdf$/i.test(s.Drawing_Path) ? "pdf" : "image",
+          }
+          : null,
+
         plan: released ? (s.GIS_Data?.plan ?? null) : null,
       };
     });

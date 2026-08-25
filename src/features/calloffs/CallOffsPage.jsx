@@ -8,7 +8,9 @@ import { getLookups } from "../../api/lookups.js";
 import { getProject, listProjects } from "../../api/projects.js";
 import { openProject } from "../../lib/projectIntent.js";
 import { openGis } from "../../lib/gisIntent.js";
-import { setPlotEnergisation } from "../../api/calloffs.js";
+import {
+  setPlotEnergisation, saveCallOffDrawing, removeCallOffDrawing, getCallOffDrawing,
+} from "../../api/calloffs.js";
 import { energisationFloor, dayAfter, byUtilityColumn, isDigTask } from "./rules.js";
 import { isJointTask, jointEstimate, jointEstimateText } from "../gis/jointRate.js";
 import { halfDaysText } from "./digDays.js";
@@ -1534,6 +1536,130 @@ function CallOffDetail({ row, onBack, onMove, onSave, onReload, onDelete }) {
    Loads its own data rather than taking it from the page: the page lists
    call-offs and has no reason to carry teams and crafts for the one that
    happens to be open. */
+/* The design drawing on a call-off.
+
+   Self-contained: it holds what it knows about the attachment rather
+   than asking the page to reload around it. Attaching a file is not a
+   change to the booking, and refetching the whole call-off to show a
+   file name is a redraw a planner did not ask for in the middle of
+   assigning teams. */
+function CallOffDrawing({ row }) {
+  const id = row?.Submission_ID;
+  const [name, setName] = useState(null);
+  const [has, setHas] = useState(false);
+  const [busy, setBusy] = useState("");
+  const [err, setErr] = useState("");
+
+  /* Asked of the endpoint that owns the columns, not read off the row.
+     A database without 0188 answers "no drawing" rather than failing —
+     so this screen keeps working on an instance where the migration has
+     not been pasted in yet. */
+  useEffect(() => {
+    let live = true;
+    if (!id) return undefined;
+    getCallOffDrawing({ submissionId: id })
+      .then((r) => {
+        if (!live) return;
+        setName(r?.drawing?.name ?? null);
+        setHas(!!r?.drawing);
+      })
+      .catch(() => { /* No drawing is the safe reading. */ });
+    return () => { live = false; };
+  }, [id]);
+
+  if (!id) return null;
+
+  async function attach(file) {
+    if (!file) return;
+    setErr("");
+    /* Checked here as well as at the endpoint. The endpoint checks the
+       signature because it must; this checks the size because a
+       planner on a site office connection should be told before
+       spending four minutes uploading something that will be refused. */
+    if (file.size > 25 * 1024 * 1024) {
+      setErr("That file is over 25 MB. Attach the drawing sheet rather "
+        + "than the whole issue set.");
+      return;
+    }
+    setBusy("up");
+    try {
+      const dataUrl = await new Promise((res, rej) => {
+        const r = new FileReader();
+        r.onload = () => res(String(r.result));
+        r.onerror = () => rej(new Error("That file could not be read."));
+        r.readAsDataURL(file);
+      });
+      const out = await saveCallOffDrawing({ submissionId: id, dataUrl, name: file.name });
+      setName(out?.name ?? file.name);
+      setHas(true);
+    } catch (e) {
+      setErr(e.message || "That drawing could not be attached.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  async function remove() {
+    setErr("");
+    setBusy("del");
+    try {
+      await removeCallOffDrawing({ submissionId: id });
+      setName(null);
+      setHas(false);
+    } catch (e) {
+      setErr(e.message || "That drawing could not be removed.");
+    } finally {
+      setBusy("");
+    }
+  }
+
+  return (
+    <div className="co-drawing">
+      <h4>
+        Design drawing
+        {has && <span className="co-drawing-ok">Attached</span>}
+      </h4>
+      <p className="hint">
+        The sheet the gang works from. Rendered behind the sketch page of
+        every jointing work instruction raised from this call-off, so
+        joint positions are marked against the issued design. A PDF stays
+        sharp however far they zoom in.
+      </p>
+
+      {has ? (
+        <div className="co-drawing-row">
+          <span className="co-drawing-name">{name || "Drawing attached"}</span>
+          <label className="btn ghost sm">
+            {busy === "up" ? "Replacing\u2026" : "Replace"}
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg" hidden
+              disabled={!!busy}
+              onChange={(e) => { attach(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          <button type="button" className="btn ghost sm" disabled={!!busy}
+            onClick={remove}>
+            {busy === "del" ? "Removing\u2026" : "Remove"}
+          </button>
+        </div>
+      ) : (
+        <div className="co-drawing-row">
+          <label className="btn accent sm">
+            {busy === "up" ? "Attaching\u2026" : "Attach drawing"}
+            <input type="file" accept=".pdf,.png,.jpg,.jpeg" hidden
+              disabled={!!busy}
+              onChange={(e) => { attach(e.target.files?.[0]); e.target.value = ""; }} />
+          </label>
+          <span className="hint">
+            PDF, PNG or JPEG. Nothing attached &mdash; the sketch falls back
+            to the picture the canvas rendered.
+          </span>
+        </div>
+      )}
+
+      {err && <p className="co-drawing-err">{err}</p>}
+    </div>
+  );
+}
+
 function Assignments({ row }) {
   const [phases, setPhases] = useState([]);
   const [teams, setTeams] = useState([]);
@@ -2708,6 +2834,22 @@ function Assignments({ row }) {
           where the booking is made. The instruction is read on a road;
           the decision about how long the visit takes is made on this
           screen. */}
+      {/* ── The drawing the gang works from ──
+
+          Attached here, by the office, on the call-off. The sketch page
+          of every jointing work instruction raised from it renders this
+          behind itself, so joint positions are marked against the
+          issued design.
+
+          Attached rather than derived. The application can render its
+          own picture off the GIS canvas and does — but that route had
+          three faults stacked in it, each hiding the next, and had
+          never once shown a site plan on a tablet. The office already
+          holds the drawing as a PDF; sending that is one step, cannot
+          go stale against a revision nobody told the canvas about, and
+          stays sharp however far a gang zooms in. */}
+      <CallOffDrawing row={row} />
+
       {breech?.plots?.length > 0 && (
         <div className="co-breech">
           {/* ── The two sets of connections, as sets ──
@@ -4094,6 +4236,18 @@ const CSS = FILTER_CSS + `
    visit rather than a booking to make: how many connections the gang
    has to make before they reach the meter, which is what decides how
    long the visit takes. */
+.co-drawing { border: 1px solid #dbe3ec; background: #f8fafc; border-radius: 8px;
+  padding: 12px 14px; margin-bottom: 12px; }
+.co-drawing h4 { margin: 0 0 4px; font-size: 14px; font-weight: 600;
+  display: flex; align-items: center; gap: 8px; }
+.co-drawing-ok { font-size: 10.5px; font-weight: 700; letter-spacing: .08em;
+  text-transform: uppercase; color: #0f766e; background: #e6f2f0;
+  border-radius: 999px; padding: 2px 8px; }
+.co-drawing-row { display: flex; align-items: center; gap: 8px; flex-wrap: wrap;
+  margin-top: 8px; }
+.co-drawing-name { font-size: 13px; font-weight: 600; word-break: break-all;
+  margin-right: auto; }
+.co-drawing-err { margin: 8px 0 0; font-size: 12.5px; color: #991b1b; font-weight: 600; }
 .co-breech { border: 1px solid #fcd34d; background: #fffbeb; border-radius: 8px;
   padding: 12px 14px; margin-bottom: 14px; }
 .co-breech h4 { margin: 0 0 4px; font-size: 13px; font-weight: 700;

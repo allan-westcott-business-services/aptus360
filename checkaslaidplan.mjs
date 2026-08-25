@@ -154,6 +154,66 @@ const planReason = (() => {
   if (!angry) fail("a plan that throws lost the whole drawing");
 }
 
+// 5. The plan lands in the picture, at real coordinates.
+//
+//    ── The fault ──
+//
+//    asLaidImage's `at` returned an array and spanImage's near-copy
+//    returned an object. Nothing in asLaidImage noticed: every use
+//    there destructures `const [x, y] = at(...)` and an array obliges.
+//
+//    planLayer does not. It hands drawTile a mapper and reads `p.x` and
+//    `p.y` off the result — so from asLaidImage it read undefined, drew
+//    the site plan at NaN, and threw nothing. The as-laid drawing came
+//    out as cable on white, indistinguishable from one captured before
+//    a plan was ever set up. spanImage, with the object form, had been
+//    putting its plan in correctly the whole time.
+//
+//    Drawn here the way planLayer draws it, and the numbers checked.
+//    Asserting that `at` returns an object would pass on a module that
+//    returns the right shape and the wrong numbers.
+{
+  let drawn = null;
+  const ctx = new Proxy({}, {
+    get: (t, p) => (p === "drawImage"
+      ? ((...a) => { drawn = a.slice(1); })
+      : (typeof p === "string" ? () => {} : undefined)),
+    set: () => true,
+  });
+  const electric = [{
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [50, 0]],
+  }];
+
+  /* planLayer's own call: drawTile reads p.x and p.y off the mapper. */
+  const plan = {
+    opacity: 0.6,
+    draw: (c, mapper, viewScale) => {
+      const q = mapper([0, 0]);
+      c.drawImage({}, q.x, q.y, 100 * viewScale, 80 * viewScale);
+    },
+  };
+  drawAsLaid(ctx, { electric, seeds: [], joints: [], plan });
+
+  if (!drawn) fail("the plan was never drawn into the picture");
+  else if (!drawn.slice(0, 2).every(Number.isFinite)) {
+    fail(`the plan was drawn at ${drawn[0]}, ${drawn[1]} — it is invisible`);
+  }
+
+  /* And the two modules answer alike, which is what stops this coming
+     back the next time one of them is edited. */
+  const a = readFileSync("./src/features/gis/asLaidImage.js", "utf8");
+  const b = readFileSync("./src/features/gis/spanImage.js", "utf8");
+  const shapeOf = (src) => (/const at = \(view, p\) => \(\{/.test(src) ? "object"
+    : /const at = \(view, p\) => \[/.test(src) ? "array" : "unknown");
+  if (shapeOf(a) !== "object") {
+    fail(`asLaidImage's at() returns ${shapeOf(a)} — planLayer reads .x and .y`);
+  }
+  if (shapeOf(a) !== shapeOf(b)) {
+    fail(`asLaidImage's at() returns ${shapeOf(a)} and spanImage's ${shapeOf(b)}`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The as-laid drawing carries its site plan (or says why not, and can be re-taken).");
 process.exit(bad ? 1 : 0);

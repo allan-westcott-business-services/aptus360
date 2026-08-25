@@ -39,10 +39,26 @@ export const HEIGHT = 900;
 /* Metres to pixels, for a fitted view. Local because `at` is not
    exported from spanImage — and it is two multiplications, which is
    below the threshold where sharing costs less than it saves. */
-const at = (view, p) => [
-  p[0] * view.scale + view.x,
-  p[1] * view.scale + view.y,
-];
+/* ── Returns {x, y}, the same as spanImage's ──
+
+   This returned an array, and spanImage's near-copy returned an object.
+   Nothing here noticed, because every use in this file destructures
+   `const [x, y] = at(...)` and an array obliges.
+
+   planLayer does not. It hands drawTile a mapper and reads `p.x` and
+   `p.y` off what comes back — so from this module it read undefined,
+   drew the site plan at NaN, and threw nothing. The as-laid drawing
+   came out as cable on white, looking exactly like a drawing captured
+   before a plan was ever set up. spanImage, with the object form, put
+   its plan in correctly the whole time.
+
+   Fault 13: one fact with two homes, and the copies drifted. Made to
+   agree rather than adapted at the handoff, so the next thing to call
+   `at` gets the same answer from either module. */
+const at = (view, p) => ({
+  x: p[0] * view.scale + view.x,
+  y: p[1] * view.scale + view.y,
+});
 
 /* Every point of a feature's geometry, whatever shape it is.
 
@@ -127,7 +143,7 @@ export function drawAsLaid(ctx, {
   for (const s of seeds) {
     const p = pointsOf(s)[0];
     if (!p) continue;
-    const [x, y] = at(view, p);
+    const { x, y } = at(view, p);
     ctx.globalAlpha = 0.25;
     ctx.beginPath();
     ctx.arc(x, y, 11, 0, Math.PI * 2);
@@ -162,7 +178,7 @@ export function drawAsLaid(ctx, {
     ctx.lineWidth = isService ? 2.5 : 4.5;
     ctx.beginPath();
     pts.forEach((p, i) => {
-      const [x, y] = at(view, p);
+      const { x, y } = at(view, p);
       if (i === 0) ctx.moveTo(x, y); else ctx.lineTo(x, y);
     });
     ctx.stroke();
@@ -183,7 +199,7 @@ export function drawAsLaid(ctx, {
   for (const j of joints) {
     const p = pointsOf(j)[0];
     if (!p) continue;
-    const [x, y] = at(view, p);
+    const { x, y } = at(view, p);
     ctx.fillStyle = "#fde047";
     ctx.beginPath();
     ctx.rect(x - 6, y - 6, 12, 12);

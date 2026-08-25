@@ -145,6 +145,7 @@ import { breechSummary, jointLabel, plotNumberFrom } from "./serviceBreech.js";
 import { cableSizes } from "./cableSizes.js";
 import { sealLeg } from "./bottleEnd.js";
 import { planLayer, planReason } from "./planLayer.js";
+import { asLaidVector, planRef } from "./asLaidVector.js";
 import { listAgreements } from "../../api/av.js";
 import { listPoc } from "../../api/poc.js";
 import { useAuth } from "../../lib/AuthContext.jsx";
@@ -9866,8 +9867,31 @@ export default function GISCanvasPage() {
             features, b,
             b.plots.map((r) => r.plotId).filter((id) => id != null));
 
+          /* ── The design as vectors, beside the picture ──
+
+             The PNG is still taken: it is what the office prints and
+             what an older tablet falls back to. This is what the
+             jointing sketch actually draws over, because a gang zooms
+             in to mark where a joint sits and a raster two steps in is
+             a staircase.
+
+             Coordinates and a reference to the plan file, not pixels —
+             a few hundred bytes against two hundred kilobytes, and it
+             draws crisp at any zoom because the tablet renders it at
+             the zoom it is showing. */
+          const vector = asLaidVector(
+            [...asLaidFeatures(features), ...features.filter((f) => f.Feature_Role === "plot")],
+            {
+              colour: layers.find((l) => l.Layer_Key === "electric")?.Colour ?? null,
+              plotNumberOf: (id) => plotNumberFrom(plotList, id),
+            },
+          );
+          const plan = planRef(basemap);
+
           traced = {
             breech: b,
+            ...(vector ? { vector } : {}),
+            ...(plan ? { plan } : {}),
             ...(Object.keys(sizes).length ? { sizes } : {}),
             ...(seals.length ? { seals } : {}),
           };
@@ -10206,9 +10230,10 @@ export default function GISCanvasPage() {
      Deliberately not automatic. Re-taking changes what a gang sees
      against work that may already be booked, and doing that quietly
      when somebody opens a project is worse than leaving it wrong. */
-  async function retakeAsLaid(submissionId) {
+  async function retakeAsLaid() {
     setBusy("retake");
     setError("");
+    setStatus("");
     try {
       const electric = asLaidFeatures(features).filter((f) =>
         f.Feature_Type !== "point");
@@ -10216,6 +10241,19 @@ export default function GISCanvasPage() {
         setError("There is no electric design on this drawing to take.");
         return;
       }
+
+      /* Every service call-off on this project. They all draw their
+         jointing sketches over this same picture, and the fault that
+         made this necessary spoiled all of them at once — so re-taking
+         one at a time would be asking somebody to remember which. */
+      const res = await listCallOffs(projectId);
+      const targets = (res.rows || [])
+        .filter((co) => co.Selection_Mode !== "Span" && co.Submission_ID != null);
+      if (!targets.length) {
+        setError("There are no service call-offs on this project to re-take.");
+        return;
+      }
+
       const joints = features.filter((f) =>
         String(f.Layer_Key || "") === "electric" && f.Feature_Role === "joint");
       const seeds = features.filter((f) => f.Feature_Role === "plot");
@@ -10231,19 +10269,19 @@ export default function GISCanvasPage() {
         scale: view.scale,
       };
 
-      /* Said before anything is overwritten. Replacing a drawing that
-         has the plan with one that does not is the one outcome worse
-         than leaving it alone. */
+      /* Checked before anything is overwritten. Replacing a drawing
+         that has the plan with one that does not is the single outcome
+         worse than leaving it alone. */
       const why = planReason(planArgs);
       if (why) {
-        setError(`The drawing was not re-taken: ${why}.`);
+        setError(`Nothing was re-taken: ${why}.`);
         return;
       }
 
       const plan = await planLayer(planArgs).catch(() => null);
       if (!plan) {
-        setError("The drawing was not re-taken: the plan covered none of "
-          + "the design. Check the plan is positioned over it.");
+        setError("Nothing was re-taken: the plan covered none of the design. "
+          + "Check it is positioned over the drawing.");
         return;
       }
 
@@ -10255,14 +10293,27 @@ export default function GISCanvasPage() {
         plan,
       });
       if (!dataUrl) {
-        setError("The drawing was not re-taken: nothing rendered.");
+        setError("Nothing was re-taken: the drawing did not render.");
         return;
       }
 
-      await saveAsLaidImage({ submissionId, dataUrl });
-      setStatus("As-laid drawing re-taken, with the site plan behind it. "
-        + "Any jointing sketch on this call-off will show it from now on.");
-      setTimeout(() => setStatus(""), 12000);
+      /* One picture, saved against each call-off. The design is the
+         same for all of them, so it is rendered once — a project with
+         thirty call-offs would otherwise render thirty identical PDFs. */
+      let done = 0;
+      let failed = 0;
+      for (const co of targets) {
+        try {
+          await saveAsLaidImage({ submissionId: co.Submission_ID, dataUrl });
+          done += 1;
+        } catch { failed += 1; }
+      }
+
+      setStatus(`As-laid drawing re-taken for ${done} call-off`
+        + `${done === 1 ? "" : "s"}, with the site plan behind it`
+        + `${failed ? `. ${failed} could not be saved` : ""}. `
+        + "Jointing sketches will show it from now on.");
+      setTimeout(() => setStatus(""), 15000);
     } catch (e) {
       setError(e.message);
     } finally {
@@ -17202,6 +17253,27 @@ export default function GISCanvasPage() {
                         setAskAnother(false);
                         if (callOffOpen) setRanges([]);
                       }} />
+
+                    {/* ── Taking the picture again ──
+
+                        Every jointing sketch is drawn over a PNG of this
+                        design, rendered when its call-off was raised.
+                        Until this existed, saveAsLaidImage had one call
+                        site — the raise — so a drawing captured wrongly
+                        was wrong permanently, and the message on the
+                        failure path told people it "can be taken again
+                        from the call-off" when nothing offered that.
+
+                        Here because it reads the drawing and does not
+                        change it, which is what this menu is for. Not
+                        automatic: it changes what a gang sees against
+                        work that may already be booked, and doing that
+                        quietly when somebody opens a project is worse
+                        than leaving it wrong. */}
+                    <MenuItem label="Re-take Call-off Drawings"
+                      hint="Render the as-laid picture again, with the site plan behind it"
+                      disabled={!!busy || !projectId}
+                      onClick={retakeAsLaid} />
 
                     {/* A service call-off: a set of plots and what is
                         being connected to them. Beside the mains one

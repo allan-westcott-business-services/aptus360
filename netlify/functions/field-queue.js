@@ -242,6 +242,16 @@ export default withAuth(async function handler(req, context, user) {
            gang typing sizes from memory onto the sheet that records
            what was jointed. */
         sizes: released ? (s.GIS_Data?.sizes ?? null) : null,
+
+        /* The design as geometry, and where the site plan file is.
+
+           The tablet draws the sketch backdrop from these rather than
+           from the PNG below, so zooming in on a joint stays sharp:
+           the cable is a path and the plan is a PDF page rendered at
+           the zoom being shown. asLaid stays for the fallback and for
+           every call-off raised before this existed. */
+        vector: released ? (s.GIS_Data?.vector ?? null) : null,
+        plan: released ? (s.GIS_Data?.plan ?? null) : null,
       };
     });
 

@@ -72,6 +72,18 @@ const JOB = {
   nodeRange: "A1, A2",
   siteName: "Foo Meadows",
   asLaid: "https://example.test/as-laid.png",
+  vector: {
+    v: 1,
+    bounds: { minX: -6, minY: -6, maxX: 106, maxY: 14 },
+    items: [
+      { kind: "cable", pts: [[0, 0], [100, 0]], size: "185mm", service: false },
+      { kind: "cable", pts: [[50, 0], [50, 6]], size: "35mm", service: true },
+      { kind: "plot", pts: [[50, 8]], label: "18" },
+      { kind: "joint", pts: [[50, 0]] },
+    ],
+  },
+  plan: { url: "https://example.test/plan.pdf", kind: "pdf", page: 1,
+    mpp: 0.12, originX: 0, originY: 0, rotation: 0, opacity: 0.6 },
   sizes: {
     "plot:18": { in: "185mm AL WF", out: "35mm CNE" },
     "plot:19": { in: null, out: null },
@@ -300,7 +312,60 @@ await render();
   if (!await open("Plot 18")) { /* reported */ }
   const bg = $(".jf-sketchbg")[0];
   if (!bg) fail("the sketch has no drawing behind it");
-  else if (bg.getAttribute("src") !== JOB.asLaid) fail("the sketch backdrop is not the as-laid drawing");
+
+  /* ── Vectors, not a photograph of vectors ──
+
+     The backdrop used to be a PNG rendered at 1400×900 when the
+     call-off was raised, then scaled up on the tablet. A gang zooming
+     in to mark where a joint sits got a staircase for a cable and a
+     smear for the site plan — which is a vector line drawing in the
+     original PDF, so every one of those pixels was pure loss.
+
+     The design is an SVG path per run now, and the plan is the PDF
+     rendered at the zoom being shown. */
+  const design = $(".jf-designlayer")[0];
+  if (!design) fail("the design is not drawn as vectors");
+  else {
+    const paths = design.querySelectorAll("path").length;
+    if (paths !== 2) fail(`expected a path per cable run, found ${paths}`);
+    if (!design.querySelector("rect")) fail("the plot seeds are not drawn");
+    if (!design.querySelector("circle")) fail("the joints are not drawn");
+    /* Services thinner than mains, as the canvas draws them — a
+       backdrop that drew them alike would lose which is which at the
+       one moment a gang is deciding what to joint into. */
+    const widths = [...design.querySelectorAll("path")]
+      .map((n) => Number(n.getAttribute("stroke-width")));
+    if (widths[0] === widths[1]) fail("a service is drawn as heavy as a main");
+  }
+  if (bg && bg.tagName === "IMG") fail("the backdrop is still a flattened image");
+
+  /* ── The plan layer, read rather than driven ──
+
+     pdf.js will not start in jsdom — it wants a worker and a real
+     document — so the canvas PlanLayer renders never appears here and
+     nothing about it can be asserted from the DOM. Read from the source
+     instead, and say so: a check that quietly tests nothing is worse
+     than one that admits what it cannot reach.
+
+     What matters is the wiring. The plan has to reach the layer, and
+     the zoom has to reach the renderer — without the second the page is
+     rendered once at 1× and stretched, which is the entire fault this
+     work exists to fix and would look identical on screen to having
+     fixed it. */
+  const fs = await import("node:fs");
+  const backdrop = fs.readFileSync("./src/features/field/SketchBackdrop.jsx", "utf8");
+  const form = fs.readFileSync("./src/features/field/JointingForm.jsx", "utf8");
+
+  if (!/<PlanLayer plan=\{plan\}/.test(backdrop)) {
+    fail("the site plan is not handed to the layer that renders it");
+  }
+  if (!/zoom=\{view\.z\}/.test(form)) {
+    fail("the sketch zoom never reaches the backdrop — the plan will be stretched");
+  }
+  if (!/view\.scale \* plan\.mpp\) \* zoom/.test(backdrop)) {
+    fail("the PDF is not re-rendered at the zoom being shown");
+  }
+  if (!/getViewport\(/.test(backdrop)) fail("the plan is not rendered from the PDF at all");
   if (!$(".jf-sketchbar").length) fail("the sketch has no zoom controls");
 
   /* Zoom moves the plan. */
@@ -316,6 +381,24 @@ await render();
   const none = $(".jf-chip").find((b) => b.textContent === "None");
   await click(none);
   if ($(".jf-sketchbg").length) fail("the backdrop cannot be turned off");
+}
+
+// 7b. A call-off raised before vectors existed still gets its drawing.
+//
+//     The PNG pixelates, which is why this work happened — but a
+//     pixelated drawing beats a blank rectangle, and re-taking is a
+//     choice somebody makes rather than something that happens to work
+//     they have already booked.
+{
+  payload = {};
+  await render({ ...JOB, vector: null, plan: null });
+  await open("Plot 18");
+  const img = $(".jf-sketchbg img")[0] || $("img.jf-planlayer")[0];
+  if (!img) fail("an older call-off lost its as-laid drawing entirely");
+  else if (img.getAttribute("src") !== JOB.asLaid) {
+    fail("the fallback is not the stored as-laid picture");
+  }
+  if ($(".jf-designlayer").length) fail("a vector layer was drawn with no vectors");
 }
 
 // 8. Dead Jointed clears and locks the readings.

@@ -1,4 +1,5 @@
 import { useRef, useEffect, useState } from "react";
+import SketchBackdrop from "./SketchBackdrop.jsx";
 import {
   CHECKLIST, CINR, OUTCOMES, TESTS, JOB_FIELDS, DEFAULT_CUTOUT,
   PHOTO_KINDS, JOINT_TYPES, plotsOf, emptyPlot, breechesFor,
@@ -213,7 +214,7 @@ const DIMENSION = { kind: "dim", label: "0.0 m" };
 
    The image handed out on change is that data rendered — so what the
    office receives is still a picture. */
-function JointSketch({ backdrop, value, onChange }) {
+function JointSketch({ vector, plan, fallback, value, onChange }) {
   const wrap = useRef(null);
   const [view, setView] = useState({ z: 1, x: 0, y: 0 });
   const [bg, setBg] = useState(true);
@@ -341,12 +342,16 @@ function JointSketch({ backdrop, value, onChange }) {
         onPointerMove={(e) => { panMove(e); move(e); }}
         onPointerUp={() => { panUp(); up(); }}
         onPointerLeave={() => { panUp(); up(); }}>
-        {bg && backdrop && (
-          <img className="jf-sketchbg" src={backdrop} alt="As-laid electric drawing over the site plan"
-            draggable={false}
-            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }} />
+        {bg && (vector || fallback) && (
+          <div className="jf-sketchbg"
+            style={{ transform: `translate(${view.x}px, ${view.y}px) scale(${view.z})` }}>
+            {/* The zoom goes in, so the plan is re-rendered from the PDF
+                at the size it is being shown rather than stretched. */}
+            <SketchBackdrop vector={vector} plan={plan} fallback={fallback}
+              zoom={view.z} />
+          </div>
         )}
-        {bg && !backdrop && (
+        {bg && !vector && !fallback && (
           <p className="jf-nobg">
             No as-laid drawing was captured when this call-off was raised.
           </p>
@@ -798,7 +803,8 @@ export default function JointingForm({ job, payload, set, setPlot }) {
               {/* ── The sketch, over the as-laid drawing ── */}
               <div className="jf-card jf-last">
                 <div className="jf-card-title">Joint Location Sketch</div>
-                <JointSketch backdrop={job?.asLaid}
+                <JointSketch vector={job?.vector} plan={job?.plan}
+                  fallback={job?.asLaid}
                   value={a.sketch || ""}
                   onChange={(v) => setAns(k, { sketch: v })} />
                 <div className="jf-field jf-full" style={{ marginTop: 12 }}>
@@ -966,9 +972,16 @@ const CSS = `
    0.6 under the design, and a second fade here multiplied the two —
    0.62 of 0.6 is 0.37, which is why the map behind the cable was not
    visible. Fading belongs where the picture is made, once. */
-.jf-sketchbg{ position:absolute; inset:0; width:100%; height:100%;
-  object-fit:contain; transform-origin:center; pointer-events:none;
-  user-select:none; }
+/* The backdrop stack: the plan, then the design, then the gang's marks
+   above both. Nothing here takes a pointer — drawing happens on the
+   layer over the top. */
+.jf-sketchbg{ position:absolute; inset:0; transform-origin:center;
+  pointer-events:none; user-select:none; }
+.jf-sketchbg > *{ position:absolute; inset:0; width:100%; height:100%; }
+.jf-planlayer{ object-fit:contain; }
+.jf-designlayer{ overflow:visible; }
+.jf-planerr{ position:absolute; left:0; right:0; bottom:6px; margin:0;
+  text-align:center; font-size:11.5px; color:#991b1b; }
 /* The marks, over the plan. An SVG rather than a canvas so a stroke
    stays an object that can be selected, moved and undone. */
 .jf-sketchink{ position:absolute; inset:0; width:100%; height:100%;

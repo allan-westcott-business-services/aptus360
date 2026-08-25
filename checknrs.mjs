@@ -4,6 +4,7 @@
    Run: node checknrs.mjs */
 import { buildFeederModel } from "./src/features/gis/feeder.js";
 import { subjectOf, resolveStyle } from "./src/lib/gisStyle.js";
+import { nrsInside, circuitKva } from "./src/features/gis/electric.js";
 import { readFileSync } from "node:fs";
 
 const fails = [];
@@ -123,6 +124,40 @@ const plotById = () => ({ kva_load: 5 });
   if (!/listNrs/.test(src)) fail("GISCanvasPage never loads the supplies");
   if (!/Supply_Type:\s*"nrs"/.test(src)) fail("placement writes no Supply_Type, so it draws as a house");
   if (!/setNrsFor\(null\)/.test(src)) fail("a chosen supply is never disarmed on cancel");
+}
+
+// 8. Link to Circuit finds a supply inside the outline.
+//
+//    metredSeedsInside looks for plot points and then keeps the ones
+//    with a meter on them. A supply is a meter with nothing behind it,
+//    so it falls through both halves — lassoed round and left off the
+//    circuit, which the trace then prunes out entirely.
+{
+  const ring = [[0, 0], [100, 0], [100, 100], [0, 100]];
+  const inside = (p, r) => p[0] > r[0][0] && p[0] < r[1][0]
+                        && p[1] > r[0][1] && p[1] < r[2][1];
+  const within = supply(11, 7, 50); within.Geometry = at(50, 50);
+  const beyond = supply(12, 8, 500); beyond.Geometry = at(500, 500);
+  const found = nrsInside([within, beyond, dwelling(10, 1, 50)], ring, inside);
+  if (found.length !== 1) fail(`nrsInside found ${found.length} supplies, expected 1`);
+  if (found[0]?.Feature_ID !== 11) fail("nrsInside found the wrong supply");
+}
+
+// 9. The way-fuse load at the substation counts a supply too. Missing,
+//    a commercial unit reads as headroom on the way.
+{
+  const total = circuitKva([dwelling(10, 1, 50), supply(11, 7, 50)],
+    () => ({ kva_load: 5 }), 0, nrsById);
+  if (total !== 90) fail(`circuitKva returned ${total}, expected 90`);
+}
+
+// 10. The lasso must reach BOTH kinds, and dedupe them.
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/nrsInside\(features, ring/.test(src)) fail("Link to Circuit never looks for supplies");
+  if (!/circuitKva\([\s\S]{0,200}nrsList\.find/.test(src)) {
+    fail("the way-fuse load is worked out without the supplies");
+  }
 }
 
 console.log(fails.length

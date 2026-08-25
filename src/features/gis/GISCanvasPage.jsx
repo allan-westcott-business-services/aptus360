@@ -31,7 +31,7 @@ import {
   isServed, meterHasService, layServices,
 } from "./autoService.js";
 import {
-  circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, circuitKva,
+  circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, nrsInside, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
   sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
   circuitReport,
@@ -8265,7 +8265,8 @@ export default function GISCanvasPage() {
       ? [...existing.meters.filter((m) =>
         !meters.some((x) => Number(x.Feature_ID) === Number(m.Feature_ID))), ...meters]
       : meters;
-    const kva = circuitKva(onCircuit, (id) => plotList.find((p) => p.plot_id === id));
+    const kva = circuitKva(onCircuit, (id) => plotList.find((p) => p.plot_id === id), 0,
+      (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null);
     /* Reuses the way the circuit already holds — assignWay looks for it
        before allocating — so joining does not consume a second one. */
     const way = assignWay(sub, circuitId, kva);
@@ -8344,11 +8345,26 @@ export default function GISCanvasPage() {
       return;
     }
     const seeds = metredSeedsInside(features, ring, pointInPolygon);
-    if (!seeds.length) {
-      setError("No plot seeds with an electric meter inside that outline.");
+    /* Supplies with no plot behind them. Found on their own, because
+       metredSeedsInside looks for plot points and a supply is not one —
+       lassoed round, it would be left off the circuit while everything
+       beside it joined. */
+    const supplies = nrsInside(features, ring, pointInPolygon);
+    if (!seeds.length && !supplies.length) {
+      setError("No plot seeds with an electric meter, and no supplies, "
+        + "inside that outline.");
       return;
     }
-    const meters = metersOfSeeds(features, seeds);
+    /* Both kinds, deduplicated. A supply is already a meter, so a
+       future change to metersOfSeeds that started matching them would
+       otherwise put one on the circuit twice — and a load counted twice
+       is worse than one counted not at all, because it reads as a
+       failing design rather than a missing one. */
+    const byId = new Map();
+    for (const m of [...metersOfSeeds(features, seeds), ...supplies]) {
+      byId.set(Number(m.Feature_ID), m);
+    }
+    const meters = [...byId.values()];
 
     /* ── New circuit, or one that already exists ──
 

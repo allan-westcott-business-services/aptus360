@@ -69,6 +69,26 @@ export function metredSeedsInside(features, ring, inside) {
     && meterBelongsTo(m, s)));
 }
 
+/* Non-residential supplies inside the outline.
+
+   Asked separately from metredSeedsInside because a supply has no plot
+   seed to be found by. That function looks for plot points and then
+   keeps the ones with a meter on them; a supply is a meter with nothing
+   behind it, so it falls through both halves and would be lassoed round
+   without ever being caught.
+
+   Which is the whole failure this closes: placed, drawn, and silently
+   on no circuit at all — so the levels check pruned it out and the
+   design read lighter than it is by the whole of its load. */
+export function nrsInside(features, ring, inside) {
+  return features.filter((f) =>
+    f.Feature_Role === "meter"
+    && f.Layer_Key === "electric"
+    && f.Attributes?.NRS_ID != null
+    && (f.Geometry || []).length
+    && inside(f.Geometry[0], ring));
+}
+
 /* A meter belongs to a seed by plot first, and by the seed link Auto
    Service writes as a fallback for a seed with no plot behind it. */
 export function meterBelongsTo(meter, seed) {
@@ -89,11 +109,20 @@ export function metersOfSeeds(features, seeds) {
    back to a per-plot assumption otherwise — a circuit with no load
    figure can't be checked against a fuse, and reporting zero would say
    every way is fine. */
-export function circuitKva(meters, plotById, fallbackKva = 0) {
+export function circuitKva(meters, plotById, fallbackKva = 0, nrsById = () => null) {
   let total = 0;
   for (const m of meters) {
-    const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
-    const kva = plot?.kva_load ?? plot?.KVA_Load;
+    /* A non-residential supply has no plot, so plotById cannot answer
+       for it and every one would have fallen to fallbackKva — usually
+       zero, and this feeds the way-fuse comparison at the substation.
+       A commercial unit missing from the load on a way is the sort of
+       thing that reads as headroom. */
+    const kva = m.Attributes?.NRS_ID != null
+      ? nrsById(m.Attributes.NRS_ID)?.Requested_kVA
+      : (() => {
+          const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
+          return plot?.kva_load ?? plot?.KVA_Load;
+        })();
     total += kva != null && kva !== "" ? Number(kva) : fallbackKva;
   }
   return Math.round(total * 100) / 100;

@@ -58,6 +58,65 @@ export const VD_DEFAULTS = {
   ragAmberPct: 80,
 };
 
+/* One service tail: the run from the main to a single customer's cut-out.
+
+   ── Why this is not just legVoltDrop with different numbers ──
+
+   A service is the last few metres of the route and behaves unlike a
+   leg of main in three ways.
+
+   It carries ONE customer, so its load is terminal in full and there is
+   nothing distributed along it.
+
+   It gets no unbalanced correction. The correction is
+   1 + 4.14/√K, and a single service has K = 1 — which would multiply
+   its drop by 5.14. The spreadsheet does not apply it either: I37 works
+   the service out with no correction term at all, while P15 applies one
+   to every leg of main. That is a deliberate difference, not an
+   omission: the correction models how unevenly a GROUP of single phase
+   customers lands across three phases, and one customer is not a group.
+
+   And it gets no joint allowance. The joint where it tees into the main
+   is already charged, on the leg of main it tees into — charging it
+   here as well would count the same joint twice.
+
+   ── The load ──
+
+   The plot's own kVA, which this app knows from its house type. The
+   spreadsheet instead uses a notional (2 × ADMD + diversity) for every
+   single phase service, because it has no per-plot figure to hand. Real
+   data is used here in preference, so a service to a large plot is not
+   judged on a small plot's load — but it means this figure and the
+   spreadsheet's will differ where a plot is not close to twice ADMD. */
+export function serviceVoltDrop({
+  cable, lengthM = 0, kva = 0, voltageV = 400,
+}) {
+  const v = voltageV > 0 ? voltageV : 400;
+  const amps = ampsOf(Number(kva) || 0, v);
+
+  if (!cable || !(Number(lengthM) > 0)) {
+    return { ohms: 0, pct: 0, amps, lengthM: Number(lengthM) || 0,
+             missingSpec: !cable };
+  }
+
+  const len = Number(lengthM);
+  const ohms = cable.Loop_Impedance_Ohm != null
+    ? (len / 1000) * Number(cable.Loop_Impedance_Ohm)
+    : 0;
+
+  const base = cable.Volt_Drop_Base != null ? Number(cable.Volt_Drop_Base) : null;
+  const pct = base != null ? (Number(kva) || 0) * (base * 1e-6) * len : 0;
+
+  return {
+    ohms, pct, amps, lengthM: len,
+    /* Service cables came across from the original with no electrical
+       figures on them — only a handful have been filled in since. One
+       that contributes nothing cannot be told from one that genuinely
+       drops nothing, so it is reported rather than counted as zero. */
+    missingSpec: cable.Loop_Impedance_Ohm == null && base == null,
+  };
+}
+
 /* One leg's own contribution, not cumulative. */
 export function legVoltDrop({
   cable, lengthM = 0, distributedKva = 0, terminalKva = 0, meterCount = 0,

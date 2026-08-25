@@ -250,6 +250,14 @@ export function buildFeederModel(features = [], opts = {}) {
      anchor; the meter is the fallback for a meter with no seed. */
   const meterCount = new Array(nodes.length).fill(0);
   const meterKva = new Array(nodes.length).fill(0);
+  /* WHICH meters landed on each node, not just how many.
+
+     The counts above answer "how much load is here"; this answers "whose
+     load is it", which is what a service tail needs — each meter has its
+     own run from the main and its own cable, and the figure at a cut-out
+     is the node's figure plus that particular customer's tail. A count
+     cannot be resolved back to the meters that made it. */
+  const metersAt = Array.from({ length: nodes.length }, () => []);
   const attached = [];
   const skipped = [];
 
@@ -273,7 +281,11 @@ export function buildFeederModel(features = [], opts = {}) {
       meterCount[nn.i] += 1;
       const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
       const kva = plot?.kva_load ?? plot?.KVA_Load;
-      meterKva[nn.i] += kva != null && kva !== "" ? Number(kva) : fallbackKva;
+      const thisKva = kva != null && kva !== "" ? Number(kva) : fallbackKva;
+      meterKva[nn.i] += thisKva;
+      /* The meter itself and the load it brought, so a service tail can
+         be worked out for this customer specifically. */
+      metersAt[nn.i].push({ meter: m, kva: thisKva, plotId: m.Plot_ID ?? null });
       attached.push(m.Feature_ID);
     } else {
       /* Named rather than counted: a meter that missed the network is a
@@ -318,7 +330,7 @@ export function buildFeederModel(features = [], opts = {}) {
     }
   }
 
-  return { nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, S, order, attached, skipped };
+  return { nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt, S, order, attached, skipped };
 }
 
 export const cablesFor = (meters, perCable = METERS_PER_CABLE) =>

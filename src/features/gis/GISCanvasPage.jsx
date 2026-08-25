@@ -65,7 +65,7 @@ import { SPAN_REACH_M } from "./feeder.js";
 import { nodeFedBy as nodeFedByLine } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin } from "./feeder.js";
-import { cumulativeToNode, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
+import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
 } from "./feederColour.js";
@@ -79,7 +79,7 @@ import { suggestCableChanges } from "./scenario.js";
 import { byConnectivity, endsOnly } from "./traceOrder.js";
 import { planCircuitGroups } from "./balance.js";
 import { inDrawOrder } from "./drawOrder.js";
-import { planRoute, traceAll } from "./routing.js";
+import { planRoute, traceAll, serviceFor } from "./routing.js";
 import {
   isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
@@ -15311,10 +15311,38 @@ export default function GISCanvasPage() {
         "Phase current (A)": Number(l.vd.amps.toFixed(1)),
         "Loop impedance (ohms)": Number(l.vd.ohms.toFixed(4)),
         "Volt drop (%)": Number(l.vd.pct.toFixed(3)),
+        /* The service tail and what it makes of the figures above.
+
+           Kept as separate columns rather than rolled into the two
+           before them: the main's own contribution is what a cable
+           change moves, and the cut-out figure is what the limit is
+           actually measured to. A sheet that showed only the sum would
+           let neither question be answered.
+
+           Empty where no service trench has been drawn to that node, or
+           where the service cable has no figures recorded against it.
+           Blank rather than zero, because a service that contributes
+           nothing and a service nobody has specified are not the same
+           thing and must not read alike. */
+        "Service (m)": l.service?.lengthM != null
+          ? Number(l.service.lengthM.toFixed(1)) : null,
+        "Service ohms": l.service && !l.service.missingSpec
+          ? Number(l.service.ohms.toFixed(4)) : null,
+        "Service volt drop (%)": l.service && !l.service.missingSpec
+          ? Number(l.service.pct.toFixed(3)) : null,
+        "At cut-out (ohms)": l.atCutout && !l.service?.missingSpec
+          ? Number(l.atCutout.ohms.toFixed(4)) : null,
+        "At cut-out (%)": l.atCutout && !l.service?.missingSpec
+          ? Number(l.atCutout.pct.toFixed(3)) : null,
       } : trace.hasVd ? {
         "Phase current (A)": null,
         "Loop impedance (ohms)": null,
         "Volt drop (%)": null,
+        "Service (m)": null,
+        "Service ohms": null,
+        "Service volt drop (%)": null,
+        "At cut-out (ohms)": null,
+        "At cut-out (%)": null,
       } : {}),
     }));
     const wb = XLSX.utils.book_new();
@@ -15376,9 +15404,65 @@ export default function GISCanvasPage() {
       ? (ctx.cableTypes || []).find((t) => t.Cable_Type_ID === cable.Cable_Type_ID)
       : null;
 
+    /* ── The service tail, from the main to the cut-out ──
+
+       The figures above stop at the span node, which is a point on the
+       MAIN. Nobody is connected there. The customer is at the end of a
+       service that tees off it, and the standard's limit is measured to
+       the cut-out — so a main-only figure is being compared against a
+       limit for a quantity it does not describe, and always in the
+       lenient direction.
+
+       Reported ALONGSIDE the existing numbers rather than folded into
+       them. Two reasons. A designer changing a cable needs to see what
+       the main is doing on its own, and burying the service in the
+       total would hide it. And silently moving every figure a scheme
+       has already been checked on is not a change anyone can audit.
+
+       ── The worst one, where a node has several ──
+
+       Compliance is about the customer who fares worst, not the
+       average. A node feeding six plots is judged on the longest or
+       thinnest of the six. The others are inside it by definition. */
+    let service = null;
+    const here = part.model.metersAt?.[leg.endIdx] || [];
+    if (here.length) {
+      const svcLines = (ctx.services || []);
+      const mainLines = (ctx.mains || []);
+      for (const { meter, kva } of here) {
+        const found = serviceFor(meter, svcLines, mainLines);
+        /* No drawn service trench means no length to charge. Left null
+           rather than guessed at: a straight line from the meter to the
+           main is not the run that gets dug, and the perpendicular was
+           what made service lengths wrong elsewhere in this file. */
+        if (!found) continue;
+        const svcId = found.service?.Attributes?.VD_Cable_Size_ID ?? null;
+        const r = serviceVoltDrop({
+          cable: svcId != null ? ctx.cableById(svcId) : null,
+          lengthM: found.serviceM,
+          kva,
+          voltageV: startV,
+        });
+        const worse = !service
+          || r.ohms > service.ohms
+          || (r.ohms === service.ohms && r.pct > service.pct);
+        if (worse) {
+          service = { ...r, meterId: meter.Feature_ID, plotId: meter.Plot_ID ?? null };
+        }
+      }
+    }
+
     return {
       volts,
       cable: cable ? [type?.Cable_Type, cable.Size_Label].filter(Boolean).join(" ") : null,
+      service,
+      /* What the worst-served customer on this node actually sees. The
+         figure to judge against the limit; the ones above are the main's
+         own contribution to it. */
+      atCutout: service ? {
+        ohms: (Number(leg.vd?.ohms) || 0) + service.ohms,
+        pct: (Number(leg.vd?.pct) || 0) + (Number(leg.vd?.upstreamPct) || 0) + service.pct,
+      } : null,
     };
   }, []);
 
@@ -15506,6 +15590,14 @@ export default function GISCanvasPage() {
              on a substation-fed scheme, where the transformer is the
              start and there is nothing upstream of it. */
           startPct: upstreamVoltDropPct(station),
+          /* The same drawn lines the advanced check measures tails
+             along. Built here from the same `src` rather than shared,
+             but they must agree: a service that lengthens a run in one
+             check and not the other is two answers for one drawing. */
+          services: src.filter((f) => f.Feature_Type === "line"
+            && f.Layer_Key === "electric" && /service/i.test(f.Attributes?.Line_Type || "")),
+          mains: src.filter((f) => f.Feature_Type === "line"
+            && f.Layer_Key === "electric" && !/service/i.test(f.Attributes?.Line_Type || "")),
           settings: limits,
         };
         for (const leg of part.legs) {
@@ -15640,6 +15732,15 @@ export default function GISCanvasPage() {
         transformer: transformer || null,
         voltageV,
         startPct: upstreamVoltDropPct(lvOrigin(src)),
+        /* The drawn service trenches and mains the tail is measured
+           along. serviceFor walks the trench actually drawn rather than
+           dropping a perpendicular, so these are the geometry it needs
+           — the length that gets dug, not the length as the crow
+           flies. */
+        services: src.filter((f) => f.Feature_Type === "line"
+          && f.Layer_Key === "electric" && /service/i.test(f.Attributes?.Line_Type || "")),
+        mains: src.filter((f) => f.Feature_Type === "line"
+          && f.Layer_Key === "electric" && !/service/i.test(f.Attributes?.Line_Type || "")),
         settings,
       };
       for (const leg of r.legs) {

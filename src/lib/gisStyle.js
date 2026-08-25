@@ -22,6 +22,14 @@ const WEIGHT = {
      it wins over "this is a gas main" — but still loses to an operator's
      own standard, which is the whole point of choosing one. */
   Site: 16,
+  /* What kind of supply a point is, where that is not the same question
+     as what role it plays. A non-residential supply is a meter to the
+     network — it attaches, takes a service, counts in the joints — and
+     drawing it as a house would be the one place that is misleading.
+     Above Feature_Role, so a rule about the kind of supply beats the
+     general one for meters, and below Site, which is about consent and
+     cost and should still read at a glance. */
+  Supply_Type: 8,
   Utility_ID: 2,
   Layer_Key: 1,
 };
@@ -48,6 +56,7 @@ export function styleMatches(style, subject, ctx = {}) {
   if (style.Line_Type != null && !same(style.Line_Type, subject.Line_Type)) return false;
   if (style.Feature_Role != null && !same(style.Feature_Role, subject.Feature_Role)) return false;
   if (style.Site != null && !same(style.Site, subject.Site)) return false;
+  if (style.Supply_Type != null && !same(style.Supply_Type, subject.Supply_Type)) return false;
   if (style.Utility_ID != null && !same(style.Utility_ID, subject.Utility_ID)) return false;
   /* An operator-scoped row only applies when drawing to that operator's
      standard. With no standard chosen, none of them apply and the base
@@ -71,6 +80,7 @@ export function subjectOf(feature, layers = []) {
     Line_Type: feature.Attributes?.Line_Type ?? null,
     Feature_Role: feature.Feature_Role ?? null,
     Site: feature.Attributes?.Site ?? null,
+    Supply_Type: feature.Attributes?.Supply_Type ?? null,
     Utility_ID: layer?.Utility_ID ?? null,
   };
 }

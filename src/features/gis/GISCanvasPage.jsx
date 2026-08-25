@@ -12,6 +12,7 @@ import {
 } from "./snapping.js";
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
+import { listNrs } from "../../api/nrs.js";
 import { getBasemap } from "../../api/basemap.js";
 import { listDevelopers } from "../../api/developers.js";
 import { takeGisIntent } from "../../lib/gisIntent.js";
@@ -61,7 +62,7 @@ import {
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { SPAN_REACH_M } from "./feeder.js";
+import { SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
 import { nodeFedBy as nodeFedByLine } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin } from "./feeder.js";
@@ -303,6 +304,15 @@ export default function GISCanvasPage() {
   useEffect(() => remember("gisBasemapOn", showBasemap), [showBasemap]);
   const [project, setProject] = useState(null);
   const [plotList, setPlotList] = useState([]);
+  /* Non-residential supplies on this project. Held beside the plots
+     because they are placed the same way and carry the load the
+     network is sized for — a supply the canvas cannot see is a
+     supply the volt drop is worked out without. */
+  const [nrsList, setNrsList] = useState([]);
+  /* The supply awaiting a click on the plan, if any. Held the same way
+     meterFor is: the click that places it comes later and somewhere
+     else, so the choice has to survive in between. */
+  const [nrsFor, setNrsFor] = useState(null);
   const [utilities, setUtilities] = useState([]);
   const [queue, setQueue] = useState([]);          // plots being placed, in order
   const [meterFor, setMeterFor] = useState(null);  // { plot, seedPoint, utility, all, placed }
@@ -1302,6 +1312,12 @@ export default function GISCanvasPage() {
       const r = spanTrace(src, origin.Feature_ID, {
         lineTypes, circuitId: c.id,
         plotById: (id) => plotList.find((pl) => pl.plot_id === id),
+        /* Non-residential supplies bring their own kVA, having no plot
+           to hold one. Passed everywhere a feeder model is built, because
+           buildFeederModel defaults nrsById to a function returning null
+           — a call site that forgets it does not fail, it reports a
+           supply carrying no load. checknrs counts the sites. */
+        nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         stopAt: "spannodes",
       });
       if (r.error) continue;
@@ -1396,15 +1412,21 @@ export default function GISCanvasPage() {
     setLoading(true);
     try {
       const lk = await getLookups();
-      const [res, bm, pl] = await Promise.all([
+      const [res, bm, pl, nrs] = await Promise.all([
         listGis(pid),
         getBasemap(pid).catch(() => null),
         listPlacementPlots(pid).catch((e) => ({
           plots: [], utilities: [], _error: e.message,
         })),
+        /* Swallowed rather than fatal: a project with no non-residential
+           supplies is the ordinary case, and a drawing should still open
+           if the endpoint is unavailable. Any placed supply then reads
+           as having no load, which the levels check reports. */
+        listNrs(pid).catch(() => ({ rows: [] })),
       ]);
       if (pl._error) setError(`Couldn't read this project's plots: ${pl._error}`);
       setPlotList(pl.plots || []);
+      setNrsList(nrs?.rows || []);
       const proj = await getProject(pid).catch(() => null);
       setScopeDefaults(proj?.scopes || []);
       const devs = await listDevelopers(pid).catch(() => ({ rows: [] }));
@@ -1762,6 +1784,7 @@ export default function GISCanvasPage() {
   const found = useMemo(() => (findQ
     ? findFeatures(features, findQ, {
       lineTypes, layers, plotById: (id) => plotList.find((p) => p.plot_id === id),
+      nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
     })
     : { shown: [], total: 0 }), [findQ, features, lineTypes, layers, plotList]);
 
@@ -4682,7 +4705,7 @@ export default function GISCanvasPage() {
     // What the next click will do
     /* The same guide when catching up on an old plot: the flow is the
        one thing that changed, not the drawing. */
-    if ((placing || meterFor) && cursor) {
+    if ((placing || meterFor || nrsFor) && cursor) {
       ctx.save();
 
       if (boundaryFor) {
@@ -5729,7 +5752,7 @@ export default function GISCanvasPage() {
       return;
     }
 
-    if (placing || meterFor) {
+    if (placing || meterFor || nrsFor) {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
       placeAt(point);
@@ -6626,6 +6649,11 @@ export default function GISCanvasPage() {
   function stopPlacing() {
     setQueue([]);
     setMeterFor(null);
+    /* A supply chosen but not yet clicked. Nothing was written, so
+       there is nothing to roll back — but leaving it armed would place
+       it on the next click anywhere, long after anyone remembered
+       choosing it. */
+    setNrsFor(null);
     /* A seed waiting for its boundary point was never written, so
        cancelling has to take it off the drawing too. Leaving it would
        show a plot that exists on screen and in nothing else. */
@@ -6652,6 +6680,42 @@ export default function GISCanvasPage() {
   }
 
   async function placeAt(point) {
+    /* A non-residential supply.
+
+       Written as a meter, deliberately. It attaches to the network,
+       takes a service and counts in the joints and the BOM because the
+       rest of the app already does all of that for meters — asking it
+       to learn a second kind of supply would have meant fifty places
+       agreeing, and any that disagreed would report a wrong number
+       rather than an error.
+
+       What marks it out is the two attributes: NRS_ID says which
+       record's Requested_kVA is its load, and Supply_Type is what the
+       black triangle rule matches on. No Plot_ID, because there is no
+       plot — which is exactly why the load has to come from elsewhere. */
+    if (nrsFor) {
+      const rec = nrsFor;
+      setStatus("");
+      const draftFeature = {
+        Project_ID: Number(projectId),
+        Layer_Key: "electric",
+        Feature_Type: "point",
+        Feature_Role: "meter",
+        Geometry: [point],
+        Label: rec.Supply_Ref || rec.Description || `Supply ${rec.NRS_ID}`,
+        Attributes: {
+          NRS_ID: rec.NRS_ID,
+          Supply_Type: "nrs",
+          Meter_Utility: "Electric",
+        },
+      };
+      const tempId = addOptimistic(draftFeature);
+      setNrsFor(null);
+      try { reconcile(tempId, await addFeature(draftFeature)); }
+      catch (e) { rollback(tempId); setError(e.message); }
+      return;
+    }
+
     // A meter for the plot just seeded
     if (meterFor) {
       const { plot, utility, all, placed } = meterFor;
@@ -8717,6 +8781,7 @@ export default function GISCanvasPage() {
     const planned = planJoints(src, circuits, {
       lineTypes,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
+      nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       /* For the drum rule: how much cable comes on one drum, per size.
          A size with none recorded places no drum joints. */
       cableById: (id) => (lookups?.cableSizes || [])
@@ -9017,6 +9082,7 @@ export default function GISCanvasPage() {
     const plan = planCircuitGroups(features, {
       lineTypes,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
+      nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
     });
     if (plan.error) { setError(plan.error); setGroupPlan(null); return; }
     if (!plan.groups.length) {
@@ -9800,6 +9866,7 @@ export default function GISCanvasPage() {
           const model = feederSections(features, {
             lineTypes,
             plotById: (id) => plotList.find((pp) => pp.plot_id === id),
+            nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
             seedIds: allSeedIds,
           });
 
@@ -11238,6 +11305,7 @@ export default function GISCanvasPage() {
         const r = feederSections(src, {
           lineTypes,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
+          nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           seedIds,
           /* The spare length past the last plot on a leg (0185). Read
              from the settings row rather than compiled in: 1.5 m is a
@@ -11942,6 +12010,7 @@ export default function GISCanvasPage() {
            The gas build passes this. The check has to pass the same
            thing or it is measuring a different network. */
         plotById: (id) => plotList.find((p) => p.plot_id === id),
+        nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       });
 
       /* Said plainly, and said why.
@@ -13037,6 +13106,7 @@ export default function GISCanvasPage() {
          lay it, check it, upsize what fails. */
       minimumSize: true,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
+      nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
     });
     if (plan.error) return setError(plan.error);
     if (!plan.runs.length) {
@@ -15430,7 +15500,18 @@ export default function GISCanvasPage() {
       const svcLines = (ctx.services || []);
       const mainLines = (ctx.mains || []);
       for (const { meter, kva } of here) {
-        const found = serviceFor(meter, svcLines, mainLines);
+        /* The same reach the feeder model used to decide this meter is
+           connected at all.
+
+           serviceFor defaults to 2 m, having been written for trenches
+           and never called until now; the model attaches a meter up to
+           SNAP_TOL (12 m) away, deliberately, because the meter glyph
+           sits beside its plot rather than on the trench. Left at 2 m,
+           a meter the model counts as connected is too far away for its
+           own service to be found, and the tail is silently dropped —
+           which reads as a service that costs nothing rather than as
+           one nobody could measure. */
+        const found = serviceFor(meter, svcLines, mainLines, { attachM: SNAP_TOL });
         /* No drawn service trench means no length to charge. Left null
            rather than guessed at: a straight line from the meter to the
            main is not the run that gets dug, and the perpendicular was
@@ -15540,6 +15621,7 @@ export default function GISCanvasPage() {
            names none; without this the trace could not tell which. */
         circuitId: c.id,
         plotById: (id) => plotList.find((p) => p.plot_id === id),
+        nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         stopAt,
       });
       if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
@@ -15698,6 +15780,7 @@ export default function GISCanvasPage() {
     const r = spanTrace(src, node.Feature_ID, {
       lineTypes,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
+      nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       /* Tracing from the origin, which names no circuit because it
          serves them all: the only circuit is the one to take. With
          several, the node has to say which, and it does. */
@@ -16651,6 +16734,41 @@ export default function GISCanvasPage() {
                         shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                           onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                       ))}
+
+                      {/* Non-residential supplies. Created on the project
+                          first, placed here — one menu item per record
+                          still waiting, so nobody has to remember which
+                          they have done. A supply already on the drawing
+                          drops off the list. */}
+                      {(() => {
+                        const placedIds = new Set(features
+                          .filter((f) => f.Attributes?.NRS_ID != null)
+                          .map((f) => Number(f.Attributes.NRS_ID)));
+                        const waiting = nrsList
+                          .filter((n) => !placedIds.has(Number(n.NRS_ID)));
+                        if (!nrsList.length) return null;
+                        return (
+                          <>
+                            <MenuGroup label="Non-residential supplies" />
+                            {waiting.length === 0 ? (
+                              <MenuItem label="All supplies placed" disabled />
+                            ) : waiting.map((n) => (
+                              <MenuItem key={n.NRS_ID}
+                                label={`Place ${n.Supply_Ref || n.Description || `Supply ${n.NRS_ID}`}`}
+                                hint={n.Requested_kVA != null
+                                  ? `${n.Requested_kVA} kVA \u2014 then click the plan`
+                                  : "No kVA on the record \u2014 it will carry no load"}
+                                disabled={!!busy || !projectId}
+                                onClick={() => {
+                                  setNrsFor(n);
+                                  setStatus(`Click the plan to place ${
+                                    n.Supply_Ref || n.Description || `Supply ${n.NRS_ID}`
+                                  } \u00b7 Esc to stop`);
+                                }} />
+                            ))}
+                          </>
+                        );
+                      })()}
 
                       {/* The second column. */}
                       <MenuGroup label="Span nodes and call-offs" newColumn />

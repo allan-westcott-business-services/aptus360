@@ -1,133 +1,145 @@
-# Service cable in the levels check — 25 Aug 2026
+# Aptus360 — electric levels, complete drop, 25 Aug 2026
 
-Four files. Paths mirror the repo. Apply on top of the earlier
-`aptus360-electric-fixes-20260825.zip`, which these build on.
+Everything from today in one package. Paths mirror the repo, so it
+unzips over a checkout as it is.
 
-| File | Change |
-|------|--------|
-| `src/features/gis/voltDrop.js` | New `serviceVoltDrop()` |
-| `src/features/gis/feeder.js` | Model returns `metersAt` |
-| `src/features/gis/GISCanvasPage.jsx` | Tails computed in `legExtras`, five new export columns |
-| `checkservicetail.mjs` | Eight assertions, including a cross-check against the workbook |
+`0189` is REVISED — it no longer seeds transformers. If you have the
+earlier copy in the repo, replace it, or a re-run undoes `0193`.
 
 ---
 
-## What it does
+## Running order
 
-Every figure the levels check reported stopped at the span node — a
-point on the MAIN, where nobody is connected. The customer is at the end
-of a service that tees off it, and the INA limit is measured to the
-cut-out. A main-only figure was being compared against a limit for a
-quantity it does not describe, always in the lenient direction.
+| # | File | Note |
+|---|------|------|
+| 1 | `0189_electric_catalogue_seed.sql` | Revised. Already run on live — for the repo |
+| 2 | `0190_joint_equivalent_length.sql` | Already run on live |
+| 3 | `0193_undo_duplicate_transformers.sql` | **Run first if you re-ran 0189** |
+| 4 | `0191_service_cable_specs.sql` | |
+| 5 | `0192_default_service_cable.sql` | |
+| 6 | `0194_non_residential_supply.sql` | New |
 
-Each leg now also carries the service tail hanging off its end node.
+Then the six source files, then a hard refresh — `getLookups()` caches
+for the session.
 
-## Reported alongside, not folded in
-
-The existing `Loop impedance (ohms)` and `Volt drop (%)` columns are
-UNCHANGED. Five new ones sit beside them:
-
-    Service (m) · Service ohms · Service volt drop (%)
-    At cut-out (ohms) · At cut-out (%)
-
-Two reasons for keeping them apart. A designer changing a cable needs to
-see what the main is doing on its own, and burying the service in the
-total would hide it. And silently moving every figure a scheme has
-already been checked on is not a change anyone can audit.
-
-`At cut-out` is the compliance number. The two original columns are the
-main's own contribution to it.
-
-## The worst customer, where a node feeds several
-
-A node feeding six plots is judged on the worst of the six — the longest
-or thinnest service. Compliance is about the customer who fares worst,
-not the average, and the other five are inside it by definition. The
-export names which meter and plot it was.
-
-## Three deliberate differences from a leg of main
-
-**No unbalanced correction.** The correction is 1 + 4.14/√K, and one
-service has K = 1, which would multiply its drop by 5.14. The workbook
-does not apply it either — `I37` has no correction term while `P15`
-applies one to every leg of main. That is deliberate, not an omission:
-the correction models how unevenly a GROUP of single phase customers
-lands across three phases, and one customer is not a group.
-
-**No joint allowance.** The tee is already charged, on the leg of main
-it tees into. Charging it here would count the same joint twice.
-
-**All load terminal.** One customer at the end, nothing tapped along it.
-
-## Length comes from the drawn trench
-
-`serviceFor()` walks the service trench actually drawn, from the meter
-to where it meets a main. Where no service trench has been drawn the
-tail is left NULL rather than estimated — a straight line from meter to
-main is not the run that gets dug, and the perpendicular is what made
-service lengths wrong elsewhere in this file.
-
-## One deviation from the workbook, on purpose
-
-The workbook uses a notional load for every single phase service —
-`O36 = (2 × ADMD) + diversity`, about 18 kVA — because it has no
-per-plot figure to hand. This uses the plot's OWN kVA, which the app
-knows from its house type.
-
-Better data, but it means the two will differ where a plot is not close
-to twice ADMD. Worth knowing before comparing a scheme against a sheet.
+`status_check.sql` reports where everything stands, any time. It only
+reads. One row per thing worth knowing, expected against actual.
 
 ---
 
-## Expect most tails to read blank at first
+## Placing a non-residential supply
 
-Only two service cables have electrical figures — `0191` filled in
-`3 Phase Service 25` and `Single Phase Service CNE 35`, and two more
-rows are still awaiting a decision:
+Create the record on the project as now. Then on the drawing:
 
-- `3c25 SCNE` (116 A, 699) has no matching type in the catalogue
-- `35 SCNE - Cu` (174 A, 2201) is copper, and neither candidate row
-  matches on both material and construction
+**Electric menu → Non-residential supplies → Place {ref}**, then click
+the plan. The hint shows the requested kVA, or warns when the record
+has none. Esc cancels. A supply already placed drops off the list.
 
-Everything else — the 4mm and 16mm services, the SNE range, LSZH —
-came across from the original with nothing recorded. A service on one of
-those reports blank, not zero: a cable that contributes nothing and a
-cable nobody has specified must not read alike.
+It draws as a **black triangle**, against the plot seed's house.
 
-So the columns will be sparse until the catalogue is filled in. That is
-the data, not the code.
+From there it is a meter: Auto Lay Services connects it, it counts in
+the joints and the BOM, and it appears in the levels check with its own
+`Requested_kVA` as terminal load.
+
+### Why it carries Feature_Role 'meter'
+
+Fifty places in the code ask whether something is a meter. A separate
+role would have needed every one audited, and anything missed would
+have surfaced as a quietly wrong number rather than an error. Two
+attributes set it apart: `NRS_ID` for the load, `Supply_Type: 'nrs'`
+for the symbol.
+
+`Supply_Type` is a new `GIS_Style` match column, above `Feature_Role`
+in specificity and below `Site`. Existing style rows are null there and
+behave exactly as before.
+
+### The one thing to be careful with
+
+`buildFeederModel` defaults `nrsById` to a function returning null, so
+a call site that forgets to pass it does not fail — it reports a supply
+carrying no load, on a drawing that shows the supply plainly. All ten
+sites are wired, and `checknrs` counts them against the `plotById`
+sites so the two cannot drift. That assertion was tested by breaking a
+site on purpose; it caught it.
+
+---
+
+## What else is in here
+
+**Three drifted context objects, fixed.** The canvas labels and
+`runScenario` built their own transformer lookup instead of calling
+`sourceImpedance()`, so on a POC-fed scheme they started at zero ohms.
+Node A3 on 2608/006 read `0.032 Ω` on the drawing and `0.0709 Ω` in the
+export — the difference being the POC's declared 0.039. `scenario.js`
+never received `startPct` at all, so it could call a node cleared that
+the levels check still failed.
+
+**Service tails.** The check stopped at the span node, which is a point
+on the main where nobody is connected. Five new export columns:
+`Service (m)`, `Service ohms`, `Service volt drop (%)`,
+`At cut-out (ohms)`, `At cut-out (%)`. Reported alongside the existing
+figures, not folded into them.
+
+No unbalanced correction on a tail (K=1 would multiply it by 5.14, and
+the workbook's `I37` has no correction term), no joint allowance (the
+tee is charged on the leg it tees into), all load terminal.
+
+**The joint allowance now exists.** `Joint_Equivalent_M` was read in
+three places and created by nothing, so it had silently been 0 since
+the code went in.
+
+**The impedance matrix was mislabelled.** `Volt_Drop_Factor` /
+`Volt_Drop_Pct` is neither — `regulat.xls!L9` calls it "Mx impedance
+value for selected fuse (ohms)", and the values run 0.045 to 0.337.
+`0189` loads it into `Loop_Impedance_Ohms` and leaves the percentage
+null. Nothing reads the table yet; circuits are still checked against a
+flat 0.28 Ω.
+
+---
+
+## Still open
+
+**Balanced/unbalanced is global.** Re-running `0189` reset it and
+halved every volt drop on every project, with nothing on screen to say
+so. The workbook sets it per scheme at `regulat.xls!J5`. It would sit
+naturally on the POC or substation beside `Source_Loop_Impedance_Ohm`.
+This is the one I would do next.
+
+**Block load and small-group diversity are not modelled.** The workbook
+adds both to every section. Reproducing section 1 of the sample sheet:
+workbook 1.9416%, app 1.7372% — 10.5% low, in the best case.
+
+**One volt drop limit, not two.** The workbook splits it 5% to end of
+main + 2% service. The service figure now exists; nothing checks it.
+
+**Nothing reads the fuse limits.** 0.28 Ω is a single conservative
+number standing in for a table spanning 0.045 to 0.337. On a 630 A fuse
+it would pass a circuit the real limit fails by a factor of six.
+
+**Data, not code:**
+
+- The 200 kVA transformer (ID 1) has no loop impedance. Workbook says
+  0.04013, but confirm against whatever source rows 2 and 4 came from
+- `Output_V` is 240 on POCs 27802 and 33040; this app reads it as a
+  LINE voltage, so every phase current there is 67% high
+- POC 2774 (project 1) has no declared impedance; substation 10299
+  (project 9) has no transformer
+- Project 16 has 48 service TRENCHES and no service cables — run Auto
+  Lay Services, or the tails stay blank
+- Cable 50, single phase 25mm, still needs a rating and volt drop base
+  from a data sheet. Loop Z is 1.2. And `0191` may have put that same
+  1.2 on cable 52 wrongly — see the note in that file
 
 ---
 
 ## Verification
 
-`node checkservicetail.mjs` — eight assertions:
+Every migration was run against PostgreSQL 16 on a schema built from
+the running code, and each is idempotent and was re-run to confirm.
+`0193` was tested by replaying the duplicate state it undoes.
 
-1. Arithmetic matches `regulat!N38` exactly (10 m of 35mm = 0.009785 Ω)
-2. No unbalanced correction, checked against a leg that does take one
-3. No joint allowance, checked against a leg that does charge one
-4. An unfigured cable reports `missingSpec` and invents no figure
-5. Zero length charges nothing
-6. Longer and thinner both cost more
-7. `metersAt` agrees with `meterCount`, and carries meter and kVA
-8. BOTH ctx objects pass the service geometry
-
-Assertion 8 exists because the bug that started this was one context
-object drifting from another — three call sites had their own copy of a
-lookup and two were wrong. A check that counts the call sites is the
-thing that would have caught it.
-
-`checksourceimpedance`, `checkcablesizes` and `checkelectricsteps` all
-still pass. `GISCanvasPage.jsx` compiles under esbuild.
-
-## Still open
-
-- Block load and small-group diversity are not modelled (~10% low)
-- One 7% limit on the main, where the workbook splits it 5% main + 2%
-  service. The service figure now exists to check the 2% against, but
-  nothing does it yet
-- Balanced/unbalanced is global rather than per scheme
-- The `Electric_Impedance` fuse limits are read by nothing; circuits are
-  checked against a flat 0.28 Ω standing in for a table spanning 0.045
-  to 0.337
-- `Output_V` is 240 on the POC of 2608/006 and should be 400
+Six check scripts pass: `checknrs`, `checkservicetail`,
+`checkcablesizes`, `checkelectricsteps`, `checksourceimpedance`,
+`checkspannodes`. Both new ones count call sites rather than trusting
+them, because the day's two worst bugs were both one call site drifting
+from another.

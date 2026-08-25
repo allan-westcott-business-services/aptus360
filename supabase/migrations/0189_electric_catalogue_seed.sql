@@ -1,5 +1,7 @@
 -- ════════════════════════════════════════════════════════════════
 -- 0189 — electric catalogue, carried across from the original
+--        REVISED 25 Aug: transformer block removed and impedance
+--        rows repointed from 7/8/10/11 to 2/3/4/5. See 0193.
 --
 -- The original app and this one read tables of the same NAME with
 -- different column names inside them. So the exported rows cannot be
@@ -38,11 +40,10 @@
 -- stays deactivated.
 --
 -- ── NOT in this file ──
--- Electric_Transformer_Size. No export was supplied for it, and the
--- impedance rows below reference transformer IDs 7, 8, 10 and 11.
--- Until those rows exist, the FK insert at the end of this file will
--- fail — which is the intended behaviour, because the transformer is
--- where the whole cascade starts. See the note at the foot.
+-- Electric_Transformer_Size. This file does NOT seed it. An earlier
+-- version did and created duplicates, which 0193 undoes. The impedance
+-- rows below reference IDs 2, 3, 4 and 5, which must already exist —
+-- the guard on that block says so plainly if they do not.
 -- ════════════════════════════════════════════════════════════════
 
 BEGIN;
@@ -147,68 +148,38 @@ ON CONFLICT ("Cable_Size_ID") DO UPDATE SET
   "Volt_Drop_Base"     = EXCLUDED."Volt_Drop_Base",
   "Sort_Order"         = EXCLUDED."Sort_Order";
 
--- ── Electric_Transformer_Size ── (recovered from the workbook)
+-- ── Electric_Transformer_Size ── NOT SEEDED
 --
--- No export was supplied for this table, and it is where the whole
--- cascade starts: without it sourceImpedance() returns null, every
--- circuit begins at zero ohms, and every reading comes out better than
--- the truth.
+-- An earlier version of this file seeded four transformers here, as
+-- IDs 7, 8, 10 and 11, on the assumption that the table was empty
+-- because no export had been supplied for it.
 --
--- The figures are the workbook's own — sheet "Transformer ELI's",
--- column G, which is what its VLOOKUP reads to seed the substation.
+-- It was not empty. The live table already held IDs 1-5, and the seed
+-- put a second entry beside four of them:
 --
--- The four IDs are not guesses. Each transformer in Electric_Impedance
--- carries a distinct set of fuse ratings, and they match the workbook's
--- pivot columns one for one:
+--   2   315 kVA    315   0.02606      7   300/315   315   0.02733
+--   3   500 kVA    500   0.01644      8   500       500   0.01644
+--   4   800 kVA    800   0.01022     10   750/800   800   0.01098
+--   5  1000 kVA   1000   0.00820     11   1000     1000   0.00820
 --
---   ID 7   200/250/315                 = pivot 315xxx  → 300/315 kVA
---   ID 8   200/250/315/355/400         = pivot 500xxx  → 500 kVA
---   ID 10  200/250/315/355/400/500/630 = pivot 800xxx  → 750/800 kVA
---   ID 11  200/250/315/355/400/500/630 = pivot 1000xxx → 1000 kVA
+-- 0193 removes the four and keeps 1-5, which also settled a judgement
+-- call this file had flagged: the plain sizes are used here, not the
+-- workbook's "300/315" and "750/800" variants.
 --
--- Confirmed twice over: the highest fuse against each ID is exactly the
--- Max Fuse the workbook lists for that transformer (315, 400, 630, 630).
+-- The block is GONE rather than commented out, because this file is
+-- idempotent and a re-run would otherwise recreate exactly what 0193
+-- was written to undo.
 --
--- ── ONE THING TO CHECK ──
--- The workbook lists 315 and 300/315 separately (0.02606 / 0.02733), and
--- 800 and 750/800 separately (0.01022 / 0.01098). The selectable list at
--- data!C39:C43 offers the SLASH variants, so those are used here. If your
--- schemes are specified on the plain sizes, change these two rows:
---
---   UPDATE "Electric_Transformer_Size" SET "Label" = '315',
---          "Loop_Impedance_Ohm" = 0.02606 WHERE "Transformer_Size_ID" = 7;
---   UPDATE "Electric_Transformer_Size" SET "Label" = '800',
---          "Loop_Impedance_Ohm" = 0.01022 WHERE "Transformer_Size_ID" = 10;
---
--- The difference is about 5% of the transformer's own contribution,
--- which is a small part of a total — but it is the part every circuit
--- inherits, so it is worth being right.
-INSERT INTO "Electric_Transformer_Size"
-  ("Transformer_Size_ID","Label","Rating_kVA","Loop_Impedance_Ohm","Sort_Order","Is_Active") VALUES
-  (7,  '300/315', 315,  0.02733, 10, true),
-  (8,  '500',     500,  0.01644, 20, true),
-  (10, '750/800', 800,  0.01098, 30, true),
-  (11, '1000',    1000, 0.00820, 40, true)
-ON CONFLICT ("Transformer_Size_ID") DO UPDATE SET
-  "Label"              = EXCLUDED."Label",
-  "Rating_kVA"         = EXCLUDED."Rating_kVA",
-  "Loop_Impedance_Ohm" = EXCLUDED."Loop_Impedance_Ohm",
-  "Sort_Order"         = EXCLUDED."Sort_Order";
-
--- The rest of the workbook's ladder, for whenever a scheme needs one.
--- Left commented because these IDs are unknown — your original table may
--- already use 1-6 and 9 for them, and inventing IDs here would create a
--- second row for a transformer you already have.
---   25    0.31109      250   0.03252
---   50    0.15531      315   0.02606
---   100   0.08207      800   0.01022
---   200   0.04013
+-- ── If you are building a database from nothing ──
+-- Electric_Transformer_Size must be populated before the impedance
+-- matrix below will load, and this file no longer does it. Load your
+-- own five first; the guard below stops you if you forget.
 
 
 -- ── Electric_Impedance ── (Fuse_A → Fuse_Rating_Amps, Volt_Drop_Factor → Loop_Impedance_Ohms)
 --
--- Guarded, because these rows reference transformer IDs 7, 8, 10 and
--- 11 and no Electric_Transformer_Size export was supplied. Without the
+-- Guarded, because these rows reference transformer IDs 2, 3, 4 and 5,
+-- which this file does not create. Without the
 -- guard the foreign key rejects the insert, the transaction rolls back,
 -- and the cable catalogue — which needs no transformer and which the
 -- volt drop sum genuinely reads — is lost along with it.
@@ -240,79 +211,94 @@ ON CONFLICT ("Transformer_Size_ID") DO UPDATE SET
 -- the data exists, it is editable in Admin > Electric Specs >
 -- Impedances, and it is the fault-protection check the volt drop
 -- cascade deliberately does not do.
-INSERT INTO "Electric_Impedance"
-  ("Impedance_ID","Cable_Size_ID","Transformer_Size_ID","Fuse_Rating_Amps","Loop_Impedance_Ohms") VALUES
-  (100, 1, 7, 200, 0.327),
-  (101, 1, 7, 250, 0.255),
-  (102, 1, 7, 315, 0.206),
-  (103, 1, 8, 200, 0.333),
-  (104, 1, 8, 250, 0.261),
-  (105, 1, 8, 315, 0.213),
-  (106, 1, 8, 355, 0.152),
-  (107, 1, 8, 400, 0.119),
-  (108, 1, 10, 200, 0.335),
-  (109, 1, 10, 250, 0.264),
-  (110, 1, 10, 315, 0.216),
-  (111, 1, 10, 355, 0.155),
-  (112, 1, 10, 400, 0.122),
-  (113, 1, 10, 500, 0.08),
-  (114, 1, 10, 630, 0.045),
-  (115, 1, 11, 200, 0.337),
-  (116, 1, 11, 250, 0.265),
-  (117, 1, 11, 315, 0.217),
-  (118, 1, 11, 355, 0.156),
-  (119, 1, 11, 400, 0.124),
-  (120, 1, 11, 500, 0.081),
-  (121, 1, 11, 630, 0.047),
-  (124, 2, 7, 200, 0.324),
-  (125, 2, 7, 250, 0.252),
-  (126, 2, 7, 315, 0.204),
-  (127, 2, 8, 200, 0.331),
-  (128, 2, 8, 250, 0.259),
-  (129, 2, 8, 315, 0.211),
-  (130, 2, 8, 355, 0.172),
-  (131, 2, 8, 400, 0.147),
-  (132, 2, 10, 200, 0.334),
-  (133, 2, 10, 250, 0.262),
-  (134, 2, 10, 315, 0.214),
-  (135, 2, 10, 355, 0.175),
-  (136, 2, 10, 400, 0.151),
-  (137, 2, 10, 500, 0.114),
-  (138, 2, 10, 630, 0.083),
-  (139, 2, 11, 200, 0.335),
-  (140, 2, 11, 250, 0.264),
-  (141, 2, 11, 315, 0.216),
-  (142, 2, 11, 355, 0.177),
-  (143, 2, 11, 400, 0.152),
-  (144, 2, 11, 500, 0.115),
-  (145, 2, 11, 630, 0.085),
-  (172, 4, 7, 200, 0.323),
-  (173, 4, 7, 250, 0.251),
-  (174, 4, 7, 315, 0.203),
-  (175, 4, 8, 200, 0.33),
-  (176, 4, 8, 250, 0.258),
-  (177, 4, 8, 315, 0.21),
-  (178, 4, 8, 355, 0.171),
-  (179, 4, 8, 400, 0.146),
-  (180, 4, 10, 200, 0.333),
-  (181, 4, 10, 250, 0.262),
-  (182, 4, 10, 315, 0.214),
-  (183, 4, 10, 355, 0.175),
-  (184, 4, 10, 400, 0.15),
-  (185, 4, 10, 500, 0.113),
-  (186, 4, 10, 630, 0.09),
-  (187, 4, 11, 200, 0.335),
-  (188, 4, 11, 250, 0.263),
-  (189, 4, 11, 315, 0.215),
-  (190, 4, 11, 355, 0.176),
-  (191, 4, 11, 400, 0.152),
-  (192, 4, 11, 500, 0.115),
-  (193, 4, 11, 630, 0.092)
-ON CONFLICT ("Impedance_ID") DO UPDATE SET
-  "Cable_Size_ID"       = EXCLUDED."Cable_Size_ID",
-  "Transformer_Size_ID" = EXCLUDED."Transformer_Size_ID",
-  "Fuse_Rating_Amps"    = EXCLUDED."Fuse_Rating_Amps",
-  "Loop_Impedance_Ohms" = EXCLUDED."Loop_Impedance_Ohms";
+DO $imp$
+DECLARE
+  missing text;
+BEGIN
+  SELECT string_agg(v.t::text, ', ' ORDER BY v.t) INTO missing
+    FROM (VALUES (2),(3),(4),(5)) v(t)
+   WHERE NOT EXISTS (SELECT 1 FROM "Electric_Transformer_Size" s
+                      WHERE s."Transformer_Size_ID" = v.t);
+
+  IF missing IS NOT NULL THEN
+    RAISE NOTICE 'Electric_Impedance SKIPPED - transformer size(s) % not present. Load Electric_Transformer_Size and re-run this file.', missing;
+  ELSE
+    INSERT INTO "Electric_Impedance"
+      ("Impedance_ID","Cable_Size_ID","Transformer_Size_ID","Fuse_Rating_Amps","Loop_Impedance_Ohms") VALUES
+      (100, 1, 2, 200, 0.327),
+      (101, 1, 2, 250, 0.255),
+      (102, 1, 2, 315, 0.206),
+      (103, 1, 3, 200, 0.333),
+      (104, 1, 3, 250, 0.261),
+      (105, 1, 3, 315, 0.213),
+      (106, 1, 3, 355, 0.152),
+      (107, 1, 3, 400, 0.119),
+      (108, 1, 4, 200, 0.335),
+      (109, 1, 4, 250, 0.264),
+      (110, 1, 4, 315, 0.216),
+      (111, 1, 4, 355, 0.155),
+      (112, 1, 4, 400, 0.122),
+      (113, 1, 4, 500, 0.08),
+      (114, 1, 4, 630, 0.045),
+      (115, 1, 5, 200, 0.337),
+      (116, 1, 5, 250, 0.265),
+      (117, 1, 5, 315, 0.217),
+      (118, 1, 5, 355, 0.156),
+      (119, 1, 5, 400, 0.124),
+      (120, 1, 5, 500, 0.081),
+      (121, 1, 5, 630, 0.047),
+      (124, 2, 2, 200, 0.324),
+      (125, 2, 2, 250, 0.252),
+      (126, 2, 2, 315, 0.204),
+      (127, 2, 3, 200, 0.331),
+      (128, 2, 3, 250, 0.259),
+      (129, 2, 3, 315, 0.211),
+      (130, 2, 3, 355, 0.172),
+      (131, 2, 3, 400, 0.147),
+      (132, 2, 4, 200, 0.334),
+      (133, 2, 4, 250, 0.262),
+      (134, 2, 4, 315, 0.214),
+      (135, 2, 4, 355, 0.175),
+      (136, 2, 4, 400, 0.151),
+      (137, 2, 4, 500, 0.114),
+      (138, 2, 4, 630, 0.083),
+      (139, 2, 5, 200, 0.335),
+      (140, 2, 5, 250, 0.264),
+      (141, 2, 5, 315, 0.216),
+      (142, 2, 5, 355, 0.177),
+      (143, 2, 5, 400, 0.152),
+      (144, 2, 5, 500, 0.115),
+      (145, 2, 5, 630, 0.085),
+      (172, 4, 2, 200, 0.323),
+      (173, 4, 2, 250, 0.251),
+      (174, 4, 2, 315, 0.203),
+      (175, 4, 3, 200, 0.33),
+      (176, 4, 3, 250, 0.258),
+      (177, 4, 3, 315, 0.21),
+      (178, 4, 3, 355, 0.171),
+      (179, 4, 3, 400, 0.146),
+      (180, 4, 4, 200, 0.333),
+      (181, 4, 4, 250, 0.262),
+      (182, 4, 4, 315, 0.214),
+      (183, 4, 4, 355, 0.175),
+      (184, 4, 4, 400, 0.15),
+      (185, 4, 4, 500, 0.113),
+      (186, 4, 4, 630, 0.09),
+      (187, 4, 5, 200, 0.335),
+      (188, 4, 5, 250, 0.263),
+      (189, 4, 5, 315, 0.215),
+      (190, 4, 5, 355, 0.176),
+      (191, 4, 5, 400, 0.152),
+      (192, 4, 5, 500, 0.115),
+      (193, 4, 5, 630, 0.092)
+    ON CONFLICT ("Impedance_ID") DO UPDATE SET
+      "Cable_Size_ID"       = EXCLUDED."Cable_Size_ID",
+      "Transformer_Size_ID" = EXCLUDED."Transformer_Size_ID",
+      "Fuse_Rating_Amps"    = EXCLUDED."Fuse_Rating_Amps",
+      "Loop_Impedance_Ohms" = EXCLUDED."Loop_Impedance_Ohms";
+    RAISE NOTICE 'Electric_Impedance loaded.';
+  END IF;
+END $imp$;
 
 
 -- ── Electric_VD_Setting ── (one row)

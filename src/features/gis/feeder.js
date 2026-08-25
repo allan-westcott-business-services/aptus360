@@ -136,6 +136,14 @@ export { lvOrigin };
 export function buildFeederModel(features = [], opts = {}) {
   const {
     lineTypes = [], plotById = () => null, seedIds = null,
+    /* A non-residential supply is a meter with no plot behind it. Its
+       load is the kVA the operator was asked for, on its own record. */
+    nrsById = () => null,
+    /* Which meters belong to the circuit being traced, by Feature_ID.
+       Only consulted for supplies that have no plot seed: an ordinary
+       meter's circuit is decided by whether its seed is in seedIds, and
+       a non-residential supply has no seed to be in it. */
+    meterIds = null,
     eps = CONNECT_EPS, tol = SNAP_TOL, fallbackKva = 0,
   } = opts;
 
@@ -271,7 +279,17 @@ export function buildFeederModel(features = [], opts = {}) {
       : features.find((s) => s.Feature_Role === "plot"
           && m.Plot_ID != null && Number(s.Plot_ID) === Number(m.Plot_ID));
 
-    if (seedIds && !(seed && seedIds.has(Number(seed.Feature_ID)))) continue;
+    /* A non-residential supply stands on its own — no plot, so no seed
+       to prune against. Judged on its own membership instead, or it
+       would be dropped from every circuit trace while still showing on
+       the drawing. */
+    const isNrs = m.Attributes?.NRS_ID != null;
+    if (seedIds) {
+      const inCircuit = isNrs
+        ? !!(meterIds && meterIds.has(Number(m.Feature_ID)))
+        : !!(seed && seedIds.has(Number(seed.Feature_ID)));
+      if (!inCircuit) continue;
+    }
 
     const anchor = (seed?.Geometry || []).length ? seed.Geometry[0] : m.Geometry[0];
     let nn = nearest(anchor);
@@ -279,13 +297,24 @@ export function buildFeederModel(features = [], opts = {}) {
 
     if (nn.i >= 0 && nn.d <= tol) {
       meterCount[nn.i] += 1;
-      const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
-      const kva = plot?.kva_load ?? plot?.KVA_Load;
+      /* Where the load comes from. A dwelling's is worked out from its
+         house type and sits on the plot; a non-residential supply's is
+         the figure the operator was asked to provide, and there is no
+         plot to hold it. Both fall back the same way, so an unfilled
+         record contributes nothing rather than a guess. */
+      let kva;
+      if (isNrs) {
+        kva = nrsById(m.Attributes.NRS_ID)?.Requested_kVA;
+      } else {
+        const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
+        kva = plot?.kva_load ?? plot?.KVA_Load;
+      }
       const thisKva = kva != null && kva !== "" ? Number(kva) : fallbackKva;
       meterKva[nn.i] += thisKva;
       /* The meter itself and the load it brought, so a service tail can
          be worked out for this customer specifically. */
-      metersAt[nn.i].push({ meter: m, kva: thisKva, plotId: m.Plot_ID ?? null });
+      metersAt[nn.i].push({ meter: m, kva: thisKva, plotId: m.Plot_ID ?? null,
+        nrsId: isNrs ? m.Attributes.NRS_ID : null });
       attached.push(m.Feature_ID);
     } else {
       /* Named rather than counted: a meter that missed the network is a
@@ -904,6 +933,10 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      because no leg stopped there. */
   const {
     lineTypes = [], plotById = () => null, stopAt = "spannodes",
+    /* Non-residential supplies, so their requested kVA reaches the
+       model. Absent, one contributes no load and the circuit reads
+       lighter than it is. */
+    nrsById = () => null,
     /* Which circuit is being traced, where the caller knows.
 
        A trace used to take it off the node it starts from. That works
@@ -936,20 +969,29 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   /* Only this circuit's plots, so the model prunes branches serving
      someone else's. */
   const seedIds = new Set();
+  /* Supplies on this circuit that have no plot behind them, by their own
+     Feature_ID. A non-residential supply is a meter in every way that
+     matters here, but its circuit cannot be read off a seed it does not
+     have. */
+  const meterIds = new Set();
   for (const m of features) {
     if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
     if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    if (m.Attributes?.NRS_ID != null) { meterIds.add(Number(m.Feature_ID)); continue; }
     const sid = m.Attributes?.Seed_Feature_ID;
     if (sid != null) { seedIds.add(Number(sid)); continue; }
     const seed = features.find((f) => f.Feature_Role === "plot"
       && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
     if (seed) seedIds.add(Number(seed.Feature_ID));
   }
-  if (!seedIds.size) {
-    return { error: `${circuitName} has no metered plots — nothing to trace.` };
+  /* Either kind is something to trace. A circuit serving one commercial
+     unit and no dwellings is a real circuit, and refusing it for having
+     no metered plots would be refusing it for the wrong reason. */
+  if (!seedIds.size && !meterIds.size) {
+    return { error: `${circuitName} has no supplies on it — nothing to trace.` };
   }
 
-  const M = buildFeederModel(features, { lineTypes, plotById, seedIds });
+  const M = buildFeederModel(features, { lineTypes, plotById, nrsById, seedIds, meterIds });
   if (M.error) return { error: M.error };
   const { nodes, parent, parSvc, cum, S } = M;
 

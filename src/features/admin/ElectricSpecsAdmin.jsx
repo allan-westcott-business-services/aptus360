@@ -253,6 +253,24 @@ export default function ElectricSpecsAdmin() {
               <div className="fld"><label>Unbalanced constant</label>{cell(r, "Unbalanced_Constant", "number")}</div>
               <div className="fld"><label>Distributed load factor</label>{cell(r, "Distributed_Load_Factor", "number")}</div>
               <div className="fld"><label>RAG amber %</label>{cell(r, "RAG_Amber_Pct", "number")}</div>
+              {/* Metres of the leg's own cable charged for each plot
+                  connection made on it. Read by the calculation since it
+                  went in, but shown nowhere until now — so it sat at its
+                  default with no way to see it, let alone change it.
+
+                  Worth a word of its own because it is the only figure
+                  here measured in metres: the others are limits and
+                  coefficients, and somebody scanning the row would
+                  reasonably read this as one too. */}
+              <div className="fld">
+                <label>Joint equivalent length (m)</label>
+                {cell(r, "Joint_Equivalent_M", "number")}
+                <span className="fld-hint">
+                  Charged per plot connection, in metres of that leg&rsquo;s own
+                  cable. Moves loop impedance and volt drop together. Zero
+                  switches it off.
+                </span>
+              </div>
             </div>
           ))}
           {rows.length === 0 && (
@@ -285,7 +303,12 @@ const CSS = `
   padding: 8px 14px; cursor: pointer; font: 600 12.5px inherit; color: var(--accent); }
 .es-add:hover { background: var(--accent-light); }
 .vd-panel { max-width: 640px; }
-.vd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: end; }
+/* Top-aligned rather than bottom. One field now carries a line of hint
+   beneath it, and on end-alignment that cell's extra height pushed its
+   input out of line with the rest of the row. */
+.vd-grid { display: grid; grid-template-columns: repeat(3, 1fr); gap: 14px; align-items: start; }
+.vd-grid .fld-hint { display: block; margin-top: 4px; font-size: 11px; line-height: 1.35;
+  color: var(--muted); text-transform: none; letter-spacing: 0; font-weight: 400; }
 .vd-check { display: flex; align-items: center; gap: 8px; font-size: 12.5px; font-weight: 600;
   text-transform: none; letter-spacing: 0; color: var(--text); margin: 0 0 8px; cursor: pointer; }
 `;

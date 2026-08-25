@@ -15458,10 +15458,15 @@ export default function GISCanvasPage() {
       service,
       /* What the worst-served customer on this node actually sees. The
          figure to judge against the limit; the ones above are the main's
-         own contribution to it. */
+         own contribution to it.
+
+         `leg.vd.pct` is cumulativeToNode's `pctTotal`, which ALREADY has
+         the upstream share in it — `pctOwn` is the one without. Adding
+         upstreamPct here as well counted the POC's share twice, which on
+         2608/006 turned 0.982% into 1.772%. */
       atCutout: service ? {
         ohms: (Number(leg.vd?.ohms) || 0) + service.ohms,
-        pct: (Number(leg.vd?.pct) || 0) + (Number(leg.vd?.upstreamPct) || 0) + service.pct,
+        pct: (Number(leg.vd?.pct) || 0) + service.pct,
       } : null,
     };
   }, []);

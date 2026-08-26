@@ -1239,7 +1239,15 @@ export default function POCApplicationsTab({ projectId }) {
                         ? [row, (
                             <tr className="opt-row" key={`o${r.POC_Application_ID}`}>
                               <td colSpan={layout.visible.length}>
+                                {/* The application's utility, so the plot
+                                    picker below can tell a plot that is
+                                    self-lay for THIS one from a plot
+                                    self-lay for another. It filtered on
+                                    the plot-level flag, which is one
+                                    boolean for the whole plot and says
+                                    nothing about which utility. */}
                                 <OptionsPanel appId={r.POC_Application_ID} projectId={projectId}
+                                  utilityId={r.Utility_ID}
                                   providerName={providerName(r)} onChanged={load} />
                                 <div className="app-notes">
                                   <EntityNotes entityType="POC_Application"

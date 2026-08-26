@@ -19,7 +19,7 @@ export default withAuth(async function handler(req) {
   try {
     const { data, error } = await db
       .from("Plot_Utility")
-      .select(`${COLS},Plot!inner(Plot_ID,Plot_Number,Plot_Ref,Self_Lay_Provider,Project_ID,Project!inner(Project_ID,Project_Ref,Site_Name,Region_ID))`)
+      .select(`${COLS},Plot!inner(Plot_ID,Plot_Number,Plot_Ref,Project_ID,Project!inner(Project_ID,Project_Ref,Site_Name,Region_ID))`)
       .limit(limit);
     if (error) throw error;
 
@@ -79,7 +79,9 @@ export default withAuth(async function handler(req) {
       });
       if (Plot && !seen.has(Plot.Plot_ID)) {
         seen.add(Plot.Plot_ID);
-        plots.push({ Plot_ID: Plot.Plot_ID, Plot_Number: Plot.Plot_Number, Self_Lay_Provider: Plot.Self_Lay_Provider });
+        /* The plot, without a self-lay flag on it. Self-lay belongs to
+           a plot-utility pair and is on each connection row above. */
+        plots.push({ Plot_ID: Plot.Plot_ID, Plot_Number: Plot.Plot_Number });
       }
     });
 

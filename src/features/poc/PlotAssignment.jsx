@@ -9,8 +9,11 @@ import { getLookups } from "../../api/lookups.js";
    1. Exclusive within the option — a plot taken by a sibling quotation is
       shown but not selectable. Across options it may repeat, because
       options are competing proposals for the same site.
-   2. Self-lay plots are excluded: the customer lays those themselves, so
-      they aren't part of what we're asking the operator to quote.
+   2. Self-lay plots are excluded FOR THIS APPLICATION'S UTILITY: the
+      customer lays those themselves, so they aren't part of what we're
+      asking this operator to quote. Per utility, because a plot whose
+      water is self-lay is still ours to connect for electric and
+      belongs on an electric application.
    3. Range select — click one plot, then shift-click another, and
       everything between is taken (skipping anything ineligible).
    4. Live kVA total, flagging plots with no load figure. */
@@ -25,7 +28,7 @@ const nat = (a, b) => {
   return String(a).localeCompare(String(b), undefined, { numeric: true });
 };
 
-export default function PlotAssignment({ projectId, quotationId, optionId, siblingQuotations = [], onClose, onSaved }) {
+export default function PlotAssignment({ projectId, quotationId, optionId, utilityId = null, siblingQuotations = [], onClose, onSaved }) {
   const [plots, setPlots] = useState([]);
   const [lookups, setLookups] = useState(null);
   const [selected, setSelected] = useState([]);
@@ -70,7 +73,32 @@ export default function PlotAssignment({ projectId, quotationId, optionId, sibli
   const configFor = (id) =>
     (lookups?.propertyConfigs || []).find((c) => c.Property_Config_ID === id) || null;
 
-  const eligible = (p) => !taken[p.Plot_ID] && !p.Self_Lay_Provider;
+  /* ── Self-lay, for THIS application's utility ──
+
+     A quotation is for one utility. A plot that is self-lay for water
+     and ours for electric belongs on an electric application and not on
+     a water one — and the plot-level flag, one boolean for the whole
+     plot, could only say "keep it off all of them".
+
+     Off SLP_Utility_IDs, which listPlots already returns: no extra
+     fetch, and the same set the Plots tab draws its chips from, so the
+     two cannot disagree about the same plot.
+
+     Where no utility was passed, nothing is excluded on that ground.
+     Guessing would be the plot-level flag again by another route, and
+     an application whose utility is not known is a thing to notice
+     rather than to filter on. */
+  /* Named, so the count and the hover say WHICH utility. "3 self-lay
+     plots excluded" on an application for water, about plots whose gas
+     is somebody else's, is a sentence that sends somebody looking in
+     the wrong place. */
+  const utilName = (lookups?.utilities || [])
+    .find((u) => Number(u.Utility_ID) === Number(utilityId))?.Utility || null;
+
+  const selfLayHere = (p) => utilityId != null
+    && (p.SLP_Utility_IDs || []).some((u) => Number(u) === Number(utilityId));
+
+  const eligible = (p) => !taken[p.Plot_ID] && !selfLayHere(p);
 
   function click(p, e) {
     if (!eligible(p)) return;
@@ -101,7 +129,7 @@ export default function PlotAssignment({ projectId, quotationId, optionId, sibli
     const p = plots.find((x) => x.Plot_ID === id);
     return !p || p.KVA_Load == null || p.KVA_Load === "";
   }).length;
-  const selfLayCount = ordered.filter((p) => p.Self_Lay_Provider).length;
+  const selfLayCount = ordered.filter(selfLayHere).length;
 
   async function save() {
     setSaving(true);
@@ -139,17 +167,18 @@ export default function PlotAssignment({ projectId, quotationId, optionId, sibli
         <>
           <p className="pa-hint">
             Click to toggle. Shift-click a second plot to take everything between.
-            {selfLayCount > 0 && ` ${selfLayCount} self-lay plot${selfLayCount === 1 ? "" : "s"} excluded.`}
+            {selfLayCount > 0 && ` ${selfLayCount} plot${selfLayCount === 1 ? " is" : "s are"} `
+              + `self-lay for ${utilName || "this utility"}.`}
           </p>
           <div className="pa-grid">
             {ordered.map((p) => {
               const on = selected.includes(p.Plot_ID);
               const takenBy = taken[p.Plot_ID];
-              const self = p.Self_Lay_Provider;
+              const self = selfLayHere(p);
               const cfg = configFor(p.Property_Config_ID);
               const cls = ["pa-plot", on ? "on" : "", takenBy ? "taken" : "", self ? "selflay" : ""]
                 .filter(Boolean).join(" ");
-              const why = takenBy ? `Assigned to ${takenBy}` : self ? "Self-lay plot" : cfg ? `${cfg.Code} · ${p.KVA_Load ?? "?"} kVA` : "";
+              const why = takenBy ? `Assigned to ${takenBy}` : self ? `Self-lay for ${utilName || "this utility"}` : cfg ? `${cfg.Code} · ${p.KVA_Load ?? "?"} kVA` : "";
               return (
                 <button key={p.Plot_ID} className={cls} title={why}
                   onClick={(e) => click(p, e)} disabled={!eligible(p)}>

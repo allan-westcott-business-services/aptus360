@@ -20,7 +20,10 @@ export default withAuth(async function handler(req, context) {
   try {
     if (req.method === "GET") {
       const { data: plots, error: pErr } = await db
-        .from("Plot").select("Plot_ID,Plot_Number,Plot_Ref,Property_Config_ID,Self_Lay_Provider")
+        /* No Self_Lay_Provider. It was the plot-level boolean, read by
+           the schedule form to grey out whole plots; that form reads
+           the per-utility flag off the connection rows below now. */
+        .from("Plot").select("Plot_ID,Plot_Number,Plot_Ref,Property_Config_ID")
         .eq("Project_ID", projectId);
       if (pErr) throw pErr;
       const ids = (plots || []).map((p) => p.Plot_ID);

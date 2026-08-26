@@ -15,7 +15,7 @@ import EntityNotes from "../../components/EntityNotes.jsx";
 const money = (n) => (n == null || n === "" ? "\u2014" : `£${Number(n).toLocaleString(undefined, { minimumFractionDigits: 2 })}`);
 const fmt = (d) => (d ? String(d).slice(0, 10).split("-").reverse().join("/") : "\u2014");
 
-export default function OptionsPanel({ appId, projectId, providerName, onChanged }) {
+export default function OptionsPanel({ appId, projectId, utilityId = null, providerName, onChanged }) {
   const [lookups, setLookups] = useState(null);
   const [options, setOptions] = useState([]);
   const [quotations, setQuotations] = useState([]);
@@ -352,6 +352,10 @@ export default function OptionsPanel({ appId, projectId, providerName, onChanged
                 {assigning && qs.some((q) => q.Quotation_ID === assigning) && (
                   <PlotAssignment
                     projectId={projectId}
+                    /* Passed through rather than fetched again here: the
+                       application row above already has it, and a second
+                       read would be a second answer to one question. */
+                    utilityId={utilityId}
                     quotationId={assigning}
                     optionId={o.Option_ID}
                     siblingQuotations={qs}

@@ -1,8 +1,15 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
 
+/* Plot.Self_Lay_Provider is deliberately NOT here.
+
+   It was one boolean for the whole plot, and self-lay is per utility —
+   Plot_Utility.Self_Lay_Provider, which the GET below reads and returns
+   as SLP_Utility_IDs. Every reader moved onto that on 26 Aug and the
+   column is being dropped; naming it here would keep it alive and give
+   a second answer to a question that now has one. */
 const PLOT_COLUMNS = [
   "Plot_ID", "Project_ID", "Plot_Number", "Plot_Ref", "Property_Config_ID",
-  "PV", "Heat_Pump_Model_ID", "Heat_Source_ID", "KVA_Load", "Self_Lay_Provider", "Project_Developer_ID",
+  "PV", "Heat_Pump_Model_ID", "Heat_Source_ID", "KVA_Load", "Project_Developer_ID",
   /* The gas override, beside the electric one and read the same way:
      normally empty, with the working figure coming from the house type.
      Listed here because a column absent from this list is neither saved

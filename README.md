@@ -1,62 +1,77 @@
-# A new plot gets its utilities, 26 Aug 2026
+# Nothing reads the plot-level self-lay flag, 26 Aug 2026
 
-The back-fill gave all 1,132 existing plots a `Plot_Utility` row per
-utility their project is scoped for. A plot added afterwards got none —
-and a plot with no rows cannot be marked self-lay, cannot be scheduled
-and appears on no connections list. It looks exactly like a plot nobody
-has got to yet.
+The last screen filtering on `Plot.Self_Lay_Provider` was the POC plot
+picker. It now judges per utility like the rest, and the column is out
+of every select list — so it can be dropped.
 
 | File | Change |
 |------|--------|
-| `netlify/functions/plots.js` | Adding plots creates their utility rows |
-| `src/features/plots/AddPlotsForm.jsx` | The plot-level self-lay toggle is gone |
-| `checkselflay.mjs` | Three assertions added |
+| `src/features/poc/PlotAssignment.jsx` | Self-lay judged for the application's own utility |
+| `src/features/poc/OptionsPanel.jsx` | Passes the utility down |
+| `src/features/poc/POCApplicationsTab.jsx` | Gives it the application's `Utility_ID` |
+| `netlify/functions/plots.js` | Off `PLOT_COLUMNS` |
+| `netlify/functions/connections.js` | Off the plot select |
+| `netlify/functions/connections-all.js` | Off the join |
+| `checkselflay.mjs` | Two assertions added |
 
-No SQL.
+## A quotation is for one utility
 
-## The rule
+A plot whose water is self-lay is still ours to connect for electric,
+and belongs on an electric application. The plot-level flag could only
+say "keep it off all of them", so it kept plots off applications they
+should have been on.
 
-One row per new plot per utility on `Project_Scope` — the same rule the
-1,714 were back-filled by. `Self_Lay_Provider` defaults to false, so a
-new plot is ours until somebody says otherwise. That is the safe
-direction: the other one takes work off a call-off nobody decided to
-give away.
+The utility comes from the application row, threaded down through
+`OptionsPanel` rather than fetched again — a second read is a second
+answer to one question. Where no utility is passed, nothing is excluded
+on that ground: guessing would be the plot-level flag back by another
+route.
 
-Distinct utilities, because `Project_Scope` holds a row per utility and
-there is no unique index on `(Plot_ID, Utility_ID)` to catch a duplicate
-pair.
+The count and the hover name the utility now. *"3 self-lay plots
+excluded"* on a water application, about plots whose gas is somebody
+else's, sends somebody looking in the wrong place.
 
-## A failure is reported, not thrown
+## The check missed the fault first time
 
-The plots are inserted first and there is no transaction across the two.
-Throwing would report failure on work that succeeded and leave somebody
-adding them twice; swallowing would leave a plot that looks complete and
-takes part in nothing, which is fault 22.
+Worth recording. Assertion 30 tests that no endpoint selects the
+plot-level column, and the first version scanned `.select(...)` strings
+only. `plots.js` holds its columns in a `PLOT_COLUMNS` array joined with
+a comma — which is exactly where the column was — so putting it back
+produced a clean run.
 
-So the response carries `utility_error` and the form says the plots went
-in and what did not follow — which is what somebody needs to put it
-right. Generate connections on the Plots tab fills the gap.
+**A check that cannot see the place the fault lives is worse than no
+check**, because it reports all clear. It reads the column-list
+constants as well now, and was verified by restoring the column: it
+fired.
 
-## The toggle is gone
+## Then this, and the column is gone
 
-`AddPlotsForm` had a "Self lay provider" switch beside PV, writing one
-boolean for the whole plot. It marked every utility from one tick, which
-is the thing this change has been undoing all day.
+Nothing reads it. Run:
 
-Self-lay is set per utility on the Plots tab now, against the plots this
-form has just created — where the bulk bar can do a phase at a time and
-the column shows which utilities each plot's answer covers. The field
-says so rather than the control vanishing without explanation.
+```sql
+ALTER TABLE "Plot" DROP COLUMN "Self_Lay_Provider";
+```
 
-## What this unblocks
+Two plots carried it — 41 and 42 on project 16 — and both were carried
+across to their electric `Plot_Utility` rows earlier today, so nothing
+is lost.
 
-`Plot.Self_Lay_Provider` has one reader left: `PlotAssignment`, the POC
-plot picker, which filters on it and does not know which utility its
-application is for — that has to be threaded down from
-`POCApplicationsTab` through `OptionsPanel`.
+Check first, if you want to see it go from something rather than
+nothing:
 
-After that the column can be dropped: off the `plots.js` select list,
-then one `ALTER TABLE`.
+```sql
+SELECT count(*) FILTER (WHERE "Self_Lay_Provider") AS still_true,
+       count(*)                                    AS plots
+  FROM "Plot";
+```
+
+## Where self-lay now lives
+
+`Plot_Utility.Self_Lay_Provider`, one row per plot per utility, set on
+the Plots tab. Everything reads that one: the SLP chips, the bulk bar,
+scheduling, Plot Connections, the POC picker, the black crosses on the
+meters, and Auto Service routing those cables to the incumbent's main
+instead of ours.
 
 ## The suite
 

@@ -509,6 +509,82 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   }
 }
 
+/* ── The plot-level flag has no readers left ──
+
+   Plot.Self_Lay_Provider said one thing about a whole plot. Self-lay is
+   per utility, and every screen that filtered on it filtered wrongly in
+   the same direction: a plot self-lay for water alone was kept off
+   electric schedules, electric POC applications and electric
+   connections.
+
+   Asserted as an absence, which is the only way to assert this. A
+   column nobody selects cannot come back by accident — but it can come
+   back by somebody adding it to a list, which is what this catches. */
+{
+  const files = {
+    "netlify/functions/plots.js": readFileSync("netlify/functions/plots.js", "utf8"),
+    "netlify/functions/connections.js": readFileSync("netlify/functions/connections.js", "utf8"),
+    "netlify/functions/connections-all.js": readFileSync("netlify/functions/connections-all.js", "utf8"),
+  };
+
+  // 30. No endpoint selects it off Plot any more.
+  for (const [name, src] of Object.entries(files)) {
+    /* Every remaining mention has to be a Plot_Utility one. The test is
+       on the select strings rather than the word, because the comments
+       explaining why it is gone contain the word too — and a check that
+       forbids naming a thing in a comment is a check that stops the
+       reason being written down. */
+    const selects = src.match(/\.select\(`?"?[^)]*"?`?\)/g) || [];
+    for (const sel of selects) {
+      if (!/Self_Lay_Provider/.test(sel)) continue;
+      if (/Plot_Utility_ID|Utility_ID/.test(sel)) continue;
+      fail(`${name} still selects the plot-level Self_Lay_Provider: ${sel.slice(0, 60)}`);
+    }
+    if (/Plot!inner\([^)]*Self_Lay_Provider/.test(src)) {
+      fail(`${name} still joins Plot for its self-lay flag`);
+    }
+
+    /* And the column-list constants, which are arrays joined with a
+       comma rather than select strings — the first version of this
+       checked only `.select(...)` and missed PLOT_COLUMNS entirely,
+       which is where the column actually was. A check that cannot see
+       the place the fault lives is worse than no check, because it
+       reports all clear. */
+    for (const m of src.matchAll(/const ([A-Z_]+) = \[([^\]]*)\]/gs)) {
+      const [, listName, body] = m;
+      if (!/"Self_Lay_Provider"/.test(body)) continue;
+      /* Plot_Utility's own list may name it. Told apart by the table
+         the list is for: a plot list has no Utility_ID in it. */
+      if (/"Utility_ID"|"Plot_Utility_ID"/.test(body)) continue;
+      fail(`${name}: ${listName} still names the plot-level Self_Lay_Provider`);
+    }
+  }
+
+  /* 31. And the POC picker judges per utility.
+
+     A quotation is for one utility. A plot self-lay for water belongs
+     on an electric application, and the plot-level flag could only say
+     "keep it off all of them". */
+  const poc = readFileSync("src/features/poc/PlotAssignment.jsx", "utf8");
+  if (/!p\.Self_Lay_Provider/.test(poc)) {
+    fail("the POC plot picker still filters on the plot-level flag");
+  }
+  if (!/SLP_Utility_IDs/.test(poc)) {
+    fail("the POC plot picker does not read the per-utility flags");
+  }
+  if (!/utilityId/.test(poc)) {
+    fail("the POC plot picker is not told which utility its application is for");
+  }
+  /* Threaded from the application row, not fetched again: a second read
+     is a second answer to one question. */
+  const panel = readFileSync("src/features/poc/OptionsPanel.jsx", "utf8");
+  if (!/utilityId/.test(panel)) fail("OptionsPanel does not pass the utility down");
+  const tab = readFileSync("src/features/poc/POCApplicationsTab.jsx", "utf8");
+  if (!/utilityId={r\.Utility_ID}/.test(tab)) {
+    fail("the applications tab does not give OptionsPanel its utility");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

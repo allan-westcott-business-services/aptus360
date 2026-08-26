@@ -136,7 +136,70 @@ export default withAuth(async function handler(req, context) {
         return json({ error: "One or more plot numbers already exist on this project." }, 409);
       }
       if (error) throw error;
-      return json({ rows: data }, 201);
+
+      /* ── A plot takes the utilities its project is scoped for ──
+
+         One Plot_Utility row per new plot per utility on Project_Scope,
+         which is the same rule the 1,714 rows were back-filled by on
+         26 Aug. Without this a plot added afterwards would have none —
+         and a plot with no rows cannot be marked self-lay, cannot be
+         scheduled, and appears on no connections list. It would look
+         like a plot nobody had got to yet.
+
+         Self_Lay_Provider defaults to false, so a new plot is ours
+         until somebody says otherwise. That is the safe direction: the
+         other one takes work off a call-off nobody decided to give
+         away.
+
+         ── Not fatal ──
+
+         The plots are already inserted and there is no transaction
+         across the two. A failure here leaves plots with no utilities,
+         which is recoverable — the same query that back-filled the
+         first 1,714 fills them in, and it is in 0197's sibling note.
+         Losing the plots to roll it back would be worse.
+
+         So it is reported ON the response rather than thrown: the
+         screen says the plots were added and what did not follow, which
+         is what somebody needs to know to put it right. Swallowing it
+         would leave a plot that looks complete and takes no part in
+         anything, which is fault 22. */
+      const created = data || [];
+      let utilityRows = 0;
+      let utilityError = null;
+
+      if (created.length) {
+        const { data: scopes, error: sErr } = await db.from("Project_Scope")
+          .select("Utility_ID").eq("Project_ID", projectId);
+
+        if (sErr) {
+          utilityError = sErr.message;
+        } else {
+          /* Distinct, because Project_Scope holds a row per utility and
+             a duplicate would insert the same pair twice — there is no
+             unique index on (Plot_ID, Utility_ID) to catch it. */
+          const utilityIds = [...new Set((scopes || [])
+            .map((x) => Number(x.Utility_ID)).filter(Number.isFinite))];
+
+          if (utilityIds.length) {
+            const pairs = created.flatMap((p) =>
+              utilityIds.map((u) => ({ Plot_ID: p.Plot_ID, Utility_ID: u })));
+            const { data: made, error: puErr } = await db.from("Plot_Utility")
+              .insert(pairs).select("Plot_Utility_ID");
+            if (puErr) utilityError = puErr.message;
+            else utilityRows = (made || []).length;
+          }
+        }
+      }
+
+      return json({
+        rows: created,
+        /* Said plainly, so the screen can report it. A project with no
+           scopes yields none, which is true and worth seeing rather
+           than a silent zero. */
+        utility_rows: utilityRows,
+        ...(utilityError ? { utility_error: utilityError } : {}),
+      }, 201);
     }
 
     /* ── Self-lay, per plot per utility ──

@@ -44,7 +44,6 @@ export default function AddPlotsForm({
     PV: false,
     Heat_Pump_Model_ID: "",
     KVA_Load: "",
-    Self_Lay_Provider: false,
   });
 
   const [individual, setIndividual] = useState("");
@@ -112,9 +111,17 @@ export default function AddPlotsForm({
         PV: !!attrs.PV,
         Heat_Pump_Model_ID: attrs.Heat_Pump_Model_ID ? Number(attrs.Heat_Pump_Model_ID) : null,
         KVA_Load: attrs.KVA_Load === "" ? null : Number(attrs.KVA_Load),
-        Self_Lay_Provider: !!attrs.Self_Lay_Provider,
       }));
-      await createPlots(projectId, payload, projectRef);
+      const res = await createPlots(projectId, payload, projectRef);
+      /* The plots are in either way. What may not be is their utility
+         rows, and a plot with none takes part in nothing — it cannot be
+         marked self-lay, scheduled, or listed on Plot Connections, and
+         it looks exactly like a plot nobody has got to yet. Said out
+         loud rather than swallowed. */
+      if (res?.utility_error) {
+        setError(`${fresh.length} plot(s) added, but their utilities were not: `
+          + `${res.utility_error}. Generate connections on the Plots tab to fill them in.`);
+      }
       setExisting((p) => [...p, ...fresh]);
       setDone(fresh.length);
       setPending([]);
@@ -187,14 +194,20 @@ export default function AddPlotsForm({
               />
             </Field>
           )}
-          <Field label="Options" span={6}>
+          {/* ── Self-lay is not asked here ──
+
+              It used to be a toggle beside PV, writing one boolean for
+              the whole plot. A plot can be self-lay for water and ours
+              for electric, so that boolean could not say what was
+              meant, and it marked every utility from one tick.
+
+              It is set per utility on the Plots tab, against the plots
+              this form has just created — where the bulk bar can do a
+              phase at a time and the column shows which utilities each
+              plot's answer covers. */}
+          <Field label="Options" span={6} hint="Self-lay is set per utility on the Plots tab, once these are added.">
             <div className="toggle-row">
               <Toggle checked={attrs.PV} onChange={setAttr("PV")} label="PV" />
-              <Toggle
-                checked={attrs.Self_Lay_Provider}
-                onChange={setAttr("Self_Lay_Provider")}
-                label="Self lay provider"
-              />
             </div>
           </Field>
         </div>

@@ -1,93 +1,62 @@
-# Scheduling, fixed; self-lay judged per utility, 26 Aug 2026
+# A new plot gets its utilities, 26 Aug 2026
 
-The 1,714-row back-fill that made per-utility self-lay possible broke
-booking a connection. This fixes that, and moves the three screens that
-filtered self-lay per plot onto the flag that can actually say it.
+The back-fill gave all 1,132 existing plots a `Plot_Utility` row per
+utility their project is scoped for. A plot added afterwards got none —
+and a plot with no rows cannot be marked self-lay, cannot be scheduled
+and appears on no connections list. It looks exactly like a plot nobody
+has got to yet.
 
 | File | Change |
 |------|--------|
-| `netlify/functions/connections.js` | Scheduling updates as well as inserts; refuses self-lay pairs |
-| `netlify/functions/connections-all.js` | The row's flag, not the plot's |
-| `src/features/connections/NewScheduleModal.jsx` | Eligibility per utility; honest counts |
-| `src/features/plots/PlotsTab.jsx` | Generate connections no longer filters per plot |
-| `checkselflay.mjs` | Six assertions added |
+| `netlify/functions/plots.js` | Adding plots creates their utility rows |
+| `src/features/plots/AddPlotsForm.jsx` | The plot-level self-lay toggle is gone |
+| `checkselflay.mjs` | Three assertions added |
 
 No SQL.
 
-## What broke, and why it was silent
+## The rule
 
-`generateConnections` was asked for two things and did one. A
-plot-utility pair has to **exist**, and it has to carry a
-**Programmed_Date**. It only ever inserted, skipping pairs already
-present — which worked for exactly as long as rows came into being
-nowhere else.
+One row per new plot per utility on `Project_Scope` — the same rule the
+1,714 were back-filled by. `Self_Lay_Provider` defaults to false, so a
+new plot is ours until somebody says otherwise. That is the safe
+direction: the other one takes work off a call-off nobody decided to
+give away.
 
-The back-fill ended that. Every pair now exists, so the insert found
-nothing to do and every booking came back *"those connections already
-exist — nothing new was scheduled"* with no date written. Nothing
-errored. The form simply stopped working, and the message it showed was
-one it had always been able to show.
+Distinct utilities, because `Project_Scope` holds a row per utility and
+there is no unique index on `(Plot_ID, Utility_ID)` to catch a duplicate
+pair.
 
-It now does the job it is named for: the pair ends up scheduled, whether
-that took an insert or an update.
+## A failure is reported, not thrown
 
-**It will not overwrite a booking.** A pair with a Programmed_Date or a
-Connection_Date is left alone and reported back. Moving a visit already
-in the diary has a gang and a customer behind it and belongs on the page
-that shows the existing date, not as a side effect of ticking a plot in
-a bulk form.
+The plots are inserted first and there is no transaction across the two.
+Throwing would report failure on work that succeeded and leave somebody
+adding them twice; swallowing would leave a plot that looks complete and
+takes part in nothing, which is fault 22.
 
-**And never an upsert.** Supabase's upsert is `ON CONFLICT DO UPDATE`
-with exactly the fields supplied — everything else on the row becomes
-null, including the meter number, the as-laid date and the adopter.
-Recurring fault 5.
+So the response carries `utility_error` and the form says the plots went
+in and what did not follow — which is what somebody needs to put it
+right. Generate connections on the Plots tab fills the gap.
 
-## Self-lay is refused once, on the server
+## The toggle is gone
 
-Three screens called this and each filtered its own way, per plot. A
-plot-level boolean cannot say that a plot is self-lay for water and ours
-for electric, so all three were wrong in the same direction.
+`AddPlotsForm` had a "Self lay provider" switch beside PV, writing one
+boolean for the whole plot. It marked every utility from one tick, which
+is the thing this change has been undoing all day.
 
-The rule now sits on the row that holds the fact. The endpoint reports
-what it left out — self-lay and already-booked counted apart, because
-they are different answers to "why is this plot not on my list" and each
-needs a different thing doing about it.
+Self-lay is set per utility on the Plots tab now, against the plots this
+form has just created — where the bulk bar can do a phase at a time and
+the column shows which utilities each plot's answer covers. The field
+says so rather than the control vanishing without explanation.
 
-A comment on that function has claimed it skipped self-lay plots for
-months. The code never did.
+## What this unblocks
 
-## The schedule form judges against the utilities you ticked
+`Plot.Self_Lay_Provider` has one reader left: `PlotAssignment`, the POC
+plot picker, which filters on it and does not know which utility its
+application is for — that has to be threaded down from
+`POCApplicationsTab` through `OptionsPanel`.
 
-A plot is only out of reach when **every** utility being scheduled is
-somebody else's. With electric and gas ticked, a plot whose water is
-self-lay is perfectly schedulable — it was greyed out entirely before.
-
-Before any utility is ticked there is nothing to judge against, so every
-plot is offered.
-
-## One line of fault 13
-
-`connections-all.js` fed the Plot Connections page `_slp` from
-`Plot.Self_Lay_Provider`. Every row on that page **is** a plot-utility
-pair, and `Plot_Utility` carries the flag for exactly that pair. So one
-plot self-lay for water alone had all three of its rows ticked, with no
-way to see which it really was.
-
-Two records of one fact and a reader looking at the wrong one, in a
-single line.
-
-## Still to do
-
-**`Plot.Self_Lay_Provider` is not dropped yet**, and two things stand in
-the way:
-
-- `PlotAssignment` (POC plot picker) still filters on it, and neither it
-  nor `OptionsPanel` above it is given the POC's `Utility_ID` — it has
-  to be threaded down from `POCApplicationsTab`.
-- `AddPlotsForm` has an SLP checkbox writing that column. Once it goes,
-  a newly added plot has no `Plot_Utility` rows and no way to be marked
-  self-lay at all. **Creating rows when plots are added is now the
-  blocker**, not an optional tidy-up.
+After that the column can be dropped: off the `plots.js` select list,
+then one `ALTER TABLE`.
 
 ## The suite
 

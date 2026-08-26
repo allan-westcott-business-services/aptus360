@@ -461,6 +461,54 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   }
 }
 
+/* ── A new plot gets its utilities ──
+
+   1,714 rows were back-filled on 26 Aug so self-lay could be recorded
+   per utility. A plot added afterwards would have had none — and a plot
+   with no rows cannot be marked self-lay, cannot be scheduled and
+   appears on no connections list. It looks exactly like a plot nobody
+   has got to yet, which is the shape of fault 22. */
+{
+  const fn = readFileSync("netlify/functions/plots.js", "utf8");
+  const post = fn.slice(fn.indexOf('req.method === "POST"'),
+    fn.indexOf("Self-lay, per plot per utility"));
+
+  // 27. Rows are created, from the project's scope.
+  if (!/from\("Plot_Utility"\)\s*\n?\s*\.insert\(/.test(post)) {
+    fail("adding plots does not create their Plot_Utility rows");
+  }
+  if (!/from\("Project_Scope"\)/.test(post)) {
+    fail("the utilities a new plot gets are not read from the project's scope");
+  }
+  /* Distinct, because Project_Scope holds a row per utility and there
+     is no unique index on (Plot_ID, Utility_ID) to catch a duplicate. */
+  if (!/new Set\(/.test(post)) {
+    fail("duplicate scope rows would insert the same plot-utility pair twice");
+  }
+
+  /* 28. And a failure is reported, not thrown or swallowed.
+
+     The plots are already inserted and there is no transaction across
+     the two. Throwing would report failure on work that succeeded;
+     swallowing leaves a plot that looks complete and takes part in
+     nothing. */
+  if (!/utility_error/.test(post)) {
+    fail("a failure creating the utility rows is swallowed");
+  }
+  if (/throw puErr|throw sErr/.test(post)) {
+    fail("a failure creating the utility rows throws away plots that were created");
+  }
+
+  /* 29. The add form no longer asks for self-lay per plot.
+
+     One boolean for the whole plot marked every utility from one tick,
+     which is the thing this whole change is undoing. */
+  const form = readFileSync("src/features/plots/AddPlotsForm.jsx", "utf8");
+  if (/Self_Lay_Provider/.test(form)) {
+    fail("the add-plots form still writes the plot-level self-lay flag");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

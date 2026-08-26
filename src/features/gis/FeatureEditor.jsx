@@ -2552,9 +2552,7 @@ const CSS = `
 /* The feature's id, for naming one in a query. Selectable and quiet. */
 .fe-id { margin: 2px 0 0; font-size: 10.5px; color: var(--muted);
   user-select: all; cursor: text; }
-.fe-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
 /* .fe-x lives in src/styles.css. */
-.fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
 /* The one tick box in this editor, so it gets a rule of its own rather
    than borrowing a field's. */
 /* Carries takes a row of its own, under the fields rather than wedged

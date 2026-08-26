@@ -135,11 +135,31 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
     fail("BulkEditor writes a status without checking the feature can hold it");
   }
 
+  /* Every shared class the bulk editor draws with has to be in the
+     SHARED sheet. FeatureEditor's <style> block is injected only while
+     that modal is mounted, so anything left in it is missing for every
+     other panel — which is how .fe gave a transparent panel and
+     .fe-body gave one with no padding and no gap between fields.
+
+     Checked as a set rather than one rule at a time: fixing .fe and
+     leaving .fe-body is what happened the first time round. */
   const css = readFileSync("./src/styles.css", "utf8");
   const fe = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/^\.fe \{/m.test(css)) fail(".fe is not in the shared stylesheet");
-  if (/^\.fe \{/m.test(fe)) {
-    fail(".fe is still in FeatureEditor's block - other modals draw transparent");
+  const shared = ["fe", "fe-head", "fe-body", "fe-sub", "fe-tip", "fe-foot", "fe-backdrop"];
+  for (const c of shared) {
+    const re = new RegExp(`^\\.${c}\\s*\\{`, "m");
+    if (!re.test(css)) fail(`.${c} is not in the shared stylesheet`);
+    if (re.test(fe)) fail(`.${c} is still in FeatureEditor's block`);
+  }
+
+  /* And nothing draws with a class that exists nowhere. fe-in was one
+     of mine; fe-tip had been unstyled since it was written. */
+  for (const m of be.matchAll(/className="([^"]*)"/g)) {
+    for (const c of m[1].split(/\s+/).filter((x) => /^fe-/.test(x))) {
+      if (!new RegExp(`^\\.${c}\\s*\\{`, "m").test(css)) {
+        fail(`BulkEditor draws with .${c}, which is defined nowhere`);
+      }
+    }
   }
 }
 

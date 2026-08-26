@@ -573,6 +573,22 @@ body.resizing { cursor: col-resize; user-select: none; }
   border-top: 3px solid var(--muted); border-radius: 12px 12px 0 0; }
 .fe-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
 
+.fe-sub { margin: 3px 0 0; font-size: 11.5px; color: var(--muted); }
+
+/* The body, and the gap between fields.
+
+   This is what made the bulk editor look cramped: no padding, and no
+   gap, so every label sat directly on the control above it. Same cause
+   as the transparent panel — defined in FeatureEditor's own block and
+   read by every other modal that never mounts it. */
+.fe-body { padding: 14px 18px; overflow-y: auto; display: flex; flex-direction: column; gap: 11px; }
+
+/* An aside inside a panel: what this selection cannot be told to do.
+   Used by the bulk editor and defined nowhere at all until now, so it
+   drew as body text and read as an instruction rather than a limit. */
+.fe-tip { font-size: 11.5px; color: var(--muted); margin: 0; padding: 8px 10px;
+  background: var(--bg, #f8fafc); border-radius: 6px; }
+
 .fe-foot { display: flex; align-items: center; gap: 8px; padding: 13px 18px;
   border-top: 1px solid var(--border); }
 .fe-spacer { flex: 1; }

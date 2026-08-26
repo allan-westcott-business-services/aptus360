@@ -274,14 +274,14 @@ export default function BulkEditor({
           {statusOptions.length > 0 && (
             <div className="fld">
               <label htmlFor="be-status">Build status</label>
-              <select id="be-status" className="fe-in" value={status}
+              <select id="be-status" value={status}
                 onChange={(e) => setStatus(e.target.value)}>
                 <option value="">Leave as they are</option>
                 {statusOptions.map((st) => (
                   <option key={st.key} value={st.key}>{st.label}</option>
                 ))}
               </select>
-              <p className="be-note">
+              <p className="hint">
                 {statusSkips.length === 0
                   ? `Applied to all ${features.length}.`
                   : `${features.length - statusSkips.length} of ${features.length} `

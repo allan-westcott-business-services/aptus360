@@ -92,28 +92,48 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
 
     setSaving(true);
     try {
-      /* Undo the prefix: "c12" is Customer_Branch 12, "o12" is
-         Organisation_Branch 12, and they are not the same branch. */
+      /* One table now, so a plain id. The prefix existed to say which of
+         two branch tables a choice came from; the old one is no longer
+         offered. Empty means nothing chosen, not branch nought —
+         Number("") is 0, and 0 is a perfectly valid-looking id to write
+         into a foreign key column. */
       const choice = String(f.Branch_Choice ?? "");
-      const isOrg = choice.startsWith("o");
-      /* Empty means nothing chosen, not branch nought. Number("") is 0,
-         and 0 is a perfectly valid-looking id to write into a foreign
-         key column. */
-      const id = /^[co]\d+$/.test(choice) ? Number(choice.slice(1)) : null;
-      const branch = isOrg
-        ? null
-        : lookups.branches.find((b) => +b.Branch_ID === id);
+      const id = /^\d+$/.test(choice) ? Number(choice) : null;
 
       const result = await createProject({
         ...f,
         Branch_Choice: undefined,
-        Branch_ID: isOrg ? null : id,
-        Organisation_Branch_ID: isOrg ? id : null,
-        /* Customer_ID comes off a Customer_Branch. An organisation's
+        /* The old columns are written as null rather than left out.
+
+           They are still on the table and still nullable, and every
+           project was repointed off them on 26 Aug. Sending null says
+           this project names an organisation branch and nothing else —
+           where leaving them out would let a default or a trigger put
+           something back, which is what a cached copy of the main
+           developer is for. Dropping the columns is a separate
+           decision. */
+        Branch_ID: null,
+        Organisation_Branch_ID: id,
+        /* Customer_ID came off a Customer_Branch. An organisation's
            branch has no Customer to name, and inventing one would put a
            project under a customer nobody chose. */
-        Customer_ID: branch ? branch.Customer_ID : null,
-        scopes: scopes.map((id) => ({ Utility_ID: id, Scope_Status_ID: 1 })),
+        Customer_ID: null,
+        /* ── The developer, not just the cached copy of it ──
+
+           Project.Branch_ID and Customer_ID are a cached copy of the
+           MAIN DEVELOPER, kept by sync_project_main_developer(). This
+           form wrote the cache and nothing behind it, so a project came
+           out naming a branch with no developer record — which is why
+           the Details tab said "Developers 0" on a project that plainly
+           had one, and why the Stakeholders tab was the only place the
+           real thing could be entered.
+
+           Sent with the project rather than added afterwards: a project
+           that exists without its main developer is the state this is
+           fixing, and a second call is a second chance to be left in
+           it. */
+        developer: id != null ? { Organisation_Branch_ID: id, Is_Main: true } : null,
+        scopes: scopes.map((sid) => ({ Utility_ID: sid, Scope_Status_ID: 1 })),
       });
 
       /* Options are created after the project, not as part of it: each
@@ -198,32 +218,56 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
           </Field>
 
           <Field label="Customer branch" required span={3}>
-            {/* Both branch tables, told apart by a prefix.
+            {/* Housing developers, and only their branches.
 
-                Customer_Branch and Organisation_Branch are separate
-                sequences, so a bare number cannot say which table it
-                came from \u2014 and writing an organisation's id into
-                Branch_ID would point the project at whatever customer
-                branch shared that number. The prefix is undone on save,
-                into whichever column the choice belongs in.
+                The list was every branch in both tables. Customer and
+                Customer_Branch were emptied and their rows deleted on
+                26 Aug — every project and developer repointed at the
+                matching Organisation_Branch first — so there is one
+                branch table now.
 
-                One list rather than two dropdowns: to whoever is filling
-                this in they are all customers, and which table a branch
-                happens to live in is our problem rather than theirs. */}
+                Role-scoped rather than showing every organisation: the
+                register holds IDNOs, DNOs, gas transporters, water
+                undertakers, suppliers, subcontractors, fire and local
+                authorities, and none of them is whose site this is. The
+                one that is carries the 'customer' role, labelled
+                "Customer (Housing Developer)".
+
+                No prefix any more. Both tables were offered together
+                and a bare number could not say which one a choice came
+                from — the prefix undid that on save. One table, one
+                sequence, one id. */}
             <Select value={f.Branch_Choice} onChange={set("Branch_Choice")}>
               <option value="">Select&hellip;</option>
-              {lookups.branches.map((b) => (
-                <option key={`c${b.Branch_ID}`} value={`c${b.Branch_ID}`}>
-                  {b.Branch_Dropdown || b.Branch_Name}
-                </option>
-              ))}
-              {(lookups.orgBranches || []).map((b) => (
-                <option key={`o${b.Organisation_Branch_ID}`}
-                  value={`o${b.Organisation_Branch_ID}`}>
-                  {b.Branch_Dropdown || b.Branch_Name}
+              {(lookups.developerBranches || []).map((b) => (
+                <option key={b.Organisation_Branch_ID} value={b.Organisation_Branch_ID}>
+                  {b.Organisation_Name
+                    ? `${b.Organisation_Name} \u2014 ${b.Branch_Dropdown || b.Branch_Name}`
+                    : (b.Branch_Dropdown || b.Branch_Name)}
                 </option>
               ))}
             </Select>
+            {/* Said out loud, because an empty dropdown has two very
+                different causes and they need different people to fix
+                them: a role renamed in the register, or nobody having
+                added a branch yet.
+
+                Through the same `.hint` class every other note in this
+                form uses. The first draft invented `.fld-warn`, which
+                nothing in the stylesheet defines — an unstyled
+                paragraph rendered as body text in the middle of a form,
+                which is fault 12's shape: a rule that fails closed
+                looks like a rule that was never written. */}
+            {lookups.developerBranches_error && (
+              <p className="hint">{lookups.developerBranches_error}</p>
+            )}
+            {!lookups.developerBranches_error
+              && !(lookups.developerBranches || []).length && (
+              <p className="hint">
+                No housing developer has a branch yet &mdash; add one in
+                Admin &rsaquo; Organisations.
+              </p>
+            )}
           </Field>
           <Field label="Region" required span={2}>
             <Select

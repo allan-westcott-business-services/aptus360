@@ -12,6 +12,7 @@ import {
   statusesForStage,
   STAGES,
 } from "../../lib/constants.js";
+import { developerBranchName } from "../stakeholders/developerBranch.js";
 
 const SITE_CSS = `
 .ref-row { display: flex; gap: 14px; flex-wrap: wrap; margin-bottom: 16px; }
@@ -221,12 +222,11 @@ export default function ProjectDetailsForm({ projectId, onSaved }) {
           <>
             <div className="dv-list">
               {devs.rows.map((d) => {
-                const b = (lookups.branches || []).find((x) => x.Branch_ID === d.Branch_ID);
                 const n = devs.counts?.[d.Project_Developer_ID] || 0;
                 return (
                   <div className={d.Is_Main ? "dv main" : "dv"} key={d.Project_Developer_ID}>
                     <span className="dv-name">
-                      {b ? (b.Branch_Dropdown || b.Branch_Name) : "\u2014"}
+                      {developerBranchName(d, lookups) ?? "\u2014"}
                       {d.Is_Main && <span className="dv-tag">Main</span>}
                     </span>
                     <span className="dv-plots">{n} plot{n === 1 ? "" : "s"}</span>

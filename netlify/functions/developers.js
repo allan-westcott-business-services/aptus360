@@ -1,6 +1,10 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
 
-const D = "Project_Developer_ID,Project_ID,Customer_ID,Branch_ID,Is_Main,Developer_Code,Plot_From,Plot_To,Notes";
+/* Organisation_Branch_ID is on the list because 0198 put it on the
+   table. A column added to the database and not to a function's select
+   list is neither saved nor returned — recurring fault 4, and it has
+   bitten three times. */
+const D = "Project_Developer_ID,Project_ID,Customer_ID,Branch_ID,Organisation_Branch_ID,Is_Main,Developer_Code,Plot_From,Plot_To,Notes";
 const W = new Set(D.split(",").filter((x) => x !== "Project_Developer_ID"));
 const pick = (o) =>
   Object.fromEntries(Object.entries(o).filter(([k]) => W.has(k)).map(([k, v]) => [k, v === "" ? null : v]));

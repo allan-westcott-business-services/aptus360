@@ -14,6 +14,8 @@ import {
 import BasemapSetup from "./BasemapSetup.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listNrs } from "../../api/nrs.js";
+import { listConnections } from "../../api/connections.js";
+import { selfLaySet, selfLayNrsSet, isSelfLayMeter, isSelfLayFor } from "./selfLay.js";
 import { getBasemap } from "../../api/basemap.js";
 import { listDevelopers } from "../../api/developers.js";
 import { takeGisIntent } from "../../lib/gisIntent.js";
@@ -310,6 +312,13 @@ export default function GISCanvasPage() {
      network is sized for — a supply the canvas cannot see is a
      supply the volt drop is worked out without. */
   const [nrsList, setNrsList] = useState([]);
+  /* Which plot-and-utility pairs somebody else lays, as a set of keys.
+     Built once on load rather than asked per meter per frame — the
+     drawing loop runs over every feature on every pan. */
+  const [slpSet, setSlpSet] = useState(() => new Set());
+  /* And the supplies, which hold the flag on their own record rather
+     than per utility. A set for the same reason. */
+  const slpNrsSet = useMemo(() => selfLayNrsSet(nrsList), [nrsList]);
   /* The supply awaiting a click on the plan, if any. Held the same way
      meterFor is: the click that places it comes later and somewhere
      else, so the choice has to survive in between. */
@@ -1445,7 +1454,7 @@ export default function GISCanvasPage() {
     setLoading(true);
     try {
       const lk = await getLookups();
-      const [res, bm, pl, nrs] = await Promise.all([
+      const [res, bm, pl, nrs, conns] = await Promise.all([
         listGis(pid),
         getBasemap(pid).catch(() => null),
         listPlacementPlots(pid).catch((e) => ({
@@ -1456,8 +1465,22 @@ export default function GISCanvasPage() {
            if the endpoint is unavailable. Any placed supply then reads
            as having no load, which the levels check reports. */
         listNrs(pid).catch(() => ({ rows: [] })),
+        /* Which connections are self-lay, per plot per utility.
+
+           Not fatal, and not silent either. A drawing must still open
+           when this is unavailable — but with the rows missing every
+           meter draws as ours, and a cross that is absent because the
+           lookup failed looks exactly like a cross that is absent
+           because the connection is ours. That is fault 22, so the
+           reason is put on screen rather than swallowed. */
+        listConnections(pid).catch((e) => ({ connections: [], _error: e.message })),
       ]);
       if (pl._error) setError(`Couldn't read this project's plots: ${pl._error}`);
+      if (conns?._error) {
+        setError("Couldn't read which connections are self-lay: "
+          + `${conns._error} \u2014 no meters will be marked SLP.`);
+      }
+      setSlpSet(selfLaySet(conns?.connections || []));
       setPlotList(pl.plots || []);
       setNrsList(nrs?.rows || []);
       const proj = await getProject(pid).catch(() => null);
@@ -3490,6 +3513,20 @@ export default function GISCanvasPage() {
       if (f.Feature_Type === "point") {
         const p = pts[0];
         const isMeter = f.Feature_Role === "meter";
+        /* ── A connection that is not ours to make ──
+
+           A black cross right across the meter, where that plot's
+           utility is let to a self-lay provider. The symbol underneath
+           is untouched: it is still a meter, still on the layer's
+           colour, still the shape the style says — the cross says who
+           is connecting it, which is a different fact from what it is.
+
+           Set in the meter branch below and drawn after the shared fill
+           and stroke, because the fill would paint straight over it.
+           Held out here so both branches can see it: a const declared
+           inside the branch is not in scope where it is drawn, which is
+           recurring fault 2 and has blanked this page three times. */
+        let slpCross = null;
         /* Which way the cable under a joint runs.
 
            Declared with the other facts about this point rather than
@@ -3716,6 +3753,13 @@ export default function GISCanvasPage() {
           }
           const r = (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx);
 
+          /* Worked out here because `r` is the meter's drawn radius and
+             is not known anywhere else — the cross has to span the
+             symbol whatever size the style gives it. */
+          if (isMeter && isSelfLayMeter(f, { slp: slpSet, slpNrs: slpNrsSet, layers })) {
+            slpCross = { x: p.x, y: p.y, r };
+          }
+
           /* The circuit this meter is on, drawn round it.
 
              Outside the symbol rather than recolouring it: the symbol
@@ -3790,6 +3834,37 @@ export default function GISCanvasPage() {
         ctx.strokeStyle = "#fff";
         ctx.lineWidth = 2;
         ctx.stroke();
+
+        /* Corner to corner, over the top of everything the symbol drew.
+
+           Right across it rather than beside it: a mark tucked alongside
+           reads as an annotation about the meter, and this is meant to
+           strike it out — the connection is on the drawing but it is not
+           ours. Drawn at the full radius so it overhangs a circle
+           slightly and meets the corners of a square, which is what
+           makes it read as a cross ON the symbol at any zoom.
+
+           Black, and the only black thing on the drawing. The white
+           halo under it is what keeps it legible over a dark layer
+           colour; without it a cross on a navy meter is invisible. */
+        if (slpCross) {
+          const { x, y, r } = slpCross;
+          ctx.save();
+          ctx.lineCap = "round";
+          for (const [colour, width] of [["#fff", Math.max(3.4, r * 0.52)],
+            ["#000", Math.max(1.8, r * 0.28)]]) {
+            ctx.strokeStyle = colour;
+            ctx.lineWidth = width;
+            ctx.beginPath();
+            ctx.moveTo(x - r, y - r);
+            ctx.lineTo(x + r, y + r);
+            ctx.moveTo(x + r, y - r);
+            ctx.lineTo(x - r, y + r);
+            ctx.stroke();
+          }
+          ctx.restore();
+          ctx.beginPath();
+        }
         /* The rotation ends with the symbol. A label drawn inside it
            would be rotated too, and a joint's label is read off the
            page rather than along the cable. */
@@ -5409,7 +5484,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -15274,6 +15349,12 @@ export default function GISCanvasPage() {
       meterServed,
       existingMeter,
       serviceTrenches,
+      /* Which of this plot's utilities connect to the incumbent's
+         existing main rather than to ours. The same rule the crosses on
+         the meters are drawn from, so the drawing cannot say one thing
+         and the cable do another. */
+      isSelfLay: (seed, utility) => isSelfLayFor(seed, utility.layer_key,
+        { slp: slpSet, slpNrs: slpNrsSet, layers }),
     });
     if (!plans.length && !refill.length && !teeGeom.size) {
       setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped (${skipped[0]?.why ?? "unknown"}).`);
@@ -15302,7 +15383,11 @@ export default function GISCanvasPage() {
         /* Split at the boundary like any other run, so a service that
            leaves the site is two features with the right lengths on
            either side rather than one row that is half wrong. */
-        const runs = splitByBoundary(plan.trench, polys);
+        /* An empty route is a plot that is self-lay throughout: every
+           cable runs in ground somebody else has already opened, so
+           there is no dig of ours to write. splitByBoundary on nothing
+           would write a trench of no length rather than none at all. */
+        const runs = plan.trench.length ? splitByBoundary(plan.trench, polys) : [];
         const madeTrenches = [];
         for (const run of runs) {
           madeTrenches.push(await addFeature({
@@ -15352,7 +15437,17 @@ export default function GISCanvasPage() {
           meterCount++;
         }
 
-        for (const c of (trenchesOnly ? [] : plan.cables)) {
+        /* Ours and the self-lay ones together, each saying which it is.
+
+           One loop because writing a cable is the same work either way
+           — the layer, the type, the size, the label. What differs is
+           two lines of it, and a second copy of ninety would drift the
+           first time a size rule changed. */
+        const toLay = trenchesOnly ? [] : [
+          ...plan.cables.map((c) => ({ c, slp: false })),
+          ...plan.slpCables.map((c) => ({ c, slp: true })),
+        ];
+        for (const { c, slp } of toLay) {
           await addFeature({
             Layer_Key: c.utility.layer_key,
             Feature_Type: "line",
@@ -15396,11 +15491,26 @@ export default function GISCanvasPage() {
                 }
                 : {}),
               Connects: connectedTo(c.geometry, features, null),
+              /* Laid into the incumbent's network, not ours.
+
+                 On the cable rather than worked out later from where it
+                 happens to start: the bill has to be able to say this
+                 is the only thing we supply to this plot, and a rule
+                 that measured the cable's first vertex against a line
+                 somebody may since have moved would answer differently
+                 next week. */
+              ...(slp ? { Self_Lay: true } : {}),
             },
           });
           /* The cable has to meet its own main as well as sharing the
-             dig, or the trenches trace through and the network doesn't. */
-          teeAt(mainsOf(c.utility.layer_key), c.geometry[0]);
+             dig, or the trenches trace through and the network doesn't.
+
+             Not for a self-lay one. That main is the incumbent's, drawn
+             to show what is already there — adding a vertex to it edits
+             a record of somebody else's network to suit our drawing,
+             and mainsOnLayer excludes `_existing` anyway, so there is
+             nothing here to tee into. */
+          if (!slp) teeAt(mainsOf(c.utility.layer_key), c.geometry[0]);
           cableCount++;
         }
 
@@ -15412,7 +15522,11 @@ export default function GISCanvasPage() {
            PATCHed here: the geometry read is the live one, so a second
            plot teeing into the same run adds to the first plot's vertex
            instead of replacing it. */
-        const teed = teeIntoMains(liveGeom(plan.mains), plan.foot, CONNECT_M);
+        /* Only where a dig of ours was actually laid. A self-lay plot
+           has no trench, and plan.mains is then the incumbent's — which
+           must not gain a vertex to suit a service we are not digging. */
+        const teed = plan.trench.length
+          ? teeIntoMains(liveGeom(plan.mains), plan.foot, CONNECT_M) : null;
         if (teed) teeGeom.set(Number(plan.mains.Feature_ID), teed);
         doneCount++;
         setProgress((p) => (p ? { ...p, done: doneCount } : p));

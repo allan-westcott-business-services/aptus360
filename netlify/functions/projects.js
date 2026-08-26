@@ -137,7 +137,7 @@ export default withAuth(async function handler(req, context) {
     /* ── POST /api/projects ────────────────────────────────────── */
     if (req.method === "POST") {
       const body = await req.json();
-      const { scopes = [], ...project } = body;
+      const { scopes = [], developer = null, ...project } = body;
 
       const { data: created, error } = await db
         .from("Project")
@@ -150,6 +150,66 @@ export default withAuth(async function handler(req, context) {
         const rows = scopes.map((s) => ({ ...s, Project_ID: created.Project_ID }));
         const { error: sErr } = await db.from("Project_Scope").insert(rows);
         if (sErr) throw sErr;
+      }
+
+      /* ── The main developer ──
+
+         Project.Branch_ID and Customer_ID are a cached copy of the main
+         developer, kept by sync_project_main_developer(). Creating a
+         project wrote the cache and never the record, so every project
+         came out with "Developers 0" on its Details tab and its real
+         developer had to be entered again on Stakeholders.
+
+         Written after the project because it needs the id, and not
+         guarded by a try: a project whose developer insert failed is
+         the state this exists to prevent, and reporting it is better
+         than leaving one behind quietly. The project row is already
+         committed either way — there is no transaction across these —
+         so the error names what is missing rather than implying nothing
+         was created.
+
+         ── Two columns read off the branch, not asked for ──
+
+         Organisation_ID, so a developer can be grouped by company
+         without a join back through its branch — the rows written
+         before today carry it and a screen reading it would find half
+         of them empty otherwise.
+
+         And Developer_Code, which is the branch's own as of 26 Aug. It
+         used to be defaulted from the customer, so every branch of one
+         housebuilder got the same code: Anwyl Lancashire and Anwyl
+         Wales both came out AH. The code prefixes plot numbers where a
+         site has more than one developer, so two branches of one
+         company on one site produced the same prefix and no way to tell
+         whose plot was whose.
+
+         Null where the branch has no code. Not invented here: a code
+         made up per project is exactly how one came to mean two
+         branches. The Stakeholders tab says so on screen when the
+         branch has none. */
+      if (developer?.Organisation_Branch_ID != null) {
+        const branchId = Number(developer.Organisation_Branch_ID);
+        const { data: branch, error: bErr } = await db.from("Organisation_Branch")
+          .select("Organisation_ID,Developer_Code")
+          .eq("Organisation_Branch_ID", branchId)
+          .single();
+        if (bErr) {
+          throw new Error(`Project ${created.Project_Ref ?? created.Project_ID} was created, `
+            + `but its developer branch could not be read: ${bErr.message}. `
+            + "Add the developer on the Stakeholders tab.");
+        }
+
+        const { error: dErr } = await db.from("Project_Developer").insert({
+          Project_ID: created.Project_ID,
+          Organisation_Branch_ID: branchId,
+          Organisation_ID: branch?.Organisation_ID ?? null,
+          Developer_Code: branch?.Developer_Code ?? null,
+          Is_Main: true,
+        });
+        if (dErr) {
+          throw new Error(`Project ${created.Project_Ref ?? created.Project_ID} was created, `
+            + `but its developer was not: ${dErr.message}. Add it on the Stakeholders tab.`);
+        }
       }
 
       return json(created, 201);

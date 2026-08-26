@@ -10,17 +10,36 @@ export default withAuth(async function handler() {
     const db = supabase();
 
     const queries = {
-      branches:       db.from("Customer_Branch").select("Branch_ID,Branch_Name,Branch_Dropdown,Customer_ID").eq("Is_Active", true).order("Branch_Dropdown"),
-      /* Branches of the organisations, which is where a customer is
-         added now. Customer_Branch above is the older table, and the
-         project form read only that \u2014 so a developer added today had a
-         branch nothing offered.
+      /* Branches of the organisations. This is where a customer branch
+         lives — the only place, as of 26 Aug.
 
-         Both are served and offered together rather than one being
-         migrated into the other: a project already points at a
-         Customer_Branch by id, and rewriting those is a data change
-         rather than a display one. */
-      orgBranches:    db.from("Organisation_Branch").select("Organisation_Branch_ID,Organisation_ID,Branch_Name,Branch_Dropdown").eq("Is_Active", true).order("Branch_Dropdown"),
+         Customer_Branch and Customer were the older pair. They were
+         emptied and dropped of their rows that day: every project and
+         every project developer was repointed at the matching
+         Organisation_Branch, Customer_ID was made nullable and cleared,
+         and the three branch rows and two customer rows were deleted.
+
+         An earlier version of this comment said both tables were served
+         together because "rewriting those is a data change rather than
+         a display one". That data change has now been made, so the note
+         no longer describes anything. */
+      orgBranches:    db.from("Organisation_Branch").select("Organisation_Branch_ID,Organisation_ID,Branch_Name,Branch_Dropdown,Developer_Code").eq("Is_Active", true).order("Branch_Dropdown"),
+      /* ── Two empty tables, still served ──
+
+         Both return nothing now. They stay on this list for one release
+         because six screens still read them — the Plots tab, Call-offs,
+         Customers & Projects, the GIS canvas twice and the developer
+         name resolver — and each has to be moved to the organisation
+         branch in turn.
+
+         Removing them here first would not break those screens: every
+         one guards with `|| []`. It would make them show a blank where
+         a developer's name goes, which is what an empty table already
+         does — so the guard is not protecting anything, it is hiding
+         the same fault either way. They are named here so the next
+         person can see what is left to move, and go when nothing reads
+         them. */
+      branches:       db.from("Customer_Branch").select("Branch_ID,Branch_Name,Branch_Dropdown,Customer_ID").eq("Is_Active", true).order("Branch_Dropdown"),
       customers:      db.from("Customer").select("Customer_ID,Customer_Name").eq("Is_Active", true).order("Customer_Name"),
       regions:        db.from("Region").select("Region_ID,Region").eq("Is_Active", true).order("Sort_Order"),
       subRegions:     db.from("Sub_Region").select("Sub_Region_ID,Region_ID,Sub_Region").eq("Is_Active", true).order("Sort_Order"),
@@ -207,6 +226,11 @@ export default withAuth(async function handler() {
          role — which is correct for a role-scoped list. */
       orgOperators:    db.from("Organisation_By_Role").select("Organisation_ID,Name,Code,Type_Key,role_label,Reference,VAT_Registered,VAT_Rate").in("Type_Key", ["dno", "idno"]).order("Name"),
       operatorUtilities: db.from("Operator_Utility").select("Organisation_ID,Name,Code,utility_ids,role_keys").order("Name"),
+      /* The organisation role catalogue, so the developer list below can
+         find which role a housing developer holds without this file
+         naming an id or a key it cannot verify. */
+      organisationTypes: db.from("Organisation_Type")
+        .select("Organisation_Type_ID,Type_Key,Label").eq("Is_Active", true).order("Sort_Order"),
     };
 
     const keys = Object.keys(queries);
@@ -247,6 +271,66 @@ export default withAuth(async function handler() {
         Role_Codes: ids.map((id) => roleById.get(id)).filter(Boolean),
       };
     });
+
+    /* ── The branches a project can name as its developer ──
+
+       Organisation branches only. Customer and Customer_Branch were
+       emptied and their rows deleted on 26 Aug; this is the only branch
+       table left.
+
+       ── The role ──
+
+       'customer', labelled "Customer (Housing Developer)" in
+       Organisation_Type. One role, and it is the housebuilder whose
+       site this is. The other ten are IDNOs, DNOs, transporters,
+       undertakers, suppliers, subcontractors, fire and local
+       authorities, and none of them is whose site anything is.
+
+       Named here rather than matched on the label, now the catalogue
+       has been read and the key confirmed. The first version tested the
+       label against /developer/i, because Organisation_Type is seeded
+       by one of the migrations run and never committed and nothing in
+       this repo could say what its keys were. That test does find this
+       row — the label ends in "(Housing Developer)" — but it finds it
+       by accident, and a label edited in Admin would silently empty the
+       dropdown.
+
+       ── And it still says when it finds nothing ──
+
+       The key is checked against the catalogue before it is used, so a
+       reseeded database that calls this role something else gets an
+       explicit error rather than an empty list. "No such role" and "no
+       developer has a branch yet" look identical in a dropdown and need
+       different people to fix them. */
+    const DEVELOPER_ROLE = "customer";
+    const devType = (out.organisationTypes || [])
+      .find((t) => t.Type_Key === DEVELOPER_ROLE) || null;
+
+    if (!devType) {
+      out.developerBranches = [];
+      out.developerBranches_error =
+        `No '${DEVELOPER_ROLE}' role in Organisation_Type \u2014 the housing `
+        + "developer role has been renamed or reseeded, so the project form has "
+        + "nothing to offer. Check Admin \u203a Organisations.";
+    } else {
+      const { data: devOrgs, error: devErr } = await db.from("Organisation_By_Role")
+        .select("Organisation_ID,Name").eq("Type_Key", DEVELOPER_ROLE);
+      if (devErr) throw new Error(`developerBranches: ${devErr.message}`);
+
+      /* The branches of those organisations, from the set already
+         fetched above rather than a second query — orgBranches is every
+         active branch and this is a filter on it. */
+      const orgIds = new Set((devOrgs || []).map((o) => Number(o.Organisation_ID)));
+      const nameOf = new Map((devOrgs || []).map((o) => [Number(o.Organisation_ID), o.Name]));
+      out.developerBranches = (out.orgBranches || [])
+        .filter((b) => orgIds.has(Number(b.Organisation_ID)))
+        /* The organisation's name alongside the branch's. A list of
+           branch names on its own reads as a list of towns, and two
+           developers with an office in the same one are then a coin
+           toss. */
+        .map((b) => ({ ...b, Organisation_Name: nameOf.get(Number(b.Organisation_ID)) ?? null }));
+      out.developerRole = devType;
+    }
 
     return json(out);
   } catch (e) {

@@ -103,14 +103,81 @@ export function teeIntoMains(mainsGeometry, foot, tol) {
    utilitiesFor is injected rather than read from a plot record so the
    gas rule — an electric-only plot gets no gas meter — can be tested
    without a database. */
+/* ── The incumbent's network, and ours ──
+
+   A line drawn to show what is already in the ground carries a type key
+   ending `_existing` (0197). Four of them: the incumbent's trench and
+   their electric, gas and water mains in it.
+
+   The suffix is the whole rule. A flag on the feature would have done
+   the same job and been invisible to `mainsTrenches`, which decides what
+   a service can tee into by reading the type key and nothing else — so
+   an existing trench would have been picked as the nearest main for
+   ordinary plots and quietly served half a site off somebody else's
+   cable.
+
+   Anchored at the end of the key rather than searched for anywhere in
+   it, so a type someone later calls `existing_route` or
+   `trench_pre_existing_survey` does not silently become one of these. */
+export const EXISTING_SUFFIX = "_existing";
+
+export const isExistingType = (key) =>
+  String(key || "").endsWith(EXISTING_SUFFIX);
+
+export const isExistingFeature = (f) =>
+  isExistingType(f?.Attributes?.Line_Type);
+
+/* Trenches split into the ones we are digging and the ones already
+   there.
+
+   Both lists are returned rather than one filtered list, because the
+   caller needs both and filtering twice is two chances to write the
+   test differently. */
+export function splitExisting(trenches = []) {
+  const ours = [];
+  const existing = [];
+  for (const t of trenches) (isExistingFeature(t) ? existing : ours).push(t);
+  return { ours, existing };
+}
+
 export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
   const seedPt = (seed.Geometry || [])[0];
   if (!seedPt) return { seed, skipped: "no position" };
 
-  const best = nearestMains(seedPt, trenches);
-  if (!best) return { seed, skipped: "no mains trench" };
+  /* ── Which main each utility connects to ──
+
+     A plot let to a self-lay provider connects to the incumbent's
+     existing main. It is per utility, not per plot: a dwelling whose
+     water is laid by an SLP and whose electric is ours is ordinary, and
+     `Plot_Utility.Self_Lay_Provider` is one row per plot per utility
+     precisely so that can be said.
+
+     So the utilities split in two and each half is dug to its own main.
+     Not "the nearest main of either kind", which is what one list would
+     have given: a plot beside the incumbent's trench would tee our
+     cable into their cable, and the drawing would look right. */
+  const { ours: ourMains, existing: existingMains } = splitExisting(trenches);
+  const selfLay = opts.isSelfLay || (() => false);
 
   const utils = utilitiesFor(seed) || [];
+  const slpUtils = utils.filter((u) => selfLay(seed, u));
+  const ourUtils = utils.filter((u) => !selfLay(seed, u));
+
+  /* A main is only needed for a group that has something in it.
+
+     A plot that is entirely self-lay needs no mains trench of ours and
+     must not be turned away for lacking one — that message would send
+     every self-lay plot down the skipped list on a drawing where
+     everything about them is right. */
+  const best = ourUtils.length || !slpUtils.length
+    ? nearestMains(seedPt, ourMains)
+    : nearestMains(seedPt, existingMains);
+  if (!best) {
+    return { seed, skipped: slpUtils.length && !ourUtils.length
+      ? "no existing main drawn to connect a self-lay plot to"
+      : "no mains trench" };
+  }
+
   const slots = meterPositions(best.foot, seedPt, utils.length, opts);
 
   /* A seed may already have been placed with its meters. Those are left
@@ -257,8 +324,15 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
      it and across the verge. Measuring from the end instead would let a
      meter position several metres inside the plot pull the tee sideways
      along the main, which is a longer dig to the same place. */
-  const fromStop = nearestMains(boundary, trenches);
+  const fromStop = nearestMains(boundary, ourMains.length ? ourMains : existingMains);
   const tee = fromStop || best;
+
+  /* And the same question asked of the incumbent's network, for the
+     utilities that connect to it. Null where nothing existing is drawn,
+     which is every drawing that has no self-lay plot on it. */
+  const slpTee = slpUtils.length
+    ? (nearestMains(boundary, existingMains) || nearestMains(seedPt, existingMains))
+    : null;
 
   /* One foot for the whole plot. Every cable shares the dig, so a
      cable measured to its own foot would leave the trench and come back
@@ -321,18 +395,56 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
     ? [tee.foot, ...onService.slice(1, -1), stop]
     : [tee.foot, ...via, stop];
 
+  /* The route the self-lay cables take, off the incumbent's main.
+
+     The same shape as our own dig — tee, boundary, stop — because it is
+     the same journey: their main is in the road, the cable crosses the
+     verge and comes up in the same place ours would. What differs is
+     that NO TRENCH IS WRITTEN for it. The ground is already open, or
+     there is a duct in it, and the only thing we supply is the cable.
+     That is why a self-lay plot shows a cable on the bill and no dig.
+
+     A boundary vertex is kept here for the same reason it is on our own
+     route: it is where the on-site and off-site lengths are split. */
+  const slpVia = slpTee && !(samePlace(boundary, slpTee.foot) || samePlace(boundary, stop))
+    ? [boundary] : [];
+  const slpRoute = slpTee ? [slpTee.foot, ...slpVia, stop] : null;
+
   /* The cable follows the dig, then leaves it for the meter. Where the
      trench bends, so does the cable: it is laid in the ground that was
      opened, not across it. */
-  const cables = meters.map((m) => ({
+  const cableAlong = (route) => (m) => ({
     utility: m.utility,
-    geometry: samePlace(m.point, stop)
-      ? [...trench]
-      : [...trench, m.point],
-  }));
+    geometry: samePlace(m.point, stop) ? [...route] : [...route, m.point],
+  });
+
+  const ourMeters = meters.filter((m) => !selfLay(seed, m.utility));
+  const slpMeters = meters.filter((m) => selfLay(seed, m.utility));
+
+  const cables = ourMeters.map(cableAlong(trench));
+  /* Dropped rather than routed to nothing where the drawing has no
+     existing main: a cable from an imagined tee is a length somebody
+     would price. Reported by planAutoService instead. */
+  const slpCables = slpRoute ? slpMeters.map(cableAlong(slpRoute)) : [];
 
   return {
-    seed, mains: tee.trench, foot: tee.foot, distance: tee.d, trench, meters, cables,
+    seed, mains: tee.trench, foot: tee.foot, distance: tee.d,
+    /* No dig of ours where nothing of ours is being laid. A plot that
+       is self-lay throughout gets its cables and no trench — writing
+       one would put a length of excavation on the bill for ground
+       somebody else has already opened. */
+    trench: ourMeters.length ? trench : [],
+    meters, cables,
+    /* The self-lay half, kept apart from `cables` rather than mixed in.
+       The canvas writes these without a trench and the bill counts them
+       on their own, and one list would have made both of those a test
+       applied per cable at the point of writing. */
+    slpCables,
+    slpMains: slpTee?.trench ?? null,
+    slpFoot: slpTee?.foot ?? null,
+    /* Named, so a run can say a self-lay plot got no cable rather than
+       reporting it as serviced. */
+    slpUnconnected: slpRoute ? [] : slpMeters.map((m) => m.utility),
     /* Whether the dig was measured to a boundary point or guessed from
        a meter, so the run can say how many plots are still on the old
        shape rather than quietly mixing the two. */

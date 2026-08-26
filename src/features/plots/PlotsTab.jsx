@@ -2,10 +2,11 @@ import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import AddPlotsForm from "./AddPlotsForm.jsx";
 import { getLookups } from "../../api/lookups.js";
-import { listPlots, deletePlot } from "../../api/plots.js";
+import { listPlots, deletePlot, setPlotSelfLay } from "../../api/plots.js";
 import { getProject, updateProject } from "../../api/projects.js";
 import { generateConnections } from "../../api/connections.js";
 import { listDevelopers, assignPlots } from "../../api/developers.js";
+import { developerBranchName } from "../stakeholders/developerBranch.js";
 import { bulkUpdatePlots, bulkDeletePlots } from "../../api/plots.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
 import { RESIDENTIAL_UTILITIES as UTILS } from "../../lib/utilities.js";
@@ -178,16 +179,41 @@ const COLS = (cfg, typeName, hpName) => [
   { key: "gaskw",  label: "Gas kW",       width: 82,  type: "num",   align: "right", raw: (p) => p.Gas_Load_Resolved ?? p.Gas_Load_kW ?? null },
   { key: "hp",     label: "Heat pump",    width: 170, type: "multi", raw: (p) => p.Heat_Pump_Model_ID },
   { key: "pv",     label: "PV",           width: 60,  type: "bool",  align: "center", raw: (p) => !!p.PV },
-  { key: "slp",    label: "SLP",          width: 60,  type: "bool",  align: "center", raw: (p) => !!p.Self_Lay_Provider },
+  /* Self-lay, per utility.
+
+     A plot can be self-lay for water and ours for electric, so a tick
+     cannot say it. The raw value is the set of utilities somebody else
+     connects, as a sorted comma list — sorted so two plots with the
+     same answer sort and filter together, and a string rather than an
+     array so the column's own sort and filter work as they do for every
+     other column.
+
+     Empty string, not null, for a plot nobody else is connecting: the
+     filter list then offers one blank entry meaning "none" rather than
+     two that look identical. */
+  { key: "slp",    label: "SLP",          width: 120, type: "multi",
+    raw: (p) => (p.SLP_Utility_IDs || []).join(",") },
   { key: "act",    label: "",             width: 44,  type: "none" },
 ];
+
+const EMPTY_BULK = {
+  Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "",
+  KVA_Load: "", Gas_Load_kW: "", PV: "",
+  /* Self-lay is asked as a pair — which utility, and whether. Neither
+     means anything without the other. */
+  SLP_Utility_ID: "", SLP_Value: "",
+};
 
 export default function PlotsTab({ projectId, projectRef }) {
   const [sort, setSort] = useState({ key: "num", dir: "asc" });
   const [filters, setFilters] = useState({});
   const [openFilter, setOpenFilter] = useState(null);
   const [selected, setSelected] = useState([]);
-  const [bulk, setBulk] = useState({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", Gas_Load_kW: "", PV: "", Self_Lay_Provider: "" });
+  /* Written once, because it is set in two places — the initial state
+     and the reset after Apply. Two copies of the same literal is two
+     chances to forget a field, and a field left behind is applied to
+     the next selection without anyone choosing it. */
+  const [bulk, setBulk] = useState(EMPTY_BULK);
   const [bulkBusy, setBulkBusy] = useState(false);
   const [mode, setMode] = useState("list");
   const [plots, setPlots] = useState([]);
@@ -284,9 +310,41 @@ export default function PlotsTab({ projectId, projectRef }) {
   const devName = (id) => {
     const d = developers.find((x) => x.Project_Developer_ID === id);
     if (!d) return "\u2014";
-    const b = (lookups?.branches || []).find((x) => x.Branch_ID === d.Branch_ID);
-    return b ? (b.Branch_Dropdown || b.Branch_Name) : "\u2014";
+    /* Either branch table, through the one rule the Details and
+       Stakeholders tabs use. This read lookups.branches — Customer_Branch
+       — which was emptied on 26 Aug, so every developer name on this
+       page had become an em dash. */
+    return developerBranchName(d, lookups) ?? "\u2014";
   };
+
+  /* ── Naming a utility ──
+
+     Off the lookup rather than a list written here: the ids are
+     whatever the table was seeded with, and a second copy of "1 is
+     electric" would be a second thing to edit.
+
+     The abbreviation is the first letter, which is E, G and W for the
+     three a plot can take. Not stored, because a one-letter column
+     heading is a display choice and the day a fourth utility starts
+     with G is the day to give it a real column. */
+  const utilName = (id) =>
+    (lookups?.utilities || []).find((u) => Number(u.Utility_ID) === Number(id))?.Utility
+    || `Utility ${id}`;
+
+  const utilAbbr = (id) => utilName(id).slice(0, 1).toUpperCase();
+
+  /* The utilities this project is scoped for, in seeded order.
+
+     From the plots themselves rather than from Project_Scope: the rows
+     were back-filled from the scope, so they already say it, and
+     reading them means the bulk control offers exactly the utilities
+     the plots actually have rows for. Offering one they do not would be
+     a control that reports "0 updated" and looks broken. */
+  const projectUtilities = useMemo(() => {
+    const seen = new Set();
+    for (const p of plots) for (const id of (p.Utility_IDs || [])) seen.add(Number(id));
+    return [...seen].sort((a, b) => a - b);
+  }, [plots]);
 
   const hpName = (id) =>
     heatPumpShort((lookups?.heatPumpModels || []).find((m) => m.Heat_Pump_Model_ID === id))
@@ -334,7 +392,16 @@ export default function PlotsTab({ projectId, projectRef }) {
 
   const allSelected = shown.length > 0 && shown.every((p) => selected.includes(p.Plot_ID));
 
-  const hasBulk = Object.values(bulk).some((v) => v !== "");
+  /* Something to apply.
+
+     The self-lay pair counts only when BOTH halves are chosen. A
+     utility on its own enabled Apply and then wrote nothing, which is a
+     button that says it will act and does not — and the one thing worse
+     than that is the version where it writes "no" by default across a
+     selection nobody asked about. */
+  const { SLP_Utility_ID, SLP_Value, ...bulkPlot } = bulk;
+  const hasBulk = Object.values(bulkPlot).some((v) => v !== "")
+    || (SLP_Utility_ID !== "" && SLP_Value !== "");
 
   const toggleSort = (key) =>
     setSort((s) => (s.key === key ? { key, dir: s.dir === "asc" ? "desc" : "asc" } : { key, dir: "asc" }));
@@ -366,7 +433,11 @@ export default function PlotsTab({ projectId, projectRef }) {
        plots is one figure entered once, not forty. */
     if (bulk.Gas_Load_kW !== "") changes.Gas_Load_kW = Number(bulk.Gas_Load_kW);
     if (bulk.PV) changes.PV = bulk.PV === "y";
-    if (bulk.Self_Lay_Provider) changes.Self_Lay_Provider = bulk.Self_Lay_Provider === "y";
+    /* Self-lay is NOT in `changes`. It writes Plot_Utility, one row per
+       plot per utility, while everything above writes Plot — two tables,
+       so two calls. Folding it in would make `changes` a bag that
+       sometimes means a different table depending on which key is in
+       it, and the updated count would mean two things. */
     setBulkBusy(true);
     try {
       if (bulkDev) {
@@ -374,7 +445,24 @@ export default function PlotsTab({ projectId, projectRef }) {
         setBulkDev("");
       }
       if (Object.keys(changes).length) await bulkUpdatePlots(projectId, selected, changes);
-      setBulk({ Property_Config_ID: "", Heat_Source_ID: "", Heat_Pump_Model_ID: "", KVA_Load: "", Gas_Load_kW: "", PV: "", Self_Lay_Provider: "" });
+
+      /* Both halves, or neither. A utility with no yes/no is somebody
+         part way through choosing, and writing "no" for them would turn
+         self-lay OFF across a selection nobody asked about. */
+      if (bulk.SLP_Utility_ID && bulk.SLP_Value) {
+        const r = await setPlotSelfLay(projectId, selected,
+          Number(bulk.SLP_Utility_ID), bulk.SLP_Value === "y");
+        /* Named rather than counted, and only where it happened. A plot
+           with no row for this utility is one whose project is not
+           scoped for it — a real thing to go and look at, and a bare
+           number is something to go hunting for. */
+        if (r?.missing?.length) {
+          const names = r.missing.slice(0, 6).join(", ");
+          setError(`${r.missing.length} plot(s) have no ${utilName(bulk.SLP_Utility_ID)} `
+            + `connection to mark: ${names}${r.missing.length > 6 ? "\u2026" : ""}`);
+        }
+      }
+      setBulk(EMPTY_BULK);
       setSelected([]);
       await load();
     } catch (e) {
@@ -404,9 +492,18 @@ export default function PlotsTab({ projectId, projectRef }) {
     if (!genUtils.length) return setError("Choose at least one utility.");
     setGenBusy(true);
     try {
-      const eligible = plots.filter((p) => !p.Self_Lay_Provider).map((p) => p.Plot_ID);
-      const res = await generateConnections(projectId, eligible, genUtils);
-      setGenMsg(`${res.created ?? 0} connection${res.created === 1 ? "" : "s"} created — see Plot Connections in the sidebar.`);
+      /* Every plot, and self-lay refused by the endpoint.
+
+         This filtered on Plot.Self_Lay_Provider, which is one boolean
+         for the whole plot and cannot say that a plot is self-lay for
+         water and ours for electric. The rule lives on the Plot_Utility
+         row now and is applied there, so all three screens that
+         generate connections agree without each carrying its own copy
+         of it. */
+      const res = await generateConnections(projectId, plots.map((p) => p.Plot_ID), genUtils);
+      const n = (res.created ?? 0) + (res.updated ?? 0);
+      const why = res.self_lay ? ` ${res.self_lay} self-lay connection(s) left out.` : "";
+      setGenMsg(`${n} connection${n === 1 ? "" : "s"} created — see Plot Connections in the sidebar.${why}`);
       setTimeout(() => setGenMsg(""), 5000);
       setGenOpen(false);
       setGenUtils([]);
@@ -576,10 +673,38 @@ export default function PlotsTab({ projectId, projectRef }) {
               <select value={bulk.PV} onChange={(e) => setBulk((b) => ({ ...b, PV: e.target.value }))}>
                 <option value="">PV&hellip;</option><option value="y">PV: Yes</option><option value="n">PV: No</option>
               </select>
-              <select value={bulk.Self_Lay_Provider}
-                onChange={(e) => setBulk((b) => ({ ...b, Self_Lay_Provider: e.target.value }))}>
-                <option value="">SLP&hellip;</option><option value="y">SLP: Yes</option><option value="n">SLP: No</option>
-              </select>
+              {/* ── Self-lay, which utility ──
+
+                  Two controls, because "SLP: Yes" no longer says
+                  anything on its own: a plot is self-lay FOR SOMETHING.
+                  The utility first, then whether it is theirs or ours.
+
+                  Only the utilities these plots actually have rows for.
+                  Offering one the project is not scoped for would give a
+                  control that reports "0 updated" and reads as broken.
+
+                  Hidden entirely where the project has no utilities on
+                  its plots at all — a pair of empty dropdowns is worse
+                  than no dropdowns, because it looks like something to
+                  fill in. */}
+              {projectUtilities.length > 0 && (
+                <>
+                  <select value={bulk.SLP_Utility_ID}
+                    onChange={(e) => setBulk((b) => ({ ...b, SLP_Utility_ID: e.target.value }))}>
+                    <option value="">SLP utility&hellip;</option>
+                    {projectUtilities.map((uid) => (
+                      <option key={uid} value={uid}>{utilName(uid)}</option>
+                    ))}
+                  </select>
+                  <select value={bulk.SLP_Value}
+                    disabled={!bulk.SLP_Utility_ID}
+                    onChange={(e) => setBulk((b) => ({ ...b, SLP_Value: e.target.value }))}>
+                    <option value="">Self-lay&hellip;</option>
+                    <option value="y">Self-lay: Yes</option>
+                    <option value="n">Self-lay: No</option>
+                  </select>
+                </>
+              )}
               {developers.length > 1 && (
                 <select value={bulkDev} onChange={(e) => setBulkDev(e.target.value)}>
                   <option value="">Developer&hellip;</option>
@@ -700,7 +825,20 @@ export default function PlotsTab({ projectId, projectRef }) {
                               )
                             : col.key === "hp" ? hpName(p.Heat_Pump_Model_ID)
                             : col.key === "pv" ? (p.PV ? <span className="tick">&#10003;</span> : "")
-                            : col.key === "slp" ? (p.Self_Lay_Provider ? <span className="tick">&#10003;</span> : "")
+                            : col.key === "slp" ? (
+                              (p.SLP_Utility_IDs || []).length
+                                ? (
+                                  <span className="slp-chips">
+                                    {p.SLP_Utility_IDs.map((uid) => (
+                                      <span className="slp-chip" key={uid}
+                                        title={`${utilName(uid)} is laid by a self-lay provider`}>
+                                        {utilAbbr(uid)}
+                                      </span>
+                                    ))}
+                                  </span>
+                                )
+                                : ""
+                            )
                             : (
                               <button className="btn delete sm" onClick={() => remove(p)}
                                 aria-label={`Delete plot ${p.Plot_Number}`}>
@@ -777,6 +915,20 @@ const CSS = FILTER_CSS + `
 .dt .ref { color: var(--accent); font-weight: 600; }
 .inherited { color: var(--muted); font-style: italic; }
 .tick { color: #059669; font-weight: 700; }
+/* One chip per utility somebody else connects.
+
+   A letter rather than a word: three of them have to fit a column that
+   used to hold a tick, and E, G and W are how they are said on site.
+   The full name is on the hover, because a letter is a reminder and not
+   a label.
+
+   Grey rather than red. It is a fact about who does the work, not a
+   fault \u2014 the drawing marks the same thing with a black cross on the
+   meter, and neither is a warning. */
+.slp-chips { display: inline-flex; gap: 3px; }
+.slp-chip { display: inline-block; min-width: 17px; padding: 1px 4px; border-radius: 4px;
+  background: #eef1f5; border: 1px solid var(--border); color: #475569;
+  font-size: 10.5px; font-weight: 700; line-height: 1.5; text-align: center; }
 .kva-unset { color: #b45309; font-weight: 600; }
 /* A plot that takes no gas. Empty rather than dashed: a dash in this
    column means "should have a figure and hasn't", and the two must not

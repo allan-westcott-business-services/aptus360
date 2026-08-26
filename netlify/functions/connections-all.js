@@ -60,9 +60,20 @@ export default withAuth(async function handler(req) {
         _projectRef: proj?.Project_Ref ?? "",
         _siteName: proj?.Site_Name ?? "",
         _regionId: proj?.Region_ID ?? null,
-        /* The plot's flag. The connection has one of its own too, for a
-           plot that is self-lay on a single utility. */
-        _slp: !!Plot?.Self_Lay_Provider,
+        /* ── The row's own flag, not the plot's ──
+
+           Every row here IS a plot-utility pair, and Plot_Utility
+           carries Self_Lay_Provider for exactly that pair. This showed
+           the plot-level boolean instead, so an SLP column sat on a
+           per-utility row telling it about the whole plot: three rows
+           all ticked because the water is somebody else's, and no way
+           to see which one it actually was.
+
+           Two records of one fact with a reader looking at the wrong
+           one — fault 13, in a single line. The plot-level column is
+           being retired; this was the last screen showing it as though
+           it meant this row. */
+        _slp: !!conn.Self_Lay_Provider,
         _idnoName: idnoBy[`${proj?.Project_ID}|${conn.Utility_ID}`]?.name ?? null,
         _photos: photoCount[conn.Plot_Utility_ID] || 0,
       });

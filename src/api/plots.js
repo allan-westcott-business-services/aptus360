@@ -45,6 +45,28 @@ export async function bulkUpdatePlots(projectId, plotIds, changes) {
   return http.patch(`/projects/${projectId}/plots`, { plot_ids: plotIds, changes });
 }
 
+/* Self-lay for one utility across a selection of plots.
+
+   Its own call rather than a field on bulkUpdatePlots, because it
+   writes Plot_Utility and that one writes Plot. Sharing an entry point
+   would mean one function that sometimes updates a different table
+   depending on which key it was handed, and the count it returned would
+   mean two things. */
+export async function setPlotSelfLay(projectId, plotIds, utilityId, value) {
+  if (USE_MOCKS) {
+    await delay(300);
+    mockStore = mockStore.map((p) => {
+      if (!plotIds.includes(p.Plot_ID)) return p;
+      const on = new Set(p.SLP_Utility_IDs || []);
+      if (value) on.add(Number(utilityId)); else on.delete(Number(utilityId));
+      return { ...p, SLP_Utility_IDs: [...on].sort((a, b) => a - b) };
+    });
+    return { updated: plotIds.length, missing: [] };
+  }
+  return http.patch(`/projects/${projectId}/plots?self_lay`,
+    { plot_ids: plotIds, utility_id: Number(utilityId), value: !!value });
+}
+
 export async function bulkDeletePlots(projectId, plotIds) {
   if (USE_MOCKS) {
     await delay(300);

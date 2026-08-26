@@ -31,6 +31,9 @@ export default function NewScheduleModal({ onClose, onSaved }) {
      is most likely to make, and the only way to see it otherwise is to
      save and find out. */
   const [existing, setExisting] = useState({});   // plot id -> { utilityId: date }
+  /* plot id -> Set of utility ids somebody else lays. Per utility,
+     because that is what the flag is: Plot_Utility.Self_Lay_Provider. */
+  const [selfLayBy, setSelfLayBy] = useState({});
   const [selected, setSelected] = useState([]);
   const [anchor, setAnchor] = useState(null);
   const [utils, setUtils] = useState([]);
@@ -86,6 +89,19 @@ export default function NewScheduleModal({ onClose, onSaved }) {
           (map[c.Plot_ID] ||= {})[c.Utility_ID] = c.Programmed_Date || c.Connection_Date || null;
         }
         setExisting(map);
+
+        /* Self-lay, per plot per utility, off the same rows.
+
+           No second request: these are Plot_Utility rows and the flag
+           is on them. It was read from Plot.Self_Lay_Provider, one
+           boolean for the whole plot — so a plot self-lay for water
+           alone could not be scheduled for its electric, which is ours
+           to connect. */
+        const slp = {};
+        for (const c of rows) {
+          if (c.Self_Lay_Provider) (slp[c.Plot_ID] ||= new Set()).add(Number(c.Utility_ID));
+        }
+        setSelfLayBy(slp);
       })
       /* Said out loud. A silent failure here is indistinguishable from a
          project with nothing scheduled, which is what hid this. */
@@ -100,8 +116,18 @@ export default function NewScheduleModal({ onClose, onSaved }) {
       .finally(() => setLoadingPlots(false));
   }, [projectId, lookups]);
 
-  // Self-lay plots aren't ours to connect, so they can't be scheduled.
-  const eligible = (p) => !p.Self_Lay_Provider;
+  /* ── Which plots can be scheduled ──
+
+     A self-lay connection is not ours to make. But it is per utility, so
+     a plot is only out of reach when EVERY utility being scheduled is
+     somebody else's — with electric and gas ticked, a plot whose water
+     is self-lay is still perfectly schedulable.
+
+     Before any utility is ticked there is nothing to judge against, so
+     every plot is offered. The endpoint refuses the self-lay pairs
+     whatever this says, and reports how many it left out. */
+  const selfLayFor = (p, u) => !!selfLayBy[p.Plot_ID]?.has(Number(u));
+  const eligible = (p) => !utils.length || utils.some((u) => !selfLayFor(p, u));
   const selfLay = plots.filter((p) => !eligible(p)).length;
 
   function clickPlot(p, e) {
@@ -129,11 +155,27 @@ export default function NewScheduleModal({ onClose, onSaved }) {
     setSaving(true);
     try {
       const res = await generateConnections(projectId, selected, utils, date, extra);
-      const n = res.created ?? 0;
+      /* Created and updated are both scheduled.
+
+         The message counted inserts alone, so once every plot-utility
+         row existed it said "those connections already exist" after
+         successfully booking a hundred visits. What somebody wants to
+         know is how many are now in the diary, not which SQL verb did
+         it. */
+      const n = (res.created ?? 0) + (res.updated ?? 0);
+      /* And the three reasons a pair was left out, each said only when
+         it happened. A self-lay connection is not ours to make; one
+         already booked is somebody else's decision to move. */
+      const why = [
+        res.self_lay ? `${res.self_lay} self-lay` : null,
+        res.already_scheduled ? `${res.already_scheduled} already booked` : null,
+      ].filter(Boolean).join(", ");
+
       onSaved && onSaved(
         n === 0
-          ? "Those connections already exist — nothing new was scheduled."
-          : `${n} connection${n === 1 ? "" : "s"} scheduled for ${date.split("-").reverse().join("/")}`
+          ? `Nothing scheduled${why ? ` — ${why}` : ""}.`
+          : `${n} connection${n === 1 ? "" : "s"} scheduled for `
+            + `${date.split("-").reverse().join("/")}${why ? ` (${why} left out)` : ""}`
       );
       onClose();
     } catch (e) { setError(e.message); }
@@ -305,7 +347,8 @@ export default function NewScheduleModal({ onClose, onSaved }) {
             {plots.length > 0 && (
               <p className="hint">
                 Click to toggle, shift-click for a range.
-                {selfLay > 0 && ` ${selfLay} self-lay plot${selfLay === 1 ? "" : "s"} excluded.`}
+                {selfLay > 0 && ` ${selfLay} plot${selfLay === 1 ? " is" : "s are"} self-lay `
+                  + `for ${utils.length === 1 ? "that utility" : "all of those utilities"}.`}
                 {" "}
                 <button className="ns-link" onClick={() => setSelected(plots.filter((p) => {
                   if (!eligible(p)) return false;

@@ -14,6 +14,11 @@ const PLOT_COLUMNS = [
 export default withAuth(async function handler(req, context) {
   const db = supabase();
   const projectId = context?.params?.projectId;
+  /* Declared here rather than in the branch that first needed it. The
+     self-lay PATCH below reads a query parameter, and a `const` in the
+     DELETE branch is not in scope above it — that is fault 2, and it
+     throws rather than misbehaving, which is the good version of it. */
+  const url = new URL(req.url);
 
   try {
     if (req.method === "GET") {
@@ -44,6 +49,43 @@ export default withAuth(async function handler(req, context) {
         .rpc("gis_unplaced_plots", { p_project: Number(projectId) });
 
       const byId = new Map((resolved || []).map((r) => [Number(r.plot_id), r]));
+
+      /* ── Which utilities each plot takes, and which are self-lay ──
+
+         From Plot_Utility, one row per plot per utility. The flag that
+         matters is on THAT row, not Plot.Self_Lay_Provider: a plot can
+         be self-lay for water and ours for electric, and the plot-level
+         boolean cannot say so. Both columns exist and 0066 has to alias
+         one of them to stop them colliding in a view, which is how
+         close together they sit.
+
+         One query for the project rather than one per plot: a 150-plot
+         site is 450 rows, and 450 round trips would blow the ten-second
+         function timeout.
+
+         Every plot has rows as of 26 Aug — 1,714 were back-filled from
+         each project's Project_Scope, since only 28 plots had any. A
+         plot with none is therefore a plot added since, or one whose
+         project has no scopes, and it comes back with empty lists
+         rather than being hidden: a plot that takes no utilities is a
+         real thing to look at, not a row to drop. */
+      const ids = rows.map((p) => p.Plot_ID);
+      let utilRows = [];
+      if (ids.length) {
+        const { data: pu, error: puErr } = await db.from("Plot_Utility")
+          .select("Plot_ID,Utility_ID,Self_Lay_Provider").in("Plot_ID", ids);
+        if (puErr) throw puErr;
+        utilRows = pu || [];
+      }
+      const utilsOf = new Map();
+      const slpOf = new Map();
+      for (const r of utilRows) {
+        const k = Number(r.Plot_ID);
+        if (!utilsOf.has(k)) { utilsOf.set(k, []); slpOf.set(k, []); }
+        utilsOf.get(k).push(Number(r.Utility_ID));
+        if (r.Self_Lay_Provider) slpOf.get(k).push(Number(r.Utility_ID));
+      }
+
       return json({
         rows: rows.map((p) => {
           const r = byId.get(Number(p.Plot_ID));
@@ -67,6 +109,12 @@ export default withAuth(async function handler(req, context) {
                two differently and needs to be told which is which. */
             Gas_Load_Resolved: r?.gas_load_kw ?? null,
             Gas_Load_Source: r?.gas_load_source ?? "not set",
+            /* Sorted, so a chip list reads the same on every row and
+               two plots with the same utilities cannot look different.
+               Utility_ID order is the seeded order — electric, gas,
+               water — which is how they are said out loud. */
+            Utility_IDs: (utilsOf.get(Number(p.Plot_ID)) || []).sort((a, b) => a - b),
+            SLP_Utility_IDs: (slpOf.get(Number(p.Plot_ID)) || []).sort((a, b) => a - b),
           };
         }),
       });
@@ -91,6 +139,63 @@ export default withAuth(async function handler(req, context) {
       return json({ rows: data }, 201);
     }
 
+    /* ── Self-lay, per plot per utility ──
+
+       Its own branch rather than part of the bulk PATCH above, because
+       it writes a different table. That one updates Plot; this updates
+       Plot_Utility, one row per plot per utility, and the two have
+       nothing in common but the plot ids.
+
+       A separate branch and not a separate FILE only because it is the
+       same resource — but note the branch order rule: this is a PATCH
+       with `self_lay` in the body, and it sits ABOVE the unconditional
+       PATCH. A conditional branch below an unconditional one for the
+       same method never runs, which is recurring fault 1 and has bitten
+       four times.
+
+       ── It updates and never inserts ──
+
+       Every plot has a row per utility its project is scoped for; 1,714
+       were back-filled on 26 Aug. So a missing row is a fact about the
+       drawing, not something to paper over: silently creating one would
+       give a plot a connection for a utility its project is not doing,
+       and nothing would say where it came from.
+
+       The count of what was actually written is returned, so a caller
+       that asked for forty and changed thirty-eight can say so. */
+    if (req.method === "PATCH" && url.searchParams.get("self_lay") !== null) {
+      const { plot_ids = [], utility_id = null, value = null } = await req.json();
+      if (!plot_ids.length) return json({ error: "No plots selected" }, 400);
+      if (utility_id == null) return json({ error: "utility_id required" }, 400);
+      if (typeof value !== "boolean") return json({ error: "value must be true or false" }, 400);
+
+      /* Only this project's plots. plot_ids arrives from the browser,
+         and a plot id from another project would otherwise be writable
+         through this route. */
+      const { data: mine, error: mErr } = await db.from("Plot")
+        .select("Plot_ID").eq("Project_ID", projectId).in("Plot_ID", plot_ids);
+      if (mErr) throw mErr;
+      const allowed = (mine || []).map((p) => p.Plot_ID);
+      if (!allowed.length) return json({ error: "No plots on this project" }, 400);
+
+      const { data, error } = await db.from("Plot_Utility")
+        .update({ Self_Lay_Provider: value, Updated_At: new Date().toISOString() })
+        .in("Plot_ID", allowed).eq("Utility_ID", Number(utility_id))
+        .select("Plot_ID,Utility_ID,Self_Lay_Provider");
+      if (error) throw error;
+
+      const written = data || [];
+      return json({
+        rows: written,
+        updated: written.length,
+        /* Named, not counted. A plot with no row for this utility is
+           one whose project is not scoped for it — worth saying, and a
+           number on its own is something to go looking for. */
+        missing: allowed.filter((id) =>
+          !written.some((w) => Number(w.Plot_ID) === Number(id))),
+      });
+    }
+
     /* Bulk edit: one statement for the whole selection rather than a
        request per plot, which would blow the 10s function timeout on a
        large site. */
@@ -111,7 +216,6 @@ export default withAuth(async function handler(req, context) {
     }
 
     if (req.method === "DELETE") {
-      const url = new URL(req.url);
       const plotId = url.searchParams.get("plot_id");
       const ids = url.searchParams.get("plot_ids");
       if (!plotId && !ids) return json({ error: "plot_id or plot_ids required" }, 400);

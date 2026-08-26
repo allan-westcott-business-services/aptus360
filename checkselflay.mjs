@@ -306,6 +306,161 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   if (e.length !== 1) fail(`splitExisting put ${e.length} in existing, expected 1`);
 }
 
+/* ── The Plots tab, and the two tables it must not confuse ──
+
+   Plot.Self_Lay_Provider is one boolean for the whole plot;
+   Plot_Utility.Self_Lay_Provider is one per utility. A plot self-lay
+   for water only cannot be said by the first, and reading it on this
+   page would mark all three of its utilities.
+
+   Asserted on the source because the page is a table of a project's
+   plots and mounting it needs a project, a lookup set and an endpoint.
+   What can be checked without any of that is that it reads the right
+   column and writes the right table. */
+{
+  const tab = readFileSync("src/features/plots/PlotsTab.jsx", "utf8");
+  const fn = readFileSync("netlify/functions/plots.js", "utf8");
+  const api = readFileSync("src/api/plots.js", "utf8");
+
+  // 16. The column shows utilities, not a tick.
+  if (/raw:\s*\(p\)\s*=>\s*!!p\.Self_Lay_Provider/.test(tab)) {
+    fail("the SLP column still reads the plot-level flag");
+  }
+  if (!/SLP_Utility_IDs/.test(tab)) {
+    fail("the SLP column does not read the per-utility flags");
+  }
+
+  /* 17. Bulk asks which utility.
+
+     "SLP: Yes" says nothing on its own once the flag is per utility. A
+     control that wrote every utility from one yes would be the
+     plot-level flag again, wearing a different hat. */
+  if (!/SLP_Utility_ID/.test(tab)) fail("the bulk bar does not ask which utility");
+  if (!/bulk\.SLP_Utility_ID && bulk\.SLP_Value/.test(tab)) {
+    fail("bulk self-lay writes without both halves chosen");
+  }
+
+  /* 18. It writes Plot_Utility, not Plot.
+
+     Folding it into the bulk `changes` object would send it to Plot —
+     where the column also exists, so it would succeed, and mark the
+     whole plot. Two tables with a column of the same name is exactly
+     the shape that needs a check rather than care. */
+  if (/changes\.Self_Lay_Provider/.test(tab)) {
+    fail("bulk self-lay is written to Plot rather than Plot_Utility");
+  }
+  if (!/setPlotSelfLay/.test(tab)) fail("the Plots tab does not call setPlotSelfLay");
+  if (!/self_lay/.test(api)) fail("the API layer has no self-lay route");
+
+  /* 19. The endpoint updates and never inserts.
+
+     Every plot has a row per utility its project is scoped for — 1,714
+     were back-filled on 26 Aug. A missing row therefore means the
+     project is not scoped for that utility, and creating one would give
+     a plot a connection nobody is doing. */
+  const branch = fn.slice(fn.indexOf('self_lay") !== null'), fn.indexOf('Bulk edit: one statement'));
+  if (!/from\("Plot_Utility"\)\s*\n?\s*\.update\(/.test(branch)) {
+    fail("the self-lay branch does not update Plot_Utility");
+  }
+  if (/\.insert\(|upsert\(/.test(branch)) {
+    fail("the self-lay branch inserts rows \u2014 it must only update");
+  }
+  if (!/missing/.test(branch)) {
+    fail("plots with no row for that utility are not reported");
+  }
+
+  /* 20. And the conditional branch sits above the unconditional one.
+
+     A conditional `if (method === X && ...)` below an unconditional
+     `if (method === X)` never runs, and fails silently with the wrong
+     shape rather than an error. Recurring fault 1, hit four times. */
+  const conditional = fn.indexOf('self_lay") !== null');
+  const unconditional = fn.indexOf('if (req.method === "PATCH") {');
+  if (conditional < 0 || unconditional < 0) {
+    fail("could not find both PATCH branches");
+  } else if (conditional > unconditional) {
+    fail("the self-lay PATCH sits below the unconditional PATCH \u2014 it will never run");
+  }
+}
+
+/* ── Scheduling, after every row already exists ──
+
+   generateConnections did one job and was asked for two: the row for a
+   plot-utility pair has to exist, AND it has to carry a
+   Programmed_Date. It only ever inserted, which worked while rows came
+   into being nowhere else.
+
+   The 26 Aug back-fill ended that. Every pair exists, so the insert
+   found nothing to do and every booking reported "those connections
+   already exist" without writing a date. Nothing errored; the form just
+   stopped working. */
+{
+  const fn = readFileSync("netlify/functions/connections.js", "utf8");
+  const post = fn.slice(fn.indexOf('req.method === "POST"'), fn.indexOf('req.method === "PATCH"'));
+
+  // 21. It updates as well as inserting.
+  if (!/\.update\(/.test(post)) {
+    fail("scheduling only inserts \u2014 a pair that already exists never gets its date");
+  }
+  if (!/updated:/.test(post)) fail("the response does not say how many rows were updated");
+
+  /* 22. And it does not overwrite a booking.
+
+     Moving a visit that is already in the diary has a gang and a
+     customer behind it. It belongs on the page showing the existing
+     date, not as a side effect of ticking a plot in a bulk form. */
+  if (!/Programmed_Date \|\| row\.Connection_Date/.test(post)) {
+    fail("scheduling overwrites a date that is already set");
+  }
+
+  /* 23. Never an upsert.
+
+     Supabase's upsert is ON CONFLICT DO UPDATE with exactly the fields
+     supplied — everything else on the row becomes null: the meter
+     number, the as-laid date, the adopter. Recurring fault 5. */
+  if (/upsert\(/.test(post)) fail("scheduling upserts, which nulls every field it does not name");
+
+  /* 24. Self-lay is refused on the server.
+
+     Three screens call this and each filtered its own way, per PLOT,
+     which cannot express a plot self-lay for water and ours for
+     electric. The rule belongs on the row that holds the fact. */
+  if (!/row\.Self_Lay_Provider/.test(post)) {
+    fail("scheduling does not refuse a self-lay pair");
+  }
+  if (!/self_lay:/.test(post)) fail("the response does not say how many were self-lay");
+
+  const tab = readFileSync("src/features/plots/PlotsTab.jsx", "utf8");
+  if (/filter\(\(p\) => !p\.Self_Lay_Provider\)/.test(tab)) {
+    fail("Generate connections still filters on the plot-level flag");
+  }
+
+  /* 25. The schedule form judges per utility.
+
+     A plot self-lay for water alone is still ours to connect for
+     electric. Reading the plot-level flag greyed it out entirely. */
+  const modal = readFileSync("src/features/connections/NewScheduleModal.jsx", "utf8");
+  if (/const eligible = \(p\) => !p\.Self_Lay_Provider/.test(modal)) {
+    fail("the schedule form still judges self-lay per plot");
+  }
+  if (!/utils\.some\(/.test(modal)) {
+    fail("the schedule form does not judge against the utilities being scheduled");
+  }
+
+  /* 26. And the connections list shows the row's flag, not the plot's.
+
+     Every row there IS a plot-utility pair. Showing the plot-level
+     boolean ticked all three of a plot's rows because its water was
+     somebody else's. */
+  const all = readFileSync("netlify/functions/connections-all.js", "utf8");
+  if (/_slp:\s*!!Plot\?\.Self_Lay_Provider/.test(all)) {
+    fail("the connections list shows the plot-level flag on a per-utility row");
+  }
+  if (!/_slp:\s*!!conn\.Self_Lay_Provider/.test(all)) {
+    fail("the connections list does not show the row's own self-lay flag");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

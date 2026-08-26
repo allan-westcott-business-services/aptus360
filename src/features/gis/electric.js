@@ -108,7 +108,15 @@ export function meterBelongsTo(meter, seed) {
      equivalent. It also means a supply's meters survive the seed being
      deleted and re-placed, which the feature id would not. */
   const nrs = seed.Attributes?.NRS_ID;
-  if (nrs != null) return Number(meter.Attributes?.NRS_ID) === Number(nrs);
+  if (nrs != null && meter.Attributes?.NRS_ID != null) {
+    return Number(meter.Attributes.NRS_ID) === Number(nrs);
+  }
+  /* Both, or neither. Asking only whether the SEED has an NRS_ID meant a
+     meter carrying just the seed link — which is what Auto Service used
+     to write — could never belong to a supply, so a supply serviced
+     automatically dropped off its own circuit while looking entirely
+     correct on the drawing. Auto Service writes both now; this is what
+     makes the older ones keep working. */
   return Number(meter.Attributes?.Seed_Feature_ID) === Number(seed.Feature_ID);
 }
 
@@ -1066,8 +1074,21 @@ export function lvOrigin(features = []) {
     && f.Layer_Key === "electric" && has(f)) || null;
 }
 
-export function circuitReport(features = [], plotById = () => null, opts = {}) {
-  const { fallbackKva = 0 } = opts;
+export function circuitReport(features = [], opts = {}) {
+  /* Both lookups in the options, travelling together.
+
+     plotById used to be a positional argument and nrsById arrived later
+     in the options, which meant a call site could pass one and forget
+     the other — and forgetting nrsById does not fail. It reports every
+     supply as carrying no load, on a drawing that shows the supply
+     plainly, while the levels check counts it. The two answered
+     differently about the same circuit for exactly as long as that
+     shape lasted.
+
+     A supply is a load like a dwelling is. The two ways of looking one
+     up belong in the same place, and checknrs counts the call sites to
+     make sure neither goes without the other. */
+  const { plotById = () => null, fallbackKva = 0, nrsById = () => null } = opts;
 
   /* ── Traced from the substation, or from the POC ──
 
@@ -1102,13 +1123,32 @@ export function circuitReport(features = [], plotById = () => null, opts = {}) {
 
   const rec = (m) => {
     const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
-    const kva = plot?.kva_load ?? plot?.KVA_Load;
+    /* A non-residential supply has no plot, so plotById cannot answer
+       for it: every one reported "no load recorded" and its kVA was
+       missing from the circuit total and from the POC capacity
+       comparison underneath it.
+
+       Read the same way circuitKva reads it — off the NRS_ID on the
+       meter — so the report and the way-fuse sum cannot disagree about
+       what a circuit is carrying. They did: buildFeederModel had this
+       branch from the start and this function never got it, so the
+       levels check counted a supply that the report showed as blank. */
+    const nrsId = m.Attributes?.NRS_ID;
+    const supply = nrsId != null ? nrsById(nrsId) : null;
+    const kva = supply
+      ? supply.Requested_kVA
+      : (plot?.kva_load ?? plot?.KVA_Load);
     const d = dist.get(Number(m.Feature_ID));
     return {
       id: m.Feature_ID,
       meter: m.Label || `Meter ${m.Feature_ID}`,
       plot: plot?.plot_number ?? plot?.Plot_Number ?? "",
-      houseType: plot?.config_code ?? plot?.Code ?? "\u2014",
+      /* What it is, where there is no house type to give. A row reading
+         "—" in every column but its name says nothing about why it has
+         no plot; the supply type says it is not a dwelling. */
+      houseType: supply
+        ? (supply.Description || supply.Supply_Ref || "Non-residential")
+        : (plot?.config_code ?? plot?.Code ?? "\u2014"),
       kva: kva != null && kva !== "" ? Number(kva) : fallbackKva,
       /* Whether that figure was read off the plot or fallen back to.
          A plot with no load recorded and a plot genuinely drawing

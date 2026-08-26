@@ -122,6 +122,89 @@ to place. From `RESIDENTIAL_UTILITIES`, which is already derived from
 the group in `lib/utilities.js`, so a fourth metered utility would
 appear without anyone remembering to add it.
 
+
+## Auto Service reaches supplies
+
+It was serving plots only, because under 0194 a supply was a meter and
+there was no seed here to serve. Serving one by hand while every
+dwelling beside it is done automatically is a distinction with nothing
+behind it, so Auto Service now gathers both roles.
+
+Two things had to follow.
+
+**Placing a supply asks where its dig stops**, as the second click,
+exactly as a plot seed does. `planSeed` refuses any seed with no
+`Boundary_At` and says so — deliberately, because with no boundary
+vertex to turn at, the "trench" is a line from the main straight to
+somebody's meter and every cable then follows it. A supply that could
+not say where its dig stops could not be auto-serviced at all.
+
+Supplies already placed have no boundary point and will be reported as
+skipped by name rather than silently passed over. Re-place them, or the
+next thing to build is setting the point on an existing seed.
+
+**The meters it lays carry the supply's `NRS_ID`.** `meterBelongsTo`
+now asks for it on both sides, so without it a supply serviced
+automatically would drop off its own circuit while looking entirely
+correct on the drawing — its kVA quietly missing from the way. A meter
+carrying only the older `Seed_Feature_ID` link still belongs to its
+supply, which is what keeps any drawing serviced in between working.
+
+Which utilities get laid comes from the supply's own record, not from
+the plot heat-source rule: whether a unit takes gas is something it
+says, not something worked out from a heat source it hasn't got.
+
+
+## A meter the model cannot reach is now named
+
+Found by a supply that was placed, metered, on a circuit, and absent
+from every volt drop and ELI figure.
+
+The data was right — seed, meter, matching `NRS_ID`, `Circuit_ID` 1.
+What was wrong is that `buildFeederModel` could not attach the meter to
+the network: it is more than `SNAP_TOL` (12 m) from any node, because no
+service has been dug to it yet. The model has always gathered those in
+`skipped`, and `runLevelsCheck` has always thrown them away.
+
+So the load simply was not in the figures, and nothing said so. **That
+is the one direction a wrong number is dangerous in** — a load left out
+reads as headroom on the way, and a marginal run reads as passing. An
+unqualified pass is worse than no check at all.
+
+The levels panel now says "N meters not on the network" beside the
+voltage note, with the labels on hover. Named rather than counted: a
+count is a number to go looking for.
+
+It is not a supply-specific fault. A plot meter placed before its dig
+reaches it has been silently absent from the levels check in exactly
+the same way, for as long as the check has existed.
+
+
+## The circuit report showed no load on any supply
+
+Reported as "3 with no load recorded" against three supplies with 10, 10
+and 20 kVA on their records, so the circuit total was 40 kVA light and
+the POC capacity comparison underneath it with it.
+
+`circuitReport` read `plotById` and nothing else. A supply has no plot,
+so `plotById` cannot answer for it — and the function had no other way
+to ask. `buildFeederModel` has had that branch since the supply work
+started, which is why the levels check was counting them correctly all
+along: **two answers to one question about one circuit.**
+
+`plotById` was a positional argument and `nrsById` arrived later in the
+options, so a call site could pass one and forget the other — and
+forgetting `nrsById` does not fail. It reports no load. Both lookups are
+in the options now and travel together, and `checknrs` counts the call
+sites so neither can go without the other.
+
+A supply's row also says what it is in the House type column, rather
+than leaving every column but its name blank.
+
+A record with no kVA is still shown as missing rather than as zero. A
+supply drawing nothing and a supply nobody has filled in are different
+problems that look identical as "0.0 kVA".
+
 ## The check
 
 Rewritten around the seed rather than patched. `metredSuppliesInside`

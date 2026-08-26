@@ -55,7 +55,7 @@ const plotById = (id) => ({ plot_number: id, kva_load: 2 });
 
 const distances = (r) => (r.circuits || []).flatMap((c) => c.meters).map((m) => m.distM);
 const report = (role, at) =>
-  circuitReport([origin(role, at), CABLE, M18, M19], plotById);
+  circuitReport([origin(role, at), CABLE, M18, M19], { plotById });
 
 // 1. A POC off the cable still reports distances.
 //
@@ -134,7 +134,7 @@ const report = (role, at) =>
   if (lvOrigin(both)?.Feature_Role !== "substation") {
     fail("the POC was taken as the origin over a substation");
   }
-  const r = circuitReport(both, plotById);
+  const r = circuitReport(both, { plotById });
   if (r.stationRole !== "substation") fail("the report traced from the POC, not the substation");
   if (distances(r)[0] !== 50) {
     fail(`with both drawn the distance should be 50, got ${distances(r)[0]}`);

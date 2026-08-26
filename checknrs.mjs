@@ -10,9 +10,10 @@
    Run: node checknrs.mjs */
 import { buildFeederModel } from "./src/features/gis/feeder.js";
 import { subjectOf, resolveStyle } from "./src/lib/gisStyle.js";
-import { metredSuppliesInside, circuitKva, meterBelongsTo }
+import { metredSuppliesInside, circuitKva, meterBelongsTo, circuitReport }
   from "./src/features/gis/electric.js";
 import { utilitiesTakenBy, RESIDENTIAL_UTILITIES } from "./src/lib/utilities.js";
+import { planAutoService, isServed } from "./src/features/gis/autoService.js";
 import { readFileSync } from "node:fs";
 
 const fails = [];
@@ -155,8 +156,13 @@ const plotById = () => ({ kva_load: 5 });
   if (/Layer_Key: "electric",\s*\n\s*Feature_Type: "point",\s*\n\s*Feature_Role: "meter",\s*\n\s*Geometry: \[point\],\s*\n\s*Label: nrsName/.test(src)) {
     fail("placement still writes the supply itself as an electric meter");
   }
-  /* And then its meters, one per utility it takes. */
-  if (!/setMeterFor\(\{ nrs: rec/.test(src)) {
+  /* Then where its dig stops, then its meters — the same two-step a
+     plot seed takes, and the reason Auto Service can reach it. */
+  if (!/setBoundaryFor\(\{ nrs: rec/.test(src)) {
+    fail("placing a supply never asks where its dig stops");
+  }
+  if (!/Boundary_At: point/.test(src)) fail("a supply seed has no boundary point");
+  if (!/plot, nrs, seedPoint, utility: takes\[0\]/.test(src)) {
     fail("placing a supply does not go on to place its meters");
   }
   if (!/NRS_ID: nrs\.NRS_ID/.test(src)) {
@@ -314,6 +320,147 @@ const plotById = () => ({ kva_load: 5 });
   const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/Feature_Role === "nrs"[\s\S]{0,200}fillText\(f\.Label[\s\S]{0,120}p\.y \+/.test(src)) {
     fail("a supply's label is not drawn below its symbol");
+  }
+}
+
+// 14. Auto Service serves a supply like anything else.
+//
+//     It did not, because under 0194 a supply was a meter and there was
+//     no seed here to serve. Serving one by hand while every dwelling
+//     beside it is done automatically is a distinction with nothing
+//     behind it.
+{
+  const main = {
+    Feature_ID: 2, Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_main" }, Geometry: [[0, 0], [100, 0]],
+  };
+  const supplySeed = {
+    Feature_ID: 30, Feature_Role: "nrs", Layer_Key: "plot",
+    Geometry: [[50, 20]],
+    Attributes: { NRS_ID: 7, Boundary_At: [50, 6] },
+  };
+  const elec = [{ layer_key: "electric", utility: "Electric" }];
+
+  const { plans, skipped } = planAutoService([supplySeed], [main], () => elec, {});
+  if (!plans.length) {
+    fail(`a supply was not planned for: ${skipped[0]?.why ?? "no reason given"}`);
+  }
+
+  /* A seed with no boundary point is refused, and says so. The dig has
+     to stop somewhere: without a boundary vertex to turn at, the
+     "trench" is a line from the main to somebody's meter, and every
+     cable then follows it. This is why placing a supply asks for the
+     point. */
+  const noEdge = { ...supplySeed, Attributes: { NRS_ID: 7 } };
+  const bare = planAutoService([noEdge], [main], () => elec, {});
+  if (bare.plans.length) fail("a supply with no boundary point was still dug to");
+  if (!/boundary/i.test(bare.skipped[0]?.why || "")) {
+    fail(`a supply with no boundary point was refused for "${bare.skipped[0]?.why}"`);
+  }
+
+  /* Once served, not served again. A second run laying a second trench
+     over the first is the fault the already-serviced guard exists for,
+     and a supply has to answer to it like a plot. */
+  const laid = {
+    Feature_ID: 31, Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_service", Seed_Feature_ID: 30 },
+    Geometry: [[50, 0], [50, 6]],
+  };
+  if (!isServed(supplySeed, [], [laid])) fail("a serviced supply did not count as served");
+
+  /* And the meter it lays carries the supply's record, not just the
+     seed link — meterBelongsTo asks for the NRS_ID on both sides, so
+     without it the supply drops off its own circuit while looking
+     entirely right on the drawing. */
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/NRS_ID: plan\.seed\.Attributes\.NRS_ID/.test(src)) {
+    fail("a meter laid by Auto Service carries no NRS_ID");
+  }
+  if (!/Feature_Role === "plot" \|\| f\.Feature_Role === "nrs"/.test(src)) {
+    fail("Auto Service still gathers plot seeds only");
+  }
+  /* A meter carrying only the seed link still belongs to its supply —
+     which is what Auto Service wrote before this, and what is on any
+     drawing serviced in between. */
+  const older = { Feature_Role: "meter", Layer_Key: "electric",
+    Attributes: { Seed_Feature_ID: 30 } };
+  if (!meterBelongsTo(older, supplySeed)) {
+    fail("a meter linked only by the seed no longer belongs to its supply");
+  }
+}
+
+// 15. A meter the model cannot reach is NAMED, not dropped.
+//
+//     buildFeederModel has always gathered these — a meter more than
+//     SNAP_TOL from any node on the network — and the levels check has
+//     always thrown them away. So a supply placed on a circuit with no
+//     service dug to it yet contributed nothing to the volt drop and
+//     said nothing about it.
+//
+//     Which is fault 22 in the one direction that is dangerous: a load
+//     left out reads as headroom on the way, and a marginal run reads
+//     as passing. An unqualified pass is worse than no check at all.
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const stranded = parts\.flatMap\(\(p\) => p\.skipped \|\| \[\]\)/.test(src)) {
+    fail("the levels check throws away the meters it could not attach");
+  }
+  if (!/stranded,/.test(src)) fail("the stranded meters never reach the panel");
+  if (!/not on the network/.test(src)) fail("the panel does not say any meter was left out");
+  /* Named, so somebody can go to it. A count is a number to search
+     for. */
+  if (!/trace\.stranded\.map\(\(m\) => m\.label/.test(src)) {
+    fail("the stranded meters are counted but not named");
+  }
+  /* And the model still returns them, which is what all of the above
+     reads. */
+  if (!/skipped: M\.skipped/.test(readFileSync("./src/features/gis/feeder.js", "utf8"))) {
+    fail("the feeder model no longer reports what it could not attach");
+  }
+}
+
+// 16. The circuit report reads a supply's load from its record.
+//
+//     It read plotById and nothing else, so every supply showed "no
+//     load recorded" and its kVA was missing from the circuit total and
+//     from the POC capacity comparison underneath it — while the levels
+//     check, on the buildFeederModel path, counted the same supply
+//     correctly. Two answers to one question about one circuit.
+{
+  const feats = [
+    { Feature_ID: 1, Feature_Role: "poc", Layer_Key: "electric", Geometry: at(0, 0) },
+    { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+      Attributes: { Line_Type: "elec_main" }, Geometry: [[0, 0], [50, 0]] },
+    dwelling(10, 1, 50),
+    supply(11, 7, 50),
+  ];
+  const r = circuitReport(feats, { plotById, nrsById });
+  const rows = [...(r.circuits || []).flatMap((c) => c.meters), ...(r.unreachable || [])];
+  const row = rows.find((x) => x.id === 11);
+  if (!row) fail("the circuit report left the supply out entirely");
+  else {
+    if (row.kvaMissing) fail("the report says a supply with 85 kVA has no load recorded");
+    if (Number(row.kva) !== 85) fail(`the report gave the supply ${row.kva} kVA, expected 85`);
+    /* And it says what it is, rather than leaving every column but the
+       name blank. */
+    if (row.houseType === "\u2014") fail("a supply's row says nothing about what it is");
+  }
+
+  /* A record with no kVA is still reported as missing rather than as
+     zero: a supply drawing nothing and a supply nobody has filled in
+     are different problems and look identical as "0.0 kVA". */
+  const blank = circuitReport([...feats, supply(12, 8, 50)], { plotById, nrsById });
+  const b = [...(blank.circuits || []).flatMap((c) => c.meters), ...(blank.unreachable || [])]
+    .find((x) => x.id === 12);
+  if (b && !b.kvaMissing) fail("a supply with no requested kVA was reported as a real zero");
+
+  /* Both lookups travel together. plotById was positional and nrsById
+     arrived in the options, so a call site could pass one and forget
+     the other — and forgetting nrsById does not fail, it just reports
+     no load. */
+  const el = readFileSync("./src/features/gis/electric.js", "utf8");
+  if (!/export function circuitReport\(features = \[\], opts = \{\}\)/.test(el)) {
+    fail("circuitReport still takes plotById apart from nrsById");
   }
 }
 

@@ -6763,20 +6763,20 @@ export default function GISCanvasPage() {
         Label: nrsName(rec),
         Attributes: { NRS_ID: rec.NRS_ID },
       };
+      /* Drawn now, written once the boundary point is known — the same
+         two-step a plot seed takes, and for the same reason.
+
+         The boundary point is where the dig stops. Auto Service refuses
+         any seed without one, deliberately: with no boundary vertex to
+         turn at, the "trench" is a line from the main to somebody's
+         meter and every cable then follows it. A supply that could not
+         say where its dig stops could not be auto-serviced at all,
+         which is the whole of why this asks. */
       const tempId = addOptimistic(draftFeature);
       setNrsFor(null);
-
-      /* Then its meters, one per utility it takes, the same chain a
-         plot seed runs. Only the utilities that map to a drawing layer:
-         a supply can be scoped to Section 278 Off Site, which is a
-         commercial arrangement and not something with a meter on it. */
-      const takes = utilitiesOf(rec).filter((u) => u.layer_key);
-      if (takes.length) {
-        setMeterFor({ nrs: rec, seedPoint: point, utility: takes[0], all: takes, placed: [] });
-      }
-
-      try { reconcile(tempId, await addFeature(draftFeature)); }
-      catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
+      setBoundaryFor({ nrs: rec, seedPoint: point, tempId });
+      setStatus(`Now click where the dig stops for ${nrsName(rec)}`
+        + " \u00b7 Esc to stop");
       return;
     }
 
@@ -6837,8 +6837,17 @@ export default function GISCanvasPage() {
        would be a plot Auto Service quietly treats as one of the old
        ones. */
     if (boundaryFor) {
-      const { plot, seedPoint, tempId } = boundaryFor;
-      const draftFeature = {
+      const { plot, nrs, seedPoint, tempId } = boundaryFor;
+      setStatus("");
+      const draftFeature = nrs ? {
+        Project_ID: Number(projectId),
+        Layer_Key: "plot",
+        Feature_Type: "point",
+        Feature_Role: "nrs",
+        Geometry: [seedPoint],
+        Label: nrsName(nrs),
+        Attributes: { NRS_ID: nrs.NRS_ID, Boundary_At: point },
+      } : {
         Project_ID: Number(projectId),
         Layer_Key: "plot",
         Feature_Type: "point",
@@ -6856,11 +6865,17 @@ export default function GISCanvasPage() {
         (x.Feature_ID === tempId ? { ...draftFeature, Feature_ID: tempId } : x)));
       setBoundaryFor(null);
 
-      if (utilities.length) {
+      /* Then the meters. A plot takes every utility the project is
+         building; a supply takes the ones it says it takes, and only
+         those that map to a drawing layer — it can be scoped to Section
+         278 Off Site, which is a commercial arrangement with nothing
+         metered about it. */
+      const takes = nrs ? utilitiesOf(nrs).filter((u) => u.layer_key) : utilities;
+      if (takes.length) {
         setMeterFor({
-          plot, seedPoint, utility: utilities[0], all: utilities, placed: [],
+          plot, nrs, seedPoint, utility: takes[0], all: takes, placed: [],
         });
-      } else {
+      } else if (!nrs) {
         markPlaced(plot.plot_id);
       }
 
@@ -14853,13 +14868,24 @@ export default function GISCanvasPage() {
     setError("");
   }
 
-  async function runAutoService({ trenchesOnly = false } = {}) {    const seeds = selected.length
-      ? features.filter((f) => selected.includes(f.Feature_ID) && f.Feature_Role === "plot")
-      : features.filter((f) => f.Feature_Role === "plot");
+  async function runAutoService({ trenchesOnly = false } = {}) {
+    /* Plot seeds and supply seeds together.
+
+       A non-residential supply is dug to and connected exactly as a
+       dwelling is: a service trench off the main, a pipe or cable in it,
+       a meter at the end. It was left out of this because under 0194 it
+       was a meter rather than a seed and there was nothing here to
+       serve. Now that it is a seed, serving it by hand while every
+       dwelling beside it is done automatically is a distinction with
+       nothing behind it. */
+    const isSeed = (f) => f.Feature_Role === "plot" || f.Feature_Role === "nrs";
+    const seeds = selected.length
+      ? features.filter((f) => selected.includes(f.Feature_ID) && isSeed(f))
+      : features.filter(isSeed);
     if (!seeds.length) {
       setError(selected.length
-        ? "Select a plot seed, or select nothing to cover every plot."
-        : "Place a plot seed first.");
+        ? "Select a plot or supply seed, or select nothing to cover every one."
+        : "Place a plot or supply seed first.");
       return;
     }
 
@@ -14922,6 +14948,14 @@ export default function GISCanvasPage() {
       .map((h) => Number(h.Heat_Source_ID)));
 
     const utilitiesFor = (seed) => {
+      /* A supply names its own, and the gas rule below does not apply
+         to it: whether a unit takes gas is on its record, not worked
+         out from a heat source it has not got. */
+      if (seed.Feature_Role === "nrs") {
+        const rec = nrsList.find((n) =>
+          Number(n.NRS_ID) === Number(seed.Attributes?.NRS_ID));
+        return utilitiesOf(rec).filter((u) => u.layer_key);
+      }
       const plot = plotList.find((p) => p.plot_id === seed.Plot_ID);
       return utilities.filter((u) => {
         if (u.layer_key !== "gas") return true;
@@ -14946,7 +14980,13 @@ export default function GISCanvasPage() {
         && f.Layer_Key === utility.layer_key
         && (seed.Plot_ID != null
           ? f.Plot_ID === seed.Plot_ID
-          : Number(f.Attributes?.Seed_Feature_ID) === Number(seed.Feature_ID)));
+          /* A supply's meters carry its NRS_ID. Checked before the seed
+             link because a supply re-placed keeps its meters and gets a
+             new Feature_ID, and a meter found by neither is one Auto
+             Service would lay a second time on top of. */
+          : (seed.Attributes?.NRS_ID != null
+            ? Number(f.Attributes?.NRS_ID) === Number(seed.Attributes.NRS_ID)
+            : Number(f.Attributes?.Seed_Feature_ID) === Number(seed.Feature_ID))));
       return m ? (m.Geometry || [])[0] ?? null : null;
     };
 
@@ -15154,7 +15194,7 @@ export default function GISCanvasPage() {
 
     setBusy("autoservice");
     cancelRef.current = false;
-    setProgress({ done: 0, total: plans.length, label: `Servicing ${plans.length} plot(s)` });
+    setProgress({ done: 0, total: plans.length, label: `Servicing ${plans.length} seed(s)` });
     let trenchCount = 0, meterCount = 0, cableCount = 0, keptCount = 0;
     let doneCount = 0, stopped = false;
     try {
@@ -15167,7 +15207,8 @@ export default function GISCanvasPage() {
         setProgress({
           done: doneCount,
           total: plans.length,
-          label: `Plot ${doneCount + 1} of ${plans.length}`
+          label: `${plan.seed.Feature_Role === "nrs" ? "Supply" : "Plot"} `
+            + `${doneCount + 1} of ${plans.length}`
             + (plan.seed.Label ? ` \u00B7 ${plan.seed.Label}` : ""),
         });
         /* Split at the boundary like any other run, so a service that
@@ -15207,6 +15248,14 @@ export default function GISCanvasPage() {
             Attributes: {
               Meter_Utility: m.utility.utility,
               Seed_Feature_ID: plan.seed.Feature_ID,
+              /* And the supply's record, where there is one. Without it
+                 nothing links the meter to its supply: meterBelongsTo
+                 asks for the NRS_ID on both sides, so a supply
+                 serviced automatically would drop off its own circuit
+                 while looking entirely right on the drawing, and its
+                 kVA would go missing from the way. */
+              ...(plan.seed.Attributes?.NRS_ID != null
+                ? { NRS_ID: plan.seed.Attributes.NRS_ID } : {}),
               /* Classified on the way in, so it counts on the right side
                  of the bill rather than landing in Unclassified. */
               Site: polys.length ? (pointInAny(m.point, polys) ? ON_SITE : OFF_SITE) : null,
@@ -15722,6 +15771,21 @@ export default function GISCanvasPage() {
       parts.push(r);
     }
 
+    /* Meters the model could not attach to the network.
+
+       buildFeederModel gathers them and has returned them all along;
+       this never looked. A meter more than SNAP_TOL from any node is
+       simply absent from every figure the check produces — which is the
+       one direction a wrong number is dangerous in, because a load left
+       out reads as headroom on the way and an unqualified pass is worse
+       than no check at all.
+
+       It is how a non-residential supply placed on a circuit but with
+       no service dug to it yet contributed nothing to the volt drop and
+       said nothing about it. The commonest cause is exactly that: a
+       meter put down before the dig reaches it. */
+    const stranded = parts.flatMap((p) => p.skipped || []);
+
     if (!parts.length) {
       setError(failed.length ? failed.join(" \u00B7 ") : "Nothing to check.");
       setTrace(null);
@@ -15807,6 +15871,9 @@ export default function GISCanvasPage() {
        the circuit it belongs to. */
     setTrace({
       levels: true,
+      /* Named rather than counted. "3 meters not on the network" is a
+         number to go looking for; the labels are the answer. */
+      stranded,
       advanced: stopAt === "junctions",
       hasVd,
       /* Named for what the network is actually fed from. It said "the
@@ -17968,7 +18035,14 @@ export default function GISCanvasPage() {
       )}
 
       {reportOpen && (() => {
-        const r = circuitReport(features, (id) => plotList.find((p) => p.plot_id === id));
+        /* Supplies carry their load on their own record. Without
+           nrsById the report showed every one of them as having none,
+           while the levels check counted them — the two answering
+           differently about the same circuit. */
+        const r = circuitReport(features, {
+          plotById: (id) => plotList.find((p) => p.plot_id === id),
+          nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
+        });
         if (r.error) {
           setReportOpen(false);
           setError(r.error);
@@ -20160,6 +20234,28 @@ export default function GISCanvasPage() {
                           400 V assumed
                         </span></>
                       )}
+                      {/* Meters the model could not reach.
+
+                          Said here, beside the figures, because that is
+                          where somebody is when they would act on them.
+                          A meter more than 12 m from any node on the
+                          network is left out of every number in this
+                          table — so the load reads light, which is
+                          headroom that is not there, and a marginal run
+                          reads as passing.
+
+                          Named, not counted. "3 meters not on the
+                          network" is a number to go looking for. */}
+                      {trace.stranded?.length > 0 && (
+                        <> &middot; <span className="gt-stranded"
+                          title={"Not within reach of the trench network, so left out of "
+                            + "every figure here. Usually a meter placed before the dig "
+                            + "reaches it \u2014 run the service to it and re-run.\n\n"
+                            + trace.stranded.map((m) => m.label || `Feature ${m.id}`).join("\n")}>
+                          {trace.stranded.length} meter
+                          {trace.stranded.length === 1 ? "" : "s"} not on the network
+                        </span></>
+                      )}
                     </p>
                   </div>
                   <button className="btn accent sm" onClick={exportTrace}>Export</button>
@@ -20812,6 +20908,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
    network runs at — but every figure below is worked out against it and
    nothing on the drawing says so. */
 .gt-assumed { color: #b45309; font-style: italic; cursor: help; }
+.gt-stranded { color: #b45309; font-weight: 700; cursor: help;
+  text-decoration: underline dotted; }
 .gt-dead { color: var(--muted); font-style: italic; font-size: 11.5px; }
 .gt-hi { background: none; border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
   font: 600 10.5px inherit; padding: 2px 7px; color: var(--muted); }

@@ -455,6 +455,42 @@ check or write the exemption down here.
     what the thing is. The audit gets avoided once and the wrong shape
     stays.
 
+26. **A model that reports what it could not do, and a caller that does
+    not look.** `buildFeederModel` returns `skipped` — meters more than
+    `SNAP_TOL` from any node on the network. Build LV Network reads it
+    and says "N meter(s) not on the trench network". `runLevelsCheck`
+    never did, so a meter the model could not attach was absent from
+    every volt drop and ELI figure with nothing on screen to say one was
+    missing.
+
+    Found through a non-residential supply placed on a circuit before
+    any service was dug to it, but it was never supply-specific: a plot
+    meter placed ahead of its dig did the same thing, for as long as the
+    check has existed.
+
+    Worth separating from fault 22. Nothing here was inert and nothing
+    swallowed an error — the model did its job and said so. The failure
+    was one caller of two not reading the answer, which is the shape to
+    look for wherever a function returns both a result and a list of
+    what it left out.
+
+27. **Two readers of one fact, one of them not told.** A meter's load
+    comes from its plot, or — for a non-residential supply — from its
+    own record. `buildFeederModel` asked both ways. `circuitReport`
+    asked only `plotById`, so the levels check counted a supply's kVA
+    and the report showed the same supply as having none.
+
+    The mechanism is worth the note. `plotById` was positional and
+    `nrsById` arrived later in an options object, so a call site could
+    supply one and omit the other, and omitting it does not fail: it
+    reports no load, which is indistinguishable from a record nobody has
+    filled in. Both lookups are in the options together now.
+
+    Fault 13 is two records of one fact drifting apart. This is the
+    other half of that shape: **one fact with two readers, and only one
+    of them given what it needs to read it.** When adding a second way
+    to look something up, put it beside the first rather than behind it.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

@@ -384,6 +384,11 @@ export default function GISCanvasPage() {
   const [standard, setStandard] = useState("");   // operator whose style rules apply
   const [editing, setEditing] = useState(null);
   const [bulkOpen, setBulkOpen] = useState(false);
+  /* Which way the bulk editor opens: against the selection, or against
+     kinds named on the drawing. It is one panel either way and the
+     switch inside it works both ways; this only says which of the two
+     menu items was used. */
+  const [bulkMode, setBulkMode] = useState("selection");
   const [picker, setPicker] = useState(null);   // { x, y, items } when a click is ambiguous
   const [bomOpen, setBomOpen] = useState(false);
   const [progress, setProgress] = useState(null);   // { done, total, label } while a long run works
@@ -17645,7 +17650,17 @@ export default function GISCanvasPage() {
                         disabled={selected.length < 2 || !selectionClass}
                         hint={selected.length > 1 && !selectionClass
                           ? "Everything selected has to be the same kind of thing" : undefined}
-                        onClick={() => setBulkOpen(true)} />
+                        onClick={() => { setBulkMode("selection"); setBulkOpen(true); }} />
+                      {/* The same edit against what is named rather than
+                          what is selected. Beside Edit rather than
+                          beside Bulk Delete: it is the editor with a
+                          different set in front of it, and putting it
+                          with the destructive items would have it read
+                          as a third way of clearing the drawing. */}
+                      <MenuItem label="Edit by Kind…"
+                        hint="Whole categories at once"
+                        disabled={!projectId || !features.length}
+                        onClick={() => { setBulkMode("kinds"); setBulkOpen(true); }} />
                       <MenuItem label={busy === "join" ? "Joining\u2026" : `Join ${selected.length}`}
                         disabled={!joinable || busy === "join"} onClick={joinSelected} />
                       <MenuItem label={`Delete ${selected.length}`} danger
@@ -18042,9 +18057,14 @@ export default function GISCanvasPage() {
         />
       )}
 
-      {bulkOpen && selectedFeatures.length > 1 && (
+      {/* Open on a selection of two or more, or on no selection at all
+          in kinds mode — which is the case it exists for: nobody
+          rubber-bands four hundred service trenches. */}
+      {bulkOpen && projectId && (selectedFeatures.length > 1 || bulkMode === "kinds") && (
         <BulkEditor
           features={selectedFeatures}
+          allFeatures={features}
+          mode={bulkMode}
           configs={lookups?.propertyConfigs || []}
           propertyTypes={lookups?.propertyTypes || []}
           lineTypes={lineTypes}

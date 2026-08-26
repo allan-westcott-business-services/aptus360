@@ -87,8 +87,11 @@ everything** rather than stopping at the first red one. Individual
 scripts still work: `node checkspannodes.mjs`, or
 `node checkall.mjs --only span` for a subset.
 
-As of this session: **89 of 92 pass in about 40 seconds.** The three
-that don't are listed at the foot of this section.
+As of this session: **87 of 92 pass in about 40 seconds.** The five
+that don't are listed at the foot of this section. It said three, and
+that was true when it was written — two more have gone red since, both
+reporting something real. A handover that lies about the suite costs
+the same as one that lies about the schema.
 
 Run these after touching the relevant area. They exist because each one
 caught a fault that had already shipped at least once.
@@ -154,7 +157,7 @@ left out has to say why.
 difference matters: a check reporting "3 problem(s)" looked at
 something, and one that throws never got to look.
 
-### The three that still fail
+### The five that still fail
 
 Two are **migrations that were pasted into Supabase by hand and never
 committed.** The folder has 101 files across 0001–0187 and about twenty
@@ -177,8 +180,25 @@ they no longer take the rest of the suite down with them. That pattern —
 `try` the read, `fail("... is missing")`, skip the section — is the one
 to copy for any check that reads a file it does not own.
 
-The third, `checkbuttons.py`, is 30 house-style deviations across the
-admin screens and two GIS panels. Cosmetic, pre-existing, and never
+Three more, none of them about a missing file:
+
+- `checkorphans.mjs` — `src/api/calloffs-API.js`,
+  `src/features/poc/forms/openForm.js` and
+  `src/features/poc/forms/submissions.js` are imported by nothing. That
+  is fault 22's shape at rest: a module serving no traffic looks exactly
+  like one whose callers have not been written yet. The opposite was
+  found a session ago — two stale duplicates that *were* serving live
+  traffic — which is the reason to read all three before deleting any of
+  them.
+- `checkroutes.mjs` — `/api/projects/:projectId/calloffs` is claimed by
+  both `calloffs-FUNCTION.js` and `calloffs.js`. Which one Netlify picks
+  is not something to leave to chance, and it is recurring fault 1
+  wearing a different hat.
+- `checkaslaidplan.mjs` — the re-take refuses without saying why, which
+  is the fault the check was written for.
+
+And `checkbuttons.py`, which runs only under `npm run check`, is 30
+house-style deviations across the admin screens and two GIS panels. Cosmetic, pre-existing, and never
 gating before now: the old `check` script ran the Python checks in a
 shell loop that discarded their exit codes, so none of them had ever
 failed a build.
@@ -414,6 +434,21 @@ multiplies an invoice by its plot count.
 many-to-many because ESP is both an IDNO and a supplier. Contacts belong
 to a branch, never directly to a company, and every organisation always
 has at least one branch.
+
+**Bulk work names categories rather than selecting features.** Bulk
+delete always did; the bulk editor does now, through the same
+`bulkDeleteCategories` list and the same `CategoryPicker`. The rule that
+makes it safe: **a category can be narrower than the class of the things
+in it** — "service joints" are a category, "electric joints" is their
+class, and that class is also the breeches and the straights. So
+`planBulkEditOn` writes to a settled set of features, and classes only
+decide which fields to offer. Planning from the class would edit four
+times what was ticked and look right doing it.
+
+The cable field is deliberately not drawn in bulk, and the panel says so
+on screen rather than leaving it absent: a run's size is held again on
+the span node that feeds the volt drop sum, which is fault 13, and only
+the canvas can write both.
 
 ## What's built
 

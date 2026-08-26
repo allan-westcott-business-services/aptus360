@@ -92,6 +92,17 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
      most of them can. */
   out.push({ key: "Build_Status", label: "Build status", kind: "status" });
 
+  /* The name, on everything, and the only other field a mixed selection
+     can be offered.
+
+     Not an attribute — Label is a column on the feature, so the patch
+     carries it at the top level rather than inside Attributes. Kept
+     here anyway, because this list is the answer to "what can these be
+     told to do", and a field the panel draws from somewhere else is a
+     second place to remember one. */
+  out.push({ key: "Label", label: "Name", kind: "text",
+    note: "They will share it" });
+
   const isLine = !!cls.lineType;
   const t = lineTypes.find((x) => x.Type_Key === cls.lineType);
   const isTrench = isLine && (t?.Is_Trench ?? String(cls.lineType).includes("trench"));
@@ -117,7 +128,52 @@ export function fieldsFor(cls, { lineTypes = [] } = {}) {
   if (isLine && !isTrench && cls.layer !== "electric") {
     out.push({ key: "Size", label: "Size", kind: "text" });
   }
+  /* Depth on anything drawn as a line, trench or not. A trench is dug to
+     a depth and a pipe is laid at one; the cover over a service is the
+     figure a site argues about, and it is the same field on both. */
+  if (isLine) {
+    out.push({ key: "Depth_m", label: "Depth (m)", kind: "number", step: "0.05" });
+  }
+
+  /* The house type on a run of plot seeds.
+
+     It is the thing most often changed across a run of them — a phase
+     respecified from four beds to three is one decision and forty plots.
+
+     It does NOT live on the feature. The seed marks where the plot is;
+     the house type is on the plot record, and changing it moves the
+     load, the bedroom count and the colour with it. Named here so the
+     panel offers it from the same list as everything else, and written
+     through the plot by the caller, which is why it carries `onPlot`:
+     anything folding this list into a feature patch has to drop it, and
+     a flag saying so is better than a name the reader has to recognise. */
+  if (cls.role === "plot") {
+    out.push({ key: "Property_Config_ID", label: "House type", kind: "houseType",
+      onPlot: true,
+      note: "Changes the connected load, so any levels check needs re-running" });
+  }
   return out;
+}
+
+/* The distinct classes present in a set of features.
+
+   The other direction from membersOfMany: that takes named kinds and
+   finds the features, this takes features and finds the kinds. Wanted
+   because the kinds picker names categories rather than classes — a
+   category can be finer than a class ("service joints" is not "all
+   joints") — so what the picker yields is a set of features, and the
+   fields to offer follow from the classes inside it.
+
+   Deduplicated on the class key, in the order first met, so the panel's
+   fields do not reshuffle when a drawing is reloaded in a different
+   order. */
+export function classesIn(features = [], opts = {}) {
+  const seen = new Map();
+  for (const f of features) {
+    const cls = classOf(f, opts);
+    if (cls && !seen.has(cls.key)) seen.set(cls.key, cls);
+  }
+  return [...seen.values()];
 }
 
 /* ── Editing several classes at once ──
@@ -205,8 +261,29 @@ export function buildPatch(draft = {}) {
    single-class path is entered from a selected feature and knows its
    class already — routing it through a list of one would be ceremony. */
 export function planBulkEditMany(features = [], classes = [], draft = {}, opts = {}) {
+  return planBulkEditOn(membersOfMany(features, classes), draft, opts);
+}
+
+/* Fields that are columns on the feature rather than keys inside its
+   Attributes. The endpoint takes both in one row and filters them
+   through its own writable list; the difference matters here only
+   because a top-level field must not be merged into the attribute
+   object, where nothing would ever read it back. */
+const TOP_LEVEL = new Set(["Label"]);
+
+/* The same plan, over a set of features that is already settled.
+
+   The kinds picker is why this exists. It names categories, and a
+   category can be narrower than the class of the things in it — tick
+   "service joints" and the class of every one of them is "electric
+   joints", which is also the breeches and the straights. Planning from
+   the classes would edit four times what was ticked, and it would look
+   right: the count would be of joints, and they would all be joints.
+
+   So the picked features are carried through as themselves. Classes
+   decide which FIELDS to offer, and never which features to write. */
+export function planBulkEditOn(members = [], draft = {}, opts = {}) {
   const patch = buildPatch(draft);
-  const members = membersOfMany(features, classes);
   if (!Object.keys(patch).length) {
     return { rows: [], members, patch, reason: "Nothing to change." };
   }
@@ -228,18 +305,42 @@ export function planBulkEditMany(features = [], classes = [], draft = {}, opts =
   const skipped = [];
   const wanted = patch.Build_Status;
 
+  const attrs = {};
+  const cols = {};
+  for (const [k, v] of Object.entries(patch)) {
+    (TOP_LEVEL.has(k) ? cols : attrs)[k] = v;
+  }
+
+  /* A line type belongs to a layer. Changing one without the other
+     leaves a trench sitting on the electric layer, where hiding the
+     layer hides the wrong things.
+
+     Here rather than in the panel because it is a fact about the data,
+     not about the form: every caller that can set a line type has to
+     carry its layer with it, and one that forgets produces a drawing
+     that looks right until somebody uses the layer switches. */
+  if (attrs.Line_Type) {
+    const t = lineTypes.find((x) => x.Type_Key === attrs.Line_Type);
+    if (t?.Layer_Key) cols.Layer_Key = t.Layer_Key;
+  }
+
   const rows = [];
   for (const f of members) {
     if (wanted != null && allowed) {
       const ok = allowed(f, lineTypes).some((s) => String(s.key ?? s) === String(wanted));
       if (!ok) { skipped.push(f); continue; }
     }
-    const merged = { ...f.Attributes, ...patch };
+    const merged = { ...f.Attributes, ...attrs };
     /* Already holding every value in the patch: not written. Fewer rows,
        and an undo entry that lists only what actually moved. */
-    const changed = Object.entries(patch)
-      .some(([k, v]) => String(f.Attributes?.[k] ?? "") !== String(v ?? ""));
-    if (changed) rows.push({ Feature_ID: f.Feature_ID, Attributes: merged });
+    const changed =
+      Object.entries(attrs).some(([k, v]) =>
+        String(f.Attributes?.[k] ?? "") !== String(v ?? ""))
+      || Object.entries(cols).some(([k, v]) => String(f[k] ?? "") !== String(v ?? ""));
+    /* Attributes go on every row, changed or not: the endpoint replaces
+       that column rather than merging into it, so a row carrying only a
+       Label would blank the attributes of everything it touched. */
+    if (changed) rows.push({ Feature_ID: f.Feature_ID, Attributes: merged, ...cols });
   }
 
   return { rows, members, patch, skipped };

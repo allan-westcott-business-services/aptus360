@@ -1,56 +1,75 @@
-# Non-residential supplies moved to Setup — 25 Aug 2026
+# Trench contents show the size that will be pulled — 26 Aug 2026
 
-Applies on top of `aptus360-link-to-circuit-20260825.zip`.
+One file. Applies on top of the earlier drops.
 
-| File | Change |
-|------|--------|
-| `src/features/gis/GISCanvasPage.jsx` | Placement items moved from Trench to Setup, under Plots |
-| `checknrs.mjs` | Eleven assertions — one new, on where the menu items live |
+`src/features/gis/FeatureEditor.jsx` — the trench contents list now
+honours a manual cable size.
 
 ---
 
-## Where they were, and why
+## What was wrong
 
-They were in the **Trench** menu. That was my mistake: I anchored the
-block on the "Span nodes and call-offs" group, which reads as electric
-work but sits inside `<Menu id="trench">`.
+Trench #34026 listed a 95 where a 300 runs.
 
-They now sit in **Setup**, indented under **Plots**, above Drawing
-Standard — which is the same job as placing plots: something that exists
-on the project and needs putting on the drawing, with a list that
-shrinks as each one is done.
+The trench stores no size of its own — `contentsOf()` derives it from
+the cable lines lying in it. That part was working. What it read was:
 
-## What else changed in the move
+    x.Attributes?.Cable_Size_ID ?? x.Attributes?.VD_Cable_Size_ID
 
-**Indented under Plots**, matching "Add missing meters", so it reads as
-part of that group rather than a heading of its own.
+`VD_Cable_Size_ID` is the CALCULATED size. A run set by hand stores the
+override in `Manual_VD_Cable_Size_ID`, and this never looked at it.
 
-**Clicking an armed supply again cancels it.** It was one-way before —
-choosing one and changing your mind left the next click anywhere placing
-it.
+Project 16 has five mains lines with an override set — A1, A2, A5, A8
+and A9 all hold `VD_Cable_Size_ID = 1` (95) with a manual size beside
+it. Every other reader in the app honours the override: `cableIdOf`,
+`sizeIdFor`, the BOM, the levels check. The trench was the single place
+showing the calculated size, which reads as the trench being wrong
+rather than as one reader being out of step.
 
-**Choosing one now clears the other placement modes** — `stopPlacing()`,
-`setPlaceOpen(false)`, `setMeterCatchUp(null)`. Two modes armed at once
-is a click that does whichever was checked first, which is what "Add
-missing meters" already guards against.
+## The fix
 
-**The active item is highlighted**, so it is obvious which supply the
-canvas is waiting to place.
+`sizeIdFor(x, "electric", "manual")` — the same precedence, in the same
+form, that the rest of the app already uses. Manual where set, calculated
+everywhere else.
 
-**When all are placed** it shows one disabled line reading "All placed"
-rather than a bare group heading.
+An overridden size now reads **`300 (set)`**, because a size somebody
+chose is a decision, and a decision that looks identical to a calculation
+is one nobody revisits. `isOverridden` was already there for exactly
+this.
 
----
+Scoped to electric lines. A gas or water size id indexes a different
+catalogue, and looking one up in `cableSizes` would either find nothing
+or find the electric cable that happens to share the number — labelling
+a gas pipe with a cable size. Those keep the string size as before.
+
+## Why not sync the trench on build
+
+That was the first reading of it, and it would have been wrong.
+
+`carryCableToNode` and `syncNodeCables` both treat the cable LINE as
+authoritative and correct the span NODE to match — "a cable set by hand
+is the one that will be pulled, so it is the one the node has to carry."
+Making the build write the line from the node reverses an ordering the
+codebase states deliberately, and would have propagated calculated sizes
+over manual ones across every trench on every project, silently.
+
+The line was already right. Only the display was reading the wrong
+field.
+
+## Worth knowing
+
+The "N cables out of step — fix" button on the levels panel resolves a
+genuine line/node disagreement, and it moves the NODE to the LINE. It
+is unrelated to this, and still correct.
+
+Nine of project 16's mains lines hold `VD_Cable_Size_ID = 1` while the
+span nodes were rebuilt onto the same 95. If the calculated sizes are
+themselves stale — the levels export shows 300s and 185s on legs whose
+lines say 95 — that is a separate question about when the build last
+sized the runs, and worth a look once this display fix is in.
 
 ## Verification
 
-`node checknrs.mjs` — eleven assertions. The new one checks the items
-fall between `<Menu id="setup"` and `<Menu id="layers"`, and below the
-Plots item, by source position.
-
-Checked that way on purpose: the menus are one long block of JSX, and a
-supply that drifts back into Trench still compiles, still works, and is
-simply somewhere nobody looks. Neither a compile nor a behaviour test
-would notice.
-
-All other checks still pass.
+`FeatureEditor.jsx` compiles under esbuild. All six check scripts still
+pass — `checknrs`, `checkservicetail`, `checkcablesizes`,
+`checkelectricsteps`, `checksourceimpedance`, `checkspannodes`.

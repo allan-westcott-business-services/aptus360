@@ -18,6 +18,7 @@ import { digEstimate, hoursText } from "./digRate.js";
 import { TRENCH_CARRIES } from "./trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
+import { sizeIdFor, isOverridden } from "./sizeMode.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
@@ -131,12 +132,35 @@ export default function FeatureEditor({
          its circuit and way, which says which run it is and nothing
          about what was laid. */
       labelOf: (x) => {
-        const sizeId = x.Attributes?.Cable_Size_ID ?? x.Attributes?.VD_Cable_Size_ID;
+        /* The size that will actually be pulled, which means the manual
+           one where somebody has set it.
+
+           This read VD_Cable_Size_ID directly and so reported the
+           CALCULATED size, ignoring any override — a run set by hand to
+           300 still listed as 95 in the trench it runs through, while
+           every other reader in the app (cableIdOf, sizeIdFor, the BOM,
+           the levels check) showed the 300. The trench was the one place
+           saying something different, which reads as the trench being
+           wrong rather than as one reader being out of step.
+
+           sizeIdFor in "manual" mode is that precedence, in the same
+           form the rest of the app uses it. */
+        /* Electric only for the cable lookup. A gas or water line's size
+           id indexes a different catalogue, and looking one up in
+           cableSizes would either find nothing or — worse — find the
+           electric cable that happens to share the number, and label a
+           gas pipe with it. Those keep the string size below. */
+        const sizeId = x.Layer_Key === "electric"
+          ? (x.Attributes?.Cable_Size_ID ?? sizeIdFor(x, "electric", "manual"))
+          : null;
         const size = sizeId != null
           ? (lookups?.cableSizes || []).find((c) =>
             String(c.Cable_Size_ID) === String(sizeId))?.Size_Label
           : null;
-        if (size) return size;
+        /* Marked, because a size somebody chose is a decision and a
+           decision that looks identical to a calculation is one nobody
+           revisits. */
+        if (size) return isOverridden(x, "electric") ? `${size} (set)` : size;
         const pipe = String(x.Attributes?.Size ?? "").trim();
         if (pipe) return pipe;
         return lineTypes.find((t) => t.Type_Key === x.Attributes?.Line_Type)?.Label

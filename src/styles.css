@@ -554,6 +554,25 @@ body.resizing { cursor: col-resize; user-select: none; }
 
    The bill now styles its own footer, because it wants a different one.
    These stay for everything that does not. */
+/* The panel itself, and its head.
+
+   These lived in FeatureEditor's own style block, injected only while
+   THAT modal was mounted — the same fault as .fe-foot below, in the two
+   rules that were missed when it was fixed. Every other modal using
+   .fe opened with no background, no width and no shadow: a transparent
+   panel with the drawing showing through it, which reads as a rendering
+   fault rather than a missing stylesheet.
+
+   The bulk editor is the one people hit, being the modal most often
+   opened while the feature editor is not. */
+.fe { background: var(--white); border-radius: 12px; width: min(420px, 92vw);
+  max-height: 88vh; display: flex; flex-direction: column;
+  box-shadow: 0 18px 46px rgba(15,23,42,.3); }
+.fe-head { display: flex; align-items: flex-start; justify-content: space-between;
+  padding: 15px 18px 12px; border-bottom: 1px solid var(--border);
+  border-top: 3px solid var(--muted); border-radius: 12px 12px 0 0; }
+.fe-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+
 .fe-foot { display: flex; align-items: center; gap: 8px; padding: 13px 18px;
   border-top: 1px solid var(--border); }
 .fe-spacer { flex: 1; }

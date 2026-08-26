@@ -1,99 +1,83 @@
-# Bulk edit across classes, without selecting — 26 Aug 2026
-
-**This is the logic layer, tested. The panel is not built — see
-"What is left" before applying.**
+# Bulk editor: transparent panel fixed, build status added — 26 Aug 2026
 
 | File | Change |
 |------|--------|
-| `src/features/gis/bulkEdit.js` | `Build_Status` field; `fieldsForMany`, `membersOfMany`, `planBulkEditMany` |
-| `checkbulkedit.mjs` | Eight assertions |
-
-Additive only. `classOf`, `membersOf`, `fieldsFor`, `planBulkEdit` and
-`buildPatch` are unchanged, so nothing that uses them today behaves
-differently.
-
----
-
-## Build status was not editable in bulk at all
-
-`fieldsFor` offered line type, surface, site, cable and size — and no
-status. So the commonest bulk change on a drawing was the one thing this
-could not do.
-
-It is now offered on every class, which also makes it the field a mixed
-selection can share.
-
-## Only the fields they share
-
-`fieldsForMany(classes)` returns the intersection:
-
-    trench alone        Build_Status, Line_Type, Surface_Type, Site
-    cable alone         Build_Status, Line_Type, VD_Cable_Size_ID
-    cable + joint       Build_Status
-    trench+cable+joint  Build_Status
-
-A field survives only where every class agrees on its `kind` AND its
-`usage`. A mains cable field and a service cable field share a key and a
-kind but point at different catalogues — merged, the form would offer
-service cables for a mains run. They are dropped instead of guessed at.
-
-## Status is validated per feature, not per edit
-
-Statuses are not universal: a main runs through more stages than a
-service, and a point through fewer than either. Writing `aslaid` onto a
-joint that has no such stage would put a value on the drawing nothing
-else can read back.
-
-`planBulkEditMany` refuses it for THAT feature and returns the refusals
-in `skipped`, so setting a hundred trenches As Laid is not blocked by
-one joint that cannot be — and the caller can say which were left.
-
-Members are deduplicated across overlapping classes: a feature written
-twice in one save is a race against itself. Features already holding the
-value are not rewritten, so the undo entry lists only what moved. Other
-attributes are untouched.
+| `src/styles.css` | `.fe`, `.fe-head` moved in from FeatureEditor |
+| `src/features/gis/FeatureEditor.jsx` | Those two rules removed |
+| `src/features/gis/BulkEditor.jsx` | Build status, on any selection |
+| `src/features/gis/bulkEdit.js` | Multi-class logic (from the earlier drop) |
+| `checkbulkedit.mjs` | Nine assertions |
 
 ---
 
-## What is left: the panel
+## The transparent panel
 
-`bulkEdit.js` and `BulkEdit.jsx` are NOT WIRED IN. `BulkEdit.jsx` is
-imported by nothing; the panel in use is the older `BulkEditor.jsx`,
-which works from the canvas selection. So this drop changes nothing on
-screen until a panel calls it.
+Not a rendering fault — a missing stylesheet.
 
-Worth knowing before deciding how to spend the next hour on it: this is
-the second unwired module found this week — `serviceFor` was the first,
-and its 2 m default tolerance was wrong for every caller because it had
-never had one.
+`.fe` is the white background, width and shadow. It was defined inside
+FeatureEditor's own `<style>` block, injected only while THAT modal is
+mounted. The bulk editor uses the same class, so opening it without the
+feature editor gave a panel with no background at all and the drawing
+showing through.
 
-To finish:
+The comment beside `.fe-backdrop` in styles.css already describes this
+exact fault being fixed for `.fe-foot`, `.fe-spacer` and `.fe-x` — the
+bill of materials had lost its footer the same way. `.fe` and `.fe-head`
+were missed at the time. They now sit beside the others.
 
-1. **The class picker.** `bulkDeleteCategories()` in `bulkDelete.js`
-   already builds exactly this list — "All Electric objects", "All
-   service cables", "All joints", with counts, cascading parents and
-   zero-count entries disabled. `BulkDelete.jsx` renders it. Reuse both
-   rather than writing a second picker; a drawing where the two panels
-   name things differently is worse than one panel.
-2. **Map the chosen categories to classes** and call `fieldsForMany`.
-3. **A `status` control** — the union of `statusesFor` across the chosen
-   classes, since planBulkEditMany refuses per feature anyway.
-4. **Report `skipped`** after applying: "18 changed, 2 left — a joint
-   has no As-Laid stage."
-5. Wire it to the menu beside Bulk Delete, and to `withUndo`.
+## Build status in bulk
 
-Step 3 is the one to think about: offering the union means some options
-will be refused for some features, which is why the refusal is reported
-rather than silent. Offering only the intersection would hide stages
-most of the selection can take.
+"Mixed or non-line features — only the name can be set in bulk" was the
+whole answer for a mixed selection. Build status is the one field EVERY
+feature carries, which makes it the only thing a mixed selection CAN be
+offered — and it is exactly what a mixed selection is usually for:
+setting a status across the service trenches, the cables and the joints
+at once.
+
+**The options are the union across the selection, not the
+intersection.** A main runs through more stages than a service, and
+offering only what they all share would hide Live from a selection that
+is mostly mains.
+
+**A feature that cannot hold the chosen stage is skipped, and the panel
+says so before you apply**: "9 of 12 — 3 have no such stage and will be
+left as they are." Counted beforehand rather than reported afterwards,
+because "Apply to 12" that quietly writes 9 is the kind of silent
+shortfall that has bitten repeatedly on this drawing.
+
+Options are deduplicated by key in first-met order, so the sequence
+still reads planned, as-laid, live.
+
+---
+
+## What is still left
+
+This is the "extend BulkEditor" half — it works from the canvas
+selection, so a mixed selection now offers status where before it
+offered only the name.
+
+**Selecting without selecting is not done.** To finish that:
+
+1. Reuse `bulkDeleteCategories()` from `bulkDelete.js` for the picker —
+   it already builds "All service cables", "All joints" and the rest,
+   with counts and zero entries disabled. `BulkDelete.jsx` renders it.
+2. Feed the chosen categories into `fieldsForMany` / `planBulkEditMany`
+   in `bulkEdit.js`, which are tested and waiting.
+3. Add a mode switch on this panel: work from the selection, or from
+   named kinds.
+
+The logic layer is done and proven; what remains is the picker and
+wiring it to this panel.
 
 ---
 
 ## Verification
 
-`node checkbulkedit.mjs` — eight assertions covering the field
-intersection, the usage mismatch, deduplication, per-feature status
-refusal and its reporting, no-op skipping, and that other attributes are
-left alone.
+`node checkbulkedit.mjs` — nine assertions. The new one checks that
+BulkEditor offers a status, that it no longer claims a mixed selection
+can only set the name, that it validates per feature before writing, and
+that `.fe` is in the shared stylesheet and gone from FeatureEditor's
+block.
 
-All six existing checks still pass.
+All six other checks still pass. Both edited components compile under
+esbuild.

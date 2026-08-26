@@ -2545,13 +2545,10 @@ const CSS = `
 /* Half again as wide, so three controls in a row have room for their
    longest option rather than truncating it. */
 .fe.fe-wide { width: min(630px, 94vw); }
-.fe { background: var(--white); border-radius: 12px; width: min(420px, 92vw);
-  max-height: 88vh; display: flex; flex-direction: column;
-  box-shadow: 0 18px 46px rgba(15,23,42,.3); }
-.fe-head { display: flex; align-items: flex-start; justify-content: space-between;
-  padding: 15px 18px 12px; border-bottom: 1px solid var(--border);
-  border-top: 3px solid var(--muted); border-radius: 12px 12px 0 0; }
-.fe-head h3 { margin: 0; font-size: 15px; font-weight: 700; }
+/* .fe, .fe-head and .fe-head h3 now live in styles.css, beside
+   .fe-backdrop and .fe-foot. Fifteen components use .fe and this block
+   is only injected while THIS modal is mounted, so any of the others
+   opened on its own drew with no background at all. */
 /* The feature's id, for naming one in a query. Selectable and quiet. */
 .fe-id { margin: 2px 0 0; font-size: 10.5px; color: var(--muted);
   user-select: all; cursor: text; }

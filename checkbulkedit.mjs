@@ -4,6 +4,7 @@
 import { fieldsFor, fieldsForMany, membersOfMany, planBulkEditMany }
   from "./src/features/gis/bulkEdit.js";
 import { statusesFor, BUILD_STATUSES } from "./src/features/gis/buildStatus.js";
+import { readFileSync } from "node:fs";
 
 const fails = [];
 const fail = (m) => fails.push(m);
@@ -119,6 +120,27 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
   const a = r.rows[0]?.Attributes || {};
   if (a.Joint_Kind !== "straight" || a.Circuit_ID !== 4) fail("bulk edit disturbed other fields");
   if (!BUILD_STATUSES.some((s) => s.key === "existing")) fail("fixture used an unreal status");
+}
+
+// 9. The panel in use offers build status, on any selection, and the
+//    shared modal chrome is in the shared stylesheet.
+{
+  const be = readFileSync("./src/features/gis/BulkEditor.jsx", "utf8");
+  if (!/statusesFor/.test(be)) fail("BulkEditor offers no build status");
+  if (/only the name can be set in bulk/.test(be)) {
+    fail("BulkEditor still says a mixed selection can only set the name");
+  }
+  // Refused per feature, not per edit.
+  if (!/statusesFor\(f, lineTypes\)\.some/.test(be)) {
+    fail("BulkEditor writes a status without checking the feature can hold it");
+  }
+
+  const css = readFileSync("./src/styles.css", "utf8");
+  const fe = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/^\.fe \{/m.test(css)) fail(".fe is not in the shared stylesheet");
+  if (/^\.fe \{/m.test(fe)) {
+    fail(".fe is still in FeatureEditor's block - other modals draw transparent");
+  }
 }
 
 console.log(fails.length

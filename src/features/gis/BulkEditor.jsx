@@ -1,7 +1,8 @@
-import { useState } from "react";
+import { useState, useMemo } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import { lineLength, isTrenchType } from "./snapping.js";
+import { statusesFor } from "./buildStatus.js";
 
 /* Editing a whole selection at once.
 
@@ -26,6 +27,12 @@ export default function BulkEditor({
   const [surface, setSurface] = useState("");
   const [clearSize, setClearSize] = useState(false);
   const [config, setConfig] = useState("");
+  /* Build status. Kept out of the allLines / allTrenches / allSeeds
+     branching below because it is the one field EVERY feature carries —
+     which makes it the only thing a mixed selection can be offered, and
+     mixed is exactly when somebody is setting a status across the
+     service trenches and the cables and the joints at once. */
+  const [status, setStatus] = useState("");
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState("");
 
@@ -52,7 +59,41 @@ export default function BulkEditor({
   const currentType = lineTypes.find((t) => t.Type_Key === first?.Attributes?.Line_Type);
   const layer = layers.find((l) => l.Layer_Key === first?.Layer_Key);
 
+  /* Which statuses to offer.
+
+     The union across the selection, not the intersection: a main runs
+     through more stages than a service, and offering only what they all
+     share would hide Live from a selection that is mostly mains. One a
+     given feature cannot hold is skipped for that feature when applied,
+     and the count says so — better than a control that hides the option
+     somebody is looking for.
+
+     Deduplicated by key, in the order they were first met, so the
+     sequence still reads planned -> as-laid -> live rather than
+     alphabetically or by whichever feature came first in the array. */
+  const statusOptions = useMemo(() => {
+    const seen = new Map();
+    for (const f of features) {
+      for (const st of statusesFor(f, lineTypes)) {
+        if (!seen.has(st.key)) seen.set(st.key, st);
+      }
+    }
+    return [...seen.values()];
+  }, [features, lineTypes]);
+
+  /* What the chosen status would actually change, and what it cannot.
+
+     Counted before applying rather than reported after, because "Apply
+     to 12" that quietly writes 9 is worse than saying which 3 will be
+     left and why. */
+  const statusSkips = useMemo(() => {
+    if (!status) return [];
+    return features.filter((f) =>
+      !statusesFor(f, lineTypes).some((st) => st.key === status));
+  }, [features, lineTypes, status]);
+
   const changes = [
+    status && "build status",
     allSeeds && config && "house type",
     label.trim() && "name",
     lineType && "type",
@@ -77,6 +118,12 @@ export default function BulkEditor({
         }
         if (depth.trim()) attrs.Depth_m = Number(depth);
         if (allTrenches && surface) attrs.Surface_Type = surface === "__none" ? null : surface;
+        /* Only where this feature has that stage. A joint has no
+           As-Laid, and writing one would put a value on the drawing
+           that nothing else in the app reads back. */
+        if (status && statusesFor(f, lineTypes).some((st) => st.key === status)) {
+          attrs.Build_Status = status;
+        }
 
         const u = { Feature_ID: f.Feature_ID, Attributes: attrs };
         if (label.trim()) u.Label = label.trim();
@@ -218,9 +265,35 @@ export default function BulkEditor({
             </div>
           )}
 
+          {/* Build status, on any selection.
+
+              Above the mixed-selection note on purpose: that note used
+              to be the whole answer for a mixed selection, and putting
+              a working field under it read as though the field did not
+              apply. */}
+          {statusOptions.length > 0 && (
+            <div className="fld">
+              <label htmlFor="be-status">Build status</label>
+              <select id="be-status" className="fe-in" value={status}
+                onChange={(e) => setStatus(e.target.value)}>
+                <option value="">Leave as they are</option>
+                {statusOptions.map((st) => (
+                  <option key={st.key} value={st.key}>{st.label}</option>
+                ))}
+              </select>
+              <p className="be-note">
+                {statusSkips.length === 0
+                  ? `Applied to all ${features.length}.`
+                  : `${features.length - statusSkips.length} of ${features.length} `
+                    + `\u2014 ${statusSkips.length} ha${statusSkips.length === 1 ? "s" : "ve"} `
+                    + "no such stage and will be left as they are."}
+              </p>
+            </div>
+          )}
+
           {!allLines && !allSeeds && (
             <p className="fe-tip">
-              Mixed or non-line features &mdash; only the name can be set in bulk.
+              Mixed or non-line features &mdash; name and build status only.
             </p>
           )}
 

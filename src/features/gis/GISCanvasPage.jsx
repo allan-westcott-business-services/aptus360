@@ -18153,6 +18153,11 @@ export default function GISCanvasPage() {
             pocOutput={poc?.Attributes?.Output != null && poc.Attributes.Output !== ""
               ? Number(poc.Attributes.Output) : null}
             onClose={() => setReportOpen(false)}
+            /* Same call the Electric menu makes, with no arguments —
+               passing the click event through would be read as an
+               options object, which is what the guard at the top of
+               runLevelsCheck exists for. */
+            onRunLevels={() => runLevelsCheck()}
             busy={busy === "circuit"}
             onRemoveFromCircuit={(ids, c) =>
               withUndo(`Remove ${ids.length} meter(s) from ${c.name}`,

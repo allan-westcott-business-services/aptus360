@@ -26,7 +26,7 @@ const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 export default function CircuitReport({
   report, projectRef, siteName, pocOutput, onClose,
   onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, onMoveToCircuit, busy,
-  progress, rings, onToggleRings,
+  progress, rings, onToggleRings, onRunLevels,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -230,6 +230,25 @@ export default function CircuitReport({
               onChange={(e) => setPicked(e.target.checked ? allMeterIds : [])} />
             Select all meters
           </label>
+          {/* ── The next question, from where it gets asked ──
+
+              This report says how much load is on each feeder and how
+              far the furthest meter is. The question that follows is
+              always whether the volt drop and loop impedance are within
+              limits, and until now that meant closing the report,
+              finding the Electric menu and running the levels check
+              from there.
+
+              The report closes as it runs. The levels panel is a panel
+              of its own and would open behind this one, which reads as
+              the button having done nothing. */}
+          {onRunLevels && (
+            <button className="btn sm" disabled={!!busy}
+              title="Loop impedance and volt drop on every circuit, from the substation"
+              onClick={() => { onRunLevels(); onClose(); }}>
+              Run Levels Check
+            </button>
+          )}
           <button className="btn accent sm" onClick={exportXlsx}>Export</button>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
         </div>

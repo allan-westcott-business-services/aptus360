@@ -1,6 +1,6 @@
 # Aptus360 — handover notes
 
-Migrations run to **0187**.
+Migrations run to **0195**. **0196 is written and not yet run** — see the note in it.
 
 **Last session was a test-suite session**, not a feature one. `npm test`
 now runs — it did not before, and this file used to record that as a
@@ -87,7 +87,7 @@ everything** rather than stopping at the first red one. Individual
 scripts still work: `node checkspannodes.mjs`, or
 `node checkall.mjs --only span` for a subset.
 
-As of this session: **87 of 92 pass in about 40 seconds.** The five
+As of this session: **88 of 93 pass in about 45 seconds.** The five
 that don't are listed at the foot of this section. It said three, and
 that was true when it was written — two more have gone red since, both
 reporting something real. A handover that lies about the suite costs
@@ -106,6 +106,7 @@ caught a fault that had already shipped at least once.
 | `node checkspannodes.mjs` | Span node origins, and which node a cable run feeds |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
+| `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
 | `python3 checkdefs.py` | Calls with no definition, state set with no `useState` |
 | `python3 checkcols.py` | Explicit column lists against the schema |
 | `python3 checkorder.py` | Use before declaration (heuristic — read the hits, see fault 2) |
@@ -160,9 +161,10 @@ something, and one that throws never got to look.
 ### The five that still fail
 
 Two are **migrations that were pasted into Supabase by hand and never
-committed.** The folder has 101 files across 0001–0187 and about twenty
-numbers are absent; since there is no migration runner, that folder is
-the only record there is.
+committed.** The folder has 110 files across 0001–0195 and eighty-five
+numbers are absent — see `checkmigrations.mjs`, which holds that set as
+a baseline. Since there is no migration runner, that folder is the only
+record there is.
 
 - `checkprojecttabs.mjs` — needs `0138_project_tabs.sql`, the seed
   saying which tabs each area hides.
@@ -391,6 +393,68 @@ check or write the exemption down here.
     something genuinely must be excluded, make the exclusion carry its
     reason — see `NOT_A_SUITE_CHECK` in `checkall.mjs`.
 
+24. **A uniqueness definition that has not caught up with a matching
+    definition.** `GIS_Style` matches on Layer_Key, Line_Type,
+    Feature_Role, Site, Supply_Type, Utility_ID and Organisation_ID.
+    What makes a style scope *unique* is `gis_style_scope_uniq`, and
+    0194 added `Supply_Type` to the first list and not to the second.
+
+    So its black triangle rule for non-residential supplies was, to the
+    index, the same scope as the plain Meter rule seeded in 0051. The
+    insert collided and `ON CONFLICT DO NOTHING` swallowed it. The
+    column arrived, the migration reported success, and the rule was
+    never written.
+
+    Three supplies were placed on live drawings and drawn as ordinary
+    meters for as long as it took somebody to ask why. Every other part
+    was correct: the placement writes `Supply_Type: 'nrs'`,
+    `resolveStyle` matches on it and scores it above `Feature_Role`,
+    `checknrs.mjs` passed throughout — because it feeds `resolveStyle` a
+    fixture containing the style row and correctly proves a triangle
+    comes out of it. Nothing in the suite could see that the row was not
+    in the database.
+
+    This is fault 22 again and its clearest instance: not a catch
+    swallowing an error, but a seed that could never succeed, reporting
+    success. **Adding a scope column to `GIS_Style` means adding it to
+    `gis_style_scope_uniq` in the same migration** — 0195 does that and
+    then writes the row — and `checkmigrations.mjs` now reads the index
+    definition out of the folder and fails on any seeded rule that
+    cannot be inserted beside one already there. It reads the definition
+    rather than restating it, because a check with its own copy of the
+    rule would have agreed with 0194 and passed.
+
+    The same migration also missed `Supply_Type` from the column list in
+    `gis-styles.js`, which is fault 4, and left the GIS Styles admin
+    screen showing the rule as a second identical Meter rule. Both
+    halves of one change, both invisible, both found by the same
+    question.
+
+25. **A shape chosen for what it saves, not for what it is.** 0194 made
+    a non-residential supply BE a meter — one point, `Feature_Role
+    'meter'`, `NRS_ID` and `Supply_Type` on it — reasoning that fifty
+    places ask whether something is a meter and a new role would need
+    every one of them auditing.
+
+    The reasoning is sound and the conclusion was wrong, because it can
+    only ever describe an **electric** supply. It is why placement
+    hard-coded `Layer_Key: "electric"` and why the record took exactly
+    one utility: a pumping station needing a water connection as well as
+    a three-phase supply could not be said at all.
+
+    A supply is a plot seed with a different symbol. 0196 makes it one:
+    `Feature_Role 'nrs'` for the seed, ordinary meters against it, one
+    per utility, linked by a shared `NRS_ID`. The load did not move —
+    `circuitKva` already read `NRS_ID` off the *meter*, and
+    `meterBelongsTo` already had a fallback for a seed with no plot
+    behind it. The model was built for this shape; only the placement
+    was not.
+
+    The tell to watch for: a design that is cheap because it reuses
+    something, described in terms of what it avoids auditing rather than
+    what the thing is. The audit gets avoided once and the wrong shape
+    stays.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from
@@ -434,6 +498,16 @@ multiplies an invoice by its plot count.
 many-to-many because ESP is both an IDNO and a supplier. Contacts belong
 to a branch, never directly to a company, and every organisation always
 has at least one branch.
+
+**A non-residential supply is a seed, like a plot.** The triangle marks
+where the supply is; its meters are placed against it, up to one per
+utility, linked by a shared `NRS_ID` rather than by the seed's
+`Feature_ID` — which is not known while the seed is still an optimistic
+row, and would not survive the seed being re-placed. Which utilities a
+supply takes is `NRS_Utility`, a set, because the answer is a set. Only
+the ones mapping to a drawing layer get a meter: a supply can be scoped
+to Section 278 Off Site, which is a commercial fact with nothing metered
+about it.
 
 **Bulk work names categories rather than selecting features.** Bulk
 delete always did; the bulk editor does now, through the same
@@ -507,8 +581,12 @@ plus generic table editors.
    in the repo, and a plausible guess in that folder is worse than a gap,
    because a gap is visible. Two checks fail until this is done.
 
-   Worth doing at the same time: a `checkmigrations.mjs` that fails on a
-   numbering gap would have caught all three the week they happened.
+   `checkmigrations.mjs` exists now and holds the folder to a baseline
+   of what is absent, failing on a new gap and on a recorded one that
+   gets filled. It also corrects the count: **eighty-five numbers are
+   absent across 0001–0195**, not "about twenty" — 0002–0049 as one
+   block and thirty-six singly. Only three are understood. That is the
+   size of what a rebuild from this folder would come up short by.
 
 3. **Move the pickers to `Organisation_ID`.** Columns and views exist
    (`0048`), lookups are served (`orgIdnos`, `orgDnos`,

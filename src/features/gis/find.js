@@ -39,7 +39,7 @@ export function searchable(f, { lineTypes = [], layers = [], plotById = () => nu
      gave "Spannode", which is not a word anyone would search for or
      recognise in a list. */
   const ROLE = {
-    plot: "Plot", meter: "Meter", joint: "Joint", spannode: "Span node",
+    plot: "Plot", nrs: "Supply", meter: "Meter", joint: "Joint", spannode: "Span node",
     servicevalve: "Service valve",
     poc: "Point of connection", substation: "Substation", governor: "Gas governor",
     linkbox: "Link box", column: "Lighting column", source: "Source", shape: "Shape",

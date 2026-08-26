@@ -242,6 +242,11 @@ export function bulkDeleteCategories(features = [], opts = {}) {
   add("linkbox", "All link boxes", (f) => f.Feature_Role === "linkbox", "Points");
   add("column", "All lighting columns", (f) => f.Feature_Role === "column", "Points");
   add("seed", "All plot seeds", (f) => f.Feature_Role === "plot", "Points");
+  /* Separate from plot seeds, and from meters. A supply seed is neither
+     — clearing the plots down and starting again should not take the
+     pumping station with them, and the meters it owns are ordinary
+     meters that go with "All meters" like any other. */
+  add("nrs", "All non-residential supplies", (f) => f.Feature_Role === "nrs", "Points");
   add("poc", "All POCs", (f) => f.Feature_Role === "poc", "Points");
   add("spannode", "All span nodes", (f) => f.Feature_Role === "spannode", "Points");
   add("servicevalve", "All service valves",

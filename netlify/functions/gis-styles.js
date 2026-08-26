@@ -3,7 +3,19 @@ import { supabase, json, fail, withAuth } from "./_supabase.js";
 /* Styles are admin data, so they get their own endpoint rather than
    riding on the canvas one — a separate file per endpoint, as the rest
    of this folder does. */
-const S = "GIS_Style_ID,Style_Name,Layer_Key,Line_Type,Feature_Role,Site,Utility_ID,Organisation_ID,Colour,Label_Colour,Dashed,Dash_Pattern,Symbol,Width_Px,Width_M,Scale_Width,Min_Width_Px,Max_Width_Px,Symbol_Size_Px,Symbol_Size_M,Scale_Symbol,Min_Symbol_Px,Max_Symbol_Px,Min_Scale,Max_Scale,Label_Min_Scale,Marker_Text,Marker_Symbol,Marker_Interval_M,Marker_Size_Px,Marker_Colour,Marker_Rotate,Marker_Offset_Px,Marker_Min_Gap_Px,Sort_Order,Is_Active,Notes";
+/* Every column the screen reads or writes, named explicitly.
+
+   Supply_Type was missing from this list for the whole of 0194's life.
+   The canvas was unaffected — it loads styles with select("*") — so the
+   black triangle rule worked on the drawing and was invisible on the
+   screen that exists to manage it: the non-residential rule showed as a
+   second, identical Meter rule with nothing to tell them apart, and a
+   new rule could not be scoped to a supply type at all.
+
+   Recurring fault 4, and the reason checkmigrations.mjs now reads this
+   list against the migrations. A column added to the table and not to
+   the list is neither returned nor saved, and nothing says so. */
+const S = "GIS_Style_ID,Style_Name,Layer_Key,Line_Type,Feature_Role,Site,Supply_Type,Utility_ID,Organisation_ID,Colour,Label_Colour,Dashed,Dash_Pattern,Symbol,Width_Px,Width_M,Scale_Width,Min_Width_Px,Max_Width_Px,Symbol_Size_Px,Symbol_Size_M,Scale_Symbol,Min_Symbol_Px,Max_Symbol_Px,Min_Scale,Max_Scale,Label_Min_Scale,Marker_Text,Marker_Symbol,Marker_Interval_M,Marker_Size_Px,Marker_Colour,Marker_Rotate,Marker_Offset_Px,Marker_Min_Gap_Px,Sort_Order,Is_Active,Notes";
 
 const W = new Set(S.split(",").slice(1));
 /* Empty string means "any" from a select, which is NULL here, not "".

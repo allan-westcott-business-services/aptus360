@@ -69,24 +69,28 @@ export function metredSeedsInside(features, ring, inside) {
     && meterBelongsTo(m, s)));
 }
 
-/* Non-residential supplies inside the outline.
+/* Non-residential supplies inside the outline, that have a meter.
 
-   Asked separately from metredSeedsInside because a supply has no plot
-   seed to be found by. That function looks for plot points and then
-   keeps the ones with a meter on them; a supply is a meter with nothing
-   behind it, so it falls through both halves and would be lassoed round
-   without ever being caught.
+   The same question as metredSeedsInside and the same shape of answer,
+   asked separately because a supply is not a plot: it has no Plot_ID,
+   no dwelling behind it and its own feature role. Lassoed round without
+   this, it would be left off the circuit while everything beside it
+   joined — placed, drawn, and silently on no circuit at all, so the
+   levels check pruned it out and the design read lighter than it is by
+   the whole of its load.
 
-   Which is the whole failure this closes: placed, drawn, and silently
-   on no circuit at all — so the levels check pruned it out and the
-   design read lighter than it is by the whole of its load. */
-export function nrsInside(features, ring, inside) {
-  return features.filter((f) =>
-    f.Feature_Role === "meter"
-    && f.Layer_Key === "electric"
-    && f.Attributes?.NRS_ID != null
-    && (f.Geometry || []).length
+   It used to look for METERS carrying an NRS_ID, because 0194 made a
+   supply be its own meter. 0196 made it a seed with meters of its own,
+   which is what it always was: something on the ground that takes gas,
+   water and electric like anything else. */
+export function metredSuppliesInside(features, ring, inside) {
+  const seeds = features.filter((f) =>
+    f.Feature_Role === "nrs" && (f.Geometry || []).length
     && inside(f.Geometry[0], ring));
+  return seeds.filter((s) => features.some((m) =>
+    m.Feature_Role === "meter"
+    && m.Layer_Key === "electric"
+    && meterBelongsTo(m, s)));
 }
 
 /* A meter belongs to a seed by plot first, and by the seed link Auto
@@ -95,6 +99,16 @@ export function meterBelongsTo(meter, seed) {
   if (seed.Plot_ID != null && meter.Plot_ID != null) {
     return Number(meter.Plot_ID) === Number(seed.Plot_ID);
   }
+  /* A supply has no plot to be matched by, so its meters carry the same
+     NRS_ID as the seed they were placed against.
+
+     The record rather than the feature id, because the id is not known
+     while the seed is still an optimistic row on the canvas — the plot
+     flow gets round that by having Plot_ID to hand, and this is the
+     equivalent. It also means a supply's meters survive the seed being
+     deleted and re-placed, which the feature id would not. */
+  const nrs = seed.Attributes?.NRS_ID;
+  if (nrs != null) return Number(meter.Attributes?.NRS_ID) === Number(nrs);
   return Number(meter.Attributes?.Seed_Feature_ID) === Number(seed.Feature_ID);
 }
 

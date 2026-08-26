@@ -1,141 +1,124 @@
-# Bulk edit by kind — selecting without selecting, 26 Aug 2026
+# A supply is a seed, not a meter, 26 Aug 2026
 
-The item the last note left open. "Set every service trench to As Laid"
-is one decision about four hundred features, and until now the only way
-to make it was to draw round them.
+0194 made a non-residential supply **be** its own meter. That could only
+ever describe an electric one — which is why placement hard-coded the
+electric layer, and why the record took a single utility. A supply is a
+plot seed with a different symbol, and this makes it one.
 
 | File | Change |
 |------|--------|
-| `src/features/gis/bulkEdit.js` | `classesIn`, `planBulkEditOn`; name, depth and house type added to `fieldsFor` |
-| `src/features/gis/CategoryPicker.jsx` | **New.** The picker lifted out of BulkDelete, one copy for both panels |
-| `src/features/gis/BulkEditor.jsx` | Mode switch; fields drawn from `fieldsForMany`; applies through the planner |
-| `src/features/gis/BulkDelete.jsx` | Renders the shared picker |
-| `src/styles.css` | `.cat-*` — the picker's rules, in the shared sheet |
-| `src/features/gis/GISCanvasPage.jsx` | `Edit by Kind…` on the menu; the panel opens with no selection |
-| `checkbulkedit.mjs` | Fifteen sections; the last one mounts the panel and drives it |
+| `supabase/migrations/0196_nrs_is_a_seed.sql` | **New. Read the warning before running.** |
+| `src/features/gis/electric.js` | `metredSuppliesInside` replaces `nrsInside`; `meterBelongsTo` matches on `NRS_ID` |
+| `src/features/gis/GISCanvasPage.jsx` | Placement writes a seed then chains its meters |
+| `src/features/nrs/NonResidentialTab.jsx` | Utilities, plural |
+| `netlify/functions/nrs.js` | Serves and saves the set |
+| `src/features/gis/bulkDelete.js`, `find.js`, `GisStylesAdmin.jsx` | The new role, in the three lists that need it |
+| `checknrs.mjs` | Rewritten around the seed |
 
 ---
 
-## A category is narrower than a class
+## Do not run 0196 before this code is deployed
 
-This is the whole of the design, and it is the one thing that would have
-gone wrong quietly.
+It creates features with a role the canvas draws nothing for until then,
+and a supply nobody can see is where this whole thread started.
 
-The kinds are named from the same list bulk delete names what it
-removes, so the sentence is "all the service trenches" either way. But
-`bulkEdit.js` works in *classes* — layer plus line type, or layer plus
-role — and a category can be finer than that. Tick **service joints**
-and the class of every one of them is "electric joints", which is also
-the breeches and the straights.
+## What changed
 
-Planning from the classes would have edited four times what was ticked,
-and it would have looked entirely right doing it: the count would be of
-joints, and they would all have been joints.
+```
+the supply    Feature_Role 'nrs', black triangle, NRS_ID on it
+its meters    Feature_Role 'meter', one per utility, NRS_ID on each
+```
 
-So `planBulkEditOn` takes a settled set of features and writes to
-exactly those. `planBulkEditMany` is now a two-line wrapper that finds
-the members first, so the class route — which the single-class path
-still uses — is unchanged. **Classes decide which fields to offer, and
-never which features to write.**
+Placing one is now the plot flow: click to put the seed down, then a
+click per utility it takes, with the same preview and the same running
+label. The menu hint says how many clicks are coming before it starts,
+because a chain nobody expected reads as the canvas having gone wrong.
 
-## The first line in the array is not an answer
+Only utilities that map to a drawing layer get a meter. Your dropdown
+offers Section 38 On Site and Section 278 Off Site alongside the three
+that are metered; those are commercial facts about a supply, and the
+canvas places nothing for them.
 
-The panel used to settle "are these trenches?" by looking at
-`lines[0]`, under a comment saying the selection is already one class to
-get here. It was, because the menu item disables itself otherwise.
+## The load did not move
 
-A ticked set is mixed far more often than a selection is, and the same
-line would then have answered from whichever feature the drawing
-happened to load first. So the fields come from `fieldsForMany` now —
-the intersection across the classes present, which is the honest answer
-to what can be said about all of them — and the panel draws a control
-per field kind rather than branching on `allLines` and `allTrenches`.
+Worth saying plainly, because this is the part that could have gone
+badly. `circuitKva` already read `NRS_ID` off the **meter**:
 
-That moved three fields into the module so it could stay the single
-answer: **Name** (a column, not an attribute — the planner lifts it out
-of the patch), **Depth**, and **House type**, which is not a feature
-field at all and carries `onPlot: true` to say so.
+```js
+const kva = m.Attributes?.NRS_ID != null
+  ? nrsById(m.Attributes.NRS_ID)?.Requested_kVA : ...plot lookup
+```
 
-## Two things it deliberately will not do
+And `meterBelongsTo` already had a fallback for a seed with no plot
+behind it. So the volt drop, the way-fuse comparison and the levels
+check are untouched. The model was built for this shape; only the
+placement was not.
 
-**Cable size.** A run's size is held twice — on the run, and on the span
-node it feeds, because the volt drop sum reads it from the node — and
-only the canvas can write both. A bulk write of one of them from here is
-recurring fault 13 verbatim: a drawing where the cable says 300 and the
-sum says 95, each true to whichever reader looked. `fieldsFor` still
-returns the field; the panel draws a line of prose in its place saying
-where the size is set. Absence alone would have been an invitation to
-add it back.
+A supply's meters are linked by the shared `NRS_ID`, not by the seed's
+`Feature_ID` — that is not known while the seed is still an optimistic
+row on the canvas, and a link through the record survives the seed being
+deleted and re-placed.
 
-**Anything not shared.** A mixed set is offered the status and the name
-and nothing else, and says so.
+## Pump 1, Pump 2 and TBS1
 
-## The picker moved rather than being copied
+Deleted and re-placed, rather than converted. An earlier draft of 0196
+turned them into seeds in place, kept the two carrying load as meters,
+and put a seed three metres from each — it worked, and it guessed. Three
+metres east and three south is not where a pump is, so both would have
+needed dragging anyway.
 
-It was inside `BulkDelete.jsx`, along with the cascade between a utility
-and the kinds beneath it — tick Electric, get its kinds; untick one, keep
-the rest. Copying that into a second panel would have produced two
-versions that drift, and the first thing to drift would have been the
-cascade, which is subtle enough to go subtly wrong rather than visibly.
+The migration now leaves the drawings alone and asks you to clear them
+first. The query is at the top of the file; the records themselves are
+untouched, so all three come straight back on the Place menu.
 
-Its classes went to `src/styles.css` at the same time, as `.cat-*`. A
-`<style>` block is injected only while its own component is mounted, so
-a picker drawing with `bd-` rules would have been unstyled whenever bulk
-delete was shut — which is fault 11, and exactly what `.fe` and
-`.fe-body` did to this same panel a session ago.
+**Look before you delete.** Expect three rows, all with a null
+`Connects`. If any has one, stop and delete that one through the canvas
+instead, so the seed cascade gets asked about the service running to it.
+
+Once they're back: Pump 1 and Pump 2 were on Circuit 1 and won't be
+until you re-place them, run their service and put them back on it.
+Don't read a levels check in between — twenty kVA missing from a way
+reads as headroom, which is the one direction a wrong number is
+dangerous in.
+
+## Utilities, plural
+
+`NRS_Utility`, seeded from the single `Utility_ID` every supply already
+names. The column is left standing and read by nothing, so a deploy can
+be rolled back without losing which utility each supply named; the drop
+statement is at the foot of 0196 with a query to run first.
+
+The tab reads the set where a record has one and falls back to the old
+column where it does not, so a supply saved before 0196 and not touched
+since still shows its utility. That fallback goes when the column does.
 
 ## The check
 
-Nine sections became fifteen. The new ones cover `classesIn`, the
-service-joint trap above, Name written as a column and a line type
-carrying its layer, and the shared-stylesheet rule extended to `cat-`
-across all three components.
+Rewritten around the seed rather than patched. `metredSuppliesInside`
+mirrors `metredSeedsInside` — supplies inside the outline **that have a
+meter** — and a new section covers `meterBelongsTo`: a meter belongs to
+its own supply, not to another one, and a dwelling's meter is not swept
+up by either.
 
-**Section 15 mounts the panel and drives it.** Everything before it
-reads the module or greps the JSX, and neither proves the panel runs:
-kinds mode opens with no selection, on props the selection mode never
-sees, and a panel that threw on an empty `features` array would have
-passed every other assertion and blanked the page on the first click. It
-ticks All meters on a four-feature drawing, sets a status, presses
-Apply, and asserts that the two trenches nobody named are not in what
-came back.
+Two assertions are about what must NOT be true, since this whole change
+is undoing a shape that worked: placement must not write the supply as
+an electric meter, and the supply's own meter must still resolve to the
+plain meter style. A triangle sitting where a meter goes is what the
+drawing showed before and what was wrong with it.
 
-It also caught a fault found by reading rather than by any grep. **The
-draft outlives the set it was filled in against.** Type a surface for a
-hundred trenches, switch to kinds, tick the meters, and the surface was
-still in state — so the panel now plans only over fields the current
-set is offered, and 15c drives exactly that sequence.
-
-Each assertion was checked by breaking the thing it tests: planning from
-classes, ignoring the tick, dropping the Name lift, unhooking the line
-type from its layer, offering a surface to a meter, renaming a picker
-class, and copying the picker back. All were reported, and one — the
-first version of the planner assertion — passed a broken panel because
-it matched the import line. It names the argument now.
-
-`checkescapes.py` caught a `\u2026` in the new menu item's JSX
-attribute, which is recurring fault 6 and would have shipped as six
-literal characters on the menu.
+Verified by putting the old placement back — both assertions fired.
 
 ---
 
 ## The suite
 
-**87 of 92**, and the five are all pre-existing — confirmed by stashing
-this work and running them again. HANDOVER says three, which was true
-when it was written; `checkorphans`, `checkroutes` and `checkaslaidplan`
-have failed since some point after it. Two of the five are still the
-uncommitted migrations. The other three are listed in HANDOVER now, with
-what each is actually reporting.
+**88 of 93**, the five failures all pre-existing and described in
+HANDOVER.
 
 ## Still to do
 
-The house type is written through a second call to the plots endpoint,
-and the two writes are not one transaction — a features write that
-succeeds followed by a plots write that fails leaves the drawing changed
-and the load not. It was the same before this change; it is more
-reachable now that forty seeds can be named without selecting them.
-
-`GISCanvasPage.jsx` gained eleven lines and is still 12,000. The three
-panels it mounts for bulk work — editor, delete, picker — are now
-independent of it and would move out cleanly.
+Auto Service, the BOM and the call-offs walk plot seeds by
+`Feature_Role === "plot"`. A supply seed is not one, so it takes no part
+in any of them — correct for now, since a supply's service is drawn by
+hand, but worth deciding deliberately rather than by omission the first
+time somebody expects Auto Service to reach a pumping station.

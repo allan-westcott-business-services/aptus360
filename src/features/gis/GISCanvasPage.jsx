@@ -31,7 +31,7 @@ import {
   isServed, meterHasService, layServices,
 } from "./autoService.js";
 import {
-  circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, nrsInside, circuitKva,
+  circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
   sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
   circuitReport,
@@ -4777,7 +4777,8 @@ export default function GISCanvasPage() {
         ctx.stroke();
 
         ctx.globalAlpha = 1;
-        const label = `${meterFor.plot.plot_number} ${meterFor.utility.utility}`;
+        const label = `${meterFor.nrs ? nrsName(meterFor.nrs) : meterFor.plot.plot_number}`
+          + ` ${meterFor.utility.utility}`;
         ctx.font = "700 11px ui-monospace, Menlo, monospace";
         ctx.textAlign = "center";
         const w = ctx.measureText(label).width + 12;
@@ -6610,6 +6611,42 @@ export default function GISCanvasPage() {
     }
   }
 
+  /* What a supply is called, in one place.
+
+     Three things name it — the menu item, the seed's label and each
+     meter's label — and they were three copies of the same fallback
+     chain. A supply renamed on the project would have kept its old name
+     on whichever of them was written first. */
+  const nrsName = useCallback((n) =>
+    n?.Supply_Ref || n?.Description || `Supply ${n?.NRS_ID}`, []);
+
+  /* Which utilities a supply takes.
+
+     A set since 0196, held in NRS_Utility and served on the record as
+     Utility_IDs. Resolved against the project's utilities rather than
+     the whole catalogue, because a meter needs the layer key and the
+     colour, and both of those come from what the project is scoped to.
+
+     A supply scoped to something the project is not doing gets no meter
+     for it. That is right, and quiet: the record is a commercial fact
+     and the drawing only shows what is being built. */
+  const utilitiesOf = useCallback((rec) => {
+    const ids = rec?.Utility_IDs || [];
+    if (!ids.length) return [];
+    return utilities.filter((u) => ids.some((id) => Number(id) === Number(u.Utility_ID)));
+  }, [utilities]);
+
+  /* The utilities a placed supply has no meter for. The same question
+     missingMetersFor asks of a plot, and the same answer, matched on
+     NRS_ID rather than Plot_ID. */
+  const missingSupplyMeters = useCallback((nrsId) => {
+    const has = new Set(features
+      .filter((f) => f.Feature_Role === "meter"
+        && Number(f.Attributes?.NRS_ID) === Number(nrsId))
+      .map((f) => f.Layer_Key));
+    return utilities.filter((u) => u.layer_key && !has.has(u.layer_key));
+  }, [features, utilities]);
+
   /* The utilities this plot has no meter for.
 
      By Plot_ID rather than by proximity: a meter belongs to the plot it
@@ -6703,43 +6740,71 @@ export default function GISCanvasPage() {
       setStatus("");
       const draftFeature = {
         Project_ID: Number(projectId),
-        Layer_Key: "electric",
+        /* On the plot layer, like the seed it is. Not on electric: a
+           supply is not an electric thing, it is a thing that takes
+           electric — and may take gas and water beside it. 0194 put it
+           on the electric layer because it made the supply be its own
+           electric meter, which is the mistake 0196 undoes. */
+        Layer_Key: "plot",
         Feature_Type: "point",
-        Feature_Role: "meter",
+        Feature_Role: "nrs",
         Geometry: [point],
-        Label: rec.Supply_Ref || rec.Description || `Supply ${rec.NRS_ID}`,
-        Attributes: {
-          NRS_ID: rec.NRS_ID,
-          Supply_Type: "nrs",
-          Meter_Utility: "Electric",
-        },
+        Label: nrsName(rec),
+        Attributes: { NRS_ID: rec.NRS_ID },
       };
       const tempId = addOptimistic(draftFeature);
       setNrsFor(null);
+
+      /* Then its meters, one per utility it takes, the same chain a
+         plot seed runs. Only the utilities that map to a drawing layer:
+         a supply can be scoped to Section 278 Off Site, which is a
+         commercial arrangement and not something with a meter on it. */
+      const takes = utilitiesOf(rec).filter((u) => u.layer_key);
+      if (takes.length) {
+        setMeterFor({ nrs: rec, seedPoint: point, utility: takes[0], all: takes, placed: [] });
+      }
+
       try { reconcile(tempId, await addFeature(draftFeature)); }
-      catch (e) { rollback(tempId); setError(e.message); }
+      catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
       return;
     }
 
     // A meter for the plot just seeded
     if (meterFor) {
-      const { plot, utility, all, placed } = meterFor;
+      /* A meter for the seed just placed — a plot's, or a supply's.
+         One branch for both, because a meter is a meter: it belongs to
+         a seed, carries its utility, and is what every load sum reads.
+         What differs is only what it is linked BY. */
+      const { plot, nrs, utility, all, placed } = meterFor;
       const draftFeature = {
         Project_ID: Number(projectId),
         Layer_Key: utility.layer_key,
         Feature_Type: "point",
         Feature_Role: "meter",
         Geometry: [point],
-        Label: `${utility.utility} Meter ${plot.plot_number}`,
-        Plot_ID: plot.plot_id,
-        Attributes: { Meter_Utility: utility.utility },
+        Label: nrs
+          ? `${utility.utility} Meter ${nrsName(nrs)}`
+          : `${utility.utility} Meter ${plot.plot_number}`,
+        /* A plot's meter is linked by Plot_ID, a supply's by the NRS_ID
+           it shares with its seed. Not by the seed's Feature_ID: that is
+           not known while the seed is still an optimistic row, and a
+           link through the record survives the seed being deleted and
+           re-placed. meterBelongsTo reads both. */
+        ...(nrs ? {} : { Plot_ID: plot.plot_id }),
+        Attributes: {
+          Meter_Utility: utility.utility,
+          ...(nrs ? { NRS_ID: nrs.NRS_ID } : {}),
+        },
       };
       const tempId = addOptimistic(draftFeature);
 
       const nextPlaced = [...placed, utility.layer_key];
       const nextUtility = all.find((u) => !nextPlaced.includes(u.layer_key));
       if (nextUtility) setMeterFor({ ...meterFor, utility: nextUtility, placed: nextPlaced });
-      else { setMeterFor(null); markPlaced(plot.plot_id); }
+      else {
+        setMeterFor(null);
+        if (!nrs) markPlaced(plot.plot_id);
+      }
 
       try { reconcile(tempId, await addFeature(draftFeature)); }
       catch (e) { rollback(tempId); setError(e.message); }
@@ -8354,22 +8419,18 @@ export default function GISCanvasPage() {
        metredSeedsInside looks for plot points and a supply is not one —
        lassoed round, it would be left off the circuit while everything
        beside it joined. */
-    const supplies = nrsInside(features, ring, pointInPolygon);
+    const supplies = metredSuppliesInside(features, ring, pointInPolygon);
     if (!seeds.length && !supplies.length) {
       setError("No plot seeds with an electric meter, and no supplies, "
         + "inside that outline.");
       return;
     }
-    /* Both kinds, deduplicated. A supply is already a meter, so a
-       future change to metersOfSeeds that started matching them would
-       otherwise put one on the circuit twice — and a load counted twice
-       is worse than one counted not at all, because it reads as a
-       failing design rather than a missing one. */
-    const byId = new Map();
-    for (const m of [...metersOfSeeds(features, seeds), ...supplies]) {
-      byId.set(Number(m.Feature_ID), m);
-    }
-    const meters = [...byId.values()];
+    /* Both kinds through one call. A supply is a seed like a plot is
+       since 0196, so its meters are found the same way and the dedupe
+       this used to need has gone with the special case: metersOfSeeds
+       filters the feature list once, so a meter answering to two seeds
+       still appears in it once. */
+    const meters = metersOfSeeds(features, [...seeds, ...supplies]);
 
     /* ── New circuit, or one that already exists ──
 
@@ -16356,13 +16417,21 @@ export default function GISCanvasPage() {
                           to remember which they have done. A supply
                           already on the drawing drops off the list. */}
                       {nrsList.length > 0 ? (() => {
+                        /* Placed means its SEED is on the drawing.
+
+                           It used to mean any feature mentioning the
+                           record, which was the same thing while a
+                           supply WAS its own meter. Since 0196 its
+                           meters carry NRS_ID too, so that test would
+                           call a supply placed on the strength of a
+                           meter belonging to a seed that had been
+                           deleted. */
                         const placedIds = new Set(features
-                          .filter((f) => f.Attributes?.NRS_ID != null)
+                          .filter((f) => f.Feature_Role === "nrs" && f.Attributes?.NRS_ID != null)
                           .map((f) => Number(f.Attributes.NRS_ID)));
                         const waiting = nrsList
                           .filter((n) => !placedIds.has(Number(n.NRS_ID)));
-                        const nameOf = (n) =>
-                          n.Supply_Ref || n.Description || `Supply ${n.NRS_ID}`;
+                        const nameOf = nrsName;
                         return (
                           <>
                             {waiting.length === 0 ? (
@@ -16371,9 +16440,23 @@ export default function GISCanvasPage() {
                             ) : waiting.map((n) => (
                               <MenuItem key={n.NRS_ID} indent
                                 label={`Place ${nameOf(n)}`}
-                                hint={n.Requested_kVA != null
-                                  ? `${n.Requested_kVA} kVA \u00b7 then click the plan`
-                                  : "No kVA on the record \u00b7 it will carry no load"}
+                                /* What the click will actually do: a
+                                   seed, then a meter for each utility
+                                   the supply takes. Said before it
+                                   starts, because a chain of clicks
+                                   nobody expected reads as the canvas
+                                   having gone wrong. */
+                                hint={(() => {
+                                  const takes = utilitiesOf(n).filter((u) => u.layer_key);
+                                  const kva = n.Requested_kVA != null
+                                    ? `${n.Requested_kVA} kVA`
+                                    : "No kVA on the record";
+                                  return takes.length
+                                    ? `${kva} \u00b7 seed, then ${takes.length} meter`
+                                      + `${takes.length === 1 ? "" : "s"} `
+                                      + `(${takes.map((u) => u.utility).join(", ")})`
+                                    : `${kva} \u00b7 seed only \u00b7 no metered utility on it`;
+                                })()}
                                 active={Number(nrsFor?.NRS_ID) === Number(n.NRS_ID)}
                                 disabled={!!busy || !projectId}
                                 onClick={() => {

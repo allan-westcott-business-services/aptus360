@@ -1,10 +1,17 @@
-/* Does a non-residential supply behave as a meter, and carry its own
-   load rather than a plot's?
+/* Is a non-residential supply a seed with meters of its own, and does
+   each meter carry the supply's load rather than a plot's?
+
+   0194 made the supply BE a meter, which could only ever describe an
+   electric one — the placement hard-coded the electric layer and the
+   record took a single utility. 0196 made it a seed, which is what it
+   always was: something on the ground that takes gas, water and
+   electric like anything else.
 
    Run: node checknrs.mjs */
 import { buildFeederModel } from "./src/features/gis/feeder.js";
 import { subjectOf, resolveStyle } from "./src/lib/gisStyle.js";
-import { nrsInside, circuitKva } from "./src/features/gis/electric.js";
+import { metredSuppliesInside, circuitKva, meterBelongsTo }
+  from "./src/features/gis/electric.js";
 import { readFileSync } from "node:fs";
 
 const fails = [];
@@ -21,9 +28,18 @@ const dwelling = (id, plotId, x) => ({
   Feature_ID: id, Feature_Role: "meter", Layer_Key: "electric",
   Plot_ID: plotId, Attributes: { Circuit_ID: 1 }, Geometry: at(x, 0),
 });
+/* A supply is a seed since 0196, and its meters are separate features
+   carrying the same NRS_ID. `supply` is the METER — it is what every
+   load sum reads, and what the fixtures below are about — and `seed` is
+   the triangle on the drawing. */
 const supply = (id, nrsId, x) => ({
   Feature_ID: id, Feature_Role: "meter", Layer_Key: "electric",
-  Attributes: { NRS_ID: nrsId, Supply_Type: "nrs", Circuit_ID: 1 }, Geometry: at(x, 0),
+  Attributes: { NRS_ID: nrsId, Meter_Utility: "Electric", Circuit_ID: 1 },
+  Geometry: at(x, 0),
+});
+const seed = (id, nrsId, x) => ({
+  Feature_ID: id, Feature_Role: "nrs", Layer_Key: "plot",
+  Attributes: { NRS_ID: nrsId }, Geometry: at(x, 0),
 });
 
 const NRS = [{ NRS_ID: 7, Supply_Ref: "Unit A", Requested_kVA: 85 },
@@ -92,18 +108,27 @@ const plotById = () => ({ kva_load: 5 });
   }
 }
 
-// 6. Drawn as a black triangle, and an ordinary meter still is not.
+// 6. The SEED is the black triangle. Its meters are ordinary meters.
+//
+//    0195 scoped the triangle to Feature_Role 'meter' with Supply_Type
+//    'nrs', because under 0194 the supply was its own meter. With a
+//    role of its own the role is the scope — and it matters that the
+//    supply's electric meter draws like every other meter, because it
+//    IS one: a triangle sitting where a meter goes is what the drawing
+//    showed before and what was wrong with it.
 {
   const styles = [
     { GIS_Style_ID: 1, Feature_Role: "meter", Symbol: "square", Symbol_Size_Px: 8 },
-    { GIS_Style_ID: 2, Feature_Role: "meter", Supply_Type: "nrs",
+    { GIS_Style_ID: 2, Feature_Role: "nrs",
       Symbol: "triangle", Symbol_Size_Px: 10, Colour: "#000000" },
   ];
   const a = resolveStyle(subjectOf(dwelling(10, 1, 50), []), styles);
-  const b = resolveStyle(subjectOf(supply(11, 7, 50), []), styles);
+  const b = resolveStyle(subjectOf(seed(21, 7, 50), []), styles);
+  const c = resolveStyle(subjectOf(supply(11, 7, 50), []), styles);
   if (a.Symbol !== "square") fail(`an ordinary meter drew as ${a.Symbol}`);
-  if (b.Symbol !== "triangle") fail(`a supply drew as ${b.Symbol}`);
-  if (b.Colour !== "#000000") fail(`a supply drew in ${b.Colour}`);
+  if (b.Symbol !== "triangle") fail(`a supply seed drew as ${b.Symbol}`);
+  if (b.Colour !== "#000000") fail(`a supply seed drew in ${b.Colour}`);
+  if (c.Symbol !== "square") fail(`a supply's own meter drew as ${c.Symbol}, not as a meter`);
 }
 
 // 7. Every place that builds a feeder model is handed nrsById.
@@ -122,25 +147,65 @@ const plotById = () => ({ kva_load: 5 });
 
   // And the records have to reach the canvas at all.
   if (!/listNrs/.test(src)) fail("GISCanvasPage never loads the supplies");
-  if (!/Supply_Type:\s*"nrs"/.test(src)) fail("placement writes no Supply_Type, so it draws as a house");
+  /* The supply is a SEED. It was a meter under 0194, which is why it
+     could only ever be electric — and why placement hard-coded the
+     electric layer. */
+  if (!/Feature_Role: "nrs"/.test(src)) fail("placement does not write a supply seed");
+  if (/Layer_Key: "electric",\s*\n\s*Feature_Type: "point",\s*\n\s*Feature_Role: "meter",\s*\n\s*Geometry: \[point\],\s*\n\s*Label: nrsName/.test(src)) {
+    fail("placement still writes the supply itself as an electric meter");
+  }
+  /* And then its meters, one per utility it takes. */
+  if (!/setMeterFor\(\{ nrs: rec/.test(src)) {
+    fail("placing a supply does not go on to place its meters");
+  }
+  if (!/NRS_ID: nrs\.NRS_ID/.test(src)) {
+    fail("a supply's meter carries no NRS_ID, so nothing links it to its supply");
+  }
   if (!/setNrsFor\(null\)/.test(src)) fail("a chosen supply is never disarmed on cancel");
 }
 
 // 8. Link to Circuit finds a supply inside the outline.
 //
-//    metredSeedsInside looks for plot points and then keeps the ones
-//    with a meter on them. A supply is a meter with nothing behind it,
-//    so it falls through both halves — lassoed round and left off the
-//    circuit, which the trace then prunes out entirely.
+//    metredSeedsInside looks for PLOT points and keeps the ones with a
+//    meter on them. A supply seed is not a plot point, so it falls
+//    through — lassoed round and left off the circuit, which the trace
+//    then prunes out entirely, and the design reads lighter than it is
+//    by the whole of its load.
+//
+//    Asked of the seed and answered with the seed, so the caller can
+//    hand both kinds to metersOfSeeds in one call.
 {
   const ring = [[0, 0], [100, 0], [100, 100], [0, 100]];
   const inside = (p, r) => p[0] > r[0][0] && p[0] < r[1][0]
                         && p[1] > r[0][1] && p[1] < r[2][1];
-  const within = supply(11, 7, 50); within.Geometry = at(50, 50);
-  const beyond = supply(12, 8, 500); beyond.Geometry = at(500, 500);
-  const found = nrsInside([within, beyond, dwelling(10, 1, 50)], ring, inside);
-  if (found.length !== 1) fail(`nrsInside found ${found.length} supplies, expected 1`);
-  if (found[0]?.Feature_ID !== 11) fail("nrsInside found the wrong supply");
+  const within = seed(21, 7, 0); within.Geometry = at(50, 50);
+  const itsMeter = supply(11, 7, 0); itsMeter.Geometry = at(52, 52);
+  const beyond = seed(22, 8, 0); beyond.Geometry = at(500, 500);
+  const world = [within, itsMeter, beyond, dwelling(10, 1, 50)];
+
+  const found = metredSuppliesInside(world, ring, inside);
+  if (found.length !== 1) fail(`metredSuppliesInside found ${found.length}, expected 1`);
+  if (found[0]?.Feature_ID !== 21) fail("metredSuppliesInside found the wrong supply");
+
+  /* A seed with no meter yet is not on a circuit. TBS1 is exactly this
+     — placed, nothing run to it — and putting it on one would add its
+     load to a way that is not feeding it. */
+  const bare = metredSuppliesInside([within, beyond], ring, inside);
+  if (bare.length) fail("a supply with no meter was put on a circuit");
+}
+
+// 8b. A meter belongs to its supply by the record, not the feature id.
+//
+//     The seed's Feature_ID is not known while it is still an
+//     optimistic row on the canvas, which is why the plot flow can use
+//     Plot_ID and this cannot. Matching on NRS_ID also means a supply's
+//     meters survive its seed being deleted and re-placed.
+{
+  const s7 = seed(21, 7, 0);
+  if (!meterBelongsTo(supply(11, 7, 0), s7)) fail("a meter did not belong to its own supply");
+  if (meterBelongsTo(supply(12, 8, 0), s7)) fail("a meter belonged to another supply");
+  /* And a dwelling's meter is still matched by plot, not swept up. */
+  if (meterBelongsTo(dwelling(10, 1, 50), s7)) fail("a plot meter was claimed by a supply");
 }
 
 // 9. The way-fuse load at the substation counts a supply too. Missing,
@@ -154,7 +219,9 @@ const plotById = () => ({ kva_load: 5 });
 // 10. The lasso must reach BOTH kinds, and dedupe them.
 {
   const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/nrsInside\(features, ring/.test(src)) fail("Link to Circuit never looks for supplies");
+  if (!/metredSuppliesInside\(features, ring/.test(src)) {
+    fail("Link to Circuit never looks for supplies");
+  }
   if (!/circuitKva\([\s\S]{0,200}nrsList\.find/.test(src)) {
     fail("the way-fuse load is worked out without the supplies");
   }
@@ -182,5 +249,5 @@ const plotById = () => ({ kva_load: 5 });
 
 console.log(fails.length
   ? "FAIL\n - " + fails.join("\n - ")
-  : "Non-residential supplies behave (placed, a meter to the network, its own load, a black triangle).");
+  : "Non-residential supplies behave (a seed with its own meters, its own load, a black triangle).");
 process.exit(fails.length ? 1 : 0);

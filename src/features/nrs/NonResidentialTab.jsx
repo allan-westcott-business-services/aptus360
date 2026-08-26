@@ -15,7 +15,11 @@ const COLS = [
   { key: "ref",     label: "Supply ref",  width: 130, type: "text",  raw: (r) => r.Supply_Ref || "" },
   { key: "desc",    label: "Description", width: 200, type: "text",  raw: (r) => r.Description || "" },
   { key: "subtype", label: "Type",        width: 150, type: "multi", raw: (r) => r.NRS_Sub_Type_ID },
-  { key: "utility", label: "Utility",     width: 140, type: "multi", raw: (r) => r.Utility_ID },
+  /* Filtered on the set. `raw` returns one value per row, so a supply
+     taking two utilities is matched by the first of them — enough to
+     find it, and the cell shows all of them. */
+  { key: "utility", label: "Utilities",   width: 190, type: "multi",
+    raw: (r) => (r.Utility_IDs?.length ? r.Utility_IDs[0] : r.Utility_ID) },
   { key: "kva",     label: "kVA",         width: 90,  type: "num",   align: "right", raw: (r) => r.Requested_kVA ?? null },
   { key: "mpan",    label: "MPAN",        width: 150, type: "text",  raw: (r) => r.MPAN || "" },
   { key: "operator",label: "Operator",    width: 150, type: "multi", raw: (r) => r.IDNO_ID },
@@ -24,7 +28,7 @@ const COLS = [
 ];
 
 const blankRow = () => ({
-  Supply_Ref: "", Description: "", NRS_Sub_Type_ID: "", Utility_ID: "",
+  Supply_Ref: "", Description: "", NRS_Sub_Type_ID: "", Utility_IDs: [],
   Requested_kVA: "", MPAN: "", Address: "", IDNO_ID: "", Date_Received: "",
   Self_Lay_Provider: false, Notes: "",
 });
@@ -88,17 +92,26 @@ export default function NonResidentialTab({ projectId }) {
 
   function edit(r) {
     setEditingId(r.NRS_ID);
-    setF({ ...blankRow(), ...r });
+    /* Utility_IDs where the record has them, and the old single column
+       where it does not — a supply saved before 0196 and not touched
+       since still names one utility and nothing else. Read here rather
+       than defaulted on the server so the fallback is visible: it goes
+       when the column does. */
+    setF({
+      ...blankRow(), ...r,
+      Utility_IDs: r.Utility_IDs?.length ? r.Utility_IDs
+        : (r.Utility_ID != null ? [r.Utility_ID] : []),
+    });
     setShowForm(true);
   }
 
   async function save() {
-    if (!f.Utility_ID) return setError("Choose a utility.");
+    if (!f.Utility_IDs.length) return setError("Choose at least one utility.");
     setSaving(true);
     try {
       await saveNrs(projectId, {
         ...f,
-        Utility_ID: Number(f.Utility_ID),
+        Utility_IDs: f.Utility_IDs.map(Number),
         NRS_Sub_Type_ID: f.NRS_Sub_Type_ID ? Number(f.NRS_Sub_Type_ID) : null,
         IDNO_ID: f.IDNO_ID ? Number(f.IDNO_ID) : null,
       }, editingId);
@@ -170,11 +183,33 @@ export default function NonResidentialTab({ projectId }) {
                 <p className="hint">None configured &mdash; add them in Admin.</p>
               )}</div>
 
-            <div className="fld"><label>Utility <span className="req">*</span></label>
-              <select value={f.Utility_ID} onChange={(e) => set("Utility_ID")(e.target.value)}>
-                <option value="">&mdash;</option>
-                {UTILITIES.map((u) => <option key={u.id} value={u.id}>{u.name}</option>)}
-              </select></div>
+            {/* Utilities, plural.
+
+                A supply takes what it takes: a pumping station needs a
+                three-phase supply AND a water connection, and while this
+                was one picker there was no way to say so. Each one it
+                takes and that the project is building gets a meter of
+                its own against the seed on the drawing, exactly as a
+                dwelling has gas, water and electric.
+
+                The ones that are not metered — Section 38, Section 278 —
+                are offered too. They are a commercial fact about the
+                supply, and the canvas simply places no meter for
+                them. */}
+            <div className="fld nrs-utils"><label>Utilities <span className="req">*</span></label>
+              <div className="nrs-utilrow">
+                {UTILITIES.map((u) => (
+                  <label key={u.id} className="nrs-util">
+                    <input type="checkbox"
+                      checked={f.Utility_IDs.some((x) => Number(x) === Number(u.id))}
+                      onChange={(e) => set("Utility_IDs")(e.target.checked
+                        ? [...f.Utility_IDs, u.id]
+                        : f.Utility_IDs.filter((x) => Number(x) !== Number(u.id)))} />
+                    <span className="dot" style={{ background: u.colour ?? "#94a3b8" }} />
+                    {u.name}
+                  </label>
+                ))}
+              </div></div>
             <div className="fld"><label>Requested kVA</label>
               <input type="number" step="0.1" value={f.Requested_kVA}
                 onChange={(e) => set("Requested_kVA")(e.target.value)} /></div>
@@ -256,15 +291,22 @@ export default function NonResidentialTab({ projectId }) {
               {shown.length === 0 ? (
                 <tr><td colSpan={COLS.length} className="no-rows">No supplies match these filters.</td></tr>
               ) : shown.map((r) => {
-                const u = utilityById(r.Utility_ID);
+                const us = (r.Utility_IDs?.length
+                  ? r.Utility_IDs
+                  : (r.Utility_ID != null ? [r.Utility_ID] : []))
+                  .map(utilityById).filter(Boolean);
                 return (
                   <tr key={r.NRS_ID}>
                     <td className="mono ref">{r.Supply_Ref || "\u2014"}</td>
                     <td>{r.Description || "\u2014"}</td>
                     <td>{subTypeName(r.NRS_Sub_Type_ID)}</td>
                     <td>
-                      <span className="dot" style={{ background: u?.colour ?? "#94a3b8" }} />
-                      {u?.name ?? "\u2014"}
+                      {us.length === 0 ? "\u2014" : us.map((u) => (
+                        <span key={u.id} className="nrs-chip">
+                          <span className="dot" style={{ background: u.colour ?? "#94a3b8" }} />
+                          {u.name}
+                        </span>
+                      ))}
                     </td>
                     <td className="num">{r.Requested_kVA ?? "\u2014"}</td>
                     <td className="mono">{r.MPAN || "\u2014"}</td>
@@ -286,6 +328,17 @@ export default function NonResidentialTab({ projectId }) {
 }
 
 const CSS = FILTER_CSS + `
+/* The utilities a supply takes. Spans the form's columns because it is
+   a set of boxes rather than one control, and wrapping it into a single
+   field column would put four of them in a stack narrower than their
+   own labels. */
+.nrs-utils { grid-column: 1 / -1; }
+.nrs-utilrow { display: flex; flex-wrap: wrap; gap: 6px 16px; padding: 2px 0; }
+.nrs-util { display: flex; align-items: center; gap: 6px; font-size: 12.5px;
+  font-weight: 500; text-transform: none; letter-spacing: 0; margin: 0; cursor: pointer; }
+.nrs-chip { display: inline-flex; align-items: center; gap: 5px; margin-right: 9px;
+  white-space: nowrap; }
+
 .tab-head { display: flex; align-items: flex-start; justify-content: space-between; gap: 16px; margin-bottom: 14px; }
 .tab-head h3 { margin: 0; font-size: 16px; font-weight: 700; }
 .tab-head .count { font-size: 11px; font-weight: 700; background: var(--accent-light); color: var(--accent);

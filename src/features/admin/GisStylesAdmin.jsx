@@ -31,7 +31,7 @@ const asPct = (v) => {
 
 const BLANK = {
   Style_Name: "", Layer_Key: "", Line_Type: "", Feature_Role: "",
-  Utility_ID: "", Organisation_ID: "", Site: "",
+  Supply_Type: "", Utility_ID: "", Organisation_ID: "", Site: "",
   Colour: "#64748b", Label_Colour: "", Dashed: false, Dash_Pattern: "", Symbol: "",
   Width_Px: "", Width_M: "", Scale_Width: false,
   Min_Width_Px: "", Max_Width_Px: "", Symbol_Size_Px: "",
@@ -67,9 +67,26 @@ const BLANK = {
    It is here because this is where somebody looks for it. A screen that
    styles every symbol except one, for a reason about how that symbol
    happens to be stored, is a screen that is wrong about its own job. */
+/* The kinds of supply a point can be, where the role does not say it.
+
+   Written out rather than derived: it is matched against
+   GIS_Feature.Attributes.Supply_Type, which is written by the canvas
+   when a non-residential supply is placed, and the only value the
+   application writes is 'nrs' (0194). A second one wants adding here
+   and to whatever writes it, in the same change.
+
+   "Any" is null, which matches everything and narrows nothing — so the
+   plain Meter rule goes on covering house meters and non-residential
+   supplies alike, and this one beats it only where it applies. */
+const SUPPLY_TYPES = [
+  ["", "Any"],
+  ["nrs", "Non-residential supply"],
+];
+
 const ROLES = [
   ["", "Any"],
   ["plot", "Plot seed"],
+  ["nrs", "Non-residential supply"],
   ["boundary", "Property boundary point"],
   ["meter", "Meter"],
   ["joint", "Joint"],
@@ -253,7 +270,12 @@ export default function GisStylesAdmin() {
 
   const scopeOf = (r) => [
     r.Organisation_ID && opName(r.Organisation_ID),
-    r.Site, r.Line_Type, r.Feature_Role, r.Layer_Key, r.Utility_ID && utName(r.Utility_ID),
+    r.Site, r.Line_Type, r.Feature_Role,
+    /* Named in the scope line, or the non-residential rule reads as a
+       second identical Meter rule with no way to tell which is which —
+       which is exactly what this screen showed until now. */
+    r.Supply_Type && (SUPPLY_TYPES.find(([k]) => k === r.Supply_Type)?.[1] ?? r.Supply_Type),
+    r.Layer_Key, r.Utility_ID && utName(r.Utility_ID),
   ].filter(Boolean).join(" \u00B7 ") || "Everything";
 
   if (loading) return <div className="loading">Loading styles&hellip;</div>;
@@ -363,6 +385,27 @@ export default function GisStylesAdmin() {
                   <select id="gs-role" value={draft.Feature_Role} onChange={set("Feature_Role")}>
                     {ROLES.map(([r, name]) => (
                       <option key={r} value={r}>{name}</option>
+                    ))}
+                  </select>
+                </div>
+                {/* What kind of supply a point is, where that is not the
+                    same question as what role it plays.
+
+                    A non-residential supply IS a meter to the network —
+                    it attaches, takes a service, counts in the joints
+                    and the BOM — so it keeps the meter role, and this is
+                    the only thing that can tell it apart. Above the role
+                    in specificity, below Site.
+
+                    Only meaningful on a meter, and offered anyway rather
+                    than hidden behind the role: a field that appears and
+                    disappears as another one changes is harder to find
+                    than one that is always there and says "Any". */}
+                <div className="fld">
+                  <label htmlFor="gs-supply">Supply type</label>
+                  <select id="gs-supply" value={draft.Supply_Type} onChange={set("Supply_Type")}>
+                    {SUPPLY_TYPES.map(([k, name]) => (
+                      <option key={k} value={k}>{name}</option>
                     ))}
                   </select>
                 </div>

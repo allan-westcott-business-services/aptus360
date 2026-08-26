@@ -16341,6 +16341,57 @@ export default function GISCanvasPage() {
                               + `\u00b7 ${plotsMissingMeters} plot(s) short \u00b7 Esc to stop`);
                           }} />
                       ) : null}
+                      {/* Non-residential supplies. Created on the project
+                          first, placed here — beside Plots because that is
+                          the same job: something on the project that needs
+                          putting on the drawing, and the list shrinks as
+                          each one is done.
+
+                          One item per record still waiting, so nobody has
+                          to remember which they have done. A supply
+                          already on the drawing drops off the list. */}
+                      {nrsList.length > 0 ? (() => {
+                        const placedIds = new Set(features
+                          .filter((f) => f.Attributes?.NRS_ID != null)
+                          .map((f) => Number(f.Attributes.NRS_ID)));
+                        const waiting = nrsList
+                          .filter((n) => !placedIds.has(Number(n.NRS_ID)));
+                        const nameOf = (n) =>
+                          n.Supply_Ref || n.Description || `Supply ${n.NRS_ID}`;
+                        return (
+                          <>
+                            {waiting.length === 0 ? (
+                              <MenuItem label="Non-residential supplies" indent
+                                hint="All placed" disabled />
+                            ) : waiting.map((n) => (
+                              <MenuItem key={n.NRS_ID} indent
+                                label={`Place ${nameOf(n)}`}
+                                hint={n.Requested_kVA != null
+                                  ? `${n.Requested_kVA} kVA \u00b7 then click the plan`
+                                  : "No kVA on the record \u00b7 it will carry no load"}
+                                active={Number(nrsFor?.NRS_ID) === Number(n.NRS_ID)}
+                                disabled={!!busy || !projectId}
+                                onClick={() => {
+                                  if (Number(nrsFor?.NRS_ID) === Number(n.NRS_ID)) {
+                                    setNrsFor(null); setStatus(""); return;
+                                  }
+                                  /* Clear of anything else that wants
+                                     clicks — two placement modes at once
+                                     is a click that does whichever was
+                                     checked first. */
+                                  stopPlacing();
+                                  setPlaceOpen(false);
+                                  setMeterCatchUp(null);
+                                  setTool("select");
+                                  setSelected([]);
+                                  setNrsFor(n);
+                                  setStatus(`Click the plan to place ${nameOf(n)}`
+                                    + ` \u00b7 Esc to stop`);
+                                }} />
+                            ))}
+                          </>
+                        );
+                      })() : null}
                       <div className="gm-sep" />
                       <MenuGroup label="Drawing Standard" />
                       <div className="gm-item" style={{ padding: "2px 9px 6px" }}>
@@ -16750,41 +16801,6 @@ export default function GISCanvasPage() {
                         shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                           onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                       ))}
-
-                      {/* Non-residential supplies. Created on the project
-                          first, placed here — one menu item per record
-                          still waiting, so nobody has to remember which
-                          they have done. A supply already on the drawing
-                          drops off the list. */}
-                      {(() => {
-                        const placedIds = new Set(features
-                          .filter((f) => f.Attributes?.NRS_ID != null)
-                          .map((f) => Number(f.Attributes.NRS_ID)));
-                        const waiting = nrsList
-                          .filter((n) => !placedIds.has(Number(n.NRS_ID)));
-                        if (!nrsList.length) return null;
-                        return (
-                          <>
-                            <MenuGroup label="Non-residential supplies" />
-                            {waiting.length === 0 ? (
-                              <MenuItem label="All supplies placed" disabled />
-                            ) : waiting.map((n) => (
-                              <MenuItem key={n.NRS_ID}
-                                label={`Place ${n.Supply_Ref || n.Description || `Supply ${n.NRS_ID}`}`}
-                                hint={n.Requested_kVA != null
-                                  ? `${n.Requested_kVA} kVA \u2014 then click the plan`
-                                  : "No kVA on the record \u2014 it will carry no load"}
-                                disabled={!!busy || !projectId}
-                                onClick={() => {
-                                  setNrsFor(n);
-                                  setStatus(`Click the plan to place ${
-                                    n.Supply_Ref || n.Description || `Supply ${n.NRS_ID}`
-                                  } \u00b7 Esc to stop`);
-                                }} />
-                            ))}
-                          </>
-                        );
-                      })()}
 
                       {/* The second column. */}
                       <MenuGroup label="Span nodes and call-offs" newColumn />

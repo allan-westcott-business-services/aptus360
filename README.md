@@ -1,85 +1,56 @@
-# Link to Circuit finds non-residential supplies — 25 Aug 2026
+# Non-residential supplies moved to Setup — 25 Aug 2026
 
-Applies on top of `aptus360-complete-20260825.zip`. Only
-`electric.js` is genuinely new; `GISCanvasPage.jsx` is included because
-it calls the two changed functions, and shipping one without the other
-would break the build.
+Applies on top of `aptus360-link-to-circuit-20260825.zip`.
 
 | File | Change |
 |------|--------|
-| `src/features/gis/electric.js` | **New here.** `nrsInside()`, and `circuitKva` counts supplies |
-| `src/features/gis/GISCanvasPage.jsx` | Calls both — same file as in the complete zip plus these two call sites |
-| `checknrs.mjs` | Ten assertions, three of them new |
-| `nrs_counted_check.sql` | Reports YES / PARTLY / NO per supply |
+| `src/features/gis/GISCanvasPage.jsx` | Placement items moved from Trench to Setup, under Plots |
+| `checknrs.mjs` | Eleven assertions — one new, on where the menu items live |
 
 ---
 
-## The lasso
+## Where they were, and why
 
-`metredSeedsInside` looks for plot points and keeps the ones with a
-meter on them. A supply is a meter with nothing behind it, so it fell
-through both halves — lassoed round and left off the circuit, which the
-trace then pruned out entirely. Placed, drawn, contributing nothing.
+They were in the **Trench** menu. That was my mistake: I anchored the
+block on the "Span nodes and call-offs" group, which reads as electric
+work but sits inside `<Menu id="trench">`.
 
-`nrsInside` finds them on their own terms, and the two sets are
-deduplicated by Feature_ID. A supply is already a meter, so a future
-change to `metersOfSeeds` that started matching them would otherwise put
-one on a circuit twice — and a load counted twice is worse than one
-counted not at all, because it reads as a failing design rather than a
-missing one.
+They now sit in **Setup**, indented under **Plots**, above Drawing
+Standard — which is the same job as placing plots: something that exists
+on the project and needs putting on the drawing, with a list that
+shrinks as each one is done.
 
-A circuit made of supplies and no dwellings now works. It used to be
-refused for having "no plot seeds", which was the wrong reason.
+## What else changed in the move
 
-## The way-fuse load
+**Indented under Plots**, matching "Add missing meters", so it reads as
+part of that group rather than a heading of its own.
 
-`circuitKva` had the same blind spot and it feeds the fuse comparison at
-the substation. It read load through `plotById` only, so every supply
-fell to the fallback of zero — a commercial unit missing from a way's
-load reads as headroom on the fuse.
+**Clicking an armed supply again cancels it.** It was one-way before —
+choosing one and changing your mind left the next click anywhere placing
+it.
 
-It now takes `nrsById` as a fourth argument. Existing callers that omit
-it behave exactly as before.
+**Choosing one now clears the other placement modes** — `stopPlacing()`,
+`setPlaceOpen(false)`, `setMeterCatchUp(null)`. Two modes armed at once
+is a click that does whichever was checked first, which is what "Add
+missing meters" already guards against.
+
+**The active item is highlighted**, so it is obvious which supply the
+canvas is waiting to place.
+
+**When all are placed** it shows one disabled line reading "All placed"
+rather than a bare group heading.
 
 ---
 
 ## Verification
 
-`node checknrs.mjs` — ten assertions. Three are new here:
+`node checknrs.mjs` — eleven assertions. The new one checks the items
+fall between `<Menu id="setup"` and `<Menu id="layers"`, and below the
+Plots item, by source position.
 
-- `nrsInside` finds a supply inside the outline and not one outside it
-- `circuitKva` returns 90 for a 5 kVA dwelling and an 85 kVA supply
-- the lasso and the way-fuse load both reach supplies in
-  `GISCanvasPage.jsx`
+Checked that way on purpose: the menus are one long block of JSX, and a
+supply that drifts back into Trench still compiles, still works, and is
+simply somewhere nobody looks. Neither a compile nor a behaviour test
+would notice.
 
-The last one is a source check rather than a behaviour one, on purpose.
-The two worst bugs today were both a lookup passed to some call sites
-and not others, failing silently at the ones that were missed. Counting
-the call sites is the thing that catches that; assertion 7 was tested by
-breaking a site deliberately, and it caught it.
-
-`checkservicetail`, `checkcablesizes`, `checkelectricsteps`,
-`checksourceimpedance` and `checkspannodes` all still pass.
-
----
-
-## Confirming a supply is counted
-
-`nrs_counted_check.sql` gives YES / PARTLY / NO per supply with the
-reason.
-
-**PARTLY is the one to watch.** A supply with no `Requested_kVA` still
-counts as a customer for the unbalanced correction, which is keyed on
-how MANY are on a section. So it raises K, which lowers
-`1 + 4.14/sqrt(K)`, and the figures come out slightly LOWER than without
-it — silently better rather than worse.
-
-**Loop impedance does not move when a supply is counted.** A supply adds
-load, not length or cable, and impedance is length x ohms/km only. Only
-the volt drop and the phase current change.
-
-To prove it rather than trust the query: note the phase current at E0,
-remove the supply's `Circuit_ID`, re-run. It should fall by exactly
-`Requested_kVA x 1000 / (sqrt(3) x Output_V)`. Amps is the honest column
-— it uses the unweighted load, so it moves by the whole of the supply's
-kVA where the volt drop moves by a weighted share.
+All other checks still pass.

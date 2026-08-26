@@ -160,6 +160,26 @@ const plotById = () => ({ kva_load: 5 });
   }
 }
 
+// 11. The placement items live in Setup, beside Plots — not in Trench.
+//
+//     Checked by position rather than by eye: the menus are one long
+//     block of JSX and a supply that drifts back into Trench still
+//     compiles, still works, and is simply somewhere nobody looks.
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = (needle) => src.indexOf(needle);
+  const setup = at('<Menu id="setup"');
+  const layers = at('<Menu id="layers"');
+  const nrs = at("{/* Non-residential supplies. Created on the project");
+  if (setup < 0 || layers < 0) fail("could not find the Setup menu to check against");
+  else if (nrs < 0) fail("the placement items are not in the menus at all");
+  else if (!(nrs > setup && nrs < layers)) {
+    fail("the placement items are outside the Setup menu");
+  }
+  const plots = at('<MenuItem label="Plots"');
+  if (plots > 0 && nrs > 0 && nrs < plots) fail("the supplies sit above Plots, not below it");
+}
+
 console.log(fails.length
   ? "FAIL\n - " + fails.join("\n - ")
   : "Non-residential supplies behave (placed, a meter to the network, its own load, a black triangle).");

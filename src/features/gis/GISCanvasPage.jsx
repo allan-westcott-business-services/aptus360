@@ -2486,6 +2486,21 @@ export default function GISCanvasPage() {
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   };
   const placing = queue.some((q) => !q.done);
+
+  /* Whether the next click on the canvas is a placement.
+
+     Every step of a seed's placement has to appear here, or its click
+     is never routed to placeAt and the prompt sits there while nothing
+     happens. That is exactly what the boundary step did for a supply:
+     a plot keeps `placing` true for its whole queue, so the plot flow
+     covered it by accident, and a supply — which is placed one at a
+     time and sets no queue — did not.
+
+     One name rather than the same disjunction written at each gate,
+     because there were two of them and only one was wrong, which is
+     how the prompt drew correctly over a click that did nothing. */
+  const awaitingClick = placing || !!meterFor || !!nrsFor
+    || !!boundaryFor || !!trenchEndFor;
   const nextPlot = meterFor?.plot || boundaryFor?.plot || trenchEndFor?.plot
     || queue.find((q) => !q.done) || null;
 
@@ -4751,7 +4766,7 @@ export default function GISCanvasPage() {
     // What the next click will do
     /* The same guide when catching up on an old plot: the flow is the
        one thing that changed, not the drawing. */
-    if ((placing || meterFor || nrsFor || trenchEndFor) && cursor) {
+    if (awaitingClick && cursor) {
       ctx.save();
 
       if (trenchEndFor) {
@@ -5394,7 +5409,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -5837,7 +5852,7 @@ export default function GISCanvasPage() {
       return;
     }
 
-    if (placing || meterFor || nrsFor || trenchEndFor) {
+    if (awaitingClick) {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
       placeAt(point);

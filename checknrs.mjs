@@ -161,7 +161,13 @@ const plotById = () => ({ kva_load: 5 });
   if (!/setBoundaryFor\(\{ nrs: rec/.test(src)) {
     fail("placing a supply never asks where its dig stops");
   }
-  if (!/Boundary_At: point/.test(src)) fail("a supply seed has no boundary point");
+  if (!/Boundary_At: boundaryAt/.test(src)) fail("a supply seed has no boundary point");
+  /* And where its dig stops, which is a separate point from the
+     boundary: the trench crosses the property line and runs on. */
+  if (!/setTrenchEndFor\(\{ plot, nrs, seedPoint/.test(src)) {
+    fail("placing a seed never asks where the service trench ends");
+  }
+  if (!/Trench_End_At: point/.test(src)) fail("a supply seed has no trench end");
   if (!/plot, nrs, seedPoint, utility: takes\[0\]/.test(src)) {
     fail("placing a supply does not go on to place its meters");
   }

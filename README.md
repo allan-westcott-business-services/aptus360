@@ -205,6 +205,43 @@ A record with no kVA is still shown as missing rather than as zero. A
 supply drawing nothing and a supply nobody has filled in are different
 problems that look identical as "0.0 kVA".
 
+
+## Placing a seed is three points now, then its meters
+
+Both kinds, the same sequence:
+
+1. **The symbol** — the house, or the triangle.
+2. **The boundary position** — where the A-in-a-circle goes.
+3. **Where the service trench ends** — the far end from the main.
+4. **A meter per utility**, one to three clicks.
+
+The boundary point and the end of the dig were **one point** until now,
+which made every service stop at the property line. On the ground it
+crosses the line and runs on to wherever the supply is brought up — so a
+service ended short of where it is actually dug, and every length taken
+off it was short by the same amount.
+
+So the boundary becomes a **vertex along** the route rather than its
+end. That matters beyond the length: the dig across the verge and the
+dig inside the plot are billed apart, and the split needs a point on the
+line to split at.
+
+**The tee is still worked out from the boundary**, not from the new end.
+The boundary is where the service crosses the property line, so it is
+what decides where the dig should leave the main — square to it, across
+the verge. Measuring from the end would let a meter position several
+metres inside the plot drag the tee sideways along the main, which is a
+longer dig to the same place.
+
+Nothing is written until all three points are known, as before — a seed
+abandoned part-way leaves nothing behind. Esc still cancels the whole
+thing.
+
+**Seeds placed before this still work.** A seed with only a boundary
+point digs to it exactly as it did, and `planSeed` reports which shape
+it was on, so a run can say how many are still on the old one rather
+than quietly mixing the two.
+
 ## The check
 
 Rewritten around the seed rather than patched. `metredSuppliesInside`

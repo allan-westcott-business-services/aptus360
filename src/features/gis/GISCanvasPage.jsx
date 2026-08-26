@@ -353,6 +353,33 @@ export default function GISCanvasPage() {
   /* The click between the seed and the meters: where the property
      boundary is. { plot, seedPoint, tempId } */
   const [boundaryFor, setBoundaryFor] = useState(null);
+  /* The third click: where the dig stops.
+
+     The boundary point and the end of the trench used to be one point,
+     which made every service stop at the property line. On the ground
+     it crosses the line and runs on to wherever the supply is being
+     brought up — so the boundary is a place along the dig and this is
+     its far end, and both are asked for.
+
+     Held the same way boundaryFor is, and for the same reason: nothing
+     is written until every point is known, so a seed abandoned
+     part-way leaves nothing behind. */
+  const [trenchEndFor, setTrenchEndFor] = useState(null);
+
+  /* What a supply is called, in one place.
+
+     Five things name it now — the menu item, the seed's label, each
+     meter's label and both placement prompts — and they were copies of
+     the same fallback chain. A supply renamed on the project would have
+     kept its old name on whichever of them was written first.
+
+     Declared here rather than beside the other seed helpers because the
+     canvas redraw reads it, and that is a useCallback several thousand
+     lines above them: a `const` read before its declaration throws and
+     blanks the whole page, which is recurring fault 2 and what
+     checkhooks.mjs caught this doing. */
+  const nrsName = useCallback((n) =>
+    n?.Supply_Ref || n?.Description || `Supply ${n?.NRS_ID}`, []);
   const [addOpen, setAddOpen] = useState(false);
   const [developers, setDevelopers] = useState([]);
   /* The equipment this project's outline designs say new runs are made
@@ -2459,7 +2486,7 @@ export default function GISCanvasPage() {
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   };
   const placing = queue.some((q) => !q.done);
-  const nextPlot = meterFor?.plot || boundaryFor?.plot
+  const nextPlot = meterFor?.plot || boundaryFor?.plot || trenchEndFor?.plot
     || queue.find((q) => !q.done) || null;
 
   const isPdfMap = basemap?.Source_Kind === "pdf";
@@ -4724,10 +4751,47 @@ export default function GISCanvasPage() {
     // What the next click will do
     /* The same guide when catching up on an old plot: the flow is the
        one thing that changed, not the drawing. */
-    if ((placing || meterFor || nrsFor) && cursor) {
+    if ((placing || meterFor || nrsFor || trenchEndFor) && cursor) {
       ctx.save();
 
-      if (boundaryFor) {
+      if (trenchEndFor) {
+        /* A dashed leader from the boundary point, and a hollow square
+           at the cursor. From the boundary rather than from the seed
+           because that is where this leg of the dig starts: the route
+           runs main, boundary, here. */
+        const c = toPx(cursor);
+        const origin = toPx(trenchEndFor.boundaryAt);
+
+        ctx.globalAlpha = 0.6;
+        ctx.beginPath();
+        ctx.moveTo(origin.x, origin.y);
+        ctx.lineTo(c.x, c.y);
+        ctx.strokeStyle = "#0f172a";
+        ctx.setLineDash([4, 3]);
+        ctx.lineWidth = 1.5;
+        ctx.stroke();
+        ctx.setLineDash([]);
+
+        ctx.globalAlpha = 0.9;
+        ctx.beginPath();
+        ctx.rect(c.x - 5, c.y - 5, 10, 10);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+
+        ctx.globalAlpha = 1;
+        const label = `${trenchEndFor.nrs
+          ? nrsName(trenchEndFor.nrs) : trenchEndFor.plot.plot_number} trench end`;
+        ctx.font = "700 11px ui-monospace, Menlo, monospace";
+        ctx.textAlign = "center";
+        const w = ctx.measureText(label).width + 12;
+        ctx.fillStyle = "rgba(15,23,42,.85)";
+        ctx.fillRect(c.x - w / 2, c.y - 32, w, 17);
+        ctx.fillStyle = "#fff";
+        ctx.fillText(label, c.x, c.y - 20);
+      } else if (boundaryFor) {
         /* A dashed leader back to the seed, and a hollow diamond at the
            cursor: the same language as the meter prompt, in a shape
            that is not a meter. */
@@ -4758,7 +4822,8 @@ export default function GISCanvasPage() {
         ctx.stroke();
 
         ctx.globalAlpha = 1;
-        const label = `${boundaryFor.plot.plot_number} boundary`;
+        const label = `${boundaryFor.nrs
+          ? nrsName(boundaryFor.nrs) : boundaryFor.plot.plot_number} boundary`;
         ctx.font = "700 11px ui-monospace, Menlo, monospace";
         ctx.textAlign = "center";
         const w = ctx.measureText(label).width + 12;
@@ -5329,7 +5394,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -5772,7 +5837,7 @@ export default function GISCanvasPage() {
       return;
     }
 
-    if (placing || meterFor || nrsFor) {
+    if (placing || meterFor || nrsFor || trenchEndFor) {
       const raw = toM(px, py);
       const { point } = resolve(raw[0], raw[1]);
       placeAt(point);
@@ -6625,15 +6690,6 @@ export default function GISCanvasPage() {
     }
   }
 
-  /* What a supply is called, in one place.
-
-     Three things name it — the menu item, the seed's label and each
-     meter's label — and they were three copies of the same fallback
-     chain. A supply renamed on the project would have kept its old name
-     on whichever of them was written first. */
-  const nrsName = useCallback((n) =>
-    n?.Supply_Ref || n?.Description || `Supply ${n?.NRS_ID}`, []);
-
   /* Which utilities a supply takes.
 
      A set since 0196, held in NRS_Utility and served on the record as
@@ -6712,6 +6768,8 @@ export default function GISCanvasPage() {
        show a plot that exists on screen and in nothing else. */
     if (boundaryFor?.tempId) rollback(boundaryFor.tempId);
     setBoundaryFor(null);
+    if (trenchEndFor?.tempId) rollback(trenchEndFor.tempId);
+    setTrenchEndFor(null);
   }
 
   /* Draw it immediately, confirm with the server after. Waiting for a
@@ -6836,8 +6894,22 @@ export default function GISCanvasPage() {
        known: a seed saved without its boundary, and then abandoned,
        would be a plot Auto Service quietly treats as one of the old
        ones. */
+    /* Second click: the boundary point. Recorded and nothing more —
+       the seed is written on the third, when the whole route is
+       known. */
     if (boundaryFor) {
       const { plot, nrs, seedPoint, tempId } = boundaryFor;
+      setBoundaryFor(null);
+      setTrenchEndFor({ plot, nrs, seedPoint, tempId, boundaryAt: point });
+      setStatus(`Now click where the service trench ends for `
+        + `${nrs ? nrsName(nrs) : `plot ${plot.plot_number}`}`
+        + " \u00b7 the far end from the main \u00b7 Esc to stop");
+      return;
+    }
+
+    /* Third click: where the dig stops, and the seed is written. */
+    if (trenchEndFor) {
+      const { plot, nrs, seedPoint, tempId, boundaryAt } = trenchEndFor;
       setStatus("");
       const draftFeature = nrs ? {
         Project_ID: Number(projectId),
@@ -6846,7 +6918,7 @@ export default function GISCanvasPage() {
         Feature_Role: "nrs",
         Geometry: [seedPoint],
         Label: nrsName(nrs),
-        Attributes: { NRS_ID: nrs.NRS_ID, Boundary_At: point },
+        Attributes: { NRS_ID: nrs.NRS_ID, Boundary_At: boundaryAt, Trench_End_At: point },
       } : {
         Project_ID: Number(projectId),
         Layer_Key: "plot",
@@ -6858,12 +6930,13 @@ export default function GISCanvasPage() {
         Attributes: {
           Bedrooms: plot.bedrooms ?? null,
           Config: plot.config_code ?? null,
-          Boundary_At: point,
+          Boundary_At: boundaryAt,
+          Trench_End_At: point,
         },
       };
       setFeatures((f) => f.map((x) =>
         (x.Feature_ID === tempId ? { ...draftFeature, Feature_ID: tempId } : x)));
-      setBoundaryFor(null);
+      setTrenchEndFor(null);
 
       /* Then the meters. A plot takes every utility the project is
          building; a supply takes the ones it says it takes, and only

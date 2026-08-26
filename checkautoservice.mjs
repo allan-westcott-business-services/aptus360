@@ -582,6 +582,60 @@ const utils = () => ["electric"];
   }
 }
 
+/* The dig runs past the boundary to the point somebody set.
+
+   The boundary point and the end of the trench were one point, so
+   every service stopped at the property line. On the ground it crosses
+   the line and runs on to wherever the supply is brought up — so a
+   service ended short of where it is dug, and every length taken off it
+   was short by the same amount. */
+{
+  const main = {
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: "trench_main" }, Geometry: [[0, 0], [100, 0]],
+  };
+  const seedAt = (attrs) => ({
+    Feature_ID: 9, Feature_Role: "plot", Layer_Key: "plot",
+    Geometry: [[50, 20]], Attributes: attrs,
+  });
+  const elec = [{ layer_key: "electric", utility: "Electric" }];
+
+  /* Boundary at 6 m off the main, dig on to 14 m. */
+  const p = planSeed(seedAt({ Boundary_At: [50, 6], Trench_End_At: [50, 14] }),
+    [main], () => elec, {});
+  if (p.skipped) fail(`a seed with both points was skipped: ${p.skipped}`);
+  else {
+    const end = p.trench[p.trench.length - 1];
+    if (end[1] !== 14) fail(`the dig stopped at ${end[1]} m, not at the point set (14)`);
+    /* And the boundary is a vertex ALONG it, not smoothed away: the
+       on-site and off-site lengths are split there, and they are billed
+       apart. */
+    if (!p.trench.some((q) => q[1] === 6)) {
+      fail("the boundary point is not on the route, so the dig cannot be split at it");
+    }
+    if (p.trench[0][1] !== 0) fail("the dig does not start on the main");
+  }
+
+  /* A seed from before the third click was asked for still works, and
+     still stops at its boundary. */
+  const old = planSeed(seedAt({ Boundary_At: [50, 6] }), [main], () => elec, {});
+  if (old.skipped) fail(`a seed with only a boundary was skipped: ${old.skipped}`);
+  else {
+    const end = old.trench[old.trench.length - 1];
+    if (end[1] !== 6) fail(`an older seed dug to ${end[1]} m, not to its boundary`);
+    if (old.trenchEnd) fail("an older seed reported a trench end it has not got");
+  }
+
+  /* The tee still comes off the main square to the BOUNDARY. Measuring
+     from the end instead would let a point well inside the plot pull
+     the tee along the main — a longer dig to the same place. */
+  const skew = planSeed(seedAt({ Boundary_At: [50, 6], Trench_End_At: [70, 14] }),
+    [main], () => elec, {});
+  if (skew.trench[0][0] !== 50) {
+    fail(`the tee moved to ${skew.trench[0][0]} m along the main, expected 50`);
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Auto Service behaves (the cable follows the dig it is laid in).");
 process.exit(bad ? 1 : 0);

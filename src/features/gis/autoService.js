@@ -228,8 +228,36 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
   if (!boundary) {
     return { seed, skipped: "no property boundary point \u2014 place one on the plot" };
   }
-  const stop = boundary;
-  const fromStop = nearestMains(stop, trenches);
+
+  /* Where the dig actually ends, if the drawing says.
+
+     The boundary point and the end of the trench were one point until
+     now, which made the dig stop at the property line. On the ground it
+     does not: it crosses the boundary and runs on to wherever the
+     service is being brought up, and the boundary is a place along it
+     rather than its far end. The two being one meant a service ended
+     short of where it is dug, and every length taken off it was short
+     by the same amount.
+
+     So a seed carries both, and the boundary becomes a vertex on the
+     route rather than its end. A seed placed before the third click was
+     asked for has only the boundary, and behaves exactly as it did —
+     which is why this falls back rather than refusing. */
+  const endAt = seed.Attributes?.Trench_End_At;
+  const trenchEnd = Array.isArray(endAt) && endAt.length === 2
+    && Number.isFinite(Number(endAt[0])) && Number.isFinite(Number(endAt[1]))
+    ? [Number(endAt[0]), Number(endAt[1])]
+    : null;
+
+  const stop = trenchEnd || boundary;
+  /* The tee is still worked out from the BOUNDARY, not from the end.
+
+     It is where the service crosses the property line, so it is the
+     point that decides where the dig should leave the main — square to
+     it and across the verge. Measuring from the end instead would let a
+     meter position several metres inside the plot pull the tee sideways
+     along the main, which is a longer dig to the same place. */
+  const fromStop = nearestMains(boundary, trenches);
   const tee = fromStop || best;
 
   /* One foot for the whole plot. Every cable shares the dig, so a
@@ -272,15 +300,26 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
   /* Ends pinned to the tee and the boundary, so the route starts where
      the main is actually joined and finishes where the dig stops \u2014 the
      drawn trench may be a few centimetres off either. */
+  /* Within a millimetre is the same place — declared before the route
+     so the boundary vertex can be dropped where it coincides with an
+     end. A duplicate vertex is invisible on the drawing and something
+     for every reader downstream to trip over. */
+  const samePlace = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-3;
+
+  /* The boundary as a point ALONG the route, where it is one.
+
+     Kept as a vertex rather than smoothed away, because it is what the
+     on-site and off-site lengths are split at: the dig across the verge
+     is the authority's and the dig inside the plot is the developer's,
+     and they are billed apart. Dropped where it coincides with the tee
+     or with the end, which is a plot whose boundary is at the road or
+     whose service stops at the line. */
+  const via = (!trenchEnd || samePlace(boundary, tee.foot) || samePlace(boundary, stop))
+    ? [] : [boundary];
+
   const trench = onService
     ? [tee.foot, ...onService.slice(1, -1), stop]
-    : [tee.foot, stop];
-
-  /* Within a millimetre is the same place. A meter sitting on the
-     boundary point would otherwise get a zero-length segment on the end
-     of its cable — invisible on the drawing, and a duplicate vertex for
-     everything downstream to trip over. */
-  const samePlace = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]) < 1e-3;
+    : [tee.foot, ...via, stop];
 
   /* The cable follows the dig, then leaves it for the meter. Where the
      trench bends, so does the cable: it is laid in the ground that was
@@ -298,6 +337,9 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
        a meter, so the run can say how many plots are still on the old
        shape rather than quietly mixing the two. */
     boundary: !!boundary,
+    /* Whether the dig ran to a point somebody set or stopped at the
+       boundary for want of one. */
+    trenchEnd: !!trenchEnd,
     /* Named so the summary can say what was left alone rather than
        quietly doing less than the count suggests. */
     skippedMeters: already,

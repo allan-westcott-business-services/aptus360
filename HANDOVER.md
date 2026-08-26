@@ -491,6 +491,17 @@ check or write the exemption down here.
     of them given what it needs to read it.** When adding a second way
     to look something up, put it beside the first rather than behind it.
 
+**A seed is three points.** The symbol, the boundary position, then
+where the service trench ends — and only then its meters. The boundary
+and the end of the dig were one point until 26 Aug, which made every
+service stop at the property line when on the ground it crosses the line
+and runs on. The boundary is a vertex ALONG the route now, which is also
+what the on-site and off-site lengths are split at. The tee is still
+worked out from the boundary rather than from the end: it is where the
+service crosses the line, so it decides where the dig leaves the main.
+Seeds carrying only a boundary point still dig to it, and `planSeed`
+reports which shape each was on.
+
 ## Decisions worth knowing
 
 **Project replaced Tender and Contract.** Stage is derived from

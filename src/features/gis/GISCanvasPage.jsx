@@ -1,5 +1,6 @@
 import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
+import { utilitiesTakenBy } from "../../lib/utilities.js";
 import { listProjects, getProject } from "../../api/projects.js";
 import {
   listGis, createFeature, moveFeatures, deleteFeatures, updateFeature, ensurePlots,
@@ -3861,7 +3862,20 @@ export default function GISCanvasPage() {
           ctx.fillStyle = pointStyle.labelColour;
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";
-          ctx.fillText(f.Label, p.x, p.y - (isSeed ? 15 : 11));
+          /* Above everything except a supply, which carries it below.
+
+             A triangle is widest at its foot and points into the space
+             above it, so a name set over one sits in the gap the symbol
+             makes and reads as belonging to whatever is further up. A
+             plot number over a house has no such gap to fall into.
+
+             Below means below the baseline plus the ascent, hence the
+             larger offset — the y a symbol is drawn at is its centre,
+             and text drawn at that same offset downward would touch
+             it. */
+          const isSupply = f.Feature_Role === "nrs";
+          ctx.fillText(f.Label, p.x,
+            isSupply ? p.y + 21 : p.y - (isSeed ? 15 : 11));
         }
       } else {
         const st = styleFor(f);
@@ -6630,11 +6644,8 @@ export default function GISCanvasPage() {
      A supply scoped to something the project is not doing gets no meter
      for it. That is right, and quiet: the record is a commercial fact
      and the drawing only shows what is being built. */
-  const utilitiesOf = useCallback((rec) => {
-    const ids = rec?.Utility_IDs || [];
-    if (!ids.length) return [];
-    return utilities.filter((u) => ids.some((id) => Number(id) === Number(u.Utility_ID)));
-  }, [utilities]);
+  const utilitiesOf = useCallback(
+    (rec) => utilitiesTakenBy(rec, utilities), [utilities]);
 
   /* The utilities a placed supply has no meter for. The same question
      missingMetersFor asks of a plot, and the same answer, matched on

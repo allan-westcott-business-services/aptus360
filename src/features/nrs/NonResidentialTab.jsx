@@ -2,7 +2,7 @@ import { useState, useEffect, useMemo } from "react";
 import Banner from "../../components/Banner.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listNrs, saveNrs, deleteNrs } from "../../api/nrs.js";
-import { UTILITIES, utilityById } from "../../lib/utilities.js";
+import { RESIDENTIAL_UTILITIES, utilityById } from "../../lib/utilities.js";
 import { useTableLayout } from "../../lib/useTableLayout.js";
 import FilterCell, { blankFilter, rowPasses, FILTER_CSS } from "../../components/FilterCell.jsx";
 
@@ -64,7 +64,7 @@ export default function NonResidentialTab({ projectId }) {
 
   const filterOptions = (key) => {
     if (key === "subtype") return (lookups?.nrsSubTypes || []).map((s) => ({ id: s.NRS_Sub_Type_ID, label: s.Label }));
-    if (key === "utility") return UTILITIES.map((u) => ({ id: u.id, label: u.name }));
+    if (key === "utility") return RESIDENTIAL_UTILITIES.map((u) => ({ id: u.id, label: u.name }));
     if (key === "operator") return (lookups?.idnos || []).map((i) => ({ id: i.IDNO_ID, label: i.IDNO_Name }));
     return [];
   };
@@ -183,7 +183,19 @@ export default function NonResidentialTab({ projectId }) {
                 <p className="hint">None configured &mdash; add them in Admin.</p>
               )}</div>
 
-            {/* Utilities, plural.
+            {/* Utilities, plural \u2014 and only the metered three.
+
+                Section 38, Section 278 and Private Street Lighting are
+                design scopes for the site, not connections to a
+                building: they have no meter, no MPAN and nothing to
+                place against a supply seed. Offering them here asked a
+                question with no answer, and a supply ticked for one
+                would have taken a seed and no meters at all.
+
+                RESIDENTIAL_UTILITIES rather than a list of three,
+                because that set is already derived from the group in
+                lib/utilities.js and a fourth metered utility should
+                appear here without anybody remembering to add it.
 
                 A supply takes what it takes: a pumping station needs a
                 three-phase supply AND a water connection, and while this
@@ -198,7 +210,7 @@ export default function NonResidentialTab({ projectId }) {
                 them. */}
             <div className="fld nrs-utils"><label>Utilities <span className="req">*</span></label>
               <div className="nrs-utilrow">
-                {UTILITIES.map((u) => (
+                {RESIDENTIAL_UTILITIES.map((u) => (
                   <label key={u.id} className="nrs-util">
                     <input type="checkbox"
                       checked={f.Utility_IDs.some((x) => Number(x) === Number(u.id))}

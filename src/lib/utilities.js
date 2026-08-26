@@ -38,3 +38,37 @@ export const utilityById = (id) => UTILITIES.find((u) => u.id === +id);
 export const QUOTE_TYPE = { FULL: 1, BUDGET: 2, STREET_LIGHTING: 3 };
 export const isBudget = (id) => +id === QUOTE_TYPE.BUDGET;
 export const isStreetLightingOnly = (id) => +id === QUOTE_TYPE.STREET_LIGHTING;
+
+/* Which of a project's utilities a non-residential supply takes.
+
+   The supply names Utility_IDs; the project's utilities come from
+   gis_project_utilities and carry layer_key and utility. Those are two
+   different shapes of the same idea, and joining them was inline in the
+   canvas until it went wrong there.
+
+   ── Why by name ──
+
+   The RPC is one of the migrations that were run and never committed,
+   so what columns it returns cannot be read anywhere in this repo. The
+   first version of this filtered on a Utility_ID it does not return,
+   which meant every supply resolved to no utilities: placing one put a
+   seed down and then stopped, with nothing on screen to say why.
+
+   So the id is used where a row happens to carry one and the name is
+   the fallback that works today. If the RPC is ever recovered and does
+   return an id, this needs no change — it will simply take the better
+   branch.
+
+   Kept here rather than in the canvas so it can be tested without
+   mounting anything, which is the only reason the fault above was
+   invisible: there was nothing to run against it. */
+export function utilitiesTakenBy(rec, projectUtilities = []) {
+  const ids = (rec?.Utility_IDs || []).map(Number).filter(Number.isFinite);
+  if (!ids.length) return [];
+  const names = new Set(ids.map((id) => utilityById(id)?.name?.toLowerCase()).filter(Boolean));
+  return projectUtilities.filter((u) => {
+    const rowId = u.Utility_ID ?? u.utility_id;
+    if (rowId != null) return ids.includes(Number(rowId));
+    return names.has(String(u.utility ?? "").toLowerCase());
+  });
+}

@@ -92,6 +92,36 @@ The tab reads the set where a record has one and falls back to the old
 column where it does not, so a supply saved before 0196 and not touched
 since still shows its utility. That fallback goes when the column does.
 
+
+## Three fixes on top
+
+**Placing a supply put down a seed and then stopped.** Mine, and the
+same fault as everything else in this thread: `utilitiesOf` filtered the
+project's utilities on a `Utility_ID` column that
+`gis_project_utilities` does not return — that function is one of the
+eighty-five migrations run and never committed, so what it returns
+cannot be read anywhere in this repo. Every supply resolved to no
+utilities, and a filter finding nothing looks exactly like a supply that
+takes nothing.
+
+The join is now `utilitiesTakenBy` in `lib/utilities.js`, matching on
+the id where a row carries one and on the name otherwise — and it is
+there rather than inline in the canvas so there is something to run a
+check against, which is the only reason the fault was invisible.
+
+**A supply's label sits under its triangle.** A triangle is widest at
+its foot and points into the space above it, so a name set over one
+falls into the gap the symbol makes and reads as belonging to whatever
+is further up. A plot number over a house has no such gap, so plots are
+unchanged.
+
+**The supplies tab offers only the metered utilities.** Section 38 On
+Site, Section 278 Off Site and Private Street Lighting are design scopes
+for the site, not connections to a building: no meter, no MPAN, nothing
+to place. From `RESIDENTIAL_UTILITIES`, which is already derived from
+the group in `lib/utilities.js`, so a fourth metered utility would
+appear without anyone remembering to add it.
+
 ## The check
 
 Rewritten around the seed rather than patched. `metredSuppliesInside`

@@ -12,6 +12,7 @@ import { buildFeederModel } from "./src/features/gis/feeder.js";
 import { subjectOf, resolveStyle } from "./src/lib/gisStyle.js";
 import { metredSuppliesInside, circuitKva, meterBelongsTo }
   from "./src/features/gis/electric.js";
+import { utilitiesTakenBy, RESIDENTIAL_UTILITIES } from "./src/lib/utilities.js";
 import { readFileSync } from "node:fs";
 
 const fails = [];
@@ -245,6 +246,75 @@ const plotById = () => ({ kva_load: 5 });
   }
   const plots = at('<MenuItem label="Plots"');
   if (plots > 0 && nrs > 0 && nrs < plots) fail("the supplies sit above Plots, not below it");
+}
+
+// 12. A supply resolves to the utilities it takes.
+//
+//     This is where placing one quietly stopped after the seed. The
+//     project's utilities come from gis_project_utilities — a function
+//     in one of the migrations that were run and never committed, so
+//     what it returns cannot be read anywhere in this repo. The first
+//     version filtered on a Utility_ID it does not return, so every
+//     supply resolved to nothing and a placement put a seed down and
+//     ended.
+//
+//     Fault 22 exactly: a filter finding nothing looks the same as a
+//     supply that takes nothing.
+{
+  /* The shape the RPC actually returns, as far as anything here can
+     tell: a layer key and a name, and no id. */
+  const project = [
+    { layer_key: "electric", utility: "Electric" },
+    { layer_key: "gas", utility: "Gas" },
+    { layer_key: "water", utility: "Water" },
+  ];
+  const takes = utilitiesTakenBy({ Utility_IDs: [1, 3] }, project);
+  if (takes.length !== 2) {
+    fail(`a supply taking electric and water resolved to ${takes.length} utilities`);
+  }
+  if (!takes.some((u) => u.layer_key === "electric")
+    || !takes.some((u) => u.layer_key === "water")) {
+    fail("the utilities resolved were not the ones the supply takes");
+  }
+
+  /* And by id where a row carries one, so recovering the RPC with an
+     id column takes the better branch rather than breaking this. */
+  const withIds = [{ layer_key: "electric", utility: "Leccy", Utility_ID: 1 }];
+  if (utilitiesTakenBy({ Utility_IDs: [1] }, withIds).length !== 1) {
+    fail("an id-carrying utility row was not matched by its id");
+  }
+
+  /* A supply scoped to something the project is not building gets
+     nothing for it, which is right and quiet. */
+  if (utilitiesTakenBy({ Utility_IDs: [2] }, [project[0]]).length) {
+    fail("a supply was given a utility the project is not building");
+  }
+  if (utilitiesTakenBy({}, project).length) fail("a supply naming nothing resolved to something");
+
+  /* The tab offers only the metered utilities. Section 38, Section 278
+     and Private Street Lighting are design scopes for the site with no
+     meter, no MPAN and nothing to place — a supply ticked for one would
+     take a seed and no meters at all. */
+  if (RESIDENTIAL_UTILITIES.length !== 3) {
+    fail(`RESIDENTIAL_UTILITIES holds ${RESIDENTIAL_UTILITIES.length}, expected 3`);
+  }
+  const tab = readFileSync("./src/features/nrs/NonResidentialTab.jsx", "utf8");
+  if (/\{UTILITIES\.map/.test(tab)) {
+    fail("the supplies tab offers every utility, including the ones with no meter");
+  }
+}
+
+// 13. A supply's label sits under its triangle.
+//
+//     A triangle is widest at its foot and points into the space above
+//     it, so a name set over one falls into the gap the symbol makes
+//     and reads as belonging to whatever is further up. A plot number
+//     over a house has no such gap.
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/Feature_Role === "nrs"[\s\S]{0,200}fillText\(f\.Label[\s\S]{0,120}p\.y \+/.test(src)) {
+    fail("a supply's label is not drawn below its symbol");
+  }
 }
 
 console.log(fails.length

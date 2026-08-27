@@ -9105,6 +9105,36 @@ export default function GISCanvasPage() {
      Feature_Role is set, which the database routine never did — the
      Electric menu's Joints row and Bulk Delete's "All joints" both look
      for it, so joints placed by that routine appear in neither. */
+  /* ── Plots the joint plan could not see ──
+
+     A meter more than the snap tolerance from any trench node attaches
+     to no node, so nothing is beyond its service spur and the spur is
+     not part of the feeder. No take-off means no service joint, and
+     until now nothing said so — which is why the gaps looked random:
+     the cause is how close each seed sits to the dig, plot by plot.
+
+     Named, not counted. "3 plots missed" is a number somebody has to go
+     and find; the plot numbers are the thing they are looking for.
+
+     Shown as an error rather than a status, because a status clears
+     itself after nine seconds and this is a list to work from. */
+  function reportMissed(missed) {
+    if (!missed?.length) return;
+    const plots = [...new Set(missed.map((m) => m.plotId).filter((p) => p != null))]
+      .sort((a, b) => Number(a) - Number(b));
+    const who = plots.length
+      ? `plot ${plots.slice(0, 12).join(", ")}${plots.length > 12 ? "\u2026" : ""}`
+      : `${missed.length} meter(s)`;
+    /* The distance said out loud. "Too far" is true of a plot half a
+       metre out and one on the other side of the site, and only one of
+       those is worth walking to — the same argument layServices makes
+       when it reports the gap to the main. */
+    setError(`No service joint for ${who}: the meter sits more than ${SNAP_TOL}m `
+      + "from the trench network, so the feeder cannot find it. Move the seed or "
+      + "the meter onto the dig, or run Auto Service to lay one, then place the "
+      + "joints again.");
+  }
+
   async function placeFeederJoints({ silent = false, srcFeatures = null } = {}) {
     let src = srcFeatures || features;
     const circuits = circuitsFrom(src);
@@ -9157,8 +9187,20 @@ export default function GISCanvasPage() {
         ? { ...f, Geometry: repairs.get(Number(f.Feature_ID)) } : f));
     }
 
+    /* Meters the feeder model could not find. Filled as the plan is
+       built — see the note in jointsForCircuit. A meter that attaches
+       nowhere puts no load beyond its service spur, so the spur is not
+       part of the feeder and no service joint is planned at its
+       take-off. Nothing about the joint rules is wrong; the plot is not
+       on the network.
+
+       This is what made missing service joints look random: it depends
+       on how close each seed happens to be to the dig. */
+    const missed = [];
+
     const planned = planJoints(src, circuits, {
       lineTypes,
+      missed,
       plotById: (id) => plotList.find((p) => p.plot_id === id),
       nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
       /* For the drum rule: how much cable comes on one drum, per size.
@@ -9194,6 +9236,7 @@ export default function GISCanvasPage() {
           : "No joints needed on the feeders yet");
         setTimeout(() => setStatus(""), 6000);
       }
+      if (!silent) reportMissed(missed);
       return 0;
     }
 
@@ -9268,6 +9311,7 @@ export default function GISCanvasPage() {
         + (staleMine.length ? `, ${staleMine.length} removed` : "")
         + (staleTheirs.length ? `, ${staleTheirs.length} left alone` : ""));
       setTimeout(() => setStatus(""), 9000);
+      reportMissed(missed);
       setError("");
       return add.length + update.length;
     } catch (e) { setError(e.message); return 0; }

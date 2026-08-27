@@ -130,6 +130,46 @@ import { lvOrigin } from "./electric.js";
 export { lvOrigin };
 
 
+/* ── Who is on a circuit ──
+
+   The two things buildFeederModel needs to prune a drawing down to one
+   circuit: the plot seeds it serves, and the supplies on it that have no
+   seed to be found by.
+
+   `seedIds` is how an ordinary meter says which circuit it is on — the
+   meter names its seed, or shares a Plot_ID with it. A non-residential
+   supply cannot answer that way: since 0196 it has a seed of its own,
+   but that seed has role 'nrs' and the model prunes against plots, so
+   membership is carried by the meter's own Feature_ID in `meterIds`.
+
+   ── Why this is a function and not two copies ──
+
+   It was two copies. spanTrace gathered both sets; seedsOfCircuit in
+   joints.js gathered only the seeds, under a comment saying it used
+   "the same rule spanTrace uses" — true when it was written and not
+   after supplies stopped being plots. The reader that was not told
+   simply saw a circuit with fewer things on it, which is recurring
+   fault 27 and reads as a quiet, plausible answer rather than an error.
+
+   So: one walk, both readers, and a check that counts the callers. */
+export function circuitMembership(features = [], circuitId) {
+  const seedIds = new Set();
+  const meterIds = new Set();
+
+  for (const m of features) {
+    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
+    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+    if (m.Attributes?.NRS_ID != null) { meterIds.add(Number(m.Feature_ID)); continue; }
+    const sid = m.Attributes?.Seed_Feature_ID;
+    if (sid != null) { seedIds.add(Number(sid)); continue; }
+    const seed = features.find((f) => f.Feature_Role === "plot"
+      && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
+    if (seed) seedIds.add(Number(seed.Feature_ID));
+  }
+
+  return { seedIds, meterIds };
+}
+
 /* ── The model ──
    Nodes, a tree rooted at the substation or the POC, and the load
    beyond each node. */
@@ -244,6 +284,75 @@ export function buildFeederModel(features = [], opts = {}) {
     return { i: bi, d: bd };
   };
 
+  /* ── Where a plot's load hangs ──
+
+     At the far end of the plot's own service, which is the cut-out. Not
+     at whatever node happens to be closest.
+
+     Closest is what it used to be, and it is right only while the plot
+     sits further up its spur than it does from the tee. A short garden
+     is nearer the tee on the MAIN than its own cut-out — so the load
+     attached to the main, the spur had nothing beyond it, and a spur
+     with no load beyond it is not part of the feeder. No take-off, so
+     no service joint, and a bottle end at the tee instead.
+
+     That is why the gaps looked random. Two identical plots differ only
+     by garden length: eleven metres up a twelve metre spur keeps its
+     joint, four metres up loses it. Nothing in the joint rules varies.
+
+     ── Which end is the far end ──
+
+     A service trench meets the main at one end and the plot at the
+     other. The tee is the end nearest a mains trench, so the cut-out is
+     the other one — measured rather than assumed, because a service is
+     drawn in whichever direction somebody drew it.
+
+     The seed's own service trenches, found by the Seed_Feature_ID Auto
+     Service stamps on them. A service drawn by hand carries no stamp
+     and falls through to the old rule, which is what it always had. */
+  const mainsLines = [];
+  const svcBySeed = new Map();
+  for (const f of features) {
+    if (f.Feature_Type !== "line" || !isTrench(f, lineTypes)) continue;
+    if ((f.Geometry || []).length < 2) continue;
+    if (!isService(f)) { mainsLines.push(f.Geometry); continue; }
+    const sid = f.Attributes?.Seed_Feature_ID;
+    if (sid == null) continue;
+    const k = Number(sid);
+    if (!svcBySeed.has(k)) svcBySeed.set(k, []);
+    svcBySeed.get(k).push(f);
+  }
+
+  const gapToMains = (pt) => {
+    let best = Infinity;
+    for (const g of mainsLines) {
+      for (let i = 0; i + 1 < g.length; i++) {
+        const d = distToSegment(pt, g[i], g[i + 1]);
+        if (d < best) best = d;
+      }
+    }
+    return best;
+  };
+
+  /* The end of this seed's service that is furthest from any main.
+
+     Across every piece of it, because a service crossing the site
+     boundary is split into two features and the cut-out is at the end
+     of the last one. */
+  const cutOutOf = (seedId) => {
+    const svc = svcBySeed.get(Number(seedId));
+    if (!svc?.length) return null;
+    let bestPt = null, bestGap = -Infinity;
+    for (const f of svc) {
+      const g = f.Geometry;
+      for (const pt of [g[0], g[g.length - 1]]) {
+        const gap = gapToMains(pt);
+        if (gap > bestGap) { bestGap = gap; bestPt = pt; }
+      }
+    }
+    return bestPt;
+  };
+
   const S = nearest(sub.Geometry[0]).i;
   if (S < 0) {
     return {
@@ -291,8 +400,18 @@ export function buildFeederModel(features = [], opts = {}) {
       if (!inCircuit) continue;
     }
 
-    const anchor = (seed?.Geometry || []).length ? seed.Geometry[0] : m.Geometry[0];
-    let nn = nearest(anchor);
+    /* The cut-out first, then the seed, then the meter.
+
+       The seed is a better anchor than the meter glyph, which sits
+       beside the plot rather than on the dig — but both are only a
+       guess at which node the load belongs to, and the plot's own
+       service says it outright. */
+    const cut = seed ? cutOutOf(seed.Feature_ID) : null;
+    let nn = cut ? nearest(cut) : { i: -1, d: Infinity };
+    if (nn.i < 0 || nn.d > tol) {
+      const anchor = (seed?.Geometry || []).length ? seed.Geometry[0] : m.Geometry[0];
+      nn = nearest(anchor);
+    }
     if (nn.i < 0 || nn.d > tol) nn = nearest(m.Geometry[0]);
 
     if (nn.i >= 0 && nn.d <= tol) {
@@ -966,24 +1085,9 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   }
   const circuitName = node.Attributes?.Circuit_Name || `Circuit ${circuitId}`;
 
-  /* Only this circuit's plots, so the model prunes branches serving
-     someone else's. */
-  const seedIds = new Set();
-  /* Supplies on this circuit that have no plot behind them, by their own
-     Feature_ID. A non-residential supply is a meter in every way that
-     matters here, but its circuit cannot be read off a seed it does not
-     have. */
-  const meterIds = new Set();
-  for (const m of features) {
-    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
-    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
-    if (m.Attributes?.NRS_ID != null) { meterIds.add(Number(m.Feature_ID)); continue; }
-    const sid = m.Attributes?.Seed_Feature_ID;
-    if (sid != null) { seedIds.add(Number(sid)); continue; }
-    const seed = features.find((f) => f.Feature_Role === "plot"
-      && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
-    if (seed) seedIds.add(Number(seed.Feature_ID));
-  }
+  /* Only this circuit's plots and supplies, so the model prunes branches
+     serving someone else's. */
+  const { seedIds, meterIds } = circuitMembership(features, circuitId);
   /* Either kind is something to trace. A circuit serving one commercial
      unit and no dwellings is a real circuit, and refusing it for having
      no metered plots would be refusing it for the wrong reason. */

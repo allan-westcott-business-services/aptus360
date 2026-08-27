@@ -25,7 +25,9 @@
    implementations of that would drift, and the drawing would show a
    breech joint where the cable schedule shows none. */
 
-import { buildFeederModel, cablesFor, METERS_PER_CABLE } from "./feeder.js";
+import {
+  buildFeederModel, circuitMembership, cablesFor, METERS_PER_CABLE,
+} from "./feeder.js";
 
 /* What each kind is called, and its code from the Electric_Joint
    catalogue. Kept here rather than looked up by name at the point of
@@ -216,32 +218,46 @@ export const REASON_TEXT = {
 
 const key = (p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
 
-/* The plot seeds a circuit serves, by the same rule spanTrace uses: the
-   meter names its seed, or shares a Plot_ID with it. */
-function seedsOfCircuit(features, circuitId) {
-  const out = new Set();
-  for (const m of features) {
-    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
-    if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
-    const sid = m.Attributes?.Seed_Feature_ID;
-    if (sid != null) { out.add(Number(sid)); continue; }
-    const seed = features.find((f) => f.Feature_Role === "plot"
-      && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
-    if (seed) out.add(Number(seed.Feature_ID));
-  }
-  return out;
-}
-
 /* Every joint one circuit needs, before duplicates across circuits are
    resolved. */
 function jointsForCircuit(features, circuit, opts) {
-  const { lineTypes = [], plotById = () => null, perCable = METERS_PER_CABLE } = opts;
+  const {
+    lineTypes = [], plotById = () => null, perCable = METERS_PER_CABLE,
+    /* A non-residential supply's load is on its own record. Without it
+       the supply attaches to the network carrying nothing, and a node
+       with no load beyond it is not part of the feeder — so the service
+       joint at its take-off was never planned and the bottle end sealed
+       the run at the last dwelling instead, mid-cable. */
+    nrsById = () => null,
+  } = opts;
 
-  const seedIds = seedsOfCircuit(features, circuit.id);
-  if (!seedIds.size) return [];
+  /* Both kinds, from the one walk spanTrace uses. This asked for seeds
+     only, so every supply on the circuit was pruned out of the model. */
+  const { seedIds, meterIds } = circuitMembership(features, circuit.id);
+  if (!seedIds.size && !meterIds.size) return [];
 
-  const M = buildFeederModel(features, { lineTypes, plotById, seedIds });
+  const M = buildFeederModel(features, {
+    lineTypes, plotById, nrsById, seedIds, meterIds });
   if (M.error) return [];
+
+  /* ── Meters the network could not find ──
+
+     A meter attaches where its plot meets the trench. One that lands
+     more than the snap tolerance from any node attaches nowhere, so the
+     load beyond its service spur is zero — and a spur with no load
+     beyond it is not part of the feeder. No take-off, so no service
+     joint, and nothing said.
+
+     That is why missing service joints look random: it depends on how
+     close each seed happens to be to the dig, which varies plot by plot
+     and has nothing to do with the joint rules.
+
+     The model has named them since it was written. Nothing read the
+     list. Carried out here so the command can say which plots to go and
+     look at, rather than leaving somebody to find a pattern in it. */
+  if (M.skipped?.length && Array.isArray(opts.missed)) {
+    for (const m of M.skipped) opts.missed.push({ ...m, circuit: circuit.id });
+  }
   const { nodes, parent, parSvc, cum, S } = M;
 
   const children = new Map();
@@ -480,8 +496,15 @@ export function pointAlong(g = [], target) {
 export function planJoints(features = [], circuits = [], opts = {}) {
   const found = new Map();
 
+  /* Filled by jointsForCircuit as it goes. An array on the options
+     rather than a second return value, because planJoints returns a
+     list of joints to twelve call sites and changing its shape to carry
+     a warning would be a change to all of them for the sake of one. */
+  const missed = opts.missed ?? [];
+  const withMissed = { ...opts, missed };
+
   const all = [
-    ...circuits.flatMap((c) => jointsForCircuit(features, c, opts)
+    ...circuits.flatMap((c) => jointsForCircuit(features, c, withMissed)
       .map((j) => ({ ...j, _circuit: c.id }))),
     ...sizeChangeJoints(features, opts.tolM ?? 0.25)
       .map((j) => ({ ...j, _circuit: j.circuitId })),

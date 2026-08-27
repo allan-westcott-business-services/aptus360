@@ -563,82 +563,53 @@ export function feederSections(features = [], opts = {}) {
     }
   }
 
-  /* ── The spare length past the last plot ──
+  /* ── The run carries on to the end of the dig ──
 
-     A run stops at the service joint serving the last plot on the leg.
-     The cable does not stop there: the gang digs a little further, lays
-     a short tail and buries the bottle end in it, because a bottle end
-     has to sit in trench like everything else.
+     A run of cable stops where the load stops: past the last plot there
+     is nothing to carry, so the walk above ends the section at that
+     take-off. The bottle end then lands on the same point as the
+     service joint, and one fitting sits on top of the other.
 
-     Drawn here rather than relied on from the designer. A length nobody
-     can forget is worth more than a rule everybody knows \u2014 and where
-     it was left to the drawing, the bottle end and the service joint
-     landed on one point and the app had to choose between them.
+     This used to be answered by drawing a metre and a half of trench
+     nobody had dug — a synthetic tail continued off the bearing of the
+     last segment, which could point through a boundary or across a
+     carriageway and be a length on a bill for ground nobody could open.
 
-     ── Which sections get one ──
+     The designer lays the main two or three metres past the last plot
+     instead, which is what happens on site anyway. So the run follows
+     that dig to its end and the bottle end goes where the trench
+     actually stops.
 
-     Only a section that ENDS a run: nothing carries on past its end
-     node. A section ending at a fork carries on down the other branch
-     and has no end to seal.
+     ── Following it ──
 
-     ── Which direction ──
+     Onward along mains children whether they carry load or not, which
+     is exactly what the walk above will not do. It stops while exactly
+     one carries on: a fork past the last plot is two ends and no way to
+     say which the cable takes, so the run stops at the fork and the
+     drawing shows the question rather than answering it wrongly.
 
-     The bearing of its own final segment, continued. Not the bearing
-     from the start of the section, which on a run that turns into a
-     close would point the tail back across the road it came off.
+     Nothing is invented. Where the main stops dead at the last plot
+     there is no onward trench, the run ends at the take-off, and the
+     bottle end shares the point with the service joint as it always
+     did — the drawing is telling the truth about a main that was not
+     laid past the last plot.
 
-     A tail can therefore land somewhere nobody can dig \u2014 through a
-     boundary, across a carriageway. Drawn anyway and left to be seen:
-     1.5 m of trench in the wrong place is obvious on the drawing and
-     easy to move, and refusing to draw it would leave a bottle end
-     with nowhere to go and nothing saying why.
+     `bottleEndTailM` is gone. Anything still passing it is passing a
+     setting nothing reads, which is why it is named here: the next
+     person to search for it finds this. */
+  for (const sec of sections) {
+    if (loadChildren(sec.endNode).length) continue;
 
-     ── Zero ──
+    const on = digEndBeyond(M, sec.endNode);
+    if (!on.points.length) continue;
 
-     A legitimate setting, and what the drawing did before this existed:
-     no tail, and the bottle end sits at the service joint. Kept working
-     so there is a way back without a release. */
-  const tailM = Number(opts.bottleEndTailM);
-  if (Number.isFinite(tailM) && tailM > 0) {
-    for (const sec of sections) {
-      /* Nothing LOADED runs on from here.
-
-         `loadChildren`, which is the question the walk itself asks —
-         it carries on while a child has load and stops when none has.
-         This tested `mainsChildren`, which is any non-service child
-         whether it carries load or not.
-
-         The two differ on exactly the drawing this feature is for. A
-         mains trench usually runs on past the last plot: 49 mains
-         trenches to 44 mains on the site this was reported from. That
-         onward trench carries no load, so the run stops at the take-off
-         and the section ends there \u2014 but `mainsChildren` saw the
-         trench and said something runs on, so no tail was drawn, the
-         bottle end stayed at the take-off, and it sat under the service
-         joint exactly as before.
-
-         A tail was therefore only ever drawn where the trench stopped
-         dead at the last plot, which is the one case where the designer
-         had already done it by hand. */
-      if (loadChildren(sec.endNode).length) continue;
-
-      const pts = sec.pts;
-      const b = pts[pts.length - 1];
-      const a = pts[pts.length - 2];
-      const dx = b[0] - a[0];
-      const dy = b[1] - a[1];
-      const len = Math.hypot(dx, dy);
-      /* A final segment of no length has no bearing to continue. Rare,
-         and a zero-length tail is better than one pointing at NaN. */
-      if (!(len > 0)) continue;
-
-      pts.push([b[0] + (dx / len) * tailM, b[1] + (dy / len) * tailM]);
-      /* Marked, so the canvas knows where the bottle end goes without
-         re-deriving it, and so the trench laid under this section knows
-         it is longer than the run it serves. */
-      sec.tailM = tailM;
-      sec.tailAt = pts[pts.length - 1].slice();
-    }
+    for (const pt of on.points) sec.pts.push(pt);
+    /* Marked for the canvas, so the trench laid under this section
+       knows it runs past the load it serves, and the bottle end knows
+       where to sit without re-deriving it. */
+    sec.runsOn = true;
+    sec.overrunM = on.metres;
+    sec.tailAt = sec.pts[sec.pts.length - 1].slice();
   }
 
   return {
@@ -648,6 +619,114 @@ export function feederSections(features = [], opts = {}) {
     totalKva: Math.round((cumKva[S] || 0) * 10) / 10,
     skipped: M.skipped,
     model: M,
+  };
+}
+
+/* ── How far the dig runs on past the last plot ──
+
+   A run of cable stops where the load stops. Past the last plot there
+   is nothing to carry, so the cable would end at that take-off and the
+   bottle end would land on the service joint already there.
+
+   The designer lays the main two or three metres past the last plot,
+   which is what happens on site. This follows that length to its end,
+   so the cable runs to the end of the dig and the bottle end goes where
+   the trench actually stops.
+
+   Onward while exactly one way carries on and it carries no load. A
+   fork past the last plot is two ends and no way to say which the cable
+   takes, so it stops at the fork: the drawing then shows the question
+   instead of answering it wrongly. Load beyond means another circuit's
+   run rather than this one's overrun, and that section will carry it.
+
+   Returns the node the dig ends at, which is `from` where the main was
+   not laid past the last plot — nothing invented, and the bottle end
+   shares the point with the service joint exactly as it used to.
+
+   Shared by spanTrace, which draws the cable, and planJoints, which
+   seals it. They must agree about where a run ends: two walks would
+   put the cable's end and its bottle end in different places. */
+/* How far past the last plot still counts as this run's overrun.
+
+   The designer lays the main two or three metres past the last plot.
+   Anything much beyond that is not an overrun — it is main going
+   somewhere else, and following it would run this circuit's cable the
+   length of a shared road and seal it at another circuit's take-off.
+
+   Which is what it did: a check caught circuit 1 sealing seventy metres
+   along, on the node where circuit 2's supply tees in. That node
+   carries no load IN CIRCUIT 1'S MODEL, because the model prunes other
+   circuits out, so nothing in the walk could see what it was running
+   past.
+
+   Ten rather than three, so a designer who leaves five is not quietly
+   ignored, and short enough that a shared main is never mistaken for
+   it. */
+export const OVERRUN_MAX_M = 10;
+
+export function digEndBeyond(model, from) {
+  const { nodes, parent, parSvc, cum } = model;
+
+  const children = new Map();
+  for (let i = 0; i < nodes.length; i++) {
+    const p = parent[i];
+    if (p < 0) continue;
+    if (!children.has(p)) children.set(p, []);
+    children.get(p).push(i);
+  }
+
+  const path = [];
+  /* Guarded against a loop in the trench graph: a ring walked without
+     this never stops. */
+  const seen = new Set();
+  let cur = from;
+  let run = 0;
+  while (!seen.has(cur)) {
+    seen.add(cur);
+
+    const kids = children.get(cur) || [];
+
+    /* ── Somebody else's take-off ends the overrun ──
+
+       A service spur leaving this node is a plot connected here,
+       whether or not this circuit carries it. Running past it would
+       seal this cable beyond a cut-out that belongs to another circuit.
+
+       Tested on parSvc rather than on load, because the model prunes
+       other circuits out: their spurs are still in the graph and their
+       load is not, so load cannot see them. That is exactly what let
+       the walk run seventy metres to another circuit's supply. */
+    if (cur !== from && kids.some((c) => parSvc[c])) break;
+
+    const onward = kids.filter((c) => !parSvc[c]);
+    if (onward.length !== 1) break;
+    const next = onward[0];
+    if (cum[next] > 0) break;
+
+    run += dist(nodes[cur], nodes[next]);
+    path.push(next);
+    cur = next;
+  }
+
+  /* ── All of it, or none ──
+
+     The cap is on the whole overrun, not on each step. Applied per
+     segment it would stop ten metres along a seventy metre main and
+     seal there — a point chosen by where somebody happened to put a
+     vertex, which is no answer at all, and a different answer on two
+     drawings of the same road.
+
+     Too long to be an overrun means the main is going somewhere else,
+     and the honest response is to seal where the load stops, exactly as
+     the drawing did before any of this. */
+  if (run > OVERRUN_MAX_M) return { end: from, path: [], points: [], metres: 0, tooLong: run };
+
+  return {
+    end: cur, path, points: path.map((i) => nodes[i].slice()),
+    /* How far it runs on, measured from the drawing. The cable records
+       it so a reader can see the overrun without walking the geometry
+       again. */
+    metres: Math.round(run * 10) / 10,
   };
 }
 

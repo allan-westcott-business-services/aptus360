@@ -358,6 +358,80 @@ const line = (type, layer, attrs = {}) => ({
   }
 }
 
+/* ── Setting the stage on a whole selection ──
+
+   Build status was four buttons in the Trench menu once and was taken
+   out: a property belongs in the object's editor, and the menu changed
+   a field without recording what it changed.
+
+   It is back as one dropdown, because that reasoning is right for one
+   trench and wrong for forty — opening the editor forty times to mark a
+   phase as-laid is not an editor. Both objections have to stay
+   answered, and this is what holds them answered. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const fn = canvas.slice(canvas.indexOf("async function setStatusOnSelection"),
+    canvas.indexOf("async function saveFeature"));
+
+  if (!fn) {
+    fail("there is no bulk status setter");
+  } else {
+    /* 1. Through saveFeature, the one path the editor uses.
+
+       saveFeature refuses a stage that needs the ground closed while
+       the trench is still Planned. Writing straight to updateFeature
+       would go round that rule rather than restating it — and a rule
+       enforced on one route is a rule until somebody takes the other. */
+    if (!/saveFeature\(/.test(fn)) {
+      fail("the bulk status setter does not go through saveFeature");
+    }
+    if (/updateFeature\(/.test(fn)) {
+      fail("the bulk status setter writes straight to the database, "
+        + "round the rule that nothing goes live before its ground is closed");
+    }
+
+    /* 2. Each feature's own list.
+
+       A trench is existing, planned, to be removed or as-laid; a main
+       is planned, as-laid or live. Marking a mixed selection as-laid
+       would write a trench word onto a cable — unselectable in its own
+       dropdown and meaningless to everything that reads it. */
+    if (!/statusesFor\(f, lineTypes\)/.test(fn)) {
+      fail("the bulk status setter does not check the stage is in each feature's own list");
+    }
+
+    /* 3. One undo entry.
+
+       Forty separate ones would take forty presses to put back, which
+       is not an undo. */
+    if (!/withUndo\(/.test(fn)) {
+      fail("a bulk status change cannot be undone in one press");
+    }
+
+    /* 4. And it says what it did.
+
+       The objection to the old buttons was that the menu changed a
+       field without recording it. A count of what was set, what was
+       refused and what could not take the stage is the answer to that. */
+    if (!/setStatus\(/.test(fn)) {
+      fail("the bulk status setter does not report what it changed");
+    }
+    if (!/refused/.test(fn)) {
+      fail("a refused save is counted as done \u2014 the report would overstate the work");
+    }
+  }
+
+  /* 5. The refusal is tellable from a save.
+
+     saveFeature returns false where it refuses. Without that a caller
+     setting many at once cannot count them, and every refusal reads as
+     a success. */
+  const save = canvas.slice(canvas.indexOf("async function saveFeature"));
+  if (!/return false;/.test(save.slice(0, save.indexOf("setFeatures((f) =>")))) {
+    fail("saveFeature does not report a refusal, so a bulk set cannot count one");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Statuses behave (a service has its own three, nothing is live before its ground is closed).");
 process.exit(bad ? 1 : 0);

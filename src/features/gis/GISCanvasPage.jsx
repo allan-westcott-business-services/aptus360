@@ -43,7 +43,7 @@ import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
-  MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels,
+  MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels, MenuAction,
 } from "./GisMenus.jsx";
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
@@ -116,6 +116,7 @@ import {
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
+  statusesFor,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { teeInto, mainsOnLayer } from "./teeInto.js";
@@ -7730,6 +7731,66 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* ── Setting the build status on everything selected ──
+
+     Build status was in the Trench menu once, as four buttons, and was
+     taken out: a property of an object belongs in the object's editor,
+     and the menu changed a field without recording what it had changed.
+
+     That is right for one trench and wrong for forty. Opening the
+     editor forty times to mark a phase as-laid is not an editor. So it
+     is back as one dropdown, and the two objections are answered rather
+     than ignored:
+
+       - it goes through saveFeature, the same path the editor uses, so
+         the rule that nothing goes live before its ground is closed is
+         enforced here too rather than restated;
+       - it says what it did, and what it would not do.
+
+     ── Each feature's own list ──
+
+     A trench is existing, planned, to be removed or as-laid. A main is
+     planned, as-laid or live; a service has its own three. Marking a
+     mixed selection as-laid would write a trench word onto a cable —
+     unselectable in its own dropdown and meaningless to everything that
+     reads it.
+
+     So anything that cannot take the chosen stage is left alone and
+     counted. A selection of cables offered a trench-only word changes
+     nothing at all, and says so. */
+  async function setStatusOnSelection(key) {
+    if (!selectedFeatures.length) return;
+
+    const canTake = selectedFeatures.filter((f) =>
+      statusesFor(f, lineTypes).some((s) => s.key === key));
+    const cannot = selectedFeatures.length - canTake.length;
+    const label = BUILD_STATUSES.find((s) => s.key === key)?.label ?? key;
+
+    if (!canTake.length) {
+      setError(`Nothing selected can be ${label} \u2014 ${cannot === 1 ? "it is" : "they are"} `
+        + "a kind of feature that does not take that stage.");
+      return;
+    }
+
+    /* One undo entry for the lot. Forty separate ones would take forty
+       presses to put back, which is not an undo. */
+    await withUndo(`Set status ${label}`, async () => {
+      let done = 0;
+      const refused = [];
+      for (const f of canTake) {
+        if (f.Attributes?.Build_Status === key) continue;
+        const ok = await saveFeature(f.Feature_ID,
+          { Attributes: { ...(f.Attributes || {}), Build_Status: key } });
+        if (ok === false) refused.push(f.Feature_ID); else done++;
+      }
+
+      setStatus(`${done} set to ${label}`
+        + (refused.length ? `, ${refused.length} refused` : "")
+        + (cannot ? `, ${cannot} cannot take that stage` : ""));
+      setTimeout(() => setStatus(""), 8000);
+    });
+  }
+
   async function saveFeature(id, changes) {
     const before = features.find((x) => x.Feature_ID === id);
 
@@ -7763,7 +7824,11 @@ export default function GISCanvasPage() {
           + `needs the ground closed \u2014 ${holding.length === 1
             ? "the trench this lies in is"
             : `${holding.length} of the trenches this lies in are`} still Planned.`);
-        return;
+        /* False, so a caller setting many at once can say how many were
+           refused. The editor saves one and ignores the answer; a bulk
+           set that counted a refusal as done would report work it had
+           not done. */
+        return false;
       }
     }
     setFeatures((f) => f.map((x) => (x.Feature_ID === id ? { ...x, ...changes } : x)));
@@ -11613,7 +11678,15 @@ export default function GISCanvasPage() {
     let missingNodes = 0;
     /* How many spare lengths were laid past a last plot. Reported, so a
        zero is a fact rather than a silence. */
-    let tails = 0;
+    /* Runs whose main was laid past the last plot, so the cable carried
+       on to the end of it.
+
+       `tails` was here, counting the short trenches this build dug past
+       the last plot. Nothing digs them now — the designer lays the main
+       beyond the plot and the cable follows it — so the counter went
+       with them rather than staying at zero and reading as "none dug
+       this time". */
+    let ranOn = 0;
     /* Nodes already spoken for by a circuit earlier in this run.
 
        `src` is a snapshot taken before any of this, so a node adopted by
@@ -11730,11 +11803,23 @@ export default function GISCanvasPage() {
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           seedIds,
-          /* The spare length past the last plot on a leg (0185). Read
-             from the settings row rather than compiled in: 1.5 m is a
-             working practice, not a law. Absent or zero draws no tail,
-             which is what every drawing made before this looks like. */
-          bottleEndTailM: Number(lookups?.vdSettings?.[0]?.Bottle_End_Tail_M) || 0,
+          /* `bottleEndTailM` was passed here: a spare length past the
+             last plot (0185), drawn as trench nobody had dug so the
+             bottle end had somewhere to sit other than on top of the
+             service joint.
+
+             Gone. The designer lays the main two or three metres past
+             the last plot, and the run follows that dig to its end —
+             see digEndBeyond. A synthetic tail continued off the last
+             bearing could point through a boundary or across a
+             carriageway, and put a length on a bill for ground nobody
+             could open.
+
+             `Electric_Specs.Bottle_End_Tail_M` still exists and is now
+             read by nothing. Left on the table rather than dropped in
+             the same change: a column removed is a column somebody
+             cannot put back, and this is the release to find out
+             whether anything else wanted it. */
         });
         if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
         if (!r.sections.length) {
@@ -11887,66 +11972,37 @@ export default function GISCanvasPage() {
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
               ...(startCable ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
-              /* How much of this run is the spare tail past the last
-                 service joint. Recorded so planJoints can put the
-                 bottle end at the end of it rather than at the take-off
-                 — see the note there. Absent on a run with no tail, so
-                 nothing has to read a zero as meaning "none". */
-              ...(sec.tailM ? { Tail_M: sec.tailM } : {}),
+              /* How far this run carries on past the last take-off,
+                 where the designer laid the main beyond it. Measured
+                 from the drawing rather than added to it — see
+                 digEndBeyond. Absent where the main stops at the last
+                 plot, so nothing has to read a zero as meaning "none".
+
+                 `Tail_M` keeps its name: it is on generated cables
+                 already and renaming a written attribute for tidiness
+                 costs more than it is worth. */
+              ...(sec.runsOn ? { Tail_M: sec.overrunM } : {}),
               Generated: true,
             },
           });
-          /* ── And dig it ──
+          /* ── No tail trench is dug ──
 
-             The tail is real work: the gang digs past the last plot and
-             buries the bottle end in that extra length. Cable without
-             trench would take the fitting off the drawing correctly and
-             leave the dig short by 1.5 m a leg.
+             There was one here: 1.5 m of generated mains trench past
+             the last plot, so the bottle end had ground to sit in. It
+             went with the synthetic tail that made it necessary.
 
-             Its own short trench rather than an edit to the designer's:
-             a rebuild deletes what it generated and lays it again, and
-             a rebuild that shortened somebody's hand-drawn trench each
-             time would be unrecoverable. The build already creates
-             trench this way for the links it adds.
+             The designer lays the main two or three metres past the
+             last plot, so the ground is already open and already on the
+             drawing. Digging another length over the top of it would
+             bill the same metre twice and leave a second trench for
+             somebody to set a status on.
 
-             `Generated` so a rebuild clears its own tails, and
-             Line_Type "trench" so it is dug and measured as mains
-             trench, which is what it is. */
-          if (sec.tailM && sec.tailAt) {
-            tails += 1;
-            const g = sec.pts;
-            await addFeature({
-              Layer_Key: "trench",
-              Feature_Type: "line",
-              Geometry: [g[g.length - 2].slice(), sec.tailAt.slice()],
-              Label: `${c.letter}${i + 1} tail`,
-              Attributes: {
-                /* `trench_main`, which is what a mains trench is called
-                   — seeded by 0050 and what every other generated
-                   trench here writes. This said "trench", which is not
-                   a configured type at all: the tail was not recognised
-                   as a mains trench, so it was not measured, not found
-                   by trenchesUnder, and the cable's tail lay over
-                   nothing. */
-                Line_Type: "trench_main",
-                Circuit_ID: c.id, Circuit_Name: c.name,
-                Tail_M: sec.tailM,
-                /* ── The tail takes the status of the run it extends ──
+             Nothing replaces it. Where the main was NOT laid past the
+             last plot the cable ends at the take-off and the bottle end
+             sits with the service joint, which is the drawing saying so
+             rather than the app quietly digging the difference. */
 
-                   It is dug in the same visit, by the same gang, in the
-                   same hole. Starting it at Planned meant every leg
-                   gained a second trench to set, and a cable that had
-                   its ground closed was held back by the 1.5 m of it
-                   the app had just drawn.
-
-                   Falls back to Planned where the run has no status of
-                   its own, which is a new drawing. */
-                Build_Status: tailStatusAt(src, g[g.length - 2], lineTypes),
-                Generated: true,
-              },
-            });
-          }
-
+          if (sec.runsOn) ranOn += 1;
           runs += 1;
           cables += sec.cables;
           step += 1;
@@ -12223,11 +12279,14 @@ export default function GISCanvasPage() {
          drawing none, and the two are indistinguishable on the canvas.
          Zero is a legitimate setting, so it is reported rather than
          warned about. */
-      const tailSet = Number(lookups?.vdSettings?.[0]?.Bottle_End_Tail_M) || 0;
+      /* How many runs carried on past their last take-off, because the
+         designer laid the main beyond it. Counted rather than set:
+         there is no setting any more, and this says what the drawing
+         actually gave the cable to run along. */
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
-        + (tailSet > 0
-          ? `, ${tails} bottle end tail(s) at ${tailSet}m`
-          : ", no bottle end tails (Bottle_End_Tail_M is 0 or unset)")
+        + (ranOn
+          ? `, ${ranOn} run(s) carried to the end of the dig`
+          : ", no run had main laid past its last plot")
         + (jointsMade ? `, ${jointsMade} joint(s)` : "")
         /* What the build wanted and could not find, so the gap is
            reported rather than filled in silently. */
@@ -17470,6 +17529,32 @@ export default function GISCanvasPage() {
                           two ways to change one field is two places for
                           them to disagree, and the menu was the one with
                           no record of what it had just changed. */}
+
+                      {/* ── Setting the stage on what is selected ──
+
+                          Four buttons doing this were taken out of this
+                          menu, on the argument that a property belongs
+                          in the object's editor. True of one trench and
+                          not of forty: opening the editor forty times to
+                          mark a phase as-laid is not an editor.
+
+                          Back as one dropdown, going through the same
+                          save the editor uses — so the rule that nothing
+                          goes live before its ground is closed applies
+                          here too — and saying what it changed, which is
+                          what the buttons never did.
+
+                          Disabled with nothing selected rather than
+                          hidden: an empty space does not explain that
+                          something has to be picked first. */}
+                      <div className="gm-sep" />
+                      <MenuAction label="Set status"
+                        options={BUILD_STATUSES}
+                        disabled={!!busy || !selectedFeatures.length}
+                        hint={selectedFeatures.length
+                          ? `Applies to the ${selectedFeatures.length} selected`
+                          : "Select one or more trenches first"}
+                        onSet={setStatusOnSelection} />
 
                       {/* ── Every check together ──
 

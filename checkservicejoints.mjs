@@ -385,6 +385,189 @@ const at = (x) => planned.filter((j) => Math.hypot(j.point[0] - x, j.point[1]) <
   }
 }
 
+/* ── The seal goes where the dig ends ──
+
+   A run stops carrying at the last plot, so the bottle end landed on
+   the same point as the service joint serving it — one fitting on top
+   of another.
+
+   That used to be answered by drawing a metre and a half of trench
+   nobody had dug, continued off the bearing of the last segment. It
+   could point through a boundary or across a carriageway, and it put a
+   length on a bill for ground nobody could open.
+
+   The designer lays the main two or three metres past the last plot
+   instead, and the cable follows that dig to its end. Nothing is
+   invented: where the main stops dead the seal stays at the take-off,
+   which is the drawing telling the truth about a main that was not laid
+   past the last plot. */
+{
+  const sub4 = {
+    Feature_ID: nextId++, Feature_Role: "substation", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {},
+  };
+  const last = plot(401, [50, 11]);
+
+  const site = (mainPts) => [
+    sub4,
+    trench(mainPts),
+    { Feature_ID: nextId++, Feature_Type: "line", Layer_Key: "trench",
+      Geometry: [[50, 0], [50, 12]],
+      Attributes: { Line_Type: "service_trench", Seed_Feature_ID: last.Feature_ID } },
+    last,
+    meter(401, last.Feature_ID, [50, 11]),
+  ];
+  const jointsOn = (mainPts) => planJoints(site(mainPts), circuits, { lineTypes, nrsById });
+  const at = (js, kind, x) => js.some((j) => j.kind === kind
+    && Math.hypot(j.point[0] - x, j.point[1]) < 0.5);
+
+  // 17. The main laid three metres past: the seal is at its end.
+  {
+    const js = jointsOn([[0, 0], [50, 0], [53, 0]]);
+    if (!at(js, "bottleend", 53)) fail("the seal is not at the end of the dig");
+    if (at(js, "bottleend", 50)) fail("the seal is still back at the take-off");
+    /* And the service joint has NOT moved. It serves the plot here, and
+       separating the pair is the point of the whole change. */
+    if (!at(js, "service", 50)) fail("the service joint moved with the seal");
+  }
+
+  /* 18. The main stopping dead: the seal stays where the load stops.
+
+     Nothing is invented \u2014 which is the difference from the tail this
+     replaced, and the drawing then says plainly that the main was not
+     laid past the last plot. */
+  {
+    const js = jointsOn([[0, 0], [50, 0]]);
+    if (!at(js, "bottleend", 50)) fail("a main stopping at the last plot lost its seal");
+    if (!at(js, "service", 50)) fail("a main stopping at the last plot lost its service joint");
+  }
+
+  /* 19. A main going somewhere else is not an overrun.
+
+     Seventy metres past the last plot is main serving something else.
+     Following it would run this cable the length of a shared road.
+
+     Both spellings of the same road, because the cap is on the whole
+     overrun and not on each step: applied per segment it would stop ten
+     metres along and seal at whatever point somebody happened to put a
+     vertex \u2014 a different answer on two drawings of one road. */
+  for (const [how, pts] of [
+    ["one vertex", [[0, 0], [50, 0], [120, 0]]],
+    ["many vertices", [[0, 0], [50, 0], [55, 0], [60, 0], [70, 0], [90, 0], [120, 0]]],
+  ]) {
+    const js = jointsOn(pts);
+    if (!at(js, "bottleend", 50)) {
+      fail(`a main running 70m past the last plot (${how}) did not seal at the take-off`);
+    }
+    if (js.some((j) => j.kind === "bottleend" && j.point[0] > 51)) {
+      fail(`a main running 70m past the last plot (${how}) was sealed out along it`);
+    }
+  }
+
+  /* 20. And the tail is gone.
+
+     A synthetic length of trench, continued off a bearing. Named here
+     so somebody searching for why their 1.5 m stopped appearing finds
+     the reason rather than the absence. */
+  {
+    const fd = readFileSync("src/features/gis/feeder.js", "utf8");
+    if (/const tailM = Number\(opts\.bottleEndTailM\)/.test(fd)) {
+      fail("the synthetic bottle-end tail is still drawn");
+    }
+    const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (/bottleEndTailM:/.test(canvas)) {
+      fail("the canvas still passes bottleEndTailM, which nothing reads");
+    }
+
+    /* ── And no tail trench is dug ──
+
+       Removing the synthetic geometry was only half of it. The build
+       also DUG the tail: a short generated mains trench past the last
+       plot, so the bottle end had ground to sit in.
+
+       The designer lays the main beyond the plot now, so that ground is
+       already open and already on the drawing. Digging another length
+       over the top of it bills the same metre twice and leaves a second
+       trench for somebody to set a status on.
+
+       Asserted as an absence, in the block that lays the runs, because
+       that is the only place it could come back. */
+    const lay = canvas.slice(canvas.indexOf("Line_Type: \"elec_main\""),
+      canvas.indexOf("Every node on this circuit is renumbered"));
+    if (/Label: `\$\{c\.letter\}\$\{i \+ 1\} tail`/.test(lay)) {
+      fail("the build still digs a tail trench past the last plot");
+    }
+    if (/tails \+= 1/.test(lay)) {
+      fail("the build still counts tail trenches it dug");
+    }
+    /* The REMOVAL of tails dug by earlier runs has to stay. Every
+       drawing built before this has them, and a rebuild is the only
+       thing that takes them out. */
+    if (!/doomedTails/.test(canvas)) {
+      fail("a rebuild no longer clears the tail trenches earlier runs dug");
+    }
+    /* One walk for the cable and the seal, or they land in different
+       places. */
+    if ((fd.match(/export function digEndBeyond/g) || []).length !== 1) {
+      fail("digEndBeyond is not defined exactly once");
+    }
+    const jt = readFileSync("src/features/gis/joints.js", "utf8");
+    if (!/digEndBeyond\(M, u\)/.test(jt)) {
+      fail("the seal does not use the same walk the cable does");
+    }
+  }
+}
+
+/* ── One service joint per service cable ──
+
+   A take-off is where a service leaves the MAIN. Not any node with a
+   service running on from it.
+
+   A spur is often several features: splitByBoundary cuts one where it
+   crosses the site boundary, and a service teed off a main in the road
+   is always cut that way. Every cut leaves a vertex, so a node, and
+   that node has a service child carrying load exactly as the take-off
+   does — so a second service joint was planned a few metres down the
+   garden, on a length of cable with no joint in it. */
+{
+  const svcT = (pts, seedId) => ({
+    Feature_ID: nextId++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: "service_trench", Seed_Feature_ID: seedId },
+  });
+  const sub5 = {
+    Feature_ID: nextId++, Feature_Role: "substation", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {},
+  };
+  const p = plot(501, [50, 11]);
+  const main = () => trench([[0, 0], [50, 0], [53, 0]]);
+
+  const whole = [sub5, main(), svcT([[50, 0], [50, 12]], p.Feature_ID),
+    p, meter(501, p.Feature_ID, [50, 11])];
+  /* The same spur, cut at the boundary, which is how it is written. */
+  const split = [sub5, main(),
+    svcT([[50, 0], [50, 4]], p.Feature_ID),
+    svcT([[50, 4], [50, 12]], p.Feature_ID),
+    p, meter(501, p.Feature_ID, [50, 11])];
+
+  for (const [how, drawing] of [["in one piece", whole], ["split at the boundary", split]]) {
+    const js = planJoints(drawing, circuits, { lineTypes, nrsById });
+    const services = js.filter((j) => j.kind === "service");
+
+    if (services.length !== 1) {
+      fail(`a spur ${how} planned ${services.length} service joint(s), expected 1`
+        + ` \u2014 at ${services.map((j) => j.point.join(",")).join(" and ")}`);
+    }
+    /* And on the main, not down the garden. */
+    if (services[0] && Math.abs(services[0].point[1]) > 0.5) {
+      fail(`a spur ${how} has its service joint ${services[0].point[1]}m off the main`);
+    }
+    /* The two drawings are the same site and must give the same joints. */
+    if (js.length !== 2) {
+      fail(`a spur ${how} planned ${js.length} joints, expected 2`);
+    }
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Service joints behave (a supply's take-off is jointed, and the run ends at it)."
   : `\n${bad} problem(s)`);

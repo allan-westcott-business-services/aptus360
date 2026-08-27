@@ -26,7 +26,7 @@
    breech joint where the cable schedule shows none. */
 
 import {
-  buildFeederModel, circuitMembership, cablesFor, METERS_PER_CABLE,
+  buildFeederModel, circuitMembership, cablesFor, METERS_PER_CABLE, digEndBeyond,
 } from "./feeder.js";
 
 /* What each kind is called, and its code from the Electric_Joint
@@ -275,6 +275,25 @@ function jointsForCircuit(features, circuit, opts) {
      on another circuit is not this circuit's joint. */
   const serviceChildren = (u) => kidsOf(u).filter((c) => parSvc[c] && cum[c] > 0);
 
+  /* ── A take-off is where a service leaves the MAIN ──
+
+     Not any node with a service running on from it. A spur is often
+     several features — splitByBoundary cuts one where it crosses the
+     site boundary, and a service teed off a main in the road is always
+     cut that way. Every cut leaves a vertex, and therefore a node, and
+     that node has a service child carrying load exactly as the take-off
+     does.
+
+     So a joint was planned at the boundary of every split spur: a
+     second service joint a few metres down the garden, on a length of
+     cable with no joint in it. One per service cable is the rule; that
+     made two.
+
+     `parSvc[u]` is the whole test. It says the way INTO this node is
+     itself a service, which is true of every point along a spur and
+     false at the main it comes off. */
+  const isTakeOff = (u) => !parSvc[u] && serviceChildren(u).length > 0;
+
   const out = [];
   for (let u = 0; u < nodes.length; u++) {
     /* Nothing is jointed at the substation: the run starts there. */
@@ -323,20 +342,66 @@ function jointsForCircuit(features, circuit, opts) {
       if (countChanged) reasons.push("straight");
     }
 
-    if (serviceChildren(u).length > 0) reasons.push("service");
+    if (isTakeOff(u)) reasons.push("service");
 
     if (!reasons.length) continue;
-    const kind = reasons.slice().sort((a, b) => rank(a) - rank(b))[0];
-    out.push({
-      point: nodes[u],
-      kind,
-      reasons,
-      circuitId: circuit.id,
-      circuitName: circuit.name,
-      ways: loaded.length + serviceChildren(u).length,
-      services: serviceChildren(u).length,
-      meters: cum[u] || 0,
-    });
+
+    /* ── The seal goes where the dig ends ──
+
+       A run stops carrying at the last plot, so this loop finds the end
+       of the cable at that take-off — and put the bottle end there, on
+       the same point as the service joint serving that plot.
+
+       The designer lays the main two or three metres past the last
+       plot. The cable follows it (see spanTrace), and the seal belongs
+       at its end, not back at the last cut-out. The same walk answers
+       both, so the cable's end and its bottle end cannot land in
+       different places.
+
+       Only the bottle end moves. The service joint at this node serves
+       the plot HERE and stays, which is what separates the pair that
+       used to sit on top of one another.
+
+       Where the main was not laid past the last plot the walk returns
+       this node, the seal stays put, and the drawing goes on saying
+       what it always said about a main that stops dead. */
+    let sealAt = nodes[u];
+    if (reasons.includes("bottleend")) {
+      const on = digEndBeyond(M, u);
+      if (on.points.length) sealAt = on.points[on.points.length - 1];
+    }
+
+    const here = reasons.filter((r) => r !== "bottleend" || sealAt === nodes[u]);
+
+    if (here.length) {
+      const kind = here.slice().sort((a, b) => rank(a) - rank(b))[0];
+      out.push({
+        point: nodes[u],
+        kind,
+        reasons: here,
+        circuitId: circuit.id,
+        circuitName: circuit.name,
+        ways: loaded.length + serviceChildren(u).length,
+        services: serviceChildren(u).length,
+        meters: cum[u] || 0,
+      });
+    }
+
+    /* Moved down the run, so it is its own joint at its own point. */
+    if (sealAt !== nodes[u]) {
+      out.push({
+        point: sealAt,
+        kind: "bottleend",
+        reasons: ["bottleend"],
+        circuitId: circuit.id,
+        circuitName: circuit.name,
+        /* One way in and nothing off it \u2014 which is what a seal is. The
+           ways and services at the take-off belong to the take-off. */
+        ways: 1,
+        services: 0,
+        meters: cum[u] || 0,
+      });
+    }
   }
   return out;
 }

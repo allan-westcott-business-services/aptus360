@@ -263,8 +263,45 @@ export function MenuLabels({ kinds, showLabels, onShowLabels, value, onKind }) {
   );
 }
 
+/* A dropdown that acts on the selection.
+
+   Not a set of buttons. Build status was in this menu once as four of
+   them and was taken out, on the argument that a property of an object
+   belongs in the object's editor — and that the menu changed a field
+   without recording what it had changed.
+
+   The first half of that is right for ONE trench and wrong for forty:
+   opening the editor forty times to mark a phase as-laid is not an
+   editor, it is a punishment. The second half is answered by saying
+   what happened, which is what `onSet` reports.
+
+   Reads "Set status" rather than "Status", because a menu that shows a
+   current value implies the selection has one — and forty trenches
+   halfway through a phase have four different ones. This does not show
+   a value; it applies one. */
+export function MenuAction({ label, options, value = "", disabled, hint, onSet }) {
+  return (
+    <div className={disabled ? "gm-act off" : "gm-act"} data-keep-open title={hint || ""}>
+      <span className="gm-act-l">{label}</span>
+      <select value={value} disabled={disabled}
+        onChange={(e) => { if (e.target.value) onSet(e.target.value); }}>
+        <option value="">&mdash;</option>
+        {options.map((o) => (
+          <option key={o.key} value={o.key}>{o.label}</option>
+        ))}
+      </select>
+    </div>
+  );
+}
+
 const CSS = `
 .gm-bar { display: flex; align-items: center; gap: 4px; flex-wrap: wrap; }
+.gm-act { display: flex; align-items: center; justify-content: space-between; gap: 8px;
+  padding: 5px 12px 5px 22px; font-size: 12.5px; }
+.gm-act.off { opacity: 0.45; }
+.gm-act-l { white-space: nowrap; }
+.gm-act select { font: inherit; padding: 3px 6px; border: 1px solid var(--border);
+  border-radius: 6px; background: #fff; max-width: 130px; }
 .gm-wrap { position: relative; }
 .gm-btn { background: none; border: 1px solid transparent; border-radius: 7px; cursor: pointer;
   font: 600 12.5px inherit; color: var(--text); padding: 7px 12px; display: inline-flex;

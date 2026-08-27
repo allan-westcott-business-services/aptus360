@@ -3,7 +3,7 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import {
   BUILD_STATUSES, MAIN_STATUSES, SERVICE_STATUSES,
-  isMainFeature, isServiceFeature, statusOptions,
+  isMainFeature, isServiceFeature, statusOptions, isExistingLineType,
 } from "./buildStatus.js";
 import FutureAllowance from "./FutureAllowance.jsx";
 import { utilityById } from "../../lib/utilities.js";
@@ -65,6 +65,12 @@ export default function FeatureEditor({
      layer has no type until somebody picks one, and asking the type
      alone hid every trench-only control on exactly those sections. */
   const isTrench = isTrenchFeature({ ...feature, Attributes: f.Attributes }, lineTypes);
+
+  /* Somebody else's network, drawn for reference. Declared beside
+     isTrench and above every use, not beside the field that needs it —
+     a const read before its declaration throws, and in this file that
+     takes the whole editor out. */
+  const incumbent = isExistingLineType(f.Attributes?.Line_Type);
   /* Read from the edited attributes rather than the saved feature, so
      changing a line's type to a main shows the field without saving
      first. */
@@ -1041,16 +1047,44 @@ export default function FeatureEditor({
 
                   A dropdown rather than a checkbox: "Off site" unticked
                   reads as "not yet decided" as readily as "on site", and
-                  the two are a different rate and a different permit. */}
+                  the two are a different rate and a different permit.
+
+                  ── The incumbent's network cannot be on site ──
+
+                  Their trench and their mains are in the road. A line
+                  drawn to show what somebody else already owns is off
+                  site by what it is, so the field states it rather than
+                  offering a choice that has one wrong answer.
+
+                  Locked rather than merely defaulted, because a default
+                  is a thing somebody can change by accident and this
+                  one feeds a rate and a permit.
+
+                  ── And this is not the "off site" the drawing shows ──
+
+                  Two attributes carry the words. `Site` is worked out
+                  from the boundary when a line is drawn and splits the
+                  run, picks the surface and feeds the bill. `Off_Site`,
+                  this field, is the commercial arrangement the call-off
+                  carries. A line outside the boundary gets the first
+                  automatically and not the second — so the drawing
+                  showed a trench off site while this dropdown read "On
+                  site", and both were telling the truth about their own
+                  attribute. The note below says so, because the pair
+                  reads as a contradiction otherwise. */}
               <div className="fld">
                 <label htmlFor="fe-offsite">On-site or Off-site</label>
                 <select id="fe-offsite"
-                  value={f.Attributes.Off_Site === true ? "off" : "on"}
+                  disabled={incumbent}
+                  value={incumbent || f.Attributes.Off_Site === true ? "off" : "on"}
                   onChange={(e) => setAttr("Off_Site")(
                     e.target.value === "off" ? true : null)}>
                   <option value="on">On site</option>
                   <option value="off">Off site</option>
                 </select>
+                {incumbent && (
+                  <p className="hint">The incumbent&rsquo;s network is always off site.</p>
+                )}
               </div>
 
               <div className="fld">

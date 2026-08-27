@@ -15117,58 +15117,11 @@ export default function GISCanvasPage() {
 
     const allMeters = world.filter((f) => f.Feature_Role === "meter");
 
-    /* ── A service drawn before the plot became self-lay ──
-
-       Auto Service never redraws what is already there, which is right
-       nearly always: a plot dug to by hand must not get a second
-       trench, and a re-run must not shuffle a drawing somebody has
-       corrected.
-
-       It is wrong in one case. Marking a plot self-lay AFTER its
-       service was laid leaves the drawing saying the opposite of the
-       data — the cable runs to our main, the trench is Planned, and the
-       bill charges us for digging a hole the developer digs. The plot
-       reports "already has a service trench", which is true and no use:
-       the trench is the wrong trench.
-
-       So a seed counts as done only if what is drawn AGREES with what
-       the connection now says. Where it disagrees the seed is planned
-       again and its stamped service is removed first.
-
-       ── What may be removed ──
-
-       Only features carrying this seed's Seed_Feature_ID, which Auto
-       Service writes and a hand-drawn trench does not. That test is
-       already how isServed tells the two apart. A service somebody drew
-       by hand keeps the plot marked done and is never touched — if it
-       is now wrong, that is a person's decision to change, not this
-       command's. */
-    const stampedTo = (sd) => world.filter((f) =>
-      f.Feature_Type === "line"
-      && Number(f.Attributes?.Seed_Feature_ID) === Number(sd.Feature_ID));
-
-    const mismatched = new Map();
-    for (const sd of seeds) {
-      const mine = stampedTo(sd);
-      if (!mine.length) continue;
-
-      const wrong = [];
-      for (const u of (utilitiesFor(sd) || [])) {
-        const wantSelfLay = isSelfLayFor(sd, u.layer_key,
-          { slp: slpSet, slpNrs: slpNrsSet, layers });
-        /* This utility's cable, and the dig it shares. A cable on the
-           utility's own layer; the trench is on the trench layer and
-           serves every utility at once, so it is judged with them. */
-        const cable = mine.find((f) => f.Layer_Key === u.layer_key);
-        if (!cable) continue;
-        if (!!cable.Attributes?.Self_Lay !== wantSelfLay) wrong.push(u.layer_key);
-      }
-      if (wrong.length) mismatched.set(Number(sd.Feature_ID), { seed: sd, mine, wrong });
-    }
-
-    const serviced = new Set(seeds
+    /* Which seeds already have something laid to them. Whether that
+       something is still the RIGHT thing is asked below, once
+       utilitiesFor exists to ask it with — see the mismatch block. */
+    const alreadyLaid = new Set(seeds
       .filter((sd) => isServed(sd, allMeters, laid))
-      .filter((sd) => !mismatched.has(Number(sd.Feature_ID)))
       .map((sd) => Number(sd.Feature_ID)));
 
     /* A meter with a trench already running to it is left alone, even
@@ -15218,6 +15171,66 @@ export default function GISCanvasPage() {
         return gasSourceIds.has(Number(plot.heat_source_id));
       });
     };
+
+    /* ── A service drawn before the plot became self-lay ──
+
+       Auto Service never redraws what is already there, which is right
+       nearly always: a plot dug to by hand must not get a second
+       trench, and a re-run must not shuffle a drawing somebody has
+       corrected.
+
+       It is wrong in one case. Marking a plot self-lay AFTER its
+       service was laid leaves the drawing saying the opposite of the
+       data — the cable runs to our main, the trench is Planned, and the
+       bill charges us for digging a hole the developer digs. The plot
+       reports "already has a service trench", which is true and no use:
+       the trench is the wrong trench.
+
+       So a seed counts as done only if what is drawn AGREES with what
+       the connection now says. Where it disagrees the seed is planned
+       again and its stamped service is removed first.
+
+       ── What may be removed ──
+
+       Only features carrying this seed's Seed_Feature_ID, which Auto
+       Service writes and a hand-drawn trench does not. That test is
+       already how isServed tells the two apart. A service somebody drew
+       by hand keeps the plot marked done and is never touched — if it
+       is now wrong, that is a person's decision to change, not this
+       command's. */
+    const stampedTo = (sd) => world.filter((f) =>
+      f.Feature_Type === "line"
+      && Number(f.Attributes?.Seed_Feature_ID) === Number(sd.Feature_ID));
+
+    const mismatched = new Map();
+    for (const sd of seeds) {
+      const mine = stampedTo(sd);
+      if (!mine.length) continue;
+
+      const wrong = [];
+      for (const u of (utilitiesFor(sd) || [])) {
+        const wantSelfLay = isSelfLayFor(sd, u.layer_key,
+          { slp: slpSet, slpNrs: slpNrsSet, layers });
+        /* This utility's cable, and the dig it shares. A cable on the
+           utility's own layer; the trench is on the trench layer and
+           serves every utility at once, so it is judged with them. */
+        const cable = mine.find((f) => f.Layer_Key === u.layer_key);
+        if (!cable) continue;
+        if (!!cable.Attributes?.Self_Lay !== wantSelfLay) wrong.push(u.layer_key);
+      }
+      if (wrong.length) mismatched.set(Number(sd.Feature_ID), { seed: sd, mine, wrong });
+    }
+
+    /* Done means laid AND still correct.
+
+       Split from alreadyLaid above because the mismatch test needs
+       utilitiesFor, which is declared between the two. Reading it any
+       earlier is a temporal dead zone — it throws before the command
+       does anything, and the button appears to do nothing at all.
+       Recurring fault 2, and it happened here. */
+    const serviced = new Set([...alreadyLaid]
+      .filter((id) => !mismatched.has(id)));
+
 
     /* A meter already at this plot for this utility. Matched on the plot
        first, because that is how the placement flow links them, and on

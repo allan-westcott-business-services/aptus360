@@ -16,7 +16,8 @@ import { selfLaySet, selfLayNrsSet, utilityIdForLayer, isSelfLayMeter, isSelfLay
 import { planSeed, isExistingType, splitExisting, isServed, meterHasService, isExistingFeature,
   skipSummary }
   from "./src/features/gis/autoService.js";
-import { defaultStatusOf, statusesFor } from "./src/features/gis/buildStatus.js";
+import { defaultStatusOf, statusesFor, withDefaultStatus, isExistingLineType }
+  from "./src/features/gis/buildStatus.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -795,6 +796,123 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
     /* The comment recording the fault names it, which is not a use. */
     if (/\/\*|^\s*\*/m.test(at.split("\n").pop() ?? "")) continue;
     fail("a command still reports only the first skipped seed's reason");
+  }
+}
+
+/* ── Nothing may be read before it is declared ──
+
+   The self-lay mismatch test needs utilitiesFor, and was written fifty
+   lines above where utilitiesFor is declared. A `const` read before its
+   declaration throws — so Auto Lay Service Trench threw before doing
+   anything, and the button looked dead. No error, no message, nothing
+   drawn.
+
+   Recurring fault 2. checkorder.py catches most of these; it did not
+   catch this one, because the read is inside an arrow function that
+   only runs later, which is legal right up until it is called.
+
+   So the order is asserted directly. */
+{
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+  const runner = canvas.slice(canvas.indexOf("const isSeed = (f) => f.Feature_Role === \"plot\""));
+
+  const declared = runner.indexOf("const utilitiesFor = (seed) =>");
+  const used = runner.indexOf("utilitiesFor(sd)");
+  if (declared < 0) fail("utilitiesFor is not declared in the auto-service runner");
+  else if (used >= 0 && used < declared) {
+    fail("the self-lay mismatch test reads utilitiesFor before it is declared "
+      + "\u2014 Auto Service throws and the button does nothing");
+  }
+
+  /* And the two questions stay apart: what is laid, and whether it is
+     still right. Joining them puts the mismatch test back above
+     utilitiesFor, which is where it was when it broke. */
+  const laidAt = runner.indexOf("const alreadyLaid = new Set(");
+  const servicedAt = runner.indexOf("const serviced = new Set(");
+  if (laidAt < 0 || servicedAt < 0) {
+    fail("the laid and serviced sets are no longer separate");
+  } else if (servicedAt < declared) {
+    fail("the serviced set is built before utilitiesFor exists to test against");
+  }
+}
+
+/* ── The incumbent's network is never on site ──
+
+   Their trench and their mains are in the road. There is no case where
+   a line drawn to show what somebody else already owns is our work
+   inside our boundary.
+
+   ── Two attributes, both called off site ──
+
+     Site       "On-site"/"Off-site", worked out from the boundary when
+                a line is drawn. Splits the run, picks the surface,
+                feeds the bill.
+     Off_Site   a boolean set by hand. A commercial arrangement: a
+                different rate, a different permit, and what the
+                call-off carries.
+
+   A line outside the boundary gets the first automatically and not the
+   second, so the drawing showed a trench off site while the editor's
+   dropdown read "On site" — both true about their own attribute, and a
+   contradiction to anybody looking at the two together. */
+{
+  const lineTypes = [
+    { Type_Key: "trench_main_existing", Layer_Key: "trench" },
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+  ];
+  const mk = (key, extra = {}) => ({ Feature_Type: "line", Layer_Key: "trench",
+    Attributes: { Line_Type: key, ...extra } });
+
+  // 42. Both are set on an incumbent line, and neither on ours.
+  {
+    const a = withDefaultStatus(mk("trench_main_existing"), lineTypes).Attributes;
+    if (a.Off_Site !== true) fail("an incumbent trench is not marked off site");
+    if (a.Site !== "Off-site") fail("an incumbent trench's Site is not Off-site");
+    if (a.Build_Status !== "existing") fail("an incumbent trench does not start as existing");
+
+    const b = withDefaultStatus(mk("trench_main"), lineTypes).Attributes;
+    if (b.Off_Site != null) fail("one of our own trenches was marked off site");
+    if (b.Site != null) fail("one of our own trenches had its Site decided here");
+  }
+
+  /* 43. And a choice already made is left alone.
+
+     This fills blanks. Overruling a set value would undo somebody's
+     correction every time the feature was saved. */
+  {
+    const a = withDefaultStatus(
+      mk("trench_main_existing", { Off_Site: false, Build_Status: "planned" }), lineTypes,
+    ).Attributes;
+    if (a.Off_Site !== false || a.Build_Status !== "planned") {
+      fail("a value already set was overwritten");
+    }
+  }
+
+  /* 44. The editor states it rather than offering the wrong answer.
+
+     A default is a thing somebody can change by accident, and this one
+     feeds a rate and a permit. */
+  {
+    const ed = readFileSync("src/features/gis/FeatureEditor.jsx", "utf8");
+    if (!/disabled={incumbent}/.test(ed)) {
+      fail("the on-site/off-site field can still be set to On site for the incumbent's network");
+    }
+    if (!/const incumbent = isExistingLineType/.test(ed)) {
+      fail("the editor does not recognise the incumbent's line types");
+    }
+    /* Declared above every use: a const read before its declaration
+       throws, and in this file that takes the whole editor out. */
+    const declared = ed.indexOf("const incumbent =");
+    const used = ed.indexOf("disabled={incumbent}");
+    if (declared < 0 || (used >= 0 && used < declared)) {
+      fail("incumbent is used before it is declared");
+    }
+  }
+
+  // 45. The suffix rule is the one thing deciding all of it.
+  {
+    if (!isExistingLineType("water_main_existing")) fail("water_main_existing is not recognised");
+    if (isExistingLineType("trench_service")) fail("an ordinary type is read as the incumbent's");
   }
 }
 

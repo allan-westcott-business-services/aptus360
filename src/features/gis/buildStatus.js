@@ -523,13 +523,53 @@ export function defaultStatusOf(f, lineTypes = []) {
    unset: it is what a cleared select leaves behind. */
 export function withDefaultStatus(f, lineTypes = []) {
   if (!f) return f;
-  const has = f.Attributes?.Build_Status;
-  if (has != null && has !== "") return f;
 
-  const status = defaultStatusOf(f, lineTypes);
-  if (!status) return f;
+  const attrs = { ...(f.Attributes || {}) };
+  let changed = false;
 
-  return { ...f, Attributes: { ...(f.Attributes || {}), Build_Status: status } };
+  const has = attrs.Build_Status;
+  if (has == null || has === "") {
+    const status = defaultStatusOf(f, lineTypes);
+    if (status) { attrs.Build_Status = status; changed = true; }
+  }
+
+  /* ── The incumbent's network is never on site ──
+
+     Their trench and their mains are in the road. There is no case
+     where a length drawn to show what somebody else already owns sits
+     inside our boundary as our work, and asking whoever draws it to
+     remember is asking them to remember it every time.
+
+     ── Which "off site" this is ──
+
+     Two attributes carry the words, and they are different facts:
+
+       Site       "On-site" / "Off-site", worked out from the boundary
+                  polygons when a line is drawn. It splits a run where
+                  it crosses the boundary, picks the surface and feeds
+                  the bill.
+
+       Off_Site   a boolean, set by hand in the editor. A commercial
+                  arrangement — a different rate, a different permit,
+                  and what the call-off carries.
+
+     A line outside the boundary gets Site "Off-site" automatically and
+     Off_Site stays unset, so the drawing shows it off site while the
+     editor's own dropdown reads "On site". Both are telling the truth
+     about their own attribute and the pair reads as a contradiction —
+     which is exactly what it looked like on an incumbent trench.
+
+     Both are set here, because for these types both are true and
+     neither is a judgement call.
+
+     Anything already set is left alone, the same as the status above:
+     this fills a blank, it does not overrule anybody. */
+  if (isExistingLineType(f.Attributes?.Line_Type)) {
+    if (attrs.Off_Site == null) { attrs.Off_Site = true; changed = true; }
+    if (attrs.Site == null) { attrs.Site = "Off-site"; changed = true; }
+  }
+
+  return changed ? { ...f, Attributes: attrs } : f;
 }
 
 /* The stages to offer on a feature, and which of them cannot be chosen.

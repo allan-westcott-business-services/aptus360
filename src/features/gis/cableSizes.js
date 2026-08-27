@@ -100,7 +100,7 @@ export function sizesAt(features = [], at = null, tol = 0.35) {
 /* The sizes for a plot's service joint.
 
    Out is the plot's own service, found by the Plot_ID stamped on it
-   where Auto Lay Services put one there. In is the main that service
+   where Auto Lay Service Cable put one there. In is the main that service
    comes off, found at the service's far end — the end away from the
    meter, which is where it meets the main.
 

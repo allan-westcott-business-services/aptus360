@@ -11675,7 +11675,7 @@ export default function GISCanvasPage() {
        rebuilding the LV feeders would have deleted it.
 
        And a main, not a service. Electric services are generated on the
-       same layer by Auto Lay Services, so this deleted every one of
+       same layer by Auto Lay Service Cable, so this deleted every one of
        them along with the feeders — the same fault gas and water had,
        found by somebody watching their gas services disappear. */
     const doomedFeeders = src.filter((f) => f.Attributes?.Generated
@@ -13125,7 +13125,7 @@ export default function GISCanvasPage() {
      gets a top tee, electric gets a service joint.
 
      Gas has done this since top tees arrived. Electric never did, so
-     Auto Lay Services left every service touching its main with nothing
+     Auto Lay Service Cable left every service touching its main with nothing
      marking the connection \u2014 and the only way to get the joints was to
      know that Place Feeder Joints, several items down the same menu,
      would put them in. Nothing said so, and a service with no joint is
@@ -13157,7 +13157,7 @@ export default function GISCanvasPage() {
            model to hang one on, so placeFeederJoints refuses \u2014 and
            `silent` suppressed the reason along with the chatter.
 
-           The result was Auto Lay Services finishing with no joints and
+           The result was Auto Lay Service Cable finishing with no joints and
            nothing said, which is indistinguishable from the fault this
            tail was added to fix. Silence is right for "nothing needed";
            it is wrong for "cannot yet".
@@ -13553,7 +13553,7 @@ export default function GISCanvasPage() {
 
     /* Generated, gas, and a main — all three.
 
-       Generated and gas was not enough. Auto Lay Services marks the
+       Generated and gas was not enough. Auto Lay Service Cable marks the
        service pipes it draws as generated too, on the same layer, so
        rebuilding the mains deleted every service that had been laid to
        every plot on the site. A gang would have arrived to find the
@@ -14532,7 +14532,7 @@ export default function GISCanvasPage() {
      time: laying gas while somebody is working on water puts pipe on
      plots whose gas has not been thought about. So the dig is one act,
      on the Trench menu, and each utility is laid from its own menu with
-     Auto Lay Services. */
+     Auto Lay Service Cable. */
   /* ── Build the whole design ──
 
      The six steps in the order wholeDesign.js sets out, across every
@@ -17664,14 +17664,14 @@ export default function GISCanvasPage() {
                           cable is drawn along a trench rather than by
                           hand, but it is still drawing. */}
                       <MenuItem label={busy === "laysvc"
-                        ? "Laying\u2026" : "Auto Lay Services"}
+                        ? "Laying\u2026" : "Auto Lay Service Cable"}
                         hint="Runs the cable along service trenches already drawn"
                         disabled={!!busy}
                         onClick={() => autoLayServices("electric")} />
                       {/* The three cables that can be drawn by hand.
 
                           The service is here with the other two rather
-                          than left to Auto Lay Services alone: that
+                          than left to Auto Lay Service Cable alone: that
                           command needs a service trench to run along,
                           and a cable being added to a drawing that has
                           none has to be drawable. Same list, same
@@ -18011,8 +18011,16 @@ export default function GISCanvasPage() {
                           {/* Under Draw, because that is what it does:
                               the service is drawn along a trench rather
                               than by hand, but it is still drawing. */}
+                          {/* "Service", not "Service Cable".
+
+                              The electric menu says Auto Lay Service
+                              Cable, because that is what it lays. This
+                              is the gas and water menu and it lays
+                              pipe — the hint below has always said so.
+                              One label for both would be wrong on one
+                              of them. */}
                           <MenuItem label={busy === "laysvc"
-                            ? "Laying\u2026" : "Auto Lay Services"} indent
+                            ? "Laying\u2026" : "Auto Lay Service Pipe"} indent
                             hint="Runs the pipe along service trenches already drawn"
                             disabled={!!busy}
                             onClick={() => layServicesThenTee(key)} />

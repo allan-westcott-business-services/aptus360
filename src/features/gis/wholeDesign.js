@@ -64,6 +64,10 @@ export const STEPS = [
   { key: "meters", label: "Assign Meters" },
   { key: "nodes", label: "Place Span Nodes" },
   { key: "mains", label: "Build the mains", perUtility: true },
+  /* "Services", not "Service Cable" or "Service Pipe". This step runs
+     for electric, gas and water in turn, and each menu names its own:
+     the electric one lays cable, the other two lay pipe. A name that is
+     right for one of the three is wrong twice here. */
   { key: "services", label: "Auto Lay Services", perUtility: true },
   { key: "joints", label: "Place Feeder Joints" },
 ];

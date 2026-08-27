@@ -409,7 +409,7 @@ export function buildGraph(features = []) {
 
      Asked once, of the drawing, rather than assumed. Where it does, a
      meter's own service is a recorded fact and proximity has no part in
-     it. Where it does not — a drawing made before Auto Lay Services
+     it. Where it does not — a drawing made before Auto Lay Service Cable
      stamped them — proximity is all there is, and refusing to trace
      would strand every meter on it. */
   const numbered = features.some((f) => f.Feature_Type === "line"
@@ -555,7 +555,7 @@ export function buildGraph(features = []) {
        the number rules out the neighbour's.
 
        It is not safe as a fallback. Where a plot has no service cable
-       of its own — a drawing where Auto Lay Services has not been run,
+       of its own — a drawing where Auto Lay Service Cable has not been run,
        and there are drawings with 139 service trenches and no cable in
        any of them — the meter takes the nearest line of any kind, and
        at thirty metres that reaches a MAIN on another branch entirely.

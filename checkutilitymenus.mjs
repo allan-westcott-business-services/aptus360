@@ -797,13 +797,34 @@ const onScreen = (keys) => {
       .map((chunk) => chunk.slice(0, chunk.indexOf("/>") + 2));
 
     for (const label of [
-      "+ POC", "+ Substation", "Route POC to Substation", "Auto Lay Services",
+      "+ POC", "+ Substation", "Route POC to Substation", "Auto Lay Service Cable",
       "Link to Circuit", "Build LV Network", "Apply Cable Sizes to Span Nodes",
       "Place Feeder Joints", "Circuit Report", "Run Levels Check",
     ]) {
       const rows = items.filter((row) => row.includes(`"${label}"`)).length;
       if (rows === 0) fail(`the Electric menu lost "${label}"`);
       if (rows > 1) fail(`"${label}" is on ${rows} rows of the Electric menu`);
+    }
+
+    /* ── Cable here, pipe there ──
+
+       The electric menu lays cable and says so. The gas and water menu
+       runs the same command and lays PIPE — its hint has always said
+       so — and a blanket rename of the label put "Cable" on it.
+
+       One word for both is wrong on one of them, so both are pinned. */
+    if (/"Auto Lay Services"/.test(bare)) {
+      fail("the Electric menu still says Auto Lay Services");
+    }
+    const gasFrom = canvas.indexOf("utilityMenuOpen(key, name)");
+    if (gasFrom > 0) {
+      const gasMenu = canvas.slice(gasFrom, gasFrom + 4000);
+      if (/"Auto Lay Service Cable"/.test(gasMenu)) {
+        fail("the gas and water menu says Cable, and it lays pipe");
+      }
+      if (!/"Auto Lay Service Pipe"/.test(gasMenu)) {
+        fail("the gas and water menu no longer names what it lays");
+      }
     }
 
     /* The three cables that can be drawn by hand. Service cable is the

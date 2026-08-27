@@ -861,6 +861,56 @@ const onScreen = (keys) => {
   }
 }
 
+/* ── The Draw line picker, grouped by layer ──
+
+   It was one flat list of every active type. With fifteen of them, four
+   named "Existing … (incumbent)", finding the gas main meant reading
+   the lot — and two types on different layers can have near-identical
+   names.
+
+   The one way grouping can do harm is by losing a type: a flat list
+   showed everything, and a type whose layer is not in the layer list
+   would fall into no group and disappear off the menu without a word.
+   That is what most of this checks. */
+{
+  const from = canvas.indexOf('aria-label="Line type to draw"');
+  const to = canvas.indexOf("Undo and redo", from);
+  if (from < 0 || to < 0 || to <= from) {
+    fail("could not find the Draw line picker \u2014 the assertions below are not being made");
+  } else {
+    const picker = canvas.slice(from, to);
+
+    if (!/<optgroup/.test(picker)) {
+      fail("the Draw line picker is a flat list again");
+    }
+
+    /* Sections from the layers themselves, so their order and their
+       names are set in Admin rather than written here \u2014 and a fifth
+       utility appears without anybody editing this file. */
+    if (!/layers\.map\(\(l\) => \(\{/.test(picker)) {
+      fail("the picker's sections are hard-coded rather than read from the layers");
+    }
+
+    /* Nothing is lost. A type whose layer is missing from the list
+       still has somewhere to go. */
+    if (!/__other/.test(picker)) {
+      fail("a line type on an unknown layer would vanish from the picker");
+    }
+    if (!/!layers\.some\(\(l\) => l\.Layer_Key === t\.Layer_Key\)/.test(picker)) {
+      fail("the catch-all group does not collect the types no section claimed");
+    }
+    /* Empty sections are dropped, so a project with no gas does not
+       show a Gas heading with nothing under it. */
+    if (!/\.filter\(\(g\) => g\.types\.length\)/.test(picker)) {
+      fail("a layer with no line types would show as an empty heading");
+    }
+    /* And inactive types stay out, as they were in the flat list. */
+    if ((picker.match(/Is_Active !== false/g) || []).length !== 2) {
+      fail("the picker no longer filters inactive types in both groups");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility menus behave (empty utilities shown as empty; isolate first, menu second).");
 process.exit(bad ? 1 : 0);

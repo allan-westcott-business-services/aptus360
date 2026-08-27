@@ -16818,12 +16818,51 @@ export default function GISCanvasPage() {
               <select className="gt-type" aria-label="Line type to draw"
                 value={lineType ?? ""}
                 onChange={(e) => drawAs(e.target.value)}>
-                {lineTypes
-                  .filter((t) => t.Is_Active !== false)
-                  .map((t) => (
-                    <option key={t.Type_Key} value={t.Type_Key}>
-                      {t.Label}
-                    </option>
+                {/* ── Grouped by the layer each type is drawn on ──
+
+                    It was one flat list of every active type. With
+                    fifteen of them and four of those named "Existing
+                    … (incumbent)", finding the gas main meant reading
+                    the lot — and two types on different layers can
+                    have near-identical names.
+
+                    Sections come from the layers themselves, in the
+                    order the layer list arrives, which is
+                    GIS_Layer.Sort_Order. So the order of the sections
+                    and their names are set in Admin rather than
+                    written here, and a fifth utility appears without
+                    anybody editing this file.
+
+                    Within a section, the types keep the order they
+                    already had, which is the same Sort_Order on the
+                    type. Where you want Existing HV directly under
+                    HV, that is the field to set. */}
+                {[...layers.map((l) => ({
+                  key: l.Layer_Key,
+                  label: l.Label ?? l.Layer_Key,
+                  types: lineTypes.filter((t) => t.Is_Active !== false
+                    && t.Layer_Key === l.Layer_Key),
+                })),
+                /* Anything whose layer is not in the list, so grouping
+                   cannot make a type disappear. The flat list showed
+                   everything; a group nobody matched would have taken
+                   its types off the menu silently, which is the one
+                   way this change could do harm. */
+                {
+                  key: "__other",
+                  label: "Other",
+                  types: lineTypes.filter((t) => t.Is_Active !== false
+                    && !layers.some((l) => l.Layer_Key === t.Layer_Key)),
+                }]
+                  .filter((g) => g.types.length)
+                  .map((g) => (
+                    <optgroup key={g.key} label={g.label}>
+                      {g.types.map((t) => (
+                        <option key={t.Type_Key} value={t.Type_Key}>
+                          {t.Label}
+                        </option>
+                      ))}
+                    </optgroup>
                   ))}
               </select>
             )}
@@ -21406,9 +21445,16 @@ const CSS = `
 .gis-proj select { width: auto; min-width: 260px; font-size: 12.5px; }
 /* The line type sits with the tool rather than in a menu, so it reads
    as part of what Draw line is about to do. */
-.gt-type { height: 30px; max-width: 200px; border-radius: 7px;
+.gt-type { height: 30px; max-width: 220px; border-radius: 7px;
   border: 1px solid var(--border); background: var(--white);
   font: inherit; font-size: 12.5px; padding: 0 8px; flex: 0 0 auto; }
+/* The section headings. Upper case here rather than in the label,
+   because the same layer names are shown in their ordinary form
+   everywhere else and the database should not carry a shouting
+   version of a word for one menu's sake. */
+.gt-type optgroup { text-transform: uppercase; font-size: 11px;
+  letter-spacing: .04em; color: var(--muted); }
+.gt-type option { text-transform: none; font-size: 12.5px; color: inherit; }
 
 /* The tool buttons, and nothing else.
 

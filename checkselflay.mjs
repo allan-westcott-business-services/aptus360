@@ -1304,6 +1304,47 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   }
 }
 
+/* ── And both buttons refuse a self-lay pick ──
+
+   The row checkbox already stops one being ticked, so this is normally
+   unreachable. It is not always: a selection outlives a reload of the
+   report. Tick plot 41, mark it self-lay on the Plots tab, come back,
+   and its id is still in `picked` while the row is now unpickable.
+
+   Measured against the group's meters rather than against the pickable
+   ids, because against the ids it would drop out silently and the plot
+   would simply not be moved — the quiet version of the same fault. */
+{
+  const report = readFileSync("src/features/gis/CircuitReport.jsx", "utf8");
+
+  // 62. Both buttons are governed by it.
+  if (!/const pickedSelfLay = c\.meters\.filter\(\(m\) => m\.selfLay && picked\.includes/.test(report)) {
+    fail("nothing notices a self-lay meter among the ticked ones");
+  }
+  const guards = (report.match(/pickedSelfLay\.length > 0/g) || []).length;
+  if (guards < 2) {
+    fail(`only ${guards} of the two circuit buttons refuse a self-lay pick`);
+  }
+
+  /* 63. And they say which plot is stopping them.
+
+     A greyed button with no reason is the fault runStep exists to
+     avoid, and here the reason names the plot to go and untick. */
+  /* Across the line break: the title wraps, and a regex that demands
+     the two on one line fails on correctly formatted code. */
+  if (!/selfLayWhy\s*\|\|/s.test(report)) {
+    fail("the disabled buttons do not say why they are disabled");
+  }
+  if (!/Untick them, or clear the self-lay flag on the Plots tab/.test(report)) {
+    fail("the reason does not say what to do about it");
+  }
+  /* Against c.meters, not ids: `ids` excludes self-lay meters, so a
+     stale pick measured that way is invisible. */
+  if (/pickedSelfLay = ids\./.test(report)) {
+    fail("the stale-pick test uses the pickable ids, which cannot contain a self-lay meter");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

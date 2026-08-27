@@ -320,6 +320,28 @@ export default function CircuitReport({
                than ticking rows that every button then refuses. */
             const ids = c.meters.filter((m) => !m.selfLay).map((m) => m.id);
             const pickedHere = picked.filter((id) => ids.includes(id));
+
+            /* ── A self-lay meter among the ticked ones ──
+
+               `ids` leaves them out, so this is normally empty and both
+               buttons below are governed by pickedHere as before.
+
+               It is not always empty. A selection outlives a reload of
+               the report: tick plot 41, mark it self-lay on the Plots
+               tab, come back, and its id is still in `picked` while the
+               row is now unpickable. Measured against `c.meters` rather
+               than `ids` for exactly that \u2014 measured against `ids` it
+               would drop out silently and the plot would just not be
+               moved, which is the quiet version of the same fault.
+
+               So the buttons refuse rather than acting on what is left,
+               and they say which plot is stopping them. */
+            const pickedSelfLay = c.meters.filter((m) => m.selfLay && picked.includes(m.id));
+            const selfLayWhy = pickedSelfLay.length
+              ? `Plot ${pickedSelfLay.map((m) => m.plot).join(", ")} `
+                + `${pickedSelfLay.length === 1 ? "is" : "are"} self-lay \u2014 somebody else `
+                + "connects them. Untick them, or clear the self-lay flag on the Plots tab."
+              : null;
             /* Every other real circuit — the unlinked group is the
                absence of a circuit, not somewhere to move a meter to.
                Use Remove from circuit for that. */
@@ -382,12 +404,14 @@ export default function CircuitReport({
                         ))}
                       </select>
                       <button className="cr-act cr-move-b"
-                        disabled={!pickedHere.length || !moveTo[c.id] || busy}
-                        title={!pickedHere.length
-                          ? "Tick the meters to move"
-                          : !moveTo[c.id]
-                            ? "Choose the circuit to move them to"
-                            : `Move ${pickedHere.length} meter(s) to that circuit`}
+                        disabled={!pickedHere.length || !moveTo[c.id] || busy
+                          || pickedSelfLay.length > 0}
+                        title={selfLayWhy
+                          || (!pickedHere.length
+                            ? "Tick the meters to move"
+                            : !moveTo[c.id]
+                              ? "Choose the circuit to move them to"
+                              : `Move ${pickedHere.length} meter(s) to that circuit`)}
                         onClick={() => {
                           onMoveToCircuit?.(pickedHere, Number(moveTo[c.id]));
                           /* Cleared because the rows are about to belong
@@ -437,10 +461,12 @@ export default function CircuitReport({
                         onClick={() => applyRange(c.meters)}>
                         Tick range
                       </button>
-                      <button className="cr-act cr-new" disabled={!pickedHere.length || busy}
-                        title={pickedHere.length
-                          ? `Put ${pickedHere.length} meter(s) on a new circuit`
-                          : "Tick the meters, or type a plot range"}
+                      <button className="cr-act cr-new"
+                        disabled={!pickedHere.length || busy || pickedSelfLay.length > 0}
+                        title={selfLayWhy
+                          || (pickedHere.length
+                            ? `Put ${pickedHere.length} meter(s) on a new circuit`
+                            : "Tick the meters, or type a plot range")}
                         onClick={() => onCreateCircuit?.(pickedHere)}>
                         Assign selected to a new circuit
                       </button>

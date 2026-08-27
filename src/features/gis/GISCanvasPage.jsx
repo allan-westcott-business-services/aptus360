@@ -18868,6 +18868,22 @@ export default function GISCanvasPage() {
         />
       )}
 
+      {/* ── Unreachable, deliberately left ──
+
+          `setAddOpen(true)` had one caller: the "Add plots by range"
+          button on the placement panel. That button is gone — creating
+          plots belongs on the Plots tab, where the rest of a plot's
+          details are set, and the version here asked for a range and
+          nothing else, so a plot made from the drawing had no house
+          type, no heat source and no load until somebody went to the
+          tab anyway.
+
+          So nothing opens this now. Left rather than torn out, the same
+          as the routing machinery further up: deleting a working modal,
+          its handler and its file on the strength of a button removal
+          is a bigger decision than the button removal, and it is one
+          import away from being reachable again if the answer is that
+          it should be. */}
       {addOpen && projectId && (
         <AddPlotsModal
           existing={plotList}
@@ -20133,7 +20149,6 @@ export default function GISCanvasPage() {
             {(placeOpen || queue.length > 0) && (
               <div className="gis-place">
                 <PlacementPanel
-                  onAdd={() => setAddOpen(true)}
                   plots={plotList}
                   utilities={utilities}
                   queue={queue}

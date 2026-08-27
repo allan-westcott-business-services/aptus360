@@ -12,7 +12,12 @@ const PICK_LIMIT = 24;
    which side the meters go. The second click is a direction, not a
    position — the meters space themselves 2m out and 1.4m apart. */
 export default function PlacementPanel({
-  plots, utilities, queue, current, meterFor, boundaryFor, onStart, onCancel, onAdd,
+  /* `onAdd` and `utilities` were here. The first opened the modal that
+     creates plots on the project, which belongs on the Plots tab; the
+     second only ever named the utilities in a line of help text that
+     the status bar says better while placing. Both went with the things
+     that used them. */
+  plots, queue, current, meterFor, boundaryFor, onStart, onCancel,
 }) {
   const [range, setRange] = useState("");
 
@@ -130,8 +135,16 @@ export default function PlacementPanel({
         <span className="pp-count">{unplaced.length} to place</span>
       </div>
 
-      <button className="btn accent pp-go" onClick={onAdd}>&#8853; Add plots by range</button>
+      {/* "Add plots by range" was here, opening the modal that creates
+          plots on the project. Creating them belongs on the Plots tab,
+          which is where the rest of a plot's details are set; this panel
+          places plots that already exist.
 
+          Two ways to make a plot is two places for them to be made
+          differently — and the one here asked for a range and nothing
+          else, so a plot created from the drawing had no house type,
+          no heat source and no load until somebody went to the tab
+          anyway. */}
       {plots.length === 0 ? (
         <p className="pp-none pp-gap">
           No plots came back for this project. If it has plots, the list failed to load
@@ -141,8 +154,9 @@ export default function PlacementPanel({
         <p className="pp-none pp-gap">Every plot is on the canvas.</p>
       ) : (
         <>
-          <p className="pp-or">or place existing plots</p>
-
+          {/* The "or place existing plots" heading went with the button
+              it was distinguishing this from. With one thing on the
+              panel there is no "or". */}
           {/* Click one to place it. Typing a single number in the box
               below has always worked, but the field is labelled "range"
               with a range in the placeholder, so nothing said so — and
@@ -199,13 +213,10 @@ export default function PlacementPanel({
             {resolved.length > 10 && <span className="pp-more">+{resolved.length - 10}</span>}
           </div>
 
-          {utilities.length > 0 && (
-            <p className="pp-hint">
-              Two clicks each: where the plot sits, then which side its{" "}
-              {utilities.map((u) => u.utility.toLowerCase()).join(", ")} meters go.
-            </p>
-          )}
-
+          {/* The "two clicks each" line was here. It is said again by
+              the status bar the moment placing starts, naming the plot
+              and the utility being placed — which is the version that
+              can be read while doing it rather than before. */}
           <button className="btn accent pp-go" disabled={!resolved.length}
             onClick={() => onStart(resolved)}>
             Start placing {resolved.length || ""}
@@ -247,8 +258,9 @@ const CSS = `
 .pp-hint { font-size: 11px; color: var(--muted); margin: 0 0 8px; line-height: 1.45; }
 .pp-go { width: 100%; padding: 7px; font-size: 12.5px; }
 .pp-gap { margin-top: 9px; }
-.pp-or { font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
-  color: var(--muted); margin: 12px 0 6px; text-align: center; }
+/* The heading that separated this panel from the button above it has
+   gone, and its rule with it: a style for an element nothing renders is
+   one somebody has to read before finding out it does nothing. */
 .pp-now { font-size: 12.5px; margin: 0 0 8px; line-height: 1.45; }
 .pp-sub { font-size: 11px; color: var(--muted); margin: 0 0 8px; }
 .pp-chip { display: inline-block; font: 700 11px ui-monospace, Menlo, monospace;

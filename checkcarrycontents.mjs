@@ -12,7 +12,8 @@
    trench — is invisible on screen at anything but close zoom. */
 
 import { readFileSync } from "node:fs";
-import { carryLine, carryPoint, alongAt, pointAlong } from "./src/features/gis/carryContents.js";
+import { carryLine, carryPoint, claimedByAnother, alongAt, pointAlong }
+  from "./src/features/gis/carryContents.js";
 import { contentsOf } from "./src/features/gis/trenchContents.js";
 
 let bad = 0;
@@ -357,6 +358,93 @@ const straight = [[0, 0], [100, 0]];
     }
     if (!/carryPoint\(/.test(canvas)) {
       fail("the canvas does not carry the fittings on a reshaped trench");
+    }
+  }
+}
+
+/* ── Only what is in THIS trench ──
+
+   Two faults found by moving a trench past a parallel one.
+
+   The tail rule moves a point that is not on the route by however far
+   the nearest end moved, so a service cable's run to its meter is
+   preserved rather than recomputed. Applied to a line that is not in
+   the trench at all, every vertex gets the end vector and the
+   neighbouring dig's cable translates wholesale alongside.
+
+   And proximity alone cannot answer "is this cable in this trench". A
+   cable 1.2 m from the trench being moved may be 0.2 m from the one
+   beside it. Tighten the tolerance and a hand-drawn cable in the right
+   dig is dropped; loosen it and the neighbour's is dragged. Only
+   comparing the two answers it. */
+{
+  const mine = [[0, 0], [100, 0]];
+  const moved = [[0, 20], [100, 20]];
+
+  /* 18. A line with no vertex on the trench is not carried at all.
+
+     This is the one that translated a whole cable sideways. */
+  {
+    if (carryLine(mine, moved, [[0, 3], [100, 3]]) !== null) {
+      fail("a cable lying beside the trench was carried with it");
+    }
+    /* And a mostly-off line: a tail is a tail, not most of the run. */
+    if (carryLine(mine, moved, [[0, 3], [50, 3], [100, 0]]) !== null) {
+      fail("a line barely touching the trench was carried");
+    }
+  }
+
+  /* 19. A service cable's genuine tail still is.
+
+     Two of its three vertices are on the dig, so the run to the meter
+     is preserved. The rule has to keep this while refusing the above. */
+  {
+    const g = carryLine(mine, [[0, 0], [120, 0]], [[0, 0], [100, 0], [105, 8]]);
+    if (!g) fail("a service cable with a tail to its meter is no longer carried");
+    else if (!near(g[g.length - 1], [125, 8])) fail("the tail stopped being preserved");
+  }
+
+  /* 20. And the neighbouring trench has the better claim.
+
+     Comparative, not absolute: which trench is each vertex nearest to. */
+  {
+    const next = [[0, 3], [100, 3]];
+    if (claimedByAnother([[0, 2.5], [100, 2.5]], mine, [next]) !== true) {
+      fail("a cable nearer the neighbouring trench is claimed by the one being moved");
+    }
+    if (claimedByAnother([[0, 0], [100, 0]], mine, [next]) !== false) {
+      fail("a cable lying in this trench is given away to the neighbour");
+    }
+    /* Ties go to the trench being moved: a cable laid exactly between
+       two parallel digs is a drawing fault either way, and carrying it
+       with the one somebody just moved is the answer they can see and
+       undo. */
+    if (claimedByAnother([[0, 1.5], [100, 1.5]], mine, [next]) !== false) {
+      fail("a cable exactly between two trenches is not carried by either");
+    }
+    if (claimedByAnother([[0, 0], [100, 0]], mine, []) !== false) {
+      fail("a drawing with one trench still gives its cable away");
+    }
+  }
+
+  /* 21. The canvas asks, for lines and for fittings.
+
+     A joint on the neighbouring dig belongs to that one just as much as
+     a cable does. */
+  {
+    const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    const uses = (canvas.match(/claimedByAnother\(/g) || []).length;
+    if (uses < 2) {
+      fail(`the nearest-trench test is used ${uses} time(s) \u2014 lines and fittings both need it`);
+    }
+    if (!/const otherTrenches = world/.test(canvas)) {
+      fail("the carry does not gather the other trenches to compare against");
+    }
+    /* Layer or type: a trench drawn with a type that is not in the
+       configured list is still a trench, and treating it as content
+       would carry it along. */
+    if (!/x\.Layer_Key === "trench" \|\| isTrenchType/.test(canvas)) {
+      fail("a trench with an unconfigured type is treated as content");
     }
   }
 }

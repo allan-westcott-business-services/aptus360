@@ -130,6 +130,25 @@ export function carryLine(oldG = [], newG = [], line = [], opts = {}) {
   const scale = after.total / before.total;
   let moved = false;
 
+  /* ── Is this line actually in this trench ──
+
+     The tail rule below moves a point that is NOT on the trench by
+     however far the nearest end moved, so the run from the dig to a
+     meter is preserved rather than recomputed. That is right for the
+     last vertex or two of a service cable.
+
+     Applied to a line that is not in the trench at all it is a
+     disaster: every vertex is off the route, every one gets the end
+     vector, and a cable lying in the neighbouring dig translates
+     wholesale alongside the one that moved. Which is exactly what it
+     did — drag a trench past a parallel one and its cable came too.
+
+     So the tail has to be a tail. At least half the line's vertices
+     have to sit on the trench before any of it is carried, and a line
+     with none on it is not content whatever else says so. */
+  const onTrench = line.filter((p) => alongAt(oldG, p).gap <= withinM).length;
+  if (!onTrench || onTrench * 2 < line.length) return null;
+
   /* ── The trench's own corners ──
 
      Mapping the cable's vertices is not enough on its own. A cable
@@ -231,4 +250,40 @@ export function carryPoint(oldG = [], newG = [], point, opts = {}) {
 
   const q = pointAlong(newG, along * (after.total / before.total));
   return dist(q, point) > 1e-9 ? q : null;
+}
+
+
+/* Whether some other trench has a better claim on this line.
+
+   Proximity alone cannot answer "is this cable in this trench". A cable
+   1.2 m from the trench being moved may be 0.2 m from the one beside
+   it, and no absolute tolerance tells those apart: tighten it and a
+   hand-drawn cable in the right dig is dropped, loosen it and the
+   neighbouring dig's cable is dragged along.
+
+   So the question is comparative. For each vertex, which trench is
+   nearest? A line whose vertices mostly sit closer to another trench
+   belongs to that one, and this trench moving is nothing to do with it.
+
+   Ties go to the trench being moved: a cable laid exactly between two
+   parallel digs is a drawing fault either way, and carrying it with the
+   one somebody just moved is the answer they can see and undo. */
+export function claimedByAnother(line = [], oldG = [], others = []) {
+  if (!others.length || !line.length) return false;
+
+  let mine = 0;
+  let theirs = 0;
+
+  for (const p of line) {
+    const here = alongAt(oldG, p).gap;
+    let best = Infinity;
+    for (const g of others) {
+      if ((g || []).length < 2) continue;
+      const d = alongAt(g, p).gap;
+      if (d < best) best = d;
+    }
+    if (best < here) theirs++; else mine++;
+  }
+
+  return theirs > mine;
 }

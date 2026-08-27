@@ -118,7 +118,7 @@ import {
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
-import { carryLine, carryPoint } from "./carryContents.js";
+import { carryLine, carryPoint, claimedByAnother } from "./carryContents.js";
 import { teeInto, mainsOnLayer } from "./teeInto.js";
 import { trenchSize } from "./trenchSize.js";
 import { digEstimate, hoursText } from "./digRate.js";
@@ -7652,10 +7652,23 @@ export default function GISCanvasPage() {
     if (!before || !isTrenchType(before.Attributes?.Line_Type, lineTypes)) return out;
     if ((oldGeom || []).length < 2 || (newGeom || []).length < 2) return out;
 
+    /* Every other trench, so a line can be asked which dig it is in.
+       Layer as well as type: a trench drawn with a type that is not in
+       the configured list is still a trench, and treating it as content
+       would carry it. */
+    const otherTrenches = world
+      .filter((x) => x.Feature_Type === "line"
+        && Number(x.Feature_ID) !== Number(before.Feature_ID)
+        && (x.Layer_Key === "trench" || isTrenchType(x.Attributes?.Line_Type, lineTypes)))
+      .map((x) => x.Geometry || []);
+
     const res = contentsOf({ ...before, Geometry: oldGeom }, world, {
       ...serviceTypeSets,
+      /* Layer or type. A trench whose Line_Type is not in the
+         configured list would otherwise fail this test, be treated as
+         content, and be carried along by the trench beside it. */
       isTrench: (x) => x.Feature_Type === "line"
-        && isTrenchType(x.Attributes?.Line_Type, lineTypes),
+        && (x.Layer_Key === "trench" || isTrenchType(x.Attributes?.Line_Type, lineTypes)),
     });
 
     for (const item of (res?.contents || [])) {
@@ -7668,6 +7681,18 @@ export default function GISCanvasPage() {
          called-off span is a record of what was laid, and the drawing
          moving underneath it does not change that. */
       if (!f || Number(f.Feature_ID) === Number(before.Feature_ID) || locked(f)) continue;
+      /* ── Whose dig is it in ──
+
+         contentsOf measures proximity, generously and on purpose: its
+         job is to fill a panel, and a cable partly in a trench is worth
+         reporting. Moving somebody else's cable is a different cost, so
+         the carry asks the harder question — is this trench the nearest
+         one to it?
+
+         A cable 1.2 m from the trench being moved may be 0.2 m from the
+         one beside it. No absolute tolerance tells those apart; only
+         comparing them does. */
+      if (claimedByAnother(f.Geometry || [], oldGeom, otherTrenches)) continue;
       const g = carryLine(oldGeom, newGeom, f.Geometry || []);
       if (g) out.push({ Feature_ID: f.Feature_ID, Geometry: g });
     }
@@ -7690,6 +7715,8 @@ export default function GISCanvasPage() {
       if (!CARRY_ROLES.has(f.Feature_Role)) continue;
       if (locked(f)) continue;
       const p = (f.Geometry || [])[0];
+      /* A joint on the neighbouring dig belongs to that one. */
+      if (p && claimedByAnother([p], oldGeom, otherTrenches)) continue;
       const q = p && carryPoint(oldGeom, newGeom, p);
       if (q) out.push({ Feature_ID: f.Feature_ID, Geometry: [q] });
     }

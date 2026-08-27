@@ -118,6 +118,7 @@ import {
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
+import { carryLine } from "./carryContents.js";
 import { teeInto, mainsOnLayer } from "./teeInto.js";
 import { trenchSize } from "./trenchSize.js";
 import { digEstimate, hoursText } from "./digRate.js";
@@ -7559,6 +7560,27 @@ export default function GISCanvasPage() {
      features keep a link to something that has left. That set is small —
      the neighbours of one feature — so this costs a handful of rows
      rather than a pass over the drawing. */
+  /* Which line types are services, and which trench types are.
+
+     A mains trench carries mains and a service trench carries services.
+     Without the distinction, every service pipe running along a road is
+     reported as being in the mains trench beside it — they are two
+     trenches, and the service is in its own.
+
+     From the configured list rather than named here: the types are set
+     in Admin, and a rule that spells them out is wrong the day somebody
+     adds one. Written once because two callers ask the same question —
+     what is in this trench — and two copies of the answer is how they
+     come to disagree about a trench somebody has just reshaped. */
+  const serviceTypeSets = useMemo(() => ({
+    serviceLineTypes: new Set(lineTypes
+      .filter((t) => t.Layer_Key !== "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)),
+    serviceTrenchTypes: new Set(["trench_service", ...lineTypes
+      .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)]),
+  }), [lineTypes]);
+
   async function writeGeometry(id, geometry) {
     /* The last gate before the write.
 
@@ -7576,6 +7598,50 @@ export default function GISCanvasPage() {
 
     try {
       await moveFeatures(projectId, [{ Feature_ID: id, Geometry: geometry }]);
+
+      /* ── What is in the trench comes with it ──
+
+         A trench is dug once and the cables and pipes lie in it. Move
+         the trench and they used to stay where they were, hanging in
+         the ground beside the new route — and the only way back was to
+         delete them and run Auto Lay Services again, which loses every
+         size and status set on them by hand.
+
+         Carried by fraction of length: a cable at 40% along the old
+         route is at 40% along the new one, which answers a dog leg, an
+         extension and a moved end with one rule. The trench's own new
+         corners are inserted, because a cable drawn straight along a
+         trench that has since been bent has no vertex at the bend and
+         would otherwise cut the corner. See carryContents.js.
+
+         Only trenches. Moving a cable does not move the trench under
+         it: the dig is the thing that was decided, and a cable dragged
+         off its trench is somebody correcting the cable. */
+      const carried = [];
+      if (before && isTrenchType(before.Attributes?.Line_Type, lineTypes)) {
+        const res = contentsOf({ ...before, Geometry: before.Geometry }, next, {
+          ...serviceTypeSets,
+          isTrench: (x) => x.Feature_Type === "line"
+            && isTrenchType(x.Attributes?.Line_Type, lineTypes),
+        });
+        for (const item of (res?.contents || [])) {
+          const f = next.find((x) => Number(x.Feature_ID) === Number(item.id));
+          /* Not the trench itself, and not something locked: a cable on
+             a called-off span is a record of what was laid, and the
+             drawing moving underneath it does not change that. */
+          if (!f || Number(f.Feature_ID) === Number(id) || locked(f)) continue;
+          const g = carryLine(before.Geometry, geometry, f.Geometry || []);
+          if (g) carried.push({ Feature_ID: f.Feature_ID, Geometry: g });
+        }
+      }
+
+      if (carried.length) {
+        setFeatures((fs) => fs.map((f) => {
+          const c = carried.find((x) => Number(x.Feature_ID) === Number(f.Feature_ID));
+          return c ? { ...f, Geometry: c.Geometry } : f;
+        }));
+        await moveFeatures(projectId, carried);
+      }
 
       /* Only features that carry links are worth recomputing: a plot
          seed or a meter holds none and cannot go stale. */
@@ -7607,11 +7673,14 @@ export default function GISCanvasPage() {
       /* The geometry change and the link changes it caused, as one step.
          Undoing the shape without the links would leave the drawing
          right and the network wrong. */
-      const affected = new Set([Number(id), ...rows.map((r) => Number(r.Feature_ID))]);
+      const affected = new Set([Number(id), ...rows.map((r) => Number(r.Feature_ID)),
+        ...carried.map((c) => Number(c.Feature_ID))]);
       const beforeRows = features.filter((f) => affected.has(Number(f.Feature_ID)));
       const afterRows = beforeRows.map((f) => {
         const u = rows.find((r) => Number(r.Feature_ID) === Number(f.Feature_ID));
-        const g = Number(f.Feature_ID) === Number(id) ? geometry : f.Geometry;
+        const moved2 = carried.find((c) => Number(c.Feature_ID) === Number(f.Feature_ID));
+        const g = Number(f.Feature_ID) === Number(id) ? geometry
+          : (moved2 ? moved2.Geometry : f.Geometry);
         return { ...f, Geometry: g, ...(u ? { Attributes: u.Attributes } : {}) };
       });
       await recordAction(

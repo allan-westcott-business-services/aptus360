@@ -85,7 +85,7 @@ import { planCircuitGroups } from "./balance.js";
 import { inDrawOrder } from "./drawOrder.js";
 import { planRoute, traceAll, serviceFor } from "./routing.js";
 import {
-  isLocked, isFeatureLocked, lockReason, toggleClassLock, planLock,
+  isLocked, isImmovable, isFeatureLocked, lockReason, toggleClassLock, planLock,
 } from "./locking.js";
 import { find as findFeatures, strays, gaps } from "./find.js";
 import { planSpanNodes, plantLabel, originsOf } from "./spanNodes.js";
@@ -1860,6 +1860,13 @@ export default function GISCanvasPage() {
      both hold without this needing to know which is which. */
   const locked = useCallback(
     (f) => isLocked(f, classKeys(f), lockedClasses),
+    [classKeys, lockedClasses]);
+
+  /* Whether a hand may reshape this: a lock, or a cable that follows
+     its trench. Used by every drag and by the geometry write; NOT by
+     the carry, which must still move cables, nor by a lasso delete. */
+  const immovable = useCallback(
+    (f) => isImmovable(f, classKeys(f), lockedClasses),
     [classKeys, lockedClasses]);
 
   const whyLocked = useCallback(
@@ -6000,7 +6007,7 @@ export default function GISCanvasPage() {
       if (Array.isArray(anch) && anch.length === 2) {
         const q = toPx(anch);
         if (Math.hypot(q.x - px, q.y - py) <= HANDLE_PX) {
-          if (locked(sn)) { setError(whyLocked(sn)); return; }
+          if (immovable(sn)) { setError(whyLocked(sn)); return; }
           drag.current = {
             mode: "anchor", featureId: sn.Feature_ID, startPx: [px, py],
             /* Where it was, so undo has something to put back and a
@@ -6023,7 +6030,7 @@ export default function GISCanvasPage() {
           /* A locked feature keeps its shape. Said out loud rather than
              ignored — a handle that does not drag reads as a broken
              canvas, and the message names which lock is holding it. */
-          if (locked(f)) { setError(whyLocked(f)); return; }
+          if (immovable(f)) { setError(whyLocked(f)); return; }
           if (e.altKey) { removeVertex(f, idx); return; }
           drag.current = {
             mode: "vertex", featureId: f.Feature_ID, index: idx, startPx: [px, py],
@@ -6046,7 +6053,7 @@ export default function GISCanvasPage() {
           /* Adding a vertex reshapes the feature as surely as dragging
              one does, and this sits past the guard above — which only
              fires when a handle is under the cursor. */
-          if (locked(f)) { setError(whyLocked(f)); return; }
+          if (immovable(f)) { setError(whyLocked(f)); return; }
           const seg = segmentAt(f, px, py);
           if (seg) { addVertex(f, seg.index, seg.point); return; }
         }
@@ -6067,7 +6074,7 @@ export default function GISCanvasPage() {
     if (tool === "select" && boundaryShown && !e.altKey) {
       const grabbed = boundaryAt(px, py);
       if (grabbed) {
-        if (locked(grabbed)) { setError(whyLocked(grabbed)); return; }
+        if (immovable(grabbed)) { setError(whyLocked(grabbed)); return; }
         setSelected([grabbed.Feature_ID]);
         drag.current = {
           mode: "boundary",
@@ -6110,7 +6117,7 @@ export default function GISCanvasPage() {
          would tear the drawing apart. */
       const pinned = next
         .map((id) => features.find((x) => x.Feature_ID === id))
-        .filter((x) => x && locked(x));
+        .filter((x) => x && immovable(x));
       if (pinned.length) {
         setError(pinned.length === 1
           ? whyLocked(pinned[0])
@@ -7742,7 +7749,7 @@ export default function GISCanvasPage() {
        too means a new path cannot quietly bypass a lock, at the cost of
        one lookup. */
     const f0 = features.find((x) => Number(x.Feature_ID) === Number(id));
-    if (f0 && locked(f0)) { setError(whyLocked(f0)); return; }
+    if (f0 && immovable(f0)) { setError(whyLocked(f0)); return; }
     const before = features.find((f) => f.Feature_ID === id);
     const moved = { ...(before || {}), Feature_ID: id, Geometry: geometry };
     const next = features.map((f) => (f.Feature_ID === id ? moved : f));

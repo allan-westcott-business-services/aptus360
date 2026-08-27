@@ -32,6 +32,37 @@
 
 export const LOCK_ATTR = "Locked";
 
+/* ── A cable or pipe is not shaped by hand ──
+
+   It lies in a trench. Its route is the trench's route, and it is drawn
+   there by Auto Lay Services or carried there when the trench moves.
+
+   Dragging one edits the drawing into a lie: the cable no longer follows
+   the dig it is laid in, nothing on screen says so at working zoom, and
+   the next reshape of that trench carries it from wherever it was left
+   rather than from where it should have been. The bill then measures a
+   length nobody will dig.
+
+   So the answer to "I want this cable to go round differently" is to
+   re-route the trench, and the cable comes with it. That is one action
+   instead of two and it cannot leave the two disagreeing.
+
+   ── Not the same as a lock somebody set ──
+
+   A lock is a working preference: it is turned on to stop a slip of the
+   hand and turned off to do the work. This is a fact about what a cable
+   IS, so there is nothing to turn off — which is why it says what to do
+   instead rather than how to unlock it.
+
+   Told by layer: anything on a utility layer is laid in the ground.
+   Trenches, seeds, meters and joints are not. */
+export function isRouted(f) {
+  if (f?.Feature_Type !== "line") return false;
+  const layer = f?.Layer_Key;
+  if (!layer) return false;
+  return layer !== "trench" && layer !== "boundary" && layer !== "survey";
+}
+
 /* Locked in its own right. */
 export function isFeatureLocked(f) {
   return f?.Attributes?.[LOCK_ATTR] === true;
@@ -52,12 +83,40 @@ export function isLocked(f, keys = [], lockedClasses = []) {
   return isFeatureLocked(f) || isClassLocked(keys, lockedClasses);
 }
 
+/* Whether a feature refuses to be reshaped or dragged.
+
+   A lock, or being a cable in a trench. Kept apart from `isLocked`
+   because they are asked for different reasons and the answers differ:
+
+     isLocked      a statement somebody made about this feature. It also
+                   governs a lasso delete, and whether the trench that
+                   moves carries this along with it.
+
+     isImmovable   whether a hand may reshape it. A routed cable belongs
+                   here and NOT in isLocked: it is still deletable, and
+                   it must still be CARRIED by its trench — folding it
+                   into isLocked stopped the carry, because the carry
+                   skips locked features and every cable had just become
+                   one. */
+export function isImmovable(f, keys = [], lockedClasses = []) {
+  return isLocked(f, keys, lockedClasses) || isRouted(f);
+}
+
 /* Why it will not move, in words.
 
    A feature that refuses to drag with no explanation reads as a broken
    canvas. Naming which of the two locks is holding it also says how to
    release it, which is not the same answer in each case. */
 export function lockReason(f, keys = [], lockedClasses = [], labelFor = (k) => k) {
+  /* First, because it is the answer somebody most needs: a cable that
+     will not drag has a reason and a remedy, and both are different
+     from a lock's. Said before "this feature is locked", which would be
+     true of a locked cable and would send somebody to unlock it and try
+     again. */
+  if (isRouted(f)) {
+    return "A cable or pipe follows the trench it is laid in \u2014 re-route the "
+      + "trench and it will come with it.";
+  }
   if (isFeatureLocked(f)) return "This feature is locked.";
   const set = new Set(lockedClasses);
   const hit = keys.find((k) => k != null && set.has(k));

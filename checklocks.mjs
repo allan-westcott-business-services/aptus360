@@ -14,7 +14,8 @@
 
    The second is markup and is checked in the page; this pins the
    first, and the toggling either way. */
-import { lockReason, toggleClassLock, isLocked } from "./src/features/gis/locking.js";
+import { lockReason, toggleClassLock, isLocked, isRouted, isImmovable }
+  from "./src/features/gis/locking.js";
 import { readFileSync } from "node:fs";
 
 let bad = 0;
@@ -64,6 +65,114 @@ if (!isLocked({ Feature_ID: 2 }, ["trench", "lt:trench_main"], ["lt:trench_main"
   const page = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!page.includes("Locked line types")) {
     fail("the lock menu no longer lists locked line types");
+  }
+}
+
+/* ── A cable or pipe is not shaped by hand ──
+
+   It lies in a trench. Its route is the trench's route, drawn there by
+   Auto Lay Services or carried there when the trench moves.
+
+   Dragging one edits the drawing into a lie: the cable no longer
+   follows the dig it is laid in, nothing says so at working zoom, and
+   the next reshape of that trench carries it from wherever it was left
+   rather than from where it should have been. The bill then measures a
+   length nobody will dig.
+
+   So the answer to "I want this cable to go round differently" is to
+   re-route the trench. */
+{
+  const line = (layer) => ({ Feature_Type: "line", Layer_Key: layer, Attributes: {} });
+
+  // 1. Cables and pipes refuse to be reshaped.
+  for (const layer of ["electric", "gas", "water", "lighting"]) {
+    if (!isRouted(line(layer))) fail(`a ${layer} line is not treated as routed`);
+    if (!isImmovable(line(layer), [], [])) {
+      fail(`a ${layer} cable or pipe can still be reshaped by hand`);
+    }
+  }
+
+  /* 2. And the things that ARE shaped by hand still are.
+
+     The trench most of all: it is the thing somebody re-routes to move
+     a cable, so locking it would leave no way to do either. */
+  for (const layer of ["trench", "boundary", "survey"]) {
+    if (isRouted(line(layer))) fail(`a ${layer} line is treated as routed`);
+    if (isImmovable(line(layer), [], [])) fail(`a ${layer} line can no longer be reshaped`);
+  }
+  /* Points are placed, not routed: a meter, a seed, a joint. */
+  if (isRouted({ Feature_Type: "point", Layer_Key: "electric", Attributes: {} })) {
+    fail("a meter is treated as a routed line");
+  }
+
+  /* 3. The message says what to do, not how to unlock.
+
+     A lock is a preference somebody set and can unset. This is a fact
+     about what a cable is, so there is nothing to turn off — and a
+     message offering to unlock would send somebody looking for a
+     switch that does not exist. */
+  {
+    const why = lockReason(line("electric"), [], []);
+    if (!/re-route the trench/.test(why)) {
+      fail(`a cable's refusal does not say to re-route the trench: "${why}"`);
+    }
+    if (/locked/i.test(why)) {
+      fail("a cable's refusal talks about locking, which cannot be undone here");
+    }
+    /* Said before the lock reason, or a LOCKED cable would report the
+       lock and send somebody to unlock it and try again. */
+    const lockedCable = {
+      Feature_Type: "line", Layer_Key: "electric", Attributes: { Locked: true },
+    };
+    if (!/re-route the trench/.test(lockReason(lockedCable, [], []))) {
+      fail("a locked cable reports the lock, so unlocking it looks like the remedy");
+    }
+  }
+
+  /* 4. It is NOT folded into isLocked.
+
+     isLocked governs two other things: whether a lasso delete takes a
+     feature, and whether a trench carries it. Folding this in stopped
+     the carry outright — the carry skips locked features, and every
+     cable had just become one. */
+  {
+    if (isLocked(line("electric"), [], [])) {
+      fail("a routed cable counts as locked, which stops its trench carrying it "
+        + "and stops a lasso deleting it");
+    }
+  }
+}
+
+/* 5. And every path that reshapes asks the right question.
+
+   The canvas has several: three drag guards, the multi-drag check, and
+   the geometry write. A cable is refused at all of them or at none —
+   one that lets it through is a cable somebody moves the way they
+   always did, and the guard reads as intermittent.
+
+   The carry and the lasso delete must NOT use it: a cable is carried by
+   its trench and is deletable. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  const guards = (canvas.match(/immovable\(/g) || []).length;
+  /* The declaration plus five call sites. */
+  if (guards < 6) {
+    fail(`only ${guards - 1} reshape path(s) refuse a cable \u2014 the rest still move it`);
+  }
+  if (!/const immovable = useCallback/.test(canvas)) {
+    fail("the canvas has no single answer to whether a hand may reshape something");
+  }
+
+  /* The carry still uses the plain lock, or every cable is skipped and
+     reshaping a trench leaves its contents behind. */
+  const carry = canvas.slice(canvas.indexOf("function carriedBy("),
+    canvas.indexOf("async function writeGeometry"));
+  if (/immovable\(/.test(carry)) {
+    fail("the carry skips routed cables, so a trench no longer takes its contents with it");
+  }
+  if (!/locked\(f\)/.test(carry)) {
+    fail("the carry no longer skips locked features");
   }
 }
 

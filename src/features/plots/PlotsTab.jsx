@@ -252,9 +252,47 @@ export default function PlotsTab({ projectId, projectRef }) {
       const [lk, res, proj, devs] = await Promise.all([
         getLookups(), listPlots(projectId), getProject(projectId), listDevelopers(projectId),
       ]);
-      setDevelopers(devs.rows || []);
+      const devRows = devs.rows || [];
+      setDevelopers(devRows);
       setLookups(lk);
-      setPlots(res.rows || []);
+
+      /* ── Which developer a plot belongs to ──
+
+         The column reads Project_Developer_ID, and so do the sort and
+         the filter. So a plot with none shows an em dash — including on
+         a site with exactly one developer, where the answer is not in
+         doubt: there is one, and every plot is theirs.
+
+         Where the project has ONE developer that is filled in here, so
+         the column, the sort and the filter all say the same thing.
+         Derived rather than written to the database: nobody chose it,
+         and the moment a second developer is added on Stakeholders the
+         question becomes real and each plot has to be assigned.
+
+         Marked `_devInherited` so the cell can show it differently. A
+         name that looks assigned and is not would be a plot nobody has
+         thought about, dressed up as one somebody has.
+
+         ── It is a display, and the other tabs read the database ──
+
+         The Stakeholders and Details tabs count plots per developer
+         from Project_Developer_ID, so an inherited name is not in their
+         count: they say "0 plots" while this column shows the developer
+         against every one.
+
+         The Developer dropdown in the bulk bar is offered on
+         single-developer projects for exactly that reason — selecting
+         every plot and applying it makes the inherited answer real and
+         the two agree. Doing it automatically was the alternative and
+         is worse: writing a choice nobody made, to a column somebody
+         may be about to answer differently once a second developer
+         arrives. */
+      const only = devRows.length === 1 ? devRows[0].Project_Developer_ID : null;
+      setPlots((res.rows || []).map((p) => (
+        p.Project_Developer_ID == null && only != null
+          ? { ...p, Project_Developer_ID: only, _devInherited: true }
+          : p
+      )));
       const d = {
         Default_Heat_Source_ID: proj.Default_Heat_Source_ID ?? "",
         Heat_Pump_Model_ID: proj.Heat_Pump_Model_ID ?? "",
@@ -391,6 +429,13 @@ export default function PlotsTab({ projectId, projectRef }) {
   }, [plots, filters, sort, columns]);
 
   const allSelected = shown.length > 0 && shown.every((p) => selected.includes(p.Plot_ID));
+
+  /* Plots with no developer against them. Inherited ones do not count:
+     on a single-developer project every plot has an answer. */
+  const unassigned = useMemo(
+    () => plots.filter((p) => p.Project_Developer_ID == null),
+    [plots],
+  );
 
   /* Something to apply.
 
@@ -705,7 +750,26 @@ export default function PlotsTab({ projectId, projectRef }) {
                   </select>
                 </>
               )}
-              {developers.length > 1 && (
+              {/* ── Assigning plots to a developer ──
+
+                  Offered whenever the project has one at all, including
+                  when it has exactly one.
+
+                  It was scoped to two or more, on the argument that a
+                  dropdown with a single entry is a question with one
+                  answer. That was wrong, and the reason is worth
+                  keeping: the Plots tab shows the sole developer
+                  against every plot, but that name is INHERITED —
+                  Project_Developer_ID is still null in the database.
+                  The Stakeholders and Details tabs count plots from the
+                  database, so they said "0 plots" for a developer the
+                  Plots tab showed against all of them.
+
+                  Two screens disagreeing about one fact, because one
+                  was reading what is stored and the other what is
+                  displayed. Offering this on a single-developer project
+                  is what lets somebody make the inherited answer real. */}
+              {developers.length > 0 && (
                 <select value={bulkDev} onChange={(e) => setBulkDev(e.target.value)}>
                   <option value="">Developer&hellip;</option>
                   {developers.map((d) => (
@@ -722,6 +786,28 @@ export default function PlotsTab({ projectId, projectRef }) {
               <button className="btn delete" disabled={bulkBusy} onClick={deleteSelected}>Delete</button>
               <button className="bulk-x" onClick={() => setSelected([])} title="Clear selection">&#10005;</button>
             </div>
+          )}
+
+          {/* ── Plots nobody has assigned ──
+
+              Only where there is more than one developer, because that
+              is the only time it is a question. A number rather than a
+              warning: on a site being set out, most plots being
+              unassigned is Tuesday, and a red banner over an ordinary
+              state is one people learn to ignore.
+
+              It says which plots, up to a point. "38 unassigned" is a
+              number somebody has to go and find; the plot numbers are
+              what they are looking for, and past a dozen the count is
+              the more useful of the two. */}
+          {developers.length > 1 && unassigned.length > 0 && (
+            <p className="dev-unassigned">
+              {unassigned.length} plot{unassigned.length === 1 ? "" : "s"} with no
+              developer{unassigned.length <= 12
+                ? `: ${unassigned.map((p) => p.Plot_Number).join(", ")}`
+                : ""}
+              . Select them and use the Developer dropdown to assign.
+            </p>
           )}
 
           <div className="dt-wrap">
@@ -783,7 +869,20 @@ export default function PlotsTab({ projectId, projectRef }) {
                                     {c.Code}
                                   </span>
                                 : "\u2014")
-                            : col.key === "dev" ? devName(p.Project_Developer_ID)
+                            : col.key === "dev" ? (
+                              p._devInherited
+                                ? (
+                                  /* The only developer on the project, not
+                                     a choice anybody made. Muted, so a
+                                     plot nobody has thought about is not
+                                     dressed up as one somebody has. */
+                                  <span className="dev-inherited"
+                                    title="The only developer on this project. Add another on the Stakeholders tab to assign plots individually.">
+                                    {devName(p.Project_Developer_ID)}
+                                  </span>
+                                )
+                                : devName(p.Project_Developer_ID)
+                            )
                             /* A plot with none of its own follows the project
                                default, which is what the design will actually
                                use — showing a dash would hide a real value. */
@@ -915,6 +1014,12 @@ const CSS = FILTER_CSS + `
 .dt .ref { color: var(--accent); font-weight: 600; }
 .inherited { color: var(--muted); font-style: italic; }
 .tick { color: #059669; font-weight: 700; }
+/* A developer nobody chose: the only one on the project. Greyed rather
+   than bracketed \u2014 the column is narrow and a name in brackets reads
+   as a different name. */
+.dev-inherited { color: var(--muted); font-style: italic; }
+.dev-unassigned { margin: 0 0 10px; font-size: 12px; color: #92400e;
+  background: #fffbeb; border: 1px solid #fde68a; border-radius: 6px; padding: 7px 10px; }
 /* One chip per utility somebody else connects.
 
    A letter rather than a word: three of them have to fit a column that

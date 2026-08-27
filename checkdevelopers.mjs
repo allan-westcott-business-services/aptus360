@@ -256,6 +256,82 @@ const lookups = {
   }
 }
 
+/* ── The Developer column on the Plots tab ──
+
+   It reads Project_Developer_ID, and so do the sort and the filter. A
+   plot with none shows an em dash — including on a site with exactly
+   one developer, where the answer is not in doubt: there is one, and
+   every plot is theirs.
+
+   So the sole developer is filled in as the plots load. Derived, not
+   written: nobody chose it, and the moment a second developer is added
+   on Stakeholders the question becomes real and each plot has to be
+   assigned. */
+{
+  const tab = readFileSync("src/features/plots/PlotsTab.jsx", "utf8");
+
+  // 10. The sole developer is inherited.
+  if (!/devRows\.length === 1 \? devRows\[0\]\.Project_Developer_ID : null/.test(tab)) {
+    fail("a project with one developer leaves every plot showing an em dash");
+  }
+  /* Into Project_Developer_ID itself, so the column, the sort and the
+     filter cannot disagree with one another. Painting the cell alone
+     would leave a plot that reads as assigned, sorts as unassigned and
+     vanishes under its own filter. */
+  if (!/Project_Developer_ID: only/.test(tab)) {
+    fail("the inherited developer is not put where the sort and filter read it");
+  }
+
+  /* 11. And it is marked as inherited.
+
+     A name that looks assigned and is not would be a plot nobody has
+     thought about, dressed up as one somebody has. */
+  if (!/_devInherited/.test(tab)) {
+    fail("an inherited developer is indistinguishable from an assigned one");
+  }
+  if (!/dev-inherited/.test(tab)) {
+    fail("the inherited developer has no style, so it reads as chosen");
+  }
+
+  /* 12. Assigning is offered wherever there is a developer at all.
+
+     It was scoped to two or more, which left a contradiction: the
+     Plots tab shows the sole developer against every plot, but that
+     name is INHERITED and Project_Developer_ID is still null. The
+     Stakeholders and Details tabs count plots from the database, so
+     they read "0 plots" for a developer this tab showed against all of
+     them.
+
+     Two screens disagreeing about one fact — one reading what is
+     stored, the other what is displayed. The dropdown is what lets
+     somebody make the inherited answer real. */
+  if (!/developers\.length > 0 && \(\s*<select value={bulkDev}/.test(tab)) {
+    fail("a single-developer project cannot assign its plots, so the plot counts "
+      + "on Stakeholders stay at zero while this tab shows the developer on every plot");
+  }
+  if (!/assignPlots\(projectId, selected/.test(tab)) {
+    fail("the Plots tab cannot assign plots to a developer");
+  }
+
+  /* 13. And the plots nobody has assigned are counted, on those
+     projects only. Inherited ones do not count: on a single-developer
+     project every plot has an answer. */
+  if (!/p\.Project_Developer_ID == null/.test(tab)) {
+    fail("nothing counts the plots with no developer");
+  }
+  if (!/developers\.length > 1 && unassigned\.length > 0/.test(tab)) {
+    fail("the unassigned notice is not scoped to projects with more than one developer");
+  }
+
+  /* 14. Names come from the Stakeholders record, either branch table.
+
+     This page read lookups.branches, which was emptied on 26 Aug, so
+     every developer name here had become an em dash. */
+  if (!/developerBranchName\(d, lookups\)/.test(tab)) {
+    fail("the Plots tab does not name developers the way the other tabs do");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Project developers behave (either branch table named, main one created with the project)."
   : `\n${bad} problem(s)`);

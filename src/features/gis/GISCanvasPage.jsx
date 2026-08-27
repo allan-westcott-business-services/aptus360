@@ -2025,6 +2025,31 @@ export default function GISCanvasPage() {
     return utilities.length > 0 && !utilities.includes("water");
   }, [shownOnly]);
 
+  const placing = queue.some((q) => !q.done);
+
+  /* ── Declared here, above `visible`, not beside the placement state ──
+
+     `visible` keeps whatever is being placed on screen, so it reads
+     this — and a const read before its declaration throws during
+     render, which takes the whole canvas out rather than losing a
+     layer. It sat two thousand lines below its first use.
+
+     Every piece of state it is built from is declared above. */
+  /* Whether the next click on the canvas is a placement.
+
+     Every step of a seed's placement has to appear here, or its click
+     is never routed to placeAt and the prompt sits there while nothing
+     happens. That is exactly what the boundary step did for a supply:
+     a plot keeps `placing` true for its whole queue, so the plot flow
+     covered it by accident, and a supply — which is placed one at a
+     time and sets no queue — did not.
+
+     One name rather than the same disjunction written at each gate,
+     because there were two of them and only one was wrong, which is
+     how the prompt drew correctly over a click that did nothing. */
+  const awaitingClick = placing || !!meterFor || !!nrsFor
+    || !!boundaryFor || !!trenchEndFor;
+
   const visible = useMemo(
     () => features.filter((f) => {
       /* ── Span nodes answer to their own switch only ──
@@ -2052,6 +2077,24 @@ export default function GISCanvasPage() {
       const keys = f.Feature_Role === "spannode"
         ? ["role:spannode", `${f.Layer_Key}:role:spannode`]
         : classKeys(f);
+      /* ── What is being placed is always on screen ──
+
+         A seed hidden while seeds are being placed means tapping the
+         plan and watching nothing appear. The work looks like it has
+         failed, so it gets done twice — and the second seed is real.
+
+         This is not the isolate being overruled generally: it lasts
+         only while a placement is waiting for a click, and everything
+         else stays exactly as it was hidden. The moment the queue is
+         done the layer goes back to whatever the drawing said.
+
+         Wider than plot seeds, because the same is true of every step
+         of the flow: a meter, a boundary point and a trench end are all
+         placed by tapping and all of them belong to the plot being
+         placed. */
+      if (awaitingClick
+        && (f.Feature_Role === "plot" || f.Feature_Role === "nrs")) return true;
+
       if (keys.some((k) => hidden.includes(k))) return false;
       if (outsideCircuit(f, isolatedCircuit)) return false;
 
@@ -2063,7 +2106,7 @@ export default function GISCanvasPage() {
       return true;
     }),
     [features, hidden, classKeys, isolatedCircuit, outsideCircuit,
-      liveTrenchOnly, liveTrenchIds, lineTypes, lightingView]
+      liveTrenchOnly, liveTrenchIds, lineTypes, lightingView, awaitingClick]
   );
 
   /* Plots with a water supply, and whether their mark should be drawn.
@@ -2245,6 +2288,39 @@ export default function GISCanvasPage() {
        is hidden. */
     for (const k of all) {
       if (k === "role:spannode" || k.endsWith(":role:spannode")) keep.add(k);
+    }
+
+    /* ── The plots and the ground survive an isolate ──
+
+       The same argument the survey and the span nodes get, and it is
+       stronger for these two.
+
+       A utility isolated on its own shows cables and pipes floating
+       over an empty page. The plot seeds say which house each service
+       goes to, and the trench says where the ground is open — a service
+       drawn without either is a line nobody can place, check or set out
+       from. Opening the Electric menu means "show me the electric",
+       and the electric is not a drawing on its own.
+
+       The trench most of all: everything on a utility layer lies in it.
+       Hiding the dig while showing what is laid in it is showing the
+       cable and not the hole.
+
+       ── Their own H still hides them ──
+
+       Kept from the SWEEP, not forced on. Somebody who hides plots
+       deliberately keeps them hidden, the same as the span nodes and
+       the survey. This only stops isolating a utility from taking them
+       away as a side effect of asking for something else.
+
+       Both spellings of each, because a feature goes if ANY of its keys
+       is hidden — a seed placed on the trench carries the narrower key
+       too, and keeping only the plain one leaves it hidden by the other
+       and takes the seed with it. That was the span node bug, and it
+       would be this one. */
+    for (const k of all) {
+      if (k === "role:plot" || k.endsWith(":role:plot")) keep.add(k);
+      if (k === "trench" || k.startsWith("lt:trench") || k.startsWith("trench:")) keep.add(k);
     }
 
     setHidden([...all].filter((k) => !keep.has(k)));
@@ -2508,22 +2584,7 @@ export default function GISCanvasPage() {
     const t = (lookups?.cableTypes || []).find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   };
-  const placing = queue.some((q) => !q.done);
 
-  /* Whether the next click on the canvas is a placement.
-
-     Every step of a seed's placement has to appear here, or its click
-     is never routed to placeAt and the prompt sits there while nothing
-     happens. That is exactly what the boundary step did for a supply:
-     a plot keeps `placing` true for its whole queue, so the plot flow
-     covered it by accident, and a supply — which is placed one at a
-     time and sets no queue — did not.
-
-     One name rather than the same disjunction written at each gate,
-     because there were two of them and only one was wrong, which is
-     how the prompt drew correctly over a click that did nothing. */
-  const awaitingClick = placing || !!meterFor || !!nrsFor
-    || !!boundaryFor || !!trenchEndFor;
   const nextPlot = meterFor?.plot || boundaryFor?.plot || trenchEndFor?.plot
     || queue.find((q) => !q.done) || null;
 

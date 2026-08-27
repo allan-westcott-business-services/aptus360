@@ -7,7 +7,18 @@ import { useDragHandle } from "../../lib/useDragHandle.js";
    along the network — the feeder builder simply reports finding nothing.
    This answers the question directly: how many separate pieces is the
    network in, and which trenches are in the pieces that don't reach the
-   substation.
+   origin.
+
+   ── Substation or POC ──
+
+   Every sentence here said "substation". Not every site has one: a
+   connection to an existing network has no transformer and everything
+   feeds back to the point of connection instead. On those drawings the
+   panel named a thing that was not there, which reads as a missing
+   substation rather than as a POC doing its job.
+
+   So the word comes from the drawing. `originRole` says which was
+   found, and `originWord` below turns it into the noun to use.
 
    Selecting a group puts its trenches on the canvas selection, so the
    next thing you do is drag an end onto the piece it should join rather
@@ -18,7 +29,12 @@ const m = (v) => `${(v ?? 0).toFixed(1)} m`;
 export default function TrenchCheck({ result, onSelect, onClose }) {
   const drag = useDragHandle();
 
-  const ok = result.substationOnNetwork && result.orphans.length === 0;
+  const ok = result.originOnNetwork && result.orphans.length === 0;
+
+  /* What the drawing actually has. "the origin" is the right idea and
+     the wrong word to say to somebody: they placed a substation or a
+     POC, and that is what they will look for. */
+  const originWord = result.originRole === "poc" ? "POC" : "substation";
 
   return (
     <div className="fe-backdrop" onClick={() => { if (!drag.justDragged()) onClose(); }}>
@@ -31,7 +47,8 @@ export default function TrenchCheck({ result, onSelect, onClose }) {
             <h3>Trench connectivity</h3>
             <p className="tc-sub">
               {result.total} separate piece{result.total === 1 ? "" : "s"} of network
-              {result.orphans.length > 0 && ` \u00B7 ${result.orphans.length} not reaching the substation`}
+              {result.orphans.length > 0
+                && ` \u00B7 ${result.orphans.length} not reaching the ${originWord}`}
             </p>
           </div>
           <button className="fe-x" onClick={onClose} aria-label="Close">&times;</button>
@@ -40,31 +57,37 @@ export default function TrenchCheck({ result, onSelect, onClose }) {
         <div className="tc-body">
           {ok && (
             <p className="tc-ok">
-              Every trench connects back to the substation. Cables can route anywhere
+              Every trench connects back to the {originWord}. Cables can route anywhere
               on the network.
             </p>
           )}
 
-          {!result.hasSubstation && (
+          {/* Neither a substation nor an electric POC. Both are named,
+              because on a site connected to an existing network the POC
+              is the one to place and a message asking for a substation
+              sends somebody to draw the wrong thing. */}
+          {!result.hasOrigin && (
             <p className="tc-warn">
-              No substation placed, so there is nothing to measure connectivity
-              against. The pieces below are still the separate parts of the network.
+              No substation or electric POC placed, so there is nothing to measure
+              connectivity against. The pieces below are still the separate parts
+              of the network.
             </p>
           )}
 
-          {result.hasSubstation && !result.substationOnNetwork && (
+          {result.hasOrigin && !result.originOnNetwork && (
             <p className="tc-warn">
-              The substation isn&rsquo;t on the trench network &mdash; it sits too far from
-              any trench. Nothing can route until it does, whatever else connects.
+              The {originWord} isn&rsquo;t on the trench network &mdash; it sits too far
+              from any trench. Nothing can route until it does, whatever else
+              connects.
             </p>
           )}
 
           {result.groups.map((g, i) => (
-            <section className={g.hasSubstation ? "tc-grp on" : "tc-grp"} key={g.id}>
+            <section className={g.hasOrigin ? "tc-grp on" : "tc-grp"} key={g.id}>
               <div className="tc-gh">
                 <strong>
-                  {g.hasSubstation
-                    ? "Connected to the substation"
+                  {g.hasOrigin
+                    ? `Connected to the ${originWord}`
                     : `Orphaned piece ${result.orphans.indexOf(g) + 1}`}
                 </strong>
                 <span className="tc-meta">
@@ -78,7 +101,7 @@ export default function TrenchCheck({ result, onSelect, onClose }) {
 
               {/* The connected piece is listed but collapsed to a summary:
                   it is the one nobody needs to go and find. */}
-              {!g.hasSubstation && (
+              {!g.hasOrigin && (
                 <table className="dt tc-tbl">
                   <thead>
                     <tr className="head-row">
@@ -97,7 +120,7 @@ export default function TrenchCheck({ result, onSelect, onClose }) {
                 </table>
               )}
 
-              {i === 0 && g.hasSubstation && result.orphans.length > 0 && (
+              {i === 0 && g.hasOrigin && result.orphans.length > 0 && (
                 <p className="tc-hint">
                   To join an orphan: select it below, then drag the end of one of its
                   trenches onto this piece. The end snaps and records the connection.

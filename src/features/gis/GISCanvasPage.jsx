@@ -17551,17 +17551,17 @@ export default function GISCanvasPage() {
                           asked at the same moment. */}
                       <div className="gm-sep" />
                       <MenuGroup label="Checks" />
-                      <MenuItem label="Check Services Reach the Mains"
-                        disabled={!projectId}
-                        onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
-                      <MenuItem label="Check Trench Joins"
-                        hint="Trench ends close to another trench but not joined"
-                        disabled={!!busy || !projectId}
-                        onClick={findGaps} />
                       <MenuItem label="Check Trench Connectivity"
                         disabled={!projectId}
                         onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
 
+                      <MenuItem label="Check Trench Joins"
+                        hint="Trench ends close to another trench but not joined"
+                        disabled={!!busy || !projectId}
+                        onClick={findGaps} />
+                      <MenuItem label="Check Services Reach the Mains"
+                        disabled={!projectId}
+                        onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
                       {/* Routing was here: Trace All Meters, Step Through
                           Traces, Suggest Trench Route, Only Live Trench.
 

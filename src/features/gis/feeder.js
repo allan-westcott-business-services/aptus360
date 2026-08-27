@@ -771,7 +771,8 @@ export function junctionNodes(model) {
    few centimetres apart read as joined at any sensible zoom.
 
    So: group the trenches into connected components, name the one holding
-   the substation as the network, and report everything else — with the
+   the origin — the substation, or the POC where there is none — as the
+   network, and report everything else — with the
    size of the gap and where to close it, because "orphaned" without a
    distance is a search rather than a fix. */
 
@@ -897,10 +898,24 @@ export function trenchComponents(features = [], opts = {}) {
   }
   for (let i = 0; i < nodes.length; i++) groups[comp[i]].nodeIndexes.push(i);
 
-  /* The component holding the substation is the network. Without one, the
-     largest by length is the best guess — and saying which assumption was
-     made matters, because the answer changes if it is wrong. */
-  const sub = features.find((f) => f.Feature_Role === "substation" && (f.Geometry || []).length);
+  /* ── The component holding the origin is the network ──
+
+     The origin is the substation, or the electric POC where there is no
+     substation. This looked for a substation and nothing else, so a
+     site connected to an existing network — no transformer, everything
+     feeding back to the point of connection — fell through to "largest
+     by length", which is a guess dressed as an answer. On a drawing
+     with one long orphaned branch it is the wrong guess, and the panel
+     then told somebody their real network was the orphan.
+
+     `lvOrigin` is the same answer the feeder build uses. Two functions
+     disagreeing about where the network starts is how a check comes to
+     pass a drawing the builder then refuses to route.
+
+     Without either, the largest by length is still the best guess —
+     and saying which assumption was made matters, because the answer
+     changes if it is wrong. */
+  const sub = lvOrigin(features);
   let rootId = -1;
   let rootBy = "none";
   if (sub) {
@@ -909,7 +924,7 @@ export function trenchComponents(features = [], opts = {}) {
       const d = dist(nodes[i], sub.Geometry[0]);
       if (d < bd) { bd = d; rootId = comp[i]; }
     }
-    rootBy = "substation";
+    rootBy = "origin";
   }
   if (rootId < 0 && groups.length) {
     rootId = groups.reduce((best, g) => (g.metres > groups[best].metres ? g.id : best), 0);
@@ -938,23 +953,28 @@ export function trenchComponents(features = [], opts = {}) {
 
   /* Which piece holds the substation, per group, so a panel doesn't have
      to compare ids to find out. */
-  for (const g of groups) g.hasSubstation = g.id === rootId;
+  /* `hasOrigin`, not `hasSubstation`: the thing it holds is a
+     substation on most sites and an electric POC on the rest. */
+  for (const g of groups) g.hasOrigin = g.id === rootId;
 
   /* The connected piece first: it is the one nobody has to go and find,
      and everything else is measured against it. */
-  groups.sort((a, b) => Number(b.hasSubstation) - Number(a.hasSubstation));
+  groups.sort((a, b) => Number(b.hasOrigin) - Number(a.hasOrigin));
 
   return {
     groups, rootId, rootBy, orphans, nodes,
-    connected: rootId >= 0 ? groups.find((g) => g.hasSubstation) ?? null : null,
+    connected: rootId >= 0 ? groups.find((g) => g.hasOrigin) ?? null : null,
     totalRuns: runs.length,
     /* Named for what a reader asks: how many pieces, is there a
        substation, and is it actually on the network. The last two are
        different questions — a substation placed beside the trenches
        rather than on them is a common and confusing case. */
     total: groups.length,
-    hasSubstation: !!sub,
-    substationOnNetwork: rootBy === "substation",
+    hasOrigin: !!sub,
+    originOnNetwork: rootBy === "origin",
+    /* Which it is, so the panel can name it rather than saying
+       "origin" at somebody. */
+    originRole: sub?.Feature_Role ?? null,
   };
 }
 

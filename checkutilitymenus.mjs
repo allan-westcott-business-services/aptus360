@@ -932,6 +932,55 @@ const onScreen = (keys) => {
   }
 }
 
+/* ── Trench connectivity works from the origin, not the substation ──
+
+   It looked for `Feature_Role === "substation"` and nothing else. A
+   site connected to an existing network has no transformer — everything
+   feeds back to the point of connection — so the check fell through to
+   "largest component by length", which is a guess dressed as an answer.
+
+   On a drawing with one long orphaned branch it is the WRONG guess, and
+   the panel then tells somebody their real network is the orphan. That
+   is worse than no check.
+
+   `lvOrigin` is the answer the feeder build uses. Two functions
+   disagreeing about where the network starts is how a check comes to
+   pass a drawing the builder then refuses to route. */
+{
+  const fd = readFileSync("./src/features/gis/feeder.js", "utf8");
+  const fn = fd.slice(fd.indexOf("export function trenchComponents"),
+    fd.indexOf("export function serviceTrenchCheck"));
+
+  if (/Feature_Role === "substation"/.test(fn)) {
+    fail("trench connectivity still anchors on a substation, so a POC-only site "
+      + "falls back to guessing the largest component");
+  }
+  if (!/lvOrigin\(features\)/.test(fn)) {
+    fail("trench connectivity does not use the same origin the feeder build does");
+  }
+  /* The panel needs to name what was found, or it says "origin" at
+     somebody who placed a POC. */
+  if (!/originRole:/.test(fn)) {
+    fail("the connectivity result does not say which kind of origin it found");
+  }
+
+  const panel = readFileSync("./src/features/gis/TrenchCheck.jsx", "utf8");
+  if (!/originRole === "poc" \? "POC" : "substation"/.test(panel)) {
+    fail("the connectivity panel does not name the origin the drawing has");
+  }
+  /* No sentence left that says substation regardless. The word is
+     built once and used; a literal in the prose is one the POC case
+     would read wrongly. */
+  if (/connects back to the substation|not reaching the substation/.test(panel)) {
+    fail("the connectivity panel still says substation on a site that has a POC");
+  }
+  /* And both are named where neither is placed, or the message sends
+     somebody to draw the wrong thing. */
+  if (!/No substation or electric POC placed/.test(panel)) {
+    fail("the panel asks for a substation where a POC would do");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility menus behave (empty utilities shown as empty; isolate first, menu second).");
 process.exit(bad ? 1 : 0);

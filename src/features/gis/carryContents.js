@@ -198,3 +198,37 @@ export function carryLine(oldG = [], newG = [], line = [], opts = {}) {
 
   return moved ? out : null;
 }
+
+
+/* A point sitting on the trench, carried the same way.
+
+   Joints, span nodes and link boxes are placed on the dig: a service
+   joint where the service leaves the main, a bottle end at the end of
+   the run, a span node at a junction. Reshape the trench and they stay
+   where they were, and a bottle end that was on the end of a cable is
+   now beside it.
+
+   The same fraction rule as a line, because it has to be: a joint at
+   the end of a cable and the cable's own last vertex must land on the
+   same point, and two rules would put them a few centimetres apart —
+   which is worse than both being wrong, because nothing looks wrong
+   until something measures it.
+
+   Null where the point is not on the trench, so a meter standing beside
+   the dig is left alone. A meter is placed against a plot, not against
+   the ground, and dragging one because the trench beside it moved would
+   move a thing nobody had asked about. */
+export function carryPoint(oldG = [], newG = [], point, opts = {}) {
+  const { withinM = 1.5 } = opts;
+  if (!point || oldG.length < 2 || newG.length < 2) return null;
+
+  const before = measure(oldG);
+  const after = measure(newG);
+  if (before.total <= 0 || after.total <= 0) return null;
+
+  const { along, gap } = alongAt(oldG, point);
+  if (gap > withinM) return null;
+
+  const q = pointAlong(newG, along * (after.total / before.total));
+  return dist(q, point) > 1e-9 ? q : null;
+}

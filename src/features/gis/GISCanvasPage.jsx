@@ -118,7 +118,7 @@ import {
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
-import { carryLine } from "./carryContents.js";
+import { carryLine, carryPoint } from "./carryContents.js";
 import { teeInto, mainsOnLayer } from "./teeInto.js";
 import { trenchSize } from "./trenchSize.js";
 import { digEstimate, hoursText } from "./digRate.js";
@@ -7624,14 +7624,54 @@ export default function GISCanvasPage() {
           isTrench: (x) => x.Feature_Type === "line"
             && isTrenchType(x.Attributes?.Line_Type, lineTypes),
         });
+        /* `item.feature`, not `item.id`. contentsOf returns the feature
+           itself on each item and no id at all — so a lookup by id
+           found nothing, every time, and the carry silently did
+           nothing while every test of carryLine passed.
+
+           That is the shape of it: the arithmetic was checked to the
+           last decimal and the thing feeding it was never run. The
+           check below now exercises this path with a real contentsOf
+           result rather than trusting the shape. */
         for (const item of (res?.contents || [])) {
-          const f = next.find((x) => Number(x.Feature_ID) === Number(item.id));
+          const f = item.feature
+            && next.find((x) => Number(x.Feature_ID) === Number(item.feature.Feature_ID));
           /* Not the trench itself, and not something locked: a cable on
              a called-off span is a record of what was laid, and the
              drawing moving underneath it does not change that. */
           if (!f || Number(f.Feature_ID) === Number(id) || locked(f)) continue;
           const g = carryLine(before.Geometry, geometry, f.Geometry || []);
           if (g) carried.push({ Feature_ID: f.Feature_ID, Geometry: g });
+        }
+      }
+
+      /* ── And the fittings on it ──
+
+         A joint, a span node or a link box is placed on the dig: a
+         service joint where the service leaves the main, a bottle end
+         at the end of the run. They stayed put too, so a bottle end
+         that was on the end of a cable ended up beside it.
+
+         Carried by the same fraction rule as the cables, because it has
+         to be the same rule: a joint at the end of a cable and that
+         cable's own last vertex must land on the same point, and two
+         rules would leave them a few centimetres apart — which is worse
+         than both being wrong, because nothing looks wrong until
+         something measures it.
+
+         Roles named rather than "every point near the trench". A meter
+         is placed against a plot, not against the ground, and dragging
+         one because the trench beside it moved would move a thing
+         nobody asked about. A plot seed likewise. */
+      const CARRY_ROLES = new Set(["joint", "spannode", "linkbox"]);
+      if (before && isTrenchType(before.Attributes?.Line_Type, lineTypes)) {
+        for (const f of next) {
+          if (f.Feature_Type !== "point") continue;
+          if (!CARRY_ROLES.has(f.Feature_Role)) continue;
+          if (locked(f)) continue;
+          const p = (f.Geometry || [])[0];
+          const q = p && carryPoint(before.Geometry, geometry, p);
+          if (q) carried.push({ Feature_ID: f.Feature_ID, Geometry: [q] });
         }
       }
 

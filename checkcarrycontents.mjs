@@ -12,7 +12,8 @@
    trench — is invisible on screen at anything but close zoom. */
 
 import { readFileSync } from "node:fs";
-import { carryLine, alongAt, pointAlong } from "./src/features/gis/carryContents.js";
+import { carryLine, carryPoint, alongAt, pointAlong } from "./src/features/gis/carryContents.js";
+import { contentsOf } from "./src/features/gis/trenchContents.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -201,6 +202,132 @@ const straight = [[0, 0], [100, 0]];
   }
   if (!/moved2 \? moved2\.Geometry : f\.Geometry/.test(fn)) {
     fail("the undo entry records the cables' old shape as their new one");
+  }
+}
+
+/* ── The join between the two halves ──
+
+   Every test above exercises carryLine, and every one of them passed
+   while the feature did nothing at all: the canvas looked its contents
+   up by `item.id`, and contentsOf returns `item.feature` and no id.
+   The lookup found nothing, every time, silently.
+
+   The arithmetic was checked to the last decimal and the thing feeding
+   it was never run. So this runs the real contentsOf and carries what
+   it actually returns. */
+{
+  const trench = {
+    Feature_ID: 1, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [0, 12]], Attributes: { Line_Type: "trench_service" },
+  };
+  const cable = {
+    Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [0, 12], [1, 13]], Attributes: { Line_Type: "elec_service" },
+  };
+
+  const res = contentsOf(trench, [trench, cable], {
+    serviceLineTypes: new Set(["elec_service"]),
+    serviceTrenchTypes: new Set(["trench_service"]),
+    isTrench: (x) => String(x.Attributes?.Line_Type ?? "").startsWith("trench"),
+  });
+
+  if (res.error) fail(`contentsOf refused a service cable in its trench: ${res.error}`);
+  else if (!res.contents.length) {
+    fail("contentsOf finds nothing in a service trench holding its own cable");
+  } else {
+    const item = res.contents[0];
+    /* The field the canvas reads. Named here so a rename of it fails
+       this rather than silently stopping the carry again. */
+    if (!item.feature || item.feature.Feature_ID !== 2) {
+      fail("a content item does not carry the feature the canvas looks up");
+    }
+
+    /* And end to end: drag the trench end, carry what contentsOf found. */
+    const dragged = [[0, 0], [0, 18]];
+    const g = carryLine(trench.Geometry, dragged, item.feature.Geometry);
+    if (!g) fail("dragging a service trench's end does not move the cable in it");
+    else if (!near(g[1], [0, 18])) {
+      fail(`the cable did not follow the dragged end: ${JSON.stringify(g)}`);
+    }
+  }
+
+  /* The canvas reads the right field. Asserted on the source too,
+     because the shape above can be right while the caller still asks
+     for something else \u2014 which is exactly what happened. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/Number\(item\.id\)/.test(canvas)) {
+    fail("the canvas still looks contents up by an id that contentsOf does not return");
+  }
+  if (!/item\.feature\.Feature_ID/.test(canvas)) {
+    fail("the canvas does not read the feature off the content item");
+  }
+}
+
+/* ── The fittings on the trench ──
+
+   A joint, a span node or a link box is placed on the dig. They stayed
+   put, so a bottle end that was on the end of a cable ended up beside
+   it.
+
+   The same fraction rule as the cables, because it has to be the same
+   rule: a joint at the end of a cable and that cable's own last vertex
+   must land on the same point. */
+{
+  const t = [[0, 0], [100, 0]];
+
+  // 13. A joint mid-run follows a new bend.
+  {
+    const q = carryPoint(t, [[0, 0], [50, 10], [100, 0]], [50, 0]);
+    if (!q) fail("a joint on the trench did not follow a new dog leg");
+    else if (!near(q, [50, 10])) fail(`the joint landed at ${JSON.stringify(q)}`);
+  }
+
+  /* 14. A bottle end at the far end goes with the end.
+
+     And lands exactly where the cable's own last vertex lands, or the
+     two are a few centimetres apart and nothing looks wrong until
+     something measures it. */
+  {
+    const longer = [[0, 0], [120, 0]];
+    const q = carryPoint(t, longer, [100, 0]);
+    const g = carryLine(t, longer, [[0, 0], [100, 0]]);
+    if (!q) fail("a bottle end did not follow the extended trench");
+    else if (!near(q, [120, 0])) fail("the bottle end landed short of the new end");
+    if (q && g && !near(q, g[g.length - 1], 1e-6)) {
+      fail("the bottle end and the cable's end no longer meet");
+    }
+  }
+
+  /* 15. A meter beside the dig is left alone.
+
+     It is placed against a plot, not against the ground. Dragging one
+     because the trench beside it moved would move a thing nobody had
+     asked about. */
+  {
+    if (carryPoint(t, [[0, 0], [120, 0]], [100, 9]) !== null) {
+      fail("a point standing off the trench was dragged with it");
+    }
+  }
+
+  // 16. And nothing moves where nothing moved.
+  {
+    if (carryPoint(t, t, [50, 0]) !== null) {
+      fail("an unchanged trench still rewrites the fittings on it");
+    }
+  }
+
+  /* 17. Which roles are carried, named rather than guessed.
+
+     "Every point near the trench" would take the meters and the plot
+     seeds with it. */
+  {
+    const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (!/CARRY_ROLES = new Set\(\["joint", "spannode", "linkbox"\]\)/.test(canvas)) {
+      fail("the roles carried with a trench are not named");
+    }
+    if (!/carryPoint\(/.test(canvas)) {
+      fail("the canvas does not carry the fittings on a reshaped trench");
+    }
   }
 }
 

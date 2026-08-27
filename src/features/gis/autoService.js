@@ -395,16 +395,27 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
     ? [tee.foot, ...onService.slice(1, -1), stop]
     : [tee.foot, ...via, stop];
 
-  /* The route the self-lay cables take, off the incumbent's main.
+  /* The route the self-lay service takes, off the incumbent's main.
 
      The same shape as our own dig — tee, boundary, stop — because it is
-     the same journey: their main is in the road, the cable crosses the
-     verge and comes up in the same place ours would. What differs is
-     that NO TRENCH IS WRITTEN for it. The ground is already open, or
-     there is a duct in it, and the only thing we supply is the cable.
-     That is why a self-lay plot shows a cable on the bill and no dig.
+     the same journey: their main is in the road, the service crosses
+     the verge and comes up in the same place ours would.
 
-     A boundary vertex is kept here for the same reason it is on our own
+     ── The dig is drawn, and it is not ours ──
+
+     A trench IS written for it. The developer lays it, so it exists on
+     the ground and belongs on the drawing: a service that appears from
+     nowhere is a service nobody can measure, set out or check the cover
+     depth of.
+
+     It carries Build_Status `existing`, which is the drawing's own word
+     for a length that was not dug by this job. That is not a label —
+     digEstimate reads it and charges no excavation, so the bill shows
+     the cable and the laying and no dig. The alternative considered was
+     writing no trench at all, which gave the same bill and a drawing
+     with a cable running through undisturbed ground.
+
+     A boundary vertex is kept for the same reason it is on our own
      route: it is where the on-site and off-site lengths are split. */
   const slpVia = slpTee && !(samePlace(boundary, slpTee.foot) || samePlace(boundary, stop))
     ? [boundary] : [];
@@ -429,12 +440,16 @@ export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
 
   return {
     seed, mains: tee.trench, foot: tee.foot, distance: tee.d,
-    /* No dig of ours where nothing of ours is being laid. A plot that
-       is self-lay throughout gets its cables and no trench — writing
-       one would put a length of excavation on the bill for ground
-       somebody else has already opened. */
+    /* Our dig, where anything of ours is being laid. A plot that is
+       self-lay throughout has none — its trench is the developer's and
+       is returned as slpTrench below. */
     trench: ourMeters.length ? trench : [],
     meters, cables,
+    /* The developer's dig, to be written as Build_Status `existing`.
+       Kept apart from `trench` rather than flagged inside it, because
+       the two are written with different statuses and a caller that
+       forgot to look would otherwise bill for excavating it. */
+    slpTrench: slpCables.length && slpRoute ? slpRoute : [],
     /* The self-lay half, kept apart from `cables` rather than mixed in.
        The canvas writes these without a trench and the bill counts them
        on their own, and one list would have made both of those a test

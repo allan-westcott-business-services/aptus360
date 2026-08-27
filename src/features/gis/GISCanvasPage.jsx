@@ -31,7 +31,7 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import {
   planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline,
-  isServed, meterHasService, layServices,
+  isServed, meterHasService, layServices, isExistingFeature,
 } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
@@ -15080,17 +15080,40 @@ export default function GISCanvasPage() {
        isServed also asks whether any service trench simply ends at one
        of the plot's meters, which is what a hand-drawn one looks like. */
     const svcTrenches = features.filter((f) =>
-      f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+      f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes)
+      /* Not the incumbent's. An existing trench is on the trench layer
+         like any other, so it counts as one here — and a plot standing
+         beside one would read as already dug. It is their ground, and
+         nothing of ours has been laid in it yet. */
+      && !isExistingFeature(f));
+
+    /* ── A self-lay service leaves no dig behind ──
+
+       A plot connected to the incumbent's main gets cables and no
+       trench: the ground is already open. So `isServed` — which asks
+       whether a TRENCH is stamped with the seed — never said yes about
+       one, and every run of Auto Service laid another cable to it. The
+       drawing gained a cable per run, all on top of each other, and the
+       bill counted every one.
+
+       The cables carry the same Seed_Feature_ID the trenches do and end
+       at the same meters, so they answer the question just as well.
+       Marked with Self_Lay, which is written when they are laid rather
+       than worked out afterwards from where they start. */
+    const slpCables = features.filter((f) =>
+      f.Feature_Type === "line" && f.Attributes?.Self_Lay === true);
+    const laid = [...svcTrenches, ...slpCables];
+
     const allMeters = features.filter((f) => f.Feature_Role === "meter");
     const serviced = new Set(seeds
-      .filter((sd) => isServed(sd, allMeters, svcTrenches))
+      .filter((sd) => isServed(sd, allMeters, laid))
       .map((sd) => Number(sd.Feature_ID)));
 
     /* A meter with a trench already running to it is left alone, even
        where the rest of its plot still needs doing. Per meter rather
        than per plot: a plot with gas dug by hand and electric not needs
        the electric doing and the gas leaving. */
-    const meterServed = (point) => meterHasService(point, svcTrenches);
+    const meterServed = (point) => meterHasService(point, laid);
 
     /* Which heat sources mean gas, by name rather than by id.
 
@@ -15387,24 +15410,56 @@ export default function GISCanvasPage() {
            cable runs in ground somebody else has already opened, so
            there is no dig of ours to write. splitByBoundary on nothing
            would write a trench of no length rather than none at all. */
-        const runs = plan.trench.length ? splitByBoundary(plan.trench, polys) : [];
+        /* ── Two digs, and only one of them is ours ──
+
+           A plot connected to the incumbent's main still has a service
+           trench: the developer lays it. It is on the ground and it
+           belongs on the drawing — a cable running through undisturbed
+           ground is a service nobody can set out or check the cover
+           depth of.
+
+           What differs is Build_Status. `existing` is the drawing's own
+           word for a length not dug by this job, and digEstimate reads
+           it: no excavation charged, the laying still counted. So the
+           bill shows the cable and none of the dig, which is what a
+           self-lay plot costs us.
+
+           A mixed plot gets both — ours to our main, theirs to the
+           incumbent's — from the same seed. They are different digs to
+           different mains and each is measured on its own. */
+        const digs = [
+          { route: plan.trench, status: null, existing: false },
+          { route: plan.slpTrench || [], status: "existing", existing: true },
+        ].filter((d) => d.route.length);
+
         const madeTrenches = [];
-        for (const run of runs) {
-          madeTrenches.push(await addFeature({
-            Layer_Key: serviceType.Layer_Key ?? "trench",
-            Feature_Type: "line",
-            Geometry: run.geometry,
-            Label: `Service trench ${plan.seed.Label ?? ""}`.trim(),
-            Plot_ID: plan.seed.Plot_ID ?? null,
-            Attributes: {
-              Line_Type: "trench_service",
-              Site: run.site,
-              Surface_Type: surfaceFor(run.site, null, surfaceTypes),
-              Seed_Feature_ID: plan.seed.Feature_ID,
-              Connects: connectedTo(run.geometry, features, null),
-            },
-          }));
-          trenchCount++;
+        for (const dig of digs) {
+          for (const run of splitByBoundary(dig.route, polys)) {
+            madeTrenches.push(await addFeature({
+              Layer_Key: serviceType.Layer_Key ?? "trench",
+              Feature_Type: "line",
+              Geometry: run.geometry,
+              Label: `Service trench ${plan.seed.Label ?? ""}`.trim()
+                + (dig.existing ? " (developer)" : ""),
+              Plot_ID: plan.seed.Plot_ID ?? null,
+              Attributes: {
+                Line_Type: "trench_service",
+                Site: run.site,
+                Surface_Type: surfaceFor(run.site, null, surfaceTypes),
+                Seed_Feature_ID: plan.seed.Feature_ID,
+                Connects: connectedTo(run.geometry, features, null),
+                /* Written rather than left to withDefaultStatus, which
+                   would put "planned" on it — and a planned dig is one
+                   somebody has to send a gang to. */
+                ...(dig.status ? { Build_Status: dig.status } : {}),
+                /* Marked, so the trench can be told from ours without
+                   inferring it from the status. Build_Status can be
+                   edited by hand; this says why it was set. */
+                ...(dig.existing ? { Self_Lay: true } : {}),
+              },
+            }));
+            trenchCount++;
+          }
         }
 
         for (const m of plan.meters) {

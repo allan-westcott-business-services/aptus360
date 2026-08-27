@@ -13,7 +13,9 @@
 import { readFileSync } from "node:fs";
 import { selfLaySet, selfLayNrsSet, utilityIdForLayer, isSelfLayMeter, isSelfLayFor }
   from "./src/features/gis/selfLay.js";
-import { planSeed, isExistingType, splitExisting } from "./src/features/gis/autoService.js";
+import { planSeed, isExistingType, splitExisting, isServed, meterHasService, isExistingFeature }
+  from "./src/features/gis/autoService.js";
+import { defaultStatusOf, statusesFor } from "./src/features/gis/buildStatus.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -582,6 +584,171 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   const tab = readFileSync("src/features/poc/POCApplicationsTab.jsx", "utf8");
   if (!/utilityId={r\.Utility_ID}/.test(tab)) {
     fail("the applications tab does not give OptionsPanel its utility");
+  }
+}
+
+/* ── Running Auto Service twice ──
+
+   A self-lay plot gets cables and no trench: the ground is already
+   open. isServed asks whether a TRENCH carries the seed's stamp, so it
+   never said yes about one — and every run laid another cable on top of
+   the last. The drawing gained a cable per run and the bill counted
+   every one.
+
+   Nothing errored and nothing looked wrong on screen: the second cable
+   is drawn exactly along the first. */
+{
+  const seedF = { Feature_ID: 9, Feature_Role: "plot", Plot_ID: 101, Geometry: [[50, 25]],
+    Attributes: { Boundary_At: [50, 20], Trench_End_At: [50, 24] } };
+  const meterF = { Feature_ID: 20, Feature_Role: "meter", Plot_ID: 101, Layer_Key: "water",
+    Geometry: [[50, 27.3]], Attributes: { Seed_Feature_ID: 9 } };
+
+  /* What the canvas writes for a self-lay plot: a cable stamped with
+     the seed, marked Self_Lay, and no trench at all. */
+  const cable = { Feature_ID: 21, Feature_Type: "line", Layer_Key: "water",
+    Geometry: [[50, 40], [50, 20], [50, 24], [50, 27.3]],
+    Attributes: { Seed_Feature_ID: 9, Self_Lay: true, Line_Type: "water_service" } };
+
+  // 32. The seed counts as served once its cable is laid.
+  if (isServed(seedF, [meterF], [])) {
+    fail("a seed with nothing laid reads as served");
+  }
+  if (!isServed(seedF, [meterF], [cable])) {
+    fail("a self-lay plot is never served \u2014 every run lays another cable on the last");
+  }
+
+  // 33. And the meter itself.
+  if (!meterHasService([50, 27.3], [cable])) {
+    fail("a self-lay meter is not seen as reached by its own cable");
+  }
+
+  /* 34. The incumbent's trench is not our dig.
+
+     It sits on the trench layer like any other, so a plot standing
+     beside one would read as already serviced. It is their ground and
+     nothing of ours is in it. */
+  const theirTrench = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 40], [100, 40]], Attributes: { Line_Type: "trench_main_existing" } };
+  if (!isExistingFeature(theirTrench)) {
+    fail("an existing trench is not recognised as the incumbent's");
+  }
+
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/!isExistingFeature\(f\)/.test(canvas)) {
+    fail("the canvas counts the incumbent's trench among our service trenches");
+  }
+  if (!/Self_Lay === true/.test(canvas)) {
+    fail("the canvas does not gather the self-lay cables");
+  }
+  /* Gathered AND used. The first version of this checked only that the
+     list was built, and removing it from what isServed is given left
+     the check green — the cables were collected into a variable nobody
+     read. An unused list is the same fault as no list, and harder to
+     see. */
+  if (!/const laid = \[\.\.\.svcTrenches, \.\.\.slpCables\]/.test(canvas)) {
+    fail("the self-lay cables are gathered but not added to what counts as laid");
+  }
+  if (!/isServed\(sd, allMeters, laid\)/.test(canvas)) {
+    fail("isServed is not given the self-lay cables");
+  }
+  if (!/meterHasService\(point, laid\)/.test(canvas)) {
+    fail("meterServed is not given the self-lay cables");
+  }
+}
+
+/* ── The developer's dig is drawn, and it is not ours ──
+
+   A self-lay plot's service trench exists: the developer lays it. It
+   belongs on the drawing — a cable running through undisturbed ground
+   is a service nobody can set out or check the cover depth of.
+
+   What differs is Build_Status. `existing` is the drawing's own word
+   for a length not dug by this job, and digEstimate reads it: no
+   excavation charged, the laying still counted. */
+{
+  const trench = (id, pts, key) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const ours = trench(1, [[0, 0], [100, 0]], "trench_main");
+  const theirs = trench(2, [[0, 40], [100, 40]], "trench_main_existing");
+  const seed = { Feature_ID: 9, Feature_Role: "plot", Plot_ID: 101, Geometry: [[50, 25]],
+    Attributes: { Boundary_At: [50, 20], Trench_End_At: [50, 24] } };
+  const utils = [{ layer_key: "electric", utility: "Electric" },
+    { layer_key: "water", utility: "Water" }];
+
+  // 35. A self-lay plot gets a dig, on its own route.
+  {
+    const p = planSeed(seed, [ours, theirs], () => utils, { isSelfLay: () => true });
+    if (!p.slpTrench?.length) {
+      fail("a self-lay plot gets no service trench \u2014 its cable runs through undug ground");
+    } else if (Math.abs(p.slpTrench[0][1] - 40) > 0.5) {
+      fail("the developer's dig does not start at the incumbent's main");
+    }
+    if (p.trench.length) fail("a self-lay plot was given a dig of ours as well");
+  }
+
+  // 36. A mixed plot gets both, to different mains.
+  {
+    const p = planSeed(seed, [ours, theirs], () => utils,
+      { isSelfLay: (s, u) => u.layer_key === "water" });
+    if (!p.trench.length) fail("a mixed plot got no dig of ours");
+    if (!p.slpTrench.length) fail("a mixed plot got no dig for its self-lay utility");
+    if (p.trench.length && p.slpTrench.length
+      && Math.abs(p.trench[0][1] - p.slpTrench[0][1]) < 1) {
+      fail("both digs start at the same main");
+    }
+  }
+
+  // 37. And an ordinary plot gets no second dig at all.
+  {
+    const p = planSeed(seed, [ours], () => utils, {});
+    if (p.slpTrench?.length) fail("an ordinary plot was given a developer's dig");
+  }
+
+  /* 38. The canvas writes it as existing.
+
+     Left to withDefaultStatus it would read "planned", and a planned
+     dig is one somebody has to send a gang to. */
+  {
+    const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+    if (!/slpTrench/.test(canvas)) fail("the canvas never writes the developer's dig");
+    if (!/status: "existing"/.test(canvas)) {
+      fail("the developer's dig is not written as Build_Status existing");
+    }
+  }
+
+  /* 39. And a line drawn with an `_existing` type starts there too.
+
+     The incumbent's own trench is drawn by hand. Defaulted to
+     "planned", digEstimate would charge its whole length as ground to
+     open — a price with no visible reason, for a dig done years ago.
+
+     Every default has to be a value the feature's own list offers: a
+     stage from the wrong list is unselectable in its own dropdown. */
+  {
+    const lineTypes = [
+      { Type_Key: "trench_main_existing", Layer_Key: "trench" },
+      { Type_Key: "elec_main_existing", Layer_Key: "electric" },
+      { Type_Key: "trench_main", Layer_Key: "trench" },
+      { Type_Key: "elec_main", Layer_Key: "electric" },
+    ];
+    const feat = (key, layer) => ({ Feature_Type: "line", Layer_Key: layer,
+      Attributes: { Line_Type: key } });
+
+    for (const [key, layer, want] of [
+      ["trench_main_existing", "trench", "existing"],
+      ["elec_main_existing", "electric", "existing"],
+      ["trench_main", "trench", "planned"],
+      ["elec_main", "electric", "planned"],
+    ]) {
+      const f = feat(key, layer);
+      const got = defaultStatusOf(f, lineTypes);
+      if (got !== want) fail(`${key} defaults to ${got}, expected ${want}`);
+      if (!statusesFor(f, lineTypes).some((s) => s.key === got)) {
+        fail(`${key} defaults to '${got}', which is not in the list it carries`);
+      }
+    }
   }
 }
 

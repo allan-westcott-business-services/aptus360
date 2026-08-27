@@ -456,8 +456,59 @@ function isTrenchLine(f, lineTypes = []) {
   return layer === "trench" || /^trench_/.test(key);
 }
 
+/* ── The incumbent's network starts Existing ──
+
+   A line drawn with a type ending `_existing` (0197) is there to show
+   what is already in the ground: their trench, their LV main, their gas
+   or water main. It is not proposed work, and Planned is the drawing
+   saying it is.
+
+   That mattered beyond the label. digEstimate charges excavation on a
+   trench unless it reads `existing`, so an incumbent trench drawn to
+   show where a self-lay plot connects would have put its whole length
+   on the bill as ground to open — a price nobody could see the reason
+   for, on a dig that was done years ago.
+
+   Read from the type key rather than asked of whoever draws it. A
+   default somebody has to remember to change is one they will forget,
+   and the consequence of forgetting is money.
+
+   `withDefaultStatus` still leaves a deliberate choice alone, so a
+   length drawn as existing and then marked otherwise stays marked. */
+export const EXISTING_TYPE_SUFFIX = "_existing";
+
+export const isExistingLineType = (typeKey) =>
+  String(typeKey ?? "").endsWith(EXISTING_TYPE_SUFFIX);
+
 export function defaultStatusOf(f, lineTypes = []) {
   if (!f) return null;
+
+  /* `existing` is in the list these features actually carry.
+
+     Worth spelling out, because the obvious worry is that a MAIN's
+     stages are planned, as-laid and live — and `existing` is not among
+     them. It does not arise: isMainFeature matches a key ENDING
+     `_main`, and `elec_main_existing` does not end there. So
+     statusesFor hands the incumbent's main the trench list, the same
+     one its trench gets, and `existing` is on it.
+
+     That is coherent rather than lucky. mainsOnLayer excludes these
+     for the same reason and by the same test, so the incumbent's main
+     is consistently not one of ours: nothing tees into it, no joint is
+     placed on it, and it takes no stage that belongs to work we are
+     doing. It is a record of what is already there.
+
+     Which is also why `live` would be wrong here even though it is
+     true on the ground. The stage says what THIS job has done to a
+     length, and the answer for their main is nothing.
+
+     It matters beyond the label. digEstimate charges excavation on a
+     trench unless it reads `existing`, so an incumbent trench drawn to
+     show where a self-lay plot connects would have put its whole
+     length on the bill as ground to open — a price with no visible
+     reason, for a dig done years ago. */
+  if (isExistingLineType(f.Attributes?.Line_Type)) return "existing";
+
   if (isTrenchLine(f, lineTypes)) return "planned";
   if (isMainFeature(f, lineTypes)) return "planned";
   return null;

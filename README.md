@@ -1,77 +1,88 @@
-# Nothing reads the plot-level self-lay flag, 26 Aug 2026
+# The developer's dig is drawn, and it is not ours, 26 Aug 2026
 
-The last screen filtering on `Plot.Self_Lay_Provider` was the POC plot
-picker. It now judges per utility like the rest, and the column is out
-of every select list — so it can be dropped.
+A self-lay plot's service trench exists — the developer lays it. It was
+not being drawn at all, on the reasoning that we do not dig it. That
+gave the right bill and a drawing with a cable running through
+undisturbed ground: a service nobody can set out or check the cover
+depth of.
+
+It is drawn now, with **Build_Status `existing`** — the drawing's own
+word for a length not dug by this job.
 
 | File | Change |
 |------|--------|
-| `src/features/poc/PlotAssignment.jsx` | Self-lay judged for the application's own utility |
-| `src/features/poc/OptionsPanel.jsx` | Passes the utility down |
-| `src/features/poc/POCApplicationsTab.jsx` | Gives it the application's `Utility_ID` |
-| `netlify/functions/plots.js` | Off `PLOT_COLUMNS` |
-| `netlify/functions/connections.js` | Off the plot select |
-| `netlify/functions/connections-all.js` | Off the join |
-| `checkselflay.mjs` | Two assertions added |
+| `src/features/gis/autoService.js` | `planSeed` returns the developer's dig as `slpTrench` |
+| `src/features/gis/GISCanvasPage.jsx` | Writes both digs, each with its own status |
+| `src/features/gis/buildStatus.js` | An `_existing` line type starts as Existing |
+| `checkselflay.mjs` | Five assertions added |
 
-## A quotation is for one utility
+No SQL.
 
-A plot whose water is self-lay is still ours to connect for electric,
-and belongs on an electric application. The plot-level flag could only
-say "keep it off all of them", so it kept plots off applications they
-should have been on.
+## Why the status does the work
 
-The utility comes from the application row, threaded down through
-`OptionsPanel` rather than fetched again — a second read is a second
-answer to one question. Where no utility is passed, nothing is excluded
-on that ground: guessing would be the plot-level flag back by another
-route.
+`digEstimate` already takes an `existing` flag and charges no
+excavation for it — `bomLabour` has read `Build_Status === "existing"`
+all along. So marking the trench Existing gives exactly the right bill:
+the cable, the laying, and none of the dig.
 
-The count and the hover name the utility now. *"3 self-lay plots
-excluded"* on a water application, about plots whose gas is somebody
-else's, sends somebody looking in the wrong place.
+Nothing new had to be taught to the bill. The concept was already
+there; the trench just had to say it.
 
-## The check missed the fault first time
+## A mixed plot gets two digs
 
-Worth recording. Assertion 30 tests that no endpoint selects the
-plot-level column, and the first version scanned `.select(...)` strings
-only. `plots.js` holds its columns in a `PLOT_COLUMNS` array joined with
-a comma — which is exactly where the column was — so putting it back
-produced a clean run.
+Ours to our main, the developer's to the incumbent's, from the same
+seed. They are different digs to different mains and each is measured
+on its own. A plot that is self-lay throughout has only the second.
 
-**A check that cannot see the place the fault lives is worse than no
-check**, because it reports all clear. It reads the column-list
-constants as well now, and was verified by restoring the column: it
-fired.
+They are kept apart in the plan rather than flagged inside one list,
+because they are written with different statuses — and a caller that
+forgot to look would bill for excavating the wrong one.
 
-## Then this, and the column is gone
+## The incumbent's own trench, drawn by hand
 
-Nothing reads it. Run:
+`defaultStatusOf` gave every trench "planned", including one drawn with
+`trench_main_existing`. `digEstimate` would then have charged its whole
+length as ground to open — **a price with no visible reason, for a dig
+done years ago.** That was the open item flagged when 0197 was written,
+and it is closed.
 
-```sql
-ALTER TABLE "Plot" DROP COLUMN "Self_Lay_Provider";
-```
+Read from the type key rather than asked of whoever draws it: a default
+somebody has to remember to change is one they will forget, and the
+consequence of forgetting is money. A length drawn as existing and then
+deliberately marked otherwise still keeps its choice.
 
-Two plots carried it — 41 and 42 on project 16 — and both were carried
-across to their electric `Plot_Utility` rows earlier today, so nothing
-is lost.
+**Every default has to be a value the feature's own list offers.** The
+worry was that a main's stages are planned, as-laid and live, with no
+`existing` among them. It does not arise — `isMainFeature` matches a key
+*ending* `_main`, and `elec_main_existing` does not end there, so
+`statusesFor` hands the incumbent's main the trench list, the same one
+its trench gets. That is coherent rather than lucky: `mainsOnLayer`
+excludes these by the same test, so nothing tees into their main and no
+joint is placed on it. The check asserts the default is in the list, not
+just that it is the right word.
 
-Check first, if you want to see it go from something rather than
-nothing:
+## Also fixed: running Auto Service twice
 
-```sql
-SELECT count(*) FILTER (WHERE "Self_Lay_Provider") AS still_true,
-       count(*)                                    AS plots
-  FROM "Plot";
-```
+Found by asking whether this works at all. `isServed` decides a seed is
+done by finding a *trench* stamped with it — and until this change a
+self-lay plot had none, so every run laid another cable on top of the
+last. The drawing gained a cable per run and the bill counted every one;
+the second draws exactly along the first, so it would only have shown up
+in the money.
 
-## Where self-lay now lives
+A self-lay cable now counts as work laid. Kept even though the trench
+makes it unnecessary, because a drawing serviced before this change has
+the cables and no trench.
 
-`Plot_Utility.Self_Lay_Provider`, one row per plot per utility, set on
-the Plots tab. Everything reads that one: the SLP chips, the bulk bar,
-scheduling, Plot Connections, the POC picker, the black crosses on the
-meters, and Auto Service routing those cables to the incumbent's main
-instead of ours.
+And the incumbent's trench is no longer counted among our service
+trenches, which would have made a plot standing beside one read as
+already dug.
+
+## Before this works on a drawing
+
+**0197 has not been run.** Without it there are no `_existing` line
+types, so there is nothing to draw the incumbent's trench and main with,
+and nothing here has anything to find.
 
 ## The suite
 

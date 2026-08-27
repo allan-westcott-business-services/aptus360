@@ -52,6 +52,34 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
       fail("only the plain plot key is kept \u2014 a seed on the trench is still hidden");
     }
 
+    /* 1b. Including the layer key the seeds are drawn on.
+
+       A plot seed and a supply seed both live on Layer_Key "plot", so a
+       seed carries `plot` as well as `role:plot` — and a feature is
+       hidden if ANY of its keys is hidden. Keeping the role key while
+       sweeping the layer key away hid the seed anyway, by the other
+       name.
+
+       That is exactly what happened: the rule read correctly, the seeds
+       still vanished, and the key that took them was the one nobody had
+       named. */
+    if (!/k === "plot"/.test(sweep)) {
+      fail("the layer the seeds are drawn on is swept away, so they vanish "
+        + "however carefully their role key is kept");
+    }
+
+    /* 1c. And the supply seeds.
+
+       A non-residential supply is a seed like a dwelling is one: it is
+       where a service goes to, and a design with the pumping station
+       missing is missing the load that sized the cable. */
+    if (!/k === "role:nrs"/.test(sweep)) {
+      fail("isolating a utility hides the non-residential supply seeds");
+    }
+    if (!/endsWith\(":role:nrs"\)/.test(sweep)) {
+      fail("only the plain supply key is kept \u2014 the narrower one still hides it");
+    }
+
     // 2. And the trench.
     if (!/k === "trench"/.test(sweep)) {
       fail("isolating a utility hides the trench layer");
@@ -106,6 +134,57 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const placingAt = canvas.indexOf("const placing =");
   if (placingAt < 0 || placingAt > declared) {
     fail("placing is declared after awaitingClick reads it");
+  }
+}
+
+/* ── What actually survives, not what the rules say ──
+
+   The assertions above read the source. This runs the sweep: every key
+   each kind of feature carries, and whether the feature is left visible
+   when a utility is isolated.
+
+   Worth having because the fault it catches is invisible in the rules.
+   Keeping `role:plot` looks like keeping the seeds — until you notice
+   they also carry `plot`, and one hidden key is enough. */
+{
+  const classKeys = (f) => [
+    f.Layer_Key,
+    f.Attributes?.Line_Type ? `lt:${f.Attributes.Line_Type}` : null,
+    f.Feature_Role && f.Feature_Role !== "shape" ? `role:${f.Feature_Role}` : null,
+    f.Layer_Key && f.Feature_Role && f.Feature_Role !== "shape"
+      ? `${f.Layer_Key}:role:${f.Feature_Role}` : null,
+  ].filter(Boolean);
+
+  const feats = [
+    { name: "plot seed", keep: true, f: { Layer_Key: "plot", Feature_Role: "plot", Attributes: {} } },
+    { name: "supply seed", keep: true, f: { Layer_Key: "plot", Feature_Role: "nrs", Attributes: {} } },
+    { name: "mains trench", keep: true, f: { Layer_Key: "trench", Attributes: { Line_Type: "trench_main" } } },
+    { name: "service trench", keep: true, f: { Layer_Key: "trench", Attributes: { Line_Type: "trench_service" } } },
+    { name: "existing trench", keep: true, f: { Layer_Key: "trench", Attributes: { Line_Type: "trench_main_existing" } } },
+    /* Another utility's main. The whole point of an isolate is that
+       this goes. A rule generous enough to keep it is a rule that
+       isolates nothing. */
+    { name: "gas main", keep: false, f: { Layer_Key: "gas", Attributes: { Line_Type: "gas_main" } } },
+    { name: "water service", keep: false, f: { Layer_Key: "water", Attributes: { Line_Type: "water_service" } } },
+  ];
+
+  const all = new Set();
+  for (const { f } of feats) for (const k of classKeys(f)) all.add(k);
+
+  /* Isolating Electric: its own keys are kin and stay. */
+  const keep = new Set(["electric", "role:meter", "electric:role:meter"]);
+  for (const k of all) {
+    if (k === "plot") keep.add(k);
+    if (k === "role:plot" || k.endsWith(":role:plot")) keep.add(k);
+    if (k === "role:nrs" || k.endsWith(":role:nrs")) keep.add(k);
+    if (k === "trench" || k.startsWith("lt:trench") || k.startsWith("trench:")) keep.add(k);
+  }
+  const hidden = [...all].filter((k) => !keep.has(k));
+
+  for (const { name, keep: want, f } of feats) {
+    const gone = classKeys(f).some((k) => hidden.includes(k));
+    if (want && gone) fail(`isolating a utility hides the ${name}`);
+    if (!want && !gone) fail(`isolating a utility leaves the ${name} showing`);
   }
 }
 

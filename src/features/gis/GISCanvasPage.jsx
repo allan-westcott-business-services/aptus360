@@ -2319,7 +2319,26 @@ export default function GISCanvasPage() {
        and takes the seed with it. That was the span node bug, and it
        would be this one. */
     for (const k of all) {
+      /* ── The seeds, both kinds, and every key they carry ──
+
+         A plot seed and a supply seed are both drawn on Layer_Key
+         "plot". So a seed carries `plot` as well as `role:plot`, and
+         a feature goes if ANY of its keys is hidden — keeping the role
+         key while sweeping the layer key away hid the seed anyway, by
+         the other name.
+
+         That is what was still happening after the first attempt at
+         this: the rule looked right, the seeds still vanished, and the
+         key that took them was the one nobody had thought to name.
+
+         `role:nrs` alongside `role:plot`, because a non-residential
+         supply is a seed like a dwelling is one \u2014 it is where a
+         service goes to, and a design with the pumping station missing
+         is missing the load that sized the cable. */
+      if (k === "plot") keep.add(k);
       if (k === "role:plot" || k.endsWith(":role:plot")) keep.add(k);
+      if (k === "role:nrs" || k.endsWith(":role:nrs")) keep.add(k);
+
       if (k === "trench" || k.startsWith("lt:trench") || k.startsWith("trench:")) keep.add(k);
     }
 

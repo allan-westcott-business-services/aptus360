@@ -1063,6 +1063,62 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   }
 }
 
+/* ── A self-lay electric supply is not on our circuit ──
+
+   Somebody else connects it. It draws nothing from our transformer,
+   takes no way, and belongs in no volt drop or loop impedance
+   calculation — a circuit carrying one reports load it does not have
+   and cable it does not feed.
+
+   Three doors lead to a Circuit_ID on a meter: Link to Circuit, ticking
+   meters in the Circuit Report, and the Circuit field in the feature
+   editor. The first two come through createCircuitFrom; the third
+   writes it directly. A rule enforced at two of three holds until
+   somebody uses the third. */
+{
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+  const editor = readFileSync("src/features/gis/FeatureEditor.jsx", "utf8");
+
+  const fn = canvas.slice(canvas.indexOf("async function createCircuitFrom"),
+    canvas.indexOf("const way = assignWay(sub, circuitId, kva);"));
+
+  // 50. The funnel refuses them.
+  if (!/isSelfLayMeter/.test(fn)) {
+    fail("createCircuitFrom does not check whether a meter is self-lay");
+  }
+  /* Filtered, not merely counted: the remaining meters still go on the
+     circuit, because a lasso round twenty plots of which two are
+     self-lay should put eighteen on rather than refusing all of it. */
+  if (!/const eligible = /.test(fn)) {
+    fail("self-lay meters are detected but not left out");
+  }
+  if (!/if \(!eligible\.length\)/.test(fn)) {
+    fail("a set of nothing but self-lay meters does not say why it was refused");
+  }
+
+  /* 51. And the guard sits before the load is worked out.
+
+     circuitKva sums what the circuit draws and assignWay allocates a
+     way from it. Counting a self-lay supply into either is the fault
+     itself, not a display detail. */
+  const guard = fn.indexOf("isSelfLayMeter");
+  const kva = fn.indexOf("circuitKva(");
+  if (guard >= 0 && kva >= 0 && guard > kva) {
+    fail("self-lay meters are counted into the circuit's load before being left out");
+  }
+
+  // 52. The third door: the editor's Circuit field.
+  if (!/disabled={selfLay}/.test(editor)) {
+    fail("the feature editor still offers a circuit for a self-lay meter");
+  }
+  if (!/selfLay = false,/.test(editor)) {
+    fail("the editor is not told whether the meter is self-lay");
+  }
+  if (!/selfLay={isSelfLayMeter\(editing/.test(canvas)) {
+    fail("the canvas does not tell the editor whether the meter is self-lay");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

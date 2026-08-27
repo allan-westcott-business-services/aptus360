@@ -41,6 +41,11 @@ export default function FeatureEditor({
   /* The whole drawing, so a meter can be offered the circuits that
      already exist on it. */
   allFeatures = [],
+  /* Whether this meter is a self-lay supply. Passed in rather than
+     worked out here: the answer comes from Plot_Utility rows the canvas
+     loads once, and a second reader of the same fact is how a meter
+     came to be crossed out on the drawing and still offered a circuit. */
+  selfLay = false,
   /* Told when a gas main is sized by hand, so the canvas can offer to
      bring the pipes between here and the POC up to match. */
   onUpstreamSize,
@@ -2060,7 +2065,19 @@ export default function FeatureEditor({
           {isMeter && feature.Layer_Key === "electric" && (
             <div className="fld">
               <label htmlFor="fe-circuit">Circuit</label>
+              {/* ── Not for a self-lay supply ──
+
+                  Somebody else connects it. It draws nothing from our
+                  transformer, takes no way, and belongs in no volt drop
+                  or loop impedance calculation — a circuit carrying one
+                  reports load it does not have.
+
+                  Link to Circuit and the Circuit Report both refuse it
+                  already. This field is the third door, and a rule
+                  enforced at two of three is a rule that holds until
+                  somebody uses the third. */}
               <select id="fe-circuit" value={f.Attributes.Circuit_ID ?? ""}
+                disabled={selfLay}
                 onChange={(e) => {
                   const id = e.target.value ? Number(e.target.value) : null;
                   const c = circuits.find((x) => Number(x.id) === id);
@@ -2084,6 +2101,12 @@ export default function FeatureEditor({
                   </option>
                 ))}
               </select>
+              {selfLay && (
+                <p className="hint">
+                  Self-lay electric supply &mdash; somebody else connects it, so it
+                  does not go on one of our circuits.
+                </p>
+              )}
               {circuits.length === 0 && (
                 <p className="hint">
                   No circuits yet. Use Electric &rsaquo; Link to Circuit to make the first one.

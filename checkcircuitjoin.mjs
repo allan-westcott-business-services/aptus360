@@ -82,7 +82,14 @@ const meter = (id, circuitId, plotId) => ({
 
 // 2. Link to Circuit can join an existing circuit.
 {
-  if (!/async function createCircuitFrom\(meters, how, joinId = null\)/.test(canvas)) {
+  /* The joinId parameter, whatever the others are called.
+
+     This pinned all three names, so renaming the first — to tell the
+     meters somebody ASKED for from the ones actually put on the circuit
+     — reported that the join feature had been lost. It had not. A check
+     that fires on a rename teaches people to edit the check, which is
+     the opposite of what it is for. */
+  if (!/async function createCircuitFrom\([^)]*joinId = null\)/.test(canvas)) {
     fail("createCircuitFrom cannot be told which circuit to join");
   }
   /* Unconditionally calling nextCircuitId is the fault itself. It must

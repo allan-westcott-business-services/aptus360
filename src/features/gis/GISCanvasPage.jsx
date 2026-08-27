@@ -8536,7 +8536,12 @@ export default function GISCanvasPage() {
      and they must produce identical circuits — a second implementation
      would drift, and the way allocation is the part that would drift
      silently. */
-  async function createCircuitFrom(meters, how, joinId = null) {
+  async function createCircuitFrom(asked, how, joinId = null) {
+    /* What the caller named. `meters` below is what is actually put on
+       the circuit, which is this less any self-lay supply — reassigning
+       the parameter would leave every line after it reading as though
+       it had the caller's list. */
+    let meters = asked;
     /* Or the electric POC, for the reason lvOrigin gives: on a
        connection to an existing network there is no transformer, and
        the circuits feed back to the point of connection. Circuits are
@@ -8552,6 +8557,48 @@ export default function GISCanvasPage() {
       setError("No meters to put on a circuit.");
       return false;
     }
+
+    /* ── A self-lay electric supply is not on our circuit ──
+
+       Somebody else connects it. It draws nothing from our
+       transformer, takes no way, and belongs in no volt drop or loop
+       impedance calculation — a circuit carrying one is a circuit
+       reporting load it does not have and cable it does not feed.
+
+       Refused here rather than in the two commands that call this,
+       because both routes come through this function: drawing round
+       meters and ticking them in the Circuit Report are two ways of
+       naming the same set, and a guard in one of them is a rule that
+       holds until somebody uses the other.
+
+       Per utility, from Plot_Utility.Self_Lay_Provider — the same set
+       the crosses on the meters are drawn from. A plot self-lay for
+       water alone is ours for electric and belongs on a circuit like
+       any other. */
+    const selfLay = asked.filter((m) => isSelfLayMeter(m,
+      { slp: slpSet, slpNrs: slpNrsSet, layers }));
+    const eligible = asked.filter((m) => !selfLay.includes(m));
+
+    if (!eligible.length) {
+      setError(selfLay.length === 1
+        ? "That meter is a self-lay electric supply \u2014 somebody else connects "
+          + "it, so it does not go on one of our circuits."
+        : `All ${selfLay.length} of those meters are self-lay electric supplies `
+          + "\u2014 somebody else connects them, so they do not go on our circuits.");
+      return false;
+    }
+    /* Named where there are few enough to name. "3 left out" is a
+       number somebody has to go and find; the plot numbers are the
+       thing they would be looking for. */
+    if (selfLay.length) {
+      const plots = selfLay.map((m) => m.Plot_ID ?? m.Attributes?.NRS_ID)
+        .filter((x) => x != null);
+      setStatus(`${selfLay.length} self-lay supply(s) left off`
+        + (plots.length && plots.length <= 8 ? `: plot ${plots.join(", ")}` : "")
+        + " \u2014 somebody else connects them.");
+      setTimeout(() => setStatus(""), 8000);
+    }
+    meters = eligible;
     /* ── Joining one, or starting one ──
 
        `joinId` names an existing circuit. Without it this makes a new
@@ -18531,6 +18578,9 @@ export default function GISCanvasPage() {
 
       {editing && (
         <FeatureEditor
+          /* The same rule the crosses on the meters are drawn from, so
+             a meter marked self-lay cannot also be offered a circuit. */
+          selfLay={isSelfLayMeter(editing, { slp: slpSet, slpNrs: slpNrsSet, layers })}
           feature={editing}
           layers={layers}
           lineTypes={lineTypes}

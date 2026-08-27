@@ -58,17 +58,23 @@ export default function PlacementPanel({
              The boundary comes between the seed and the meters because
              that is the order somebody reads a plot: here is the house,
              here is where its frontage meets the verge, and here is
-             where each meter sits. */
+             where each meter sits.
+
+             There was a fourth — where the service trench ends — asked
+             between the boundary and the meters. It is gone: the dig
+             stops at the meter, so asking separately meant clicking the
+             same place twice and letting the two answers differ. */
           boundaryFor ? (
             <>
               <p className="pp-now">
                 Plot <strong>{current.plot_number}</strong> placed. Now click its{" "}
                 <strong>property boundary point</strong> &mdash; where the service
-                trench will stop.
+                trench crosses into the plot.
               </p>
               <p className="pp-hint">
-                The dig runs square from the mains trench to this point. Meters
-                come next.
+                The dig runs square from the mains trench to this point, and on to
+                the meter. Meters come next &mdash; the first one is where the dig
+                stops.
               </p>
             </>
           ) : meterFor ? (

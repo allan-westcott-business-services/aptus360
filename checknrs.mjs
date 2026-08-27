@@ -161,14 +161,31 @@ const plotById = () => ({ kva_load: 5 });
   if (!/setBoundaryFor\(\{ nrs: rec/.test(src)) {
     fail("placing a supply never asks where its dig stops");
   }
-  if (!/Boundary_At: boundaryAt/.test(src)) fail("a supply seed has no boundary point");
-  /* And where its dig stops, which is a separate point from the
-     boundary: the trench crosses the property line and runs on. */
-  if (!/setTrenchEndFor\(\{ plot, nrs, seedPoint/.test(src)) {
-    fail("placing a seed never asks where the service trench ends");
+  /* The boundary point, written on the click that asks for it. It was
+     carried through a third step and written later; that step is gone. */
+  if (!/Boundary_At: point/.test(src)) fail("a supply seed has no boundary point");
+
+  /* ── The trench end is the meter, not a click of its own ──
+
+     There was a step between the boundary and the meters asking where
+     the service trench ends. It is gone: the dig stops at the meter, so
+     asking separately meant clicking the same place twice and letting
+     the two answers differ — which left the trench end a point nobody
+     had checked against the meter it was meant to reach.
+
+     `Trench_End_At` still exists and still means the same thing. It is
+     filled in from the first meter placed, which is why the seed is
+     written before the meters rather than after them. */
+  if (/setTrenchEndFor/.test(src)) {
+    fail("the separate trench-end click is back \u2014 the dig stops at the meter");
   }
-  if (!/Trench_End_At: point/.test(src)) fail("a supply seed has no trench end");
-  if (!/plot, nrs, seedPoint, utility: takes\[0\]/.test(src)) {
+  if (!/Trench_End_At: point/.test(src)) {
+    fail("nothing records where the dig stops");
+  }
+  if (!/if \(!placed\.length\)/.test(src)) {
+    fail("the trench end is not taken from the FIRST meter, so a later one moves it");
+  }
+  if (!/plot, nrs, seedPoint, seedTempId: tempId,/.test(src)) {
     fail("placing a supply does not go on to place its meters");
   }
   if (!/NRS_ID: nrs\.NRS_ID/.test(src)) {

@@ -374,7 +374,6 @@ export default function GISCanvasPage() {
      Held the same way boundaryFor is, and for the same reason: nothing
      is written until every point is known, so a seed abandoned
      part-way leaves nothing behind. */
-  const [trenchEndFor, setTrenchEndFor] = useState(null);
 
   /* What a supply is called, in one place.
 
@@ -2049,7 +2048,7 @@ export default function GISCanvasPage() {
      because there were two of them and only one was wrong, which is
      how the prompt drew correctly over a click that did nothing. */
   const awaitingClick = placing || !!meterFor || !!nrsFor
-    || !!boundaryFor || !!trenchEndFor;
+    || !!boundaryFor;
 
   const visible = useMemo(
     () => features.filter((f) => {
@@ -2605,7 +2604,7 @@ export default function GISCanvasPage() {
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   };
 
-  const nextPlot = meterFor?.plot || boundaryFor?.plot || trenchEndFor?.plot
+  const nextPlot = meterFor?.plot || boundaryFor?.plot
     || queue.find((q) => !q.done) || null;
 
   const isPdfMap = basemap?.Source_Kind === "pdf";
@@ -4925,44 +4924,11 @@ export default function GISCanvasPage() {
     if (awaitingClick && cursor) {
       ctx.save();
 
-      if (trenchEndFor) {
-        /* A dashed leader from the boundary point, and a hollow square
-           at the cursor. From the boundary rather than from the seed
-           because that is where this leg of the dig starts: the route
-           runs main, boundary, here. */
-        const c = toPx(cursor);
-        const origin = toPx(trenchEndFor.boundaryAt);
-
-        ctx.globalAlpha = 0.6;
-        ctx.beginPath();
-        ctx.moveTo(origin.x, origin.y);
-        ctx.lineTo(c.x, c.y);
-        ctx.strokeStyle = "#0f172a";
-        ctx.setLineDash([4, 3]);
-        ctx.lineWidth = 1.5;
-        ctx.stroke();
-        ctx.setLineDash([]);
-
-        ctx.globalAlpha = 0.9;
-        ctx.beginPath();
-        ctx.rect(c.x - 5, c.y - 5, 10, 10);
-        ctx.fillStyle = "#fff";
-        ctx.fill();
-        ctx.strokeStyle = "#0f172a";
-        ctx.lineWidth = 2;
-        ctx.stroke();
-
-        ctx.globalAlpha = 1;
-        const label = `${trenchEndFor.nrs
-          ? nrsName(trenchEndFor.nrs) : trenchEndFor.plot.plot_number} trench end`;
-        ctx.font = "700 11px ui-monospace, Menlo, monospace";
-        ctx.textAlign = "center";
-        const w = ctx.measureText(label).width + 12;
-        ctx.fillStyle = "rgba(15,23,42,.85)";
-        ctx.fillRect(c.x - w / 2, c.y - 32, w, 17);
-        ctx.fillStyle = "#fff";
-        ctx.fillText(label, c.x, c.y - 20);
-      } else if (boundaryFor) {
+      {/* The trench-end prompt was here: a dashed leader from the
+          boundary point to a hollow square at the cursor. The step is
+          gone — the dig stops at the meter — so the prompt for it is
+          too. */}
+      if (boundaryFor) {
         /* A dashed leader back to the seed, and a hollow diamond at the
            cursor: the same language as the meter prompt, in a shape
            that is not a meter. */
@@ -5565,7 +5531,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -6973,8 +6939,6 @@ export default function GISCanvasPage() {
        show a plot that exists on screen and in nothing else. */
     if (boundaryFor?.tempId) rollback(boundaryFor.tempId);
     setBoundaryFor(null);
-    if (trenchEndFor?.tempId) rollback(trenchEndFor.tempId);
-    setTrenchEndFor(null);
   }
 
   /* Draw it immediately, confirm with the server after. Waiting for a
@@ -7038,8 +7002,8 @@ export default function GISCanvasPage() {
       const tempId = addOptimistic(draftFeature);
       setNrsFor(null);
       setBoundaryFor({ nrs: rec, seedPoint: point, tempId });
-      setStatus(`Now click where the dig stops for ${nrsName(rec)}`
-        + " \u00b7 Esc to stop");
+      setStatus(`Now click the property boundary point for ${nrsName(rec)}`
+        + " \u00b7 where the service crosses into the site \u00b7 Esc to stop");
       return;
     }
 
@@ -7049,7 +7013,7 @@ export default function GISCanvasPage() {
          One branch for both, because a meter is a meter: it belongs to
          a seed, carries its utility, and is what every load sum reads.
          What differs is only what it is linked BY. */
-      const { plot, nrs, utility, all, placed } = meterFor;
+      const { plot, nrs, utility, all, placed, seedTempId } = meterFor;
       const draftFeature = {
         Project_ID: Number(projectId),
         Layer_Key: utility.layer_key,
@@ -7080,6 +7044,42 @@ export default function GISCanvasPage() {
         if (!nrs) markPlaced(plot.plot_id);
       }
 
+      /* ── Where the dig stops ──
+
+         The first meter placed. There used to be a click of its own for
+         this, before the meters — so somebody clicked the same place
+         twice, and the two answers could differ, which left the trench
+         end a point nobody had checked against the meter it was meant
+         to reach.
+
+         The first, not the nearest or the last: a plot with gas and
+         water has two meters and the dig runs to the point they are
+         banked at, which is where the first one goes. Somebody who
+         wants it elsewhere moves the meter, and this follows.
+
+         Written to the seed rather than held in state, because Auto
+         Service reads it off the seed and the seed is what survives a
+         reload halfway through placing a row of plots. */
+      if (!placed.length) {
+        const seed = features.find((x) => Number(x.Feature_ID) === Number(seedTempId))
+          || features.find((x) => (nrs
+            ? Number(x.Attributes?.NRS_ID) === Number(nrs.NRS_ID)
+            : Number(x.Plot_ID) === Number(plot.plot_id))
+            && (x.Feature_Role === "plot" || x.Feature_Role === "nrs"));
+        if (seed) {
+          const attrs = { ...(seed.Attributes || {}), Trench_End_At: point };
+          setFeatures((fs) => fs.map((x) => (x.Feature_ID === seed.Feature_ID
+            ? { ...x, Attributes: attrs } : x)));
+          /* Not awaited before the meter is written: the meter is what
+             the click was for, and a seed attribute that lands a moment
+             later costs nothing. Reported if it fails, because a seed
+             with no trench end is one Auto Service will refuse. */
+          updateFeature(projectId, seed.Feature_ID, { Attributes: attrs })
+            .catch((e) => setError(`The meter was placed, but the plot's trench end `
+              + `was not recorded: ${e.message}`));
+        }
+      }
+
       try { reconcile(tempId, await addFeature(draftFeature)); }
       catch (e) { rollback(tempId); setError(e.message); }
       return;
@@ -7105,17 +7105,19 @@ export default function GISCanvasPage() {
     if (boundaryFor) {
       const { plot, nrs, seedPoint, tempId } = boundaryFor;
       setBoundaryFor(null);
-      setTrenchEndFor({ plot, nrs, seedPoint, tempId, boundaryAt: point });
-      setStatus(`Now click where the service trench ends for `
-        + `${nrs ? nrsName(nrs) : `plot ${plot.plot_number}`}`
-        + " \u00b7 the far end from the main \u00b7 Esc to stop");
-      return;
-    }
-
-    /* Third click: where the dig stops, and the seed is written. */
-    if (trenchEndFor) {
-      const { plot, nrs, seedPoint, tempId, boundaryAt } = trenchEndFor;
       setStatus("");
+
+      /* ── The seed is written here, on the second click ──
+
+         There was a third: where the service trench ends. It is gone.
+         The dig stops at the meter, so asking for it separately was
+         asking somebody to click the same place twice — and the two
+         answers could differ, which made the trench end a point nobody
+         had checked against the meter it was supposed to reach.
+
+         `Trench_End_At` is still on the seed and still means the same
+         thing. It is filled in when the first meter goes down, in the
+         branch above, rather than asked for. */
       const draftFeature = nrs ? {
         Project_ID: Number(projectId),
         Layer_Key: "plot",
@@ -7123,7 +7125,7 @@ export default function GISCanvasPage() {
         Feature_Role: "nrs",
         Geometry: [seedPoint],
         Label: nrsName(nrs),
-        Attributes: { NRS_ID: nrs.NRS_ID, Boundary_At: boundaryAt, Trench_End_At: point },
+        Attributes: { NRS_ID: nrs.NRS_ID, Boundary_At: point },
       } : {
         Project_ID: Number(projectId),
         Layer_Key: "plot",
@@ -7135,13 +7137,11 @@ export default function GISCanvasPage() {
         Attributes: {
           Bedrooms: plot.bedrooms ?? null,
           Config: plot.config_code ?? null,
-          Boundary_At: boundaryAt,
-          Trench_End_At: point,
+          Boundary_At: point,
         },
       };
       setFeatures((f) => f.map((x) =>
         (x.Feature_ID === tempId ? { ...draftFeature, Feature_ID: tempId } : x)));
-      setTrenchEndFor(null);
 
       /* Then the meters. A plot takes every utility the project is
          building; a supply takes the ones it says it takes, and only
@@ -7151,7 +7151,8 @@ export default function GISCanvasPage() {
       const takes = nrs ? utilitiesOf(nrs).filter((u) => u.layer_key) : utilities;
       if (takes.length) {
         setMeterFor({
-          plot, nrs, seedPoint, utility: takes[0], all: takes, placed: [],
+          plot, nrs, seedPoint, seedTempId: tempId,
+          utility: takes[0], all: takes, placed: [],
         });
       } else if (!nrs) {
         markPlaced(plot.plot_id);
@@ -7161,6 +7162,14 @@ export default function GISCanvasPage() {
       catch (e) { rollback(tempId); setMeterFor(null); setError(e.message); }
       return;
     }
+
+    /* The third click was here: where the dig stops. It wrote the seed
+       and then started the meters.
+
+       Both of those moved up to the boundary click, and the trench end
+       is taken from the first meter placed instead. Clicking it
+       separately meant clicking the same place twice, and the two
+       answers could differ. */
 
     // The seed itself
     const plot = queue.find((q) => !q.done);

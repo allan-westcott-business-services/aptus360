@@ -18512,6 +18512,10 @@ export default function GISCanvasPage() {
         const r = circuitReport(features, {
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
+          /* The same rule the crosses on the meters are drawn from, so
+             the report and the drawing cannot disagree about who
+             connects a plot. */
+          isSelfLay: (m) => isSelfLayMeter(m, { slp: slpSet, slpNrs: slpNrsSet, layers }),
         });
         if (r.error) {
           setReportOpen(false);

@@ -1088,7 +1088,21 @@ export function circuitReport(features = [], opts = {}) {
      A supply is a load like a dwelling is. The two ways of looking one
      up belong in the same place, and checknrs counts the call sites to
      make sure neither goes without the other. */
-  const { plotById = () => null, fallbackKva = 0, nrsById = () => null } = opts;
+  const {
+    plotById = () => null, fallbackKva = 0, nrsById = () => null,
+    /* Whether this meter is a self-lay supply.
+
+       Passed in rather than read here, for the reason the two lookups
+       above travel together: the answer lives in Plot_Utility rows the
+       canvas loads once, and a second reader of the same fact is how a
+       meter came to be crossed out on the drawing and still offered a
+       circuit.
+
+       Defaults to "no", so a caller that has not been told still gets a
+       report — one that says nothing about self-lay rather than
+       guessing at it. */
+    isSelfLay = () => false,
+  } = opts;
 
   /* ── Traced from the substation, or from the POC ──
 
@@ -1163,6 +1177,19 @@ export function circuitReport(features = [], opts = {}) {
       circuitId: m.Attributes?.Circuit_ID ?? null,
       circuitName: m.Attributes?.Circuit_Name ?? null,
       circuitLetter: m.Attributes?.Circuit_Letter ?? null,
+      /* ── Somebody else connects this one ──
+
+         It draws nothing from our transformer and takes no way, so it
+         is on no circuit — which means it lands in "not traced to a
+         substation" every single time, beside the note telling somebody
+         to check the trenches connect it back. That note is wrong
+         advice for a self-lay plot, and following it means going to
+         look at a drawing that is already correct.
+
+         Marked rather than hidden. A self-lay plot is a real plot on
+         this site and taking it off the report entirely would make it
+         impossible to see that it had been dealt with at all. */
+      selfLay: !!isSelfLay(m),
     };
   };
 

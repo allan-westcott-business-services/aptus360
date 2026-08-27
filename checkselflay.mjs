@@ -1119,6 +1119,70 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   }
 }
 
+/* ── The Circuit Report says who connects a plot ──
+
+   A self-lay plot is on no circuit of ours, so it lands in "not traced
+   to a substation" every time — beside a note telling somebody to check
+   the trenches connect it back. That is the wrong thing to do about a
+   plot connected to the incumbent's main: the drawing is already
+   correct, and following the note means hunting a fault that is not
+   there.
+
+   Marked rather than hidden. A self-lay plot is a real plot on this
+   site, and taking it off the report would make it impossible to see
+   that it had been dealt with at all. */
+{
+  const report = readFileSync("src/features/gis/CircuitReport.jsx", "utf8");
+  const elec = readFileSync("src/features/gis/electric.js", "utf8");
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  // 53. The flag reaches the report.
+  if (!/isSelfLay = \(\) => false/.test(elec)) {
+    fail("circuitReport cannot be told which meters are self-lay");
+  }
+  if (!/selfLay: !!isSelfLay\(m\)/.test(elec)) {
+    fail("the report's meter rows do not carry the self-lay flag");
+  }
+  if (!/isSelfLay: \(m\) => isSelfLayMeter/.test(canvas)) {
+    fail("the canvas does not tell circuitReport which meters are self-lay");
+  }
+
+  /* 54. Shown on the number, and in both tables.
+
+     A plot marked in one list and bare in the other is one plot
+     described two ways, and a reader would be right to wonder which is
+     true. */
+  if (!/\(SLP\)/.test(report)) fail("the report never marks a self-lay plot");
+  const cells = (report.match(/plotCell\(m\)/g) || []).length;
+  if (cells < 2) {
+    fail(`the plot number is marked in ${cells} table(s) \u2014 both lists show plots`);
+  }
+  /* In a cell, which is `{num(m.plot)}` in braces. plotCell is built
+     from num(m.plot) itself, so testing for the bare call matches its
+     own definition and fails on correct code. */
+  if (/<td[^>]*>{num\(m\.plot\)}<\/td>/.test(report)) {
+    fail("a table still shows the bare plot number");
+  }
+
+  /* 55. And the export keeps Plot numeric.
+
+     "41 (SLP)" is text, and one text value in a column returns zero
+     from every sum and sort built on it — the same reason the distance
+     column is a number rather than "400.8 m". */
+  const xlsx = report.slice(report.indexOf("function exportXlsx"),
+    report.indexOf("const wb = XLSX.utils.book_new()"));
+  if (/Plot: `/.test(xlsx) || /Plot: plotCell/.test(xlsx)) {
+    fail("the export puts (SLP) into the Plot column, which stops it summing");
+  }
+  if (!/"Self-lay": m\.selfLay/.test(xlsx)) {
+    fail("the export does not say which rows are self-lay");
+  }
+  /* Both blocks — the circuits and the untraced list. */
+  if ((xlsx.match(/"Self-lay":/g) || []).length < 2) {
+    fail("only one of the export's two row sets carries the self-lay column");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

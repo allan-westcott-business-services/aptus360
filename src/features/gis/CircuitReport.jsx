@@ -20,6 +20,20 @@ import { parsePlotRange } from "./plotRange.js";
    drawing fault, not a planning one. */
 
 const num = (v) => (v == null ? "\u2014" : v);
+
+/* The plot number, and who connects it.
+
+   A self-lay plot is on no circuit of ours — somebody else connects it
+   — so it appears in every list of meters that are not on one, beside a
+   note about checking the trenches. Saying so on the number itself is
+   what stops that reading as a fault to chase.
+
+   Written once and used by both tables, because a plot marked in one
+   list and bare in the other is the same plot described two ways, and
+   the reader would be right to wonder which was true. */
+const plotCell = (m) => (m?.selfLay
+  ? `${num(m.plot)} (SLP)`
+  : num(m.plot));
 const kvaF = (v) => `${(Math.round((v || 0) * 10) / 10).toFixed(1)} kVA`;
 const distF = (v) => (v == null ? "\u2014" : `${v.toFixed(1)} m`);
 
@@ -124,6 +138,18 @@ export default function CircuitReport({
           [`Distance from ${report.stationRole === "poc"
             ? "POC" : "substation"} (m)`]: m.distM,
           kVA: m.kva,
+          /* A column of its own, not "(SLP)" after the number.
+
+             The screen puts it in brackets because a person reads the
+             two together. A spreadsheet does not: "41 (SLP)" is text,
+             and a column with one text value in it returns zero from
+             every sum and sort built on it — which is the same reason
+             the distance column is a number rather than "400.8 m", two
+             comments above.
+
+             Added at the end, so every column somebody already has a
+             formula pointing at stays where it was. */
+          "Self-lay": m.selfLay ? "Yes" : "",
         });
       }
     }
@@ -137,6 +163,7 @@ export default function CircuitReport({
         [`Distance from ${report.stationRole === "poc"
           ? "POC" : "substation"} (m)`]: null,
         kVA: m.kva,
+        "Self-lay": m.selfLay ? "Yes" : "",
       });
     }
     const wb = XLSX.utils.book_new();
@@ -457,7 +484,7 @@ export default function CircuitReport({
                               onChange={() => toggle(m.id)} />
                           </td>
                           <td>{m.meter}</td>
-                          <td className="mono">{num(m.plot)}</td>
+                          <td className="mono">{plotCell(m)}</td>
                           <td className="mono">{m.houseType}</td>
                           <td className="num">{distF(m.distM)}</td>
                           <td className={m.kvaMissing ? "num cr-gap" : "num"}
@@ -495,7 +522,7 @@ export default function CircuitReport({
                     {report.unreachable.map((m) => (
                       <tr key={m.id}>
                         <td>{m.meter}</td>
-                        <td className="mono">{num(m.plot)}</td>
+                        <td className="mono">{plotCell(m)}</td>
                         <td className="mono">{m.houseType}</td>
                         <td className={m.kvaMissing ? "num cr-gap" : "num"}>
                           {m.kvaMissing ? "\u2014" : kvaF(m.kva)}
@@ -505,10 +532,45 @@ export default function CircuitReport({
                   </tbody>
                 </table>
               </div>
-              <p className="cr-hint">
-                These aren&rsquo;t reachable from the substation along the network.
-                Check the trenches connect these plots back to it.
-              </p>
+              {/* ── The advice has to match what is in the list ──
+
+                  "Check the trenches connect these plots back to it" is
+                  the right thing to do about a plot we are connecting
+                  and the wrong thing about a self-lay one: that plot is
+                  connected to the incumbent's main, the drawing is
+                  already correct, and following the note means going to
+                  look for a fault that is not there.
+
+                  So the note says which of the two it is. Where every
+                  one of them is self-lay it stops giving the advice at
+                  all rather than qualifying it, because a sentence
+                  telling somebody to check something that is right is
+                  not improved by a footnote. */}
+              {(() => {
+                const slp = report.unreachable.filter((m) => m.selfLay).length;
+                const ours = report.unreachable.length - slp;
+                if (!ours) {
+                  return (
+                    <p className="cr-hint">
+                      {slp === 1 ? "This is a self-lay supply" : "These are self-lay supplies"}
+                      {" \u2014 somebody else connects "}
+                      {slp === 1 ? "it" : "them"}, so {slp === 1 ? "it is" : "they are"} on
+                      none of our circuits. Nothing to fix.
+                    </p>
+                  );
+                }
+                return (
+                  <p className="cr-hint">
+                    {ours === report.unreachable.length
+                      ? "These aren\u2019t reachable"
+                      : `${ours} of these aren\u2019t reachable`}
+                    {" from the substation along the network. Check the trenches "}
+                    connect {ours === 1 ? "that plot" : "those plots"} back to it.
+                    {slp > 0 && ` The ${slp} marked (SLP) ${slp === 1 ? "is" : "are"} `
+                      + "connected by somebody else and belong on no circuit of ours."}
+                  </p>
+                );
+              })()}
             </section>
           )}
         </div>

@@ -568,6 +568,83 @@ const at = (x) => planned.filter((j) => Math.hypot(j.point[0] - x, j.point[1]) <
   }
 }
 
+/* ── A bottle end is never on a service ──
+
+   A service cable ends in a cut-out at the plot. Nothing is sealed
+   there: the fitting at the end of a service is the customer's
+   termination, and a bottle end drawn on one is a fitting on a bill
+   that nobody installs.
+
+   `!parSvc[u]` in the rules above is exactly this test and is where it
+   is decided. This is the second lock on the same door, at the point
+   every plan leaves the module, because the rule is stated as never and
+   a never is worth enforcing once rather than trusting in four places. */
+{
+  const svcT = (pts, seedId) => ({
+    Feature_ID: nextId++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: "service_trench", Seed_Feature_ID: seedId },
+  });
+  const sub6 = {
+    Feature_ID: nextId++, Feature_Role: "substation", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {},
+  };
+  const p = plot(601, [50, 11]);
+
+  /* 21. Nothing is sealed down a spur \u2014 on any drawing.
+
+     Two plots on one main, so a spur exists at each and the run ends
+     past the second. If a seal ever lands off the main, this catches
+     it wherever it came from. */
+  {
+    const q = plot(602, [30, 11]);
+    const drawing = [
+      sub6, trench([[0, 0], [30, 0], [50, 0], [53, 0]]),
+      svcT([[30, 0], [30, 12]], q.Feature_ID),
+      svcT([[50, 0], [50, 12]], p.Feature_ID),
+      q, p,
+      meter(602, q.Feature_ID, [30, 11]),
+      meter(601, p.Feature_ID, [50, 11]),
+    ];
+    const js = planJoints(drawing, circuits, { lineTypes, nrsById });
+    for (const j of js.filter((x) => x.kind === "bottleend")) {
+      /* Off the main means off y = 0 in this drawing. */
+      if (Math.abs(j.point[1]) > 0.5) {
+        fail(`a bottle end is sealed ${j.point[1]}m down a service spur`);
+      }
+    }
+    /* And the run is still sealed \u2014 the guard must not take the real
+       one with it. */
+    if (!js.some((j) => j.kind === "bottleend")) {
+      fail("the guard removed the run's own bottle end");
+    }
+  }
+
+  /* 22. The guard is on the source, and it is a filter on the output.
+
+     Asserted here because the planner already refuses these, so a
+     behaviour test cannot tell the guard from the rule it backs up. */
+  {
+    const jt = readFileSync("src/features/gis/joints.js", "utf8");
+    if (!/A bottle end is never on a service/.test(jt)) {
+      fail("the never-on-a-service guard is gone");
+    }
+    if (!/out\.filter\(\(j\) => \{/.test(jt)) {
+      fail("planJoints no longer filters its plan before returning it");
+    }
+    /* A seal ON the main survives even where a service meets it: a
+       take-off is a point on both, and a main stopping there is a real
+       end to seal. */
+    if (!/nearLine\(j\.point, mainTrenches, 0\.5\)\) return true/.test(jt)) {
+      fail("a seal at a take-off would be dropped with the ones on spurs");
+    }
+    /* And the block that moved seals onto the generated tail is gone
+       with the tail itself. */
+    if (/j\.onTail/.test(jt)) {
+      fail("the tail-move block is still moving bottle ends onto a tail that is not dug");
+    }
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Service joints behave (a supply's take-off is jointed, and the run ends at it)."
   : `\n${bad} problem(s)`);

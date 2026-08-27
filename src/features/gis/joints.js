@@ -218,6 +218,27 @@ export const REASON_TEXT = {
 
 const key = (p) => `${p[0].toFixed(2)},${p[1].toFixed(2)}`;
 
+/* Distance from a point to a segment. Its own copy rather than an
+   import, because feeder.js does not export one and adding an export to
+   share four lines of arithmetic is a wider change than the four
+   lines. */
+const segGap = (p, a, b) => {
+  const vx = b[0] - a[0];
+  const vy = b[1] - a[1];
+  const len2 = vx * vx + vy * vy;
+  if (!len2) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
+};
+
+/* Whether a line type is a trench. The lineTypes list says which layer
+   each type is drawn on, and a trench is one drawn on the trench
+   layer — the same test isTrenchType makes elsewhere, kept local for
+   the same reason as segGap. */
+const isTrenchType = (typeKey, lineTypes = []) =>
+  (lineTypes || []).some((t) => t.Type_Key === typeKey && t.Layer_Key === "trench");
+
 /* Every joint one circuit needs, before duplicates across circuits are
    resolved. */
 function jointsForCircuit(features, circuit, opts) {
@@ -624,62 +645,53 @@ export function planJoints(features = [], circuits = [], opts = {}) {
     out.push({ ...j, kind: "service", reasons: ["service"] });
   }
 
-  /* ── The bottle end goes at the end of the tail ──
+  /* ── A bottle end is never on a service ──
 
-     A run stops at the service joint serving the last plot. The gang
-     digs a little further, lays a short tail and buries the bottle end
-     in it, because a bottle end has to sit in trench like everything
-     else. feederSections draws that tail and the build records its
-     length on the cable as `Tail_M`.
+     A service cable ends in a cut-out at the plot. Nothing is sealed
+     there: the fitting that belongs at the end of a service is the
+     customer's termination, and a bottle end drawn on one is a fitting
+     on a bill that nobody installs.
 
-     ── Why this is a move and not a suppression ──
+     The rules above already refuse it — `!parSvc[u]` is exactly this
+     test, and it is the reason that line exists. This is a second lock
+     on the same door, at the point every plan leaves the module, so
+     that a rule stated as never is enforced once rather than depended
+     on in four places.
 
-     The obvious build was to place the bottle end from the canvas at
-     the tail end and stop this planning one at the take-off. That needs
-     a condition — "only where a tail was drawn" — and getting it wrong
-     puts two bottle ends on every leg, or none.
+     Measured against the drawing rather than the model: a joint that
+     came from somewhere else entirely, or from a future reader of this
+     function, is still caught. On a mains trench and not on a service
+     is the whole test — the two meet at a take-off, and a seal there is
+     legitimate where the main stops dead.
 
-     There is no condition here. The bottle end is planned where it
-     always was, at the node ending the run, and then moved to the end
-     of the cable that carries a tail. One before, one after. A drawing
-     with no tail has nothing to move it to and is untouched, which is
-     what a setting of 0 produces and what every drawing made before
-     this looks like.
+     A block that moved bottle ends onto the generated tail cable was
+     here. The tail is gone: the seal is placed at the end of the dig by
+     the walk that draws the cable, so there is nothing left to move it
+     to. */
+  const svcTrenches = features.filter((f) => f.Feature_Type === "line"
+    && (f.Geometry || []).length >= 2
+    && String(f.Attributes?.Line_Type || "").includes("service"));
+  const mainTrenches = features.filter((f) => f.Feature_Type === "line"
+    && (f.Geometry || []).length >= 2
+    && isTrenchType(f.Attributes?.Line_Type, opts.lineTypes)
+    && !String(f.Attributes?.Line_Type || "").includes("service"));
 
-     The service joint does not move. It belongs at the take-off, which
-     is where the service leaves.
-
-     Matched on the cable's second-to-last vertex, not its last: the
-     take-off is where the tail STARTS, and the bottle end is going to
-     where it ends. A cable claiming a tail whose last vertex is already
-     the take-off therefore moves nothing, which is the right answer for
-     a run that was never extended. */
-  const tails = features.filter((f) => f.Feature_Type === "line"
-    && f.Layer_Key === "electric"
-    && Number(f.Attributes?.Tail_M) > 0
-    && (f.Geometry || []).length >= 3);
-
-  if (tails.length) {
-    for (const j of out) {
-      if (j.kind !== "bottleend") continue;
-      for (const t of tails) {
-        const g = t.Geometry;
-        const from = g[g.length - 2];
-        const to = g[g.length - 1];
-        if (Math.hypot(from[0] - j.point[0], from[1] - j.point[1]) > 0.25) continue;
-        /* Same circuit, so a tail on one circuit cannot move another's
-           bottle end where two runs end at one point. */
-        const c = t.Attributes?.Circuit_ID;
-        if (c != null && j.circuitId != null
-          && Number(c) !== Number(j.circuitId)) continue;
-        j.point = to.slice();
-        j.onTail = true;
-        break;
-      }
+  const nearLine = (pt, lines, tol) => lines.some((f) => {
+    const g = f.Geometry;
+    for (let i = 0; i + 1 < g.length; i++) {
+      if (segGap(pt, g[i], g[i + 1]) <= tol) return true;
     }
-  }
+    return false;
+  });
 
-  return out;
+  return out.filter((j) => {
+    if (j.kind !== "bottleend") return true;
+    /* On a main: keep it, whatever else is nearby. A take-off is a
+       point on both, and the main stopping there is a real seal. */
+    if (nearLine(j.point, mainTrenches, 0.5)) return true;
+    /* On a service and nowhere near a main: never. */
+    return !nearLine(j.point, svcTrenches, 0.5);
+  });
 }
 
 /* What is already on the drawing, so a second run adds nothing and

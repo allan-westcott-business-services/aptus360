@@ -950,13 +950,52 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   const inner = L(3, [[178.43, 129.85], [158.36, 132.70]], 41);
   const m41 = meterAt(9, 41, [157.5, 132.9]);
 
-  // 46. Both halves lay.
+  /* 46. One cable, along the whole dig.
+
+     Each piece was laying a cable of its own that ran the length of
+     that piece and then struck out for the meter — so a service split
+     at the boundary came out as two cables, the off-site one cutting
+     diagonally across the garden to the same meter. */
   {
     const r = lay([road, outer, inner, m41]);
-    if (r.cables.length !== 2) {
-      fail(`a service split at the boundary laid ${r.cables.length} cable(s), expected 2`
+    if (r.cables.length !== 1) {
+      fail(`a service split at the boundary laid ${r.cables.length} cable(s), expected 1`
         + (r.skipped[0] ? ` \u2014 ${r.skipped[0].why}` : ""));
     }
+    const g = r.cables[0]?.geometry ?? [];
+    /* It starts at the joint on the incumbent's trench. */
+    if (Math.hypot(g[0]?.[0] - 183.81, g[0]?.[1] - 129.50) > 0.01) {
+      fail("the cable does not start at the joint");
+    }
+    /* And passes through the boundary join rather than cutting across
+       it, which is the whole difference between following the dig and
+       drawing a straight line to the meter. */
+    if (!g.some((p) => Math.hypot(p[0] - 178.43, p[1] - 129.85) < 0.01)) {
+      fail("the cable does not follow the dig through the boundary");
+    }
+    const end = g[g.length - 1] ?? [];
+    if (Math.hypot(end[0] - 157.5, end[1] - 132.9) > 0.01) {
+      fail("the cable does not end at the meter");
+    }
+    /* No stutter where two pieces meet: the join is a point on both. */
+    for (let i = 1; i < g.length; i++) {
+      if (Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]) < 1e-6) {
+        fail("the cable has a zero-length segment at a join");
+      }
+    }
+  }
+
+  /* 46b. And a run of one piece is unchanged.
+
+     Nearly every service on a normal site is one feature. This must not
+     have moved. */
+  {
+    const main = L(20, [[0, 0], [100, 0]], null, "trench_main");
+    const only = L(21, [[20, 0], [20, 12]], 10);
+    const r = lay([main, only, meterAt(30, 10, [20, 13])]);
+    if (r.cables.length !== 1) fail(`an ordinary service laid ${r.cables.length} cable(s)`);
+    const g = r.cables[0]?.geometry ?? [];
+    if (g.length !== 3) fail(`an ordinary cable has ${g.length} points, expected 3`);
   }
 
   // 47. And a longer chain, where only the first piece touches the main.
@@ -965,7 +1004,19 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
     const b = L(5, [[178.43, 129.85], [168, 130]], 41);
     const c = L(6, [[168, 130], [158, 131]], 41);
     const r = lay([road, a, b, c, meterAt(10, 41, [157, 131])]);
-    if (r.cables.length !== 3) fail(`a chain of three laid ${r.cables.length} cable(s)`);
+    if (r.cables.length !== 1) {
+      fail(`a chain of three laid ${r.cables.length} cable(s), expected one along all of it`);
+    }
+    /* Every piece's far end appears, in order out from the main. */
+    const g = r.cables[0]?.geometry ?? [];
+    for (const [x, y] of [[178.43, 129.85], [168, 130], [158, 131]]) {
+      if (!g.some((p) => Math.hypot(p[0] - x, p[1] - y) < 0.01)) {
+        fail(`the cable misses the join at ${x},${y}`);
+      }
+    }
+    if (r.skipped.length) {
+      fail(`pieces covered by the run were reported as failures: ${r.skipped[0].why}`);
+    }
   }
 
   /* 48. Reaching another service is not reaching a main.
@@ -980,6 +1031,29 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
     const r = lay([road, d, e, meterAt(11, 98, [121, 100])]);
     if (r.cables.length) fail("a chain reaching no main at all still laid cable");
     if (r.skipped.length !== 2) fail("both unreachable pieces should be reported");
+  }
+
+  /* 48b. A run already served is not served twice.
+
+     The guard asked whether a cable starts on THIS feature. Auto
+     Service lays one cable along the whole run, starting at the joint —
+     which is on the outermost piece, five metres back — so for the
+     inner piece nothing appeared to start on it and a second cable went
+     down over the first. Two cables on one service, both looking
+     correct, and the bill counting both. */
+  {
+    const laidAlready = {
+      Feature_ID: 99, Feature_Type: "line", Layer_Key: "electric",
+      Geometry: [[183.81, 129.50], [178.43, 129.85], [158.36, 132.70], [157.5, 132.9]],
+      Attributes: { Line_Type: "elec_service" },
+    };
+    const r = lay([road, outer, inner, m41, laidAlready]);
+    if (r.cables.length) {
+      fail(`a run already carrying a cable was laid again (${r.cables.length})`);
+    }
+    if (r.skipped.length) {
+      fail(`a run already served was reported as a failure: ${r.skipped[0].why}`);
+    }
   }
 
   // 49. And a lone service far from anything is refused as before.

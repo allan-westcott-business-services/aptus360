@@ -706,6 +706,11 @@ export function layServices(features = [], utility, opts = {}) {
 
   const cables = [];
   const skipped = [];
+  /* Pieces a cable already runs the length of, because they are part of
+     a run laid from the piece further along. Without this they are
+     reported as having no meter at the end of them, which is true and
+     reads as a fault. */
+  const covered = new Set();
 
   /* ── A service that reaches a main through another service ──
 
@@ -737,7 +742,7 @@ export function layServices(features = [], utility, opts = {}) {
     const ends = endsOfLine(sv);
     if (ends.length !== 2) continue;
     const at = ends.find((e) => mains.some((m) => gapTo(e, m.Geometry) <= teeM));
-    if (at) { reach.set(sv, at); queue.push(sv); }
+    if (at) { reach.set(sv, { teeEnd: at, parent: null }); queue.push(sv); }
   }
 
   while (queue.length) {
@@ -745,7 +750,7 @@ export function layServices(features = [], utility, opts = {}) {
     const ends = endsOfLine(sv);
     /* The far end is what a neighbour joins onto — the near end is
        already at the main. */
-    const teeEnd = reach.get(sv);
+    const { teeEnd } = reach.get(sv);
     const far = ends.find((e) => e !== teeEnd) ?? ends[1];
 
     for (const other of services) {
@@ -756,19 +761,31 @@ export function layServices(features = [], utility, opts = {}) {
       if (!joined) continue;
       /* Its tee end is where it meets the piece nearer the main, so the
          cable runs the same way along the whole chain. */
-      reach.set(other, joined);
+      reach.set(other, { teeEnd: joined, parent: sv });
       queue.push(other);
     }
   }
 
-  for (const sv of services) {
+  /* Furthest from the main first, so a run is laid from its plot end
+     and the pieces behind it are marked covered before they are
+     reached. Depth is how many pieces lie between this one and the
+     main. */
+  const depthOf = (sv) => {
+    let n = 0;
+    for (let node = reach.get(sv)?.parent; node; node = reach.get(node)?.parent) n++;
+    return n;
+  };
+  const ordered = [...services].sort((a, b) => depthOf(b) - depthOf(a));
+
+  for (const sv of ordered) {
+    if (covered.has(sv)) continue;
     const ends = endsOfLine(sv);
     if (ends.length !== 2) continue;
 
     /* Which end faces the main — directly, or through the pieces
        between. Both ends were tried because which end somebody drew
        first says nothing about where the gas comes from. */
-    const teeEnd = reach.get(sv);
+    const teeEnd = reach.get(sv)?.teeEnd;
     if (!teeEnd) {
       /* How far off it was, because "does not meet a mains trench" is
          true of a trench half a metre short and one on the other side
@@ -856,31 +873,84 @@ export function layServices(features = [], utility, opts = {}) {
       continue;
     }
 
-    /* Already served: something of this utility runs the length of
-       this trench. */
+    /* ── One cable along the whole run, not one per feature ──
+
+       The dig from the main to the plot may be several features — split
+       at the site boundary, or drawn in stages. Each was laying a cable
+       of its own that ran the length of that piece and then struck out
+       for the meter, so a service split at the boundary came out as two
+       cables: one along the on-site half, and one along the off-site
+       half that then cut diagonally across the garden to the same
+       meter.
+
+       The cable is one cable. It starts at the joint and follows every
+       piece of the dig in order, which is what the parent chain
+       recorded on the way out from the main.
+
+       Laid from the piece with the meter at its end, because that is
+       where the run finishes. The pieces behind it are covered by this
+       same cable and are not laid again — nor reported as failures,
+       which is what the meter test below would otherwise call them. */
+    const chain = [];
+    for (let node = sv; node; node = reach.get(node)?.parent) chain.unshift(node);
+
+    const geometry = [];
+    for (const piece of chain) {
+      const end = reach.get(piece).teeEnd;
+      const g = Math.hypot(piece.Geometry[0][0] - end[0],
+        piece.Geometry[0][1] - end[1]) <= teeM
+        ? piece.Geometry
+        : [...piece.Geometry].reverse();
+      for (const pt of g) {
+        /* The join between two pieces is a point on both. Kept once, or
+           the cable carries a zero-length segment at every boundary. */
+        const last = geometry[geometry.length - 1];
+        if (last && Math.hypot(last[0] - pt[0], last[1] - pt[1]) < 1e-3) continue;
+        geometry.push(pt);
+      }
+    }
+
+    const at = meter.Geometry[0];
+    const last = geometry[geometry.length - 1];
+    if (!last || Math.hypot(last[0] - at[0], last[1] - at[1]) >= 1e-3) geometry.push(at);
+
+    /* ── Already served ──
+
+       Something of this utility that starts on this dig and reaches
+       this meter. Tested against the WHOLE run, which is why it is
+       asked here rather than before the chain was built.
+
+       Per piece it asked whether a cable starts on THIS feature. Auto
+       Service lays one cable along the whole run, starting at the joint
+       — which is on the outermost piece, five metres back. So for the
+       inner piece nothing appeared to start on it, the guard passed,
+       and Lay Services laid a second cable over the top of the first.
+       Two cables on one service, both correct-looking, and the bill
+       counts both.
+
+       The same shape as the bug above it and found the same way: a
+       question asked of a feature when it is about the run. */
+    const runStart = geometry[0];
     const already = laid.some((f) => {
       const g = f.Geometry || [];
-      return g.length >= 2
-        && gapTo(g[0], sv.Geometry) <= teeM
+      if (g.length < 2) return false;
+      const startsHere = chain.some((piece) => gapTo(g[0], piece.Geometry) <= teeM)
+        || Math.hypot(g[0][0] - runStart[0], g[0][1] - runStart[1]) <= teeM;
+      return startsHere
         && g.some((q) => Math.hypot(q[0] - meter.Geometry[0][0],
           q[1] - meter.Geometry[0][1]) <= 0.5);
     });
+    /* Marked covered even so. The run is served; the pieces behind this
+       one must not be picked up again and reported as having no meter. */
+    for (const piece of chain) covered.add(piece);
     if (already) continue;
 
-    /* Along the dig, in the direction that starts at the main. */
-    const along = Math.hypot(sv.Geometry[0][0] - teeEnd[0],
-      sv.Geometry[0][1] - teeEnd[1]) <= teeM
-      ? sv.Geometry
-      : [...sv.Geometry].reverse();
-
-    const at = meter.Geometry[0];
-    const same = Math.hypot(along[along.length - 1][0] - at[0],
-      along[along.length - 1][1] - at[1]) < 1e-3;
-
     cables.push({
+      /* The piece at the plot end. It carries the plot number, and it
+         is the one the caller stamps and reports against. */
       trench: sv,
       meter,
-      geometry: same ? [...along] : [...along, at],
+      geometry,
     });
   }
 

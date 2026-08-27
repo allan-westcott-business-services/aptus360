@@ -43,7 +43,7 @@ import FeatureEditor from "./FeatureEditor.jsx";
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
-  MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels, MenuAction,
+  MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels,
 } from "./GisMenus.jsx";
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
@@ -116,7 +116,6 @@ import {
   isMainFeature, isMainType, LIVE_COLOUR, DEAD_COLOUR, UNSET_COLOUR,
   LIVE_BAND_M,
   isOffSite, withDefaultStatus, blocksLive, needsGround, isServiceFeature,
-  statusesFor,
 } from "./buildStatus.js";
 import { contentsOf, stretchAt } from "./trenchContents.js";
 import { teeInto, mainsOnLayer } from "./teeInto.js";
@@ -7729,66 +7728,6 @@ export default function GISCanvasPage() {
       setError("");
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
-  }
-
-  /* ── Setting the build status on everything selected ──
-
-     Build status was in the Trench menu once, as four buttons, and was
-     taken out: a property of an object belongs in the object's editor,
-     and the menu changed a field without recording what it had changed.
-
-     That is right for one trench and wrong for forty. Opening the
-     editor forty times to mark a phase as-laid is not an editor. So it
-     is back as one dropdown, and the two objections are answered rather
-     than ignored:
-
-       - it goes through saveFeature, the same path the editor uses, so
-         the rule that nothing goes live before its ground is closed is
-         enforced here too rather than restated;
-       - it says what it did, and what it would not do.
-
-     ── Each feature's own list ──
-
-     A trench is existing, planned, to be removed or as-laid. A main is
-     planned, as-laid or live; a service has its own three. Marking a
-     mixed selection as-laid would write a trench word onto a cable —
-     unselectable in its own dropdown and meaningless to everything that
-     reads it.
-
-     So anything that cannot take the chosen stage is left alone and
-     counted. A selection of cables offered a trench-only word changes
-     nothing at all, and says so. */
-  async function setStatusOnSelection(key) {
-    if (!selectedFeatures.length) return;
-
-    const canTake = selectedFeatures.filter((f) =>
-      statusesFor(f, lineTypes).some((s) => s.key === key));
-    const cannot = selectedFeatures.length - canTake.length;
-    const label = BUILD_STATUSES.find((s) => s.key === key)?.label ?? key;
-
-    if (!canTake.length) {
-      setError(`Nothing selected can be ${label} \u2014 ${cannot === 1 ? "it is" : "they are"} `
-        + "a kind of feature that does not take that stage.");
-      return;
-    }
-
-    /* One undo entry for the lot. Forty separate ones would take forty
-       presses to put back, which is not an undo. */
-    await withUndo(`Set status ${label}`, async () => {
-      let done = 0;
-      const refused = [];
-      for (const f of canTake) {
-        if (f.Attributes?.Build_Status === key) continue;
-        const ok = await saveFeature(f.Feature_ID,
-          { Attributes: { ...(f.Attributes || {}), Build_Status: key } });
-        if (ok === false) refused.push(f.Feature_ID); else done++;
-      }
-
-      setStatus(`${done} set to ${label}`
-        + (refused.length ? `, ${refused.length} refused` : "")
-        + (cannot ? `, ${cannot} cannot take that stage` : ""));
-      setTimeout(() => setStatus(""), 8000);
-    });
   }
 
   async function saveFeature(id, changes) {
@@ -17012,11 +16951,28 @@ export default function GISCanvasPage() {
                         </>
                       )}
 
+                      {/* ── Seeds ──
+
+                          A seed is the point that says a plot or a
+                          supply is here. Both are placed the same way
+                          and both were sitting loose in the menu under
+                          no heading, which left "Plots" and
+                          "Non-residential supplies" reading as two
+                          unrelated jobs rather than the same one done
+                          twice.
+
+                          Named for what is placed, not for the record
+                          behind it: "Plots" is also the tab on the
+                          project page, and the same word for a row in a
+                          table and a symbol on a drawing is how the two
+                          get confused. */}
+                      <MenuGroup label="Seeds" />
+
                       {/* One item, not two. Adding plots and placing them
                           were separate entries opening much the same thing;
                           the modal already offers both, so the menu should
                           offer the job rather than the two halves of it. */}
-                      <MenuItem label="Plots"
+                      <MenuItem label="Plot Seeds" indent
                         hint={`${plotList.filter((p) => !p.placed).length} still to place`}
                         active={placeOpen || queue.length > 0}
                         onClick={() => setPlaceOpen(true)} />
@@ -17086,9 +17042,14 @@ export default function GISCanvasPage() {
                         return (
                           <>
                             {waiting.length === 0 ? (
-                              <MenuItem label="Non-residential supplies" indent
+                              <MenuItem label="Non-Residential Supply Seeds" indent
                                 hint="All placed" disabled />
                             ) : waiting.map((n) => (
+                              /* Indented with the "all placed" line
+                                 above: the two are the same slot in two
+                                 states, and indenting one and not the
+                                 other would step in and out as the last
+                                 supply was placed. */
                               <MenuItem key={n.NRS_ID} indent
                                 label={`Place ${nameOf(n)}`}
                                 /* What the click will actually do: a
@@ -17530,31 +17491,16 @@ export default function GISCanvasPage() {
                           them to disagree, and the menu was the one with
                           no record of what it had just changed. */}
 
-                      {/* ── Setting the stage on what is selected ──
+                      {/* Build status is on the trench editor, and only
+                          there.
 
-                          Four buttons doing this were taken out of this
-                          menu, on the argument that a property belongs
-                          in the object's editor. True of one trench and
-                          not of forty: opening the editor forty times to
-                          mark a phase as-laid is not an editor.
-
-                          Back as one dropdown, going through the same
-                          save the editor uses — so the rule that nothing
-                          goes live before its ground is closed applies
-                          here too — and saying what it changed, which is
-                          what the buttons never did.
-
-                          Disabled with nothing selected rather than
-                          hidden: an empty space does not explain that
-                          something has to be picked first. */}
-                      <div className="gm-sep" />
-                      <MenuAction label="Set status"
-                        options={BUILD_STATUSES}
-                        disabled={!!busy || !selectedFeatures.length}
-                        hint={selectedFeatures.length
-                          ? `Applies to the ${selectedFeatures.length} selected`
-                          : "Select one or more trenches first"}
-                        onSet={setStatusOnSelection} />
+                          It was in this menu once as four buttons and
+                          was taken out: a property of an object belongs
+                          in the object's editor, and the menu changed a
+                          field without recording what it changed. It
+                          came back briefly as a dropdown and went again
+                          for the same reason — one way to set a field
+                          is one place for it to be right. */}
 
                       {/* ── Every check together ──
 
@@ -17679,14 +17625,30 @@ export default function GISCanvasPage() {
                           cable is drawn along a trench rather than by
                           hand, but it is still drawing. */}
                       <MenuItem label={busy === "laysvc"
-                        ? "Laying\u2026" : "Auto Lay Services"} indent
+                        ? "Laying\u2026" : "Auto Lay Services"}
                         hint="Runs the cable along service trenches already drawn"
                         disabled={!!busy}
                         onClick={() => autoLayServices("electric")} />
-                      {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"]].map(([key, label]) => {
+                      {/* The three cables that can be drawn by hand.
+
+                          The service is here with the other two rather
+                          than left to Auto Lay Services alone: that
+                          command needs a service trench to run along,
+                          and a cable being added to a drawing that has
+                          none has to be drawable. Same list, same
+                          behaviour, one more entry.
+
+                          `elec_service`, not `electric_service` — the
+                          seeded key is the short form, and the long one
+                          matches nothing and renders no button at all,
+                          which is why this reads from lineTypes and
+                          renders nothing when a type is missing rather
+                          than assuming it is there. */}
+                      {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"],
+                        ["elec_service", "Service cable"]].map(([key, label]) => {
                         const t = lineTypes.find((x) => x.Type_Key === key);
                         return t ? (
-                          <MenuItem key={key} label={label} indent
+                          <MenuItem key={key} label={label}
                             active={isDrawing(key)} onClick={() => drawAs(key)} />
                         ) : null;
                       })}
@@ -17714,6 +17676,16 @@ export default function GISCanvasPage() {
                         disabled={busy === "feeder" || !circuitsFrom(features).length}
                         onClick={() => runStep("build",
                           () => withUndo("Build LV Network", () => buildLvNetwork()))} />
+                      {/* Straight after the build, because it finishes
+                          it: the build sizes each run, and this copies
+                          those sizes onto the span nodes, which is what
+                          the trace actually reads. It sat under Tools &
+                          Reporting, two groups away from the thing it
+                          completes. */}
+                      <MenuItem label="Apply Cable Sizes to Span Nodes"
+                        hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
+                        disabled={!!busy}
+                        onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
                       <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
                         hint={circuitsFrom(features).length
                           ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
@@ -17801,15 +17773,13 @@ export default function GISCanvasPage() {
                         hint="Loop impedance and volt drop on every circuit, from the substation"
                         disabled={!circuitsFrom(features).length}
                         onClick={() => runLevelsCheck()} />
-                      <MenuItem label="Apply Cable Sizes to Span Nodes"
-                        hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
-                        disabled={!!busy}
-                        onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
 
-                      {/* The column breaks here. Everything before it is the
-                          work; everything after is how the drawing is
-                          read. */}
-                      <MenuGroup label="Sizes" newColumn />
+                      {/* Which sizes the drawing shows. Last in the left
+                          column: it is a setting rather than a step, and
+                          the steps above run in the order they are
+                          listed. */}
+                      <div className="gm-sep" />
+                      <MenuGroup label="Sizes" />
                       <MenuItem label="System calculated" indent
                         active={(sizeMode.electric ?? "system") === "system"}
                         keepOpen
@@ -17821,8 +17791,10 @@ export default function GISCanvasPage() {
                         hint="Overrides where set, calculated elsewhere"
                         onClick={() => setSizeModeFor("electric", "manual")} />
 
-                      <div className="gm-sep" />
-                      <MenuGroup label="Show or Hide" />
+                      {/* The column breaks here. Everything before it is
+                          the work; everything after is how the drawing
+                          is read. */}
+                      <MenuGroup label="Show or Hide" newColumn />
                       {/* Labels, on every utility menu.
 
                           Whether the drawing is readable is a question
@@ -17830,9 +17802,30 @@ export default function GISCanvasPage() {
                           the answer used to be in the Layers menu — a
                           different menu from the one they are in. The same
                           switch, offered where it is wanted. */}
-                      <MenuLabels kinds={LABEL_KINDS}
-                        showLabels={showLabels} onShowLabels={setShowLabels}
-                        value={labelKinds} onKind={setLabelKind} />
+                      {/* ── The layer as a whole, first ──
+
+                          Everything below it is a part of this. Hiding
+                          it takes them all with it, including anything
+                          currently shown on its own \u2014 so it belongs
+                          above the list it governs rather than at the
+                          foot of it.
+
+                          No swatch. A colour beside it reads as "this is
+                          what an electric thing looks like", and an
+                          electric thing looks like whichever of the
+                          types below it is. The same goes for the cable
+                          types: their colours are on the drawing, and a
+                          square in a menu that only hides and shows adds
+                          nothing to the decision. */}
+                      <MenuLayer label="Whole Electric layer"
+                        count={classCount.electric || 0}
+                        hidden={hidden.includes("electric")}
+                        solo={solo === "electric"}
+                        onHide={() => hideClass("electric")}
+                        onShow={() => showClass("electric")}
+                        shown={shownOnly.includes("electric")}
+                        onSolo={() => soloClass("electric")} />
+                      <div className="gm-sep" />
                       {/* POC and substation first: they are the two fixed
                           points a designer orients by, and everything else
                           is described relative to them. */}
@@ -17847,7 +17840,7 @@ export default function GISCanvasPage() {
                           onSolo={() => soloClass(`role:${role}`)} />
                       ))}
                       {typesOn("electric").map((t) => (
-                        <MenuLayer key={t.Type_Key} label={t.Label} colour={t.Colour}
+                        <MenuLayer key={t.Type_Key} label={t.Label}
                           count={classCount[`lt:${t.Type_Key}`] || 0}
                           hidden={hidden.includes(`lt:${t.Type_Key}`)}
                           solo={solo === `lt:${t.Type_Key}`}
@@ -17875,20 +17868,20 @@ export default function GISCanvasPage() {
                         shown={shownOnly.includes(`role:${role}`)}
                             onSolo={() => soloClass(`role:${role}`)} />
                         ))}
-                      {/* The layer as a whole, matching the row the gas and
-                          water menus end with. Hiding it takes everything
-                          electric with it, including anything above that is
-                          currently shown. */}
+
+                      {/* ── Labels, after the things they label ──
+
+                          They were at the top, above every layer. What a
+                          label switch does only makes sense once you can
+                          see the list of what is on the drawing, so it
+                          reads better under it \u2014 and it is a different
+                          kind of switch from the rest: the layers say
+                          what is drawn, this says how much is written on
+                          it. */}
                       <div className="gm-sep" />
-                      <MenuLayer label="Whole Electric layer"
-                        colour={layers.find((l) => l.Layer_Key === "electric")?.Colour}
-                        count={classCount.electric || 0}
-                        hidden={hidden.includes("electric")}
-                        solo={solo === "electric"}
-                        onHide={() => hideClass("electric")}
-                        onShow={() => showClass("electric")}
-                        shown={shownOnly.includes("electric")}
-                        onSolo={() => soloClass("electric")} />
+                      <MenuLabels kinds={LABEL_KINDS}
+                        showLabels={showLabels} onShowLabels={setShowLabels}
+                        value={labelKinds} onKind={setLabelKind} />
 
                     </Menu>
 
@@ -18205,8 +18198,10 @@ export default function GISCanvasPage() {
                           setStatus(on ? ""
                             : "Click a lighting column, then the feeder it comes off");
                         }} />
-                      <div className="gm-sep" />
-                      <MenuGroup label="Show or Hide" />
+                      {/* The column breaks here. Everything before it is
+                          the work; everything after is how the drawing
+                          is read. */}
+                      <MenuGroup label="Show or Hide" newColumn />
                       {/* Labels, on every utility menu.
 
                           Whether the drawing is readable is a question

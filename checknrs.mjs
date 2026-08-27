@@ -256,8 +256,29 @@ const plotById = () => ({ kva_load: 5 });
   else if (!(nrs > setup && nrs < layers)) {
     fail("the placement items are outside the Setup menu");
   }
-  const plots = at('<MenuItem label="Plots"');
-  if (plots > 0 && nrs > 0 && nrs < plots) fail("the supplies sit above Plots, not below it");
+  /* Below the plot seeds, under the Seeds heading they share.
+
+     This looked for `label="Plots"` and guarded itself with
+     `plots > 0`, so when that item was renamed to "Plot Seeds" the
+     index went to -1 and the assertion passed without checking
+     anything. A check that stops checking is worse than one that
+     fails: it reports all clear on a menu nobody has looked at.
+
+     So a missing item is a failure now, not a shrug. */
+  const plots = at('<MenuItem label="Plot Seeds"');
+  if (plots < 0) {
+    fail("the plot seeds item is gone from the Setup menu, or has been renamed again");
+  } else if (nrs < plots) {
+    fail("the supplies sit above the plot seeds, not below them");
+  }
+
+  /* And both under Seeds, which is what makes them read as one job
+     done twice rather than two unrelated ones. */
+  const seeds = at('<MenuGroup label="Seeds" />');
+  if (seeds < 0) fail("the Seeds heading is gone from the Setup menu");
+  else if (!(seeds < plots && seeds < nrs)) {
+    fail("the Seeds heading is not above the items it covers");
+  }
 }
 
 // 12. A supply resolves to the utilities it takes.

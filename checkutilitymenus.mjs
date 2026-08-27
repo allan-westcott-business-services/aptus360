@@ -774,6 +774,93 @@ const onScreen = (keys) => {
   }
 }
 
+/* ── The Electric menu keeps everything in it ──
+
+   Rearranged on 27 Aug: the indents off Auto Lay Services and the
+   feeder types, a Service cable added beside them, Sizes moved to the
+   foot of the left column, Apply Cable Sizes moved under Build LV
+   Network, and in Show or Hide the whole-layer row to the top with the
+   colour swatches off and Labels moved below the span nodes.
+
+   Same reasoning as the Trench menu check above: a large block of JSX
+   moved by hand goes wrong by leaving an item behind, and a command
+   missing from a menu looks exactly like one that was never written. */
+{
+  const from = canvas.indexOf('<Menu id="electric"');
+  const to = canvas.indexOf("Gas and Water, the two menus built from the layer");
+  if (from < 0 || to < 0 || to <= from) {
+    fail("could not find the Electric menu \u2014 the assertions below are not being made");
+  } else {
+    const menu = canvas.slice(from, to);
+    const bare = menu.replace(/\/\*[\s\S]*?\*\//g, "");
+    const items = bare.split("<MenuItem").slice(1)
+      .map((chunk) => chunk.slice(0, chunk.indexOf("/>") + 2));
+
+    for (const label of [
+      "+ POC", "+ Substation", "Route POC to Substation", "Auto Lay Services",
+      "Link to Circuit", "Build LV Network", "Apply Cable Sizes to Span Nodes",
+      "Place Feeder Joints", "Circuit Report", "Run Levels Check",
+    ]) {
+      const rows = items.filter((row) => row.includes(`"${label}"`)).length;
+      if (rows === 0) fail(`the Electric menu lost "${label}"`);
+      if (rows > 1) fail(`"${label}" is on ${rows} rows of the Electric menu`);
+    }
+
+    /* The three cables that can be drawn by hand. Service cable is the
+       new one, and it is built from lineTypes so a missing type renders
+       nothing rather than a dead button. */
+    if (!/\["elec_service", "Service cable"\]/.test(bare)) {
+      fail("the Electric menu cannot draw a service cable");
+    }
+    if (!/lineTypes\.find\(\(x\) => x\.Type_Key === key\)/.test(bare)) {
+      fail("the draw list no longer checks the line type exists");
+    }
+
+    /* Sizes at the foot of the left column, Show or Hide starting the
+       second. Doing on the left, looking on the right. */
+    if (!/label="Show or Hide" newColumn/.test(bare)) {
+      fail("Show or Hide does not start the Electric menu's second column");
+    }
+    if (/label="Sizes" newColumn/.test(bare)) {
+      fail("Sizes still starts a column of its own");
+    }
+    const sizesAt = bare.indexOf('label="Sizes"');
+    const showAt = bare.indexOf('label="Show or Hide"');
+    const toolsAt = bare.indexOf('label="Tools & Reporting"');
+    if (!(toolsAt < sizesAt && sizesAt < showAt)) {
+      fail("Sizes is not at the foot of the left column");
+    }
+
+    /* Apply Cable Sizes finishes the build, so it sits with it rather
+       than two groups away under Tools & Reporting. */
+    const buildAt = bare.indexOf('"Build LV Network"');
+    const applyAt = bare.indexOf('"Apply Cable Sizes to Span Nodes"');
+    if (!(buildAt < applyAt && applyAt < toolsAt)) {
+      fail("Apply Cable Sizes to Span Nodes is not under Build LV Network");
+    }
+
+    /* The whole layer governs everything under it, so it is above the
+       list rather than at the foot of it. */
+    const wholeAt = bare.indexOf('label="Whole Electric layer"');
+    const metersAt = bare.indexOf('label="Electric Meters"');
+    const labelsAt = bare.indexOf("<MenuLabels");
+    if (!(showAt < wholeAt && wholeAt < metersAt)) {
+      fail("Whole Electric layer is not at the top of Show or Hide");
+    }
+    if (!(metersAt < labelsAt)) {
+      fail("the label switches are not below the layers they label");
+    }
+
+    /* No colour swatches on the electric rows: a square in a menu that
+       only hides and shows adds nothing, and on the whole-layer row it
+       claims one colour for four types. */
+    const showOrHide = bare.slice(showAt);
+    if (/colour=/.test(showOrHide)) {
+      fail("a colour swatch is back on an Electric layer row");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility menus behave (empty utilities shown as empty; isolate first, menu second).");
 process.exit(bad ? 1 : 0);

@@ -84,17 +84,31 @@ export default function CircuitReport({
       return;
     }
     const want = new Set(numbers.map(String));
-    const hits = rows.filter((r) => want.has(String(r.plot)));
+    const matched = rows.filter((r) => want.has(String(r.plot)));
+    /* Self-lay meters are not pickable, so a range that names one must
+       not tick it. Counted apart, because "3 ticked" on a range of five
+       is a question, and "2 are self-lay" is the answer to it. */
+    const hits = matched.filter((r) => !r.selfLay);
+    const selfLay = matched.filter((r) => r.selfLay);
     if (!hits.length) {
-      setRangeNote(`No unassigned meter on plot ${numbers.join(", ")}`);
+      setRangeNote(selfLay.length
+        ? `Plot ${selfLay.map((r) => r.plot).join(", ")} `
+          + `${selfLay.length === 1 ? "is" : "are"} self-lay \u2014 somebody else `
+          + "connects them, so they go on no circuit of ours."
+        : `No unassigned meter on plot ${numbers.join(", ")}`);
       return;
     }
     setMany(hits.map((r) => r.id), true);
     /* Naming what was asked for but not found: a range that quietly
        matches four of nine plots looks like it worked. */
-    const missing = numbers.filter((n) => !hits.some((h) => String(h.plot) === String(n)));
+    /* Against everything the range matched, not just what was ticked —
+       a self-lay plot is reported as self-lay, and saying it is "not
+       here" as well would be two answers to one question, one of them
+       untrue. */
+    const missing = numbers.filter((n) => !matched.some((h) => String(h.plot) === String(n)));
     setRangeNote(
       `${hits.length} meter(s) ticked`
+      + (selfLay.length ? ` \u00B7 ${selfLay.length} self-lay, left alone` : "")
       + (missing.length ? ` \u00B7 not here: ${missing.join(", ")}` : "")
       + (bad.length ? ` \u00B7 couldn't read: ${bad.join(", ")}` : "")
     );
@@ -299,7 +313,12 @@ export default function CircuitReport({
 
           {report.circuits.map((c) => {
             const rows = sortRows(match(c.meters));
-            const ids = c.meters.map((m) => m.id);
+            /* The meters that can be picked. Self-lay ones are not:
+               somebody else connects them, so they go on no circuit of
+               ours. Select-all works from this, so ticking the header
+               box on a group of self-lay meters ticks nothing rather
+               than ticking rows that every button then refuses. */
+            const ids = c.meters.filter((m) => !m.selfLay).map((m) => m.id);
             const pickedHere = picked.filter((id) => ids.includes(id));
             /* Every other real circuit — the unlinked group is the
                absence of a circuit, not somewhere to move a meter to.
@@ -478,9 +497,39 @@ export default function CircuitReport({
                       )}
                       {rows.map((m) => (
                         <tr key={m.id} className={picked.includes(m.id) ? "cr-on" : ""}>
+                          {/* ── A self-lay meter cannot be ticked ──
+
+                              Somebody else connects it. It draws nothing
+                              from our transformer, takes no way, and
+                              belongs in no volt drop or loop impedance
+                              calculation.
+
+                              Refused here rather than at the buttons,
+                              because there are four ways to a circuit
+                              from this panel — this box, the header's
+                              select-all, Tick range, and then either
+                              Assign or Move. Guarding the two buttons
+                              would leave the row tickable and the
+                              button dead, which reads as the button
+                              being broken. A row that cannot be picked
+                              cannot reach any of them.
+
+                              To put one on a circuit, clear its
+                              electric self-lay flag on the Plots tab
+                              first. The title says so, because a
+                              disabled box with no reason is the fault
+                              runStep was written to avoid. */}
                           <td className="mid">
-                            <input type="checkbox" checked={picked.includes(m.id)}
-                              aria-label={`Select ${m.meter}`}
+                            <input type="checkbox"
+                              checked={picked.includes(m.id)}
+                              disabled={m.selfLay}
+                              aria-label={m.selfLay
+                                ? `${m.meter} is self-lay and cannot go on a circuit`
+                                : `Select ${m.meter}`}
+                              title={m.selfLay
+                                ? "Self-lay \u2014 somebody else connects this one. Clear its "
+                                  + "electric self-lay flag on the Plots tab to put it on a circuit."
+                                : undefined}
                               onChange={() => toggle(m.id)} />
                           </td>
                           <td>{m.meter}</td>

@@ -1255,6 +1255,55 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   }
 }
 
+/* ── A self-lay meter cannot be picked in the Circuit Report ──
+
+   The panel has four ways to a circuit: the row checkbox, the header's
+   select-all, Tick range, and then Assign or Move. Guarding the two
+   buttons would leave the row tickable and the button dead, which reads
+   as the button being broken rather than as the plot being somebody
+   else's.
+
+   So the row is what refuses. A meter that cannot be picked cannot
+   reach any of the four. */
+{
+  const report = readFileSync("src/features/gis/CircuitReport.jsx", "utf8");
+
+  // 59. The checkbox itself.
+  if (!/disabled={m\.selfLay}/.test(report)) {
+    fail("a self-lay meter can still be ticked in the Circuit Report");
+  }
+  /* With the reason on it. A disabled box and no explanation is the
+     fault that greyed controls elsewhere in this app were fixed for. */
+  if (!/electric self-lay flag on the Plots tab/.test(report)) {
+    fail("the disabled checkbox does not say how to make the meter assignable");
+  }
+
+  /* 60. Select-all works from the pickable ones.
+
+     Otherwise ticking the header box on a group of self-lay meters
+     ticks rows that every button then refuses. */
+  if (!/c\.meters\.filter\(\(m\) => !m\.selfLay\)\.map/.test(report)) {
+    fail("select-all still ticks self-lay meters");
+  }
+
+  /* 61. And Tick range leaves them, saying so.
+
+     A range naming five plots of which two are self-lay must tick
+     three and account for the other two \u2014 "3 ticked" alone is a
+     question with no answer next to it. */
+  if (!/matched\.filter\(\(r\) => !r\.selfLay\)/.test(report)) {
+    fail("a plot range still ticks self-lay meters");
+  }
+  if (!/self-lay, left alone/.test(report)) {
+    fail("a range that skipped self-lay meters does not say it did");
+  }
+  /* Each plot accounted for once: reported as self-lay OR as not
+     found, never both. */
+  if (!/!matched\.some\(\(h\) => String\(h\.plot\)/.test(report)) {
+    fail("a self-lay plot is reported as self-lay and as not here \u2014 one of them untrue");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Self-lay behaves (crossed per utility; cabled to the incumbent\u2019s main, not dug)."
   : `\n${bad} problem(s)`);

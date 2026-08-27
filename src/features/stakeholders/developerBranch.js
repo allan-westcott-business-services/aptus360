@@ -16,7 +16,31 @@
    copies of "which table is this branch in" is the same fault as two
    copies of any other rule: they agree until one is edited. */
 
-const label = (b) => (b ? (b.Branch_Dropdown || b.Branch_Name || null) : null);
+/* What a branch is called, on screen.
+
+   `Branch_Dropdown` is the name to use: it already reads "Anwyl Homes
+   (Lancashire)" — the organisation and the branch, composed once in the
+   database so every screen says it the same way.
+
+   Three screens prefixed the organisation's name in front of it and
+   produced "Anwyl Homes — Anwyl Homes (Lancashire)". The reasoning was
+   that two developers with an office in the same town would otherwise
+   read as the same word twice, which is true of `Branch_Name` — plain
+   "Lancashire" — and not of the dropdown form, which carries the
+   company already.
+
+   So the prefix is used only where the dropdown form is missing and the
+   bare branch name is all there is. That is the case it was written for
+   and the only one where it adds anything. */
+export function branchLabelOf(b, orgName = null) {
+  if (!b) return null;
+  if (b.Branch_Dropdown) return b.Branch_Dropdown;
+  const name = b.Branch_Name || null;
+  if (!name) return null;
+  return orgName ? `${orgName} (${name})` : name;
+}
+
+const label = (b) => branchLabelOf(b);
 
 /* The name, or null where the branch cannot be found.
 
@@ -30,13 +54,13 @@ export function developerBranchName(dev, lookups = {}) {
     const b = (lookups.orgBranches || [])
       .find((x) => Number(x.Organisation_Branch_ID) === Number(dev.Organisation_Branch_ID));
     if (!b) return null;
-    /* The organisation's name in front of the branch's, where the
-       lookup carries it. Two developers with an office in the same town
-       are otherwise the same word twice. */
+    /* The organisation's name only where the branch has no dropdown
+       form of its own — see branchLabelOf. With one, it is already in
+       there. */
     const org = (lookups.developerBranches || [])
       .find((x) => Number(x.Organisation_Branch_ID) === Number(b.Organisation_Branch_ID))
       ?.Organisation_Name;
-    return org ? `${org} \u2014 ${label(b)}` : label(b);
+    return branchLabelOf(b, org);
   }
 
   if (dev.Branch_ID != null) {

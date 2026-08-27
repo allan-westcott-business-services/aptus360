@@ -25,13 +25,24 @@ const lookups = {
   branches: [
     { Branch_ID: 4, Branch_Name: "Warrington", Branch_Dropdown: "Barratt \u2014 Warrington", Customer_ID: 2 },
   ],
+  /* Branch_Dropdown as the database actually composes it: the company
+     and the branch together, in one string, so every screen says it the
+     same way. The fixture used to hold a bare "Chester", which is what
+     Branch_NAME looks like \u2014 and testing against a shape the data does
+     not have is how a check comes to defend the wrong behaviour.
+
+     Branch 7 has no dropdown form on purpose. That is the case the
+     organisation prefix exists for, and the only one. */
   orgBranches: [
-    { Organisation_Branch_ID: 4, Organisation_ID: 90, Branch_Name: "Chester", Branch_Dropdown: "Chester" },
-    { Organisation_Branch_ID: 7, Organisation_ID: 91, Branch_Name: "Leeds", Branch_Dropdown: "Leeds" },
+    { Organisation_Branch_ID: 4, Organisation_ID: 90, Branch_Name: "Chester",
+      Branch_Dropdown: "Redrow Homes (Chester)" },
+    { Organisation_Branch_ID: 7, Organisation_ID: 91, Branch_Name: "Leeds" },
   ],
   developerBranches: [
     { Organisation_Branch_ID: 4, Organisation_ID: 90, Branch_Name: "Chester",
-      Branch_Dropdown: "Chester", Organisation_Name: "Redrow Homes" },
+      Branch_Dropdown: "Redrow Homes (Chester)", Organisation_Name: "Redrow Homes" },
+    { Organisation_Branch_ID: 7, Organisation_ID: 91, Branch_Name: "Leeds",
+      Organisation_Name: "Storey Homes" },
   ],
 };
 
@@ -59,7 +70,44 @@ const lookups = {
   const d = { Organisation_Branch_ID: 7 };
   const name = developerBranchName(d, lookups);
   if (!name) fail("a developer on an organisation branch has no name");
-  else if (name !== "Leeds") fail(`expected "Leeds", got "${name}"`);
+  /* No dropdown form on this one, so the organisation is prefixed \u2014
+     "Leeds" alone names no company. */
+  else if (name !== "Storey Homes (Leeds)") {
+    fail(`expected "Storey Homes (Leeds)", got "${name}"`);
+  }
+}
+
+/* 2b. And the company is never said twice.
+
+   Branch_Dropdown already reads "Redrow Homes (Chester)". Three screens
+   prefixed the organisation in front of it and produced "Redrow Homes
+   \u2014 Redrow Homes (Chester)".
+
+   The prefix was written for the other case, where the branch has only
+   a bare name, and applied to both. */
+{
+  const name = developerBranchName({ Organisation_Branch_ID: 4 }, lookups);
+  if (name !== "Redrow Homes (Chester)") {
+    fail(`a branch with a dropdown form resolved to "${name}"`);
+  }
+  const twice = (name.match(/Redrow Homes/g) || []).length;
+  if (twice > 1) fail(`the company is named ${twice} times in "${name}"`);
+
+  /* And the composition is written once. Three screens each built this
+     string their own way, which is how they came to be wrong together
+     and would be how they came to be fixed apart. */
+  for (const f of [
+    "src/features/stakeholders/DevelopersSection.jsx",
+    "src/features/projects/AddProjectForm.jsx",
+  ]) {
+    const src = readFileSync(f, "utf8");
+    if (/\$\{b\.Organisation_Name\} \\u2014/.test(src) || /\$\{b\.Organisation_Name\} —/.test(src)) {
+      fail(`${f} still composes the branch label itself`);
+    }
+    if (!/branchLabelOf\(b, b\.Organisation_Name\)/.test(src)) {
+      fail(`${f} does not use the shared branch label`);
+    }
+  }
 }
 
 // 3. Nothing to name is null, not a guess and not a crash.

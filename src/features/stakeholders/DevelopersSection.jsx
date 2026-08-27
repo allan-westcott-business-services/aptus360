@@ -3,7 +3,7 @@ import Banner from "../../components/Banner.jsx";
 import Section from "../../components/Section.jsx";
 import { getLookups } from "../../api/lookups.js";
 import { listDevelopers, saveDeveloper, deleteDeveloper } from "../../api/developers.js";
-import { developerBranchName, branchColumnsFor } from "./developerBranch.js";
+import { developerBranchName, branchColumnsFor, branchLabelOf } from "./developerBranch.js";
 
 /* Developers on a project.
 
@@ -172,9 +172,12 @@ export default function DevelopersSection({ projectId, onChanged }) {
                   .map((b) => (
                     <option key={`o${b.Organisation_Branch_ID}`}
                       value={`o${b.Organisation_Branch_ID}`}>
-                      {b.Organisation_Name
-                        ? `${b.Organisation_Name} \u2014 ${b.Branch_Dropdown || b.Branch_Name}`
-                        : (b.Branch_Dropdown || b.Branch_Name)}
+                      {/* The dropdown form already reads "Anwyl Homes
+                          (Lancashire)". Prefixing the organisation gave
+                          "Anwyl Homes \u2014 Anwyl Homes (Lancashire)" \u2014 see
+                          branchLabelOf, which prefixes only where the
+                          branch has no dropdown form of its own. */}
+                      {branchLabelOf(b, b.Organisation_Name)}
                     </option>
                   ))}
               </select>

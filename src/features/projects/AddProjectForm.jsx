@@ -4,6 +4,7 @@ import Section from "../../components/Section.jsx";
 import Select from "../../components/Select.jsx";
 import Toggle from "../../components/Toggle.jsx";
 import Banner from "../../components/Banner.jsx";
+import { branchLabelOf } from "../stakeholders/developerBranch.js";
 import StagePill from "../../components/StagePill.jsx";
 import ScopePicker from "./ScopePicker.jsx";
 import { getLookups } from "../../api/lookups.js";
@@ -241,9 +242,12 @@ export default function AddProjectForm({ onCreated, onGoToPlots, onReset }) {
               <option value="">Select&hellip;</option>
               {(lookups.developerBranches || []).map((b) => (
                 <option key={b.Organisation_Branch_ID} value={b.Organisation_Branch_ID}>
-                  {b.Organisation_Name
-                    ? `${b.Organisation_Name} \u2014 ${b.Branch_Dropdown || b.Branch_Name}`
-                    : (b.Branch_Dropdown || b.Branch_Name)}
+                  {/* The dropdown form already reads "Anwyl Homes
+                      (Lancashire)". Prefixing the organisation gave
+                      "Anwyl Homes \u2014 Anwyl Homes (Lancashire)" \u2014 see
+                      branchLabelOf, which prefixes only where the branch
+                      has no dropdown form of its own. */}
+                  {branchLabelOf(b, b.Organisation_Name)}
                 </option>
               ))}
             </Select>

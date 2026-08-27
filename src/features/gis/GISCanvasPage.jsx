@@ -31,7 +31,7 @@ import { splitByBoundary, boundaryPolygons, pointInAny, pointInPolygon, surfaceF
   planClassification, ON_SITE, OFF_SITE } from "./boundary.js";
 import {
   planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline,
-  isServed, meterHasService, layServices, isExistingFeature,
+  isServed, meterHasService, layServices, isExistingFeature, skipSummary,
 } from "./autoService.js";
 import {
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
@@ -13055,7 +13055,7 @@ export default function GISCanvasPage() {
       if (error) { setError(error); return; }
       if (!cables.length) {
         setError(skipped.length
-          ? `Nothing to lay \u2014 ${skipped[0].why}`
+          ? `Nothing to lay \u2014 ${skipSummary(skipped)}`
           : `Every service trench already carries ${utility}.`);
         return;
       }
@@ -15042,9 +15042,20 @@ export default function GISCanvasPage() {
        dwelling beside it is done automatically is a distinction with
        nothing behind it. */
     const isSeed = (f) => f.Feature_Role === "plot" || f.Feature_Role === "nrs";
+
+    /* The drawing this run works from.
+
+       A local view rather than the state itself, because a service that
+       no longer matches its plot's self-lay setting is deleted part way
+       through and everything after has to plan from the drawing as it
+       will be. Reassigning React state is not possible and setFeatures
+       does not take effect until the next render, which is long after
+       this function has finished. */
+    let world = features;
+
     const seeds = selected.length
-      ? features.filter((f) => selected.includes(f.Feature_ID) && isSeed(f))
-      : features.filter(isSeed);
+      ? world.filter((f) => selected.includes(f.Feature_ID) && isSeed(f))
+      : world.filter(isSeed);
     if (!seeds.length) {
       setError(selected.length
         ? "Select a plot or supply seed, or select nothing to cover every one."
@@ -15054,11 +15065,11 @@ export default function GISCanvasPage() {
 
     /* Every trench, whether shown or not. A hidden mains trench is still
        the one a service should tee into. */
-    const trenches = mainsTrenches(features, (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    const trenches = mainsTrenches(world, (f) => isTrenchType(f.Attributes?.Line_Type, lineTypes));
     if (!trenches.length) { setError("Draw a mains trench first."); return; }
 
     const serviceType = lineTypes.find((t) => t.Type_Key === "trench_service") || {};
-    const polys = boundaryPolygons(features);
+    const polys = boundaryPolygons(world);
 
     /* A seed is already done if a service trench is bound to it. The
        link is stored on the trench rather than inferred from position,
@@ -15079,7 +15090,7 @@ export default function GISCanvasPage() {
 
        isServed also asks whether any service trench simply ends at one
        of the plot's meters, which is what a hand-drawn one looks like. */
-    const svcTrenches = features.filter((f) =>
+    const svcTrenches = world.filter((f) =>
       f.Feature_Type === "line" && isTrenchType(f.Attributes?.Line_Type, lineTypes)
       /* Not the incumbent's. An existing trench is on the trench layer
          like any other, so it counts as one here — and a plot standing
@@ -15100,13 +15111,64 @@ export default function GISCanvasPage() {
        at the same meters, so they answer the question just as well.
        Marked with Self_Lay, which is written when they are laid rather
        than worked out afterwards from where they start. */
-    const slpCables = features.filter((f) =>
+    const slpCables = world.filter((f) =>
       f.Feature_Type === "line" && f.Attributes?.Self_Lay === true);
     const laid = [...svcTrenches, ...slpCables];
 
-    const allMeters = features.filter((f) => f.Feature_Role === "meter");
+    const allMeters = world.filter((f) => f.Feature_Role === "meter");
+
+    /* ── A service drawn before the plot became self-lay ──
+
+       Auto Service never redraws what is already there, which is right
+       nearly always: a plot dug to by hand must not get a second
+       trench, and a re-run must not shuffle a drawing somebody has
+       corrected.
+
+       It is wrong in one case. Marking a plot self-lay AFTER its
+       service was laid leaves the drawing saying the opposite of the
+       data — the cable runs to our main, the trench is Planned, and the
+       bill charges us for digging a hole the developer digs. The plot
+       reports "already has a service trench", which is true and no use:
+       the trench is the wrong trench.
+
+       So a seed counts as done only if what is drawn AGREES with what
+       the connection now says. Where it disagrees the seed is planned
+       again and its stamped service is removed first.
+
+       ── What may be removed ──
+
+       Only features carrying this seed's Seed_Feature_ID, which Auto
+       Service writes and a hand-drawn trench does not. That test is
+       already how isServed tells the two apart. A service somebody drew
+       by hand keeps the plot marked done and is never touched — if it
+       is now wrong, that is a person's decision to change, not this
+       command's. */
+    const stampedTo = (sd) => world.filter((f) =>
+      f.Feature_Type === "line"
+      && Number(f.Attributes?.Seed_Feature_ID) === Number(sd.Feature_ID));
+
+    const mismatched = new Map();
+    for (const sd of seeds) {
+      const mine = stampedTo(sd);
+      if (!mine.length) continue;
+
+      const wrong = [];
+      for (const u of (utilitiesFor(sd) || [])) {
+        const wantSelfLay = isSelfLayFor(sd, u.layer_key,
+          { slp: slpSet, slpNrs: slpNrsSet, layers });
+        /* This utility's cable, and the dig it shares. A cable on the
+           utility's own layer; the trench is on the trench layer and
+           serves every utility at once, so it is judged with them. */
+        const cable = mine.find((f) => f.Layer_Key === u.layer_key);
+        if (!cable) continue;
+        if (!!cable.Attributes?.Self_Lay !== wantSelfLay) wrong.push(u.layer_key);
+      }
+      if (wrong.length) mismatched.set(Number(sd.Feature_ID), { seed: sd, mine, wrong });
+    }
+
     const serviced = new Set(seeds
       .filter((sd) => isServed(sd, allMeters, laid))
+      .filter((sd) => !mismatched.has(Number(sd.Feature_ID)))
       .map((sd) => Number(sd.Feature_ID)));
 
     /* A meter with a trench already running to it is left alone, even
@@ -15161,7 +15223,7 @@ export default function GISCanvasPage() {
        first, because that is how the placement flow links them, and on
        the seed only as a fallback for a seed with no plot behind it. */
     const existingMeter = (seed, utility) => {
-      const m = features.find((f) =>
+      const m = world.find((f) =>
         f.Feature_Role === "meter"
         && f.Layer_Key === utility.layer_key
         && (seed.Plot_ID != null
@@ -15219,7 +15281,7 @@ export default function GISCanvasPage() {
        the mains trench joins the trenches to each other; the cable still
        has to meet the cable, or an electric trace stops at the junction
        even though the trenches are continuous. */
-    const mainsOf = (layerKey) => features.filter((f) =>
+    const mainsOf = (layerKey) => world.filter((f) =>
       f.Feature_Type === "line"
       && f.Layer_Key === layerKey
       && (f.Geometry || []).length >= 2
@@ -15246,7 +15308,7 @@ export default function GISCanvasPage() {
       const sid = Number(seed.Feature_ID);
       if (!serviced.has(sid)) continue;      // no trench: the planner handles it
 
-      const trench = features.find((f) => f.Feature_Type === "line"
+      const trench = world.find((f) => f.Feature_Type === "line"
         && Number(f.Attributes?.Seed_Feature_ID) === sid
         && isTrenchType(f.Attributes?.Line_Type, lineTypes));
       if (!trench || (trench.Geometry || []).length < 2) continue;
@@ -15258,7 +15320,7 @@ export default function GISCanvasPage() {
       teeAt(trenches, trench.Geometry[trench.Geometry.length - 1]);
 
       for (const u of utilitiesFor(seed)) {
-        const cable = features.find((f) => f.Feature_Type === "line"
+        const cable = world.find((f) => f.Feature_Type === "line"
           && f.Layer_Key === u.layer_key
           && Number(f.Attributes?.Seed_Feature_ID) === sid);
         if (cable) {
@@ -15347,11 +15409,33 @@ export default function GISCanvasPage() {
       return sizeFor(table, 1);
     })();
 
+    /* ── The old service goes before the new one is drawn ──
+
+       A seed whose drawn service disagrees with its self-lay setting is
+       being laid again. Removing the old first, rather than after,
+       because everything below reads the drawing as it stands: leave it
+       there and the cable would be told to follow a dig that is about
+       to be deleted, and the plot would end with two of each.
+
+       Removed from `world` as well as from the database, so the plan is
+       built from the drawing as it will be, and from the state so the
+       canvas stops drawing them. */
+    const toRemove = [...mismatched.values()].flatMap((m) => m.mine);
+    if (toRemove.length) {
+      const ids = toRemove.map((f) => Number(f.Feature_ID));
+      const doomed = new Set(ids);
+      for (let i = 0; i < ids.length; i += 100) {
+        await deleteFeatures(projectId, ids.slice(i, i + 100));
+      }
+      setFeatures((fs) => fs.filter((f) => !doomed.has(Number(f.Feature_ID))));
+      world = world.filter((f) => !doomed.has(Number(f.Feature_ID)));
+    }
+
     /* Service trenches already on the drawing, so a cable follows the
        dig rather than cutting across it. Only the service ones: the
        mains are what the tee comes off, and following one would run the
        service down the road. */
-    const serviceTrenches = features.filter((f) => f.Feature_Type === "line"
+    const serviceTrenches = world.filter((f) => f.Feature_Type === "line"
       && isTrenchType(f.Attributes?.Line_Type, lineTypes)
       && /service/i.test(f.Attributes?.Line_Type || ""));
 
@@ -15380,7 +15464,8 @@ export default function GISCanvasPage() {
         { slp: slpSet, slpNrs: slpNrsSet, layers }),
     });
     if (!plans.length && !refill.length && !teeGeom.size) {
-      setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped (${skipped[0]?.why ?? "unknown"}).`);
+      /* Every reason, grouped — see skipSummary. */
+      setError(`Nothing to do \u2014 ${skipped.length} seed(s) skipped: ${skipSummary(skipped)}.`);
       return;
     }
 
@@ -15447,7 +15532,7 @@ export default function GISCanvasPage() {
                 Site: run.site,
                 Surface_Type: surfaceFor(run.site, null, surfaceTypes),
                 Seed_Feature_ID: plan.seed.Feature_ID,
-                Connects: connectedTo(run.geometry, features, null),
+                Connects: connectedTo(run.geometry, world, null),
                 /* Written rather than left to withDefaultStatus, which
                    would put "planned" on it — and a planned dig is one
                    somebody has to send a gang to. */
@@ -15545,7 +15630,7 @@ export default function GISCanvasPage() {
                   ...(gasServiceSize ? { Gas_Pipe_Size_ID: gasServiceSize.id } : {}),
                 }
                 : {}),
-              Connects: connectedTo(c.geometry, features, null),
+              Connects: connectedTo(c.geometry, world, null),
               /* Laid into the incumbent's network, not ours.
 
                  On the cable rather than worked out later from where it
@@ -15604,7 +15689,7 @@ export default function GISCanvasPage() {
             Line_Type: lineTypes.find((t) => t.Layer_Key === r.utility.layer_key
               && String(t.Type_Key).endsWith("_service"))?.Type_Key ?? null,
             Seed_Feature_ID: r.seed.Feature_ID,
-            Connects: connectedTo(r.geometry, features, null),
+            Connects: connectedTo(r.geometry, world, null),
           },
         });
         refilled += 1;
@@ -15666,6 +15751,13 @@ export default function GISCanvasPage() {
         + (teedCount ? `, ${teedCount} main(s) teed` : "")
         + (relink.length ? `, ${relink.length} link(s) rebuilt` : "")
         + (keptCount ? `, ${keptCount} existing meter(s) kept` : "")
+        /* Said plainly, because it is the one thing this command does
+           that removes work already on the drawing. A plot re-laid
+           because its self-lay setting changed had a trench and a cable
+           deleted to make room, and somebody watching the count of
+           trenches go up needs to know some went down first. */
+        + (mismatched.size
+          ? `, ${mismatched.size} re-laid (self-lay changed)` : "")
         + (skipped.length ? `, ${skipped.length} skipped` : "")
         /* Plots with no boundary point, dug to their furthest meter
            instead. Said rather than left to be noticed: the two shapes

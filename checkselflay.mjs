@@ -13,7 +13,8 @@
 import { readFileSync } from "node:fs";
 import { selfLaySet, selfLayNrsSet, utilityIdForLayer, isSelfLayMeter, isSelfLayFor }
   from "./src/features/gis/selfLay.js";
-import { planSeed, isExistingType, splitExisting, isServed, meterHasService, isExistingFeature }
+import { planSeed, isExistingType, splitExisting, isServed, meterHasService, isExistingFeature,
+  skipSummary }
   from "./src/features/gis/autoService.js";
 import { defaultStatusOf, statusesFor } from "./src/features/gis/buildStatus.js";
 
@@ -749,6 +750,51 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
         fail(`${key} defaults to '${got}', which is not in the list it carries`);
       }
     }
+  }
+}
+
+/* ── Saying why a run did nothing ──
+
+   Both commands that skip seeds printed `skipped[0].why` against the
+   count of all of them, so one seed's reason was reported as though it
+   were every seed's. Forty-nine plots already serviced and two refused
+   for want of an existing main read as "51 seeds skipped (already has a
+   service trench)" — and the two somebody had just marked self-lay were
+   invisible.
+
+   True of one seed, wrong about the drawing, and the hard kind to
+   notice because the sentence reads correctly. */
+{
+  const many = [
+    ...Array(49).fill({ why: "already has a service trench" }),
+    { why: "no existing main drawn to connect a self-lay plot to" },
+    { why: "no existing main drawn to connect a self-lay plot to" },
+  ];
+  const out = skipSummary(many);
+
+  // 40. Every reason appears, with its own count.
+  if (!/49 already has a service trench/.test(out)) {
+    fail(`the commonest reason is missing or miscounted: ${out}`);
+  }
+  if (!/2 no existing main/.test(out)) {
+    fail(`the rare reason is not reported \u2014 it is the one somebody can act on: ${out}`);
+  }
+  /* Commonest first, so a count carries the weight. */
+  if (out.indexOf("49 ") > out.indexOf("2 no existing")) {
+    fail("reasons are not ordered by how many seeds each covers");
+  }
+  if (skipSummary([]) !== "") fail("an empty skip list produces a sentence");
+
+  /* 41. And neither command reports only the first.
+
+     Asserted on the source, because the fault is not in the summary —
+     it is in what the caller hands to the screen. */
+  const canvas = readFileSync("src/features/gis/GISCanvasPage.jsx", "utf8");
+  for (const m of canvas.matchAll(/skipped\[0\]/g)) {
+    const at = canvas.slice(Math.max(0, m.index - 200), m.index);
+    /* The comment recording the fault names it, which is not a use. */
+    if (/\/\*|^\s*\*/m.test(at.split("\n").pop() ?? "")) continue;
+    fail("a command still reports only the first skipped seed's reason");
   }
 }
 

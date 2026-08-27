@@ -140,6 +140,34 @@ export function splitExisting(trenches = []) {
   return { ours, existing };
 }
 
+/* Why a run did nothing, in one sentence.
+
+   Both commands that skip seeds reported `skipped[0].why` against the
+   count of all of them — one seed's reason printed as though it were
+   every seed's. A run where forty-nine plots were already serviced and
+   two were refused for want of an existing main said "51 seeds skipped
+   (already has a service trench)", and the two that somebody had just
+   marked self-lay were invisible.
+
+   Not wrong about any single seed. Wrong about the drawing, which is
+   the thing being asked about — and the harder kind to notice, because
+   the sentence is true.
+
+   Commonest first, so a count carries the weight and the rarer reason
+   is still shown. It is usually the rarer one that somebody can act
+   on. */
+export function skipSummary(skipped = []) {
+  const byReason = new Map();
+  for (const s of skipped) {
+    const why = s?.why ?? "unknown";
+    byReason.set(why, (byReason.get(why) ?? 0) + 1);
+  }
+  return [...byReason.entries()]
+    .sort((a, b) => b[1] - a[1])
+    .map(([why, n]) => `${n} ${why}`)
+    .join("; ");
+}
+
 export function planSeed(seed, trenches, utilitiesFor, opts = {}) {
   const seedPt = (seed.Geometry || [])[0];
   if (!seedPt) return { seed, skipped: "no position" };

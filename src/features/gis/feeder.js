@@ -912,6 +912,78 @@ const distToSegment = (p, a, b) => {
   return dist(p, [a[0] + t * vx, a[1] + t * vy]);
 };
 
+/* ── A run of service trench is not always one feature ──
+
+   splitByBoundary breaks a service where it crosses the site boundary,
+   so a service teed off a main in the ROAD arrives as two: an off-site
+   piece touching the main, and an on-site piece touching only the
+   first. Drawing one in stages does the same thing.
+
+   Judged one at a time, the inner piece has a main at neither end. It
+   gets reported as unattached, and the gap quoted is the length of the
+   piece it is joined to — which is the arithmetic that gives the game
+   away.
+
+   Our own services rarely show it: they tee off a main inside the site
+   and never cross the boundary. The incumbent's main is in the road, so
+   every self-lay service crosses it and every one splits.
+
+   ── Why it lives here ──
+
+   Two readers ask this question: layServices, which lays a cable along
+   the run, and serviceTrenchCheck, which reports the ones that reach
+   nothing. They had the same fault and were fixed a day apart, which is
+   how a second copy starts. One walk, both callers.
+
+   Returns a Map of service to the end that faces the main, because
+   which end that is falls out of the walk and the caller that lays
+   cable needs it. */
+export function servicesReachingMains(services = [], mains = [], tol = CONNECT_EPS) {
+  const endsOf = (f) => {
+    const g = f.Geometry || [];
+    return g.length >= 2 ? [g[0], g[g.length - 1]] : [];
+  };
+  const gapToLine = (pt, g) => {
+    let best = Infinity;
+    for (let i = 0; i + 1 < g.length; i++) {
+      const d = distToSegment(pt, g[i], g[i + 1]);
+      if (d < best) best = d;
+    }
+    return best;
+  };
+
+  const reach = new Map();
+  const queue = [];
+
+  for (const sv of services) {
+    const ends = endsOf(sv);
+    if (ends.length !== 2) continue;
+    const at = ends.find((e) => mains.some((m) => gapToLine(e, m.Geometry || []) <= tol));
+    if (at) { reach.set(sv, { teeEnd: at, parent: null }); queue.push(sv); }
+  }
+
+  while (queue.length) {
+    const sv = queue.shift();
+    const ends = endsOf(sv);
+    const { teeEnd } = reach.get(sv);
+    /* The far end is what a neighbour joins onto — the near end is
+       already at the main. */
+    const far = ends.find((e) => e !== teeEnd) ?? ends[1];
+
+    for (const other of services) {
+      if (reach.has(other)) continue;
+      const oEnds = endsOf(other);
+      if (oEnds.length !== 2) continue;
+      const joined = oEnds.find((e) => dist(e, far) <= tol);
+      if (!joined) continue;
+      reach.set(other, { teeEnd: joined, parent: sv });
+      queue.push(other);
+    }
+  }
+
+  return reach;
+}
+
 export function serviceTrenchCheck(features = [], opts = {}) {
   const { lineTypes = [], eps = CONNECT_EPS } = opts;
 
@@ -950,6 +1022,11 @@ export function serviceTrenchCheck(features = [], opts = {}) {
   const orphans = [];
   const noNode = [];
 
+  /* Reached directly, or through the pieces between. See
+     servicesReachingMains: a run split at the site boundary is two
+     features and only one of them touches the main. */
+  const reach = servicesReachingMains(services, mains, eps);
+
   for (const sv of services) {
     const g = sv.Geometry;
     const ends = [g[0], g[g.length - 1]];
@@ -964,7 +1041,11 @@ export function serviceTrenchCheck(features = [], opts = {}) {
       at: g[0],
     };
 
-    if (gap > eps) { orphans.push(row); continue; }
+    /* Reaching a main through the rest of its own run counts as
+       reaching it. The gap on the row is still this piece's own
+       distance, which is what somebody would measure on the drawing. */
+    if (!reach.has(sv)) { orphans.push(row); continue; }
+    if (gap > eps) continue;
     if (Math.min(...ends.map(nearestMainVertex)) > eps) noNode.push(row);
   }
 

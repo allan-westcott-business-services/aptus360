@@ -691,6 +691,89 @@ const onScreen = (keys) => {
   await act(async () => { root.unmount(); });
 }
 
+/* ── The Trench menu still has everything in it ──
+
+   Rearranged on 27 Aug: Place Span Nodes to the top of the first
+   column, the Services heading dissolved into Checks, Checks under
+   Draw, and Show or Hide given the second column to itself.
+
+   That is a large block of JSX moved by hand, and the way it goes wrong
+   is not a crash — it is an item left behind in the cut. A command
+   missing from a menu looks exactly like a command that was never
+   written, and the only person who finds out is somebody who needed it.
+
+   So: every command present, and present once. */
+{
+  const from = canvas.indexOf('<Menu id="trench"');
+  const to = canvas.indexOf('<Menu id="electric"');
+  if (from < 0 || to < 0 || to <= from) {
+    fail("could not find the Trench menu \u2014 the assertions below are not being made");
+  } else {
+    const menu = canvas.slice(from, to);
+    /* Without the commentary, so a command named in a note explaining
+       it is not counted as a second copy of it. */
+    const bare = menu.replace(/\/\*[\s\S]*?\*\//g, "");
+    const items = bare.split("<MenuItem").slice(1)
+      .map((chunk) => chunk.slice(0, chunk.indexOf("/>") + 2));
+
+  /* Matched on the text, not on `label="..."`.
+
+       Auto Lay Service Trench shows "Laying…" while it runs, so its
+       label is an expression rather than a string literal and the
+       stricter test reported it missing from a menu it was sitting in.
+       A check that fires on correct code is one people learn to edit
+       rather than read. */
+    for (const label of [
+      "Place Span Nodes",
+      "Auto Lay Service Trench",
+      "Check Services Reach the Mains",
+      "Check Trench Joins",
+      "Check Trench Connectivity",
+    ]) {
+      /* One MenuItem carrying it.
+
+         The bare text appears elsewhere too — withUndo names the action
+         "Place Span Nodes", and the comments name the commands they
+         explain — so counting occurrences reported duplicates that are
+         not rows. Comments are stripped first and the menu is split
+         into MenuItem blocks, which is the row count. */
+      const rows = items.filter((row) => row.includes(`"${label}"`)).length;
+      if (rows === 0) fail(`the Trench menu lost "${label}"`);
+      if (rows > 1) fail(`"${label}" is on ${rows} rows of the Trench menu`);
+    }
+
+    /* The two lists that are built from the line types: one of ways to
+       draw, one of layers to show. Losing either leaves a menu that
+       looks complete and offers nothing. */
+    if ((menu.match(/typesOn\("trench"\)/g) || []).length !== 2) {
+      fail("the Trench menu no longer builds both its draw list and its layer list");
+    }
+    if (!/<MenuLabels/.test(menu)) fail("the Trench menu lost its label switches");
+
+    // The Services heading is gone, its item folded into Checks.
+    if (/label="Services"/.test(menu)) {
+      fail("the Services heading is still in the Trench menu");
+    }
+    /* Checks below Draw, and Place Span Nodes above both. */
+    const spanAt = menu.indexOf('label="Place Span Nodes"');
+    const drawAt = menu.indexOf('label="Draw"');
+    const checksAt = menu.indexOf('label="Checks"');
+    const showAt = menu.indexOf('label="Show or Hide"');
+    if (!(spanAt < drawAt && drawAt < checksAt)) {
+      fail("the Trench menu order is not Place Span Nodes, Draw, Checks");
+    }
+    /* And Show or Hide starts the second column, so the left is doing
+       and the right is looking. */
+    if (!(checksAt < showAt)) fail("Show or Hide is not after Checks");
+    if (!/label="Show or Hide" newColumn/.test(menu)) {
+      fail("Show or Hide does not start the second column");
+    }
+    if (/label="Draw" newColumn|label="Checks" newColumn/.test(menu)) {
+      fail("a second column starts before Show or Hide");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility menus behave (empty utilities shown as empty; isolate first, menu second).");
 process.exit(bad ? 1 : 0);

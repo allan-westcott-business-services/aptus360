@@ -18,6 +18,7 @@ import { planSeed, isExistingType, splitExisting, isServed, meterHasService, isE
   from "./src/features/gis/autoService.js";
 import { defaultStatusOf, statusesFor, withDefaultStatus, isExistingLineType }
   from "./src/features/gis/buildStatus.js";
+import { serviceTrenchCheck } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -1180,6 +1181,77 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   /* Both blocks — the circuits and the untraced list. */
   if ((xlsx.match(/"Self-lay":/g) || []).length < 2) {
     fail("only one of the export's two row sets carries the self-lay column");
+  }
+}
+
+/* ── Check Services Reach the Mains, and the same split ──
+
+   It reported the developer's services as reaching nothing, quoting a
+   gap of 7.55m — which was the length of the piece each was joined to.
+   The same fault layServices had, in another file, found a day apart.
+
+   That is how a second copy of a fix starts, so the walk is shared
+   rather than written twice: servicesReachingMains in feeder.js, used
+   by both. */
+{
+  const T = (id, pts, key = "trench_service", label) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench", Label: label,
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const lts = [
+    { Type_Key: "trench_main_existing", Layer_Key: "trench" },
+    { Type_Key: "trench_main", Layer_Key: "trench" },
+    { Type_Key: "trench_service", Layer_Key: "trench" },
+  ];
+
+  const road = T(1, [[183.52, 125.18], [184.92, 146.45]], "trench_main_existing");
+  const outer = T(2, [[183.81, 129.50], [178.43, 129.85]], "trench_service", "41 outer");
+  const inner = T(3, [[178.43, 129.85], [158.36, 132.70]], "trench_service", "41 inner");
+
+  // 56. Neither half is reported.
+  {
+    const r = serviceTrenchCheck([road, outer, inner], { lineTypes: lts });
+    if (r.error) fail(`the check refused the drawing: ${r.error}`);
+    else if (r.orphans.length) {
+      fail(`a service split at the boundary is reported as unattached: `
+        + r.orphans.map((o) => `${o.label} gap ${o.gap}`).join(", "));
+    }
+  }
+
+  /* 57. And one that reaches nothing still is.
+
+     The point of following the chain is that it ends AT a main. If
+     touching another service were enough, a pair of trenches drawn in
+     the middle of a field would pass and the check would be worthless. */
+  {
+    const a = T(4, [[10, 10], [20, 10]], "trench_service", "99a");
+    const b = T(5, [[20, 10], [30, 10]], "trench_service", "99b");
+    const r = serviceTrenchCheck([road, a, b], { lineTypes: lts });
+    if (r.orphans.length !== 2) {
+      fail(`two services reaching no main gave ${r.orphans.length} orphan(s), expected 2`);
+    }
+  }
+
+  /* 58. One walk, not two.
+
+     layServices and serviceTrenchCheck ask the same question. They had
+     the same fault and it was fixed in one of them first; a second copy
+     is how the pair drifts. */
+  {
+    const fd = readFileSync("src/features/gis/feeder.js", "utf8");
+    const as = readFileSync("src/features/gis/autoService.js", "utf8");
+    if ((fd.match(/export function servicesReachingMains/g) || []).length !== 1) {
+      fail("servicesReachingMains is not defined exactly once");
+    }
+    if (!/import { servicesReachingMains }/.test(as)) {
+      fail("autoService does not import the shared walk \u2014 it has its own copy");
+    }
+    /* The walk's own signature: hopping from one service's far end to
+       another's. If that appears in both files, the copy is back. */
+    const copies = [fd, as].filter((src) => /reach\.set\(other, \{ teeEnd: joined/.test(src));
+    if (copies.length !== 1) {
+      fail(`the service chain walk appears in ${copies.length} files, expected 1`);
+    }
   }
 }
 

@@ -17425,6 +17425,26 @@ export default function GISCanvasPage() {
                         checking on the right. */}
                     <Menu id="trench" label="Trench" open={open} setOpen={setOpen}
                       columns={2}>
+                      {/* ── Place Span Nodes, first and on its own ──
+
+                          It is the thing that gets run most and it is not
+                          a way of drawing, so it sat under a heading of
+                          its own in the second column, past everything
+                          else. At the top of the first, above Draw, with
+                          no group label: a heading over one item is a
+                          heading that tells you nothing the item does not
+                          already say. */}
+                      <MenuItem label="Place Span Nodes"
+                        hint="At every junction and end of the trench network, A1 upwards"
+                        disabled={!!busy || !projectId}
+                        /* Under undo, because this now cuts trenches as
+                           well as marking them. Placing a marker was
+                           nothing much to take back; replacing a length
+                           of trench that carries a build status with
+                           three sections of it is. */
+                        onClick={() => withUndo("Place Span Nodes", () => placeSpanNodes())} />
+
+                      <div className="gm-sep" />
                       <MenuGroup label="Draw" />
                       {/* Drawing the dig, so it sits with the other ways
                           of drawing one. Each utility is laid afterwards
@@ -17451,8 +17471,45 @@ export default function GISCanvasPage() {
                           them to disagree, and the menu was the one with
                           no record of what it had just changed. */}
 
+                      {/* ── Every check together ──
+
+                          "Check Services Reach the Mains" had a Services
+                          heading and a rule of its own above Checks,
+                          which put three things that all answer "is the
+                          dig sound" under two headings and a divider.
+                          They are the same kind of question and they are
+                          asked at the same moment. */}
                       <div className="gm-sep" />
-                      <MenuGroup label="Show or Hide" />
+                      <MenuGroup label="Checks" />
+                      <MenuItem label="Check Services Reach the Mains"
+                        disabled={!projectId}
+                        onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
+                      <MenuItem label="Check Trench Joins"
+                        hint="Trench ends close to another trench but not joined"
+                        disabled={!!busy || !projectId}
+                        onClick={findGaps} />
+                      <MenuItem label="Check Trench Connectivity"
+                        disabled={!projectId}
+                        onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
+
+                      {/* Routing was here: Trace All Meters, Step Through
+                          Traces, Suggest Trench Route, Only Live Trench.
+
+                          The code behind them is still in this file and is
+                          now unreachable — nothing else opens a trace.
+                          Left rather than torn out, because deleting four
+                          features' worth of working machinery on the
+                          strength of a menu change is a bigger decision
+                          than a menu change. */}
+
+                      {/* ── The second column is the layer switches ──
+
+                          Doing and looking, one column each. Everything
+                          on the left changes the drawing; everything on
+                          the right changes what can be seen of it, and
+                          the list of them is long enough to want a column
+                          to itself rather than a third of one. */}
+                      <MenuGroup label="Show or Hide" newColumn />
                       {/* Labels, on every utility menu.
 
                           Whether the drawing is readable is a question
@@ -17477,48 +17534,10 @@ export default function GISCanvasPage() {
                           hidden={hidden.includes(`lt:${t.Type_Key}`)}
                           solo={solo === `lt:${t.Type_Key}`}
                           onHide={() => hideClass(`lt:${t.Type_Key}`)}
-                        onShow={() => showClass(`lt:${t.Type_Key}`)}
-                        shown={shownOnly.includes(`lt:${t.Type_Key}`)}
+                          onShow={() => showClass(`lt:${t.Type_Key}`)}
+                          shown={shownOnly.includes(`lt:${t.Type_Key}`)}
                           onSolo={() => soloClass(`lt:${t.Type_Key}`)} />
                       ))}
-
-                      {/* The second column. */}
-                      <MenuGroup label="Span nodes and call-offs" newColumn />
-                      <MenuItem label="Place Span Nodes"
-                        hint="At every junction and end of the trench network, A1 upwards"
-                        disabled={!!busy || !projectId}
-                        /* Under undo, because this now cuts trenches as
-                           well as marking them. Placing a marker was
-                           nothing much to take back; replacing a length
-                           of trench that carries a build status with
-                           three sections of it is. */
-                        onClick={() => withUndo("Place Span Nodes", () => placeSpanNodes())} />
-
-                      {/* Routing was here: Trace All Meters, Step Through
-                          Traces, Suggest Trench Route, Only Live Trench.
-
-                          The code behind them is still in this file and is
-                          now unreachable — nothing else opens a trace.
-                          Left rather than torn out, because deleting four
-                          features' worth of working machinery on the
-                          strength of a menu change is a bigger decision
-                          than a menu change. */}
-
-                      <div className="gm-sep" />
-                      <MenuGroup label="Services" />
-                      <MenuItem label="Check Services Reach the Mains"
-                        disabled={!projectId}
-                        onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
-
-                      <div className="gm-sep" />
-                      <MenuGroup label="Checks" />
-                      <MenuItem label="Check Trench Joins"
-                        hint="Trench ends close to another trench but not joined"
-                        disabled={!!busy || !projectId}
-                        onClick={findGaps} />
-                      <MenuItem label="Check Trench Connectivity"
-                        disabled={!projectId}
-                        onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
                     </Menu>
 
                     <Menu id="electric" label="Electric" open={open} setOpen={setOpen}

@@ -707,14 +707,68 @@ export function layServices(features = [], utility, opts = {}) {
   const cables = [];
   const skipped = [];
 
+  /* ── A service that reaches a main through another service ──
+
+     A run of service trench is one dig, but it is not always one
+     feature. splitByBoundary breaks it where it crosses the site
+     boundary, so a service teed off a main in the ROAD arrives as two:
+     an off-site piece touching the main, and an on-site piece touching
+     only the first.
+
+     Judged one at a time, the inner piece has no main at either end and
+     was refused — "closest is 5.39m away", which was exactly the length
+     of the outer piece it is joined to. The dig was right, the drawing
+     was right, and the answer was about a feature rather than about the
+     run it belongs to.
+
+     Our own services rarely showed it: they tee off a main inside the
+     site and never cross the boundary. The incumbent's main is in the
+     road, so every self-lay service crosses it and every one splits.
+
+     So reachability is followed rather than tested. A service reaches a
+     main if an end of it is at one, or if an end of it meets another
+     service that does. Breadth-first from the ones that touch a main
+     directly, which also settles the tee end of each piece: the end
+     that faces the main is the end its cable starts from. */
+  const reach = new Map();
+  const queue = [];
+
+  for (const sv of services) {
+    const ends = endsOfLine(sv);
+    if (ends.length !== 2) continue;
+    const at = ends.find((e) => mains.some((m) => gapTo(e, m.Geometry) <= teeM));
+    if (at) { reach.set(sv, at); queue.push(sv); }
+  }
+
+  while (queue.length) {
+    const sv = queue.shift();
+    const ends = endsOfLine(sv);
+    /* The far end is what a neighbour joins onto — the near end is
+       already at the main. */
+    const teeEnd = reach.get(sv);
+    const far = ends.find((e) => e !== teeEnd) ?? ends[1];
+
+    for (const other of services) {
+      if (reach.has(other)) continue;
+      const oEnds = endsOfLine(other);
+      if (oEnds.length !== 2) continue;
+      const joined = oEnds.find((e) => Math.hypot(e[0] - far[0], e[1] - far[1]) <= teeM);
+      if (!joined) continue;
+      /* Its tee end is where it meets the piece nearer the main, so the
+         cable runs the same way along the whole chain. */
+      reach.set(other, joined);
+      queue.push(other);
+    }
+  }
+
   for (const sv of services) {
     const ends = endsOfLine(sv);
     if (ends.length !== 2) continue;
 
-    /* Which end is the main. Both are tried, because which end
-       somebody drew first says nothing about where the gas comes
-       from. */
-    const teeEnd = ends.find((e) => mains.some((m) => gapTo(e, m.Geometry) <= teeM));
+    /* Which end faces the main — directly, or through the pieces
+       between. Both ends were tried because which end somebody drew
+       first says nothing about where the gas comes from. */
+    const teeEnd = reach.get(sv);
     if (!teeEnd) {
       /* How far off it was, because "does not meet a mains trench" is
          true of a trench half a metre short and one on the other side

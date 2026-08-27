@@ -14,7 +14,7 @@ import { readFileSync } from "node:fs";
 import { selfLaySet, selfLayNrsSet, utilityIdForLayer, isSelfLayMeter, isSelfLayFor }
   from "./src/features/gis/selfLay.js";
 import { planSeed, isExistingType, splitExisting, isServed, meterHasService, isExistingFeature,
-  skipSummary }
+  skipSummary, layServices }
   from "./src/features/gis/autoService.js";
 import { defaultStatusOf, statusesFor, withDefaultStatus, isExistingLineType }
   from "./src/features/gis/buildStatus.js";
@@ -913,6 +913,79 @@ const is = (f, opts = {}) => isSelfLayMeter(f, { slp, layers, ...opts });
   {
     if (!isExistingLineType("water_main_existing")) fail("water_main_existing is not recognised");
     if (isExistingLineType("trench_service")) fail("an ordinary type is read as the incumbent's");
+  }
+}
+
+/* ── A run of service trench is not always one feature ──
+
+   splitByBoundary breaks a service where it crosses the site boundary,
+   so a service teed off a main in the ROAD arrives as two: an off-site
+   piece touching the main and an on-site piece touching only the first.
+
+   layServices judged each on its own, so the inner piece had no main at
+   either end and was refused — "closest is 5.39m away", which was
+   exactly the length of the outer piece it is joined to. The dig was
+   right and the drawing was right; the answer was about a feature
+   rather than about the run it belongs to.
+
+   Our own services rarely showed it. They tee off a main inside the
+   site and never cross the boundary; the incumbent's main is in the
+   road, so every self-lay service crosses it and every one splits. */
+{
+  const L = (id, pts, plot, key = "trench_service") => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: "trench", Plot_ID: plot,
+    Geometry: pts, Attributes: { Line_Type: key, Plot_ID: plot },
+  });
+  const meterAt = (id, plot, at) => ({
+    Feature_ID: id, Feature_Role: "meter", Layer_Key: "electric",
+    Plot_ID: plot, Geometry: [at], Attributes: {},
+  });
+  const isTrench = (f) => String(f.Attributes?.Line_Type ?? "").startsWith("trench");
+  const lay = (fs) => layServices(fs, "electric", { isTrench });
+
+  /* The incumbent's trench in the road, and plot 41's service split at
+     the boundary — the geometry off the drawing this was found on. */
+  const road = L(1, [[183.52, 125.18], [184.92, 146.45]], null, "trench_main_existing");
+  const outer = L(2, [[183.81, 129.50], [178.43, 129.85]], 41);
+  const inner = L(3, [[178.43, 129.85], [158.36, 132.70]], 41);
+  const m41 = meterAt(9, 41, [157.5, 132.9]);
+
+  // 46. Both halves lay.
+  {
+    const r = lay([road, outer, inner, m41]);
+    if (r.cables.length !== 2) {
+      fail(`a service split at the boundary laid ${r.cables.length} cable(s), expected 2`
+        + (r.skipped[0] ? ` \u2014 ${r.skipped[0].why}` : ""));
+    }
+  }
+
+  // 47. And a longer chain, where only the first piece touches the main.
+  {
+    const a = L(4, [[183.81, 129.50], [178.43, 129.85]], 41);
+    const b = L(5, [[178.43, 129.85], [168, 130]], 41);
+    const c = L(6, [[168, 130], [158, 131]], 41);
+    const r = lay([road, a, b, c, meterAt(10, 41, [157, 131])]);
+    if (r.cables.length !== 3) fail(`a chain of three laid ${r.cables.length} cable(s)`);
+  }
+
+  /* 48. Reaching another service is not reaching a main.
+
+     The point of following the chain is that it ends AT a main. Two
+     service trenches joined to each other and to nothing else must
+     still be refused, or the rule would lay a cable off any dig that
+     happens to touch another. */
+  {
+    const d = L(7, [[100, 100], [110, 100]], 98);
+    const e = L(8, [[110, 100], [120, 100]], 98);
+    const r = lay([road, d, e, meterAt(11, 98, [121, 100])]);
+    if (r.cables.length) fail("a chain reaching no main at all still laid cable");
+    if (r.skipped.length !== 2) fail("both unreachable pieces should be reported");
+  }
+
+  // 49. And a lone service far from anything is refused as before.
+  {
+    const r = lay([road, L(9, [[100, 100], [110, 100]], 99), meterAt(12, 99, [111, 100])]);
+    if (r.cables.length) fail("an unconnected service laid cable");
   }
 }
 

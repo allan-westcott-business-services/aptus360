@@ -174,11 +174,40 @@ const straight = [[0, 0], [100, 0]];
    it, which is the reason the lock check sits there too. */
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  const fn = canvas.slice(canvas.indexOf("async function writeGeometry"),
-    canvas.indexOf("function removeVertex"));
+  /* The carry lives in `carriedBy`, not in writeGeometry.
+
+     It was in writeGeometry, and that was the bug: writeGeometry
+     handles inserting and removing vertices, while DRAGGING one writes
+     its own move. So removing a vertex carried the contents and
+     dragging one did not — and dragging is the thing somebody does
+     twenty times an hour. */
+  const fn = canvas.slice(canvas.indexOf("function carriedBy("),
+    canvas.indexOf("async function writeGeometry"));
 
   if (!/carryLine\(/.test(fn)) {
     fail("reshaping a trench does not carry what is in it");
+  }
+
+  /* ── Both paths that reshape a line ──
+
+     They are not the same code. writeGeometry inserts and removes
+     vertices; the vertex drag writes its own move. A carry in one of
+     them is a carry somebody will report as not working, because they
+     used the other. */
+  const callers = (canvas.match(/carriedBy\(/g) || []).length;
+  /* The declaration, plus a call from each path. */
+  if (callers < 3) {
+    fail(`carriedBy is called from ${callers - 1} place(s) \u2014 both reshaping paths need it`);
+  }
+  if (!/carriedBy\(f, d\.startGeom, f\.Geometry, features\)/.test(canvas)) {
+    fail("dragging a vertex does not carry the trench's contents");
+  }
+  /* Measured from the shape the drag began with. The feature in state
+     has already been rewritten by the time the drag ends, so measuring
+     against it would compare the new shape with itself and carry
+     nothing. */
+  if (!/Geometry: d\.startGeom/.test(canvas)) {
+    fail("the drag does not record the shape it started from");
   }
   /* Trenches only. Moving a cable must not drag the trench under it:
      the dig is the thing that was decided. */
@@ -197,11 +226,12 @@ const straight = [[0, 0], [100, 0]];
      Undoing the trench and leaving the cables where they were carried
      would be worse than not carrying them: the drawing would be wrong
      in a way nobody had asked for and nothing had recorded. */
-  if (!/\.\.\.carried\.map\(\(c\) => Number\(c\.Feature_ID\)\)/.test(fn)) {
-    fail("the carried cables are not in the undo entry");
+  if (!/\.\.\.carried\.map\(\(c\) => Number\(c\.Feature_ID\)\)/.test(canvas)) {
+    fail("the carried cables are not in writeGeometry's undo entry");
   }
-  if (!/moved2 \? moved2\.Geometry : f\.Geometry/.test(fn)) {
-    fail("the undo entry records the cables' old shape as their new one");
+  /* And the drag's own undo entry, which is a different one. */
+  if (!/\[\{ \.\.\.f, Geometry: d\.startGeom \}, \.\.\.carriedBefore\]/.test(canvas)) {
+    fail("undoing a drag puts the trench back and leaves the cables where they were carried");
   }
 }
 
@@ -322,7 +352,7 @@ const straight = [[0, 0], [100, 0]];
      seeds with it. */
   {
     const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-    if (!/CARRY_ROLES = new Set\(\["joint", "spannode", "linkbox"\]\)/.test(canvas)) {
+    if (!/CARRY_ROLES = useMemo\(\(\) => new Set\(\["joint", "spannode", "linkbox"\]\)/.test(canvas)) {
       fail("the roles carried with a trench are not named");
     }
     if (!/carryPoint\(/.test(canvas)) {

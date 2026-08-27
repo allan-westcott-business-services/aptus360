@@ -6642,6 +6642,26 @@ export default function GISCanvasPage() {
       try {
         await moveFeatures(projectId, [{ Feature_ID: f.Feature_ID, Geometry: f.Geometry }]);
 
+        /* ── The cables and fittings come with it ──
+
+           This is the path somebody actually uses: grab an end, drag it,
+           drop it. It writes its own move rather than going through
+           writeGeometry, so a carry added there alone did nothing here —
+           removing a vertex carried the contents and dragging one did
+           not.
+
+           `d.startGeom` is the shape when the drag began, which is what
+           the fraction is measured against; the feature in state has
+           already been rewritten. */
+        const carried = carriedBy(f, d.startGeom, f.Geometry, features);
+        if (carried.length) {
+          setFeatures((fs) => fs.map((x) => {
+            const c = carried.find((y) => Number(y.Feature_ID) === Number(x.Feature_ID));
+            return c ? { ...x, Geometry: c.Geometry } : x;
+          }));
+          await moveFeatures(projectId, carried);
+        }
+
         /* Said out loud when a ring is shut.
 
            A closed loop and one that is a few centimetres open look
@@ -6659,7 +6679,21 @@ export default function GISCanvasPage() {
            mouse — so it is the thing undo most has to cover. Recorded
            from the shape captured when the drag began, since the feature
            in state has already been rewritten. */
-        await recordAction("Reshape line", [{ ...f, Geometry: d.startGeom }], [f]);
+        /* The reshape and everything it carried, as one step. Undoing
+           the trench and leaving the cables where they were carried
+           would be worse than not carrying them: the drawing would be
+           wrong in a way nobody asked for and nothing recorded. */
+        const carriedBefore = carried.map((c) =>
+          features.find((x) => Number(x.Feature_ID) === Number(c.Feature_ID)))
+          .filter(Boolean);
+        const carriedAfter = carriedBefore.map((x) => ({
+          ...x,
+          Geometry: carried.find((c) =>
+            Number(c.Feature_ID) === Number(x.Feature_ID)).Geometry,
+        }));
+        await recordAction("Reshape line",
+          [{ ...f, Geometry: d.startGeom }, ...carriedBefore],
+          [f, ...carriedAfter]);
 
         /* Moving an end onto another line is how a connection is made,
            so the connection has to be recorded — tracing walks Connects,
@@ -7560,6 +7594,9 @@ export default function GISCanvasPage() {
      features keep a link to something that has left. That set is small —
      the neighbours of one feature — so this costs a handful of rows
      rather than a pass over the drawing. */
+  /* Which fittings are placed on the dig and move with it. */
+  const CARRY_ROLES = useMemo(() => new Set(["joint", "spannode", "linkbox"]), []);
+
   /* Which line types are services, and which trench types are.
 
      A mains trench carries mains and a service trench carries services.
@@ -7581,6 +7618,85 @@ export default function GISCanvasPage() {
       .map((t) => t.Type_Key)]),
   }), [lineTypes]);
 
+  /* ── What is in a trench comes with it ──
+
+     A trench is dug once and the cables and pipes lie in it. Move the
+     trench and they used to stay where they were, hanging in the ground
+     beside the new route — and the only way back was to delete them and
+     run Auto Lay Services again, which loses every size and status set
+     on them by hand.
+
+     Carried by fraction of length: a cable at 40% along the old route
+     is at 40% along the new one, which answers a dog leg, an extension
+     and a moved end with one rule. The trench's own new corners are
+     inserted, because a cable drawn straight along a trench that has
+     since been bent has no vertex at the bend. See carryContents.js.
+
+     ── Why this is a function ──
+
+     There are two paths that reshape a line and they are not the same
+     code: writeGeometry, which inserts and removes vertices, and the
+     vertex drag, which writes its own move. The first version of this
+     went into writeGeometry alone — so removing a vertex carried the
+     cables and DRAGGING one did not, which is the version somebody
+     actually does twenty times an hour.
+
+     Trenches only. Dragging a cable does not move the trench under it:
+     the dig is the thing that was decided, and a cable pulled off its
+     trench is somebody correcting the cable.
+
+     Returns the rows to write. The caller writes them, because the two
+     callers record undo differently. */
+  function carriedBy(before, oldGeom, newGeom, world) {
+    const out = [];
+    if (!before || !isTrenchType(before.Attributes?.Line_Type, lineTypes)) return out;
+    if ((oldGeom || []).length < 2 || (newGeom || []).length < 2) return out;
+
+    const res = contentsOf({ ...before, Geometry: oldGeom }, world, {
+      ...serviceTypeSets,
+      isTrench: (x) => x.Feature_Type === "line"
+        && isTrenchType(x.Attributes?.Line_Type, lineTypes),
+    });
+
+    for (const item of (res?.contents || [])) {
+      /* `item.feature`, not `item.id`. contentsOf returns the feature
+         itself and no id at all, so a lookup by id found nothing every
+         time and the carry silently did nothing. */
+      const f = item.feature
+        && world.find((x) => Number(x.Feature_ID) === Number(item.feature.Feature_ID));
+      /* Not the trench itself, and not something locked: a cable on a
+         called-off span is a record of what was laid, and the drawing
+         moving underneath it does not change that. */
+      if (!f || Number(f.Feature_ID) === Number(before.Feature_ID) || locked(f)) continue;
+      const g = carryLine(oldGeom, newGeom, f.Geometry || []);
+      if (g) out.push({ Feature_ID: f.Feature_ID, Geometry: g });
+    }
+
+    /* ── And the fittings on it ──
+
+       A joint, a span node or a link box is placed on the dig. Carried
+       by the same fraction rule, because it has to be the same rule: a
+       joint at the end of a cable and that cable's own last vertex must
+       land on the same point, and two rules would leave them
+       centimetres apart — which is worse than both being wrong, because
+       nothing looks wrong until something measures it.
+
+       Roles named rather than "every point near the trench". A meter is
+       placed against a plot, not against the ground, and dragging one
+       because the trench beside it moved would move a thing nobody
+       asked about. */
+    for (const f of world) {
+      if (f.Feature_Type !== "point") continue;
+      if (!CARRY_ROLES.has(f.Feature_Role)) continue;
+      if (locked(f)) continue;
+      const p = (f.Geometry || [])[0];
+      const q = p && carryPoint(oldGeom, newGeom, p);
+      if (q) out.push({ Feature_ID: f.Feature_ID, Geometry: [q] });
+    }
+
+    return out;
+  }
+
   async function writeGeometry(id, geometry) {
     /* The last gate before the write.
 
@@ -7599,82 +7715,7 @@ export default function GISCanvasPage() {
     try {
       await moveFeatures(projectId, [{ Feature_ID: id, Geometry: geometry }]);
 
-      /* ── What is in the trench comes with it ──
-
-         A trench is dug once and the cables and pipes lie in it. Move
-         the trench and they used to stay where they were, hanging in
-         the ground beside the new route — and the only way back was to
-         delete them and run Auto Lay Services again, which loses every
-         size and status set on them by hand.
-
-         Carried by fraction of length: a cable at 40% along the old
-         route is at 40% along the new one, which answers a dog leg, an
-         extension and a moved end with one rule. The trench's own new
-         corners are inserted, because a cable drawn straight along a
-         trench that has since been bent has no vertex at the bend and
-         would otherwise cut the corner. See carryContents.js.
-
-         Only trenches. Moving a cable does not move the trench under
-         it: the dig is the thing that was decided, and a cable dragged
-         off its trench is somebody correcting the cable. */
-      const carried = [];
-      if (before && isTrenchType(before.Attributes?.Line_Type, lineTypes)) {
-        const res = contentsOf({ ...before, Geometry: before.Geometry }, next, {
-          ...serviceTypeSets,
-          isTrench: (x) => x.Feature_Type === "line"
-            && isTrenchType(x.Attributes?.Line_Type, lineTypes),
-        });
-        /* `item.feature`, not `item.id`. contentsOf returns the feature
-           itself on each item and no id at all — so a lookup by id
-           found nothing, every time, and the carry silently did
-           nothing while every test of carryLine passed.
-
-           That is the shape of it: the arithmetic was checked to the
-           last decimal and the thing feeding it was never run. The
-           check below now exercises this path with a real contentsOf
-           result rather than trusting the shape. */
-        for (const item of (res?.contents || [])) {
-          const f = item.feature
-            && next.find((x) => Number(x.Feature_ID) === Number(item.feature.Feature_ID));
-          /* Not the trench itself, and not something locked: a cable on
-             a called-off span is a record of what was laid, and the
-             drawing moving underneath it does not change that. */
-          if (!f || Number(f.Feature_ID) === Number(id) || locked(f)) continue;
-          const g = carryLine(before.Geometry, geometry, f.Geometry || []);
-          if (g) carried.push({ Feature_ID: f.Feature_ID, Geometry: g });
-        }
-      }
-
-      /* ── And the fittings on it ──
-
-         A joint, a span node or a link box is placed on the dig: a
-         service joint where the service leaves the main, a bottle end
-         at the end of the run. They stayed put too, so a bottle end
-         that was on the end of a cable ended up beside it.
-
-         Carried by the same fraction rule as the cables, because it has
-         to be the same rule: a joint at the end of a cable and that
-         cable's own last vertex must land on the same point, and two
-         rules would leave them a few centimetres apart — which is worse
-         than both being wrong, because nothing looks wrong until
-         something measures it.
-
-         Roles named rather than "every point near the trench". A meter
-         is placed against a plot, not against the ground, and dragging
-         one because the trench beside it moved would move a thing
-         nobody asked about. A plot seed likewise. */
-      const CARRY_ROLES = new Set(["joint", "spannode", "linkbox"]);
-      if (before && isTrenchType(before.Attributes?.Line_Type, lineTypes)) {
-        for (const f of next) {
-          if (f.Feature_Type !== "point") continue;
-          if (!CARRY_ROLES.has(f.Feature_Role)) continue;
-          if (locked(f)) continue;
-          const p = (f.Geometry || [])[0];
-          const q = p && carryPoint(before.Geometry, geometry, p);
-          if (q) carried.push({ Feature_ID: f.Feature_ID, Geometry: [q] });
-        }
-      }
-
+      const carried = carriedBy(before, before?.Geometry, geometry, next);
       if (carried.length) {
         setFeatures((fs) => fs.map((f) => {
           const c = carried.find((x) => Number(x.Feature_ID) === Number(f.Feature_ID));

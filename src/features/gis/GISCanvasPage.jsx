@@ -1308,9 +1308,19 @@ export default function GISCanvasPage() {
      tail, not the run feeding it, and a node fed by nothing but a
      service is a node the LV network has not reached.
 
-     Half a metre: Build LV Network draws the cable through the node's
-     own position, so this is slack for a hand-drawn run rather than a
-     search. */
+     ── How near is near enough ──
+
+     SPAN_REACH_M, the figure the rest of the electric model already
+     uses for this exact question: how far past the end of a cable a
+     span node may sit and still be reported. Its note says a cable
+     often stops a few metres short of the trench end, and the node
+     marking that end is still the node the design is measured to.
+
+     Half a metre was written here first, invented beside a constant
+     that already answered it. It blanked a node sitting a couple of
+     metres off its cable — which is a node placed by eye against a
+     plan, not a node with no cable. Two answers to one question, and
+     the new one was the worse of them. */
   const cableAtNode = useCallback((src, nodeId) => {
     const node = src.find((f) => Number(f.Feature_ID) === Number(nodeId));
     const at = (node?.Geometry || [])[0];
@@ -1330,7 +1340,7 @@ export default function GISCanvasPage() {
         let t = len2 ? ((at[0] - a[0]) * vx + (at[1] - a[1]) * vy) / len2 : 0;
         t = Math.max(0, Math.min(1, t));
         const d = Math.hypot(at[0] - (a[0] + t * vx), at[1] - (a[1] + t * vy));
-        if (d <= 0.5) return true;
+        if (d <= SPAN_REACH_M) return true;
       }
       return false;
     });

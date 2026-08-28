@@ -218,6 +218,20 @@ for (const file of jsxFiles("./src")) {
   if (!/f\.Layer_Key !== "electric"/.test(helper)) {
     fail("the cable test does not look on the electric layer");
   }
+  /* SPAN_REACH_M, not a number invented beside it.
+
+     The model already answers "how far past a cable may a span node
+     sit and still be reported" — a cable often stops short of the
+     trench end, and the node marking that end is still the node the
+     design is measured to. Half a metre was written here first and
+     blanked a node two metres off its cable, which is a node placed by
+     eye rather than a node with no cable. */
+  if (/<= 0\.5\) return true/.test(helper)) {
+    fail("the cable test uses its own tolerance instead of SPAN_REACH_M");
+  }
+  if (!/<= SPAN_REACH_M/.test(helper)) {
+    fail("the cable test does not use the reach the rest of the model uses");
+  }
   /* A service cable ending at the node is the plot's tail, not the run
      feeding it. */
   if (!/\/service\/i\.test\(type\)/.test(helper)) {

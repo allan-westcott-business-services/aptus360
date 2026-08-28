@@ -199,8 +199,29 @@ for (const file of jsxFiles("./src")) {
   const fn = canvas.slice(canvas.indexOf("const levelsByNode = useCallback"),
     canvas.indexOf("const levelsKey = useMemo"));
 
-  if (!/if \(leg\.cableSizeId == null\) continue;/.test(fn)) {
+  if (!/if \(!cableAtNode\(src, leg\.stopId\)\) continue;/.test(fn)) {
     fail("a span node with no cable reaching it is still given levels");
+  }
+  /* Measured against the drawing, not read off the node.
+
+     Build LV Network writes VD_Cable_Size_ID onto the span node, and
+     deleting the cable afterwards leaves it there — so a node whose
+     cable had been deleted still had a size, still passed, and still
+     showed a volt drop for a conductor no longer on the drawing. That
+     was the first attempt at this: reading a record of the cable
+     instead of looking for the cable. */
+  if (/leg\.cableSizeId == null\) continue/.test(fn)) {
+    fail("the no-cable test reads the size recorded on the node, which survives the cable");
+  }
+  const helper = canvas.slice(canvas.indexOf("const cableAtNode = useCallback"),
+    canvas.indexOf("const levelsByNode = useCallback"));
+  if (!/f\.Layer_Key !== "electric"/.test(helper)) {
+    fail("the cable test does not look on the electric layer");
+  }
+  /* A service cable ending at the node is the plot's tail, not the run
+     feeding it. */
+  if (!/\/service\/i\.test\(type\)/.test(helper)) {
+    fail("a service cable counts as the run feeding the node");
   }
   /* Before the figures are worked out, not after: computing them and
      then discarding them is the same answer and a slower one, and it

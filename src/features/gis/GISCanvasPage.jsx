@@ -1296,6 +1296,46 @@ export default function GISCanvasPage() {
      positional fallback for nodes whose Span_Label differs from the name
      the report gave them; the electric legs already carry the id, so
      there is nothing to match and nothing to drift. */
+  /* Whether an LV cable actually passes a span node.
+
+     Measured against the drawing rather than read off the node. A span
+     node carries the size of the cable that feeds it, written by Build
+     LV Network — and it keeps carrying it after the cable is deleted,
+     which is how a node with nothing laid to it went on reporting a
+     volt drop.
+
+     Mains cable only. A service cable ending at the node is the plot's
+     tail, not the run feeding it, and a node fed by nothing but a
+     service is a node the LV network has not reached.
+
+     Half a metre: Build LV Network draws the cable through the node's
+     own position, so this is slack for a hand-drawn run rather than a
+     search. */
+  const cableAtNode = useCallback((src, nodeId) => {
+    const node = src.find((f) => Number(f.Feature_ID) === Number(nodeId));
+    const at = (node?.Geometry || [])[0];
+    if (!at) return false;
+
+    return src.some((f) => {
+      if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") return false;
+      const type = String(f.Attributes?.Line_Type ?? "");
+      if (/service/i.test(type)) return false;
+      const g = f.Geometry || [];
+      for (let i = 1; i < g.length; i++) {
+        const a = g[i - 1];
+        const b = g[i];
+        const vx = b[0] - a[0];
+        const vy = b[1] - a[1];
+        const len2 = vx * vx + vy * vy;
+        let t = len2 ? ((at[0] - a[0]) * vx + (at[1] - a[1]) * vy) / len2 : 0;
+        t = Math.max(0, Math.min(1, t));
+        const d = Math.hypot(at[0] - (a[0] + t * vx), at[1] - (a[1] + t * vy));
+        if (d <= 0.5) return true;
+      }
+      return false;
+    });
+  }, []);
+
   const levelsByNode = useCallback((src) => {
     const circuits = circuitsFrom(src);
     const cables = lookups?.cableSizes || [];
@@ -1380,10 +1420,19 @@ export default function GISCanvasPage() {
            blank: a blank says "not yet", and a number says "this is
            what it will be", which nobody can tell apart at a glance.
 
-           cableIdOf reads the size set on the node itself, by hand or
-           by Build LV Network. Null means no cable reaches it, and the
-           node keeps its label empty until one does. */
-        if (leg.cableSizeId == null) continue;
+           ── What counts as "a cable reaches it" ──
+
+           An LV cable drawn on the electric layer, passing the node.
+           Not the size recorded ON the node: Build LV Network writes
+           VD_Cable_Size_ID there, and deleting the cable afterwards
+           leaves it behind. So a node whose cable had been deleted
+           still had a size, still passed the test, and still showed
+           levels for a conductor that was no longer on the drawing.
+
+           That was the first attempt at this and it was the same
+           mistake one layer down — reading a record of the cable
+           instead of looking for the cable. */
+        if (!cableAtNode(src, leg.stopId)) continue;
 
         out.set(Number(leg.stopId), cumulativeToNode({
           model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
@@ -1392,7 +1441,7 @@ export default function GISCanvasPage() {
       }
     }
     return out.size ? out : null;
-  }, [lookups, lineTypes, plotList]);
+  }, [lookups, lineTypes, plotList, cableAtNode]);
 
   const levelsKey = useMemo(() => {
     const k = [];

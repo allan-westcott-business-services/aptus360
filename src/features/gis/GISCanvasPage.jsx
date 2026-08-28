@@ -1366,6 +1366,25 @@ export default function GISCanvasPage() {
       if (r.error) continue;
       for (const leg of r.legs || []) {
         if (leg.stopId == null) continue;
+
+        /* ── No cable, no levels ──
+
+           A span node's volt drop and loop impedance are properties of
+           the cable feeding it. The walk runs on the TRENCH network, so
+           a node reached by a dig with nothing laid in it yet still got
+           a leg — and the label showed a figure worked out from a
+           conductor that does not exist.
+
+           A number on the drawing is read as a measurement of the
+           design. One computed from an absent cable is worse than a
+           blank: a blank says "not yet", and a number says "this is
+           what it will be", which nobody can tell apart at a glance.
+
+           cableIdOf reads the size set on the node itself, by hand or
+           by Build LV Network. Null means no cable reaches it, and the
+           node keeps its label empty until one does. */
+        if (leg.cableSizeId == null) continue;
+
         out.set(Number(leg.stopId), cumulativeToNode({
           model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
           partialCableId: leg.cableSizeId ?? null, ...ctx,
@@ -7717,14 +7736,49 @@ export default function GISCanvasPage() {
        placed against a plot, not against the ground, and dragging one
        because the trench beside it moved would move a thing nobody
        asked about. */
+    /* ── Association first, proximity second ──
+
+       Auto Service stamps Seed_Feature_ID on the trench it digs, the
+       cable it lays in it and the service joint at its take-off. Those
+       three belong to one plot's service and the stamp says so, which
+       is a recorded fact rather than a measurement.
+
+       This was moving fittings on proximity alone. Proximity is a guess:
+       a joint sitting where two digs meet is near both, and a joint on
+       the neighbouring spur is near this one. Where the stamp is there,
+       it decides — a joint stamped with this trench's seed comes,
+       whatever it is near, and a joint stamped with another's stays,
+       however close it sits.
+
+       Proximity is kept for the rest. A joint placed by hand carries no
+       stamp, and neither does a span node, which belongs to the run
+       rather than to any one plot. */
+    const mySeed = before.Attributes?.Seed_Feature_ID;
+
     for (const f of world) {
       if (f.Feature_Type !== "point") continue;
       if (!CARRY_ROLES.has(f.Feature_Role)) continue;
       if (locked(f)) continue;
       const p = (f.Geometry || [])[0];
-      /* A joint on the neighbouring dig belongs to that one. */
-      if (p && claimedByAnother([p], oldGeom, otherTrenches)) continue;
-      const q = p && carryPoint(oldGeom, newGeom, p);
+      if (!p) continue;
+
+      const theirs = f.Attributes?.Seed_Feature_ID;
+
+      /* Stamped, and not with this trench's seed: somebody else's
+         fitting, however close. */
+      if (theirs != null && mySeed != null && Number(theirs) !== Number(mySeed)) continue;
+      /* Stamped with this trench's seed: ours, however far. */
+      const associated = theirs != null && mySeed != null
+        && Number(theirs) === Number(mySeed);
+
+      if (!associated && claimedByAnother([p], oldGeom, otherTrenches)) continue;
+
+      const q = carryPoint(oldGeom, newGeom, p,
+        /* An associated fitting is carried whatever its distance: the
+           stamp is the association, and refusing it for being a metre
+           out would leave a joint behind that the drawing says belongs
+           to this service. */
+        associated ? { withinM: Infinity } : {});
       if (q) out.push({ Feature_ID: f.Feature_ID, Geometry: [q] });
     }
 

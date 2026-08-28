@@ -182,6 +182,36 @@ for (const file of jsxFiles("./src")) {
   }
 }
 
+/* ── A level is a property of a cable ──
+
+   The volt drop and loop impedance at a span node come from the cable
+   feeding it. The walk that produces them runs on the TRENCH network,
+   so a node reached by a dig with nothing laid in it still got a leg,
+   and its label showed a figure worked out from a conductor that does
+   not exist.
+
+   A number on a drawing is read as a measurement of the design. One
+   computed from an absent cable is worse than a blank: a blank says
+   "not yet", a number says "this is what it will be", and nothing on
+   screen tells them apart. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const fn = canvas.slice(canvas.indexOf("const levelsByNode = useCallback"),
+    canvas.indexOf("const levelsKey = useMemo"));
+
+  if (!/if \(leg\.cableSizeId == null\) continue;/.test(fn)) {
+    fail("a span node with no cable reaching it is still given levels");
+  }
+  /* Before the figures are worked out, not after: computing them and
+     then discarding them is the same answer and a slower one, and it
+     invites somebody to use the value on the way past. */
+  const guard = fn.indexOf("leg.cableSizeId == null");
+  const compute = fn.indexOf("cumulativeToNode(");
+  if (guard >= 0 && compute >= 0 && guard > compute) {
+    fail("the no-cable test runs after the levels have been computed");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Screen text behaves (no escapes rendered raw, the origin named from the drawing)."
   : `\n${bad} problem(s)`);

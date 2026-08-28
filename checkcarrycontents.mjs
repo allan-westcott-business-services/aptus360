@@ -449,6 +449,39 @@ const straight = [[0, 0], [100, 0]];
   }
 }
 
+/* ── Association decides, where it is recorded ──
+
+   Auto Service stamps Seed_Feature_ID on the trench it digs, the cable
+   it lays in it and the service joint at its take-off. Those three
+   belong to one plot's service and the stamp says so.
+
+   The carry moved fittings on proximity alone. Proximity is a guess: a
+   joint where two digs meet is near both, and a joint on the
+   neighbouring spur is near this one. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const fn = canvas.slice(canvas.indexOf("function carriedBy("),
+    canvas.indexOf("async function writeGeometry"));
+
+  if (!/const mySeed = before\.Attributes\?\.Seed_Feature_ID/.test(fn)) {
+    fail("the carry does not read the trench's own seed");
+  }
+  /* Somebody else's fitting stays, however close it sits. */
+  if (!/Number\(theirs\) !== Number\(mySeed\)\) continue/.test(fn)) {
+    fail("a joint stamped with another plot's seed is still carried when it is near");
+  }
+  /* And ours comes, however far. A joint a metre off the route is
+     still this service's joint if the drawing says so. */
+  if (!/associated \? \{ withinM: Infinity \}/.test(fn)) {
+    fail("an associated joint is refused for being too far from the route");
+  }
+  /* Proximity is kept for what has no stamp: a joint placed by hand,
+     and a span node, which belongs to the run rather than to a plot. */
+  if (!/!associated && claimedByAnother/.test(fn)) {
+    fail("an unstamped fitting is no longer placed by proximity");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Trench contents behave (cables follow the dig they lie in)."
   : `\n${bad} problem(s)`);

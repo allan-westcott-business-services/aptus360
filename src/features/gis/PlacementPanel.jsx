@@ -60,21 +60,23 @@ export default function PlacementPanel({
              here is where its frontage meets the verge, and here is
              where each meter sits.
 
-             There was a fourth — where the service trench ends — asked
-             between the boundary and the meters. It is gone: the dig
-             stops at the meter, so asking separately meant clicking the
-             same place twice and letting the two answers differ. */
+             A fourth click, where the service trench ends, sits
+             between the boundary and the meters. It was taken out on
+             27 Aug on the argument that the dig stops at the meter, so
+             asking separately meant clicking the same place twice — and
+             put back the same day. The two are not the same point: the
+             trench can stop short of the meter, and a bank of meters on
+             a wall has one dig end and several meters. */
           boundaryFor ? (
             <>
               <p className="pp-now">
                 Plot <strong>{current.plot_number}</strong> placed. Now click its{" "}
                 <strong>property boundary point</strong> &mdash; where the service
-                trench crosses into the plot.
+                trench will stop.
               </p>
               <p className="pp-hint">
-                The dig runs square from the mains trench to this point, and on to
-                the meter. Meters come next &mdash; the first one is where the dig
-                stops.
+                The dig runs square from the mains trench to this point. Meters
+                come next.
               </p>
             </>
           ) : meterFor ? (

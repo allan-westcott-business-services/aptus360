@@ -161,31 +161,23 @@ const plotById = () => ({ kva_load: 5 });
   if (!/setBoundaryFor\(\{ nrs: rec/.test(src)) {
     fail("placing a supply never asks where its dig stops");
   }
-  /* The boundary point, written on the click that asks for it. It was
-     carried through a third step and written later; that step is gone. */
-  if (!/Boundary_At: point/.test(src)) fail("a supply seed has no boundary point");
+  if (!/Boundary_At: boundaryAt/.test(src)) fail("a supply seed has no boundary point");
 
-  /* ── The trench end is the meter, not a click of its own ──
+  /* ── And where its dig stops, which is its own click ──
 
-     There was a step between the boundary and the meters asking where
-     the service trench ends. It is gone: the dig stops at the meter, so
-     asking separately meant clicking the same place twice and letting
-     the two answers differ — which left the trench end a point nobody
-     had checked against the meter it was meant to reach.
+     A separate point from the boundary: the trench crosses the property
+     line and runs on, and it can stop short of the meter. A bank of
+     meters on a wall has one dig end and several meters.
 
-     `Trench_End_At` still exists and still means the same thing. It is
-     filled in from the first meter placed, which is why the seed is
-     written before the meters rather than after them. */
-  if (/setTrenchEndFor/.test(src)) {
-    fail("the separate trench-end click is back \u2014 the dig stops at the meter");
+     This was removed on 27 Aug — the trench end taken from the first
+     meter placed instead — and put back the same day. The assertion is
+     kept as an assertion rather than a note, because the argument for
+     removing it is a reasonable one somebody will make again. */
+  if (!/setTrenchEndFor\(\{ plot, nrs, seedPoint/.test(src)) {
+    fail("placing a seed never asks where the service trench ends");
   }
-  if (!/Trench_End_At: point/.test(src)) {
-    fail("nothing records where the dig stops");
-  }
-  if (!/if \(!placed\.length\)/.test(src)) {
-    fail("the trench end is not taken from the FIRST meter, so a later one moves it");
-  }
-  if (!/plot, nrs, seedPoint, seedTempId: tempId,/.test(src)) {
+  if (!/Trench_End_At: point/.test(src)) fail("a supply seed has no trench end");
+  if (!/plot, nrs, seedPoint, utility: takes\[0\]/.test(src)) {
     fail("placing a supply does not go on to place its meters");
   }
   if (!/NRS_ID: nrs\.NRS_ID/.test(src)) {

@@ -19,7 +19,7 @@ const COLS = [
      taking two utilities is matched by the first of them — enough to
      find it, and the cell shows all of them. */
   { key: "utility", label: "Utilities",   width: 190, type: "multi",
-    raw: (r) => (r.Utility_IDs?.length ? r.Utility_IDs[0] : r.Utility_ID) },
+    raw: (r) => (r.Utility_IDs?.length ? r.Utility_IDs[0] : null) },
   { key: "kva",     label: "kVA",         width: 90,  type: "num",   align: "right", raw: (r) => r.Requested_kVA ?? null },
   { key: "mpan",    label: "MPAN",        width: 150, type: "text",  raw: (r) => r.MPAN || "" },
   { key: "operator",label: "Operator",    width: 150, type: "multi", raw: (r) => r.IDNO_ID },
@@ -92,16 +92,13 @@ export default function NonResidentialTab({ projectId }) {
 
   function edit(r) {
     setEditingId(r.NRS_ID);
-    /* Utility_IDs where the record has them, and the old single column
-       where it does not — a supply saved before 0196 and not touched
-       since still names one utility and nothing else. Read here rather
-       than defaulted on the server so the fallback is visible: it goes
-       when the column does. */
-    setF({
-      ...blankRow(), ...r,
-      Utility_IDs: r.Utility_IDs?.length ? r.Utility_IDs
-        : (r.Utility_ID != null ? [r.Utility_ID] : []),
-    });
+    /* The fallback to the old single Utility_ID column was here, for a
+       supply saved before 0196 and not touched since. The column was
+       dropped on 28 Aug and every supply that named one had it carried
+       into the set first, so there is nothing left to fall back to —
+       and reading a column that no longer exists is an error rather
+       than an empty answer. */
+    setF({ ...blankRow(), ...r, Utility_IDs: r.Utility_IDs || [] });
     setShowForm(true);
   }
 
@@ -303,10 +300,7 @@ export default function NonResidentialTab({ projectId }) {
               {shown.length === 0 ? (
                 <tr><td colSpan={COLS.length} className="no-rows">No supplies match these filters.</td></tr>
               ) : shown.map((r) => {
-                const us = (r.Utility_IDs?.length
-                  ? r.Utility_IDs
-                  : (r.Utility_ID != null ? [r.Utility_ID] : []))
-                  .map(utilityById).filter(Boolean);
+                const us = (r.Utility_IDs || []).map(utilityById).filter(Boolean);
                 return (
                   <tr key={r.NRS_ID}>
                     <td className="mono ref">{r.Supply_Ref || "\u2014"}</td>

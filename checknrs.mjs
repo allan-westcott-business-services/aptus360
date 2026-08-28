@@ -508,6 +508,52 @@ const plotById = () => ({ kva_load: 5 });
   }
 }
 
+/* ── The old single Utility_ID column is gone ──
+
+   A supply took one utility and 0196 replaced that with the
+   NRS_Utility set, because a pumping station takes water AND electric
+   and one column can only say one of them.
+
+   The column was left standing so a deploy could be rolled back, and it
+   was left NOT NULL. Nothing wrote it, so every new supply was refused
+   outright — "null value in column Utility_ID violates not-null
+   constraint". Existing supplies were fine, because they already had a
+   value, which is why it only appeared on the first one somebody added
+   afterwards. It sat there from 26 Aug to 28 Aug.
+
+   Dropped after carrying eight supplies' single utility into the set:
+   they named one in the old column and had no row in the new one, so
+   they were taking no utility at all — appearing on no drawing, no bill
+   and no call-off. */
+{
+  const fn = readFileSync("./netlify/functions/nrs.js", "utf8");
+  const tab = readFileSync("./src/features/nrs/NonResidentialTab.jsx", "utf8");
+
+  /* Not on the column list. Selecting a dropped column is an error, not
+     an empty answer, so this would take the whole tab out. */
+  const cols = fn.slice(fn.indexOf("const COLS = ["), fn.indexOf("].join(\",\")"));
+  if (/"Utility_ID"/.test(cols)) {
+    fail("the supplies endpoint still selects the dropped Utility_ID column");
+  }
+
+  /* And the fallbacks that read it are gone. They existed for a supply
+     saved before 0196 and not touched since; every one of those had its
+     utility carried across, so there is nothing to fall back to. */
+  if (/r\.Utility_ID\b/.test(tab)) {
+    fail("the supplies tab still falls back to the dropped Utility_ID column");
+  }
+
+  /* The set is what is read now, and it has to still be read \u2014 an
+     assertion that only forbids something is satisfied by removing
+     both. */
+  if (!/Utility_IDs/.test(tab)) {
+    fail("the supplies tab no longer reads the utilities set");
+  }
+  if (!/NRS_Utility/.test(fn)) {
+    fail("the endpoint no longer reads the utilities set");
+  }
+}
+
 console.log(fails.length
   ? "FAIL\n - " + fails.join("\n - ")
   : "Non-residential supplies behave (a seed with its own meters, its own load, a black triangle).");

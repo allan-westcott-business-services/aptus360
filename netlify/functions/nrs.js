@@ -1,7 +1,20 @@
 import { supabase, json, fail, withAuth } from "./_supabase.js";
 
+/* `Utility_ID` is not here. It was the single utility a supply took,
+   and 0196 replaced it with the NRS_Utility set — a pumping station
+   takes water AND electric, which one column could never say.
+
+   The column stayed NOT NULL after nothing wrote it, so every new
+   supply was refused: "null value in column Utility_ID violates
+   not-null constraint". Existing supplies were fine, because they
+   already had a value, which is why this only appeared on the first
+   one somebody added afterwards.
+
+   Dropped on 28 Aug, after carrying eight supplies' single utility into
+   the set — they named one in the old column and had no row in the new
+   one, so they were taking no utility at all. */
 const COLS = [
-  "NRS_ID","Project_ID","Utility_ID","NRS_Sub_Type_ID","Supply_Ref","Description",
+  "NRS_ID","Project_ID","NRS_Sub_Type_ID","Supply_Ref","Description",
   "Address","MPAN","Requested_kVA","IDNO_ID","Date_Received","Self_Lay_Provider","Notes",
 ].join(",");
 

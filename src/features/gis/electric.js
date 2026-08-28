@@ -380,6 +380,36 @@ const METER_REACH_M = 30;
    enough that it cannot reach past it to a cable on another street. */
 const POC_REACH_M = 15;
 
+/* ── What the origin is joining to decides its reach ──
+
+   A feeder leaving a substation starts ON it. Three metres of nothing
+   between the two is a drawing that has not been joined up, and
+   absorbing it would hide the fault and put those metres into every
+   distance on the site. That rule stands, and two checks hold it there.
+
+   A TRENCH is a different thing to be near. A substation sits beside
+   its trench rather than on it, and before any cable is drawn the
+   trench is the only route there is. The distance is wanted at every
+   stage of a design — origin placed, trench dug, services run, meters
+   placed — not only at the end.
+
+   Two metres off its trench, with no LV cable yet, and joinAt returned
+   null, distancesFrom returned an empty Map, and every distance on the
+   drawing was blank. Not one row: the column. The same shape as the POC
+   fault above — a rule written for the finished drawing, applied to the
+   drawing being made.
+
+   So the reach is strict against cables and generous against trenches,
+   which is the distinction that was missing rather than a number that
+   was too small. A cable three metres out still reads as unjoined; a
+   trench three metres away is the road.
+
+   The gap is not swallowed either way. It is added to every distance
+   below and the report warns when it is over a quarter of a metre, so a
+   substation genuinely adrift says so as a number beside the answer
+   rather than as a page of dashes. */
+const ORIGIN_REACH = (f) => (f?.Layer_Key === "trench" ? POC_REACH_M : CONNECT_M);
+
 /* How far a meter may sit from a cable that does NOT carry its plot
    number. Twelve, as the single reach was before the number started
    deciding: it is roughly how far a meter is from the service feeding
@@ -911,12 +941,18 @@ export function distancesFrom(features, rootId) {
      function with the caller deciding, rather than two that splice
      lines slightly differently. */
   const joinAtWithGap = (p, reach) => {
+    /* `reach` may be a number or a function of the line.
+
+       The origin needs a different answer depending on what it is
+       joining to, and only the loop knows which line each candidate is
+       — see the note on ORIGIN_REACH. */
+    const reachOf = typeof reach === "function" ? reach : () => reach;
     let best = null;
     for (const f of lines) {
       const g = f.Geometry;
       for (let i = 1; i < g.length; i++) {
         const hit = onSegment(p, g[i - 1], g[i]);
-        if (hit.d > reach) continue;
+        if (hit.d > reachOf(f)) continue;
         /* The line's own scale travels with the hit: splicing a join
            into a measured run has to cost measured metres, or the join
            quietly reverts that length to what was drawn. */
@@ -966,8 +1002,13 @@ export function distancesFrom(features, rootId) {
      empty Map, and every meter on the drawing reported no distance at
      all. Not a wrong number — a column of dashes, on every POC-fed
      design, every time. */
+  /* A POC is near its network by nature — it marks somebody else's
+     cable, across a footway or at a joint bay — so it keeps its reach
+     against anything. A substation is strict against cables and
+     generous against trenches; see ORIGIN_REACH. */
   const rootIsPoc = start.Feature_Role === "poc";
-  const rootJoin = joinAtWithGap(at, rootIsPoc ? POC_REACH_M : CONNECT_M);
+  const rootJoin = joinAtWithGap(at,
+    rootIsPoc ? POC_REACH_M : ORIGIN_REACH);
   if (rootJoin == null) return new Map();
   const rootNode = rootJoin.id;
 

@@ -31,6 +31,17 @@ const num = (v) => (v == null ? "\u2014" : v);
    Written once and used by both tables, because a plot marked in one
    list and bare in the other is the same plot described two ways, and
    the reader would be right to wonder which was true. */
+/* What the drawing is fed from, as the word to put in a sentence.
+
+   "POC" or "Substation", from the report's own stationRole. It was
+   written out at four places and hard-coded as "substation" at a
+   fifth — which said "not reached from the substation" on a site fed
+   from a POC, and told somebody to check a feeder starts on a thing
+   that is not on their drawing. */
+export const originWordOf = (report, caps = false) => (report?.stationRole === "poc"
+  ? "POC"
+  : (caps ? "Substation" : "substation"));
+
 const plotCell = (m) => (m?.selfLay
   ? `${num(m.plot)} (SLP)`
   : num(m.plot));
@@ -149,8 +160,7 @@ export default function CircuitReport({
           Meter: m.meter, Plot: m.plot, "House type": m.houseType,
           /* Numeric, not "400.8 m" — a column of text returns zero from
              every sum built on it downstream. */
-          [`Distance from ${report.stationRole === "poc"
-            ? "POC" : "substation"} (m)`]: m.distM,
+          [`Distance from ${originWordOf(report)} (m)`]: m.distM,
           kVA: m.kva,
           /* A column of its own, not "(SLP)" after the number.
 
@@ -174,8 +184,7 @@ export default function CircuitReport({
            it is an export somebody has spreadsheets built on. */
         Circuit: `Not traced to ${report.station}`, Substation: "",
         Meter: m.meter, Plot: m.plot, "House type": m.houseType,
-        [`Distance from ${report.stationRole === "poc"
-          ? "POC" : "substation"} (m)`]: null,
+        [`Distance from ${originWordOf(report)} (m)`]: null,
         kVA: m.kva,
         "Self-lay": m.selfLay ? "Yes" : "",
       });
@@ -256,7 +265,7 @@ export default function CircuitReport({
                 tolerance, and a substation is held to it. */}
             {report.stationGapM > 0.25 && (
               <p className="cr-gap">
-                {report.stationRole === "poc" ? "POC" : "Substation"} sits{" "}
+                {originWordOf(report, true)} sits{" "}
                 {report.stationGapM} m from the nearest cable
                 {" \u2014 "}included in every distance below.
               </p>
@@ -285,7 +294,7 @@ export default function CircuitReport({
               the button having done nothing. */}
           {onRunLevels && (
             <button className="btn sm" disabled={!!busy}
-              title="Loop impedance and volt drop on every circuit, from the substation"
+              title={`Loop impedance and volt drop on every circuit, from the ${originWordOf(report)}`}
               onClick={() => { onRunLevels(); onClose(); }}>
               Run Levels Check
             </button>
@@ -305,7 +314,7 @@ export default function CircuitReport({
 
           {report.circuits.length === 0 && (
             <p className="cr-none">
-              No meter is linked to a circuit or reachable from the substation yet.
+              No meter is linked to a circuit or reachable from the {originWordOf(report)} yet.
               Use Link to Circuit to group plots, and check the substation sits on
               the trench network.
             </p>
@@ -359,13 +368,25 @@ export default function CircuitReport({
                     {" \u00B7 "}{kvaF(c.totalKva)}
                     {/* Said where it happens rather than left as a
                         column of dashes: a missing distance means the
-                        walk could not get there from the substation,
-                        which is a network not joined up \u2014 usually a
-                        feeder that does not start on the substation. */}
+                        walk could not get there from the origin, which
+                        is a network not joined up.
+
+                        Two faults were in this one sentence. It said
+                        "substation" on every drawing, including the
+                        ones fed from a POC — sending somebody to check
+                        a feeder starts on a thing that is not there.
+
+                        And the em dash was written `\u2014`, which is an
+                        escape a JavaScript STRING understands and JSX
+                        text does not: it rendered as those six
+                        characters. Every other escape in this file is
+                        inside a template literal, where it works, which
+                        is why this one lasted. In JSX text the entity
+                        is the way to say it. */}
                     {c.unreached > 0 && (
                       <span className="cr-gap">
-                        {" "}({c.unreached} not reached from the substation \u2014
-                        check the feeder starts on it)
+                        {" "}({c.unreached} not reached from the {originWordOf(report)}{" "}
+                        &mdash; check the trench network joins back to it)
                       </span>
                     )}
                     {c.kvaMissing > 0 && (
@@ -495,8 +516,8 @@ export default function CircuitReport({
                              column headed "from substation" is naming
                              something the scheme does not have.
                              circuitReport says which it used. */
-                          ["distM", `Dist. from ${report.stationRole === "poc"
-                            ? "POC" : "substation"}`], ["kva", "kVA"]].map(([k, l]) => (
+                          ["distM", `Dist. from ${originWordOf(report)}`],
+                          ["kva", "kVA"]].map(([k, l]) => (
                             <th key={k} onClick={() => setSort((s) => ({
                               key: k, dir: s.key === k && s.dir === "asc" ? "desc" : "asc",
                             }))}>
@@ -639,7 +660,7 @@ export default function CircuitReport({
                     {ours === report.unreachable.length
                       ? "These aren\u2019t reachable"
                       : `${ours} of these aren\u2019t reachable`}
-                    {" from the substation along the network. Check the trenches "}
+                    {` from the ${originWordOf(report)} along the network. Check the trenches `}
                     connect {ours === 1 ? "that plot" : "those plots"} back to it.
                     {slp > 0 && ` The ${slp} marked (SLP) ${slp === 1 ? "is" : "are"} `
                       + "connected by somebody else and belong on no circuit of ours."}

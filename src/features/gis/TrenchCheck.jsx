@@ -56,10 +56,31 @@ export default function TrenchCheck({ result, onSelect, onClose }) {
 
         <div className="tc-body">
           {ok && (
-            <p className="tc-ok">
-              Every trench connects back to the {originWord}. Cables can route anywhere
-              on the network.
-            </p>
+            <>
+              <p className="tc-ok">
+                Every <strong>mains</strong> trench connects back to the {originWord}.
+                Cables can route anywhere on the mains network.
+              </p>
+              {/* ── What this did not look at ──
+
+                Service spurs are excluded on purpose: they hang off the
+                mains by design, so counting them would report every
+                plot as an orphan.
+
+                But "every trench connects" read as an answer about the
+                whole drawing, and it is not. A site whose mains are one
+                piece and whose service spurs are adrift passed this
+                check while the Circuit Report showed a column of
+                dashes for those plots — and the all-clear here is what
+                sent somebody looking somewhere else.
+
+                So it says what it covered and names the check that
+                covers the rest. */}
+              <p className="tc-hint">
+                Service spurs are not counted here &mdash; they hang off the mains by
+                design. Use <strong>Check Services Reach the Mains</strong> for those.
+              </p>
+            </>
           )}
 
           {/* Neither a substation nor an electric POC. Both are named,

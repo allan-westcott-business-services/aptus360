@@ -979,6 +979,28 @@ const onScreen = (keys) => {
   if (!/No substation or electric POC placed/.test(panel)) {
     fail("the panel asks for a substation where a POC would do");
   }
+
+  /* ── The all-clear says what it covered ──
+
+     trenchComponents runs with mainsOnly, so service spurs are not in
+     it: they hang off the mains by design, and counting them would
+     report every plot as an orphan.
+
+     "Every trench connects back to the substation" read as an answer
+     about the whole drawing. On a site whose mains were one piece and
+     whose service spurs were adrift, this check passed while the
+     Circuit Report showed a column of dashes for those plots — and the
+     all-clear is what sent somebody looking somewhere else for two
+     hours.
+
+     A check that is right about less than it appears to be is worse
+     than one that fails. */
+  if (!/Every <strong>mains<\/strong> trench connects/.test(panel)) {
+    fail("the connectivity all-clear claims more than it checked");
+  }
+  if (!/Check Services Reach the Mains<\/strong> for those/.test(panel)) {
+    fail("the all-clear does not name the check that covers the spurs");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

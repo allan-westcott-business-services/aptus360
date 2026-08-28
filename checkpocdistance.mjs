@@ -167,6 +167,96 @@ const report = (role, at) =>
   if (d.get(1) !== 0) fail(`the origin reported ${d.get(1)} m from itself, not 0`);
 }
 
+/* ── A substation joins its trench, before any cable is drawn ──
+
+   §4 above holds the other half of this and must keep holding it: a
+   CABLE starting three metres from the substation is a drawing that has
+   not been joined up, and absorbing that gap would hide the fault and
+   put those metres into every distance on the site.
+
+   A trench is a different thing to be near. A substation sits beside
+   its trench rather than on it, and until the LV cable is drawn the
+   trench is the only route there is.
+
+   Two metres off, with no cable yet, and joinAt returned null,
+   distancesFrom returned an empty Map, and every distance on the
+   drawing was blank — the column, not a row. The same shape as the POC
+   fault this file was written for: a rule written for the finished
+   drawing, applied to the drawing being made.
+
+   What was missing was the distinction, not a bigger number. */
+{
+  const line = (id, pts, layer, type) => ({
+    Feature_ID: id, Feature_Type: "line", Layer_Key: layer,
+    Geometry: pts, Attributes: { Line_Type: type },
+  });
+  const at = (g) => ({
+    Feature_ID: 1, Feature_Role: "substation", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [g], Attributes: {},
+  });
+  const meter = {
+    Feature_ID: 5, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 41, Geometry: [[50, 10]],
+    Attributes: { Circuit_ID: 1 },
+  };
+  /* Trenches and a service cable. No LV main: that is the point. */
+  const dug = [
+    line(2, [[0, 0], [100, 0]], "trench", "trench_main"),
+    line(3, [[50, 0], [50, 10]], "trench", "trench_service"),
+    line(4, [[50, 0], [50, 10]], "electric", "elec_service"),
+  ];
+
+  // 1. On the trench, and beside it, both measure.
+  for (const [gap, want] of [[0, 60], [2, 62], [8, 68]]) {
+    const d = distancesFrom([at([0, gap]), ...dug, meter], 1);
+    const got = d.get(5);
+    if (got == null) {
+      fail(`a substation ${gap} m from its trench blanks every distance on the drawing`);
+    } else if (Math.abs(got - want) > 0.01) {
+      fail(`a substation ${gap} m from its trench measured ${got}, expected ${want}`);
+    }
+  }
+
+  /* 2. And the gap is counted, not swallowed.
+
+     Two metres off reads 62, not 60. Absorbing it would understate
+     every distance on the site by the width of the verge, and moving
+     the substation would change nothing on the report — which is the
+     part that makes such a fault hard to believe. */
+  {
+    const near = distancesFrom([at([0, 0]), ...dug, meter], 1).get(5);
+    const off = distancesFrom([at([0, 2]), ...dug, meter], 1).get(5);
+    if (!(off > near)) {
+      fail("moving the substation off its trench changed no distance");
+    }
+  }
+
+  /* 3. Far enough out is still out.
+
+     Generous against a trench is not unlimited: a substation on the
+     next street is a mistake, and should read as one. */
+  {
+    const d = distancesFrom([at([0, 40]), ...dug, meter], 1);
+    if (d.size) fail("a substation 40 m from any trench was joined to the network");
+  }
+
+  /* 4. The cable rule is untouched, said again here.
+
+     §4 asserts it through the report; this asserts it through
+     distancesFrom, because the two reaches now live in one function and
+     a change to either could move the other. */
+  {
+    const stray = line(6, [[3, 0], [53, 0]], "electric", "elec_main");
+    const far = {
+      Feature_ID: 7, Feature_Role: "meter", Feature_Type: "point",
+      Layer_Key: "electric", Geometry: [[53, 0]], Attributes: { Circuit_ID: 1 },
+    };
+    if (distancesFrom([at([0, 0]), stray, far], 1).get(7) != null) {
+      fail("a cable starting three metres from the substation was treated as joined");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Distances trace from a POC (across the gap, and the gap is counted).");
 process.exit(bad ? 1 : 0);

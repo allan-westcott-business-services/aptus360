@@ -6288,6 +6288,31 @@ export default function GISCanvasPage() {
           const isJoint = pt.Feature_Role === "joint";
           const isFeeder = line.Layer_Key === "electric"
             && /main/i.test(String(line.Attributes?.Line_Type ?? ""));
+
+          /* ── A joint is a fitting on a cable, and on nothing else ──
+
+             The interior-vertex rule above is already limited to
+             feeders, for the reason its note gives: every line through
+             the point would mean dragging a joint pulled the trench
+             under it out of shape.
+
+             The fallback was not. "The ends of a line, always" is right
+             for a cable, and a service joint sits on the END of the
+             service trench — so dragging the joint took the trench end
+             with it, and the dig followed a fitting.
+
+             It is the wrong way round. A trench is where the ground is
+             open; a joint is a thing lying in it. The trench moves and
+             the joint comes with it, which is what carriedBy does.
+             Moving the joint is somebody placing the fitting more
+             accurately within a dig that has already been decided.
+
+             So a joint follows nothing that is not on its own layer —
+             its cables, and no trench, no pipe on another utility, no
+             boundary. Points that are not joints keep the rule they
+             had: a meter dragged still takes its service end with it. */
+          if (isJoint && line.Layer_Key !== pt.Layer_Key) continue;
+
           const candidates = isJoint && isFeeder
             ? g.map((_, i) => i)
             : [0, g.length - 1];

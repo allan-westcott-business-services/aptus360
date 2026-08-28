@@ -549,7 +549,12 @@ const utils = () => ["electric"];
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const at = canvas.indexOf("── Which vertices follow the point ──");
-  const body = at < 0 ? "" : canvas.slice(at, at + 1600);
+  /* To the end of the loop rather than a fixed number of characters.
+     A window of 1600 fitted the code when it was written and stopped
+     short of it the moment a note was added above the line it checks —
+     reporting two faults that were not there. A slice measured in
+     characters is a slice that expires. */
+  const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("drag.current.rubber.push", at) + 200);
 
   if (!body) fail("nothing decides which vertices follow a dragged point");
   else {
@@ -633,6 +638,42 @@ const utils = () => ["electric"];
     [main], () => elec, {});
   if (skew.trench[0][0] !== 50) {
     fail(`the tee moved to ${skew.trench[0][0]} m along the main, expected 50`);
+  }
+}
+
+/* ── A joint follows nothing off its own layer ──
+
+   The interior-vertex rule above is limited to feeders, for the reason
+   its note gives: every line through the point would mean dragging a
+   joint pulled the trench under it out of shape.
+
+   The fallback was not limited. "The ends of a line, always" is right
+   for a cable, and a service joint sits on the END of the service
+   trench — so dragging the joint took the trench end with it and the
+   dig followed a fitting.
+
+   It is the wrong way round. A trench is where the ground is open and a
+   joint is a thing lying in it: the trench moves and the joint comes
+   with it, which is what carriedBy does. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("── Which vertices follow the point ──");
+  const body = at < 0 ? "" : canvas.slice(at, canvas.indexOf("drag.current.rubber.push", at) + 200);
+
+  if (!/if \(isJoint && line\.Layer_Key !== pt\.Layer_Key\) continue;/.test(body)) {
+    fail("dragging a service joint still drags the service trench with it");
+  }
+  /* Before the candidates are chosen, or the ends are collected and
+     the test never reached. */
+  const guard = body.indexOf("line.Layer_Key !== pt.Layer_Key");
+  const cands = body.indexOf("const candidates");
+  if (guard >= 0 && cands >= 0 && guard > cands) {
+    fail("the layer test runs after the vertices to follow have been chosen");
+  }
+  /* And only for joints: a meter dragged still takes its service end
+     with it, which is the behaviour that rule was written for. */
+  if (!/isJoint &&/.test(body)) {
+    fail("the layer test applies to every point, not only to joints");
   }
 }
 

@@ -117,6 +117,31 @@ function Shell() {
      on screen. */
   useEffect(() => onOpenGis(() => setView("gis-canvas")), []);
 
+  /* The mouse wheel does not edit numbers.
+
+     A focused number input takes a wheel event as increment, so a
+     figure on an admin page changed whenever somebody scrolled the page
+     with the pointer resting on the box they had just typed in \u2014 a dig
+     rate or a volt drop limit off by one, silently, with nothing
+     pressed. The spin buttons are hidden in styles.css; this is the
+     wheel, which no stylesheet can reach.
+
+     Dropping focus before the default action runs is the whole trick:
+     an unfocused input takes no value from the wheel, and the page
+     scrolls as it should. App-wide on purpose, for the reason the
+     handover gives about the sidebar \u2014 every admin page and every
+     modal has these boxes, and a fix per page is a fix that is missing
+     from the next one. */
+  useEffect(() => {
+    const onWheel = (e) => {
+      const t = e.target;
+      if (t instanceof HTMLInputElement && t.type === "number"
+        && document.activeElement === t) t.blur();
+    };
+    document.addEventListener("wheel", onWheel, { passive: true });
+    return () => document.removeEventListener("wheel", onWheel);
+  }, []);
+
   /* The planning board handing somebody over to where a booking is
      actually edited. Same arrangement as the canvas above: the board
      says where it wants to go, the shell switches, and the call-offs

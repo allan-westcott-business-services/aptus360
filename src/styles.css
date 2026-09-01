@@ -111,6 +111,20 @@ input:where(:not([type="checkbox"]):not([type="radio"])), select, textarea {
   transition: border-color 0.15s, box-shadow 0.15s; appearance: none; -webkit-appearance: none;
 }
 textarea { resize: vertical; min-height: 70px; line-height: 1.5; }
+
+/* Number inputs: no spin buttons.
+
+   appearance:none above is not enough — WebKit draws the inner spinner
+   through its own pseudo-element and Firefox through a textfield
+   appearance, and each has to be told separately. The buttons were the
+   visible half of a complaint about numbers changing under the mouse;
+   the other half is the wheel, which App.jsx handles, because a
+   stylesheet cannot. Typing, and the arrow keys, still work. */
+input[type="number"]::-webkit-inner-spin-button,
+input[type="number"]::-webkit-outer-spin-button {
+  -webkit-appearance: none; margin: 0;
+}
+input[type="number"] { -moz-appearance: textfield; appearance: textfield; }
 input:where(:not([type="checkbox"]):not([type="radio"])):focus, select:focus, textarea:focus {
   outline: none; border-color: var(--accent); box-shadow: 0 0 0 2px rgba(57, 70, 123, 0.14);
 }

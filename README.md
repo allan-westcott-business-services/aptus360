@@ -5,6 +5,11 @@
 3. Load tapped along a leg is charged on that leg
 4. Hand-set cable sizes survive Build LV Network
 
+Also: **number inputs no longer have spin buttons, and the mouse wheel no
+longer edits a focused one** (`src/styles.css`, `src/App.jsx`). App-wide,
+because every admin page and modal has these boxes. Typing and the arrow
+keys still work.
+
 **Settings note.** Unbalanced, Distributed load factor and Joint
 equivalent length are one row for the whole system, not per project,
 and the GIS page reads them when the project loads — reload the page

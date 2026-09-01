@@ -1,8 +1,15 @@
-# Three fixes, 1 Sep 2026
+# Four fixes, 1 Sep 2026
 
 1. A cable that runs through a span node feeds it
 2. A meter beside its service reaches the substation
 3. Load tapped along a leg is charged on that leg
+4. Hand-set cable sizes survive Build LV Network
+
+**Settings note.** Unbalanced, Distributed load factor and Joint
+equivalent length are one row for the whole system, not per project,
+and the GIS page reads them when the project loads — reload the page
+after changing them. The levels export's last columns ("Leg charged",
+"Leg unbalance factor") show what a run actually used.
 
 ---
 
@@ -179,6 +186,32 @@ the node (distributed plus terminal), and the through figure is kept as
 Expect every figure in the levels check to rise, and some legs that
 passed to fail. They were passing on a sum that left out the plots on
 them.
+
+---
+
+# 4. Hand-set cable sizes survive Build LV Network
+
+Found when a designer's sizes came back as the build's defaults and the
+levels check moved with them.
+
+| File | Change |
+|------|--------|
+| `src/features/gis/GISCanvasPage.jsx` | The rebuild carries `Manual_VD_Cable_Size_ID` onto the re-laid run; the build's silent sync leaves a node's own override alone |
+
+Two faults. The LV build had an `overrides` map copied from the gas
+build, under a comment saying an override lost on rebuild "is the one
+thing a rebuild must not do" — and it read `Manual_Gas_Pipe_Size_ID`,
+the gas field, on electric cables, and nothing ever read the map back.
+Every cable size set on a run was lost on every rebuild, always. It now
+remembers `Manual_VD_Cable_Size_ID` by geometry and puts it back on a run
+laid along the same points; a run that breaks differently starts on
+the default, because its load has changed.
+
+And since fix 1 made the build's own sync actually run, that sync was
+copying the run's size over a cable somebody had chosen on the node
+itself. A silent sync now fills only nodes that have no override of
+their own; the menu item, which asks first and names every node,
+remains the place a node is reconciled with its run.
 
 ## Suite
 

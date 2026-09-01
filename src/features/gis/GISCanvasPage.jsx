@@ -9401,6 +9401,17 @@ export default function GISCanvasPage() {
         && String(heldSystem ?? "") === String(wantSystem ?? "")
         && String(heldManual ?? "") === String(wantManual ?? "")) return;
 
+      /* ── A choice on the node survives a silent sync ──
+
+         Somebody who set a cable on the span node itself made a
+         decision, and the build running this in the background is
+         not the place to unmake it. The menu item is: it asks first
+         and names every node it will change, and that is where a
+         node's override is reconciled with its run. Silent means the
+         node takes the run's size only where it had none of its own,
+         and the run's own override still wins where there is one. */
+      if (silent && heldManual != null && wantManual == null) return;
+
       updates.set(node.Feature_ID, {
         node,
         Attributes: {
@@ -12305,13 +12316,27 @@ export default function GISCanvasPage() {
          features are new rows: the same length of main is the same
          points on the ground whether it was laid a minute or a month
          ago. */
+      /* ── Copied from the gas build, and never finished ──
+
+         The paragraph above is true of the gas build, where the map is
+         read back when the mains are re-laid. Here it read
+         Manual_Gas_Pipe_Size_ID \u2014 the gas field, on an electric cable
+         \u2014 so it was always empty, and nothing below ever read it
+         anyway. Every cable size set by hand on a run was lost on every
+         rebuild, and the sentence saying that is the one thing a
+         rebuild must not do sat directly above the code doing it.
+
+         Found when a designer's sizes came back as the build's defaults
+         and the levels check moved with them. The electric override is
+         Manual_VD_Cable_Size_ID, and it is put back onto the new run at
+         the same points below. */
+      const geomKey = (f) => (f.Geometry || [])
+        .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
       const overrides = new Map();
       for (const f of old) {
-        const id = f.Attributes?.Manual_Gas_Pipe_Size_ID;
+        const id = f.Attributes?.Manual_VD_Cable_Size_ID;
         if (id == null) continue;
-        const key = (f.Geometry || [])
-          .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
-        overrides.set(key, { id, size: f.Attributes?.Size ?? null });
+        overrides.set(geomKey(f), id);
       }
 
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
@@ -12339,6 +12364,15 @@ export default function GISCanvasPage() {
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
               ...(startCable ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
+              /* The size somebody chose for this length of main last
+                 time, where the run is laid along the same points. A
+                 run that broke differently \u2014 a plot added, the cable
+                 count crossed \u2014 is a new run and starts on the
+                 default, which is the honest answer for a length whose
+                 load has changed. */
+              ...(overrides.has(geomKey({ Geometry: sec.pts }))
+                ? { Manual_VD_Cable_Size_ID: overrides.get(geomKey({ Geometry: sec.pts })) }
+                : {}),
               /* How far this run carries on past the last take-off,
                  where the designer laid the main beyond it. Measured
                  from the drawing rather than added to it — see

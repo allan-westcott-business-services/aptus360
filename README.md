@@ -159,6 +159,15 @@ Terminal load at the span node is unchanged, so nothing is counted
 twice. The joint allowance follows: it was "zero on every real drawing"
 for this reason, not the one its comment gave.
 
+## The working is in the export
+
+Five columns at the end of the levels export: the kVA tapped along the
+leg, the kVA beyond it, the weighted kVA after the distributed factor,
+the metres charged (cable plus joint allowance) and the unbalance
+factor. Added when another system's figures came out lower and "mostly
+higher" was all a total could say; a disagreement now lands on one
+column, which names the method that differs.
+
 ## The current column
 
 "Phase current" on a leg row was the load passing on *through* the far

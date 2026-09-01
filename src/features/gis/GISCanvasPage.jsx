@@ -16500,6 +16500,28 @@ export default function GISCanvasPage() {
           ? Number(l.atCutout.ohms.toFixed(4)) : null,
         "At cut-out (%)": l.atCutout && !l.service?.missingSpec
           ? Number(l.atCutout.pct.toFixed(3)) : null,
+        /* ── The working ──
+
+           Added when another system's figures came out lower than
+           these and "mostly higher" was all a total could say. Each
+           row now carries its own arithmetic: the kVA tapped along
+           the leg, the kVA beyond it, what the two weighed after the
+           distributed factor, the metres charged (cable plus joint
+           allowance) and the unbalance factor. A disagreement then
+           lands on one column, which names the method that differs.
+
+           At the end, after every column somebody may already have a
+           formula pointing at. */
+        "Leg distributed kVA": l.vd.working
+          ? Number(l.vd.working.distributedKva.toFixed(1)) : null,
+        "Leg terminal kVA": l.vd.working
+          ? Number(l.vd.working.terminalKva.toFixed(1)) : null,
+        "Leg weighted kVA": l.vd.working
+          ? Number(l.vd.working.weightedKva.toFixed(1)) : null,
+        "Leg charged (m)": l.vd.working
+          ? Number(l.vd.working.chargedM.toFixed(1)) : null,
+        "Leg unbalance factor": l.vd.working
+          ? Number(l.vd.working.correction.toFixed(3)) : null,
       } : trace.hasVd ? {
         "Phase current (A)": null,
         "Loop impedance (ohms)": null,
@@ -16509,6 +16531,11 @@ export default function GISCanvasPage() {
         "Service volt drop (%)": null,
         "At cut-out (ohms)": null,
         "At cut-out (%)": null,
+        "Leg distributed kVA": null,
+        "Leg terminal kVA": null,
+        "Leg weighted kVA": null,
+        "Leg charged (m)": null,
+        "Leg unbalance factor": null,
       } : {}),
     }));
     const wb = XLSX.utils.book_new();

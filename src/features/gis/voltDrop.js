@@ -205,18 +205,30 @@ export function legVoltDrop({
 
   const base = cable.Volt_Drop_Base != null ? Number(cable.Volt_Drop_Base) : null;
   let pct = 0;
+  const weightedKva = (distributedKva || 0) * distFactor + (terminalKva || 0);
+  /* Keyed on how many customers are on the section, not on current.
+     That is the spreadsheet's own rule. */
+  const corr = unbalanced && meterCount > 0
+    ? 1 + unbalConst / Math.sqrt(meterCount)
+    : 1;
   if (base != null) {
-    const weightedKva = (distributedKva || 0) * distFactor + (terminalKva || 0);
-    /* Keyed on how many customers are on the section, not on current.
-       That is the spreadsheet's own rule. */
-    const corr = unbalanced && meterCount > 0
-      ? 1 + unbalConst / Math.sqrt(meterCount)
-      : 1;
     pct = weightedKva * (base * 1e-6) * chargedM * corr;
   }
 
   return {
     ohms, pct, amps,
+    /* The working, so a figure can be read against another system's
+       leg by leg rather than argued about as a total: what was
+       distributed, what was terminal, what that weighed, the metres
+       charged and the factor applied. */
+    working: {
+      distributedKva: distributedKva || 0,
+      terminalKva: terminalKva || 0,
+      weightedKva,
+      chargedM,
+      correction: corr,
+      meterCount: meterCount || 0,
+    },
     /* What the joints added, so a designer can see how much of a figure
        is cable and how much is connections. */
     jointAllowM: Math.round(allowM * 10) / 10,
@@ -289,6 +301,8 @@ export function cumulativeToNode({
      the first is zero and the second is seven plots' worth, and zero
      was the one on the page. Settled by the last leg charged below. */
   let amps = ampsThrough;
+  /* And the last leg's working, for the same reason. */
+  let working = null;
 
   /* ── The load that leaves the route part way along a leg ──
 
@@ -381,6 +395,7 @@ export function cumulativeToNode({
       ohms += leg.ohms;
       pct += leg.pct;
       amps = leg.amps;
+      working = leg.working || null;
       if (leg.missingSpec) missingCable = true;
       legLenM = 0; distKva = 0; distCount = 0; distJoints = 0;
     } else {
@@ -435,6 +450,7 @@ export function cumulativeToNode({
     ohms += leg.ohms;
     pct += leg.pct;
     amps = leg.amps;
+    working = leg.working || null;
     if (leg.missingSpec) missingCable = true;
     legLenM = 0;
   }
@@ -464,6 +480,9 @@ export function cumulativeToNode({
     upstreamPct: upstream,
     amps,
     ampsThrough,
+    /* The arithmetic of the leg arriving at the target. Null where no
+       leg was charged. */
+    working,
     missing: missingTransformer || missingCable,
     missingTransformer,
     missingCable,

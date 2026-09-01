@@ -66,7 +66,7 @@ import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
-import { nodeFedBy as nodeFedByLine } from "./spanNodes.js";
+import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin } from "./feeder.js";
 import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
@@ -7986,6 +7986,39 @@ export default function GISCanvasPage() {
     },
   ), [features, lineTypes]);
 
+  /* And the other way round: the cable running through a node that no
+     cable ends at. A junction where this circuit carries straight on
+     is one section to the router, so nothing ends there \u2014 the node is
+     fed by the section passing over it. Same options, same drawing. */
+  const runThrough = useCallback((node, from = null) => runThroughNode(
+    node, from || features,
+    {
+      isTrench: (t) => isTrenchType(t, lineTypes),
+      reach: SPAN_REACH_M,
+    },
+  ), [features, lineTypes]);
+
+  /* Every node a run feeds: the one it ends at, and any it runs through
+     that no run ends at. The same precedence the sync applies, so an
+     edit to one run and a sync of the whole drawing agree about which
+     nodes that run owns. */
+  const nodesFedBy = useCallback((line, from = null) => {
+    const src = from || features;
+    const end = nodeFedBy(line, src);
+    const mains = src.filter((f) => f.Feature_Type === "line"
+      && f.Layer_Key === "electric");
+    const endedAt = new Set();
+    for (const l of mains) {
+      const n = nodeFedBy(l, src);
+      if (n) endedAt.add(n.Feature_ID);
+    }
+    const through = src.filter((n) => n.Feature_Role === "spannode"
+      && !endedAt.has(n.Feature_ID)
+      && Number(n.Attributes?.Span_Seq) !== 0
+      && runThrough(n, mains) === line);
+    return [...(end ? [end] : []), ...through];
+  }, [features, nodeFedBy, runThrough]);
+
   /* Putting a suggested change on the drawing.
 
      Two places, not one. The trace reads the cable from the span node;
@@ -8014,8 +8047,10 @@ export default function GISCanvasPage() {
       for (const line of features) {
         if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
         if (line.Attributes?.Line_Type !== "elec_main") continue;
-        const fed = nodeFedBy(line, features);
-        if (!fed || Number(fed.Feature_ID) !== Number(node.Feature_ID)) continue;
+        /* Ending at it, or running through it \u2014 a junction this circuit
+           carries straight over is fed by the section passing it. */
+        const fed = nodesFedBy(line, features);
+        if (!fed.some((n) => Number(n.Feature_ID) === Number(node.Feature_ID))) continue;
         rows.push({
           Feature_ID: line.Feature_ID,
           Attributes: { ...line.Attributes, VD_Cable_Size_ID: ch.toCable.Cable_Size_ID },
@@ -9178,8 +9213,12 @@ export default function GISCanvasPage() {
     const line = src.find((f) => Number(f.Feature_ID) === Number(edited?.Feature_ID));
     if (!line || line.Feature_Type !== "line" || line.Layer_Key !== "electric") return;
 
-    const node = nodeFedBy(line, src);
-    if (!node) {
+    /* The node it ends at and any it runs through. A junction this
+       circuit carries straight over is fed by this section as much as
+       the node at its end is, and an edit that reached one and not the
+       other left the trace reading two sizes for one cable. */
+    const nodes = nodesFedBy(line, src);
+    if (!nodes.length) {
       /* Said out loud rather than passed over. A run whose end is more
          than SPAN_REACH_M from any node feeds nothing, and the trace
          will go on using whatever that node already held \u2014 which looks
@@ -9192,26 +9231,35 @@ export default function GISCanvasPage() {
 
     const wantSystem = line.Attributes?.VD_Cable_Size_ID ?? null;
     const wantManual = line.Attributes?.Manual_VD_Cable_Size_ID ?? null;
-    const heldSystem = node.Attributes?.VD_Cable_Size_ID ?? null;
-    const heldManual = node.Attributes?.Manual_VD_Cable_Size_ID ?? null;
 
-    if (String(heldSystem ?? "") === String(wantSystem ?? "")
-      && String(heldManual ?? "") === String(wantManual ?? "")) return;
+    const rows = [];
+    for (const node of nodes) {
+      const heldSystem = node.Attributes?.VD_Cable_Size_ID ?? null;
+      const heldManual = node.Attributes?.Manual_VD_Cable_Size_ID ?? null;
+      if (String(heldSystem ?? "") === String(wantSystem ?? "")
+        && String(heldManual ?? "") === String(wantManual ?? "")) continue;
+      rows.push({
+        Feature_ID: node.Feature_ID,
+        Attributes: {
+          ...node.Attributes,
+          VD_Cable_Size_ID: wantSystem,
+          Manual_VD_Cable_Size_ID: wantManual,
+        },
+      });
+    }
+    if (!rows.length) return;
 
-    const attrs = {
-      ...node.Attributes,
-      VD_Cable_Size_ID: wantSystem,
-      Manual_VD_Cable_Size_ID: wantManual,
-    };
-
-    setFeatures((f) => f.map((x) =>
-      (x.Feature_ID === node.Feature_ID ? { ...x, Attributes: attrs } : x)));
+    setFeatures((f) => f.map((x) => {
+      const r = rows.find((y) => y.Feature_ID === x.Feature_ID);
+      return r ? { ...x, Attributes: r.Attributes } : x;
+    }));
     try {
-      await updateFeature(projectId, node.Feature_ID, { Attributes: attrs });
-      const label = node.Attributes?.Span_Label ?? "the span node";
+      await bulkUpdateFeatures(projectId, rows);
+      const labels = rows.map((r) => src.find((f) => f.Feature_ID === r.Feature_ID)
+        ?.Attributes?.Span_Label ?? "the span node");
       const shown = sizeNameOf(wantManual ?? wantSystem);
-      setStatus(`${label} now reads ${shown || "no cable"} \u2014 that is the `
-        + "figure the trace uses");
+      setStatus(`${labels.join(", ")} now read${labels.length === 1 ? "s" : ""} `
+        + `${shown || "no cable"} \u2014 that is the figure the trace uses`);
       setTimeout(() => setStatus(""), 8000);
     } catch (e) { setError(e.message); await load(projectId); }
   }
@@ -9306,9 +9354,17 @@ export default function GISCanvasPage() {
       });
     }
 
-    for (const line of lines) {
-      const node = nodeFedBy(line, src);
-      if (!node) continue;
+    /* Every node a run has spoken for, changed or not.
+
+       `updates` only holds the nodes that differ, so it cannot say
+       which nodes a run ends at and already agrees with \u2014 and the
+       through pass below must leave those alone. A node a cable ends at
+       belongs to that cable whatever else runs over it. */
+    const claimed = new Set();
+
+    /* One node, one run: the node takes the run's two size fields. Both
+       passes write through this so they cannot drift apart. */
+    const mirror = (node, line) => {
       const want = sizeIdFor(line, "electric", "manual");
 
       /* What this node will hold once the passes are done \u2014 the
@@ -9343,10 +9399,8 @@ export default function GISCanvasPage() {
       const heldManual = attrsNow?.Manual_VD_Cable_Size_ID ?? null;
       if (String(heldNow ?? "") === String(want)
         && String(heldSystem ?? "") === String(wantSystem ?? "")
-        && String(heldManual ?? "") === String(wantManual ?? "")) continue;
+        && String(heldManual ?? "") === String(wantManual ?? "")) return;
 
-      /* Last one wins where two sections meet at a node, which cannot
-         happen on a routed network — a node has one run feeding it. */
       updates.set(node.Feature_ID, {
         node,
         Attributes: {
@@ -9355,6 +9409,39 @@ export default function GISCanvasPage() {
           Manual_VD_Cable_Size_ID: wantManual,
         },
       });
+    };
+
+    /* ── First, the node each run ends at ── */
+    for (const line of lines) {
+      const node = nodeFedBy(line, src);
+      if (!node) continue;
+      claimed.add(node.Feature_ID);
+      /* Last one wins where two sections meet at a node, which cannot
+         happen on a routed network — a node has one run feeding it. */
+      mirror(node, line);
+    }
+
+    /* ── Then the nodes a run passes straight through ──
+
+       Place Span Nodes marks every junction of mains; a circuit's run
+       only breaks where the circuit itself divides. At a junction where
+       this circuit carries straight on and another turns off, the run
+       is one section over the node and nothing ends there \u2014 so the
+       pass above never reaches it, and it read "not set" with a sized
+       cable running over it. That was most of the empty nodes on a
+       drawing with more than one circuit.
+
+       The cable entering such a node is the cable leaving it, so the
+       node takes the section running through it. Only where no run
+       ends at the node: a node a cable arrives at is that cable's, and
+       whatever else crosses the point does not get a say. */
+    for (const node of src) {
+      if (node.Feature_Role !== "spannode") continue;
+      if (claimed.has(node.Feature_ID)) continue;
+      if (Number(node.Attributes?.Span_Seq) === 0) continue;
+      const line = runThrough(node, lines);
+      if (!line) continue;
+      mirror(node, line);
     }
 
     /* Nodes still without a cable, and no line reaching them.
@@ -9371,8 +9458,8 @@ export default function GISCanvasPage() {
     if (!updates.size) {
       if (stillUnset.length) {
         setStatus(`${stillUnset.length} span node(s) have no cable reaching `
-          + "them \u2014 the nearest run ends more than "
-          + `${SPAN_REACH_M} m away, or has no size on it`);
+          + "them \u2014 no sized run ends within "
+          + `${SPAN_REACH_M} m of the node or passes through it`);
         setTimeout(() => setStatus(""), 9000);
         return;
       }
@@ -12536,8 +12623,22 @@ export default function GISCanvasPage() {
          could not be checked \u2014 and it was a separate menu item nobody
          had reason to know they had to press. It belongs to the build,
          because it is part of having built. */
+      /* Against the drawing as it now is. `features` in this closure is
+         the drawing from before the build: its feeder cables are the
+         ones just deleted and its nodes still carry the numbering the
+         renumber pass just replaced. Syncing from that found the old
+         cables at the old sizes, decided nothing had changed, and wrote
+         nothing \u2014 so the sync the build "included" never ran, and the
+         nodes had to be done from the menu afterwards. Where it did
+         find a difference it would have written the pre-build
+         attributes back over the renumbered ones.
+
+         Read again rather than reusing `all`: the link pass and the
+         joints have written since it was taken, and the sync writes
+         whole attribute sets. */
       try {
-        await syncNodeCables({ silent: true });
+        const synced = await listGis(projectId);
+        await syncNodeCables({ silent: true, srcFeatures: synced.features || [] });
       } catch { /* Never fail a build over the nodes. */ }
 
       await load(projectId);
@@ -16564,13 +16665,13 @@ export default function GISCanvasPage() {
       if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
       if (line.Attributes?.Circuit_ID == null) continue;
       if (line.Attributes?.VD_Cable_Size_ID == null) continue;
-      const node = nodeFedBy(line, features);
-      if (!node) continue;
-      if (String(node.Attributes?.VD_Cable_Size_ID ?? "")
-        !== String(line.Attributes.VD_Cable_Size_ID)) out.push(node);
+      for (const node of nodesFedBy(line, features)) {
+        if (String(node.Attributes?.VD_Cable_Size_ID ?? "")
+          !== String(line.Attributes.VD_Cable_Size_ID)) out.push(node);
+      }
     }
     return out;
-  }, [features, nodeFedBy]);
+  }, [features, nodesFedBy]);
 
   /* The levels check: every circuit, from the substation outward.
 

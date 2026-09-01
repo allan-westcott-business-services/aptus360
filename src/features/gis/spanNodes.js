@@ -468,15 +468,14 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
    function drifted away underneath it \u2014 the mirrors were right and the
    thing they stood for was not. A test that imports the function it
    names is the only kind that can fail for the right reason. */
-export function nodeFedBy(line, features = [], opts = {}) {
-  const { isTrench = () => false, reach = 10 } = opts;
-  const look = features;
-  const g = line?.Geometry || [];
-  if (g.length < 2) return null;
-  /* A cable with no circuit feeds whichever node it ends at. Refusing
-     it here is what left a hand-drawn run's node unset. */
-  const cid = line.Attributes?.Circuit_ID ?? null;
+/* ── Shared by the two rules below ──
 
+   Whether a line can feed a node at all, and which nodes it may feed.
+   One place, so the end rule and the through rule cannot disagree about
+   what a service is or whose nodes a circuit's cable may claim. */
+const feedsNothing = (line, isTrench) => {
+  const g = line?.Geometry || [];
+  if (g.length < 2) return true;
   /* A service cable never feeds a span node.
 
      A node is a point on the mains run, and the cable feeding it is the
@@ -485,8 +484,36 @@ export function nodeFedBy(line, features = [], opts = {}) {
      mains was computed on a service cable, which is a smaller conductor
      and a shorter run: wrong, and wrong in the direction that looks
      acceptable. */
-  if (isTrench(line.Attributes?.Line_Type)) return null;
-  if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return null;
+  if (isTrench(line.Attributes?.Line_Type)) return true;
+  if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) return true;
+  return false;
+};
+
+/* The nodes a cable on circuit `cid` is allowed to feed: its own
+   circuit's, or one that names none. A node is given its circuit when
+   the build routes through it, and one the build pruned never gets one.
+   Never the origin \u2014 nothing feeds it. */
+const feedable = (features, cid) => features.filter((f) =>
+  f.Feature_Role === "spannode"
+  && (cid == null || f.Attributes?.Circuit_ID == null
+    || String(f.Attributes.Circuit_ID) === String(cid))
+  && Number(f.Attributes?.Span_Seq) !== 0
+  && (f.Geometry || []).length);
+
+/* Where a node belongs on the dig, not where its marker was dragged. */
+const posOf = (f) => {
+  const a = f.Attributes?.Span_Anchor;
+  return (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
+};
+
+export function nodeFedBy(line, features = [], opts = {}) {
+  const { isTrench = () => false, reach = 10 } = opts;
+  const look = features;
+  const g = line?.Geometry || [];
+  if (feedsNothing(line, isTrench)) return null;
+  /* A cable with no circuit feeds whichever node it ends at. Refusing
+     it here is what left a hand-drawn run's node unset. */
+  const cid = line.Attributes?.Circuit_ID ?? null;
 
   const sub = look.find((f) => f.Feature_Role === "substation"
     && (f.Geometry || []).length);
@@ -494,20 +521,7 @@ export function nodeFedBy(line, features = [], opts = {}) {
   const ends = [g[0], g[g.length - 1]];
   const fromSub = (p) => (at ? Math.hypot(p[0] - at[0], p[1] - at[1]) : 0);
 
-  const eligible = look.filter((f) =>
-    f.Feature_Role === "spannode"
-    /* This cable's circuit, or a node that names none. A node is given
-       its circuit when the build routes through it, and one the build
-       pruned never gets one. */
-    && (cid == null || f.Attributes?.Circuit_ID == null
-      || String(f.Attributes.Circuit_ID) === String(cid))
-    && Number(f.Attributes?.Span_Seq) !== 0      // nothing feeds the origin
-    && (f.Geometry || []).length);
-
-  const posOf = (f) => {
-    const a = f.Attributes?.Span_Anchor;
-    return (Array.isArray(a) && a.length === 2 ? a : f.Geometry[0]);
-  };
+  const eligible = feedable(look, cid);
 
   /* The nearest node to each end, and only that one.
 
@@ -543,14 +557,141 @@ export function nodeFedBy(line, features = [], opts = {}) {
      origin, so where both are numbered the higher is downstream. Where
      they are not \u2014 a node the build never sequenced \u2014 distance from the
      substation says the same thing about the drawing rather than about
-     the numbering. Only then the nearest, which is all that is left. */
+     the numbering. Only then the nearest, which is all that is left.
+
+     ── Only on the same circuit ──
+
+     Two numberings are in use. The build numbers a circuit's own nodes
+     A1, A2, A3 outward from the origin; Trench › Place Span Nodes
+     numbers the whole site the same way, and a node the build never
+     adopted keeps that site-wide number. The two count different
+     things, so a circuit node at seq 3 beside an unadopted node at seq
+     2 said nothing about which was downstream \u2014 and the rule read it as
+     if it did, fed the upstream node twice and the downstream one not
+     at all. Where the circuits differ the numbers are not compared;
+     the drawing decides instead. */
   return near.reduce((a, b) => {
     const sa = Number(a.Attributes?.Span_Seq ?? -1);
     const sb = Number(b.Attributes?.Span_Seq ?? -1);
-    if (sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
+    const sameCircuit = String(a.Attributes?.Circuit_ID ?? "")
+      === String(b.Attributes?.Circuit_ID ?? "");
+    if (sameCircuit && sa >= 0 && sb >= 0 && sa !== sb) return sb > sa ? b : a;
     const da = fromSub(posOf(a));
     const db = fromSub(posOf(b));
     if (at && Math.abs(da - db) > 0.5) return db > da ? b : a;
     return gapOf(b) < gapOf(a) ? b : a;
   });
+}
+
+/* ── A cable that runs through a node feeds it too ──
+
+   nodeFedBy answers for the node a cable ends at. It said nothing about
+   a node the cable passes straight through, and there are many of those:
+   Trench › Place Span Nodes puts a node at every junction of mains, but
+   a circuit's run only breaks at a junction where the circuit itself
+   divides. Where circuit A goes straight on and only circuit B turns
+   off, A's cable is one section through the junction and B's cable is
+   one section through it the other way \u2014 the node is a bend to both
+   models, adopted by neither, and no cable ends within reach of it. It
+   read "not set" against two cables running over it.
+
+   The cable entering such a node is the cable leaving it, so there is
+   nothing to choose: the node holds the section that runs through it.
+
+   ── Through, not near ──
+
+   The node has to project onto the body of the line, away from both
+   ends. A node just beyond a cable's end is within `reach` of that end
+   and is the end rule's business \u2014 it decided that node belongs to the
+   next cable, and this rule must not hand it back. So the nearest point
+   on the line to the node is found, and only counts where it sits on
+   the line's body rather than at either end. A cable that stops short
+   of a node never runs through it, whatever the reach.
+
+   `reach` is SPAN_REACH_M, the one figure the model uses for how far a
+   node may sit from its cable and still be its cable's node. A node is
+   placed by eye against a plan and can sit a metre or two off the
+   trench; a parallel trench in the other footway is further than that,
+   and the nearest cable wins where two are in range, so the one running
+   over the node beats the one running beside it.
+
+   Returns the distance where the line runs through the node, else null,
+   so a caller choosing between cables can take the nearest. */
+export function runsThrough(line, node, opts = {}) {
+  const { isTrench = () => false, reach = 10 } = opts;
+  if (feedsNothing(line, isTrench)) return null;
+  const g = line.Geometry;
+  const p = posOf(node);
+
+  /* Cumulative length to each vertex, so the nearest point can be
+     placed along the line as well as beside it. */
+  const along = [0];
+  for (let i = 1; i < g.length; i++) {
+    along.push(along[i - 1] + Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]));
+  }
+  const total = along[g.length - 1];
+
+  let best = null;
+  for (let i = 1; i < g.length; i++) {
+    const [ax, ay] = g[i - 1];
+    const [bx, by] = g[i];
+    const dx = bx - ax;
+    const dy = by - ay;
+    const len2 = dx * dx + dy * dy;
+    if (!len2) continue;
+    let t = ((p[0] - ax) * dx + (p[1] - ay) * dy) / len2;
+    t = Math.max(0, Math.min(1, t));
+    const d = Math.hypot(p[0] - (ax + t * dx), p[1] - (ay + t * dy));
+    if (d > reach) continue;
+    const s = along[i - 1] + t * Math.sqrt(len2);
+    if (!best || d < best.d) best = { d, s };
+  }
+  if (!best) return null;
+
+  /* On the body of the line, not at its ends. Half a metre is the
+     model's own CONNECT_EPS \u2014 two points that close are one point \u2014 so
+     a node that projects within that of an end is at the end, and the
+     end rule owns it. */
+  if (best.s <= 0.5 || total - best.s <= 0.5) return null;
+  return best.d;
+}
+
+/* The cable running through a node, where one does.
+
+   Node-centric, because that is the question the sync asks once every
+   cable has fed the node it ends at: this node is still empty, is
+   anything running over it? The nearest such cable, on the node's own
+   circuit or naming none; ties on the lower Feature_ID so the answer
+   is the same on every run. */
+export function runThrough(node, features = [], opts = {}) {
+  if (node?.Feature_Role !== "spannode") return null;
+  if (Number(node.Attributes?.Span_Seq) === 0) return null;
+  if (!(node.Geometry || []).length) return null;
+  const own = node.Attributes?.Circuit_ID ?? null;
+
+  let best = null;
+  for (const f of features) {
+    if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") continue;
+    const cid = f.Attributes?.Circuit_ID ?? null;
+    if (own != null && cid != null && String(own) !== String(cid)) continue;
+    const d = runsThrough(f, node, opts);
+    if (d == null) continue;
+    if (!best || d < best.d
+      || (d === best.d && Number(f.Feature_ID) < Number(best.f.Feature_ID))) {
+      best = { f, d };
+    }
+  }
+  return best?.f ?? null;
+}
+
+/* Every node a cable feeds: the one it ends at, then the ones it runs
+   through. The end node first, because where the two rules could name
+   the same node the end rule has already spoken for it. */
+export function nodesFedBy(line, features = [], opts = {}) {
+  const end = nodeFedBy(line, features, opts);
+  if (feedsNothing(line, opts.isTrench || (() => false))) return [];
+  const cid = line.Attributes?.Circuit_ID ?? null;
+  const through = feedable(features, cid)
+    .filter((n) => n !== end && runsThrough(line, n, opts) != null);
+  return [...(end ? [end] : []), ...through];
 }

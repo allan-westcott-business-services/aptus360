@@ -20,8 +20,10 @@
    ordinary span, and the levels check had nothing to count from. */
 import { readFileSync } from "node:fs";
 import {
-  originsOf, planSpanNodes, plantLabel, nodeFedBy,
+  originsOf, planSpanNodes, plantLabel, nodeFedBy, nodesFedBy, runThrough,
+  runsThrough,
 } from "./src/features/gis/spanNodes.js";
+import { feederSections, junctionNodes, endOfLineNodes } from "./src/features/gis/feeder.js";
 import { labelOf } from "./src/features/gis/mainsCallOff.js";
 import { buildGraph } from "./src/features/gis/electric.js";
 
@@ -1236,6 +1238,206 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   const absurd = [line(1, [[0, 0], [0, 5]], 34), meter(3, [0, 200], 34)];
   if (linked(absurd, 3).length) {
     fail("a meter 195 m from its service was connected to it");
+  }
+}
+
+/* ── A run that passes straight through a node feeds it ──
+
+   Reported from the drawing: Build LV Network, then Apply Cable Sizes
+   to Span Nodes, and many nodes still had no cable although a sized
+   run visibly entered and left them.
+
+   Trench › Place Span Nodes marks every junction of mains. A circuit's
+   run only breaks where that circuit divides, and the router was
+   changed deliberately so it would not break at a junction it passes
+   straight through (feederSections, "circuit A was cut at B1 because
+   circuit B forks there"). So at a junction where circuit A carries
+   on and only circuit B turns off, A's cable is one section over the
+   node, B's is one section over it the other way, neither model
+   sees a junction there, and no cable ends within reach of the node.
+   nodeFedBy reads only the ends. The node read "not set" with two
+   sized cables running over it.
+
+   Driven through the real router so the shape of the sections is the
+   router's and not this file's. */
+{
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  let id = 1000;
+  const trench = (pts, key = "trench") => ({
+    Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const plot = (n, at) => ({
+    Feature_ID: id++, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: n, Geometry: [at], Attributes: {},
+  });
+  const meter = (plotId, seedId, at, circuitId) => ({
+    Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: plotId, Geometry: [at],
+    Attributes: { Seed_Feature_ID: seedId, Circuit_ID: circuitId },
+  });
+  const sub = {
+    Feature_ID: id++, Feature_Role: "substation", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {},
+  };
+  /* Main east 0→200 with a branch north at 100. Circuit 1 serves the
+     main, circuit 2 the branch. The junction at [100, 0] is a bend to
+     both. */
+  const p1 = plot(101, [50, 10]), p2 = plot(102, [150, 10]);
+  const p3 = plot(201, [110, 30]), p4 = plot(202, [110, 60]);
+  const drawing = [
+    sub,
+    trench([[0, 0], [50, 0], [100, 0]]),
+    trench([[100, 0], [150, 0], [200, 0]]),
+    trench([[100, 0], [100, 30], [100, 60]]),
+    trench([[50, 0], [50, 10]], "service_trench"),
+    trench([[150, 0], [150, 10]], "service_trench"),
+    trench([[100, 30], [110, 30]], "service_trench"),
+    trench([[100, 60], [110, 60]], "service_trench"),
+    p1, p2, p3, p4,
+    meter(101, p1.Feature_ID, [50, 10], 1),
+    meter(102, p2.Feature_ID, [150, 10], 1),
+    meter(201, p3.Feature_ID, [110, 30], 2),
+    meter(202, p4.Feature_ID, [110, 60], 2),
+  ];
+
+  /* Place Span Nodes: site-wide numbering, no circuit. */
+  const placed = planSpanNodes(drawing.filter((f) => f.Layer_Key === "trench"), sub,
+    { serviceTypes: new Set(["service_trench"]) });
+  const nodes = placed.nodes.map((n) => ({
+    Feature_ID: id++, Feature_Role: "spannode", Feature_Type: "point",
+    Layer_Key: "trench", Geometry: [n.at],
+    Attributes: { Span_Label: n.label, Span_Seq: n.seq, Span_Kind: n.kind, Span_Anchor: n.at },
+  }));
+  const junction = nodes.find((n) => n.Geometry[0][0] === 100 && n.Geometry[0][1] === 0);
+  if (!junction) fail("Place Span Nodes put no node at the junction of mains");
+
+  /* Build LV Network: sections per circuit, nodes adopted as the build
+     adopts them \u2014 by the circuit's own junctions and ends. */
+  const circuits = [
+    { id: 1, seeds: new Set([p1.Feature_ID, p2.Feature_ID]) },
+    { id: 2, seeds: new Set([p3.Feature_ID, p4.Feature_ID]) },
+  ];
+  const lines = [];
+  const world = [...drawing, ...nodes];
+  for (const c of circuits) {
+    const r = feederSections(world, { lineTypes, seedIds: c.seeds });
+    if (r.error) { fail(`the router refused circuit ${c.id}: ${r.error}`); continue; }
+    r.sections.forEach((sec, i) => lines.push({
+      Feature_ID: id++, Feature_Type: "line", Layer_Key: "electric", Geometry: sec.pts,
+      Attributes: { Line_Type: "elec_main", Circuit_ID: c.id, VD_Cable_Size_ID: c.id * 100 + i },
+    }));
+    let seq = 0;
+    for (const m of [...junctionNodes(r.model), ...endOfLineNodes(r.model)]) {
+      const hit = nodes.find((n) => n.Attributes.Circuit_ID == null
+        && Math.hypot(n.Geometry[0][0] - m.point[0], n.Geometry[0][1] - m.point[1]) < 1);
+      if (hit) { hit.Attributes.Circuit_ID = c.id; hit.Attributes.Span_Seq = ++seq; }
+    }
+  }
+  const all = [...world, ...lines];
+  const opts = { isTrench: () => false, reach: 10 };
+
+  /* The case as reported: the junction is adopted by neither circuit
+     and no run ends at it. If either stops being true this test is
+     no longer testing what it says. */
+  if (junction && junction.Attributes.Circuit_ID != null) {
+    fail("the shared junction was adopted by a circuit, so this case no longer"
+      + " reproduces the drawing it came from");
+  }
+  if (junction && lines.some((l) => nodeFedBy(l, all, opts) === junction)) {
+    fail("a run ends at the shared junction, so the end rule already covers it");
+  }
+  if (lines.length < 2) fail(`the router drew ${lines.length} section(s), not one per circuit`);
+
+  /* The rule: the cable running over the node feeds it. */
+  const through = junction ? runThrough(junction, lines, opts) : null;
+  if (!through) {
+    fail("the junction both circuits run straight through has no cable feeding it");
+  } else if (Number(through.Attributes.Circuit_ID) !== 1) {
+    /* Both cross it at the same distance; the lower Feature_ID is the
+       tie-break, and circuit 1 was drawn first. What matters is that
+       it is the same answer every run. */
+    fail("the through rule did not settle a tie on the lower Feature_ID");
+  }
+  /* And the line-centric view agrees: that section names the junction
+     among the nodes it feeds. */
+  if (through && !nodesFedBy(through, all, opts).includes(junction)) {
+    fail("nodesFedBy does not list the junction the section runs through");
+  }
+
+  /* The end of the branch is fed by the end rule, and the through
+     rule does not disturb it. */
+  const branchEnd = nodes.find((n) => n.Geometry[0][1] === 60);
+  if (!branchEnd) fail("no node at the end of the branch");
+  else {
+    const feeder = lines.find((l) => nodeFedBy(l, all, opts) === branchEnd);
+    if (Number(feeder?.Attributes?.Circuit_ID) !== 2) {
+      fail("the end of the branch is not fed by circuit 2's run");
+    }
+  }
+
+  /* A node the cable stops short of is not "run through": the end rule
+     decides whose that is. A2 beyond the end of the cable to A1 was the
+     fault the one-node-per-end rule fixed, and this one must not undo
+     it. */
+  const beyond = {
+    Feature_ID: id++, Feature_Role: "spannode", Geometry: [[31.8, 0]],
+    Attributes: { Span_Label: "A2", Span_Seq: 2, Circuit_ID: 1 },
+  };
+  const toA1 = { Feature_ID: id++, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [24, 0]], Attributes: { Line_Type: "lv_main", Circuit_ID: 1 } };
+  if (runsThrough(toA1, beyond, opts) != null) {
+    fail("a node 7.8 m past the end of a cable was read as run through by it");
+  }
+  /* But one a metre or two off the body of the line is \u2014 placed by eye
+     against a plan, on the trench the cable follows. */
+  const beside = { ...beyond, Geometry: [[12, 1.5]] };
+  if (runsThrough(toA1, beside, opts) == null) {
+    fail("a node 1.5 m off the middle of a cable was not read as run through");
+  }
+  /* A service never feeds a node, through or otherwise. */
+  const svc = { ...toA1, Geometry: [[0, 0], [30, 0]],
+    Attributes: { Line_Type: "elec_service", Circuit_ID: 1 } };
+  if (runsThrough(svc, beside, opts) != null) fail("a service cable ran through a node");
+  /* Nor a run on another circuit. */
+  const other = { ...toA1, Geometry: [[0, 0], [30, 0]],
+    Attributes: { Line_Type: "lv_main", Circuit_ID: 2 } };
+  if (runThrough(beside, [other], opts)) {
+    fail("another circuit's cable was read as feeding this circuit's node");
+  }
+  /* The origin is fed by nothing. */
+  const origin = { ...beside, Attributes: { Span_Seq: 0, Circuit_ID: 1 } };
+  if (runThrough(origin, [toA1], opts)) fail("the origin was fed by a cable running past it");
+}
+
+/* ── Two numberings are not one ──
+
+   A node the build adopted counts A1, A2, A3 along its circuit; a node
+   it never adopted keeps the site-wide number Place Span Nodes gave it.
+   The downstream rule compared the two as if they were the same scale:
+   a circuit node at seq 3 with an unadopted node at seq 2 eight metres
+   beyond it read the unadopted one as upstream, fed the wrong node and
+   left the one the cable actually arrives at empty. */
+{
+  const opts = { isTrench: () => false, reach: 10 };
+  const sub = { Feature_ID: 1, Feature_Role: "substation", Geometry: [[0, 0]] };
+  const adopted = { Feature_ID: 2, Feature_Role: "spannode", Geometry: [[40, 0]],
+    Attributes: { Span_Label: "A3", Span_Seq: 3, Circuit_ID: 1 } };
+  const unadopted = { Feature_ID: 3, Feature_Role: "spannode", Geometry: [[48, 0]],
+    Attributes: { Span_Label: "A2", Span_Seq: 2 } };
+  const run = { Feature_ID: 4, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[40, 0], [48, 0]], Attributes: { Line_Type: "lv_main", Circuit_ID: 1 } };
+  if (nodeFedBy(run, [sub, adopted, unadopted], opts) !== unadopted) {
+    fail("a site-numbered node was ranked against a circuit-numbered one by"
+      + " sequence, and the cable fed the node it leaves from");
+  }
+  /* On one circuit the numbers still decide, drawn either way round. */
+  const both = { ...unadopted, Attributes: { ...unadopted.Attributes, Span_Seq: 4, Circuit_ID: 1 } };
+  if (nodeFedBy(run, [sub, adopted, both], opts) !== both) {
+    fail("on one circuit the higher sequence is no longer downstream");
   }
 }
 

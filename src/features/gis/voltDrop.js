@@ -280,17 +280,79 @@ export function cumulativeToNode({
   for (const sn of spanNodes) if (sn.index >= 0) spanAt.set(sn.index, sn);
 
   const v = voltageV > 0 ? voltageV : 400;
-  /* The load passing through the target itself — its whole subtree,
-     unweighted. */
-  const amps = ampsOf((cumKva?.[targetIdx]) || 0, v);
+  /* The load passing on through the target — its whole subtree,
+     unweighted. Kept as `ampsThrough`. */
+  const ampsThrough = ampsOf((cumKva?.[targetIdx]) || 0, v);
+  /* And the current in the cable arriving at it, which is what a row
+     of the levels table is about. The two differ by whatever leaves
+     along the last leg: on a dead-end leg with seven plots along it
+     the first is zero and the second is seven plots' worth, and zero
+     was the one on the page. Settled by the last leg charged below. */
+  let amps = ampsThrough;
 
-  let legLenM = 0, distKva = 0, distCount = 0;
+  /* ── The load that leaves the route part way along a leg ──
+
+     A meter's load sits in the model at its cut-out: the far end of its
+     service spur, which is a node OFF the mains. The walk below goes up
+     the mains, node by node, and only ever read `meterKva` at the nodes
+     it passed \u2014 so a spur's load was never seen as distributed on the
+     leg it tees off. It was in `cumKva` at the span node *before* the
+     leg, as terminal load of the previous leg, and then simply gone.
+
+     Which is why A36 to A39 \u2014 a hundred metres of 95 with seven
+     plots along it and nothing beyond \u2014 reported no current and no
+     drop at all: the seven were on spurs, the spurs were off the
+     route, and `cumKva` at A39 is zero because nothing lies beyond a
+     dead end. Every leg on every drawing was short by whatever tees
+     off it; a dead-end leg was short by everything.
+
+     The load tapped at a node is its own meters plus everything hanging
+     off it that is not the route onward: the service spurs, and a mains
+     branch at a fork nobody put a span node on. Counted at the node the
+     spur leaves from, which is on the route, where the sum can see it.
+
+     `parSvc` says which of those are plot connections, for the joint
+     allowance. A fixture model without it counts every side branch,
+     which is what the allowance always did for meters it could see. */
+  const kids = new Map();
+  for (let i = 0; i < parent.length; i++) {
+    if (parent[i] < 0) continue;
+    if (!kids.has(parent[i])) kids.set(parent[i], []);
+    kids.get(parent[i]).push(i);
+  }
+  const { parSvc } = model;
+  /* `onward` is the next node on the route, left out; with none given
+     every child counts. `spursOnly` limits the joints to service spurs
+     and asks nothing of a model without `parSvc` \u2014 the case at a span
+     node, where the mains carry on and are not connections. */
+  const tapped = (u, onward, spursOnly = false) => {
+    let kva = (meterKva?.[u]) || 0;
+    let count = (meterCount?.[u]) || 0;
+    let joints = count;
+    for (const c of kids.get(u) || []) {
+      if (c === onward) continue;
+      kva += (cumKva?.[c]) || 0;
+      count += (cum?.[c]) || 0;
+      const isSpur = parSvc ? !!parSvc[c] : !spursOnly;
+      if (isSpur) joints += (cum?.[c]) || 0;
+    }
+    return { kva, count, joints };
+  };
+
+  let legLenM = 0, distKva = 0, distCount = 0, distJoints = 0;
   for (let i = 1; i < path.length; i++) {
     const cur = path[i];
     legLenM += dist(nodes[path[i - 1]], nodes[cur]);
 
     const sn = spanAt.get(cur);
     if (sn) {
+      /* Plot connections AT this node: its own meters and the spurs
+         leaving it. Their load is beyond the node and counts as
+         terminal through `cumKva`; their joints are on the leg
+         arriving here. Nothing onward is excluded, because the mains
+         beyond a span node are the next leg's business and a spur
+         is not onward. */
+      const here = tapped(cur, -1, true);
       const leg = legVoltDrop({
         cable: cableById(sn.cableSizeId),
         lengthM: legLenM,
@@ -309,7 +371,7 @@ export function cumulativeToNode({
 
            The node's own meters belong to the leg arriving at it,
            which is the leg being charged here, and to no other. */
-        jointCount: distCount + ((meterCount?.[cur]) || 0),
+        jointCount: distJoints + here.joints,
         jointEquivM: s.jointEquivM,
         unbalanced: s.unbalanced,
         distFactor: s.distributedLoadFactor,
@@ -318,13 +380,17 @@ export function cumulativeToNode({
       });
       ohms += leg.ohms;
       pct += leg.pct;
+      amps = leg.amps;
       if (leg.missingSpec) missingCable = true;
-      legLenM = 0; distKva = 0; distCount = 0;
+      legLenM = 0; distKva = 0; distCount = 0; distJoints = 0;
     } else {
-      /* Meters tapped between span nodes are distributed load on the leg
-         being accumulated. */
-      distKva += (meterKva?.[cur]) || 0;
-      distCount += (meterCount?.[cur]) || 0;
+      /* Load tapped between span nodes is distributed load on the leg
+         being accumulated \u2014 at the node itself and down every spur
+         leaving it. The route onward is the next node on the path. */
+      const t = tapped(cur, path[i + 1] ?? -1);
+      distKva += t.kva;
+      distCount += t.count;
+      distJoints += t.joints;
     }
   }
 
@@ -347,12 +413,20 @@ export function cumulativeToNode({
      in step. With none given, nothing is charged and the answer is
      exactly what it was before. */
   if (legLenM > 0.001 && partialCableId != null) {
+    /* The target is the last node on the path, so the loop above has
+       already counted what is tapped there as distributed \u2014 with
+       no onward node to exclude, that took in the whole of its
+       subtree. Terminal load is what lies beyond it, and the two must
+       not both hold the same plots. */
+    const beyond = tapped(targetIdx, -1, true);
     const leg = legVoltDrop({
       cable: cableById(partialCableId),
       lengthM: legLenM,
-      distributedKva: distKva,
+      distributedKva: distKva - beyond.kva,
       terminalKva: (cumKva?.[targetIdx]) || 0,
-      meterCount: distCount + ((cum?.[targetIdx]) || 0),
+      meterCount: distCount - beyond.count + ((cum?.[targetIdx]) || 0),
+      jointCount: distJoints,
+      jointEquivM: s.jointEquivM,
       unbalanced: s.unbalanced,
       distFactor: s.distributedLoadFactor,
       unbalConst: s.unbalancedConstant,
@@ -360,6 +434,7 @@ export function cumulativeToNode({
     });
     ohms += leg.ohms;
     pct += leg.pct;
+    amps = leg.amps;
     if (leg.missingSpec) missingCable = true;
     legLenM = 0;
   }
@@ -388,6 +463,7 @@ export function cumulativeToNode({
     pctOwn,
     upstreamPct: upstream,
     amps,
+    ampsThrough,
     missing: missingTransformer || missingCable,
     missingTransformer,
     missingCable,

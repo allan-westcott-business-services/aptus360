@@ -1,7 +1,8 @@
-# Two fixes, 1 Sep 2026
+# Three fixes, 1 Sep 2026
 
 1. A cable that runs through a span node feeds it
 2. A meter beside its service reaches the substation
+3. Load tapped along a leg is charged on that leg
 
 ---
 
@@ -118,9 +119,61 @@ origin is not on the network; nothing on the drawing is reached. The
 second is the one with a fix in it — the gap in metres, against
 `CONNECT_M` of 0.25.
 
+---
+
+# 3. Load tapped along a leg is charged on that leg
+
+Levels check on 2608_018: A36→A39 is 100.7 m of 3c WAVE 95 with seven
+plots along it and nothing beyond, and it read **0 A** and the **same
+volt drop at A39 as at A36** — 6.37% at both ends of a loaded
+hundred-metre leg. A21→A38, 156.7 m with eleven plots, the same.
+
+| File | Change |
+|------|--------|
+| `src/features/gis/voltDrop.js` | `cumulativeToNode` counts the load on every spur leaving a leg as distributed load on it; `amps` is the current in the arriving cable, `ampsThrough` the old figure |
+| `checkspurload.mjs` | New, through the real model |
+
+No SQL.
+
+## Why a loaded leg dropped nothing
+
+A meter's load sits in the model at its cut-out — the far end of its
+service spur, a node *off* the mains. `cumulativeToNode` walked the
+mains node by node and read `meterKva` only at the nodes it passed, so
+a spur's load was never seen as distributed on the leg it tees off. It
+was terminal load of the leg *before* (inside `cumKva` at the previous
+span node) and then simply gone.
+
+So every leg was short by whatever left along it, and a dead-end leg —
+where `cumKva` at the far node is zero because nothing lies beyond —
+was short by everything. The figures that looked right were the legs
+whose load was all beyond their far end. The Distribution column was
+correct all along because `spanTrace` keys meters to the foot of the
+spur for the table; the volt drop never read that.
+
+The load tapped at a route node is now its own meters plus everything
+hanging off it that is not the route onward — the service spurs, and a
+mains branch at a fork nobody put a span node on — counted at the node
+the spur leaves from, which is on the route where the sum can see it.
+Terminal load at the span node is unchanged, so nothing is counted
+twice. The joint allowance follows: it was "zero on every real drawing"
+for this reason, not the one its comment gave.
+
+## The current column
+
+"Phase current" on a leg row was the load passing on *through* the far
+node, which at a dead end is nothing — hence 0 A against a cable
+carrying seven plots. It is now the current in the cable arriving at
+the node (distributed plus terminal), and the through figure is kept as
+`ampsThrough`.
+
+Expect every figure in the levels check to rise, and some legs that
+passed to fail. They were passing on a sum that left out the plots on
+them.
+
 ## Suite
 
-**99 of 108** with `--py`. The nine failures are all pre-existing and
+**100 of 109** with `--py`. The nine failures are all pre-existing and
 none is in this area: `checkaslaidplan`, `checkbottleends`,
 `checkprojecttabs` (as recorded), `checkdevelopers` and
 `checkmigrations` (0198 is not in the folder), `checkorphans`,

@@ -14,7 +14,7 @@
 
    Both now fall back to the geometry, which is the thing that is always
    there. */
-import { distancesFrom } from "./src/features/gis/electric.js";
+import { distancesFrom, whyUnreached } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -237,6 +237,116 @@ const METER = {
      length of the main. */
   if (Math.abs((d.get(6) - d.get(5)) - 6) > 0.01) {
     fail(`the plots report ${(d.get(6) - d.get(5)).toFixed(1)} m apart, wanted 6`);
+  }
+}
+
+// 10. A meter beside its service, not at the end of it.
+//
+//    Reported from a circuit report with four dashes among a hundred and
+//    fifty distances: plots 88, 126, 128 and 129, each between neighbours
+//    that reached. A meter joins the nearest point on the nearest line.
+//    Where that point is a vertex \u2014 the end of the service, which is
+//    where Auto Service puts the meter \u2014 the walk had settled it. Where
+//    it is part way along a segment the join spliced a new point in
+//    AFTER the walk had run, under a comment saying its distance was
+//    "the nearer settled end plus the bit along the segment", and then
+//    nobody worked that out. The point had no entry; the meter had no
+//    distance.
+{
+  const main = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [100, 0]] };
+  /* The service runs up the side of the plot and along its front; the
+     meter is on the front wall, beside the run rather than at its end. */
+  const svc = { Feature_ID: 3, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[50, 0], [50, 8], [56, 8]] };
+  const beside = { Feature_ID: 4, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[53, 9]] };
+  const onMain = { Feature_ID: 5, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[70, 2]] };
+  const d = distancesFrom([SUB, main, svc, beside, onMain], 1);
+  if (d.get(4) == null) {
+    fail("a meter beside the body of its service has no distance");
+  } else if (Math.abs(d.get(4) - 61) > 0.01) {
+    fail(`the meter beside its service reads ${d.get(4)} m, wanted 61`);
+  }
+  if (d.get(5) == null) fail("a meter beside the main, part way along, has no distance");
+  else if (Math.abs(d.get(5) - 70) > 0.01) fail(`the meter on the main reads ${d.get(5)} m, wanted 70`);
+  /* And no reason is offered for a meter that reaches. */
+  if (whyUnreached([SUB, main, svc, beside, onMain], 1, 4) != null) {
+    fail("a reached meter was given a reason for not reaching");
+  }
+}
+
+// 11. Only cables and trenches carry a meter back to the origin.
+//
+//    Every line on the drawing was in the graph, and a meter took the
+//    nearest. A meter is a box on the front wall and the boundary is
+//    drawn along it, so a meter a metre from its boundary and four from
+//    its service joined the boundary \u2014 which runs back to nothing.
+{
+  const main = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [100, 0]] };
+  const svc = { Feature_ID: 3, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[50, 0], [50, 8]] };
+  const boundary = { Feature_ID: 6, Feature_Type: "line", Layer_Key: "boundary",
+    Geometry: [[40, 10], [60, 10]] };
+  const meter = { Feature_ID: 4, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[50, 11] ] };
+  const d = distancesFrom([SUB, main, svc, boundary, meter], 1);
+  if (d.get(4) == null) fail("a meter nearer its boundary than its service has no distance");
+  else if (Math.abs(d.get(4) - 58) > 0.01) {
+    fail(`the meter reads ${d.get(4)} m; it should reach along its service, 58 m`);
+  }
+  /* A gas service ending short of its main must not carry the fault
+     over to the electric meter beside it either. */
+  const gas = { Feature_ID: 7, Feature_Type: "line", Layer_Key: "gas",
+    Geometry: [[50.5, 1], [50.5, 8.5]] };
+  const g = distancesFrom([SUB, main, svc, gas, meter], 1);
+  if (g.get(4) == null) fail("a gas service beside the electric one took the meter with it");
+  /* A trench still counts: the report is read before the cables are
+     laid, and the trench is where they will go. */
+  const trench = { Feature_ID: 8, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: [[0, 0], [100, 0]] };
+  const t = distancesFrom([SUB, trench, svc, meter], 1);
+  if (t.get(4) == null) fail("a meter on the trench network before the build has no distance");
+}
+
+// 12. Why a meter did not reach, in metres, from the same graph.
+{
+  const main = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Attributes: { Line_Type: "elec_main" }, Geometry: [[0, 0], [100, 0]] };
+  /* A service stopping 0.6 m short of the main: over CONNECT_M, so not
+     joined. The meter at its end is on an island. */
+  const short = { Feature_ID: 3, Feature_Type: "line", Layer_Key: "electric",
+    Attributes: { Line_Type: "elec_service" }, Geometry: [[50, 0.6], [50, 8]] };
+  const meter = { Feature_ID: 4, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[50, 8]] };
+  const all = [SUB, main, short, meter];
+  if (distancesFrom(all, 1).get(4) != null) {
+    fail("a service 0.6 m short of the main was read as joined to it");
+  }
+  const why = whyUnreached(all, 1, 4) || "";
+  if (!/elec_service #3/.test(why)) fail(`the reason does not name the line joined: "${why}"`);
+  if (!/0\.6 m short of elec_main #2/.test(why)) {
+    fail(`the reason does not say how far short, or of what: "${why}"`);
+  }
+
+  /* Nothing near it at all. */
+  const adrift = { Feature_ID: 5, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[50, 60]] };
+  const far = whyUnreached([SUB, main, adrift], 1, 5) || "";
+  if (!/within 30 m/.test(far) || !/60 m away/.test(far)) {
+    fail(`a meter with nothing near it is not told so: "${far}"`);
+  }
+
+  /* The origin adrift: one fault, every meter. */
+  const off = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 3], [100, 3]] };
+  const m2 = { Feature_ID: 4, Feature_Role: "meter", Layer_Key: "electric",
+    Geometry: [[100, 3]] };
+  const origin = whyUnreached([SUB, off, m2], 1, 4) || "";
+  if (!/origin is not on the network/.test(origin)) {
+    fail(`a feeder 3 m off the substation is blamed on the meter: "${origin}"`);
   }
 }
 

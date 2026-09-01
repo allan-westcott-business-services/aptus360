@@ -806,10 +806,11 @@ export function traceFrom(startId, features, rootId) {
                    a drawing fault rather than a planning one
 */
 
-/* Distance from the root to every feature, along the graph. Accumulates
-   the length of each line passed through; points add nothing of their
-   own, since a meter has no length. */
-export function distancesFrom(features, rootId) {
+/* The network as the walk sees it: the lines electricity can run
+   along, cut where they meet, with the shortest route from the origin
+   to every point. distancesFrom reads distances off it; whyUnreached
+   reads the reasons a distance is missing off the same graph. */
+function networkFrom(features, rootId) {
   /* Measured along the cable, not cable by cable.
 
      The graph used to be one node per feature, so arriving at a cable
@@ -829,7 +830,7 @@ export function distancesFrom(features, rootId) {
   const root = Number(rootId);
   const start = features.find((f) => Number(f.Feature_ID) === root);
   const at = (start?.Geometry || [])[0];
-  if (!at) return new Map();
+  if (!at) return null;
 
   /* ── Points, interned so a shared corner is one node ── */
   const pts = [];
@@ -853,7 +854,27 @@ export function distancesFrom(features, rootId) {
     adj.get(b).push([a, w]);
   };
 
-  const lines = features.filter((f) => (f.Geometry || []).length >= 2);
+  /* ── Only the lines electricity can run along ──
+
+     This took every line on the drawing. A meter joined the nearest
+     one within thirty metres, whatever it was \u2014 and a meter is a box on
+     a plot's front wall, which is where the boundary is drawn. A meter
+     a metre from its boundary and four from its service joined the
+     boundary, and a boundary runs back to nothing, so the meter
+     reported no distance while the service that feeds it sat there
+     reaching the main. The same with a gas or water service ending
+     short of its own main: the meter took the nearer pipe and inherited
+     its fault.
+
+     Cables and trenches, then. A cable is the network; a trench is
+     where the cable will go, which is what the report is measured along
+     before Build LV Network has run. A line with no layer is kept, for
+     the fixtures and for drawings older than layers. Nothing else can
+     carry the site's electricity, so nothing else can be the way a
+     meter reaches the substation. */
+  const carries = (f) => f.Layer_Key == null
+    || f.Layer_Key === "electric" || f.Layer_Key === "trench";
+  const lines = features.filter((f) => (f.Geometry || []).length >= 2 && carries(f));
 
   /* How much a line's drawn metres are worth, where somebody has
      measured it. One place, so the edge loop and the join below cannot
@@ -1009,7 +1030,7 @@ export function distancesFrom(features, rootId) {
   const rootIsPoc = start.Feature_Role === "poc";
   const rootJoin = joinAtWithGap(at,
     rootIsPoc ? POC_REACH_M : ORIGIN_REACH);
-  if (rootJoin == null) return new Map();
+  if (rootJoin == null) return null;
   const rootNode = rootJoin.id;
 
   /* ── The gap counts ──
@@ -1046,6 +1067,24 @@ export function distancesFrom(features, rootId) {
     }
   }
 
+  return {
+    root, rootGap, dist, lines, key, idOf, pts, adj,
+    joinAt, joinAtWithGap, onSegment, scaleOf,
+  };
+}
+
+/* Distance from the root to every feature, along the graph. Accumulates
+   the length of each line passed through; points add nothing of their
+   own, since a meter has no length.
+
+   The graph itself is built by networkFrom above, which whyUnreached
+   shares \u2014 one set of joining rules, so the diagnosis of a blank
+   distance is made against the same graph that left it blank. */
+export function distancesFrom(features, rootId) {
+  const net = networkFrom(features, rootId);
+  if (!net) return new Map();
+  const { root, rootGap, dist, key, idOf, joinAt, adj } = net;
+
   /* ── Back to features ── */
   const out = new Map();
   for (const f of features) {
@@ -1053,11 +1092,33 @@ export function distancesFrom(features, rootId) {
     if (!g.length) continue;
     if (g.length === 1) {
       const id = joinAt(g[0], f.Feature_Role === "meter" ? METER_REACH_M : CONNECT_M);
-      /* Re-run the walk is not needed: splicing a join adds a point
-         between two that are already settled, so its distance is the
-         nearer settled end plus the bit along the segment. */
       if (id == null) continue;
-      const d = dist.get(id);
+      /* Re-running the walk is not needed: splicing a join adds a point
+         between two that are already settled, so its distance is the
+         nearer settled end plus the bit along the segment.
+
+         ── Which somebody has to actually work out ──
+
+         That sentence stood above `dist.get(id)` and nothing else. The
+         walk had finished before the splice, so the new point had no
+         entry, and a meter whose nearest point on the network was part
+         way along a segment \u2014 beside its service rather than at the end
+         of it \u2014 reported no distance at all. A meter at a line's end
+         joined an existing vertex and was fine, which is most of them
+         and why this read as "some meters" rather than "every meter":
+         Auto Service ends the cable at the cut-out, and only a meter
+         that has been moved along the wall, or whose service runs past
+         it, projects onto the body of the line.
+
+         The spliced point has two neighbours and both are settled, so
+         its distance is the shorter way in. */
+      let d = dist.get(id);
+      if (d == null) {
+        for (const [n, w] of adj.get(id) || []) {
+          const dn = dist.get(n);
+          if (dn != null && (d == null || dn + w < d)) d = dn + w;
+        }
+      }
       if (d != null) out.set(Number(f.Feature_ID), d);
       continue;
     }
@@ -1085,6 +1146,128 @@ export function distancesFrom(features, rootId) {
      confidently wrong one. */
   out.rootGapM = Math.round(rootGap * 10) / 10;
   return out;
+}
+
+/* ── Why a meter has no distance ──
+
+   A blank in the distance column says the walk could not get there
+   from the origin. It does not say why, and there are four reasons that
+   look identical as a dash:
+
+     no line near it     nothing within METER_REACH_M for it to join
+     joined an island    the nearest line runs back to nothing — its
+                         service, or the run it should tee into, stops
+                         short of the network by more than CONNECT_M
+     the origin adrift   nothing reached anything, because the feeder
+                         does not start on the substation
+     not a meter         asked about something the report never walks
+
+   Each wants a different thing done. The first two are the drawing
+   near the plot; the third is one fix at the substation for every dash
+   on the page. Said in a sentence with the metres in it, so the person
+   goes to the right place on the drawing with the gap already known.
+
+   Measured against the same graph distancesFrom used, not a second
+   reading of the drawing: a diagnosis made on different joining rules
+   could explain a gap the report does not have and miss the one it
+   does.
+
+   Returns null where the feature does reach, so a caller can ask for
+   every meter and keep only the answers. */
+export function whyUnreached(features = [], rootId, featureId) {
+  const f = features.find((x) => Number(x.Feature_ID) === Number(featureId));
+  const p = (f?.Geometry || [])[0];
+  if (!f || !p || (f.Geometry || []).length !== 1) return null;
+
+  const net = networkFrom(features, rootId);
+  if (!net) {
+    return "the origin is not on the network \u2014 no cable starts on the "
+      + "substation, so nothing on the drawing is reached from it";
+  }
+  const { dist, lines, key, idOf, onSegment } = net;
+
+  const nameOf = (l) => {
+    const t = l.Attributes?.Line_Type ? String(l.Attributes.Line_Type) : null;
+    const layer = l.Layer_Key ? String(l.Layer_Key) : null;
+    const what = t || (layer ? `${layer} line` : "line");
+    return `${what} #${l.Feature_ID}`;
+  };
+  const m = (v) => `${Math.round(v * 10) / 10} m`;
+
+  /* The line it joined, or would have: nearest point on the nearest
+     line, the same way joinAt chooses. */
+  const reach = f.Feature_Role === "meter" ? METER_REACH_M : CONNECT_M;
+  let nearest = null;
+  for (const l of lines) {
+    const g = l.Geometry;
+    for (let i = 1; i < g.length; i++) {
+      const hit = onSegment(p, g[i - 1], g[i]);
+      if (!nearest || hit.d < nearest.d) nearest = { line: l, d: hit.d, q: hit.q };
+    }
+  }
+  if (!nearest || nearest.d > reach) {
+    return nearest
+      ? `no cable or trench within ${reach} m of it \u2014 the nearest is `
+        + `${nameOf(nearest.line)}, ${m(nearest.d)} away`
+      : "no cable or trench on the drawing at all";
+  }
+
+  /* Reached, in fact. Either the join settled (the caller asked about
+     something that has a distance) or the segment it joins is reached
+     at both ends. */
+  const reached = (q) => dist.get(idOf.get(key(q))) != null;
+  const g = nearest.line.Geometry;
+  if (reached(g[0]) || reached(g[g.length - 1])) return null;
+
+  /* ── The island ──
+
+     The line it joined and everything that touches it, gathered by the
+     same rule the graph joined them with: an end within CONNECT_M of
+     another line. Then the nearest an end of the island comes to a
+     line that is reached, which is the gap somebody has to close. */
+  const touching = (a, b) => {
+    for (const e of [a.Geometry[0], a.Geometry[a.Geometry.length - 1]]) {
+      for (let i = 1; i < b.Geometry.length; i++) {
+        if (onSegment(e, b.Geometry[i - 1], b.Geometry[i]).d <= CONNECT_M) return true;
+      }
+    }
+    return false;
+  };
+  const isReached = (l) => reached(l.Geometry[0]) || reached(l.Geometry[l.Geometry.length - 1]);
+  const island = new Set([nearest.line]);
+  const queue = [nearest.line];
+  while (queue.length) {
+    const a = queue.shift();
+    for (const b of lines) {
+      if (island.has(b) || isReached(b)) continue;
+      if (touching(a, b) || touching(b, a)) { island.add(b); queue.push(b); }
+    }
+  }
+
+  const live = lines.filter(isReached);
+  if (!live.length) {
+    return "nothing on the drawing is reached from the origin \u2014 check the "
+      + "feeder starts on the substation";
+  }
+  let gap = null;
+  for (const a of island) {
+    for (const e of [a.Geometry[0], a.Geometry[a.Geometry.length - 1]]) {
+      for (const b of live) {
+        for (let i = 1; i < b.Geometry.length; i++) {
+          const hit = onSegment(e, b.Geometry[i - 1], b.Geometry[i]);
+          if (!gap || hit.d < gap.d) gap = { d: hit.d, from: a, to: b };
+        }
+      }
+    }
+  }
+
+  const joined = nearest.d > CONNECT_M
+    ? `${nameOf(nearest.line)}, ${m(nearest.d)} from the meter,`
+    : `${nameOf(nearest.line)}`;
+  const size = island.size > 1 ? ` (${island.size} lines joined together)` : "";
+  return `${joined} runs back to nothing${size}: its nearest end stops `
+    + `${m(gap.d)} short of ${nameOf(gap.to)}, and a gap over ${CONNECT_M} m `
+    + "is not joined";
 }
 
 /* ── Where the network starts ──
@@ -1215,6 +1398,10 @@ export function circuitReport(features = [], opts = {}) {
          reports and a different rounding in the CSV than on screen is
          the kind of discrepancy that costs an afternoon. */
       distM: d == null ? null : Math.round(d * 10) / 10,
+      /* And why not, where not. A dash sends somebody to "check the
+         trenches join up" across the whole site; a sentence with the
+         gap in metres sends them to one place on the drawing. */
+      why: d == null ? whyUnreached(features, station.Feature_ID, m.Feature_ID) : null,
       circuitId: m.Attributes?.Circuit_ID ?? null,
       circuitName: m.Attributes?.Circuit_Name ?? null,
       circuitLetter: m.Attributes?.Circuit_Letter ?? null,

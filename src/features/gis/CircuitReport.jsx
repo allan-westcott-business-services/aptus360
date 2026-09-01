@@ -174,6 +174,9 @@ export default function CircuitReport({
              Added at the end, so every column somebody already has a
              formula pointing at stays where it was. */
           "Self-lay": m.selfLay ? "Yes" : "",
+          /* Why the distance is blank, where it is. Last, for the
+             reason Self-lay is last. */
+          "Not reached": m.why || "",
         });
       }
     }
@@ -187,6 +190,7 @@ export default function CircuitReport({
         [`Distance from ${originWordOf(report)} (m)`]: null,
         kVA: m.kva,
         "Self-lay": m.selfLay ? "Yes" : "",
+        "Not reached": m.selfLay ? "" : (m.why || ""),
       });
     }
     const wb = XLSX.utils.book_new();
@@ -582,7 +586,10 @@ export default function CircuitReport({
                           <td>{m.meter}</td>
                           <td className="mono">{plotCell(m)}</td>
                           <td className="mono">{m.houseType}</td>
-                          <td className="num">{distF(m.distM)}</td>
+                          <td className={m.why ? "num cr-gap" : "num"}
+                            title={m.why || undefined}>
+                            {distF(m.distM)}
+                          </td>
                           <td className={m.kvaMissing ? "num cr-gap" : "num"}
                             title={m.kvaMissing ? "No load recorded on this plot" : undefined}>
                             {m.kvaMissing ? "\u2014" : kvaF(m.kva)}
@@ -612,6 +619,7 @@ export default function CircuitReport({
                   <thead>
                     <tr className="head-row">
                       <th>Meter</th><th>Plot</th><th>House type</th><th>kVA</th>
+                      <th>Why</th>
                     </tr>
                   </thead>
                   <tbody>
@@ -623,6 +631,11 @@ export default function CircuitReport({
                         <td className={m.kvaMissing ? "num cr-gap" : "num"}>
                           {m.kvaMissing ? "\u2014" : kvaF(m.kva)}
                         </td>
+                        {/* The reason in the row, because this table
+                            exists to send somebody to the drawing and
+                            a row with no reason sends them to all of
+                            it. A self-lay plot has no fault to name. */}
+                        <td className="cr-gap">{m.selfLay ? "" : (m.why || "")}</td>
                       </tr>
                     ))}
                   </tbody>

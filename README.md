@@ -1,4 +1,11 @@
-# A cable that runs through a span node feeds it, 1 Sep 2026
+# Two fixes, 1 Sep 2026
+
+1. A cable that runs through a span node feeds it
+2. A meter beside its service reaches the substation
+
+---
+
+# 1. A cable that runs through a span node feeds it
 
 Build LV Network, then Apply Cable Sizes to Span Nodes, and many nodes
 still read "not set" with a sized cable visibly entering and leaving
@@ -56,6 +63,60 @@ renumber pass had replaced. It found the old cables at the old sizes,
 saw no difference, and wrote nothing. Where it *had* found one it would
 have written pre-build attributes back over the renumbered ones. It now
 re-reads the drawing after the link pass and the joints, and syncs that.
+
+---
+
+# 2. A meter beside its service reaches the substation
+
+Circuit report 2608_018: four meters — plots 88, 126, 128, 129 — with no
+distance, each between neighbours that had one.
+
+| File | Change |
+|------|--------|
+| `src/features/gis/electric.js` | Graph build split out as `networkFrom`; a spliced join gets its distance; only cables and trenches are in the graph; `whyUnreached` |
+| `src/features/gis/CircuitReport.jsx` | The reason on the dash's tooltip, in a "Why" column of the not-traced table, and as a last column of the export |
+| `checkdistances.mjs` | Three cases |
+
+No SQL.
+
+## Why exactly those four
+
+A meter joins the nearest point on the nearest line. Where that point
+is a vertex — the end of the service, which is where Auto Service puts
+the meter — the walk had already settled it. Where it is **part way
+along a segment** the join spliced a new point in *after* the walk had
+run, under a comment saying its distance was "the nearer settled end
+plus the bit along the segment", and then nobody worked that out. The
+point had no entry; the meter had no distance.
+
+So the four are meters that sit beside their service rather than at
+its end — moved along the wall after the service was laid, or served by
+a run that carries on past them. Every other meter on the report
+projects onto a vertex, which is why it read as "some meters" rather
+than all of them. The spliced point has two settled neighbours; its
+distance is now the shorter way in.
+
+## Every line was in the graph
+
+Boundaries, gas, water, notes. A meter is a box on the front wall and
+the boundary is drawn along it, so a meter a metre from its boundary
+and four from its service joined the boundary, which runs back to
+nothing. A gas service stopping short of its own main carried the
+electric meter beside it down with it. Cables and trenches only now —
+a trench because the report is read before Build LV Network has run
+and the trench is where the cable will go. Lines with no layer are
+kept, for drawings older than layers.
+
+## The dash now says why
+
+`whyUnreached` reads the same graph `distancesFrom` used, so it explains
+the blank the report has rather than one a second reading might find.
+Four answers: nothing within 30 m (and how far the nearest is); the
+line it joined runs back to nothing (which line, how many are joined
+together, how far its nearest end stops short of which live line); the
+origin is not on the network; nothing on the drawing is reached. The
+second is the one with a fix in it — the gap in metres, against
+`CONNECT_M` of 0.25.
 
 ## Suite
 

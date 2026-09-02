@@ -239,12 +239,52 @@ export function buildFeederModel(features = [], opts = {}) {
     if (b) b.push(idx); else buckets.set(k, [idx]);
     return idx;
   };
-  const addEdge = (a, b, svc) => {
+  /* Measured metres per edge, where somebody has entered a length.
+
+     Keyed on the node pair; where two lines lay claim to one pair the
+     shorter figure wins, so the answer is the same whichever order the
+     drawing lists them in. */
+  const edgeM = new Map();
+  const edgeKey = (a, b) => (a < b ? `${a}:${b}` : `${b}:${a}`);
+  const addEdge = (a, b, svc, m = null) => {
     if (a === b) return;
     if (!adj.has(a)) adj.set(a, []);
     if (!adj.has(b)) adj.set(b, []);
     adj.get(a).push({ to: b, svc });
     adj.get(b).push({ to: a, svc });
+    if (m != null) {
+      const k = edgeKey(a, b);
+      if (!edgeM.has(k) || m < edgeM.get(k)) edgeM.set(k, m);
+    }
+  };
+
+  /* ── A measured length overrides the drawing ──
+
+     Length_m on the line's attributes, entered by somebody who knows
+     something the geometry does not: a duct that rises and falls, a
+     trench dug round an obstruction, slack the plan cannot show. The
+     drawn plan is flat and the cable is not, and the calculation should
+     run on the cable.
+
+     The segments are scaled so they still sum to the entered figure,
+     which keeps a tee half way along the line half way along the
+     measurement. The same attribute, and the same proportional rule,
+     that distancesFrom in electric.js and the gas network already
+     honour \u2014 one name for one fact, so the circuit report, the gas
+     bill and the levels check cannot read three different lengths off
+     one line. Geometry itself is untouched: the drawing still shows
+     what was drawn, and snapping, joining and nearness all stay
+     geometric \u2014 a measured length changes how far the electricity
+     travels, not where the trench is. */
+  const measuredScale = (f) => {
+    const stated = Number(f.Attributes?.Length_m ?? 0) || 0;
+    if (!(stated > 0)) return 1;
+    const g = f.Geometry || [];
+    let drawn = 0;
+    for (let i = 1; i < g.length; i++) {
+      drawn += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+    }
+    return drawn > 0 ? stated / drawn : 1;
   };
 
   for (const f of features) {
@@ -263,7 +303,11 @@ export function buildFeederModel(features = [], opts = {}) {
     const pts = f.Geometry || [];
     if (pts.length < 2) continue;
     const svc = isService(f);
-    for (let i = 0; i + 1 < pts.length; i++) addEdge(intern(pts[i]), intern(pts[i + 1]), svc);
+    const scale = measuredScale(f);
+    for (let i = 0; i + 1 < pts.length; i++) {
+      addEdge(intern(pts[i]), intern(pts[i + 1]), svc,
+        scale === 1 ? null : dist(pts[i], pts[i + 1]) * scale);
+    }
   }
   if (!nodes.length) return { error: "No trenches to route cables along." };
 
@@ -572,9 +616,16 @@ export function buildFeederModel(features = [], opts = {}) {
     }
   }
 
+  /* The metres between two adjacent nodes, as the cable runs them:
+     the measured figure where one was entered, the drawn distance
+     everywhere else. Every reader that means "length of run" asks
+     this; readers that mean "how near is this thing" keep asking the
+     geometry, because a measured length does not move the trench. */
+  const mBetween = (a, b) => edgeM.get(edgeKey(a, b)) ?? dist(nodes[a], nodes[b]);
+
   return {
     nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt,
-    S, order, attached, skipped,
+    S, order, attached, skipped, mBetween,
     /* The origin this model is rooted at \u2014 the feature, so a caller
        reading source impedance or the declared upstream volt drop reads
        the figures of the origin the walk actually started from, not
@@ -805,7 +856,7 @@ export function digEndBeyond(model, from) {
     const next = onward[0];
     if (cum[next] > 0) break;
 
-    run += dist(nodes[cur], nodes[next]);
+    run += (model.mBetween ? model.mBetween(cur, next) : dist(nodes[cur], nodes[next]));
     path.push(next);
     cur = next;
   }
@@ -1724,7 +1775,8 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   };
 
   const walk = (prev, cur, metres, along, path, fromLabel) => {
-    const len = metres + dist(nodes[prev], nodes[cur]);
+    const len = metres + (M.mBetween
+      ? M.mBetween(prev, cur) : dist(nodes[prev], nodes[cur]));
     const here = metersAt.get(cur) || [];
     const trail = [...path, cur];
 
@@ -1887,8 +1939,9 @@ export function orderNodesFromRoot(model, indexes = []) {
     const u = order[i];
     if (want.has(u) && u !== S) { reach[u] = 0; continue; }
     let best = Infinity;
+    const between = model.mBetween || ((x, y) => dist(nodes[x], nodes[y]));
     for (const k of kids.get(u) || []) {
-      const d = reach[k] + dist(nodes[u], nodes[k]);
+      const d = reach[k] + between(u, k);
       if (d < best) best = d;
     }
     reach[u] = best;
@@ -1897,8 +1950,9 @@ export function orderNodesFromRoot(model, indexes = []) {
   const nearestFirst = (from) => (kids.get(from) || [])
     .slice()
     .sort((a, b) => {
-      const da = reach[a] + dist(nodes[from], nodes[a]);
-      const db = reach[b] + dist(nodes[from], nodes[b]);
+      const between = model.mBetween || ((x, y) => dist(nodes[x], nodes[y]));
+      const da = reach[a] + between(from, a);
+      const db = reach[b] + between(from, b);
       if (da !== db) return da - db;
       /* Neither branch has a node on it, or they are equidistant: fall
          back to the nearer corner so the order is at least stable. */

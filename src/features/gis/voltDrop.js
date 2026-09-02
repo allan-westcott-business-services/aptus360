@@ -353,10 +353,16 @@ export function cumulativeToNode({
     return { kva, count, joints };
   };
 
+  /* As the cable runs it: the measured figure where one was entered on
+     the line, the drawn distance everywhere else. Falls back to
+     geometry for a model built by hand without mBetween. */
+  const between = model.mBetween
+    || ((a, b) => dist(nodes[a], nodes[b]));
+
   let legLenM = 0, distKva = 0, distCount = 0, distJoints = 0;
   for (let i = 1; i < path.length; i++) {
     const cur = path[i];
-    legLenM += dist(nodes[path[i - 1]], nodes[cur]);
+    legLenM += between(path[i - 1], cur);
 
     const sn = spanAt.get(cur);
     if (sn) {

@@ -40,6 +40,16 @@ import {
   circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
+
+/* What a line's label says about its length: the measured figure where
+   somebody entered one, marked so the drawing admits the number is not
+   the geometry under it, and the drawn length everywhere else. */
+const lengthLabel = (f) => {
+  const stated = Number(f.Attributes?.Length_m ?? 0) || 0;
+  return stated > 0
+    ? `${stated.toFixed(1)} m entered`
+    : `${lineLength(f.Geometry).toFixed(1)} m`;
+};
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
@@ -4571,7 +4581,7 @@ export default function GISCanvasPage() {
                could tell was stale. */
             ? [
               sizeLabelOf(f, sizeCatalogues) || a.Size || "size not set",
-              `${lineLength(f.Geometry).toFixed(1)} m`,
+              lengthLabel(f),
               Number.isFinite(gasFlow?.get(Number(f.Feature_ID)))
                 ? `Q ${gasFlow.get(Number(f.Feature_ID)).toFixed(2)} m\u00b3/h`
                 : null,
@@ -4607,7 +4617,7 @@ export default function GISCanvasPage() {
           const cabled = f.Layer_Key === "electric" && cableId != null
             ? [
               cableNames.get(Number(cableId)) ?? "cable not in the catalogue",
-              `${lineLength(f.Geometry).toFixed(1)} m`,
+              lengthLabel(f),
             ].join("\n")
             : "";
 
@@ -4639,7 +4649,7 @@ export default function GISCanvasPage() {
           const txt = own
             ? [on ? null : tag, own].filter(Boolean).join("\n")
             : (on
-              ? [spelled || sizeShown, `${lineLength(f.Geometry).toFixed(1)} m`]
+              ? [spelled || sizeShown, lengthLabel(f)]
                 .filter(Boolean).join("  ")
               : tag || "");
 

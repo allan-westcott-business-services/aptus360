@@ -1,10 +1,11 @@
-# Four fixes and a feature, 1 Sep 2026
+# Four fixes and two features, 1 Sep 2026
 
 1. A cable that runs through a span node feeds it
 2. A meter beside its service reaches the substation
 3. Load tapped along a leg is charged on that leg
 4. Hand-set cable sizes survive Build LV Network
 5. **Multiple electric POCs** — each serving its own self-contained network
+6. **Measured lengths** — a line can carry the length the run really is
 
 Also: **number inputs no longer have spin buttons, and the mouse wheel no
 longer edits a focused one** (`src/styles.css`, `src/App.jsx`). App-wide,
@@ -236,8 +237,14 @@ origin.
 | `src/features/gis/GISCanvasPage.jsx` | The one-electric-POC refusal removed; the levels check, canvas labels, single-node trace and scenario search read source impedance, voltage and upstream drop from **each circuit's own origin** |
 | `checkmultipoc.mjs` | New; `checklvorigin`, `checksourceimpedance`, `checkutilitymenus` updated to the plural |
 
-No SQL. Each POC carries its own declared loop impedance and upstream
-volt drop, and each circuit is judged against its own POC's figures.
+**One migration: `0200_multiple_electric_pocs.sql`** — drops the
+`gis_poc_one_electric` partial unique index that 0157 deliberately kept.
+Without it the database refuses the second POC with a bare
+unique-violation error, whatever the application allows. Run it on
+Supabase before placing a second electric POC.
+
+Each POC carries its own declared loop impedance and upstream volt
+drop, and each circuit is judged against its own POC's figures.
 
 **Placement is by click now.** The menu button arms the next canvas
 click; the node goes where you click, snapped onto a main or trench
@@ -255,9 +262,41 @@ header still reads the first origin. On a two-POC site the per-origin
 capacity split is a design question (which ways belong to which POC)
 rather than a walk, and it deserves its own session.
 
+---
+
+# 6. Measured lengths
+
+A line — trench, pipe or cable — can carry a "Measured length (m)"
+(`Attributes.Length_m`), entered in the feature editor beside the drawn
+figure. The plan is flat and the run is not: risers, ducts, a dig round
+an obstruction, slack the drawing cannot show.
+
+| File | Change |
+|------|--------|
+| `src/features/gis/feeder.js` | The model's edges carry the measured metres, scaled along the line; `mBetween` on the model; trace legs, dig-end overruns and node ordering read it |
+| `src/features/gis/voltDrop.js` | `cumulativeToNode` charges legs on `mBetween` (geometric fallback for hand-built models) |
+| `src/features/gis/routing.js` | `serviceFor` charges a tail on the service's measured length |
+| `src/features/gis/FeatureEditor.jsx` | Drawn length (read-only) beside Measured length (editable), with the override said in the hint |
+| `src/features/gis/GISCanvasPage.jsx` | Length labels show the entered figure marked "entered" |
+| `checkmeasuredlength.mjs` | New |
+
+Everything that means "how far does the electricity travel" reads the
+measurement — the levels check, loop impedance, trace legs, circuit
+report distances (which already honoured it), service tails, and the
+gas network's metres (which always did). Everything that means "how
+near is this thing" — snapping, joining, meter attachment, span-node
+reach — stays geometric, because a measured length does not move the
+trench. Scaled proportionally, so a tee half way along the drawing is
+half way along the measurement.
+
+Not read from it, deliberately: the electric BOM and call-off
+quantities still measure the drawn cable features. Whether ordered
+cable should follow a designer's measured trench is a commercial
+question — say the word and it is a small change.
+
 ## Suite
 
-**101 of 110** with `--py`. The nine failures are all pre-existing and
+**102 of 111** with `--py`. The nine failures are all pre-existing and
 none is in this area: `checkaslaidplan`, `checkbottleends`,
 `checkprojecttabs` (as recorded), `checkdevelopers` and
 `checkmigrations` (0198 is not in the folder), `checkorphans`,

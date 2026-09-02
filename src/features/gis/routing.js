@@ -583,9 +583,14 @@ export function serviceFor(meter, services = [], mains = [], opts = {}) {
     const far = dStart <= dEnd ? g[g.length - 1] : g[0];
 
     /* Its length, along the trench rather than end to end — a service
-       that dog-legs round a corner is longer than it looks. */
+       that dog-legs round a corner is longer than it looks. And the
+       measured figure over the drawn one, where somebody entered
+       Length_m: a service rising through a duct is longer than its
+       plan, and the tail is charged on the cable, not the plan. */
     let len = 0;
     for (let i = 0; i + 1 < g.length; i++) len += dist(g[i], g[i + 1]);
+    const stated = Number(t.Attributes?.Length_m ?? 0) || 0;
+    if (stated > 0 && len > 0) len = stated;
 
     /* Where that far end lands on a main. */
     let onMain = null;

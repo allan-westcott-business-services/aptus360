@@ -1642,6 +1642,44 @@ export default function FeatureEditor({
 
           {isLine && (
             <>
+              {/* ── The length the calculation runs on ──
+
+                  The drawn figure beside the entered one, so what is
+                  being overridden is on the screen while it is
+                  overridden. The plan is flat and the run is not: a
+                  duct that rises and falls, a trench dug round an
+                  obstruction, slack the drawing cannot show. Length_m
+                  is the one attribute every reader honours \u2014 the
+                  levels check, the circuit report distances, the gas
+                  bill's metres and the service tails all scale this
+                  line to it \u2014 while the geometry, and everything that
+                  means nearness rather than length, stays as drawn. */}
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-drawn-len">Drawn length (m)</label>
+                  <input id="fe-drawn-len" readOnly
+                    value={length > 0 ? length.toFixed(1) : ""} />
+                </div>
+                <div className="fld">
+                  <label htmlFor="fe-measured-len">Measured length (m)</label>
+                  <input id="fe-measured-len" type="number" step="0.1" min="0"
+                    value={f.Attributes.Length_m ?? ""}
+                    placeholder="as drawn"
+                    onChange={(e) => setAttr("Length_m")(
+                      e.target.value === "" ? null : Number(e.target.value))} />
+                </div>
+              </div>
+              <p className="hint">
+                {f.Attributes.Length_m == null
+                  ? "Every calculation measures this line off the drawing. Enter "
+                    + "the real run \u2014 risers, ducts, slack \u2014 and the levels, "
+                    + "distances and tails use that figure instead, scaled along "
+                    + "the line. The drawing itself does not move."
+                  : `Calculations read ${Number(f.Attributes.Length_m).toFixed(1)} m `
+                    + "for this line instead of the drawn "
+                    + `${length.toFixed(1)} m. Clear the box to go back to the drawing.`}
+              </p>
+
               {/* Line type is in the row above for a trench, alongside
                   the layer and the label. */}
               {!isTrench && (

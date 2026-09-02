@@ -52,6 +52,9 @@ export default function CircuitReport({
   report, projectRef, siteName, pocOutput, onClose,
   onRemoveFromCircuit, onDeleteCircuit, onCreateCircuit, onMoveToCircuit, busy,
   progress, rings, onToggleRings, onRunLevels,
+  /* Names which POC feeds a circuit, written across its members by the
+     canvas. Only offered where report.origins has more than one. */
+  onSetCircuitOrigin,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -389,8 +392,35 @@ export default function CircuitReport({
                     {c.letter && <span className="cr-let">{c.letter}</span>}
                     {c.name}
                   </strong>
+                  {/* ── Fed from ──
+
+                      The report is the one place every circuit is in
+                      view with all its meters, so this is where the
+                      decision reads best: one box per circuit, the
+                      whole membership rewritten on change, and the
+                      hint on the empty state says what happens if
+                      nobody chooses. Only on a drawing with a choice.
+                      The distances re-measure as soon as the write
+                      lands, because the report reads the drawing \u2014
+                      the ROUTING only moves on the next build. */}
+                  {report.origins?.length > 1 && onSetCircuitOrigin
+                    && c.id !== "unlinked" && (
+                    <span className="cr-fed">
+                      <label htmlFor={`cr-fed-${c.id}`}>Fed from</label>
+                      <select id={`cr-fed-${c.id}`} disabled={!!busy}
+                        value={c.originId != null ? String(c.originId) : ""}
+                        onChange={(e) => onSetCircuitOrigin(c.id,
+                          e.target.value === "" ? null : Number(e.target.value))}>
+                        <option value="">Build decides (nearest)</option>
+                        {report.origins.map((o) => (
+                          <option key={o.id} value={String(o.id)}>{o.label}</option>
+                        ))}
+                      </select>
+                    </span>
+                  )}
                   <span className="cr-meta">
-                    from {report.station} &middot; {c.count} meter{c.count === 1 ? "" : "s"}
+                    {report.origins?.length > 1 ? "" : `from ${report.station} \u00B7 `}
+                    {c.count} meter{c.count === 1 ? "" : "s"}
                     {" \u00B7 "}{kvaF(c.totalKva)}
                     {/* Said where it happens rather than left as a
                         column of dashes: a missing distance means the
@@ -711,6 +741,10 @@ export default function CircuitReport({
 }
 
 const CSS = `
+.cr-fed { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
+.cr-fed label { font-size: 12px; color: #64748b; }
+.cr-fed select { padding: 3px 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;
+  background: #fff; font: inherit; font-size: 12px; }
 .cr-pick { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; }
 .cr-pick label { font-size: 12px; color: #64748b; }
 .cr-pick select { padding: 4px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px;

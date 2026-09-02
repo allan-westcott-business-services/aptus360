@@ -9274,6 +9274,42 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Naming which POC feeds a whole circuit, from any member's editor.
+
+     Written across every member for the reason the linking dialog
+     rewrites them: the build reads the first non-null answer, and a
+     circuit half-named two ways would be decided by scan order. The
+     routing itself only changes when the network is rebuilt, and the
+     status says so rather than leaving the drawing looking unmoved. */
+  async function setCircuitOrigin(circuitId, originId) {
+    const members = features.filter((f) => f.Feature_Role === "meter"
+      && f.Layer_Key === "electric"
+      && Number(f.Attributes?.Circuit_ID) === Number(circuitId));
+    if (!members.length) { setError("That circuit has no meters."); return; }
+    const origin = originId == null ? null
+      : lvOrigins(features).find((o) => Number(o.Feature_ID) === Number(originId));
+    if (originId != null && !origin) {
+      setError("That POC is no longer on the drawing.");
+      return;
+    }
+    setBusy("circuit");
+    try {
+      await bulkUpdateFeatures(projectId, members.map((m) => ({
+        Feature_ID: m.Feature_ID,
+        Attributes: { ...m.Attributes, Circuit_Origin_ID: originId },
+      })));
+      await load(projectId);
+      const cname = members[0].Attributes?.Circuit_Name || `Circuit ${circuitId}`;
+      setStatus(origin
+        ? `${cname} is fed from ${origin.Label || (origin.Feature_Role === "substation"
+          ? "the substation" : "the POC")} \u2014 run Build LV Network to re-route it`
+        : `${cname} names no POC \u2014 the next build picks the nearest along the trench`);
+      setTimeout(() => setStatus(""), 10000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   /* ── Link to Circuit ──
      The original's gisLinkCircuitFinish. Draw round the plot seeds a
      circuit should serve; the plots with an electric meter become its
@@ -19383,6 +19419,7 @@ export default function GISCanvasPage() {
         return (
           <CircuitReport
             report={r}
+            onSetCircuitOrigin={setCircuitOrigin}
             /* The rings are one setting with two ways in — this and the
                Layers menu — so turning them on here shows the same thing
                and the menu agrees afterwards. */
@@ -19542,6 +19579,7 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
+          onSetCircuitOrigin={setCircuitOrigin}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
           onCableSized={async (edited) => {
             /* The saved drawing, then the one node this run feeds.

@@ -19,6 +19,7 @@ import { TRENCH_CARRIES } from "./trenchCarries.js";
 import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/heatPump.js";
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { sizeIdFor, isOverridden } from "./sizeMode.js";
+import { lvOrigins } from "./electric.js";
 import { servedPlots, JOINT_KINDS } from "./joints.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
@@ -54,6 +55,9 @@ export default function FeatureEditor({
   onCableSized,
   onSave, onSavePlot, onDelete, onClose, onRenameCircuits, trenchesUnderThis,
   onIsolateCircuit, circuitIsolated,
+  /* Names which POC feeds this feature's circuit, on a drawing that
+     has more than one. Written across every member, by the canvas. */
+  onSetCircuitOrigin,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -1022,6 +1026,51 @@ export default function FeatureEditor({
               </button>
             </div>
           )}
+
+          {/* ── Which POC feeds this circuit ──
+
+              Only where the drawing has more than one electric origin,
+              because on any other drawing there is nothing to decide.
+              A fact about the CIRCUIT, offered here because the meter
+              (or point, or run) in front of you is how you name the
+              circuit \u2014 changing it rewrites every member, and the
+              hint says the rebuild is what makes it take on the
+              drawing. "The build decides" is the honest name for the
+              unset state: nearest along the trench, said in the build
+              status, until somebody chooses. */}
+          {feature.Layer_Key === "electric"
+            && feature.Attributes?.Circuit_ID != null
+            && onSetCircuitOrigin
+            && lvOrigins(allFeatures).length > 1 && (() => {
+              const cid = feature.Attributes.Circuit_ID;
+              const named = allFeatures
+                .filter((x) => x.Feature_Role === "meter"
+                  && Number(x.Attributes?.Circuit_ID) === Number(cid))
+                .map((x) => x.Attributes?.Circuit_Origin_ID)
+                .find((x) => x != null) ?? null;
+              return (
+                <div className="fld">
+                  <label htmlFor="fe-fedfrom">Fed from</label>
+                  <select id="fe-fedfrom" value={named != null ? String(named) : ""}
+                    onChange={(e) => onSetCircuitOrigin(cid,
+                      e.target.value === "" ? null : Number(e.target.value))}>
+                    <option value="">
+                      Not set \u2014 the build picks the nearest POC
+                    </option>
+                    {lvOrigins(allFeatures).map((o) => (
+                      <option key={o.Feature_ID} value={String(o.Feature_ID)}>
+                        {o.Label || (o.Feature_Role === "substation"
+                          ? "Substation" : `POC #${o.Feature_ID}`)}
+                      </option>
+                    ))}
+                  </select>
+                  <p className="hint">
+                    The whole circuit, not just this meter. Run Build LV
+                    Network again to re-route it from the named POC.
+                  </p>
+                </div>
+              );
+            })()}
           {error && <Banner kind="error" onClose={() => setError("")}>{error}</Banner>}
 
           {/* A trench lays these out in two rows of three, with its own

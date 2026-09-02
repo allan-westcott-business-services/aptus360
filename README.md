@@ -47,6 +47,19 @@ applies if not yet run.)
   written as `Circuit_Origin_ID` on the members, which the build reads
   before every other rule; the LV way is booked on that POC's own
   ways, and the circuit's A0 stands on it from the moment of linking.
+- **Fed from, in the editor.** Open any member of a circuit — a meter,
+  a feeder point, a run — and the circuit strip carries a "Fed from"
+  select on multi-origin drawings: the circuit's POC, or "Not set — the
+  build picks the nearest". Changing it rewrites every member and the
+  status says to rebuild; the routing moves when Build LV Network runs.
+- **Fed from is settable in three places**, all writing the same fact
+  (`Circuit_Origin_ID` across the circuit's members): the **Circuit
+  Report** — one box in each circuit's header, every circuit in view,
+  the natural place; the **linking dialog** when creating or joining;
+  and any member's **feature editor** under the circuit strip. "Build
+  decides (nearest)" is the honest empty state. Distances in the
+  report re-measure immediately; the routing moves on the next Build
+  LV Network, and the status says so.
 - **Manual feeder points**: Electric → + Feeder End Point arms a click;
   it must land on a circuit's run (that run says whose it is), stops
   the trace immediately, and the next build sequences it. No Generated

@@ -1419,6 +1419,20 @@ export function circuitReport(features = [], opts = {}) {
      because on a drawing of self-contained networks the nearest is the
      one the meter was meant to be on, and the gap named should be the
      gap to that network rather than to one across the site. */
+  /* For the report's own Fed from control: every origin, and which one
+     each circuit names. Only meaningful with more than one origin; the
+     list is empty otherwise so the report renders nothing. */
+  const origins = stations.length > 1
+    ? stations.map((o) => ({
+      id: Number(o.Feature_ID),
+      label: o.Label || (o.Feature_Role === "substation"
+        ? "Substation" : `POC #${o.Feature_ID}`),
+    }))
+    : [];
+  const namedOriginOf = (ms) => ms
+    .map((m) => m.Attributes?.Circuit_Origin_ID)
+    .find((x) => x != null) ?? null;
+
   const originToBlame = (m) => {
     const p = (m.Geometry || [])[0];
     if (!p || stations.length === 1) return station;
@@ -1551,7 +1565,14 @@ export function circuitReport(features = [], opts = {}) {
 
   const circuits = [...byCircuit.values()]
     .sort((a, b) => a.id - b.id)
-    .map((c) => summarise(c.name, c.letter, c.meters, c.id));
+    .map((c) => ({
+      ...summarise(c.name, c.letter, c.meters, c.id),
+      /* Which POC this circuit names, read off its own meters \u2014 the
+         same attribute the build reads first, so the report's control
+         and the build cannot mean different things. Null is "the
+         build decides", which is a state worth showing, not hiding. */
+      originId: origins.length ? namedOriginOf(c.meters) : null,
+    }));
 
   if (unlinked.length) {
     circuits.push(summarise("Electric meters (not linked to a circuit)", "", unlinked, "unlinked"));
@@ -1567,6 +1588,9 @@ export function circuitReport(features = [], opts = {}) {
     /* Which kind it is, so anything reading this can word itself
        correctly rather than guessing from the label. */
     stationRole: station.Feature_Role === "poc" ? "poc" : "substation",
+    /* Every origin on the drawing, for the Fed from control. Empty on
+       a one-origin site, so nothing renders. */
+    origins,
 
     /* How far the origin sat from the nearest cable.
 

@@ -229,6 +229,32 @@ else {
   }
 }
 
+/* ── The linking flow captures the decision ──
+
+   Structural, because createCircuitFrom is stitched into the canvas:
+   what must hold is that linking writes Circuit_Origin_ID onto the
+   members (the fact the model reads first), books the LV way on the
+   circuit's own origin rather than the site's first, and stands the
+   circuit's A0 on that origin. */
+{
+  const { readFileSync } = await import("fs");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/Circuit_Origin_ID: originWrite/.test(canvas)) {
+    fail("linking no longer writes which POC feeds the circuit");
+  }
+  if (!/assignWay\(origin, circuitId, kva\)/.test(canvas)) {
+    fail("the LV way is not booked on the circuit's own origin");
+  }
+  if (!/Geometry: \[origin\.Geometry\[0\]\]/.test(canvas)) {
+    fail("the circuit's A0 does not stand on the circuit's own origin");
+  }
+  /* And a join with the box left alone inherits \u2014 the guard that stops
+     adding plots to a circuit from quietly moving it to another POC. */
+  if (!/originId \?\? namedNow/.test(canvas)) {
+    fail("a join no longer inherits the circuit's named POC");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Two electric POCs behave (named, substation, then nearest \u2014 and shared trenches route).");
 process.exit(bad ? 1 : 0);

@@ -9066,7 +9066,7 @@ export default function GISCanvasPage() {
      and they must produce identical circuits — a second implementation
      would drift, and the way allocation is the part that would drift
      silently. */
-  async function createCircuitFrom(asked, how, joinId = null) {
+  async function createCircuitFrom(asked, how, joinId = null, originId = null) {
     /* What the caller named. `meters` below is what is actually put on
        the circuit, which is this less any self-lay supply — reassigning
        the parameter would leave every line after it reading as though
@@ -9077,7 +9077,8 @@ export default function GISCanvasPage() {
        the circuits feed back to the point of connection. Circuits are
        what the LV build needs, so a gate here that still demanded a
        substation would refuse the same drawing one step earlier. */
-    const sub = lvOrigin(features);
+    const origins = lvOrigins(features);
+    const sub = origins[0] || null;
     if (!sub) {
       setError("Place a substation, or an electric POC \u2014 a circuit has to "
         + "feed back to one of them.");
@@ -9154,6 +9155,42 @@ export default function GISCanvasPage() {
     const letter = existing ? existing.letter : circuitLetter(circuitId);
     const name = existing ? existing.name : `Circuit ${circuitId}`;
 
+    /* ── Which POC feeds it, where there is more than one ──
+
+       The circuit's origin is a design decision, and linking is the
+       moment it is made: the LV way is booked on it, the circuit's A0
+       stands on it, and the build routes back to it. Written onto the
+       members as Circuit_Origin_ID \u2014 the fact the build reads first,
+       before the substation rule and before nearest-along-the-trench.
+
+       A circuit already named keeps its POC unless the dialog says
+       otherwise; naming a different one rewrites every member, because
+       the first non-null answer is the one the build takes and a
+       circuit half-named two ways would be decided by scan order. On a
+       one-origin site none of this exists and nothing is written. */
+    const namedNow = existing
+      ? (existing.meters.map((m) => m.Attributes?.Circuit_Origin_ID)
+        .find((x) => x != null) ?? null)
+      : null;
+    let origin = sub;
+    let originWrite = null;
+    if (origins.length > 1) {
+      const wanted = originId ?? namedNow;
+      const chosen = wanted != null
+        ? origins.find((o) => Number(o.Feature_ID) === Number(wanted))
+        : null;
+      if (!chosen) {
+        setError(wanted != null
+          ? "The POC that circuit names is no longer on the drawing \u2014 "
+            + "pick which one feeds it."
+          : "This drawing has more than one electric origin \u2014 say which "
+            + "one feeds the circuit (the Fed from box).");
+        return false;
+      }
+      origin = chosen;
+      originWrite = Number(chosen.Feature_ID);
+    }
+
     /* Every meter on the circuit as it will be, not just the ones being
        added. The way's load is a fact about the circuit, and measuring
        it from the new meters alone would say a circuit gaining two
@@ -9166,7 +9203,7 @@ export default function GISCanvasPage() {
       (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null);
     /* Reuses the way the circuit already holds — assignWay looks for it
        before allocating — so joining does not consume a second one. */
-    const way = assignWay(sub, circuitId, kva);
+    const way = assignWay(origin, circuitId, kva);
 
     if (way.full) {
       setError(`All ${way.ways} LV ways are taken. Add a way on the substation, or free one by deleting a circuit.`);
@@ -9175,16 +9212,30 @@ export default function GISCanvasPage() {
 
     setBusy("circuit");
     try {
-      await bulkUpdateFeatures(projectId, meters.map((m) => ({
+      /* The new members \u2014 and, where the POC is being named or
+         changed, every existing member too, so the circuit says one
+         thing about who feeds it. */
+      const rows = meters.map((m) => ({
         Feature_ID: m.Feature_ID,
         Attributes: {
           ...m.Attributes,
           Circuit_ID: circuitId, Circuit_Name: name, Circuit_Letter: letter,
+          ...(originWrite != null ? { Circuit_Origin_ID: originWrite } : {}),
         },
-      })));
+      }));
+      if (existing && originWrite != null && originWrite !== Number(namedNow)) {
+        for (const m of existing.meters) {
+          if (meters.some((x) => Number(x.Feature_ID) === Number(m.Feature_ID))) continue;
+          rows.push({
+            Feature_ID: m.Feature_ID,
+            Attributes: { ...m.Attributes, Circuit_Origin_ID: originWrite },
+          });
+        }
+      }
+      await bulkUpdateFeatures(projectId, rows);
       if (way.changed) {
-        await updateFeature(projectId, sub.Feature_ID, {
-          Attributes: { ...sub.Attributes, Way_Circuits: way.map },
+        await updateFeature(projectId, origin.Feature_ID, {
+          Attributes: { ...origin.Attributes, Way_Circuits: way.map },
         });
       }
       /* The origin node. Every other point on the circuit is measured
@@ -9196,12 +9247,12 @@ export default function GISCanvasPage() {
           Layer_Key: "electric",
           Feature_Type: "point",
           Feature_Role: "spannode",
-          Geometry: [sub.Geometry[0]],
+          Geometry: [origin.Geometry[0]],
           Label: `Point ${spanLabel(letter, 0)}`,
           Attributes: {
             Circuit_ID: circuitId, Circuit_Name: name, Circuit_Letter: letter,
             Span_Seq: 0, Span_Label: spanLabel(letter, 0),
-            Connects: [sub.Feature_ID],
+            Connects: [origin.Feature_ID],
           },
         });
       }
@@ -9212,6 +9263,9 @@ export default function GISCanvasPage() {
         `${name} (${letter}) \u00B7 node ${spanLabel(letter, 0)} at the substation: `
         + `${how}, ${meters.length} meter(s), `
         + `${kva} kVA on LV way ${way.way}`
+        + (originWrite != null
+          ? ` of ${origin.Label || (origin.Feature_Role === "substation"
+            ? "the substation" : "the POC")}` : "")
         + (way.over ? ` \u2014 ~${way.amps} A exceeds the ${way.fuse} A fuse` : "")
       );
       setTimeout(() => setStatus(""), 10000);
@@ -9288,22 +9342,35 @@ export default function GISCanvasPage() {
     }
 
     const circuits = circuitsFrom(features);
-    if (!circuits.length) {
+    /* Straight through only where there is nothing to ask: no circuit
+       to join AND no choice of POC. With either, the dialog. */
+    if (!circuits.length && lvOrigins(features).length < 2) {
       const made = await createCircuitFrom(free, `${seeds.length} plot(s)`);
       if (made) { setTool("select"); setDraft([]); }
       return;
     }
 
-    setCircuitPick({ meters: free, seeds: seeds.length, taken, circuits });
+    setCircuitPick({ meters: free, seeds: seeds.length, taken, circuits,
+      origin: "", how: `${seeds.length} plot(s)` });
   }
 
   /* Answering that dialog. `joinId` null means a new circuit. */
   async function finishCircuitPick(joinId) {
     const pick = circuitPick;
-    setCircuitPick(null);
     if (!pick) return;
+    /* A new circuit on a multi-origin drawing has to say who feeds it
+       before the button works \u2014 kept open with the reason, rather
+       than closed and errored. A join inherits the circuit's own POC
+       where the box is left on "keep". */
+    if (joinId == null && lvOrigins(features).length > 1 && !pick.origin) {
+      setCircuitPick({ ...pick,
+        note: "Say which POC feeds the new circuit first (Fed from)." });
+      return;
+    }
+    setCircuitPick(null);
     const made = await createCircuitFrom(pick.meters,
-      `${pick.seeds} plot(s)`, joinId);
+      pick.how || `${pick.seeds} plot(s)`, joinId,
+      pick.origin ? Number(pick.origin) : null);
     if (made) { setTool("select"); setDraft([]); }
   }
 
@@ -9331,8 +9398,14 @@ export default function GISCanvasPage() {
       return;
     }
     const skipped = ids.length - meters.length;
-    await createCircuitFrom(meters,
-      `picked from the report${skipped ? `, ${skipped} already on a circuit skipped` : ""}`);
+    const how = `picked from the report${skipped
+      ? `, ${skipped} already on a circuit skipped` : ""}`;
+    if (lvOrigins(features).length > 1 || circuitsFrom(features).length) {
+      setCircuitPick({ meters, seeds: meters.length, taken: skipped,
+        circuits: circuitsFrom(features), origin: "", how });
+      return;
+    }
+    await createCircuitFrom(meters, how);
   }
 
   /* Carry one edited run's cable onto the one span node it feeds.
@@ -19288,54 +19361,6 @@ export default function GISCanvasPage() {
           canvas wrapper: that wrapper clips, and a dialog inside it is
           cut off at the edge of the drawing. checkmodals.py fails on
           exactly that. */}
-      {circuitPick && (
-        <div className="cpick-backdrop" onClick={() => setCircuitPick(null)}>
-          <div className="cpick" onClick={(e) => e.stopPropagation()}
-            role="dialog" aria-label="Which circuit">
-            <h3>Which circuit?</h3>
-            <p className="hint">
-              {circuitPick.meters.length} meter
-              {circuitPick.meters.length === 1 ? "" : "s"} on{" "}
-              {circuitPick.seeds} plot{circuitPick.seeds === 1 ? "" : "s"}.
-              {circuitPick.taken > 0 && (
-                <>
-                  {" "}
-                  {circuitPick.taken} already on a circuit{" "}
-                  {circuitPick.taken === 1 ? "was" : "were"} left alone &mdash;
-                  use the Circuit Report to move those.
-                </>
-              )}
-            </p>
-
-            <div className="cpick-list">
-              {circuitPick.circuits.map((c) => (
-                <button key={c.id} className="cpick-item"
-                  onClick={() => finishCircuitPick(c.id)}>
-                  <span className="cpick-name">{c.name}</span>
-                  <span className="cpick-n">
-                    {c.meters.length} meter{c.meters.length === 1 ? "" : "s"}
-                  </span>
-                </button>
-              ))}
-              {/* Last, so the existing circuits are what the eye lands
-                  on: adding to one is the reason this dialog exists,
-                  and starting another is what happened by default
-                  before it did. */}
-              <button className="cpick-item new"
-                onClick={() => finishCircuitPick(null)}>
-                <span className="cpick-name">+ New circuit</span>
-              </button>
-            </div>
-
-            <div className="cpick-actions">
-              <button className="btn ghost" onClick={() => setCircuitPick(null)}>
-                Cancel
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {reportOpen && (() => {
         /* Supplies carry their load on their own record. Without
            nrsById the report showed every one of them as having none,
@@ -19391,6 +19416,85 @@ export default function GISCanvasPage() {
           />
         );
       })()}
+
+      {circuitPick && (
+        <div className="cpick-backdrop" onClick={() => setCircuitPick(null)}>
+          <div className="cpick" onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-label="Which circuit">
+            <h3>Which circuit?</h3>
+            <p className="hint">
+              {circuitPick.meters.length} meter
+              {circuitPick.meters.length === 1 ? "" : "s"} on{" "}
+              {circuitPick.seeds} plot{circuitPick.seeds === 1 ? "" : "s"}.
+              {circuitPick.taken > 0 && (
+                <>
+                  {" "}
+                  {circuitPick.taken} already on a circuit{" "}
+                  {circuitPick.taken === 1 ? "was" : "were"} left alone &mdash;
+                  use the Circuit Report to move those.
+                </>
+              )}
+            </p>
+
+            {lvOrigins(features).length > 1 && (
+              /* ── Fed from ──
+
+                 The design decision this dialog exists to capture on a
+                 two-POC site. "Keep the circuit's own" is the default
+                 for joining \u2014 adding plots to Circuit 2 must not
+                 quietly move Circuit 2 to another POC because a box was
+                 left on its first value. A new circuit has to say. */
+              <div className="cpick-origin">
+                <label htmlFor="cpick-fed">Fed from</label>
+                <select id="cpick-fed" value={circuitPick.origin || ""}
+                  onChange={(e) => setCircuitPick({ ...circuitPick,
+                    origin: e.target.value, note: null })}>
+                  <option value="">
+                    {circuitPick.circuits.length
+                      ? "Keep the circuit\u2019s own POC (joining)"
+                      : "Choose\u2026"}
+                  </option>
+                  {lvOrigins(features).map((o) => (
+                    <option key={o.Feature_ID} value={String(o.Feature_ID)}>
+                      {o.Label || (o.Feature_Role === "substation"
+                        ? "Substation" : `POC #${o.Feature_ID}`)}
+                    </option>
+                  ))}
+                </select>
+                {circuitPick.note && (
+                  <p className="cpick-note">{circuitPick.note}</p>
+                )}
+              </div>
+            )}
+
+            <div className="cpick-list">
+              {circuitPick.circuits.map((c) => (
+                <button key={c.id} className="cpick-item"
+                  onClick={() => finishCircuitPick(c.id)}>
+                  <span className="cpick-name">{c.name}</span>
+                  <span className="cpick-n">
+                    {c.meters.length} meter{c.meters.length === 1 ? "" : "s"}
+                  </span>
+                </button>
+              ))}
+              {/* Last, so the existing circuits are what the eye lands
+                  on: adding to one is the reason this dialog exists,
+                  and starting another is what happened by default
+                  before it did. */}
+              <button className="cpick-item new"
+                onClick={() => finishCircuitPick(null)}>
+                <span className="cpick-name">+ New circuit</span>
+              </button>
+            </div>
+
+            <div className="cpick-actions">
+              <button className="btn ghost" onClick={() => setCircuitPick(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
 
       {trenchCheck && (
         <TrenchCheck
@@ -22099,6 +22203,12 @@ const CSS = `
 .cpick-n { font-weight: 500; font-size: 12px; color: var(--muted); }
 /* Set apart and last: joining one is what this dialog is for, and a new
    one is what used to happen without being asked. */
+.cpick-origin { display: flex; align-items: center; gap: 8px; margin: 6px 0 10px;
+  flex-wrap: wrap; }
+.cpick-origin label { font-size: 12px; color: var(--muted); }
+.cpick-origin select { padding: 5px 8px; border: 1.5px solid var(--border);
+  border-radius: 6px; background: var(--white); font: inherit; }
+.cpick-note { flex-basis: 100%; margin: 2px 0 0; font-size: 12px; color: #b91c1c; }
 .cpick-item.new { margin-top: 6px; border-style: dashed; color: var(--muted); }
 .cpick-item.new:hover { color: var(--accent); }
 

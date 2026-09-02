@@ -89,7 +89,10 @@ const meter = (id, circuitId, plotId) => ({
      — reported that the join feature had been lost. It had not. A check
      that fires on a rename teaches people to edit the check, which is
      the opposite of what it is for. */
-  if (!/async function createCircuitFrom\([^)]*joinId = null\)/.test(canvas)) {
+  /* joinId is no longer last: the origin a circuit is fed from came
+     after it \u2014 the multi-POC decision, captured at the same moment for
+     the same reason. The pin holds the parameter, not its position. */
+  if (!/async function createCircuitFrom\([^)]*joinId = null/.test(canvas)) {
     fail("createCircuitFrom cannot be told which circuit to join");
   }
   /* Unconditionally calling nextCircuitId is the fault itself. It must

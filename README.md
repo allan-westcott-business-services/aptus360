@@ -38,6 +38,15 @@ applies if not yet run.)
   circuit's feeder points where it has any, and at span nodes exactly
   as before where it has none — old drawings work unchanged until
   their first rebuild.
+- **Linking assigns the POC.** On a drawing with more than one
+  electric origin, the "Which circuit?" dialog carries a **Fed from**
+  box: a new circuit must say which POC feeds it before it can be
+  created (from the lasso or from the Circuit Report), and a join
+  keeps the circuit's own POC unless you change the box — changing it
+  rewrites every member so the circuit says one thing. The decision is
+  written as `Circuit_Origin_ID` on the members, which the build reads
+  before every other rule; the LV way is booked on that POC's own
+  ways, and the circuit's A0 stands on it from the moment of linking.
 - **Manual feeder points**: Electric → + Feeder End Point arms a click;
   it must land on a circuit's run (that run says whose it is), stops
   the trace immediately, and the next build sequences it. No Generated

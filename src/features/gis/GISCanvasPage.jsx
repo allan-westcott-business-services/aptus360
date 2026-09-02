@@ -68,7 +68,7 @@ import BulkDelete from "./BulkDelete.jsx";
 import { SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
-  spanTrace, orderNodesFromRoot, lvOrigin } from "./feeder.js";
+  spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins } from "./feeder.js";
 import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
@@ -351,6 +351,14 @@ export default function GISCanvasPage() {
      Named rather than a boolean because a mode with a name reads the
      same whether there is one of them or three. */
   const [lightingPlace, setLightingPlace] = useState(null);
+  /* Plant waiting for its click: { role, layerKey }. A POC is the point
+     where the site meets the operator's network, and on a site fed
+     from more than one of them WHICH trench it lands on decides which
+     network it owns \u2014 so it goes where somebody clicks, not in the
+     middle of whatever the view happens to be. Same one-shot shape as
+     a lighting column: set by the menu, consumed by the next canvas
+     click, cancelled by Escape. */
+  const [plantPlace, setPlantPlace] = useState(null);
 
   /* Connecting a column to a feeder: the column waiting for one, or
      null.
@@ -946,7 +954,15 @@ export default function GISCanvasPage() {
     let exhausted = false;
     let largest = null;
     for (const part of parts) {
-      const r = suggestCableChanges({ trace: part, ...common });
+      /* Each circuit searched against its own origin's figures, for
+         the reason the levels check reads them per part. */
+      const o = part.model?.origin || station;
+      const r = suggestCableChanges({
+        trace: part, ...common,
+        transformer: sourceImpedance(o, lookups?.transformerSizes || []),
+        voltageV: voltageOf(o),
+        startPct: upstreamVoltDropPct(o),
+      });
       if (r.error) continue;
       if (r.exhausted) { exhausted = true; largest = r.largest ?? largest; }
       for (const sg of r.suggestions || []) {
@@ -1447,6 +1463,12 @@ export default function GISCanvasPage() {
         out.set(Number(leg.stopId), cumulativeToNode({
           model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
           partialCableId: leg.cableSizeId ?? null, ...ctx,
+          /* This circuit's own origin, not the site's first \u2014 the
+             figures of the POC this circuit actually runs back to. */
+          transformer: sourceImpedance(r.model?.origin || station,
+            lookups?.transformerSizes || []),
+          voltageV: voltageOf(r.model?.origin || station),
+          startPct: upstreamVoltDropPct(r.model?.origin || station),
         }));
       }
     }
@@ -6063,6 +6085,20 @@ export default function GISCanvasPage() {
       return;
     }
 
+    /* Plant goes where it is clicked too \u2014 through resolve, so a
+       click near the main lands ON the main the way every drawn line
+       end does, and a click in open ground is taken exactly. One
+       shot: the state is cleared before the create, so a slow save
+       cannot swallow a second click as a second POC. */
+    if (plantPlace) {
+      const raw = toM(px, py);
+      const { point } = resolve(raw[0], raw[1]);
+      const at = plantPlace;
+      setPlantPlace(null);
+      placePlantAt(point, at.role, at.layerKey);
+      return;
+    }
+
     if (meterCatchUp && !meterFor) {
       const hit = featureAt(px, py);
       if (hit?.Feature_Role === "plot" && hit.Plot_ID != null) {
@@ -8553,7 +8589,7 @@ export default function GISCanvasPage() {
      beside it. Both fall back to where you clicked, with the reason
      said out loud — the original lets you place one before the network
      exists and draw through it afterwards. */
-  async function placeNode(role, forLayer = null) {
+  function placeNode(role, forLayer = null) {
     if (!projectId) return;
     /* The layer is named by the caller where it matters.
 
@@ -8565,38 +8601,46 @@ export default function GISCanvasPage() {
     const layerKey = forLayer
       ?? (role === "substation" || role === "poc" ? "electric" : (utilities[0]?.layer_key ?? "electric"));
 
-    /* One electric POC, several gas or water ones.
+    /* Armed, not placed. This used to put the node in the middle of the
+       view and snap it to the nearest main ANYWHERE on the drawing —
+       tolerable with one POC, and wrong the moment there are two: the
+       point where the site meets the operator's network is a surveyed
+       fact, and which trench it lands on decides which network it
+       owns. So the menu arms a click and the click says where. Escape
+       puts the button back. */
+    setPlantPlace({ role, layerKey });
+    setTool("select");
+    const what = role === "substation" ? "the substation"
+      : role === "governor" ? "the governor"
+        : role === "servicevalve" ? "the service valve"
+          : role === "pumping" ? "the pumping station"
+            : "the POC";
+    setStatus(`Click where ${what} goes \u2014 on the main to sit on it, `
+      + "Esc to cancel");
+  }
 
-       A site can be fed from more than one side: two gas mains in
-       different roads, each serving its own part of the estate, with
-       the networks never meeting. Refusing the second left no way to
-       draw that at all.
+  /* Several POCs on any utility, electric included.
 
-       Electric keeps the rule. Its POC feeds the substation, the
-       substation feeds every circuit, and a second POC would mean a
-       second incomer \u2014 which is a different kind of scheme and not one
-       this draws today. Better a clear refusal than a drawing that
-       half-supports it.
+     A site can be fed from more than one side: two mains in different
+     roads, each serving its own self-contained part of the estate,
+     with the networks never meeting. Gas and water have drawn this
+     for a while; electric used to refuse the second POC because every
+     electric walk assumed one origin. The walks now choose by
+     network \u2014 buildFeederModel roots each circuit at the origin on
+     its own trenches, the report measures each meter from the origin
+     that reaches it, and two origins on ONE network is refused there
+     by name. */
+  /* POC and substation, at the clicked point.
 
-       Nothing else changes here: the walks find their own starting
-       points, and each network is traced from the POC that feeds it. */
-    if (role === "poc" && layerKey === "electric") {
-      const existing = features.find((f) => f.Feature_Role === "poc"
-        && f.Layer_Key === "electric");
-      if (existing) {
-        setError("There is already an electric POC. Move or delete it rather "
-          + "than adding a second.");
-        setSelected([existing.Feature_ID]);
-        return;
-      }
-    }
-
-    /* Middle of the current view, then snapped. Placing it at the centre
-       rather than asking for a click keeps this one button rather than a
-       button and a mode. */
-    const cx = (canvasRef.current?.clientWidth ?? 800) / 2;
-    const cy = (canvasRef.current?.clientHeight ?? 500) / 2;
-    let point = toM(cx, cy);
+     A POC snaps onto a main of its utility and a substation or
+     governor onto a trench — but only one within reach of the click,
+     the same reach resolve gives a drawn line end. Snapping to the
+     nearest main anywhere is what this replaced: from a deliberate
+     click, a snap that can travel across the drawing is the click
+     being overruled. A click in open ground places exactly there, with
+     the reason said out loud — the original lets you place plant
+     before the network exists and draw through it afterwards. */
+  async function placePlantAt(point, role, layerKey) {
     let note = "";
 
     /* A governor snaps to a trench like a substation does: it is fixed
@@ -8614,10 +8658,14 @@ export default function GISCanvasPage() {
           && f.Layer_Key === layerKey
           && String(f.Attributes?.Line_Type || "").includes("main"));
 
+    /* Within a click's reach only: the same pixels resolve gives a
+       snap, in metres at the current zoom, and never less than half a
+       metre so a close zoom still catches the line under the cursor. */
+    const reach = Math.max(0.5, SNAP_PX / (view.scale || 1));
     let best = null;
     for (const t of targets) {
       const r = nearestOnPolyline(point, t.Geometry || []);
-      if (r && (!best || r.d < best.d)) best = { ...r, line: t };
+      if (r && r.d <= reach && (!best || r.d < best.d)) best = { ...r, line: t };
     }
     /* The bearing of the main under it, where there is one.
 
@@ -8658,7 +8706,10 @@ export default function GISCanvasPage() {
     const label = role === "substation" ? `Substation ${count}`
       : role === "governor" ? `Gas Governor ${count}`
         : isValve ? `SV ${count}`
-          : `${utilityName} POC`;
+          /* Numbered like the others once there can be several. The
+             first keeps the name every existing drawing has, so
+             nothing that reads "Electric POC" by label breaks. */
+          : count === 1 ? `${utilityName} POC` : `${utilityName} POC ${count}`;
 
     try {
       await addFeature({
@@ -16840,15 +16891,22 @@ export default function GISCanvasPage() {
         jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
       } : {}) };
       for (const part of parts) {
+        /* This circuit's own origin, where the model knows it \u2014 a
+           site fed from two POCs has two, each with its own declared
+           impedance and upstream drop, and reading the first POC's
+           figures against the second POC's circuit is two networks'
+           numbers in one sum. The model chose its origin by which
+           network the circuit stands on; its figures follow. */
+        const origin = part.model?.origin || station;
         const ctx = {
           cableById: (id) => cables.find((c) => String(c.Cable_Size_ID) === String(id)) || null,
           cableTypes: lookups?.cableTypes || [],
-          transformer: sourceImpedance(station, lookups?.transformerSizes || []),
-          voltageV: voltageOf(station),
+          transformer: sourceImpedance(origin, lookups?.transformerSizes || []),
+          voltageV: voltageOf(origin),
           /* What the feeding network already spent, from the POC. Zero
              on a substation-fed scheme, where the transformer is the
              start and there is nothing upstream of it. */
-          startPct: upstreamVoltDropPct(station),
+          startPct: upstreamVoltDropPct(origin),
           /* The same drawn lines the advanced check measures tails
              along. Built here from the same `src` rather than shared,
              but they must agree: a service that lengthens a run in one
@@ -16896,7 +16954,9 @@ export default function GISCanvasPage() {
          itself as measured from something not on the drawing \u2014 and the
          warning underneath, telling somebody to set a transformer,
          agreed with the heading and not with the site. */
-      from: lvOrigin(src)?.Feature_Role === "poc" ? "the POC" : "the substation",
+      from: lvOrigins(src).length > 1
+        ? "their own origins"
+        : (lvOrigin(src)?.Feature_Role === "poc" ? "the POC" : "the substation"),
       /* Whether the voltage everything was calculated against came from
          the drawing or from the fallback. */
       voltageAssumed: workingVoltage(lvOrigin(src)).assumed,
@@ -16985,7 +17045,10 @@ export default function GISCanvasPage() {
          node trace, and it had its own copy of the lookup \u2014 so fixing
          the circuit trace alone would have left a POC-fed network still
          reporting cable-only figures from here. */
-      const station = lvOrigin(src);
+      /* The origin the walk actually started from \u2014 on a two-POC site
+         the model rooted itself at this node's own network's origin,
+         and the site's first POC may be the other one. */
+      const station = r.model?.origin || lvOrigin(src);
       const transformer = sourceImpedance(station, lookups?.transformerSizes || []);
       const voltageV = voltageOf(station);
 
@@ -16994,7 +17057,7 @@ export default function GISCanvasPage() {
         cableTypes: lookups?.cableTypes || [],
         transformer: transformer || null,
         voltageV,
-        startPct: upstreamVoltDropPct(lvOrigin(src)),
+        startPct: upstreamVoltDropPct(station),
         /* The drawn service trenches and mains the tail is measured
            along. serviceFor walks the trench actually drawn rather than
            dropping a perpendicular, so these are the geometry it needs
@@ -17172,6 +17235,9 @@ export default function GISCanvasPage() {
          still waiting for a click. */
       if (e.key === "Escape" && lightingPlace) {
         setLightingPlace(null); setConnectColumn(null); setStatus(""); return;
+      }
+      if (e.key === "Escape" && plantPlace) {
+        setPlantPlace(null); setStatus(""); return;
       }
       if (e.key === "Escape" && (meterCatchUp || meterFor)) {
         setMeterCatchUp(null); setMeterFor(null); return;

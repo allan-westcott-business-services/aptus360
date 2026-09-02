@@ -97,8 +97,10 @@ const poc = (attrs = {}) => ({
     fail("the levels check still looks for a substation directly");
   }
   if (!/lvOrigin\(src\)/.test(body)) fail("the levels check does not use the origin");
-  if (!/sourceImpedance\(station/.test(body)) {
-    fail("the levels check does not take its impedance from the origin");
+  /* Per circuit now: each part reads the origin its own model rooted
+     at, so a two-POC site reads two sets of source figures. */
+  if (!/sourceImpedance\(origin/.test(body)) {
+    fail("the levels check does not take its impedance from the circuit's own origin");
   }
 }
 

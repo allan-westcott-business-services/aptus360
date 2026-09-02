@@ -93,8 +93,11 @@ const gasPoc = {
   }
   /* And the router roots the tree on it, so the guard and the routing
      cannot disagree about what counts. */
-  if (!/const sub = lvOrigin\(features\)/.test(feeder)) {
-    fail("the feeder model does not root on the same origin");
+  /* Plural now: the model roots each circuit at the origin on its own
+     network, chosen from lvOrigins \u2014 the same list, so the gates and
+     the routing still cannot disagree about what counts as an origin. */
+  if (!/const origins = lvOrigins\(features\)/.test(feeder)) {
+    fail("the feeder model does not root on the same origin list");
   }
 
   /* The refusal names both, or somebody with a POC on the drawing is

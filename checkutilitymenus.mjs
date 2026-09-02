@@ -955,8 +955,12 @@ const onScreen = (keys) => {
     fail("trench connectivity still anchors on a substation, so a POC-only site "
       + "falls back to guessing the largest component");
   }
-  if (!/lvOrigin\(features\)/.test(fn)) {
-    fail("trench connectivity does not use the same origin the feeder build does");
+  /* lvOrigins now, plural: a site can be fed from more than one POC,
+     each origin's piece is connected, and the build chooses among the
+     same list \u2014 so the two still cannot disagree about where a
+     network starts. */
+  if (!/lvOrigins\(features\)/.test(fn)) {
+    fail("trench connectivity does not use the same origin list the feeder build does");
   }
   /* The panel needs to name what was found, or it says "origin" at
      somebody who placed a POC. */

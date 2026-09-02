@@ -125,9 +125,9 @@ const isService = (f) => String(f.Attributes?.Line_Type || "").includes("service
    module — buildFeederModel below calls it, and the bare re-export left
    it undeclared here. checkscope caught it; the browser would have
    caught it as a blank canvas. */
-import { lvOrigin } from "./electric.js";
+import { lvOrigin, lvOrigins } from "./electric.js";
 
-export { lvOrigin };
+export { lvOrigin, lvOrigins };
 
 
 /* ── Who is on a circuit ──
@@ -267,8 +267,8 @@ export function buildFeederModel(features = [], opts = {}) {
   }
   if (!nodes.length) return { error: "No trenches to route cables along." };
 
-  const sub = lvOrigin(features);
-  if (!sub) {
+  const origins = lvOrigins(features);
+  if (!origins.length) {
     return {
       error: "Place a substation, or an electric POC on the mains trench "
         + "\u2014 feeders route back to one of them.",
@@ -283,6 +283,100 @@ export function buildFeederModel(features = [], opts = {}) {
     }
     return { i: bi, d: bd };
   };
+
+  /* ── Which origin, where there is more than one ──
+
+     A site fed from two points of connection has two networks that
+     never meet, and each circuit belongs to the one it is drawn on. So
+     the origin is chosen by component: the piece of the trench graph
+     that holds the circuit's seeds is the piece whose origin feeds it.
+
+     Seeds decide, not distance. Two POCs in the same road can each be
+     nearer to some of the other's plots than their own \u2014 nearness says
+     where things are, the trench network says what connects to what,
+     and only the second routes cable.
+
+     With no seeds to ask (a whole-drawing model), the first origin \u2014
+     substation before POC, drawing order within each \u2014 which is what
+     lvOrigin always answered, so a one-origin site cannot notice any
+     of this.
+
+     ── Two origins on one network ──
+
+     A substation with a POC beside it is the ordinary incomer
+     arrangement and the substation simply wins, as it always has. Two
+     POCs on one network, or two substations, is a drawing fault: the
+     feeders would route from one chosen by list order, which is a
+     guess dressed as an answer, and the person who drew two meant two
+     networks. Refused by name so the fix is on the drawing. */
+  const compOf = new Array(nodes.length).fill(-1);
+  {
+    let c = 0;
+    for (let i = 0; i < nodes.length; i++) {
+      if (compOf[i] >= 0) continue;
+      const q = [i];
+      compOf[i] = c;
+      while (q.length) {
+        const u = q.pop();
+        for (const e of adj.get(u) || []) {
+          if (compOf[e.to] < 0) { compOf[e.to] = c; q.push(e.to); }
+        }
+      }
+      c++;
+    }
+  }
+  const originAt = origins.map((o) => ({ o, at: nearest(o.Geometry[0]) }));
+  const nameOrigin = (o) => (o.Feature_Role === "substation"
+    ? (o.Label || "the substation") : (o.Label || `POC #${o.Feature_ID}`));
+
+  let sub = originAt[0].o;
+  if (origins.length > 1) {
+    const byComp = new Map();
+    for (const { o, at } of originAt) {
+      const k = compOf[at.i];
+      if (!byComp.has(k)) byComp.set(k, []);
+      byComp.get(k).push(o);
+    }
+    for (const [, os] of byComp) {
+      const subs = os.filter((o) => o.Feature_Role === "substation");
+      const rest = os.filter((o) => o.Feature_Role !== "substation");
+      if (subs.length > 1 || (subs.length === 0 && rest.length > 1)) {
+        return {
+          error: `${nameOrigin(os[0])} and ${nameOrigin(os[1])} stand on the `
+            + "same trench network. Each origin serves its own self-contained "
+            + "network \u2014 split the trenches, or remove one of them.",
+        };
+      }
+    }
+    /* The component the circuit is on: its first seed's or member
+       meter's own point, taken to the nearest trench node the same way
+       the origin is. */
+    let want = -1;
+    for (const f of features) {
+      const isSeed = seedIds?.size && f.Feature_Role === "plot"
+        && seedIds.has(Number(f.Feature_ID));
+      const isMember = meterIds?.size && f.Feature_Role === "meter"
+        && meterIds.has(Number(f.Feature_ID));
+      if (!isSeed && !isMember) continue;
+      const g = (f.Geometry || [])[0];
+      if (!g) continue;
+      want = compOf[nearest(g).i];
+      break;
+    }
+    if (want >= 0) {
+      const owner = originAt.find(({ o, at }) => compOf[at.i] === want
+        && (o.Feature_Role === "substation"
+          || !originAt.some((x) => x.o !== o && compOf[x.at.i] === want
+            && x.o.Feature_Role === "substation")));
+      if (owner) sub = owner.o;
+      else {
+        return {
+          error: "This circuit's network has no origin on it \u2014 place a "
+            + "substation or an electric POC on the trenches that serve it.",
+        };
+      }
+    }
+  }
 
   /* ── Where a plot's load hangs ──
 
@@ -478,7 +572,15 @@ export function buildFeederModel(features = [], opts = {}) {
     }
   }
 
-  return { nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt, S, order, attached, skipped };
+  return {
+    nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt,
+    S, order, attached, skipped,
+    /* The origin this model is rooted at \u2014 the feature, so a caller
+       reading source impedance or the declared upstream volt drop reads
+       the figures of the origin the walk actually started from, not
+       whichever one lvOrigin(features) happens to put first. */
+    origin: sub,
+  };
 }
 
 export const cablesFor = (meters, perCable = METERS_PER_CABLE) =>
@@ -915,27 +1017,42 @@ export function trenchComponents(features = [], opts = {}) {
      Without either, the largest by length is still the best guess —
      and saying which assumption was made matters, because the answer
      changes if it is wrong. */
-  const sub = lvOrigin(features);
+  /* Every origin's piece is the network \u2014 there can be more than one.
+
+     A site fed from two points of connection is two self-contained
+     networks on purpose, and calling the second an orphan would send
+     somebody to join trenches that must not be joined. Each piece
+     holding an origin is connected; an orphan is a piece holding none,
+     and its gap is measured to whichever connected piece it comes
+     closest to, because that is the join somebody would dig. */
+  const subs = lvOrigins(features);
+  const sub = subs[0] || null;
+  const rootIds = new Set();
   let rootId = -1;
   let rootBy = "none";
-  if (sub) {
-    let bd = Infinity;
+  for (const o of subs) {
+    let bd = Infinity, ri = -1;
     for (let i = 0; i < nodes.length; i++) {
-      const d = dist(nodes[i], sub.Geometry[0]);
-      if (d < bd) { bd = d; rootId = comp[i]; }
+      const d = dist(nodes[i], o.Geometry[0]);
+      if (d < bd) { bd = d; ri = comp[i]; }
     }
-    rootBy = "origin";
+    if (ri >= 0) {
+      rootIds.add(ri);
+      if (rootId < 0) { rootId = ri; rootBy = "origin"; }
+    }
   }
   if (rootId < 0 && groups.length) {
     rootId = groups.reduce((best, g) => (g.metres > groups[best].metres ? g.id : best), 0);
+    rootIds.add(rootId);
     rootBy = "largest";
   }
 
-  /* For each orphan, the closest it comes to the network and where. That
-     pair of points is the gap to close. */
-  const rootNodes = rootId >= 0 ? groups[rootId].nodeIndexes : [];
+  /* For each orphan, the closest it comes to any connected piece and
+     where. That pair of points is the gap to close. */
+  const rootNodes = [];
+  for (const g of groups) if (rootIds.has(g.id)) rootNodes.push(...g.nodeIndexes);
   for (const g of groups) {
-    if (g.id === rootId || !rootNodes.length) { g.gap = null; continue;
+    if (rootIds.has(g.id) || !rootNodes.length) { g.gap = null; continue;
     }
     let best = null;
     for (const a of g.nodeIndexes) {
@@ -948,14 +1065,14 @@ export function trenchComponents(features = [], opts = {}) {
   }
 
   const orphans = groups
-    .filter((g) => g.id !== rootId)
+    .filter((g) => !rootIds.has(g.id))
     .sort((a, b) => (a.gap?.metres ?? Infinity) - (b.gap?.metres ?? Infinity));
 
-  /* Which piece holds the substation, per group, so a panel doesn't have
+  /* Which piece holds an origin, per group, so a panel doesn't have
      to compare ids to find out. */
   /* `hasOrigin`, not `hasSubstation`: the thing it holds is a
      substation on most sites and an electric POC on the rest. */
-  for (const g of groups) g.hasOrigin = g.id === rootId;
+  for (const g of groups) g.hasOrigin = rootIds.has(g.id);
 
   /* The connected piece first: it is the one nobody has to go and find,
      and everything else is measured against it. */

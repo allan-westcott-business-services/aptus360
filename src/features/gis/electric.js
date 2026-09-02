@@ -1289,13 +1289,32 @@ export function whyUnreached(features = [], rootId, featureId) {
    Only an electric one. A gas POC is on the drawing of nearly every
    scheme and has nothing to say about where a cable routes back to. */
 export function lvOrigin(features = []) {
+  return lvOrigins(features)[0] || null;
+}
+
+/* All of them, substations first.
+
+   A site can be fed from more than one side: two points of connection
+   in different roads, each serving its own self-contained network, the
+   networks never meeting. The gas side has worked this way since the
+   second gas POC was allowed; electric held to one origin because
+   every electric walk assumed it. The walks now choose between these
+   by which network the thing being walked stands on \u2014 see
+   buildFeederModel \u2014 so the list is the truth and lvOrigin is the
+   convenience for the common site that has one.
+
+   Substations before POCs, in drawing order within each: that keeps
+   lvOrigin answering exactly what it always answered, and it is the
+   right precedence where one network has both \u2014 the feeders begin at
+   the transformer and the POC beside it is where the incomer
+   arrives. */
+export function lvOrigins(features = []) {
   const has = (f) => (f.Geometry || []).length > 0;
-
-  const sub = features.find((f) => f.Feature_Role === "substation" && has(f));
-  if (sub) return sub;
-
-  return features.find((f) => f.Feature_Role === "poc"
-    && f.Layer_Key === "electric" && has(f)) || null;
+  return [
+    ...features.filter((f) => f.Feature_Role === "substation" && has(f)),
+    ...features.filter((f) => f.Feature_Role === "poc"
+      && f.Layer_Key === "electric" && has(f)),
+  ];
 }
 
 export function circuitReport(features = [], opts = {}) {
@@ -1344,7 +1363,8 @@ export function circuitReport(features = [], opts = {}) {
      and the report is the only place a meter is moved from one circuit
      to another, so the one drawing that most needed it was the one that
      could not open it. */
-  const station = lvOrigin(features);
+  const stations = lvOrigins(features);
+  const station = stations[0] || null;
   const meters = features.filter(
     (f) => f.Feature_Role === "meter" && f.Layer_Key === "electric");
 
@@ -1357,7 +1377,44 @@ export function circuitReport(features = [], opts = {}) {
   if (!meters.length) {
     return { error: "No electric meters placed yet \u2014 nothing to report." };
   }
-  const dist = distancesFrom(features, station.Feature_ID);
+
+  /* ── Measured from the origin that feeds it ──
+
+     One walk per origin, merged. A site fed from two points of
+     connection is two self-contained networks, and a meter has a
+     distance on exactly one of them \u2014 measured from its own origin.
+     Walking only the first origin called everything on the second
+     network unreachable, which is how the drawing looked before the
+     second POC was allowed at all.
+
+     First origin wins a tie, which can only happen where two origins
+     share a network \u2014 the substation-with-incomer case, where the
+     substation is first by lvOrigins' ordering and is the right
+     answer for the same reason it always was. */
+  const dist = new Map();
+  const originOf = new Map();
+  for (const o of stations) {
+    const d = distancesFrom(features, o.Feature_ID);
+    for (const [id, v] of d) {
+      if (!dist.has(id)) { dist.set(id, v); originOf.set(id, o); }
+    }
+    /* The primary origin's own gap to the network, kept: it is the one
+       the header reports, exactly as it did with one origin. */
+    if (o === station) dist.rootGapM = d.rootGapM;
+  }
+
+  /* The origin to explain an unreached meter against: the nearest one,
+     because on a drawing of self-contained networks the nearest is the
+     one the meter was meant to be on, and the gap named should be the
+     gap to that network rather than to one across the site. */
+  const originToBlame = (m) => {
+    const p = (m.Geometry || [])[0];
+    if (!p || stations.length === 1) return station;
+    return stations.reduce((best, o) => {
+      const d = Math.hypot(o.Geometry[0][0] - p[0], o.Geometry[0][1] - p[1]);
+      return !best || d < best.d ? { o, d } : best;
+    }, null).o;
+  };
 
   const rec = (m) => {
     const plot = m.Plot_ID != null ? plotById(m.Plot_ID) : null;
@@ -1401,7 +1458,18 @@ export function circuitReport(features = [], opts = {}) {
       /* And why not, where not. A dash sends somebody to "check the
          trenches join up" across the whole site; a sentence with the
          gap in metres sends them to one place on the drawing. */
-      why: d == null ? whyUnreached(features, station.Feature_ID, m.Feature_ID) : null,
+      why: d == null
+        ? whyUnreached(features, originToBlame(m).Feature_ID, m.Feature_ID)
+        : null,
+      /* Which origin it is measured from, for a site with more than
+         one. Null where it is unreached; one origin on the ordinary
+         site, so the report only says it when there is something to
+         say. */
+      originLabel: d != null && stations.length > 1
+        ? (originOf.get(Number(m.Feature_ID))?.Label
+          || (originOf.get(Number(m.Feature_ID))?.Feature_Role === "substation"
+            ? "Substation" : `POC #${originOf.get(Number(m.Feature_ID))?.Feature_ID}`))
+        : null,
       circuitId: m.Attributes?.Circuit_ID ?? null,
       circuitName: m.Attributes?.Circuit_Name ?? null,
       circuitLetter: m.Attributes?.Circuit_Letter ?? null,

@@ -1,9 +1,10 @@
-# Four fixes, 1 Sep 2026
+# Four fixes and a feature, 1 Sep 2026
 
 1. A cable that runs through a span node feeds it
 2. A meter beside its service reaches the substation
 3. Load tapped along a leg is charged on that leg
 4. Hand-set cable sizes survive Build LV Network
+5. **Multiple electric POCs** — each serving its own self-contained network
 
 Also: **number inputs no longer have spin buttons, and the mouse wheel no
 longer edits a focused one** (`src/styles.css`, `src/App.jsx`). App-wide,
@@ -218,9 +219,45 @@ itself. A silent sync now fills only nodes that have no override of
 their own; the menu item, which asks first and names every node,
 remains the place a node is reconciled with its run.
 
+---
+
+# 5. Multiple electric POCs
+
+A site can be fed from more than one point of connection: two POCs in
+different roads, each serving its own self-contained network, the
+networks never meeting. Gas and water have drawn this for a while;
+electric refused the second POC because every electric walk assumed one
+origin.
+
+| File | Change |
+|------|--------|
+| `src/features/gis/electric.js` | `lvOrigins` (all origins, substations first); the circuit report walks every origin and measures each meter from the one that reaches it, with an `originLabel` per row on multi-origin sites |
+| `src/features/gis/feeder.js` | `buildFeederModel` roots each circuit at the origin on its own trench component (seeds decide, not distance) and returns `origin`; two POCs on one network refused by name; a substation beside its incomer POC still wins silently; `trenchComponents` calls every origin's piece connected |
+| `src/features/gis/GISCanvasPage.jsx` | The one-electric-POC refusal removed; the levels check, canvas labels, single-node trace and scenario search read source impedance, voltage and upstream drop from **each circuit's own origin** |
+| `checkmultipoc.mjs` | New; `checklvorigin`, `checksourceimpedance`, `checkutilitymenus` updated to the plural |
+
+No SQL. Each POC carries its own declared loop impedance and upstream
+volt drop, and each circuit is judged against its own POC's figures.
+
+**Placement is by click now.** The menu button arms the next canvas
+click; the node goes where you click, snapped onto a main or trench
+only when the click lands within a click's reach of one (the same
+reach a drawn line end gets), never across the drawing. Esc cancels.
+This applies to all plant — POC, substation, governor, service valve —
+because the old behaviour (centre of the view, snapped to the nearest
+main anywhere) chose the network for you, which is exactly wrong once
+there are two. A second POC on a utility is labelled "Electric POC 2";
+the first keeps its unnumbered name so existing drawings read
+unchanged.
+
+Not done, deliberately: the way-fuse capacity comparison in the report
+header still reads the first origin. On a two-POC site the per-origin
+capacity split is a design question (which ways belong to which POC)
+rather than a walk, and it deserves its own session.
+
 ## Suite
 
-**100 of 109** with `--py`. The nine failures are all pre-existing and
+**101 of 110** with `--py`. The nine failures are all pre-existing and
 none is in this area: `checkaslaidplan`, `checkbottleends`,
 `checkprojecttabs` (as recorded), `checkdevelopers` and
 `checkmigrations` (0198 is not in the folder), `checkorphans`,

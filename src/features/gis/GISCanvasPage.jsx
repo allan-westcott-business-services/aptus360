@@ -12917,14 +12917,26 @@ export default function GISCanvasPage() {
            dig's and the build no longer touches them. */
         + (fepsMade ? `, ${fepsMade} feeder point(s)` : "")
         + (renumbered ? `, ${renumbered} resequenced` : "")
-        /* Which POC fed which circuit, where a rule had to choose \u2014 a
-           two-POC drawing should not need checking by eye. */
-        + planned
-          .filter((x) => x.originBy === "nearest" && x.origin)
-          .map((x) => `; ${x.circuit.name} \u2190 ${x.origin.Label
-            || (x.origin.Feature_Role === "substation" ? "the substation" : "POC")}`
-            + " (nearest along the trench)")
-          .join("")
+        /* Which POC fed which circuit, and by which rule \u2014 ALWAYS on a
+           multi-origin drawing, not only when a rule guessed. "Both
+           cables from the same POC" was reported with every meter
+           correctly named in the database, and the status had nothing
+           to say because the named path is the quiet one. A build that
+           states its origins turns that report into one readable line:
+           if it says "named" and the drawing disagrees, the cables on
+           screen are not this build's; if it names one POC twice, the
+           model is wrong and says how; if it says nothing at all, the
+           deployed model predates origin rules \u2014 which is also worth
+           knowing, and is what "(rule unknown \u2014 old model)" means. */
+        + (lvOrigins(features).length > 1
+          ? planned.map((x) => `; ${x.circuit.name} \u2190 ${x.origin
+            ? (x.origin.Label || (x.origin.Feature_Role === "substation"
+              ? "the substation" : `POC #${x.origin.Feature_ID}`))
+            : "?"} (${{ named: "named", only: "its own network",
+              nearest: "nearest along the trench",
+              first: "first origin" }[x.originBy]
+              || "rule unknown \u2014 old model"})`).join("")
+          : "")
         + (startCable
           ? `, on ${cableName(startCable)}`
           : ", no LV cable in the catalogue to default to")

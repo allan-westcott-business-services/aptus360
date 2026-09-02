@@ -1429,8 +1429,8 @@ export function circuitReport(features = [], opts = {}) {
         ? "Substation" : `POC #${o.Feature_ID}`),
     }))
     : [];
-  const namedOriginOf = (ms) => ms
-    .map((m) => m.Attributes?.Circuit_Origin_ID)
+  const namedOriginOf = (rows) => rows
+    .map((r) => r.circuitOriginId)
     .find((x) => x != null) ?? null;
 
   const originToBlame = (m) => {
@@ -1491,6 +1491,12 @@ export function circuitReport(features = [], opts = {}) {
          one. Null where it is unreached; one origin on the ordinary
          site, so the report only says it when there is something to
          say. */
+      /* Which POC the circuit names, carried on every row because the
+         grouping below holds rows, not features \u2014 reading Attributes
+         off a row is how the Fed from box showed "Build decides"
+         whatever the database held, snapping back after every pick
+         that had in fact saved. */
+      circuitOriginId: m.Attributes?.Circuit_Origin_ID ?? null,
       originLabel: d != null && stations.length > 1
         ? (originOf.get(Number(m.Feature_ID))?.Label
           || (originOf.get(Number(m.Feature_ID))?.Feature_Role === "substation"

@@ -493,12 +493,26 @@ const feedsNothing = (line, isTrench) => {
    circuit's, or one that names none. A node is given its circuit when
    the build routes through it, and one the build pruned never gets one.
    Never the origin \u2014 nothing feeds it. */
-const feedable = (features, cid) => features.filter((f) =>
-  f.Feature_Role === "spannode"
-  && (cid == null || f.Attributes?.Circuit_ID == null
-    || String(f.Attributes.Circuit_ID) === String(cid))
-  && Number(f.Attributes?.Span_Seq) !== 0
-  && (f.Geometry || []).length);
+const feedable = (features, cid) => {
+  /* Feeder points first: where the circuit has its own electrical
+     points, they are what a cable feeds, and the span nodes beside
+     them go back to documenting the dig. A cable naming no circuit,
+     or a drawing from before feeder points existed, feeds span nodes
+     exactly as it always did. */
+  if (cid != null) {
+    const feps = features.filter((f) => f.Feature_Role === "feederpoint"
+      && String(f.Attributes?.Circuit_ID) === String(cid)
+      && Number(f.Attributes?.Span_Seq) !== 0
+      && (f.Geometry || []).length);
+    if (feps.length) return feps;
+  }
+  return features.filter((f) =>
+    f.Feature_Role === "spannode"
+    && (cid == null || f.Attributes?.Circuit_ID == null
+      || String(f.Attributes.Circuit_ID) === String(cid))
+    && Number(f.Attributes?.Span_Seq) !== 0
+    && (f.Geometry || []).length);
+};
 
 /* Where a node belongs on the dig, not where its marker was dragged. */
 const posOf = (f) => {
@@ -664,7 +678,8 @@ export function runsThrough(line, node, opts = {}) {
    circuit or naming none; ties on the lower Feature_ID so the answer
    is the same on every run. */
 export function runThrough(node, features = [], opts = {}) {
-  if (node?.Feature_Role !== "spannode") return null;
+  if (node?.Feature_Role !== "spannode"
+    && node?.Feature_Role !== "feederpoint") return null;
   if (Number(node.Attributes?.Span_Seq) === 0) return null;
   if (!(node.Geometry || []).length) return null;
   const own = node.Attributes?.Circuit_ID ?? null;

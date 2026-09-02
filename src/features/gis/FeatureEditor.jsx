@@ -630,6 +630,10 @@ export default function FeatureEditor({
     /* A span node is what the whole network is measured between, and
        "Point" told somebody nothing they did not already know. */
     : feature.Feature_Role === "spannode" ? "Span node"
+    /* Its own name: a feeder point is one circuit's cable junction,
+       and calling it a span node in the header would re-conflate the
+       two things the feature exists to keep apart. */
+    : feature.Feature_Role === "feederpoint" ? "Feeder end point"
     /* The two are the same fitting and the same symbol, but one is a
        service take-off and the other is the main dividing, and somebody
        who has opened it wants to know which they are looking at. */
@@ -1157,7 +1161,7 @@ export default function FeatureEditor({
 
               A plain figure as well, because on a phase nobody has
               designed the mix usually is not known. */}
-          {feature.Feature_Role === "spannode" && (
+          {(feature.Feature_Role === "spannode" || feature.Feature_Role === "feederpoint") && (
             <FutureAllowance
               value={f.Attributes.Future_Allowance ?? null}
               consumption={lookups?.houseTypeConsumption || []}
@@ -1166,7 +1170,7 @@ export default function FeatureEditor({
             />
           )}
 
-          {feature.Feature_Role === "spannode" && (
+          {(feature.Feature_Role === "spannode" || feature.Feature_Role === "feederpoint") && (
             <div className="fld">
               {f.Attributes.Circuit_ID != null ? (
                 <>
@@ -1217,7 +1221,8 @@ export default function FeatureEditor({
               Not offered on the origin, because nothing feeds the
               substation. That is the only case where the question does
               not arise. */}
-          {feature.Feature_Role === "spannode"
+          {(feature.Feature_Role === "feederpoint"
+            || feature.Feature_Role === "spannode")
             && Number(f.Attributes.Span_Seq) !== 0 && (
             <>
               {/* The build's answer and the override, the same pair the

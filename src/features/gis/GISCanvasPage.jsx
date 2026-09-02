@@ -478,6 +478,11 @@ export default function GISCanvasPage() {
      the site is walked and the only order that reads at all once most
      rows are called "Service joint — Plot 21". */
   const [traceOrder, setTraceOrder] = useState("label");
+  /* Which circuit the levels table shows, where the check ran several.
+     One at a time \u2014 two circuits' levels side by side at shared points
+     read as one network with contradictory figures. Null means the
+     first circuit; the trace's own single-circuit case never asks. */
+  const [traceCircuit, setTraceCircuit] = useState(null);
   /* Show only where the runs finish.
 
      A levels check is usually read for one question — does anything at
@@ -1493,7 +1498,10 @@ export default function GISCanvasPage() {
       const wanted = line
         ? (f.Layer_Key === "trench" || f.Layer_Key === "electric")
         : (f.Feature_Role === "substation" || f.Feature_Role === "meter"
-          || f.Feature_Role === "spannode" || f.Feature_Role === "plot");
+          || f.Feature_Role === "spannode" || f.Feature_Role === "plot"
+          /* A feeder point is a stop the cascade computes to, so a
+             change to one must re-run it. */
+          || f.Feature_Role === "feederpoint");
       if (!wanted) continue;
       k.push(f.Feature_ID, f.Feature_Role, f.Layer_Key, f.Geometry, f.Plot_ID,
         a.Line_Type, a.Circuit_ID, a.Span_Seq, a.Seed_Feature_ID,
@@ -2192,8 +2200,8 @@ export default function GISCanvasPage() {
          with it, which are the whole point of this view. */
       if (lightingView) return inLightingView(f);
 
-      const keys = f.Feature_Role === "spannode"
-        ? ["role:spannode", `${f.Layer_Key}:role:spannode`]
+      const keys = f.Feature_Role === "spannode" || f.Feature_Role === "feederpoint"
+        ? [`role:${f.Feature_Role}`, `${f.Layer_Key}:role:${f.Feature_Role}`]
         : classKeys(f);
       /* ── What is being placed is always on screen ──
 
@@ -4173,7 +4181,8 @@ export default function GISCanvasPage() {
            to the Joint labels switch while a plot number carries on
            following the master one. */
         if (f.Label && labelShown(f, on) && view.scale > 2.5
-            && !isMeter && f.Feature_Role !== "spannode") {
+            && !isMeter && f.Feature_Role !== "spannode"
+        && f.Feature_Role !== "feederpoint") {
           ctx.fillStyle = pointStyle.labelColour;
           ctx.font = "600 11px ui-monospace, Menlo, monospace";
           ctx.textAlign = "center";
@@ -5240,11 +5249,21 @@ export default function GISCanvasPage() {
        hide them. Drawn here, after every feature and every overlay, they
        cannot be covered by construction rather than by ordering luck. */
     for (const f of visible) {
-      if (f.Feature_Role !== "spannode") continue;
+      if (f.Feature_Role !== "spannode"
+        && f.Feature_Role !== "feederpoint") continue;
       const g = f.Geometry || [];
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
       const ps = styleFor(f);
+      /* A feeder point wears its circuit's colour \u2014 the same one the
+         circuit's cable is drawn in, so the point and the run it
+         belongs to can never disagree. The style row's colour is only
+         the fallback for a point whose circuit has no colour yet.
+         Span nodes keep the style's trench brown: they are points on
+         the dig. */
+      const circuitColour = f.Feature_Role === "feederpoint"
+        ? (ringColours?.get?.(Number(f.Attributes?.Circuit_ID)) || null)
+        : null;
 
       /* ── The leader back to the trench ──
 
@@ -5457,7 +5476,7 @@ export default function GISCanvasPage() {
 
       ctx.beginPath();
       ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#0f172a");
+      ctx.fillStyle = on ? "#1d4ed8" : (circuitColour ?? ps.colour ?? "#0f172a");
       ctx.fill();
 
       /* Past its limit on loop impedance or volt drop.
@@ -6161,7 +6180,8 @@ export default function GISCanvasPage() {
        because a span node is a point and would never reach that block. */
     if (tool === "select" && selected.length === 1) {
       const sn = features.find((x) => x.Feature_ID === selected[0]);
-      const anch = sn?.Feature_Role === "spannode" ? sn.Attributes?.Span_Anchor : null;
+      const anch = (sn?.Feature_Role === "spannode" || sn?.Feature_Role === "feederpoint")
+        ? sn.Attributes?.Span_Anchor : null;
       if (Array.isArray(anch) && anch.length === 2) {
         const q = toPx(anch);
         if (Math.hypot(q.x - px, q.y - py) <= HANDLE_PX) {
@@ -6315,7 +6335,8 @@ export default function GISCanvasPage() {
       const movedPoints = next
         .map((id) => features.find((x) => x.Feature_ID === id))
         .filter((f) => f && f.Feature_Type === "point" && (f.Geometry || []).length)
-        .filter((f) => f.Feature_Role !== "spannode");
+        .filter((f) => f.Feature_Role !== "spannode"
+          && f.Feature_Role !== "feederpoint");
 
       for (const pt of movedPoints) {
         const at = pt.Geometry[0];
@@ -7751,7 +7772,9 @@ export default function GISCanvasPage() {
      the neighbours of one feature — so this costs a handful of rows
      rather than a pass over the drawing. */
   /* Which fittings are placed on the dig and move with it. */
-  const CARRY_ROLES = useMemo(() => new Set(["joint", "spannode", "linkbox"]), []);
+  /* And a feeder point: it stands on the cable in the trench, and a
+     trench that moves takes the cable's junctions with it. */
+  const CARRY_ROLES = useMemo(() => new Set(["joint", "spannode", "linkbox"]).add("feederpoint"), []);
 
   /* Which line types are services, and which trench types are.
 
@@ -7950,7 +7973,8 @@ export default function GISCanvasPage() {
 
       const rows = next
         .filter((f) => touched.has(Number(f.Feature_ID))
-          && (f.Feature_Type === "line" || f.Feature_Role === "spannode"))
+          && (f.Feature_Type === "line" || f.Feature_Role === "spannode"
+          || f.Feature_Role === "feederpoint"))
         .map((f) => ({ f, Connects: linksFor(f, next) }))
         .filter(({ f, Connects }) => {
           const was = f.Attributes?.Connects || [];
@@ -8058,7 +8082,8 @@ export default function GISCanvasPage() {
       const n = nodeFedBy(l, src);
       if (n) endedAt.add(n.Feature_ID);
     }
-    const through = src.filter((n) => n.Feature_Role === "spannode"
+    const through = src.filter((n) => (n.Feature_Role === "spannode"
+      || n.Feature_Role === "feederpoint")
       && !endedAt.has(n.Feature_ID)
       && Number(n.Attributes?.Span_Seq) !== 0
       && runThrough(n, mains) === line);
@@ -8624,7 +8649,8 @@ export default function GISCanvasPage() {
       : role === "governor" ? "the governor"
         : role === "servicevalve" ? "the service valve"
           : role === "pumping" ? "the pumping station"
-            : "the POC";
+            : role === "feederpoint" ? "the feeder end point"
+              : "the POC";
     setStatus(`Click where ${what} goes \u2014 on the main to sit on it, `
       + "Esc to cancel");
   }
@@ -8652,6 +8678,69 @@ export default function GISCanvasPage() {
      before the network exists and draw through it afterwards. */
   async function placePlantAt(point, role, layerKey) {
     let note = "";
+
+    /* ── A feeder end point is one circuit's ──
+
+       It marks a break in a circuit's cable \u2014 a link box, a planned
+       joint, a stop the router would not have made \u2014 so it has to
+       know whose cable it is on, and the cable under the click says.
+       A click in open ground has no circuit to offer and is refused
+       plainly rather than guessed at: a point that belongs to no
+       circuit would stop no trace and show no level, which reads as
+       placed-and-broken. */
+    if (role === "feederpoint") {
+      const reach = Math.max(0.5, SNAP_PX / (view.scale || 1));
+      let hit = null;
+      for (const t of visible) {
+        if (t.Feature_Type !== "line" || t.Layer_Key !== "electric") continue;
+        if (!String(t.Attributes?.Line_Type || "").includes("main")) continue;
+        if (t.Attributes?.Circuit_ID == null) continue;
+        const r = nearestOnPolyline(point, t.Geometry || []);
+        if (r && r.d <= reach && (!hit || r.d < hit.d)) hit = { ...r, line: t };
+      }
+      if (!hit) {
+        setError("A feeder end point goes on a circuit's cable \u2014 click on "
+          + "the run it belongs to.");
+        return;
+      }
+      const at = hit.q;
+      const cid = hit.line.Attributes.Circuit_ID;
+      /* Sequenced after the circuit's last point for now; the next
+         Build LV Network walks the circuit and puts it in order. */
+      const seq = 1 + features
+        .filter((f) => f.Feature_Role === "feederpoint"
+          && Number(f.Attributes?.Circuit_ID) === Number(cid))
+        .reduce((m, f) => Math.max(m, Number(f.Attributes?.Span_Seq) || 0), 0);
+      const letter = hit.line.Attributes?.Circuit_Letter
+        || String.fromCharCode(64 + Number(cid));
+      const label = `${letter}${seq}`;
+      try {
+        await addFeature({
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: "feederpoint",
+          Geometry: [at],
+          Label: `Point ${label}`,
+          Attributes: {
+            Circuit_ID: cid,
+            Circuit_Name: hit.line.Attributes?.Circuit_Name ?? null,
+            Circuit_Letter: letter,
+            Span_Seq: seq, Span_Label: label, Span_Anchor: at,
+            ...(hit.line.Attributes?.VD_Cable_Size_ID != null
+              ? { VD_Cable_Size_ID: hit.line.Attributes.VD_Cable_Size_ID } : {}),
+            /* No Generated flag: this one is somebody's, and the build
+               adopts it rather than deleting it. */
+          },
+        });
+        await load(projectId);
+        setStatus(`${label} placed on ${hit.line.Attributes?.Circuit_Name
+          ?? `circuit ${cid}`} \u2014 the trace now stops here. The next Build `
+          + "LV Network puts it in sequence.");
+        setTimeout(() => setStatus(""), 8000);
+        setError("");
+      } catch (e) { setError(e.message); }
+      return;
+    }
 
     /* A governor snaps to a trench like a substation does: it is fixed
        plant standing in the ground, not a point on a main. Snapping it
@@ -9400,8 +9489,13 @@ export default function GISCanvasPage() {
       return `${t?.Cable_Type ?? ""} ${c.Size_Label ?? ""}`;
     };
 
+    /* Once a drawing has feeder points, span nodes stop holding cable:
+       the electrical facts have moved. A drawing from before carries on
+       exactly as it did. */
+    const anyFeps = src.some((f) => f.Feature_Role === "feederpoint");
+    const stopRole = anyFeps ? "feederpoint" : "spannode";
     for (const f of src) {
-      if (f.Feature_Role !== "spannode") continue;
+      if (f.Feature_Role !== stopRole) continue;
       const held = sizeIdFor(f, "electric", "manual");
       if (held == null) continue;
       if (!/service/i.test(cableName(held))) continue;
@@ -9508,7 +9602,7 @@ export default function GISCanvasPage() {
        ends at the node: a node a cable arrives at is that cable's, and
        whatever else crosses the point does not get a say. */
     for (const node of src) {
-      if (node.Feature_Role !== "spannode") continue;
+      if (node.Feature_Role !== stopRole) continue;
       if (claimed.has(node.Feature_ID)) continue;
       if (Number(node.Attributes?.Span_Seq) === 0) continue;
       const line = runThrough(node, lines);
@@ -9522,7 +9616,7 @@ export default function GISCanvasPage() {
        this node" look identical on the drawing, and four rounds have
        gone into telling them apart by guesswork. A count turns the next
        question into a fact. */
-    const stillUnset = src.filter((f) => f.Feature_Role === "spannode"
+    const stillUnset = src.filter((f) => f.Feature_Role === stopRole
       && Number(f.Attributes?.Span_Seq) !== 0
       && sizeIdFor(f, "electric", "manual") == null
       && !updates.has(f.Feature_ID));
@@ -10520,7 +10614,8 @@ export default function GISCanvasPage() {
         }
         const rows = next
           .filter((f) => touched.has(Number(f.Feature_ID))
-            && (f.Feature_Type === "line" || f.Feature_Role === "spannode"))
+            && (f.Feature_Type === "line" || f.Feature_Role === "spannode"
+          || f.Feature_Role === "feederpoint"))
           .map((f) => ({ f, Connects: linksFor(f, next) }))
           .filter(({ f, Connects }) => {
             const was = f.Attributes?.Connects || [];
@@ -11439,7 +11534,8 @@ export default function GISCanvasPage() {
        at A1 is not in the length between A1 and A2. Inspecting the whole
        feature reported everything anywhere along it, which on a run
        through three junctions is three answers at once. */
-    const nodes = features.filter((x) => x.Feature_Role === "spannode");
+    const nodes = features.filter((x) => x.Feature_Role === "spannode"
+      || x.Feature_Role === "feederpoint");
     const stretch = at ? stretchAt(f, at, nodes) : null;
     const subject = stretch?.geometry?.length >= 2
       ? { ...f, Geometry: stretch.geometry }
@@ -11940,7 +12036,8 @@ export default function GISCanvasPage() {
     const mine = (f) => Number(f.Attributes?.Circuit_ID) === Number(circuit.id);
 
     const meters = features.filter((f) => f.Feature_Role === "meter" && mine(f));
-    const nodes = features.filter((f) => f.Feature_Role === "spannode" && mine(f));
+    const nodes = features.filter((f) => (f.Feature_Role === "spannode"
+      || f.Feature_Role === "feederpoint") && mine(f));
 
     /* The feeders the circuit was drawn as.
 
@@ -12276,8 +12373,11 @@ export default function GISCanvasPage() {
            creates one, but a circuit made before that did, or one whose
            node has been deleted, would have none — so the build makes
            sure rather than assuming. */
-        const originAt = lvOrigin(src)?.Geometry?.[0];
-        const haveOrigin = !!originNodeFor(src, c.id);
+        /* This circuit's own origin \u2014 on a two-POC site the model chose
+           it (named, substation, or nearest along the trench), and the
+           circuit's A0 goes where its own feed begins, not where the
+           site's first origin happens to stand. */
+        const originAt = r.model?.origin?.Geometry?.[0] || lvOrigin(src)?.Geometry?.[0];
 
         /* Numbered by a walk outward from the substation, nearest branch
            first, rather than by the order the graph produced them. A
@@ -12297,10 +12397,11 @@ export default function GISCanvasPage() {
           circuit: c,
           sections: r.sections,
           nodes: [
-            ...(!haveOrigin && originAt
-              ? [{ point: originAt, kind: "origin", seq: 0 }] : []),
+            ...(originAt ? [{ point: originAt, kind: "origin", seq: 0 }] : []),
             ...walked,
           ],
+          origin: r.model?.origin || null,
+          originBy: r.model?.originBy || null,
         });
       }
 
@@ -12411,7 +12512,7 @@ export default function GISCanvasPage() {
 
       let step = 0;
       const total = totalRuns + totalNodes;
-      let runs = 0, cables = 0, renumbered = 0;
+      let runs = 0, cables = 0, renumbered = 0, fepsMade = 0;
 
       for (const { circuit: c, sections, nodes } of planned) {
         for (const [i, sec] of sections.entries()) {
@@ -12471,196 +12572,133 @@ export default function GISCanvasPage() {
           setProgress({ done: step, total, label: `${c.letter}: run ${i + 1} of ${sections.length}` });
         }
 
-        /* Every node on this circuit is renumbered, not just the new
-           ones.
+        /* ── Feeder End Points: the cable's own junctions ──
 
-           Numbering used to continue from the highest existing sequence,
-           so a rebuild left old nodes on their old numbers and gave new
-           ones A18, A19, A20 — the numbering became a function of how
-           many times the network had been built rather than of the
-           network. If the build decides where nodes go it has to decide
-           what they are called, or the two disagree.
+           Span nodes are facts about the dig and the build no longer
+           touches them at all \u2014 no adoption, no renumbering, no cable.
+           They keep the site-wide numbers Place Span Nodes gave them
+           and wear the trench's colour.
 
-           A node already within a metre of a planned position keeps its
-           identity — its cable, and anything referring to its id — and
-           takes the new number. */
-        /* This circuit's own nodes. Used at the end to renumber the
-           ones the walk did not ask for — those are this circuit's to
-           renumber and nobody else's. */
-        const existing = src.filter((f) => f.Feature_Role === "spannode"
+           What the build maintains instead is this circuit's feeder
+           points: one wherever THIS circuit's cable ends or forks, in
+           the circuit's colour, carrying the circuit's id, its own
+           sequence outward from the origin, and the cable of the run
+           arriving at it. Two circuits through one trench junction are
+           two feeder points at one location, each with its own figures
+           \u2014 which is what one span node could never honestly hold, and
+           where the pass-through and tie-break patches came from.
+
+           Generated points are the build's: deleted and remade each
+           run, with a hand-set cable carried across by its anchor the
+           same way run overrides are carried by geometry. A point
+           somebody placed by hand (no Generated flag) is adopted where
+           it stands on a planned position, and sequenced after the walk
+           where it does not \u2014 it is a break somebody chose, and the
+           trace stops there. */
+        const oldFeps = src.filter((f) => f.Feature_Role === "feederpoint"
           && Number(f.Attributes?.Circuit_ID) === Number(c.id));
+        const fepKey = (pt) => `${pt[0].toFixed(2)},${pt[1].toFixed(2)}`;
+        const fepOverrides = new Map();
+        for (const f of oldFeps) {
+          const anchor = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
+          if (f.Attributes?.Manual_VD_Cable_Size_ID != null && anchor) {
+            fepOverrides.set(fepKey(anchor), f.Attributes.Manual_VD_Cable_Size_ID);
+          }
+        }
+        const doomedFeps = oldFeps.filter((f) => f.Attributes?.Generated);
+        if (doomedFeps.length) {
+          await deleteFeatures(projectId, doomedFeps.map((f) => f.Feature_ID));
+        }
+        const manualFeps = oldFeps.filter((f) => !f.Attributes?.Generated);
 
-        /* And the nodes this circuit may adopt: its own, plus any that
-           belong to no circuit yet.
+        /* The cable arriving at a point: the section whose far end is
+           it. Overrides read off the planned geometry, because the run
+           carrying them is being laid from the same points. */
+        const arriving = (pt) => {
+          for (const sec of sections) {
+            const last = sec.pts[sec.pts.length - 1];
+            if (Math.hypot(last[0] - pt[0], last[1] - pt[1]) < 1) return sec;
+          }
+          return null;
+        };
 
-           This is the fix for a break between two routines that each
-           looked correct on its own. Trench › Place Span Nodes puts
-           nodes on the trench and gives them no circuit, because a span
-           node is a fact about the dig — the note below says so, and it
-           is right. The build then looked for nodes that already carried
-           this circuit's id, so it never saw them, counted every one as
-           missing, and left the drawing with a single span node: the
-           origin, created when the circuit was linked.
-
-           Nothing else assigns Circuit_ID to a span node, so the gap was
-           permanent, and its symptom was silent. A levels check filters
-           its stops by circuit, found only A0, and every leg therefore
-           ran to a dead end — which the tracer labels with the meters
-           it ends at. The table read "A0 → Electric Meter 15" where it
-           should have read "A0 → A1", and looked like a naming fault
-           rather than an empty circuit.
-
-           A node belonging to a different circuit is left alone. Two
-           circuits can run through the same trench, and taking a point
-           the other one is measuring from would move its schedule. */
-        const adoptable = src.filter((f) => f.Feature_Role === "spannode"
-          && !takenNodes.has(f.Feature_ID)
-          && (f.Attributes?.Circuit_ID == null
-            || Number(f.Attributes.Circuit_ID) === Number(c.id)));
         const claimed = new Set();
-        const renumber = [];
+        const fepWrites = [];
         let seq = 0;
-
         for (const nd of nodes) {
           step += 1;
-          setProgress({ done: step, total, label: `${c.letter}: nodes` });
-
+          setProgress({ done: step, total, label: `${c.letter}: feeder points` });
           const num = nd.kind === "origin" ? 0 : (seq += 1);
           const label = spanLabel(c.letter, num);
+          const sec = nd.kind === "origin" ? null : arriving(nd.point);
+          const manual = fepOverrides.get(fepKey(nd.point))
+            ?? (sec ? overrides.get(geomKey({ Geometry: sec.pts })) : null)
+            ?? null;
 
-          /* ── The nearest candidate, not the first ──
-
-             `.find` took whichever unclaimed node came first in the
-             feature list, and on a drawing where two nodes sit inside
-             the metre \u2014 which happens: A28 and A30 on the live data are
-             0.something apart \u2014 that is array order deciding which
-             point a circuit is measured from. Reorder the features and
-             the schedule changes.
-
-             The same fault buildFeederModel's `intern` was fixed for,
-             and for the same reason: where two candidates are both in
-             range, "first found" is not an answer, it is whichever the
-             scan happened to reach.
-
-             Ties broken on the lower Feature_ID so two nodes at
-             genuinely the same point resolve the same way on every
-             run. */
-          const nodeAt = (f) => f.Attributes?.Span_Anchor ?? f.Geometry[0];
-          const gap = (f) => {
-            const p = nodeAt(f);
-            return Math.hypot(p[0] - nd.point[0], p[1] - nd.point[1]);
-          };
-          /* Still needed below, where "is there a node here already"
-             is the question rather than "which one". Kept as its own
-             name because the two ask different things: this one takes
-             any node in range, including one another circuit has
-             claimed. */
-          const near = (f) => gap(f) < 1;
-          let match = null;
-          let best = 1;
-          for (const f of adoptable) {
+          /* A hand-placed point standing on this position keeps its
+             identity \u2014 its id, its name, its own cable \u2014 and takes
+             the number. Nearest within a metre, ties on the lower id,
+             for the reason the span-node adoption held: "first found"
+             is scan order deciding a schedule. */
+          let match = null, best = 1;
+          for (const f of manualFeps) {
             if (claimed.has(f.Feature_ID)) continue;
-            const d = gap(f);
-            if (d >= best) continue;
+            const pAt = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
+            if (!pAt) continue;
+            const d = Math.hypot(pAt[0] - nd.point[0], pAt[1] - nd.point[1]);
+            if (d > best) continue;
             if (match && d === best && Number(f.Feature_ID) >= Number(match.Feature_ID)) continue;
-            match = f;
-            best = d;
+            match = f; best = d;
           }
-
           if (match) {
             claimed.add(match.Feature_ID);
-            takenNodes.add(match.Feature_ID);
-            /* ── The node keeps the name it was given ──
-
-               The build used to rename every node it adopted into its
-               circuit's letter and sequence, on the argument that
-               whoever decides where a node goes has to decide what it
-               is called. That argument was true when the build placed
-               nodes. It stopped placing them, and the renaming stayed.
-
-               So a node placed on the trench as A28 became B7 when the
-               build ran, and — worse — circuit A's own sequence
-               restarted at A1, landing on top of the site-wide A1..An
-               that Place Span Nodes had already issued. Project 15 has
-               two nodes called A4 today: one Place Span Nodes made, one
-               the build renamed.
-
-               A name is the node's own. Its position on a circuit is a
-               different fact and is recorded as Span_Seq beside it. */
-            /* Only where something actually differs — a rebuild that
-               changes nothing should write nothing. Membership counts as
-               a difference: a node sitting in the right place with the
-               right number and no circuit is the case this whole thing
-               was failing on, and skipping it as unchanged would leave
-               it exactly as it was. */
             if (String(match.Attributes?.Span_Seq) !== String(num)
-                || match.Attributes?.Span_Kind !== nd.kind
-                || Number(match.Attributes?.Circuit_ID) !== Number(c.id)) {
-              renumber.push({
+              || match.Attributes?.Span_Kind !== nd.kind) {
+              fepWrites.push({
                 Feature_ID: match.Feature_ID,
-                /* Label untouched. A node with no name of its own \u2014 one
-                   from an older build \u2014 is given the computed one, so
-                   nothing is left nameless; a node that has one keeps
-                   it. */
-                ...(match.Attributes?.Span_Label || match.Label
-                  ? {} : { Label: `Point ${label}` }),
-                Attributes: {
-                  ...match.Attributes,
-                  Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
+                Attributes: { ...match.Attributes,
                   Span_Seq: num, Span_Kind: nd.kind,
-                  ...(match.Attributes?.Span_Label ? {} : { Span_Label: label }),
-                  /* A node that had no cable gets the default; one that
-                     has a cable someone chose keeps it. */
-                  ...(startCable && nd.kind !== "origin"
-                      && match.Attributes?.VD_Cable_Size_ID == null
-                    ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
-                },
+                  Circuit_Name: c.name, Circuit_Letter: c.letter },
               });
             }
             continue;
           }
 
-          /* No longer created here.
-
-             Span nodes belong to the trench network — they mark where a
-             run divides or stops, which is a fact about the dig and not
-             about a circuit design. Creating them here meant a mains
-             call-off naming "A1 to A5" could not be raised until an LV
-             network had been built, which is the wrong way round: the
-             trench is dug first.
-
-             The build now uses the nodes that are already there and
-             numbers them into circuits. A point the walk expects and
-             cannot find is reported rather than made, because the fix is
-             to place the nodes on the trench — Trench → Place Span
-             Nodes — not to have two places that create them and
-             disagree. */
-          if (src.some((f) => f.Feature_Role === "spannode" && near(f))) contested += 1;
-          else missingNodes += 1;
+          await addFeature({
+            Layer_Key: "electric",
+            Feature_Type: "point",
+            Feature_Role: "feederpoint",
+            Geometry: [nd.point],
+            Label: `Point ${label}`,
+            Attributes: {
+              Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
+              Span_Seq: num, Span_Label: label, Span_Kind: nd.kind,
+              Span_Anchor: nd.point,
+              ...(nd.kind !== "origin" && startCable
+                ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
+              ...(manual != null ? { Manual_VD_Cable_Size_ID: manual } : {}),
+              Generated: true,
+            },
+          });
+          fepsMade += 1;
         }
 
-        /* Nodes the build did not place — put there by hand, or left
-           behind by an earlier network. Numbered after the walk rather
-           than deleted: someone put them there on purpose. */
-        for (const f of existing) {
+        /* Hand-placed points the walk did not land on \u2014 mid-run breaks
+           somebody chose. Sequenced after the planned positions, left
+           otherwise alone. */
+        for (const f of manualFeps) {
           if (claimed.has(f.Feature_ID)) continue;
-          if (Number(f.Attributes?.Span_Seq) === 0) continue;   // the origin
+          if (Number(f.Attributes?.Span_Seq) === 0) continue;
           seq += 1;
-          /* Sequence only, for the same reason as above: this node is
-             on the circuit at this position, and that is all the build
-             knows about it. It was put there by hand or left by an
-             earlier network, and whatever it is called is not the
-             build's to change. */
           if (String(f.Attributes?.Span_Seq) === String(seq)) continue;
-          renumber.push({
+          fepWrites.push({
             Feature_ID: f.Feature_ID,
             Attributes: { ...f.Attributes, Span_Seq: seq },
           });
         }
-
-        if (renumber.length) {
-          await bulkUpdateFeatures(projectId, renumber);
-          renumbered += renumber.length;
+        if (fepWrites.length) {
+          await bulkUpdateFeatures(projectId, fepWrites);
+          renumbered += fepWrites.length;
         }
       }
 
@@ -12681,7 +12719,8 @@ export default function GISCanvasPage() {
       const fresh = await listGis(projectId);
       const all = fresh.features || [];
       const links = all
-        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
+          || f.Feature_Role === "feederpoint")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
@@ -12764,15 +12803,19 @@ export default function GISCanvasPage() {
           ? `, ${ranOn} run(s) carried to the end of the dig`
           : ", no run had main laid past its last plot")
         + (jointsMade ? `, ${jointsMade} joint(s)` : "")
-        /* What the build wanted and could not find, so the gap is
-           reported rather than filled in silently. */
-        + (contested
-          ? `, ${contested} span node(s) belong to another circuit` : "")
-        + (missingNodes
-          ? `, ${missingNodes} span node(s) missing \u2014 place them from `
-            + "Trench \u2192 Place Span Nodes"
-          : "")
-        + (renumbered ? `, ${renumbered} renumbered` : "")
+        /* Feeder points are the build's own now \u2014 made, not hunted \u2014
+           so there is nothing missing to report. Span nodes are the
+           dig's and the build no longer touches them. */
+        + (fepsMade ? `, ${fepsMade} feeder point(s)` : "")
+        + (renumbered ? `, ${renumbered} resequenced` : "")
+        /* Which POC fed which circuit, where a rule had to choose \u2014 a
+           two-POC drawing should not need checking by eye. */
+        + planned
+          .filter((x) => x.originBy === "nearest" && x.origin)
+          .map((x) => `; ${x.circuit.name} \u2190 ${x.origin.Label
+            || (x.origin.Feature_Role === "substation" ? "the substation" : "POC")}`
+            + " (nearest along the trench)")
+          .join("")
         + (startCable
           ? `, on ${cableName(startCable)}`
           : ", no LV cable in the catalogue to default to")
@@ -14322,7 +14365,8 @@ export default function GISCanvasPage() {
       const fresh = await listGis(projectId);
       const all = fresh.features || [];
       const links = all
-        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
+          || f.Feature_Role === "feederpoint")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
@@ -14700,7 +14744,8 @@ export default function GISCanvasPage() {
       }
 
       const links = all
-        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode")
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
+          || f.Feature_Role === "feederpoint")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
@@ -16513,12 +16558,24 @@ export default function GISCanvasPage() {
     return m ? [m[1], Number(m[2])] : [String(label ?? ""), 0];
   };
 
+  /* The circuit on show, resolved once so the table, the export and
+     the header selector all mean the same one. */
+  const shownCircuit = useMemo(() => {
+    if (!trace?.parts || trace.parts.length < 2) return null;
+    const names = trace.parts.map((x) => x.circuitName);
+    return names.includes(traceCircuit) ? traceCircuit : names[0];
+  }, [trace, traceCircuit]);
+
   const tracePlan = useMemo(() => {
     if (!trace?.legs) return [];
+    /* One circuit at a time where several were checked. */
+    const legs = shownCircuit
+      ? trace.legs.filter((l) => l.circuitName === shownCircuit)
+      : trace.legs;
     /* Filtered after ordering, so the ends keep the order they were
        shown in rather than jumping about when the filter goes on. */
     const ordered = traceOrder === "chain"
-      ? byConnectivity(trace.legs, trace.from)
+      ? byConnectivity(legs, trace.from)
       : null;
     /* The origin first, whatever the sort.
 
@@ -16537,8 +16594,8 @@ export default function GISCanvasPage() {
     };
 
     if (ordered) return originFirst(traceEnds ? endsOnly(ordered) : ordered);
-    const sorted = trace.legs
-      .map((leg, i) => ({ leg, i }))
+    const sorted = legs
+      .map((leg, i) => ({ leg, i: trace.legs.indexOf(leg) }))
       .sort((a, b) => {
         const [al, an] = nodeOrder(a.leg.from);
         const [bl, bn] = nodeOrder(b.leg.from);
@@ -16554,7 +16611,7 @@ export default function GISCanvasPage() {
        A memo that reads a value and does not depend on it recomputes
        only when something else changes — which on the bill of materials
        meant the cards followed a filter and the table did not. */
-  }, [trace, traceOrder, traceEnds]);
+  }, [trace, traceOrder, traceEnds, shownCircuit]);
 
   function exportTrace() {
     if (!trace) return;
@@ -16641,7 +16698,7 @@ export default function GISCanvasPage() {
     XLSX.utils.book_append_sheet(wb, XLSX.utils.json_to_sheet(rows), trace.levels ? "Levels" : "Trace");
     const stamp = new Date().toISOString().slice(0, 10);
     XLSX.writeFile(wb,
-      `${what} ${project?.Project_Ref ?? ""} ${trace.circuitName} from ${trace.from} ${stamp}.xlsx`
+      `${what} ${project?.Project_Ref ?? ""} ${shownCircuit ?? trace.circuitName} from ${trace.from} ${stamp}.xlsx`
         .replace(/\s+/g, " ").trim());
   }
 
@@ -16952,6 +17009,7 @@ export default function GISCanvasPage() {
     /* One object for the panel: the legs of every circuit in order, with
        the parts kept alongside so a suggestion can be worked out against
        the circuit it belongs to. */
+    setTraceCircuit(null);
     setTrace({
       levels: true,
       /* Named rather than counted. "3 meters not on the network" is a
@@ -17019,8 +17077,9 @@ export default function GISCanvasPage() {
 
     const node = startId != null
       ? src.find((f) => Number(f.Feature_ID) === Number(startId))
-      : selectedFeatures.find((f) => f.Feature_Role === "spannode");
-    if (!node) { setError("Select a span node to trace from."); return; }
+      : selectedFeatures.find((f) => f.Feature_Role === "feederpoint"
+        || f.Feature_Role === "spannode");
+    if (!node) { setError("Select a feeder point or span node to trace from."); return; }
 
     const r = spanTrace(src, node.Feature_ID, {
       lineTypes,
@@ -18235,6 +18294,10 @@ export default function GISCanvasPage() {
                         disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
                       <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
                         disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
+                      <MenuItem label="+ Feeder End Point"
+                        hint="A break in one circuit's cable — click on the run it belongs to"
+                        disabled={!projectId}
+                        onClick={() => placeNode("feederpoint", "electric")} />
                       <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
                         hint="Shortest path along the trenches, as HV feeder"
                         disabled={!!busy || !projectId}
@@ -21561,6 +21624,21 @@ export default function GISCanvasPage() {
                     onClick={() => setSchematic(true)}>
                     Schematic
                   </button>
+                  {trace?.parts?.length > 1 && (
+                    /* One circuit at a time. Levels are per circuit now
+                       \u2014 a point two circuits share has two figures \u2014
+                       and a table interleaving them reads as one network
+                       contradicting itself. */
+                    <select className="tr-circ" value={shownCircuit ?? ""}
+                      title="Which circuit's levels are shown — the export follows"
+                      onChange={(e) => setTraceCircuit(e.target.value)}>
+                      {trace.parts.map((x) => (
+                        <option key={x.circuitName} value={x.circuitName}>
+                          {x.circuitName}
+                        </option>
+                      ))}
+                    </select>
+                  )}
                   <button className="btn sm tr-ord"
                     title={traceEnds
                       ? "Showing where the runs finish \u2014 show every leg"
@@ -22108,6 +22186,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   cursor: pointer; font: 700 11px inherit; padding: 4px 10px; margin-right: 8px;
   color: #b45309; }
 .tr-stale:hover { background: #fef3c7; }
+.tr-circ { padding: 3px 8px; border: 1px solid var(--border); border-radius: 6px;
+  background: var(--white); font: inherit; font-size: 12px; }
 .tr-ord { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
   cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-right: 8px;
   color: var(--accent); }

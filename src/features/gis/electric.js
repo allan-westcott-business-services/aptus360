@@ -296,6 +296,18 @@ export function originNodeFor(features, circuitId) {
      "names no circuit" fallback below could hand back the gas origin as
      an electric circuit's starting point. Every caller of this is a
      circuit, and a circuit is electric. */
+  /* A feeder point first. The circuit's electrical origin is its own
+     Seq-0 feeder point once one exists — the cable's A0, in the
+     circuit's colour, carrying the circuit's id — and the span-node
+     origin is the older arrangement, kept working for drawings built
+     before feeder points existed. */
+  const fep = features
+    .filter((f) => f.Feature_Role === "feederpoint"
+      && Number(f.Attributes?.Span_Seq) === 0
+      && Number(f.Attributes?.Circuit_ID) === Number(circuitId))
+    .sort((a, b) => Number(a.Feature_ID) - Number(b.Feature_ID))[0];
+  if (fep) return fep;
+
   const nodes = features
     .filter((f) => f.Feature_Role === "spannode"
       && Number(f.Attributes?.Span_Seq) === 0

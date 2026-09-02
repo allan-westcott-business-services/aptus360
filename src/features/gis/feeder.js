@@ -330,29 +330,31 @@ export function buildFeederModel(features = [], opts = {}) {
 
   /* ── Which origin, where there is more than one ──
 
-     A site fed from two points of connection has two networks that
-     never meet, and each circuit belongs to the one it is drawn on. So
-     the origin is chosen by component: the piece of the trench graph
-     that holds the circuit's seeds is the piece whose origin feeds it.
+     Circuits fed from different POCs can share a trench: the dig is
+     civil work and the circuits are electrical facts, and a duct bank
+     down one road can carry POC East's cable beside POC West's. So the
+     trench component cannot decide the origin — an earlier version
+     refused two POCs on one network, and refused exactly the drawing
+     this exists for.
 
-     Seeds decide, not distance. Two POCs in the same road can each be
-     nearer to some of the other's plots than their own \u2014 nearness says
-     where things are, the trench network says what connects to what,
-     and only the second routes cable.
+     The circuit decides, three ways, strongest first:
 
-     With no seeds to ask (a whole-drawing model), the first origin \u2014
-     substation before POC, drawing order within each \u2014 which is what
-     lvOrigin always answered, so a one-origin site cannot notice any
-     of this.
+     1. Named. Circuit_Origin_ID on the circuit's meters \u2014 somebody
+        said which POC feeds this circuit, and a statement beats any
+        rule. Set from the POC's editor.
+     2. A substation on the circuit's component. The incomer doctrine,
+        unchanged: where a transformer stands on the network, feeders
+        begin at it and a POC beside it is where the incomer arrives.
+     3. Nearest along the network. Measured through the trenches (with
+        measured lengths honoured), from where the circuit's first seed
+        stands to each origin \u2014 not as the crow flies, because nearness
+        across a fence is not a route. The model records that it chose
+        (`originBy: "nearest"`, with the rivals named) so the build can
+        say so out loud and the person can name the right one if the
+        nearest is not it.
 
-     ── Two origins on one network ──
-
-     A substation with a POC beside it is the ordinary incomer
-     arrangement and the substation simply wins, as it always has. Two
-     POCs on one network, or two substations, is a drawing fault: the
-     feeders would route from one chosen by list order, which is a
-     guess dressed as an answer, and the person who drew two meant two
-     networks. Refused by name so the fix is on the drawing. */
+     A circuit whose component holds no origin at all is still refused:
+     nothing feeds it, and no rule should pretend otherwise. */
   const compOf = new Array(nodes.length).fill(-1);
   {
     let c = 0;
@@ -374,50 +376,89 @@ export function buildFeederModel(features = [], opts = {}) {
     ? (o.Label || "the substation") : (o.Label || `POC #${o.Feature_ID}`));
 
   let sub = originAt[0].o;
+  let originBy = origins.length === 1 ? "only" : "first";
+  let originRivals = [];
   if (origins.length > 1) {
-    const byComp = new Map();
-    for (const { o, at } of originAt) {
-      const k = compOf[at.i];
-      if (!byComp.has(k)) byComp.set(k, []);
-      byComp.get(k).push(o);
-    }
-    for (const [, os] of byComp) {
-      const subs = os.filter((o) => o.Feature_Role === "substation");
-      const rest = os.filter((o) => o.Feature_Role !== "substation");
-      if (subs.length > 1 || (subs.length === 0 && rest.length > 1)) {
-        return {
-          error: `${nameOrigin(os[0])} and ${nameOrigin(os[1])} stand on the `
-            + "same trench network. Each origin serves its own self-contained "
-            + "network \u2014 split the trenches, or remove one of them.",
-        };
-      }
-    }
-    /* The component the circuit is on: its first seed's or member
-       meter's own point, taken to the nearest trench node the same way
-       the origin is. */
-    let want = -1;
+    /* The circuit's own ground: its first seed or member meter, taken
+       to the nearest trench node the same way the origins are. */
+    let seedNode = -1;
+    let named = null;
     for (const f of features) {
       const isSeed = seedIds?.size && f.Feature_Role === "plot"
         && seedIds.has(Number(f.Feature_ID));
       const isMember = meterIds?.size && f.Feature_Role === "meter"
         && meterIds.has(Number(f.Feature_ID));
+      if (isMember && named == null
+        && f.Attributes?.Circuit_Origin_ID != null) {
+        named = Number(f.Attributes.Circuit_Origin_ID);
+      }
       if (!isSeed && !isMember) continue;
       const g = (f.Geometry || [])[0];
       if (!g) continue;
-      want = compOf[nearest(g).i];
-      break;
+      if (seedNode < 0) seedNode = nearest(g).i;
     }
-    if (want >= 0) {
-      const owner = originAt.find(({ o, at }) => compOf[at.i] === want
-        && (o.Feature_Role === "substation"
-          || !originAt.some((x) => x.o !== o && compOf[x.at.i] === want
-            && x.o.Feature_Role === "substation")));
-      if (owner) sub = owner.o;
-      else {
+    /* A named origin can be read off the meters even when the scope
+       came in as seeds: the meter that carries the name is a member of
+       the circuit whichever way the circuit was described. */
+    if (named == null && seedIds?.size) {
+      for (const f of features) {
+        if (f.Feature_Role !== "meter") continue;
+        const sid = f.Attributes?.Seed_Feature_ID;
+        if (sid == null || !seedIds.has(Number(sid))) continue;
+        if (f.Attributes?.Circuit_Origin_ID != null) {
+          named = Number(f.Attributes.Circuit_Origin_ID);
+          break;
+        }
+      }
+    }
+
+    if (named != null) {
+      const hit = originAt.find(({ o }) => Number(o.Feature_ID) === named);
+      if (!hit) {
+        return {
+          error: "This circuit names an origin that is not on the drawing "
+            + "\u2014 re-pick which POC feeds it, from the POC's editor.",
+        };
+      }
+      sub = hit.o;
+      originBy = "named";
+    } else if (seedNode >= 0) {
+      const want = compOf[seedNode];
+      const here = originAt.filter(({ at }) => compOf[at.i] === want);
+      if (!here.length) {
         return {
           error: "This circuit's network has no origin on it \u2014 place a "
-            + "substation or an electric POC on the trenches that serve it.",
+            + "substation or an electric POC on the trenches that serve it, "
+            + "or name one from a POC's editor.",
         };
+      }
+      const subs = here.filter(({ o }) => o.Feature_Role === "substation");
+      const pool = subs.length ? subs : here;
+      if (pool.length === 1) {
+        sub = pool[0].o;
+        originBy = here.length === 1 ? "only" : "nearest";
+        originRivals = here.filter((x) => x.o !== sub).map((x) => nameOrigin(x.o));
+      } else {
+        /* Nearest along the network: one walk out from the circuit's
+           ground, over the same edges the cable would use, measured
+           lengths and all. */
+        const far = new Array(nodes.length).fill(Infinity);
+        far[seedNode] = 0;
+        const heap = [[0, seedNode]];
+        while (heap.length) {
+          heap.sort((x, y) => x[0] - y[0]);
+          const [d, u] = heap.shift();
+          if (d > far[u]) continue;
+          for (const e of adj.get(u) || []) {
+            const w = edgeM.get(edgeKey(u, e.to)) ?? dist(nodes[u], nodes[e.to]);
+            if (d + w < far[e.to]) { far[e.to] = d + w; heap.push([d + w, e.to]); }
+          }
+        }
+        pool.sort((x, y) => (far[x.at.i] - far[y.at.i])
+          || (Number(x.o.Feature_ID) - Number(y.o.Feature_ID)));
+        sub = pool[0].o;
+        originBy = "nearest";
+        originRivals = here.filter((x) => x.o !== sub).map((x) => nameOrigin(x.o));
       }
     }
   }
@@ -626,6 +667,11 @@ export function buildFeederModel(features = [], opts = {}) {
   return {
     nodes, parent, parSvc, cum, cumKva, meterCount, meterKva, metersAt,
     S, order, attached, skipped, mBetween,
+    /* How the origin was decided \u2014 "named", "only", "nearest" or
+       "first" \u2014 and who lost where a rule had to choose, so a build
+       can say which POC fed which circuit instead of leaving a two-POC
+       drawing to be checked by eye. */
+    originBy, originRivals,
     /* The origin this model is rooted at \u2014 the feature, so a caller
        reading source impedance or the declared upstream volt drop reads
        the figures of the origin the walk actually started from, not
@@ -1416,8 +1462,9 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   } = opts;
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
-  if (!node || node.Feature_Role !== "spannode") {
-    return { error: "Select a span node." };
+  if (!node || (node.Feature_Role !== "spannode"
+    && node.Feature_Role !== "feederpoint")) {
+    return { error: "Select a feeder point or span node." };
   }
   const circuitId = wantedCircuit ?? node.Attributes?.Circuit_ID;
   if (circuitId == null) {
@@ -1479,10 +1526,26 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      A node naming another circuit is still skipped. One naming none is
      wherever it physically sits, and the distance check below is what
      decides whether that is here. */
+    /* ── The circuit's own points, where it has them ──
+
+     A feeder point is the cable's junction: one circuit's, placed
+     where THAT circuit's run ends or forks, carrying its own cable and
+     sequence. Where the circuit has any, they are the stops, and span
+     nodes go back to being facts about the dig \u2014 two circuits through
+     one trench junction are two feeder points at one location, each
+     with its own figures, which is what one span node could never
+     honestly hold. A drawing from before feeder points existed has
+     none, and its span nodes go on working exactly as they did. */
+  const stopRole = features.some((f) => f.Feature_Role === "feederpoint"
+    && Number(f.Attributes?.Circuit_ID) === Number(circuitId))
+    ? "feederpoint" : "spannode";
+
   for (const sn of features) {
-    if (sn.Feature_Role !== "spannode") continue;
+    if (sn.Feature_Role !== stopRole) continue;
     const own = sn.Attributes?.Circuit_ID;
-    if (own != null && Number(own) !== Number(circuitId)) continue;
+    if (stopRole === "feederpoint") {
+      if (Number(own) !== Number(circuitId)) continue;
+    } else if (own != null && Number(own) !== Number(circuitId)) continue;
     /* Where it belongs on the dig, not where its marker was dragged. */
     const a = sn.Attributes?.Span_Anchor;
     const at0 = (Array.isArray(a) && a.length === 2 ? a : (sn.Geometry || [])[0])
@@ -1527,7 +1590,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      these are where legs stop. */
   const stops = new Map();
   for (const sn of features) {
-    if (sn.Feature_Role !== "spannode") continue;
+    if (sn.Feature_Role !== stopRole) continue;
     if (Number(sn.Feature_ID) === Number(nodeId)) continue;
     /* This utility's nodes only.
 
@@ -1542,9 +1605,12 @@ export function spanTrace(features = [], nodeId, opts = {}) {
        would empty the report on an older drawing. */
     if (sn.Layer_Key && sn.Layer_Key !== "electric"
       && sn.Layer_Key !== "trench") continue;
-    /* Same rule as above: this circuit's, or one that names none. */
+    /* Same rule as above: this circuit's \u2014 strictly so for a feeder
+       point, which always names one \u2014 or a span node naming none. */
     const own = sn.Attributes?.Circuit_ID;
-    if (own != null && Number(own) !== Number(circuitId)) continue;
+    if (stopRole === "feederpoint") {
+      if (Number(own) !== Number(circuitId)) continue;
+    } else if (own != null && Number(own) !== Number(circuitId)) continue;
     /* From the anchor, so a marker dragged clear still resolves to the
        point on the dig it was placed at. */
     const a = sn.Attributes?.Span_Anchor;

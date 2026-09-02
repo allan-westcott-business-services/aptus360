@@ -949,18 +949,23 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
-  /* The adopted node. Span_Seq, Circuit_ID and Span_Kind are the
-     build's to write; Span_Label is not. */
-  if (/Span_Seq: num, Span_Label: label/.test(canvas)) {
-    fail("the build still renames the nodes it adopts");
+  /* ── Rewritten for feeder points ──
+
+     The build no longer adopts span nodes at all: span nodes are the
+     dig's, and the build's creatures are feeder points \u2014 which it
+     makes, and may therefore name in the circuit's lettering. What
+     must now hold is the split itself. */
+  if (/adoptable = src\.filter\(\(f\) => f\.Feature_Role === "spannode"/.test(canvas)) {
+    fail("the build still adopts span nodes into circuits");
   }
+  if (!/Feature_Role: "feederpoint"/.test(canvas)) {
+    fail("the build creates no feeder points");
+  }
+  /* A hand-placed feeder point adopted onto a planned position keeps
+     its own name and cable \u2014 the build writes its sequence and kind,
+     nothing else of identity. */
   if (!/Span_Seq: num, Span_Kind: nd\.kind/.test(canvas)) {
-    fail("the build no longer records which position on the circuit a node is");
-  }
-  /* A node from an older build with no name of its own is still given
-     one, so nothing is left nameless. */
-  if (!/match\.Attributes\?\.Span_Label \? \{\} : \{ Span_Label: label \}/.test(canvas)) {
-    fail("a node with no name of its own is left without one");
+    fail("the build no longer records which position on the circuit a point is");
   }
 
   /* And the leftover pass, which renamed anything the walk did not ask
@@ -1030,11 +1035,12 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
       fail("a node dragged clear for legibility was treated as having moved");
     }
   }
-  /* Measured from the anchor, not the marker: a node dragged clear so
-     its label can be read has not moved. */
-  if (!/const nodeAt = \(f\) => f\.Attributes\?\.Span_Anchor \?\? f\.Geometry\[0\]/
+  /* Measured from the anchor, not the marker: a point dragged clear so
+     its label can be read has not moved. The feeder-point adoption
+     reads the anchor the same way the span-node adoption did. */
+  if (!/f\.Attributes\?\.Span_Anchor \?\? f\.Geometry\?\.\[0\]/
     .test(canvas)) {
-    fail("adoption measures to the marker rather than the node's anchor");
+    fail("adoption measures to the marker rather than the point's anchor");
   }
 
   /* ── Two nodes with one name is said out loud ──
@@ -1245,21 +1251,15 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
 
    Reported from the drawing: Build LV Network, then Apply Cable Sizes
    to Span Nodes, and many nodes still had no cable although a sized
-   run visibly entered and left them.
+   run visibly entered and left them. Junctions a circuit carries
+   straight over are one section to the router, so nothing ends there
+   and the end rule never reached them.
 
-   Trench › Place Span Nodes marks every junction of mains. A circuit's
-   run only breaks where that circuit divides, and the router was
-   changed deliberately so it would not break at a junction it passes
-   straight through (feederSections, "circuit A was cut at B1 because
-   circuit B forks there"). So at a junction where circuit A carries
-   on and only circuit B turns off, A's cable is one section over the
-   node, B's is one section over it the other way, neither model
-   sees a junction there, and no cable ends within reach of the node.
-   nodeFedBy reads only the ends. The node read "not set" with two
-   sized cables running over it.
-
-   Driven through the real router so the shape of the sections is the
-   router's and not this file's. */
+   Feeder points have since taken over as the electrical stops on
+   drawings that have them; this case stands because span nodes remain
+   the stops on every drawing built before that, and the rule must hold
+   there. Driven through the real router so the shape of the sections
+   is the router's and not this file's. */
 {
   const lineTypes = [
     { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
@@ -1283,9 +1283,6 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
     Feature_ID: id++, Feature_Role: "substation", Feature_Type: "point",
     Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {},
   };
-  /* Main east 0→200 with a branch north at 100. Circuit 1 serves the
-     main, circuit 2 the branch. The junction at [100, 0] is a bend to
-     both. */
   const p1 = plot(101, [50, 10]), p2 = plot(102, [150, 10]);
   const p3 = plot(201, [110, 30]), p4 = plot(202, [110, 60]);
   const drawing = [
@@ -1303,8 +1300,6 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
     meter(201, p3.Feature_ID, [110, 30], 2),
     meter(202, p4.Feature_ID, [110, 60], 2),
   ];
-
-  /* Place Span Nodes: site-wide numbering, no circuit. */
   const placed = planSpanNodes(drawing.filter((f) => f.Layer_Key === "trench"), sub,
     { serviceTypes: new Set(["service_trench"]) });
   const nodes = placed.nodes.map((n) => ({
@@ -1315,8 +1310,6 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   const junction = nodes.find((n) => n.Geometry[0][0] === 100 && n.Geometry[0][1] === 0);
   if (!junction) fail("Place Span Nodes put no node at the junction of mains");
 
-  /* Build LV Network: sections per circuit, nodes adopted as the build
-     adopts them \u2014 by the circuit's own junctions and ends. */
   const circuits = [
     { id: 1, seeds: new Set([p1.Feature_ID, p2.Feature_ID]) },
     { id: 2, seeds: new Set([p3.Feature_ID, p4.Feature_ID]) },
@@ -1340,9 +1333,6 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   const all = [...world, ...lines];
   const opts = { isTrench: () => false, reach: 10 };
 
-  /* The case as reported: the junction is adopted by neither circuit
-     and no run ends at it. If either stops being true this test is
-     no longer testing what it says. */
   if (junction && junction.Attributes.Circuit_ID != null) {
     fail("the shared junction was adopted by a circuit, so this case no longer"
       + " reproduces the drawing it came from");
@@ -1352,24 +1342,16 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   }
   if (lines.length < 2) fail(`the router drew ${lines.length} section(s), not one per circuit`);
 
-  /* The rule: the cable running over the node feeds it. */
   const through = junction ? runThrough(junction, lines, opts) : null;
   if (!through) {
     fail("the junction both circuits run straight through has no cable feeding it");
   } else if (Number(through.Attributes.Circuit_ID) !== 1) {
-    /* Both cross it at the same distance; the lower Feature_ID is the
-       tie-break, and circuit 1 was drawn first. What matters is that
-       it is the same answer every run. */
     fail("the through rule did not settle a tie on the lower Feature_ID");
   }
-  /* And the line-centric view agrees: that section names the junction
-     among the nodes it feeds. */
   if (through && !nodesFedBy(through, all, opts).includes(junction)) {
     fail("nodesFedBy does not list the junction the section runs through");
   }
 
-  /* The end of the branch is fed by the end rule, and the through
-     rule does not disturb it. */
   const branchEnd = nodes.find((n) => n.Geometry[0][1] === 60);
   if (!branchEnd) fail("no node at the end of the branch");
   else {
@@ -1379,10 +1361,6 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
     }
   }
 
-  /* A node the cable stops short of is not "run through": the end rule
-     decides whose that is. A2 beyond the end of the cable to A1 was the
-     fault the one-node-per-end rule fixed, and this one must not undo
-     it. */
   const beyond = {
     Feature_ID: id++, Feature_Role: "spannode", Geometry: [[31.8, 0]],
     Attributes: { Span_Label: "A2", Span_Seq: 2, Circuit_ID: 1 },
@@ -1392,35 +1370,47 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (runsThrough(toA1, beyond, opts) != null) {
     fail("a node 7.8 m past the end of a cable was read as run through by it");
   }
-  /* But one a metre or two off the body of the line is \u2014 placed by eye
-     against a plan, on the trench the cable follows. */
   const beside = { ...beyond, Geometry: [[12, 1.5]] };
   if (runsThrough(toA1, beside, opts) == null) {
     fail("a node 1.5 m off the middle of a cable was not read as run through");
   }
-  /* A service never feeds a node, through or otherwise. */
   const svc = { ...toA1, Geometry: [[0, 0], [30, 0]],
     Attributes: { Line_Type: "elec_service", Circuit_ID: 1 } };
   if (runsThrough(svc, beside, opts) != null) fail("a service cable ran through a node");
-  /* Nor a run on another circuit. */
   const other = { ...toA1, Geometry: [[0, 0], [30, 0]],
     Attributes: { Line_Type: "lv_main", Circuit_ID: 2 } };
   if (runThrough(beside, [other], opts)) {
     fail("another circuit's cable was read as feeding this circuit's node");
   }
-  /* The origin is fed by nothing. */
   const origin = { ...beside, Attributes: { Span_Seq: 0, Circuit_ID: 1 } };
   if (runThrough(origin, [toA1], opts)) fail("the origin was fed by a cable running past it");
+
+  /* ── And where the circuit has feeder points, they take over ──
+
+     One feeder point on circuit 1 flips the whole rule for that
+     circuit: its cables feed its points and leave the span nodes to
+     the dig. Circuit 2, with none, still feeds span nodes. */
+  const fep = { Feature_ID: id++, Feature_Role: "feederpoint", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[150, 0]],
+    Attributes: { Circuit_ID: 1, Span_Seq: 2, Span_Label: "A2", Span_Anchor: [150, 0] } };
+  const withFep = [...all, fep];
+  const c1run = lines.find((l) => Number(l.Attributes.Circuit_ID) === 1);
+  const fedNow = nodeFedBy(c1run, withFep, opts);
+  if (fedNow && fedNow.Feature_Role !== "feederpoint") {
+    fail("a circuit with feeder points still feeds span nodes");
+  }
+  const c2run = lines.find((l) => Number(l.Attributes.Circuit_ID) === 2);
+  const fed2 = nodeFedBy(c2run, withFep, opts);
+  if (fed2 && fed2.Feature_Role !== "spannode") {
+    fail("circuit 2, which has no feeder points, stopped feeding its span nodes");
+  }
 }
 
 /* ── Two numberings are not one ──
 
    A node the build adopted counts A1, A2, A3 along its circuit; a node
    it never adopted keeps the site-wide number Place Span Nodes gave it.
-   The downstream rule compared the two as if they were the same scale:
-   a circuit node at seq 3 with an unadopted node at seq 2 eight metres
-   beyond it read the unadopted one as upstream, fed the wrong node and
-   left the one the cable actually arrives at empty. */
+   The downstream rule compared the two as if they were the same scale. */
 {
   const opts = { isTrench: () => false, reach: 10 };
   const sub = { Feature_ID: 1, Feature_Role: "substation", Geometry: [[0, 0]] };
@@ -1434,7 +1424,6 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
     fail("a site-numbered node was ranked against a circuit-numbered one by"
       + " sequence, and the cable fed the node it leaves from");
   }
-  /* On one circuit the numbers still decide, drawn either way round. */
   const both = { ...unadopted, Attributes: { ...unadopted.Attributes, Span_Seq: 4, Circuit_ID: 1 } };
   if (nodeFedBy(run, [sub, adopted, both], opts) !== both) {
     fail("on one circuit the higher sequence is no longer downstream");

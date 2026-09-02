@@ -495,7 +495,12 @@ const line = (type, status) => ({
 //    ran.
 {
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  const at = editor.indexOf('Feature_Role === "spannode"\n            && Number(f.Attributes.Span_Seq)');
+  /* The gate now names both kinds of measuring point \u2014 a feeder point
+     is one circuit's cable junction and carries the same pair of
+     fields \u2014 and what must still hold is what always held: gated on
+     the origin only (Span_Seq 0), never on having a circuit. */
+  const at = editor.indexOf('|| feature.Feature_Role === "spannode")\n'
+    + '            && Number(f.Attributes.Span_Seq)');
   if (at < 0) fail("the cable-feeding-this-node fields are gone or re-gated");
 
   /* The rule, as the editor computes it. */

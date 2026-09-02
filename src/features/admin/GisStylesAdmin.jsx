@@ -99,6 +99,7 @@ const ROLES = [
   ["reducer", "Gas reducer"],
   ["pumping", "Pumping station"],
   ["spannode", "Span node"],
+  ["feederpoint", "Feeder end point"],
   ["linkbox", "Link box"],
   ["column", "Lighting column"],
   ["shape", "Shape"],

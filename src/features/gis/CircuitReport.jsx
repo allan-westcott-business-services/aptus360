@@ -55,6 +55,14 @@ export default function CircuitReport({
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
+  /* One circuit at a time, where the drawing has more than one.
+
+     A site fed from two POCs has two sets of figures, and the same
+     location can appear in both \u2014 a feeder point of each circuit at
+     one junction \u2014 so circuits stacked down the page read as one
+     network contradicting itself. "All" stays available for the site
+     totals and for the export, which always carries every circuit. */
+  const [onlyCircuit, setOnlyCircuit] = useState("all");
   const [filters, setFilters] = useState({});
   /* Selection spans circuits: someone tidying up picks meters from two
      feeders at once and moves them together. Kept as a set of meter ids
@@ -324,7 +332,21 @@ export default function CircuitReport({
             </p>
           )}
 
-          {report.circuits.map((c) => {
+          {report.circuits.length > 1 && (
+            <div className="cr-pick">
+              <label htmlFor="cr-circuit">Showing</label>
+              <select id="cr-circuit" value={onlyCircuit}
+                onChange={(e) => setOnlyCircuit(e.target.value)}>
+                <option value="all">All circuits</option>
+                {report.circuits.map((c) => (
+                  <option key={c.id} value={String(c.id)}>{c.name}</option>
+                ))}
+              </select>
+            </div>
+          )}
+          {report.circuits
+            .filter((c) => onlyCircuit === "all" || String(c.id) === onlyCircuit)
+            .map((c) => {
             const rows = sortRows(match(c.meters));
             /* The meters that can be picked. Self-lay ones are not:
                somebody else connects them, so they go on no circuit of
@@ -689,6 +711,10 @@ export default function CircuitReport({
 }
 
 const CSS = `
+.cr-pick { display: flex; align-items: center; gap: 8px; margin: 8px 0 4px; }
+.cr-pick label { font-size: 12px; color: #64748b; }
+.cr-pick select { padding: 4px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px;
+  background: #fff; font: inherit; }
 .cr { background: var(--white); border-radius: 12px; width: min(880px, 95vw); max-height: 88vh;
   display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(15,23,42,.28); }
 .cr-rings { background: var(--white); border: 1px solid var(--border); border-radius: 6px;

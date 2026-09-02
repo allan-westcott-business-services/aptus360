@@ -130,15 +130,76 @@ else {
   if (lab !== "POC East") fail(`plot 201's origin label reads "${lab}", wanted "POC East"`);
 }
 
-/* Two POCs on one network is refused by name. */
+/* ── Circuits fed from different POCs can share a trench ──
+
+   The dig is civil work and the circuits are electrical facts: a duct
+   bank down one road carries POC East's cable beside POC West's. An
+   earlier version refused two POCs on one trench network, and refused
+   exactly this drawing. Now the circuit decides: named origin first,
+   substation second, nearest along the network third — and the model
+   says which rule chose, so a build can say it out loud. */
 {
   const joined = features.concat([trench([[100, 0], [300, 0]])]);
-  const r = buildFeederModel(joined, {
+
+  /* Nearest along the network: circuit 1's seeds stand at the west end,
+     circuit 2's at the east. */
+  const r1 = buildFeederModel(joined, {
     lineTypes, seedIds: new Set([p101.Feature_ID, p102.Feature_ID]),
   });
-  if (!r.error) fail("two POCs on one joined network were not refused");
-  else if (!/same trench network/.test(r.error)) {
-    fail(`the refusal does not say what is wrong: "${r.error}"`);
+  const r2 = buildFeederModel(joined, {
+    lineTypes, seedIds: new Set([p201.Feature_ID, p202.Feature_ID]),
+  });
+  if (r1.error) fail(`circuit 1 on the shared trench refused: ${r1.error}`);
+  else {
+    if (r1.origin !== pA) fail("circuit 1 on the shared trench is not fed from POC West");
+    if (r1.originBy !== "nearest") {
+      fail(`circuit 1's origin was decided by "${r1.originBy}", expected "nearest"`);
+    }
+    if (!(r1.originRivals || []).includes("POC East")) {
+      fail("the rule that chose does not name the POC it passed over");
+    }
+  }
+  if (r2.error) fail(`circuit 2 on the shared trench refused: ${r2.error}`);
+  else if (r2.origin !== pB) fail("circuit 2 on the shared trench is not fed from POC East");
+
+  /* Named beats nearest: circuit 1's meters say POC East feeds them,
+     and a statement beats any rule. */
+  const named = joined.map((f) => (f.Feature_Role === "meter"
+    && [101, 102].includes(Number(f.Plot_ID))
+    ? { ...f, Attributes: { ...f.Attributes, Circuit_Origin_ID: pB.Feature_ID } }
+    : f));
+  const rn = buildFeederModel(named, {
+    lineTypes, seedIds: new Set([p101.Feature_ID, p102.Feature_ID]),
+  });
+  if (rn.error) fail(`the named origin refused: ${rn.error}`);
+  else {
+    if (rn.origin !== pB) fail("a circuit that names its POC was fed from another");
+    if (rn.originBy !== "named") fail("a named origin was not recorded as named");
+  }
+
+  /* A substation on the shared network wins over both POCs, however
+     far it stands — the incomer doctrine, unchanged. */
+  const subOn = { Feature_ID: id++, Feature_Role: "substation", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[300, 0]], Attributes: {} };
+  const rs = buildFeederModel([...joined, subOn], {
+    lineTypes, seedIds: new Set([p101.Feature_ID, p102.Feature_ID]),
+  });
+  if (rs.error) fail(`the substation on the shared network refused: ${rs.error}`);
+  else if (rs.origin !== subOn) {
+    fail("a substation on the network did not win over the POCs");
+  }
+
+  /* A circuit whose component holds no origin is still refused. */
+  const island = [
+    ...features,
+    trench([[0, 500], [40, 500]]),
+    trench([[20, 500], [20, 510]], "service_trench"),
+  ];
+  const p901 = plot(901, [20, 510]);
+  island.push(p901, meter(p901, [20, 510], 9));
+  const ri = buildFeederModel(island, { lineTypes, seedIds: new Set([p901.Feature_ID]) });
+  if (!ri.error || !/no origin on it/.test(ri.error)) {
+    fail("a circuit on a network with no origin was not refused plainly");
   }
 }
 
@@ -169,5 +230,5 @@ else {
 }
 
 console.log(bad ? `\n${bad} problem(s)`
-  : "Two electric POCs behave (each network rooted, measured and sourced from its own).");
+  : "Two electric POCs behave (named, substation, then nearest \u2014 and shared trenches route).");
 process.exit(bad ? 1 : 0);

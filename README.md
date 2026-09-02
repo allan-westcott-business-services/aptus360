@@ -1,3 +1,77 @@
+# Feeder End Points — phase 1, 2 Sep 2026
+
+A span node is a CIVIL fact: the dig branches or ends here. It was also
+carrying ELECTRICAL facts — a circuit, a sequence, a cable, a level —
+and one trench junction can carry two circuits' cables with two of
+everything, which one object cannot honestly hold. That conflation is
+where the season's patches came from: pass-through feeding, per-circuit
+renumbering fighting the site-wide numbers, ties broken on Feature_ID,
+and the two-POC refusal.
+
+The electrical facts now have their own feature: the **Feeder End
+Point** (`Feature_Role: 'feederpoint'`). One belongs to ONE circuit and
+stands where that circuit's cable ends or forks. Two circuits through
+one junction are two points at one location, each with its own cable
+and its own level.
+
+**One migration to run: `0201_feeder_end_points.sql`** — adds the role
+to the constraint, seeds its style, turns span nodes trench-brown, and
+gives feeder-point origins the same one-per-circuit uniqueness span
+origins had. (`0200_multiple_electric_pocs.sql` from earlier still
+applies if not yet run.)
+
+## What changed
+
+- **Build LV Network** no longer touches span nodes at all. Per
+  circuit it deletes its own generated feeder points and remakes them:
+  origin (A0/B0…) at the circuit's own POC, one point at every fork and
+  end, sequenced outward, carrying the cable of the run arriving.
+  Hand-set point cables survive by anchor, run overrides by geometry,
+  exactly as before. The status names which POC fed which circuit when
+  a rule had to choose.
+- **Two POCs on one trench network route.** The circuit decides its
+  origin: named (`Circuit_Origin_ID` on its meters), else a substation
+  on the network, else nearest along the trenches — said out loud in
+  the build status. The same-network refusal is gone; a circuit whose
+  network holds no origin at all is still refused.
+- **The trace, levels, sync, carry and scenario** all stop at the
+  circuit's feeder points where it has any, and at span nodes exactly
+  as before where it has none — old drawings work unchanged until
+  their first rebuild.
+- **Manual feeder points**: Electric → + Feeder End Point arms a click;
+  it must land on a circuit's run (that run says whose it is), stops
+  the trace immediately, and the next build sequences it. No Generated
+  flag, so builds adopt it rather than delete it.
+- **Colours**: span nodes trench brown; each feeder point in its
+  circuit's feeder colour, so the point and the cable it belongs to
+  cannot disagree.
+- **One circuit at a time**: the levels panel and the Circuit Report
+  each have a circuit selector — levels of two circuits side by side at
+  shared points read as one network contradicting itself. The levels
+  export follows the selection and names the circuit in the filename;
+  the report's export still carries every circuit.
+
+## Checks
+
+`checkfeederpoints.mjs` (new) drives the takeover through the real
+trace: each circuit stops at its own points at the shared junction and
+never at the other's or at a span node; a drawing with no feeder points
+still stops at span nodes. `checkmultipoc.mjs` holds the origin rule
+(named → substation → nearest, shared trenches routing).
+`checkspannodes.mjs` keeps the old-drawing rules alive and adds the
+takeover flip. Suite **103 of 112** with `--py`; the nine failures are
+the same pre-existing set as this morning.
+
+## Not yet (phase 2/3, by agreement)
+
+As-laid plan and call-offs still speak span nodes (correct — they are
+dig documents). "Apply Cable Sizes to Span Nodes" still exists and now
+operates on feeder points where a drawing has them; renaming the menu,
+migrating node-held cables on old drawings, and stripping the remaining
+span-node electrical patches is phase 3.
+
+---
+
 # Four fixes and two features, 1 Sep 2026
 
 1. A cable that runs through a span node feeds it

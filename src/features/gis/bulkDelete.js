@@ -117,6 +117,11 @@ export function bulkDeleteCategories(features = [], opts = {}) {
           (f) => isJointOfKind(f, kind),
         ]),
         ["spannode", "span nodes", role("spannode")],
+        /* One circuit's cable junctions \u2014 the build remakes its own on
+           the next run, so clearing them is how a mis-built network is
+           taken back to nothing. Electric only: no other utility has
+           them. */
+        ["feederpoint", "feeder end points", role("feederpoint")],
         ["poc", "POC", role("poc")],
         ["substation", "substations", role("substation")],
       ],
@@ -185,6 +190,7 @@ export function bulkDeleteCategories(features = [], opts = {}) {
       const general = {
         main: "main", service: "service",
         meter: "meter", joint: "joint", poc: "poc", spannode: "spannode",
+        feederpoint: "feederpoint",
         column: "column",
         /* Every kind rolls up into the one general joints entry, so
            ticking "All joints and connectors" still takes them and
@@ -249,6 +255,8 @@ export function bulkDeleteCategories(features = [], opts = {}) {
   add("nrs", "All non-residential supplies", (f) => f.Feature_Role === "nrs", "Points");
   add("poc", "All POCs", (f) => f.Feature_Role === "poc", "Points");
   add("spannode", "All span nodes", (f) => f.Feature_Role === "spannode", "Points");
+  add("feederpoint", "All feeder end points",
+    (f) => f.Feature_Role === "feederpoint", "Points");
   add("servicevalve", "All service valves",
     (f) => f.Feature_Role === "servicevalve", "Points");
   /* Substations and gas governors are not here. Each belongs to one

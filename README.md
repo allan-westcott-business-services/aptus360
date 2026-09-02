@@ -45,6 +45,11 @@ applies if not yet run.)
 - **Colours**: span nodes trench brown; each feeder point in its
   circuit's feeder colour, so the point and the cable it belongs to
   cannot disagree.
+- **Bulk Delete** offers feeder end points: under Electric ("feeder
+  end points") and among the general Points entries ("All feeder end
+  points"), same shape as span nodes. Deleting them is safe — the next
+  Build LV Network remakes its own; hand-placed ones go too, so untick
+  the row if you have any you mean to keep.
 - **One circuit at a time**: the levels panel and the Circuit Report
   each have a circuit selector — levels of two circuits side by side at
   shared points read as one network contradicting itself. The levels

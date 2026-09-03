@@ -58,6 +58,9 @@ export default function CircuitReport({
   /* The circuit's drawn colour: current values by circuit id, and the
      setter that writes a choice to the circuit's own origin. */
   onSetCircuitColour, circuitInk,
+  /* Link boxes on each circuit, and the write that moves meters
+     between their outputs \u2014 the same shape as the circuit mover. */
+  linkBoxes = [], onMoveToLinkWay,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -83,6 +86,10 @@ export default function CircuitReport({
   /* Which circuit the move buttons point at, held per circuit so two
      sections cannot fight over one selection. */
   const [moveTo, setMoveTo] = useState({});
+  /* Which output the ticked meters are bound for, per circuit. The
+     value is "boxId:way", or "" for none, or "off" to take them off
+     an output and back onto the origin's routing. */
+  const [wayTo, setWayTo] = useState({});
 
   const toggle = (id) => setPicked((p) =>
     (p.includes(id) ? p.filter((x) => x !== id) : [...p, id]));
@@ -354,6 +361,14 @@ export default function CircuitReport({
             .filter((c) => onlyCircuit === "all" || String(c.id) === onlyCircuit)
             .map((c) => {
             const rows = sortRows(match(c.meters));
+            /* The link boxes on this circuit, and where each row sits
+               now \u2014 read off the meters, which is where the lasso and
+               the build both read it. */
+            const boxesHere = (linkBoxes || []).filter((b) =>
+              c.id !== "unlinked"
+              && Number(b.Attributes?.Circuit_ID) === Number(c.id));
+            const wayValueOf = (m) => (m.linkBoxId != null && m.linkWay != null
+              ? `${m.linkBoxId}:${m.linkWay}` : "off");
             /* The meters that can be picked. Self-lay ones are not:
                somebody else connects them, so they go on no circuit of
                ours. Select-all works from this, so ticking the header
@@ -491,6 +506,46 @@ export default function CircuitReport({
                       substation do not change, only which meters hang
                       off them, and unassigning first would leave the
                       meters on no circuit if the second write failed. */}
+                  {boxesHere.length > 0 && onMoveToLinkWay && (
+                    /* The same shape as the circuit mover: tick rows,
+                       choose an output, press once. */
+                    <span className="cr-move">
+                      <select value={wayTo[c.id] ?? ""}
+                        aria-label="Output to move the selected meters to"
+                        onChange={(e) => setWayTo((m) => ({ ...m, [c.id]: e.target.value }))}>
+                        <option value="">Move to output&hellip;</option>
+                        <option value="off">From the origin</option>
+                        {boxesHere.map((b) => Array.from(
+                          { length: Number(b.Attributes?.Link_Ways) === 4 ? 3 : 1 },
+                          (_, i) => i + 1,
+                        ).map((w) => (
+                          <option key={`${b.Feature_ID}:${w}`}
+                            value={`${b.Feature_ID}:${w}`}>
+                            {(b.Label || "Link box")}{" \u00b7 "}
+                            {Number(b.Attributes?.Link_Ways) === 4
+                              ? `output ${w}` : "output"}
+                            {b.Attributes?.Way_Fuse_A?.[w]
+                              ? ` (${b.Attributes.Way_Fuse_A[w]} A)` : ""}
+                          </option>
+                        )))}
+                      </select>
+                      <button className="cr-act cr-move-b"
+                        disabled={!pickedHere.length || !wayTo[c.id] || busy}
+                        title={!pickedHere.length ? "Tick the meters to move"
+                          : !wayTo[c.id] ? "Choose the output to move them to"
+                            : `Move ${pickedHere.length} meter(s)`}
+                        onClick={() => {
+                          const v = wayTo[c.id];
+                          onMoveToLinkWay(pickedHere, v === "off" ? null
+                            : { boxId: Number(v.split(":")[0]),
+                              way: Number(v.split(":")[1]) });
+                          setPicked([]);
+                          setWayTo((m) => ({ ...m, [c.id]: "" }));
+                        }}>
+                        Move
+                      </button>
+                    </span>
+                  )}
                   {others.length > 0 && (
                     <span className="cr-move">
                       <select value={moveTo[c.id] ?? ""}
@@ -603,6 +658,10 @@ export default function CircuitReport({
                               {l}{sort.key === k && (sort.dir === "asc" ? " \u25B2" : " \u25BC")}
                             </th>
                           ))}
+                        {/* Which output of which link box feeds this
+                            meter. Only where the circuit has a box, so
+                            an ordinary circuit's table is unchanged. */}
+                        {boxesHere.length > 0 && <th>Fuse</th>}
                       </tr>
                       <tr className="filter-row">
                         <th />
@@ -612,7 +671,7 @@ export default function CircuitReport({
                               onChange={(e) => setFilter(k)(e.target.value)} />
                           </th>
                         ))}
-                        <th colSpan={2} />
+                        <th colSpan={boxesHere.length > 0 ? 3 : 2} />
                       </tr>
                     </thead>
                     <tbody>
@@ -669,6 +728,38 @@ export default function CircuitReport({
                             title={m.kvaMissing ? "No load recorded on this plot" : undefined}>
                             {m.kvaMissing ? "\u2014" : kvaF(m.kva)}
                           </td>
+                          {boxesHere.length > 0 && (
+                            /* One click to open, one to choose \u2014 the
+                               row moves to that output and the next
+                               build routes it from there. "From the
+                               origin" is the way off a box entirely,
+                               named as what it means rather than as an
+                               empty value. */
+                            <td className="cr-fuse">
+                              <select value={wayValueOf(m)} disabled={!!busy}
+                                aria-label={`Output feeding ${m.meter}`}
+                                onChange={(e) => onMoveToLinkWay?.([m.id],
+                                  e.target.value === "off" ? null
+                                    : { boxId: Number(e.target.value.split(":")[0]),
+                                      way: Number(e.target.value.split(":")[1]) })}>
+                                <option value="off">From the origin</option>
+                                {boxesHere.map((b) => Array.from(
+                                  { length: Number(b.Attributes?.Link_Ways) === 4 ? 3 : 1 },
+                                  (_, i) => i + 1,
+                                ).map((w) => (
+                                  <option key={`${b.Feature_ID}:${w}`}
+                                    value={`${b.Feature_ID}:${w}`}>
+                                    {(b.Label || "Link box")}
+                                    {" \u00b7 "}
+                                    {Number(b.Attributes?.Link_Ways) === 4
+                                      ? `output ${w}` : "output"}
+                                    {b.Attributes?.Way_Fuse_A?.[w]
+                                      ? ` (${b.Attributes.Way_Fuse_A[w]} A)` : ""}
+                                  </option>
+                                )))}
+                              </select>
+                            </td>
+                          )}
                         </tr>
                       ))}
                     </tbody>
@@ -773,6 +864,8 @@ const CSS = `
 .cr-ink-x { border: none; background: none; color: #94a3b8; cursor: pointer;
   font-size: 14px; padding: 0 2px; }
 .cr-ink-x:hover { color: #dc2626; }
+.cr-fuse select { padding: 2px 4px; border: 1.5px solid #e2e8f0; border-radius: 6px;
+  background: #fff; font: inherit; font-size: 12px; max-width: 190px; }
 .cr-fed { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
 .cr-fed label { font-size: 12px; color: #64748b; }
 .cr-fed select { padding: 3px 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;

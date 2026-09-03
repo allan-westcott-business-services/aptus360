@@ -1497,6 +1497,11 @@ export function circuitReport(features = [], opts = {}) {
          whatever the database held, snapping back after every pick
          that had in fact saved. */
       circuitOriginId: m.Attributes?.Circuit_Origin_ID ?? null,
+      /* Which link box output feeds this meter, for the report's Fuse
+         column \u2014 read off the meter, the one place the lasso, the
+         build and the report all agree to look. */
+      linkBoxId: m.Attributes?.Link_Box_ID ?? null,
+      linkWay: m.Attributes?.Link_Way ?? null,
       originLabel: d != null && stations.length > 1
         ? (originOf.get(Number(m.Feature_ID))?.Label
           || (originOf.get(Number(m.Feature_ID))?.Feature_Role === "substation"

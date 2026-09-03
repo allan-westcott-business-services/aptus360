@@ -9733,6 +9733,44 @@ export default function GISCanvasPage() {
     finally { setBusy(""); }
   }
 
+  /* Moving meters between outputs from the Circuit Report \u2014 the same
+     write the lasso makes, from a couple of clicks instead of an
+     outline. Null takes them off a box entirely, back onto the
+     origin's routing at the next build. */
+  async function moveToLinkWay(meterIds, target) {
+    const ids = new Set((meterIds || []).map(Number));
+    const rows = features.filter((m) => m.Feature_Role === "meter"
+      && ids.has(Number(m.Feature_ID)));
+    if (!rows.length) return;
+    if (target) {
+      const box = features.find((x) => Number(x.Feature_ID) === Number(target.boxId));
+      const wrong = rows.filter((m) =>
+        Number(m.Attributes?.Circuit_ID) !== Number(box?.Attributes?.Circuit_ID));
+      if (!box || wrong.length) {
+        setError("An output feeds a share of its own circuit \u2014 those meters "
+          + "are on another one.");
+        return;
+      }
+    }
+    setBusy("circuit");
+    try {
+      await bulkUpdateFeatures(projectId, rows.map((m) => ({
+        Feature_ID: m.Feature_ID,
+        Attributes: { ...m.Attributes,
+          Link_Box_ID: target ? Number(target.boxId) : null,
+          Link_Way: target ? Number(target.way) : null },
+      })));
+      await load(projectId);
+      setStatus(target
+        ? `${rows.length} meter(s) onto output ${target.way} \u2014 run Build LV `
+          + "Network to re-route"
+        : `${rows.length} meter(s) back on the origin's routing at the next build`);
+      setTimeout(() => setStatus(""), 9000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   /* Arming the lasso from the box's editor, and clearing an output. */
   function lassoLinkWay(boxId, way) {
     setEditing(null);
@@ -19999,6 +20037,9 @@ export default function GISCanvasPage() {
             report={r}
             onSetCircuitOrigin={setCircuitOrigin}
             onSetCircuitColour={setCircuitColourNow}
+            linkBoxes={features.filter((f) => f.Feature_Role === "linkbox"
+              && f.Attributes?.Span_Seq != null)}
+            onMoveToLinkWay={moveToLinkWay}
             circuitInk={ringColours}
             /* The rings are one setting with two ways in — this and the
                Layers menu — so turning them on here shows the same thing

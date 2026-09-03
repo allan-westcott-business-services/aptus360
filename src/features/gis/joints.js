@@ -684,7 +684,34 @@ export function planJoints(features = [], circuits = [], opts = {}) {
     return false;
   });
 
+  /* ── A link box replaces the joint at its own point ──
+
+     A link box IS the connection: the cable arrives at one face and
+     leaves through fused ways. Whatever the walk found at that point
+     \u2014 a fork wanting a breech, a size change wanting a straight \u2014 the
+     fitting is the box, and planning a joint there too would put a
+     second fitting on the drawing and on the bill that nobody
+     installs.
+
+     Not the service joint, deliberately: a plot taking its service off
+     the main beside a box still needs its own take-off, and that is a
+     different fitting doing a different job. And not a bottle end: a
+     run genuinely stopping dead there is still sealed.
+
+     Matched on position, the same tolerance the reconciler uses, so a
+     box adopted where it stands answers for the joint that would have
+     been planned there. */
+  const boxAt = features
+    .filter((f) => f.Feature_Role === "linkbox")
+    .map((f) => f.Attributes?.Span_Anchor || f.Geometry?.[0])
+    .filter(Boolean);
+  const onABox = (pt) => boxAt.some((b) =>
+    Math.hypot(b[0] - pt[0], b[1] - pt[1]) <= (opts.tolM ?? 0.25));
+
   return out.filter((j) => {
+    if (j.kind !== "service" && j.kind !== "bottleend" && onABox(j.point)) {
+      return false;
+    }
     if (j.kind !== "bottleend") return true;
     /* On a main: keep it, whatever else is nearby. A take-off is a
        point on both, and the main stopping there is a real seal. */

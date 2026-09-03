@@ -20,6 +20,7 @@
 import { readFileSync, existsSync } from "node:fs";
 import { spanTrace, circuitBuildParts } from "./src/features/gis/feeder.js";
 import { feederRenderPlan } from "./src/features/gis/feederColour.js";
+import { planJoints } from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -259,6 +260,38 @@ if (!/claimed twice/.test(editor)) {
     run(5, { Link_Box_ID: 1, Link_Way: 3 }),
     run(6, { Link_Connections: { start: { box: 1, way: 2 } } })];
   const plan = feederRenderPlan(world, { chosenColours: { 1: "#2563eb" } });
+  /* ── And live, with no stamp at all ──
+
+     A circuit colour resolves at once because every run carries its
+     Circuit_ID; an output's colour must behave the same rather than
+     waiting for a rebuild to stamp the runs. So membership is also
+     worked out from the drawing \u2014 walk the mains out from the box,
+     and every run on the path to an assigned meter is that output's.
+     A run on the way to two outputs is shared and keeps the circuit's
+     colour, which is the honest answer for cable feeding both. */
+  {
+    const bx = { Feature_ID: 90, Feature_Role: "linkbox", Feature_Type: "point",
+      Layer_Key: "electric", Geometry: [[100, 0]],
+      Attributes: { Link_Ways: 4, Circuit_ID: 1, Span_Seq: 2,
+        Span_Anchor: [100, 0], Way_Colours: { 1: "#e11d48", 2: "#16a34a" } } };
+    const bare = (fid, pts) => ({ Feature_ID: fid, Feature_Type: "line",
+      Layer_Key: "electric", Geometry: pts,
+      Attributes: { Line_Type: "elec_main", Circuit_ID: 1 } });
+    const mtr = (fid, at, way) => ({ Feature_ID: fid, Feature_Role: "meter",
+      Feature_Type: "point", Layer_Key: "electric", Geometry: [at],
+      Attributes: { Circuit_ID: 1, Link_Box_ID: 90, Link_Way: way } });
+    const live = feederRenderPlan([bx,
+      bare(91, [[0, 0], [100, 0]]), bare(92, [[100, 0], [200, 0]]),
+      bare(93, [[100, 0], [100, 60]]),
+      mtr(94, [195, 2], 1), mtr(95, [102, 55], 2)],
+    { chosenColours: { 1: "#2563eb" } });
+    if (live.get(92)?.colour !== "#e11d48" || live.get(93)?.colour !== "#16a34a") {
+      fail("an output's colour no longer resolves without a rebuild");
+    }
+    if (live.get(91)?.colour !== "#2563eb") {
+      fail("the shared trunk no longer keeps the circuit's colour");
+    }
+  }
   const ink = (fid) => plan.get(fid)?.colour ?? null;
   if (ink(2) !== "#2563eb") fail("the trunk no longer wears the circuit's colour");
   if (ink(3) !== "#e11d48") fail("a built output run does not wear its output's colour");
@@ -276,6 +309,60 @@ if (!/claimed twice/.test(editor)) {
   }
   if (!/Link_Box_ID: sec\.linkBoxId, Link_Way: sec\.linkWay/.test(canvasSrc3)) {
     fail("the output's stamp does not reach the run's attributes");
+  }
+}
+
+/* ── A link box replaces the joint at its own point ──
+
+   The box IS the connection: cable in one face, out through fused
+   ways. Whatever the walk found there — a fork wanting a breech, a
+   size change wanting a straight — planning a joint too would put a
+   second fitting on the drawing and on the bill that nobody installs.
+   Service take-offs and bottle ends are deliberately untouched: a plot
+   beside a box still needs its own take-off, and a run stopping dead
+   is still sealed. */
+{
+  const lt = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  let jid = 8000;
+  const tr = (pts, k = "trench") => ({ Feature_ID: jid++, Feature_Type: "line",
+    Layer_Key: "trench", Geometry: pts, Attributes: { Line_Type: k } });
+  const jpoc = { Feature_ID: jid++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {} };
+  const jplot = (n, at) => ({ Feature_ID: jid++, Feature_Role: "plot",
+    Feature_Type: "point", Plot_ID: n, Geometry: [at], Attributes: {} });
+  const jp1 = jplot(1, [150, 10]);
+  const jp2 = jplot(2, [100, -40]);
+  const jm = (pl, at) => ({ Feature_ID: jid++, Feature_Role: "meter",
+    Feature_Type: "point", Layer_Key: "electric", Plot_ID: pl.Plot_ID,
+    Geometry: [at], Attributes: { Seed_Feature_ID: pl.Feature_ID, Circuit_ID: 1 } });
+  const jm1 = jm(jp1, [150, 10]);
+  const jm2 = jm(jp2, [100, -40]);
+  const world = [jpoc, jp1, jp2, jm1, jm2,
+    tr([[0, 0], [100, 0]]), tr([[100, 0], [150, 0]]), tr([[100, 0], [100, -40]]),
+    tr([[150, 0], [150, 10]], "service_trench")];
+  const circuits = [{ id: 1, name: "Circuit 1", meters: [jm1, jm2] }];
+  const kindsAt = (list, x, y) => list
+    .filter((j) => Math.hypot(j.point[0] - x, j.point[1] - y) < 0.5)
+    .map((j) => j.kind);
+  const before = planJoints(world, circuits, { lineTypes: lt });
+  if (!kindsAt(before, 100, 0).includes("breech")) {
+    fail("the fixture no longer plans a breech at the fork — the case proves nothing");
+  }
+  const bx = { Feature_ID: jid++, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[100, 0]],
+    Attributes: { Link_Ways: 4, Circuit_ID: 1, Span_Seq: 2, Span_Anchor: [100, 0] } };
+  const after = planJoints([...world, bx], circuits, { lineTypes: lt });
+  if (kindsAt(after, 100, 0).length) {
+    fail(`a joint is still planned where a link box stands: ${kindsAt(after, 100, 0)}`);
+  }
+  if (!kindsAt(after, 150, 0).includes("service")) {
+    fail("a plot's service take-off was lost — only the box's own joint goes");
+  }
+  if (!kindsAt(after, 100, -40).includes("bottleend")) {
+    fail("a run stopping dead is no longer sealed");
   }
 }
 

@@ -8886,6 +8886,41 @@ export default function GISCanvasPage() {
      being overruled. A click in open ground places exactly there, with
      the reason said out loud — the original lets you place plant
      before the network exists and draw through it afterwards. */
+  /* ── The electric main under a click, measured where it is DRAWN ──
+
+     Two circuits' cables share a trench and store the same route; the
+     drawn separation is pixels of display offset. A snap measured
+     against the stored geometry is a coin toss between them \u2014 click
+     dead on the orange dashes and take the blue circuit by a
+     hair's-width tie-break. So placement measures exactly as the hit
+     test now does: against the offset polyline the eye aimed at, in
+     pixels, and maps the winning segment back onto the true geometry
+     (the offset preserves vertices, so index and t carry across). The
+     snap point returned is on the TRUE route, because the box stands
+     in the trench \u2014 only the choosing follows the drawing. */
+  function drawnMainAt(pointWorld) {
+    const clickPx = toPx(pointWorld);
+    let hit = null;
+    for (const t of visible) {
+      if (t.Feature_Type !== "line" || t.Layer_Key !== "electric") continue;
+      if (!String(t.Attributes?.Line_Type || "").includes("main")) continue;
+      const g = t.Geometry || [];
+      if (g.length < 2) continue;
+      const fp = feederPlan.get(Number(t.Feature_ID));
+      const nudge = fp?.offsetPx ?? servicePairOffset(t, hatchLayers);
+      const pxLine = g.map((m) => { const q = toPx(m); return [q.x, q.y]; });
+      const drawn = nudge ? offsetPolyline(pxLine, nudge) : pxLine;
+      const r = nearestOnPolyline([clickPx.x, clickPx.y], drawn);
+      if (r && r.d <= SNAP_PX && (!hit || r.d < hit.d)) {
+        const a = g[r.index - 1];
+        const b = g[r.index];
+        hit = { d: r.d, line: t, index: r.index,
+          q: [a[0] + (b[0] - a[0]) * r.t, a[1] + (b[1] - a[1]) * r.t] };
+      }
+    }
+    return hit;
+  }
+
   async function placePlantAt(point, role, layerKey, armed = null) {
     let note = "";
 
@@ -8902,14 +8937,7 @@ export default function GISCanvasPage() {
        one place there. */
     if (role === "linkbox") {
       const ways = armed?.ways === 4 ? 4 : 2;
-      const reach = Math.max(0.5, SNAP_PX / (view.scale || 1));
-      let hit = null;
-      for (const t of visible) {
-        if (t.Feature_Type !== "line" || t.Layer_Key !== "electric") continue;
-        if (!String(t.Attributes?.Line_Type || "").includes("main")) continue;
-        const r = nearestOnPolyline(point, t.Geometry || []);
-        if (r && r.d <= reach && (!hit || r.d < hit.d)) hit = { ...r, line: t };
-      }
+      const hit = drawnMainAt(point);
       let angle = null;
       if (hit) {
         point = hit.q;
@@ -8983,15 +9011,10 @@ export default function GISCanvasPage() {
        circuit would stop no trace and show no level, which reads as
        placed-and-broken. */
     if (role === "feederpoint") {
-      const reach = Math.max(0.5, SNAP_PX / (view.scale || 1));
-      let hit = null;
-      for (const t of visible) {
-        if (t.Feature_Type !== "line" || t.Layer_Key !== "electric") continue;
-        if (!String(t.Attributes?.Line_Type || "").includes("main")) continue;
-        if (t.Attributes?.Circuit_ID == null) continue;
-        const r = nearestOnPolyline(point, t.Geometry || []);
-        if (r && r.d <= reach && (!hit || r.d < hit.d)) hit = { ...r, line: t };
-      }
+      let hit = drawnMainAt(point);
+      /* A feeder point needs a circuit to belong to; a run without one
+         cannot say whose the point is. */
+      if (hit && hit.line.Attributes?.Circuit_ID == null) hit = null;
       if (!hit) {
         setError("A feeder end point goes on a circuit's cable \u2014 click on "
           + "the run it belongs to.");

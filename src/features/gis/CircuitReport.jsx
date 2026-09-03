@@ -151,7 +151,17 @@ export default function CircuitReport({
   const sortRows = (rows) => {
     const { key, dir } = sort;
     const s = [...rows].sort((a, b) => {
-      const av = a[key], bv = b[key];
+      /* ── Sorting by output ──
+
+         The Fuse cell is a control, not a value, so the sort works off
+         the fact behind it: box then way, as one comparable string.
+         Meters on no output sort last with the other missing values,
+         because "fed from the origin" is not output zero \u2014 it is a
+         meter the box does not feed. */
+      const fuseKey = (r) => (r.linkBoxId != null && r.linkWay != null
+        ? `${String(r.linkBoxId).padStart(9, "0")}:${r.linkWay}` : null);
+      const av = key === "fuse" ? fuseKey(a) : a[key];
+      const bv = key === "fuse" ? fuseKey(b) : b[key];
       if (av == null && bv == null) return 0;
       /* Missing sorts last whichever way round, because "no distance" is
          not a small distance — it is a meter that isn't connected. */
@@ -675,7 +685,15 @@ export default function CircuitReport({
                         {/* Which output of which link box feeds this
                             meter. Only where the circuit has a box, so
                             an ordinary circuit's table is unchanged. */}
-                        {boxesHere.length > 0 && <th>Fuse</th>}
+                        {boxesHere.length > 0 && (
+                          <th onClick={() => setSort((x) => ({
+                            key: "fuse",
+                            dir: x.key === "fuse" && x.dir === "asc" ? "desc" : "asc",
+                          }))}>
+                            Fuse{sort.key === "fuse"
+                              && (sort.dir === "asc" ? " \u25B2" : " \u25BC")}
+                          </th>
+                        )}
                       </tr>
                       <tr className="filter-row">
                         <th />

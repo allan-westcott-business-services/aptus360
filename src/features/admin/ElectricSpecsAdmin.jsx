@@ -250,6 +250,9 @@ export default function ElectricSpecsAdmin() {
               </label>
               <div className="fld"><label>Max loop &#8486;</label>{cell(r, "Max_Loop_Ohms", "number")}</div>
               <div className="fld"><label>Max volt drop %</label>{cell(r, "Max_Volt_Drop_Pct", "number")}</div>
+              {/* The tail's own allowance, on top of the mains figure.
+                  The at-cut-out column is judged against the sum. */}
+              <div className="fld"><label>Max service volt drop %</label>{cell(r, "Max_Service_Volt_Drop_Pct", "number")}</div>
               <div className="fld"><label>Unbalanced constant</label>{cell(r, "Unbalanced_Constant", "number")}</div>
               <div className="fld"><label>Distributed load factor</label>{cell(r, "Distributed_Load_Factor", "number")}</div>
               <div className="fld"><label>RAG amber %</label>{cell(r, "RAG_Amber_Pct", "number")}</div>

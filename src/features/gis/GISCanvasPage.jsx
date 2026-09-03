@@ -22559,16 +22559,46 @@ export default function GISCanvasPage() {
                               {(vdBasis === "own" ? l.vd.pctOwn : l.vd.pct).toFixed(2)}
                             </td>
                             <td className="num"
-                              title={l.service?.lengthM != null
-                                ? `${l.service.lengthM.toFixed(1)} m of service`
-                                : "No service drawn or specified to this node"}>
+                              title="The worst tail's drawn length">
+                              {l.service?.lengthM != null
+                                ? `${l.service.lengthM.toFixed(1)} m` : "\u2014"}
+                            </td>
+                            {/* ── Judged against its own allowance ──
+
+                                The tail against the service limit; the
+                                cut-out against mains PLUS service,
+                                because that is the whole journey's
+                                allowance \u2014 a node at 6.3% with a
+                                0.07% tail is inside a 5+2 scheme, and
+                                painting it red against 5 alone judged
+                                the whole journey by half its
+                                allowance. Where no service allowance
+                                is set, the sum falls back to the
+                                mains limit alone rather than widening
+                                silently. */}
+                            <td className={(() => {
+                              const lim = Number(
+                                lookups?.vdSettings?.[0]?.Max_Service_Volt_Drop_Pct);
+                              return l.service && !l.service.missingSpec
+                                && Number.isFinite(lim) && l.service.pct > lim
+                                ? "num vd-over" : "num";
+                            })()}
+                              title={l.service?.lengthM == null
+                                ? "No service drawn or specified to this node"
+                                : undefined}>
                               {l.service && !l.service.missingSpec
                                 ? l.service.pct.toFixed(2) : "\u2014"}
                             </td>
-                            <td className={l.atCutout && l.atCutout.pct
-                              > (Number(lookups?.vdSettings?.[0]?.Max_Volt_Drop_Pct)
-                                || Infinity)
-                              ? "num vd-over strong" : "num strong"}>
+                            <td className={(() => {
+                              const main = Number(
+                                lookups?.vdSettings?.[0]?.Max_Volt_Drop_Pct);
+                              const svc = Number(
+                                lookups?.vdSettings?.[0]?.Max_Service_Volt_Drop_Pct);
+                              const lim = (Number.isFinite(main) ? main : Infinity)
+                                + (Number.isFinite(svc) ? svc : 0);
+                              return l.atCutout && l.atCutout.pct > lim
+                                ? "num vd-over strong" : "num strong";
+                            })()}>
                               {l.atCutout && !l.service?.missingSpec
                                 ? l.atCutout.pct.toFixed(2) : "\u2014"}
                             </td>
@@ -22605,6 +22635,9 @@ export default function GISCanvasPage() {
                       <td className="num">{trace.totalMeters}</td>
                       {trace.hasVd && <td colSpan={3} className="num vd-note">
                         limits {trace.limits.maxLoopOhms}&#937; / {trace.limits.maxVoltDropPct}%
+                        {trace.limits.maxServiceVoltDropPct != null
+                          ? ` (+${trace.limits.maxServiceVoltDropPct}% service at the cut-out)`
+                          : ""}
                       </td>}
                       <td />
                     </tr>

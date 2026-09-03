@@ -19,6 +19,7 @@
    the editor, and what drifts is the stitching. */
 import { readFileSync, existsSync } from "node:fs";
 import { spanTrace, circuitBuildParts } from "./src/features/gis/feeder.js";
+import { feederRenderPlan } from "./src/features/gis/feederColour.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -232,6 +233,49 @@ if (!/claimed twice/.test(editor)) {
   }
   if (!/await finishLinkWayAssign\(g\)/.test(canvasSrc2)) {
     fail("the lasso no longer routes to the output assignment when armed");
+  }
+}
+
+/* ── Each output can wear its own colour ──
+
+   Telling a split's runs apart is the point of colouring them. A
+   cable belongs to an output two ways — the build stamps Link_Box_ID
+   and Link_Way on what it lays, a hand-drawn cable claims a way in
+   its own editor — and both resolve to the box's Way_Colours. An
+   output with no colour set falls back to the circuit's, so an
+   unpainted split looks exactly as it did. */
+{
+  const box = { Feature_ID: 1, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[100, 0]],
+    Attributes: { Link_Ways: 4, Circuit_ID: 1, Span_Seq: 2,
+      Way_Colours: { 1: "#e11d48", 2: "#16a34a" } } };
+  const run = (fid, attrs) => ({ Feature_ID: fid, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: [[100, 0], [160, 0]],
+    Attributes: { Line_Type: "elec_main", Circuit_ID: 1, ...attrs } });
+  const world = [box,
+    run(2, {}),
+    run(3, { Link_Box_ID: 1, Link_Way: 1 }),
+    run(4, { Link_Box_ID: 1, Link_Way: 2 }),
+    run(5, { Link_Box_ID: 1, Link_Way: 3 }),
+    run(6, { Link_Connections: { start: { box: 1, way: 2 } } })];
+  const plan = feederRenderPlan(world, { chosenColours: { 1: "#2563eb" } });
+  const ink = (fid) => plan.get(fid)?.colour ?? null;
+  if (ink(2) !== "#2563eb") fail("the trunk no longer wears the circuit's colour");
+  if (ink(3) !== "#e11d48") fail("a built output run does not wear its output's colour");
+  if (ink(4) !== "#16a34a") fail("output 2's runs do not wear output 2's colour");
+  if (ink(5) !== "#2563eb") {
+    fail("an uncoloured output does not fall back to the circuit's colour");
+  }
+  if (ink(6) !== "#16a34a") {
+    fail("a hand-drawn cable claiming a way does not wear that way's colour");
+  }
+  /* And the build stamps what it lays, or nothing above can find it. */
+  const canvasSrc3 = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/sec\.linkWay = pt\.way;/.test(canvasSrc3)) {
+    fail("the build no longer records which output laid a section");
+  }
+  if (!/Link_Box_ID: sec\.linkBoxId, Link_Way: sec\.linkWay/.test(canvasSrc3)) {
+    fail("the output's stamp does not reach the run's attributes");
   }
 }
 

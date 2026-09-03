@@ -319,13 +319,41 @@ export function feederRenderPlan(features = [], opts = {}) {
 
   const byCircuit = circuitColours(features, chosenColours);
 
+  /* ── An output's colour beats the circuit's ──
+
+     A link box splits a circuit across fused outputs, and telling the
+     outputs' runs apart is the point of colouring them. A cable
+     belongs to an output two ways: the build stamps Link_Box_ID and
+     Link_Way on the runs it lays from one, and a hand-drawn cable
+     claims a way through Link_Connections in its own editor. Either
+     way, the box's Way_Colours map answers \u2014 set per output in the
+     box's editor \u2014 and a way with no colour set falls back to the
+     circuit's, so an unpainted split looks exactly as it did. */
+  const wayColourOf = (f) => {
+    let boxId = f.Attributes?.Link_Box_ID ?? null;
+    let way = f.Attributes?.Link_Way ?? null;
+    if (boxId == null || way == null) {
+      const lc = f.Attributes?.Link_Connections || {};
+      for (const k of ["start", "end"]) {
+        const c = lc[k];
+        if (c && c.way !== "in" && c.box != null) { boxId = c.box; way = c.way; break; }
+      }
+    }
+    if (boxId == null || way == null) return null;
+    const box = features.find((x) => Number(x.Feature_ID) === Number(boxId)
+      && x.Feature_Role === "linkbox");
+    return box?.Attributes?.Way_Colours?.[way] ?? null;
+  };
+
   const plan = new Map();
   /* Colour follows the circuit, so every section of one feeder carries
-     the same colour from the substation to the far end. A section with
+     the same colour from the substation to the far end \u2014 unless the
+     run is an output's, which wears the output's own. A section with
      no circuit gets none and is left to the style cascade. */
   runs.forEach((r) => {
     plan.set(r.id, {
-      colour: r.circuitId == null ? null : byCircuit.get(r.circuitId) ?? null,
+      colour: wayColourOf(r.feature)
+        ?? (r.circuitId == null ? null : byCircuit.get(r.circuitId) ?? null),
       circuitId: r.circuitId,
       offsetPx: 0,
     });

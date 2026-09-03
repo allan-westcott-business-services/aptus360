@@ -974,6 +974,31 @@ export default function FeatureEditor({
                         <option key={a} value={a}>{a} A</option>
                       ))}
                     </select>
+                    {/* The output's colour on the drawing: its dots on
+                        the symbol and every run laid from it. Cleared
+                        back to the circuit's colour with the \u00d7. */}
+                    <div className="fe-lb-assign">
+                      <span className="hint">Colour</span>
+                      <label className="fe-swatch"
+                        title={`Colour of output ${w}'s runs on the drawing`}>
+                        <input type="color"
+                          value={(f.Attributes.Way_Colours || {})[w] || "#f59e0b"}
+                          aria-label={`Colour for output ${w}`}
+                          onChange={(e) => setAttr("Way_Colours")({
+                            ...(f.Attributes.Way_Colours || {}), [w]: e.target.value })} />
+                        <span style={{ background:
+                          (f.Attributes.Way_Colours || {})[w] || "#f59e0b" }} />
+                      </label>
+                      {(f.Attributes.Way_Colours || {})[w] && (
+                        <button type="button" className="btn sm"
+                          title="Back to the circuit's colour"
+                          onClick={() => {
+                            const m = { ...(f.Attributes.Way_Colours || {}) };
+                            delete m[w];
+                            setAttr("Way_Colours")(m);
+                          }}>&times;</button>
+                      )}
+                    </div>
                     {onLassoLinkWay && (
                       <div className="fe-lb-assign">
                         <span className="hint">

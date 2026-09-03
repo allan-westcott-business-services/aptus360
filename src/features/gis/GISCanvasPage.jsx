@@ -4074,10 +4074,10 @@ export default function GISCanvasPage() {
 
             if (view.scale > 1.2) {
               const nodeR = Math.max(2, half * 0.28);
-              const dot = (cx, cy) => {
+              const dot = (cx, cy, ink = null) => {
                 ctx.beginPath();
                 ctx.arc(cx, cy, nodeR, 0, Math.PI * 2);
-                ctx.fillStyle = "#0f172a";
+                ctx.fillStyle = ink || "#0f172a";
                 ctx.fill();
                 ctx.strokeStyle = "#f8fafc";
                 ctx.lineWidth = 1;
@@ -4088,10 +4088,14 @@ export default function GISCanvasPage() {
               /* Outputs on the front face: centred for a 2 way, spread
                  for a 4 way. */
               const outs = ways === 4 ? [-0.6, 0, 0.6] : [0];
+              const wayInk = f.Attributes?.Way_Colours || {};
               outs.forEach((t, i) => {
                 const cx = p.x + ux * half + vx * (t * half);
                 const cy = p.y + uy * half + vy * (t * half);
-                dot(cx, cy);
+                /* Each output dot in its own colour, so the symbol and
+                   the runs leaving it agree at a glance. An output with
+                   no colour set keeps the default ink. */
+                dot(cx, cy, on ? null : (wayInk[i + 1] || null));
                 if (ways === 4 && view.scale > 2.2) {
                   ctx.fillStyle = on ? "#1d4ed8"
                     : styleFor(f, { labelColour: "#0f172a" }).labelColour;
@@ -12953,6 +12957,17 @@ export default function GISCanvasPage() {
         /* The circuit's origin answers from the part that routed from
            it \u2014 the origin part where one exists, the trunk otherwise;
            way parts are rooted at the box and know nothing of POCs. */
+        /* Each section remembers which output laid it, so the run it
+           becomes can wear the output's colour and a schedule can say
+           whose cable it is. Origin and trunk sections carry nothing,
+           deliberately \u2014 they are the circuit's own. */
+        for (const pt of good) {
+          if (pt.way == null) continue;
+          for (const sec of pt.sections) {
+            sec.linkBoxId = Number(pt.box.Feature_ID);
+            sec.linkWay = pt.way;
+          }
+        }
         const r = good.find((x) => x.via === "origin")
           || good.find((x) => x.via === "trunk")
           || good[0];
@@ -13135,6 +13150,8 @@ export default function GISCanvasPage() {
               Line_Type: "elec_main",
               Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
               Meters: sec.meters, KVA: sec.kva, Cables: sec.cables,
+              ...(sec.linkWay != null
+                ? { Link_Box_ID: sec.linkBoxId, Link_Way: sec.linkWay } : {}),
               ...(startCable ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
               /* The size somebody chose for this length of main last
                  time, where the run is laid along the same points. A

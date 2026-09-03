@@ -75,7 +75,7 @@ import {
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { circuitMembership, SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
+import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins } from "./feeder.js";
@@ -1848,6 +1848,12 @@ export default function GISCanvasPage() {
   /* The outline drawn by Link to Circuit, waiting to be told which
      circuit it belongs to. Null when nothing is being asked. */
   const [circuitPick, setCircuitPick] = useState(null);
+
+  /* A link box output waiting for its lasso: { boxId, way }. Armed
+     from the box's editor, consumed by the same lasso Link to Circuit
+     draws \u2014 splitting a circuit across a box's outputs is the same
+     act as putting plots on a circuit, made with the same tool. */
+  const [linkWayAssign, setLinkWayAssign] = useState(null);
 
   /* ── Which volt drop the panel shows ──
 
@@ -7585,7 +7591,11 @@ export default function GISCanvasPage() {
     const g = Array.isArray(geometry) && geometry.length ? geometry : draft;
 
     if (tool === "circuit") {
-      if (g.length < 3) { setDraft([]); setTool("select"); return; }
+      if (g.length < 3) {
+        setDraft([]); setTool("select"); setLinkWayAssign(null);
+        return;
+      }
+      if (linkWayAssign) { await finishLinkWayAssign(g); return; }
       await finishCircuit(g);
       return;
     }
@@ -9631,6 +9641,95 @@ export default function GISCanvasPage() {
         : `${cname} names no POC \u2014 the next build picks the nearest along the trench`);
       setTimeout(() => setStatus(""), 10000);
       setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* ── Assigning plots to a link box output ──
+
+     The remedial move a 4 way exists for: losses too high, so the run
+     is broken at a box and the load split across its fused outputs.
+     Which plots hang off which output is a design decision, lassoed
+     like circuit membership and written the same way \u2014 Link_Box_ID
+     and Link_Way on the meters. The routing only changes when Build
+     LV Network runs again, and the status says so.
+
+     Only meters already on the box's circuit qualify: an output feeds
+     a share of ITS circuit, and quietly moving a meter between
+     circuits here would reassign without freeing the old way on the
+     board. Lassoed meters from other circuits are counted out loud
+     and left alone. Re-lassoing overwrites \u2014 the newest statement of
+     where a plot connects is the one that stands. */
+  async function finishLinkWayAssign(ring) {
+    const armed = linkWayAssign;
+    setLinkWayAssign(null);
+    setTool("select"); setDraft([]);
+    const box = features.find((x) => Number(x.Feature_ID) === Number(armed?.boxId));
+    if (!box) { setError("That link box is no longer on the drawing."); return; }
+    const cid = box.Attributes?.Circuit_ID;
+    if (cid == null) {
+      setError("That link box is not on a circuit's run yet \u2014 place it on "
+        + "the cable, or rebuild, then lasso.");
+      return;
+    }
+    const seeds = metredSeedsInside(features, ring, pointInPolygon);
+    const supplies = metredSuppliesInside(features, ring, pointInPolygon);
+    const meters = metersOfSeeds(features, [...seeds, ...supplies]);
+    if (!meters.length) {
+      setError("No plot seeds with an electric meter, and no supplies, "
+        + "inside that outline.");
+      return;
+    }
+    const mine = meters.filter((m) =>
+      Number(m.Attributes?.Circuit_ID) === Number(cid));
+    const foreign = meters.length - mine.length;
+    if (!mine.length) {
+      setError(`Nothing in that outline is on ${box.Attributes?.Circuit_Name
+        ?? "the box's circuit"} \u2014 an output feeds a share of its own circuit.`);
+      return;
+    }
+    setBusy("circuit");
+    try {
+      await bulkUpdateFeatures(projectId, mine.map((m) => ({
+        Feature_ID: m.Feature_ID,
+        Attributes: { ...m.Attributes,
+          Link_Box_ID: Number(box.Feature_ID), Link_Way: armed.way },
+      })));
+      await load(projectId);
+      setStatus(`${mine.length} meter(s) onto ${box.Label || "the link box"} `
+        + `output ${armed.way}`
+        + (foreign ? ` \u00b7 ${foreign} on other circuits left alone` : "")
+        + " \u2014 run Build LV Network to re-route");
+      setTimeout(() => setStatus(""), 10000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
+  /* Arming the lasso from the box's editor, and clearing an output. */
+  function lassoLinkWay(boxId, way) {
+    setEditing(null);
+    setLinkWayAssign({ boxId, way });
+    setTool("circuit");
+    setSelected([]); setDraft([]);
+    setStatus(`Draw round the plots for output ${way} \u2014 Escape to stop`);
+    setTimeout(() => setStatus(""), 8000);
+  }
+  async function clearLinkWay(boxId, way) {
+    const held = features.filter((m) => m.Feature_Role === "meter"
+      && Number(m.Attributes?.Link_Box_ID) === Number(boxId)
+      && Number(m.Attributes?.Link_Way) === Number(way));
+    if (!held.length) return;
+    setBusy("circuit");
+    try {
+      await bulkUpdateFeatures(projectId, held.map((m) => ({
+        Feature_ID: m.Feature_ID,
+        Attributes: { ...m.Attributes, Link_Box_ID: null, Link_Way: null },
+      })));
+      await load(projectId);
+      setStatus(`Output ${way} cleared \u2014 ${held.length} meter(s) back on the `
+        + "origin's routing at the next build");
+      setTimeout(() => setStatus(""), 8000);
     } catch (e) { setError(e.message); }
     finally { setBusy(""); }
   }
@@ -12772,8 +12871,15 @@ export default function GISCanvasPage() {
           continue;
         }
 
-        const r = feederSections(src, {
-          lineTypes,
+        /* In parts, where the circuit has a link box with lassoed
+           outputs: the unassigned plots from the origin, a trunk to
+           the box sized for everything its outputs serve, and each
+           output routed from the box to its own plots. One part, the
+           whole circuit from the origin, everywhere else \u2014
+           circuitBuildParts is feederSections with a label on until
+           an assignment exists. */
+        const parts = circuitBuildParts(src, {
+          lineTypes, circuitId: c.id,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           seedIds, meterIds,
@@ -12804,12 +12910,30 @@ export default function GISCanvasPage() {
              cannot put back, and this is the release to find out
              whether anything else wanted it. */
         });
-        if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
-        if (!r.sections.length) {
-          failed.push(`${c.name}: nothing to route \u2014 its meters reach the network but no run leads back to the substation`);
+        /* A part that cannot route says so with its name on \u2014 output 2
+           refused does not stop output 1 building. Only a circuit with
+           nothing buildable at all is skipped whole. */
+        for (const pt of parts.filter((x) => x.error)) {
+          failed.push(`${c.name}: ${pt.error}`);
+        }
+        const good = parts.filter((x) => !x.error && x.sections?.length);
+        const sections = good.flatMap((x) => x.sections);
+        if (!sections.length) {
+          if (!parts.some((x) => x.error)) {
+            failed.push(`${c.name}: nothing to route \u2014 its meters reach the network but no run leads back to the substation`);
+          }
           continue;
         }
-        if (r.skipped?.length) stranded.push(...r.skipped);
+        for (const pt of good) {
+          if (pt.skipped?.length) stranded.push(...pt.skipped);
+        }
+        /* The circuit's origin answers from the part that routed from
+           it \u2014 the origin part where one exists, the trunk otherwise;
+           way parts are rooted at the box and know nothing of POCs. */
+        const r = good.find((x) => x.via === "origin")
+          || good.find((x) => x.via === "trunk")
+          || good[0];
+        r.sections = sections;
 
         /* Junctions and ends together. A junction is where the feeder
            divides; an end is where it stops, and that far point is what
@@ -12831,14 +12955,30 @@ export default function GISCanvasPage() {
            schedule then reads down the network instead of jumping about
            it: A1 is the node closest to the substation, and everything
            A1 feeds is numbered before anything on another branch. */
-        const marks = [
-          ...junctionNodes(r.model).map((j) => ({ ...j, kind: "junction" })),
-          ...endOfLineNodes(r.model).map((e) => ({ ...e, kind: "end" })),
-        ];
-        const byIndex = new Map(marks.map((m) => [m.index, m]));
-        const walked = orderNodesFromRoot(r.model, marks.map((m) => m.index))
-          .map((i) => byIndex.get(i))
-          .filter(Boolean);
+        /* Per part, because each part has its own model and its own
+           walk \u2014 then concatenated in build order (origin, trunk,
+           ways) and deduped by position, so the trunk's far end and
+           the ways' roots, all standing on the one link box, mark it
+           once. The box itself is a manual point the maintenance
+           below adopts, so the mark lands on it rather than making a
+           twin beside it. */
+        const seen = new Set();
+        const walked = [];
+        for (const pt of good) {
+          const pm = [
+            ...junctionNodes(pt.model).map((j) => ({ ...j, kind: "junction" })),
+            ...endOfLineNodes(pt.model).map((e) => ({ ...e, kind: "end" })),
+          ];
+          const byIndex = new Map(pm.map((m) => [m.index, m]));
+          for (const i of orderNodesFromRoot(pt.model, pm.map((m) => m.index))) {
+            const m = byIndex.get(i);
+            if (!m) continue;
+            const key = `${Math.round(m.point[0] * 100)},${Math.round(m.point[1] * 100)}`;
+            if (seen.has(key)) continue;
+            seen.add(key);
+            walked.push(m);
+          }
+        }
 
         planned.push({
           circuit: c,
@@ -17234,7 +17374,42 @@ export default function GISCanvasPage() {
        average. A node feeding six plots is judged on the longest or
        thinnest of the six. The others are inside it by definition. */
     let service = null;
-    const here = part.model.metersAt?.[leg.endIdx] || [];
+    /* ── Which meters this leg serves ──
+
+       This read part.model.metersAt[leg.endIdx]: the meters attached AT
+       the leg's end node. But the model attaches a meter at ITS OWN end
+       of the service spur \u2014 the cut-out \u2014 never at the feeder point
+       on the main, so the lookup was empty for every leg on every
+       drawing and the Service and At-cut-out columns have been blank
+       since they were added: blank-because-unmeasured and
+       blank-because-never-asked reading exactly alike, which is the
+       thing those columns' own blank rule exists to prevent.
+
+       A leg serves the meters whose service tees off ITS stretch of
+       main. So: the leg's chain is walked back from its end to the
+       previous stop; each attached meter is followed down its service
+       edges to the foot \u2014 the mains node its spur leaves from \u2014 and
+       claimed by the leg whose chain holds that foot. A meter standing
+       directly on the main has no service edge and is its own foot. */
+    const stopIdxSet = new Set((part.spanNodes || []).map((x) => x.index));
+    stopIdxSet.add(part.model.S);
+    const chain = new Set([leg.endIdx]);
+    for (let u = part.model.parent[leg.endIdx];
+      u >= 0 && !stopIdxSet.has(u); u = part.model.parent[u]) chain.add(u);
+    const here = [];
+    {
+      const M = part.model;
+      const n = M.nodes?.length || 0;
+      for (let a = 0; a < n; a++) {
+        const ms = M.metersAt?.[a];
+        if (!ms?.length) continue;
+        let foot = a, guard = 0;
+        while (foot >= 0 && M.parSvc?.[foot] && guard++ < 10000) {
+          foot = M.parent[foot];
+        }
+        if (foot >= 0 && chain.has(foot)) here.push(...ms);
+      }
+    }
     if (here.length) {
       const svcLines = (ctx.services || []);
       const mainLines = (ctx.mains || []);
@@ -19982,6 +20157,8 @@ export default function GISCanvasPage() {
               .filter(Boolean), features, lineFollows)
             : []}
           onClose={() => setEditing(null)}
+          onLassoLinkWay={lassoLinkWay}
+          onClearLinkWay={clearLinkWay}
         />
       )}
 
@@ -22296,6 +22473,27 @@ export default function GISCanvasPage() {
                                 + " already used"}>
                             %VD{vdBasis === "own" ? "" : "\u03a3"}
                           </th>
+                          {/* ── The service tail, on screen ──
+
+                              These two lived only in the export, and
+                              "the at-cut-out figure is on the same row"
+                              confused the person reading the screen,
+                              where it was not. The node figure stops
+                              where the main turns off to the plot; the
+                              service column is the worst tail beyond
+                              it; at cut-out is their sum \u2014 the number
+                              the limit is judged at. Blank where no
+                              service is drawn or specified, for the
+                              export's reason: contributes-nothing and
+                              nobody-said must not read alike. */}
+                          <th className="num"
+                            title="Worst service tail off this leg — its own drawn route, cable and load">
+                            Svc%
+                          </th>
+                          <th className="num"
+                            title="At the worst customer's cut-out: the node figure plus its service tail. The limit is judged here.">
+                            Cut-out%
+                          </th>
                         </>
                       )}
                       <th />
@@ -22332,7 +22530,7 @@ export default function GISCanvasPage() {
                              and telling somebody to set one sends them
                              looking for a substation they deliberately
                              have not got. */
-                          <td colSpan={3} className="num vd-gap"
+                          <td colSpan={5} className="num vd-gap"
                             title={l.vd.missingTransformer
                               ? NO_SOURCE_NOTE
                               : "Set a cable on every span node along this route"}>
@@ -22357,6 +22555,20 @@ export default function GISCanvasPage() {
                                   + ` + ${l.vd.upstreamPct.toFixed(2)}% upstream`
                                 : undefined}>
                               {(vdBasis === "own" ? l.vd.pctOwn : l.vd.pct).toFixed(2)}
+                            </td>
+                            <td className="num"
+                              title={l.service?.lengthM != null
+                                ? `${l.service.lengthM.toFixed(1)} m of service`
+                                : "No service drawn or specified to this node"}>
+                              {l.service && !l.service.missingSpec
+                                ? l.service.pct.toFixed(2) : "\u2014"}
+                            </td>
+                            <td className={l.atCutout && l.atCutout.pct
+                              > (Number(lookups?.vdSettings?.[0]?.Max_Volt_Drop_Pct)
+                                || Infinity)
+                              ? "num vd-over strong" : "num strong"}>
+                              {l.atCutout && !l.service?.missingSpec
+                                ? l.atCutout.pct.toFixed(2) : "\u2014"}
                             </td>
                           </>
                         ))}

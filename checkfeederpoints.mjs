@@ -235,6 +235,25 @@ if (o1?.Feature_Role !== "feederpoint" || Number(o1.Attributes?.Circuit_ID) !== 
   }
 }
 
+/* ── The service tail is measured, not silently absent ──
+
+   The levels block asked the model for meters AT the leg's end node;
+   the model attaches them at the cut-out end of the spur, so the
+   lookup was empty everywhere and Service / At-cut-out were blank on
+   every row of every export. Structural: the attribution now walks
+   the leg's chain and claims meters by the foot of their service. */
+{
+  const { readFileSync } = await import("fs");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/const here = part\.model\.metersAt\?\.\[leg\.endIdx\] \|\| \[\];/.test(canvas)) {
+    fail("the service block reads meters at the leg's end node again \u2014 "
+      + "Service and At-cut-out go blank everywhere");
+  }
+  if (!/chain\.has\(foot\)/.test(canvas)) {
+    fail("meters are no longer claimed by the leg their service foot is on");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Feeder points behave (each circuit's own stops; span nodes back on the dig).");
 process.exit(bad ? 1 : 0);

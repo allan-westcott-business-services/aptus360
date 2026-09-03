@@ -312,7 +312,7 @@ export function buildFeederModel(features = [], opts = {}) {
   if (!nodes.length) return { error: "No trenches to route cables along." };
 
   const origins = lvOrigins(features);
-  if (!origins.length) {
+  if (!origins.length && !opts.rootFeature) {
     return {
       error: "Place a substation, or an electric POC on the mains trench "
         + "\u2014 feeders route back to one of them.",
@@ -375,10 +375,19 @@ export function buildFeederModel(features = [], opts = {}) {
   const nameOrigin = (o) => (o.Feature_Role === "substation"
     ? (o.Label || "the substation") : (o.Label || `POC #${o.Feature_ID}`));
 
-  let sub = originAt[0].o;
-  let originBy = origins.length === 1 ? "only" : "first";
+  /* ── Rooted at a feature the caller chose ──
+
+     A link box splits a circuit's build: each output routes FROM the
+     box to the plots lassoed onto that output, and for those parts
+     the box IS the root \u2014 not an origin by any rule, but the place
+     the caller said. The machinery below decides between origins; a
+     statement needs none of it, so a rootFeature steps past the whole
+     of it, named lookup included. */
+  let sub = opts.rootFeature || originAt[0].o;
+  let originBy = opts.rootFeature ? "root"
+    : origins.length === 1 ? "only" : "first";
   let originRivals = [];
-  if (origins.length > 1) {
+  if (!opts.rootFeature && origins.length > 1) {
     /* The circuit's own ground: its first seed or member meter, taken
        to the nearest trench node the same way the origins are. */
     let seedNode = -1;
@@ -551,12 +560,16 @@ export function buildFeederModel(features = [], opts = {}) {
     return bestPt;
   };
 
-  const S = nearest(sub.Geometry[0]).i;
+  /* A link box anchors where it snapped to the run; an origin stands
+     at its own point. One lookup serves both. */
+  const S = nearest(sub.Attributes?.Span_Anchor || sub.Geometry[0]).i;
   if (S < 0) {
     return {
       error: sub.Feature_Role === "substation"
         ? "The substation isn\u2019t on the trench network."
-        : "The electric POC isn\u2019t on the trench network.",
+        : sub.Feature_Role === "linkbox"
+          ? "The link box isn\u2019t on the trench network."
+          : "The electric POC isn\u2019t on the trench network.",
     };
   }
 
@@ -1451,6 +1464,166 @@ export function endOfLineNodes(model) {
    a dead end. Anything beyond that span node belongs to the next leg,
    not this one — which is what makes the result a schedule of spans
    rather than one long list. */
+
+/* ── Link box output assignments ──
+
+   A link box is often the remedial answer to high losses: break the
+   run, split the load across fused outputs. The split is a design
+   decision \u2014 which plots hang off which output \u2014 lassoed by the
+   designer and written on the meters (Link_Box_ID, Link_Way), the way
+   circuit membership itself is written. Read here into the shape the
+   build routes by: per box, per way, the seeds and the meter-carried
+   supplies, using the same two linkages circuitMembership does. */
+export function linkWayAssignments(features = [], circuitId) {
+  const plotByNumber = new Map();
+  for (const f of features) {
+    if (f.Feature_Role === "plot" && f.Plot_ID != null) {
+      plotByNumber.set(Number(f.Plot_ID), Number(f.Feature_ID));
+    }
+  }
+  const boxes = features.filter((f) => f.Feature_Role === "linkbox"
+    && f.Attributes?.Span_Seq != null
+    && Number(f.Attributes?.Circuit_ID) === Number(circuitId));
+  const out = [];
+  const assignedSeedIds = new Set();
+  const assignedMeterIds = new Set();
+  for (const box of boxes) {
+    const ways = new Map();
+    for (const m of features) {
+      if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
+      if (Number(m.Attributes?.Circuit_ID) !== Number(circuitId)) continue;
+      if (Number(m.Attributes?.Link_Box_ID) !== Number(box.Feature_ID)) continue;
+      const w = Number(m.Attributes?.Link_Way);
+      if (!(w >= 1 && w <= 3)) continue;
+      if (!ways.has(w)) ways.set(w, { seedIds: new Set(), meterIds: new Set() });
+      const g = ways.get(w);
+      if (m.Attributes?.NRS_ID != null) {
+        g.meterIds.add(Number(m.Feature_ID));
+        assignedMeterIds.add(Number(m.Feature_ID));
+        continue;
+      }
+      const sid = m.Attributes?.Seed_Feature_ID
+        ?? (m.Plot_ID != null ? plotByNumber.get(Number(m.Plot_ID)) : null);
+      if (sid != null) {
+        g.seedIds.add(Number(sid));
+        assignedSeedIds.add(Number(sid));
+      } else {
+        g.meterIds.add(Number(m.Feature_ID));
+      }
+      assignedMeterIds.add(Number(m.Feature_ID));
+    }
+    if (ways.size) out.push({ box, ways });
+  }
+  return { boxes: out, assignedSeedIds, assignedMeterIds };
+}
+
+/* ── The circuit's build, in parts ──
+
+   Without assigned link boxes this is feederSections with a label on.
+   With them, the circuit builds as:
+
+   - an ORIGIN part: whatever is not assigned to any output, routed
+     from the circuit's origin exactly as before;
+   - a TRUNK: origin to each box, one section along the model's own
+     path, carrying the total of everything the box's outputs serve \u2014
+     the input cable, sized by what flows through it;
+   - a WAY part per output: routed FROM the box (the model rooted at
+     it) to the plots lassoed onto that output.
+
+   Each part keeps its own model so the caller can mark junctions and
+   ends per part; sections concatenate. A part that cannot route says
+   so with the output's name on it, and the others still build \u2014 a
+   half-buildable split is shown half built, with words, rather than
+   refused whole. */
+export function circuitBuildParts(features = [], opts = {}) {
+  const { circuitId } = opts;
+  const asg = circuitId != null
+    ? linkWayAssignments(features, circuitId)
+    : { boxes: [], assignedSeedIds: new Set(), assignedMeterIds: new Set() };
+  if (!asg.boxes.length) {
+    const r = feederSections(features, opts);
+    return r.error ? [{ ...r, via: "origin" }] : [{ ...r, via: "origin" }];
+  }
+
+  const parts = [];
+  const restSeeds = new Set([...(opts.seedIds || [])]
+    .filter((x) => !asg.assignedSeedIds.has(Number(x))));
+  const restMeters = new Set([...(opts.meterIds || [])]
+    .filter((x) => !asg.assignedMeterIds.has(Number(x))));
+
+  /* The way parts first, so the trunk can carry their total. */
+  const wayParts = [];
+  let servedMeters = 0;
+  let servedKva = 0;
+  for (const { box, ways } of asg.boxes) {
+    for (const [w, g] of [...ways.entries()].sort((a, b) => a[0] - b[0])) {
+      const r = feederSections(features, {
+        ...opts, rootFeature: box, originId: null,
+        seedIds: g.seedIds, meterIds: g.meterIds,
+      });
+      if (r.error) {
+        wayParts.push({ error: `${box.Label || "the link box"} output ${w}: ${r.error}`,
+          via: `way ${w}` });
+        continue;
+      }
+      for (const sec of r.sections) {
+        servedMeters += sec.meters || 0;
+        servedKva += sec.kva || 0;
+      }
+      wayParts.push({ ...r, via: `way ${w}`, box, way: w });
+    }
+  }
+
+  /* The trunk: one section along the model's own route from the
+     circuit's origin to the box \u2014 the input cable. Modelled with the
+     full membership so the origin rules answer as they do for the
+     whole circuit. */
+  const trunkModel = buildFeederModel(features, opts);
+  if (trunkModel.error) {
+    parts.push({ error: trunkModel.error, via: "trunk" });
+  } else {
+    for (const { box } of asg.boxes) {
+      const at = box.Attributes?.Span_Anchor || box.Geometry?.[0];
+      let bi = -1, bd = Infinity;
+      for (let i = 0; i < trunkModel.nodes.length; i++) {
+        const d = Math.hypot(trunkModel.nodes[i][0] - at[0],
+          trunkModel.nodes[i][1] - at[1]);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      if (bi < 0 || bi === trunkModel.S) continue;
+      const chain = [];
+      for (let u = bi; u >= 0; u = trunkModel.parent[u]) {
+        chain.push(trunkModel.nodes[u].slice());
+        if (u === trunkModel.S) break;
+      }
+      chain.reverse();
+      if (chain.length < 2) continue;
+      parts.push({
+        sections: [{
+          pts: chain,
+          meters: servedMeters,
+          kva: servedKva,
+          cables: cablesFor(servedMeters, opts.perCable || METERS_PER_CABLE),
+          upNode: trunkModel.S, endNode: bi,
+        }],
+        model: trunkModel,
+        via: "trunk",
+      });
+    }
+  }
+
+  /* Whatever nobody assigned still feeds from the origin. */
+  if (restSeeds.size || restMeters.size) {
+    const r = feederSections(features, {
+      ...opts, seedIds: restSeeds, meterIds: restMeters,
+    });
+    parts.unshift(r.error
+      ? { error: r.error, via: "origin" }
+      : { ...r, via: "origin" });
+  }
+
+  return [...parts, ...wayParts];
+}
 
 export function spanTrace(features = [], nodeId, opts = {}) {
   /* stopAt decides where a leg ends.

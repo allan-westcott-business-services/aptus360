@@ -1,3 +1,39 @@
+# Link box output routing — 3 Sep 2026
+
+A link box is the remedial answer to high losses: break the run, split
+the load across fused outputs. The split is a design decision — which
+plots hang off which output — and it is now lassoed, stored, and built.
+
+- **Assigning**: open the box, and each output row carries "Lasso
+  plots" (and Clear, once it holds any). The lasso is the Link to
+  Circuit lasso; what it writes is Link_Box_ID and Link_Way on the
+  meters — the same register circuit membership itself uses. Only
+  meters on the box's own circuit qualify; others are counted out loud
+  and left alone. Re-lassoing overwrites.
+- **Building**: Build LV Network splits an assigned circuit into
+  parts. Unassigned plots route from the origin exactly as before; a
+  TRUNK runs origin → box, one section along the model's own path,
+  carrying the total of everything the outputs serve — the input
+  cable, sized by what flows through it; and each OUTPUT routes from
+  the box to its own lassoed plots. A part that cannot route says so
+  with the output's name on it, and the others still build.
+- **Marks and points**: junctions and ends are gathered per part and
+  deduped by position, so the trunk's far end and the ways' roots —
+  all standing on the one box — mark it once, and the maintenance
+  adopts the box itself rather than making a twin beside it.
+- Model support: `buildFeederModel` takes `rootFeature` (root the walk
+  at a stated feature, past the origin machinery); `feeder.js` exports
+  `linkWayAssignments` and `circuitBuildParts`, and the build consumes
+  parts — still through the one membership walk.
+
+`checklinkbox.mjs` drives the split through `circuitBuildParts` with
+the build's own inputs: trunk origin→box at the outputs' total kVA,
+each way from the box to its own plot only, the unassigned plot still
+fed from the origin, plus the structural stitching. Suite 104 of 113;
+the standing nine. No SQL beyond 0202 (already issued).
+
+---
+
 # Feeder End Points — phase 1, 2 Sep 2026
 
 A span node is a CIVIL fact: the dig branches or ends here. It was also

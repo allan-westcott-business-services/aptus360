@@ -58,6 +58,8 @@ export default function FeatureEditor({
   /* Names which POC feeds this feature's circuit, on a drawing that
      has more than one. Written across every member, by the canvas. */
   onSetCircuitOrigin,
+  /* Link box outputs: arm the lasso for one, or clear it. */
+  onLassoLinkWay, onClearLinkWay,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -946,20 +948,49 @@ export default function FeatureEditor({
                   <option value={4}>4 way — three fused outputs</option>
                 </select>
               </div>
-              {Array.from({ length: ways === 4 ? 3 : 1 }, (_, i) => i + 1).map((w) => (
-                <div className="fld" key={w}>
-                  <label htmlFor={`fe-lb-fuse-${w}`}>
-                    {ways === 4 ? `Fuse \u2014 output ${w} (A)` : "Fuse (A)"}
-                  </label>
-                  <select id={`fe-lb-fuse-${w}`} value={fuses[w] ?? ""}
-                    onChange={(e) => setFuse(w, e.target.value)}>
-                    <option value="">Not set</option>
-                    {FUSES.map((a) => (
-                      <option key={a} value={a}>{a} A</option>
-                    ))}
-                  </select>
-                </div>
-              ))}
+              {Array.from({ length: ways === 4 ? 3 : 1 }, (_, i) => i + 1).map((w) => {
+                /* What this output already serves, read off the meters
+                   the lasso wrote \u2014 the same place the build reads. */
+                const held = (allFeatures || []).filter((m) =>
+                  m.Feature_Role === "meter"
+                  && Number(m.Attributes?.Link_Box_ID) === Number(feature.Feature_ID)
+                  && Number(m.Attributes?.Link_Way) === w);
+                return (
+                  <div className="fld" key={w}>
+                    <label htmlFor={`fe-lb-fuse-${w}`}>
+                      {ways === 4 ? `Fuse — output ${w} (A)` : "Fuse (A)"}
+                    </label>
+                    <select id={`fe-lb-fuse-${w}`} value={fuses[w] ?? ""}
+                      onChange={(e) => setFuse(w, e.target.value)}>
+                      <option value="">Not set</option>
+                      {FUSES.map((a) => (
+                        <option key={a} value={a}>{a} A</option>
+                      ))}
+                    </select>
+                    {onLassoLinkWay && (
+                      <div className="fe-lb-assign">
+                        <span className="hint">
+                          {held.length
+                            ? `${held.length} meter(s) on this output`
+                            : "Nothing lassoed onto this output yet"}
+                        </span>
+                        <button type="button" className="btn sm"
+                          title="Draw round the plots this output feeds"
+                          onClick={() => onLassoLinkWay(feature.Feature_ID, w)}>
+                          Lasso plots
+                        </button>
+                        {held.length > 0 && onClearLinkWay && (
+                          <button type="button" className="btn sm"
+                            title="Take every meter off this output"
+                            onClick={() => onClearLinkWay(feature.Feature_ID, w)}>
+                            Clear
+                          </button>
+                        )}
+                      </div>
+                    )}
+                  </div>
+                );
+              })}
               <p className="hint">
                 The numbers on the drawing’s output nodes are these ways
                 — output 1 is fuse 1. The input is the unnumbered node
@@ -3020,6 +3051,8 @@ const CSS = `
 .fe-bar { display: block; height: 5px; border-radius: 3px; background: var(--bg); overflow: hidden; }
 .fe-bar i { display: block; height: 100%; }
 .fe-bar.big { height: 8px; margin: 4px 0 6px; }
+.fe-lb-assign { display: flex; align-items: center; gap: 8px; margin-top: 4px;
+  flex-wrap: wrap; }
 .fe-circ-colour { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; padding: 3px 0; }
 .fe-circ-name { font-size: 13px; }

@@ -18,7 +18,7 @@
    Structural throughout: the object is stitched into the canvas and
    the editor, and what drifts is the stitching. */
 import { readFileSync, existsSync } from "node:fs";
-import { spanTrace } from "./src/features/gis/feeder.js";
+import { spanTrace, circuitBuildParts } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -141,6 +141,97 @@ if (!/claimed twice/.test(editor)) {
     if (!settleIds.has(Number(box.Feature_ID))) {
       fail("the volt drop does not settle cable at the link box");
     }
+  }
+}
+
+/* ── The build splits at an assigned box ──
+
+   The remedial case the 4 way exists for: plots lassoed onto outputs,
+   and Build LV Network re-routing from the box. Driven through
+   circuitBuildParts with the build's own inputs: the unassigned plot
+   routes from the origin, the trunk reaches the box carrying the
+   outputs' total, and each output routes from the box to its own
+   plots — nothing crosses over. */
+{
+  let id = 7000;
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  const trench = (pts, key = "trench") => ({
+    Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const poc = { Feature_ID: id++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Label: "POC", Geometry: [[0, 0]], Attributes: {} };
+  const mkPlot = (n, at) => ({ Feature_ID: id++, Feature_Role: "plot",
+    Feature_Type: "point", Plot_ID: n, Geometry: [at], Attributes: {} });
+  const q1 = mkPlot(1, [60, 10]);
+  const q2 = mkPlot(2, [160, 10]);
+  const q3 = mkPlot(3, [160, -10]);
+  const box = { Feature_ID: id++, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Label: "Link Box 1", Geometry: [[100, 0]],
+    Attributes: { Link_Ways: 4, Way_Fuse_A: {}, Circuit_ID: 1,
+      Span_Seq: 2, Span_Label: "A2", Span_Anchor: [100, 0] } };
+  const meter = (pl, at, extra) => ({ Feature_ID: id++, Feature_Role: "meter",
+    Feature_Type: "point", Layer_Key: "electric", Plot_ID: pl.Plot_ID,
+    Geometry: [at],
+    Attributes: { Seed_Feature_ID: pl.Feature_ID, Circuit_ID: 1, ...extra } });
+  const world = [poc, q1, q2, q3, box,
+    meter(q1, [60, 10], {}),
+    meter(q2, [160, 10], { Link_Box_ID: box.Feature_ID, Link_Way: 1 }),
+    meter(q3, [160, -10], { Link_Box_ID: box.Feature_ID, Link_Way: 2 }),
+    trench([[0, 0], [60, 0], [100, 0]]),
+    trench([[100, 0], [160, 0], [200, 0]]),
+    trench([[60, 0], [60, 10]], "service_trench"),
+    trench([[160, 0], [160, 10]], "service_trench"),
+    trench([[160, 0], [160, -10]], "service_trench")];
+  const parts = circuitBuildParts(world, {
+    lineTypes, circuitId: 1,
+    plotById: () => ({ kva_load: 3 }), nrsById: () => null,
+    seedIds: new Set([q1.Feature_ID, q2.Feature_ID, q3.Feature_ID]),
+    meterIds: new Set(),
+  });
+  const at = (sec, x, y) => sec.pts.some((q) => Math.hypot(q[0] - x, q[1] - y) < 0.5);
+  const of = (via) => parts.filter((x) => x.via === via && !x.error);
+  if (parts.some((x) => x.error)) {
+    fail(`a part refused: ${parts.find((x) => x.error).error}`);
+  }
+  const trunk = of("trunk")[0];
+  if (!trunk) fail("no trunk part — the input cable to the box is not built");
+  else {
+    if (!trunk.sections.some((sec) => at(sec, 0, 0) && at(sec, 100, 0))) {
+      fail("the trunk does not run origin → box");
+    }
+    const tk = trunk.sections.reduce((m, sec) => m + (sec.kva || 0), 0);
+    if (Math.abs(tk - 6) > 0.01) {
+      fail(`the trunk carries ${tk} kVA, expected the outputs' total of 6`);
+    }
+  }
+  for (const [via, px, py] of [["way 1", 160, 10], ["way 2", 160, -10]]) {
+    const pt = of(via)[0];
+    if (!pt) { fail(`no ${via} part`); continue; }
+    if (!pt.sections.every((sec) => at(sec, 100, 0) || sec.pts[0])) { /* shape */ }
+    if (!pt.sections.some((sec) => at(sec, 100, 0))) {
+      fail(`${via} does not start at the box`);
+    }
+    const kva = pt.sections.reduce((m, sec) => m + (sec.kva || 0), 0);
+    if (Math.abs(kva - 3) > 0.01) {
+      fail(`${via} carries ${kva} kVA, expected its own plot's 3`);
+    }
+  }
+  const org = of("origin")[0];
+  if (!org) fail("the unassigned plot lost its origin routing");
+  else if (!org.sections.some((sec) => at(sec, 60, 0))) {
+    fail("the origin part does not reach the unassigned plot's tee");
+  }
+  /* And the build consumes the parts — the one walk, split. */
+  const canvasSrc2 = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const parts = circuitBuildParts\(src, \{/.test(canvasSrc2)) {
+    fail("Build LV Network no longer routes through circuitBuildParts");
+  }
+  if (!/await finishLinkWayAssign\(g\)/.test(canvasSrc2)) {
+    fail("the lasso no longer routes to the output assignment when armed");
   }
 }
 

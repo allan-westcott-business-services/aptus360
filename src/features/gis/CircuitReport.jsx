@@ -369,6 +369,32 @@ export default function CircuitReport({
               && Number(b.Attributes?.Circuit_ID) === Number(c.id));
             const wayValueOf = (m) => (m.linkBoxId != null && m.linkWay != null
               ? `${m.linkBoxId}:${m.linkWay}` : "off");
+            /* ── Named output first ──
+
+               The label read "Link Box 1 · output 2 (400 A)" and the
+               column clipped it after "output", so every row looked
+               identical and the one fact the column exists to show \u2014
+               WHICH output \u2014 was the part cut off. The output leads
+               now, the fuse follows it, and the box's name is added
+               only where the circuit has more than one box to tell
+               apart. */
+            const wayLabel = (b, w) => {
+              const ways = Number(b.Attributes?.Link_Ways) === 4 ? 3 : 1;
+              const fuse = b.Attributes?.Way_Fuse_A?.[w];
+              const head = ways === 1 ? "Output" : `Output ${w}`;
+              const amps = fuse ? ` \u00b7 ${fuse} A` : "";
+              const which = boxesHere.length > 1
+                ? ` \u00b7 ${b.Label || `box ${b.Feature_ID}`}` : "";
+              return `${head}${amps}${which}`;
+            };
+            const wayOptions = () => boxesHere.flatMap((b) => Array.from(
+              { length: Number(b.Attributes?.Link_Ways) === 4 ? 3 : 1 },
+              (_, i) => i + 1,
+            ).map((w) => (
+              <option key={`${b.Feature_ID}:${w}`} value={`${b.Feature_ID}:${w}`}>
+                {wayLabel(b, w)}
+              </option>
+            )));
             /* The meters that can be picked. Self-lay ones are not:
                somebody else connects them, so they go on no circuit of
                ours. Select-all works from this, so ticking the header
@@ -515,19 +541,7 @@ export default function CircuitReport({
                         onChange={(e) => setWayTo((m) => ({ ...m, [c.id]: e.target.value }))}>
                         <option value="">Move to output&hellip;</option>
                         <option value="off">From the origin</option>
-                        {boxesHere.map((b) => Array.from(
-                          { length: Number(b.Attributes?.Link_Ways) === 4 ? 3 : 1 },
-                          (_, i) => i + 1,
-                        ).map((w) => (
-                          <option key={`${b.Feature_ID}:${w}`}
-                            value={`${b.Feature_ID}:${w}`}>
-                            {(b.Label || "Link box")}{" \u00b7 "}
-                            {Number(b.Attributes?.Link_Ways) === 4
-                              ? `output ${w}` : "output"}
-                            {b.Attributes?.Way_Fuse_A?.[w]
-                              ? ` (${b.Attributes.Way_Fuse_A[w]} A)` : ""}
-                          </option>
-                        )))}
+                        {wayOptions()}
                       </select>
                       <button className="cr-act cr-move-b"
                         disabled={!pickedHere.length || !wayTo[c.id] || busy}
@@ -743,20 +757,7 @@ export default function CircuitReport({
                                     : { boxId: Number(e.target.value.split(":")[0]),
                                       way: Number(e.target.value.split(":")[1]) })}>
                                 <option value="off">From the origin</option>
-                                {boxesHere.map((b) => Array.from(
-                                  { length: Number(b.Attributes?.Link_Ways) === 4 ? 3 : 1 },
-                                  (_, i) => i + 1,
-                                ).map((w) => (
-                                  <option key={`${b.Feature_ID}:${w}`}
-                                    value={`${b.Feature_ID}:${w}`}>
-                                    {(b.Label || "Link box")}
-                                    {" \u00b7 "}
-                                    {Number(b.Attributes?.Link_Ways) === 4
-                                      ? `output ${w}` : "output"}
-                                    {b.Attributes?.Way_Fuse_A?.[w]
-                                      ? ` (${b.Attributes.Way_Fuse_A[w]} A)` : ""}
-                                  </option>
-                                )))}
+                                {wayOptions()}
                               </select>
                             </td>
                           )}
@@ -864,8 +865,9 @@ const CSS = `
 .cr-ink-x { border: none; background: none; color: #94a3b8; cursor: pointer;
   font-size: 14px; padding: 0 2px; }
 .cr-ink-x:hover { color: #dc2626; }
-.cr-fuse select { padding: 2px 4px; border: 1.5px solid #e2e8f0; border-radius: 6px;
-  background: #fff; font: inherit; font-size: 12px; max-width: 190px; }
+.cr-fuse { white-space: nowrap; }
+.cr-fuse select { padding: 2px 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;
+  background: #fff; font: inherit; font-size: 12px; width: 100%; min-width: 150px; }
 .cr-fed { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
 .cr-fed label { font-size: 12px; color: #64748b; }
 .cr-fed select { padding: 3px 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;
@@ -874,7 +876,11 @@ const CSS = `
 .cr-pick label { font-size: 12px; color: #64748b; }
 .cr-pick select { padding: 4px 8px; border: 1.5px solid #e2e8f0; border-radius: 6px;
   background: #fff; font: inherit; }
-.cr { background: var(--white); border-radius: 12px; width: min(880px, 95vw); max-height: 88vh;
+/* Wider than it was: the Fuse column arrived and 880px clipped the
+   output number off every row \u2014 the one fact that column carries.
+   Still bounded by the viewport, so a laptop shows the same table
+   without a horizontal scroll. */
+.cr { background: var(--white); border-radius: 12px; width: min(1180px, 96vw); max-height: 88vh;
   display: flex; flex-direction: column; box-shadow: 0 24px 60px rgba(15,23,42,.28); }
 .cr-rings { background: var(--white); border: 1px solid var(--border); border-radius: 6px;
   cursor: pointer; font: 600 11px inherit; padding: 4px 10px; margin-top: 7px;

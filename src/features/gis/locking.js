@@ -115,7 +115,7 @@ export function lockReason(f, keys = [], lockedClasses = [], labelFor = (k) => k
      again. */
   if (isRouted(f)) {
     return "A cable or pipe follows the trench it is laid in \u2014 re-route the "
-      + "trench and it will come with it.";
+      + "trench and the cable and pipe will come with it.";
   }
   if (isFeatureLocked(f)) return "This feature is locked.";
   const set = new Set(lockedClasses);

@@ -49,7 +49,7 @@ UPDATE "GIS_Style"
 CREATE UNIQUE INDEX IF NOT EXISTS gis_feederpoint_origin_uniq
   ON "GIS_Feature" ("Project_ID", (("Attributes" ->> 'Circuit_ID')))
   WHERE "Feature_Role" = 'feederpoint'
-    AND ("Attributes" ->> 'FEP_Seq') = '0';
+    AND ("Attributes" ->> 'Span_Seq') = '0';
 
 
 -- ── Check ───────────────────────────────────────────────────────
@@ -59,7 +59,7 @@ CREATE UNIQUE INDEX IF NOT EXISTS gis_feederpoint_origin_uniq
 --
 -- After the first Build LV Network on a project, its feeder points:
 --   SELECT "Label","Attributes"->>'Circuit_ID' AS circuit,
---          "Attributes"->>'FEP_Seq' AS seq
+--          "Attributes"->>'Span_Seq' AS seq
 --     FROM "GIS_Feature"
 --    WHERE "Project_ID" = <project> AND "Feature_Role" = 'feederpoint'
 --    ORDER BY 2, 3::int;

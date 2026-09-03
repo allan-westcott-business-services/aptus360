@@ -20230,6 +20230,7 @@ export default function GISCanvasPage() {
         <BulkEditor
           features={selectedFeatures}
           allFeatures={features}
+          cableSizes={lookups?.cableSizes || []}
           mode={bulkMode}
           configs={lookups?.propertyConfigs || []}
           propertyTypes={lookups?.propertyTypes || []}

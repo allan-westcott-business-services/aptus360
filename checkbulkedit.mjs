@@ -489,6 +489,30 @@ const keys = (cs) => fieldsForMany(cs, { lineTypes }).map((f) => f.key);
   rmSync(tmp, { force: true });
 }
 
+/* ── Services can be sized in bulk; mains still cannot ──
+
+   The span-node-copy guard was applied to every cable field, and it
+   blocked the one bulk edit services exist to need: eighty-four
+   unsized tails, one fact, eighty-four editors. A service is copied
+   nowhere — its size lives on the line alone — so the panel offers
+   the field for the service class and keeps the guard's text for
+   mains, whose size really is held twice. */
+{
+  const be = readFileSync("./src/features/gis/BulkEditor.jsx", "utf8");
+  if (!/f\.kind === "cable" && f\.usage !== "service"/.test(be)) {
+    fails.push("the mains guard no longer spares the service class");
+  }
+  if (!/The tail each customer is fed through/.test(be)) {
+    fails.push("the service class has lost its bulk cable field");
+  }
+  const svcRow = (i) => ({ Feature_ID: i, Feature_Type: "line", Layer_Key: "electric",
+    Attributes: { Line_Type: "elec_service" }, Geometry: [[0, 0], [1, 1]] });
+  const rr = planBulkEditOn([svcRow(1), svcRow(2)], { VD_Cable_Size_ID: 7 }, { lineTypes: [] });
+  if (rr.rows.length !== 2 || rr.rows[0].Attributes?.VD_Cable_Size_ID !== 7) {
+    fails.push("a bulk service-cable size does not reach the attributes");
+  }
+}
+
 console.log(fails.length
   ? "FAIL\n - " + fails.join("\n - ")
   : "Bulk edit behaves (many classes, only shared fields, per-feature status refusal).");

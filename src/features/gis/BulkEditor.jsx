@@ -46,6 +46,8 @@ import { classesIn, fieldsForMany, planBulkEditOn, CLEAR } from "./bulkEdit.js";
 export default function BulkEditor({
   features = [], allFeatures = [], lineTypes, surfaceTypes = [], layers,
   configs = [], propertyTypes = [], mode: openWith = "selection", onApply, onClose,
+  /* The electric cable catalogue, for sizing service tails in bulk. */
+  cableSizes = [],
 }) {
   const typeName = (id) =>
     propertyTypes.find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
@@ -299,19 +301,50 @@ export default function BulkEditor({
       );
     }
 
-    /* Cable. Not drawn, and said rather than left absent.
+    /* Cable — but only for a run.
 
-       A run's size is held twice — on the run and on the span node it
-       feeds, because the volt drop sum reads it from the node — and
-       only the canvas can write both. A bulk write of one of them from
-       here would leave a drawing where the cable says 300 and the sum
-       says 95, each true to whichever reader looked. */
-    if (f.kind === "cable") {
+       A MAINS run's size is held twice — on the run and on the point it
+       feeds, because the volt drop sum reads it from the point — and
+       only the canvas can write both, so a bulk write of one from here
+       would leave the cable saying 300 and the sum saying 95, each true
+       to whichever reader looked. That guard was applied to every
+       cable, and it blocked the one bulk edit services exist to need:
+       a SERVICE feeds no measuring point and is copied nowhere — its
+       size lives on the line alone, read directly by the tail
+       calculation — so eighty-four unsized tails meant eighty-four
+       editors, for a guard protecting a consistency problem services
+       do not have. */
+    if (f.kind === "cable" && f.usage !== "service") {
       return (
         <p className="fe-tip" key={f.key}>
           Cable size is set on the run itself, not here &mdash; the span node
           it feeds carries a copy, and the two have to move together.
         </p>
+      );
+    }
+    if (f.kind === "cable") {
+      const svcCables = cableSizes
+        .filter((c) => /service/i.test(String(c.Usage ?? "")));
+      const list = svcCables.length ? svcCables : cableSizes;
+      return (
+        <div className="fld" key={f.key}>
+          <label htmlFor={`be-${f.key}`}>{f.label}</label>
+          <select id={`be-${f.key}`} value={draft[f.key] ?? ""}
+            onChange={(e) => set(f.key,
+              e.target.value === "" ? undefined : Number(e.target.value))}>
+            <option value="">Leave as they are</option>
+            {list.map((c) => (
+              <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
+                {c.Cable_Name ?? c.Size_Label ?? c.Cable_Size_ID}
+              </option>
+            ))}
+          </select>
+          <p className="fe-tip">
+            The tail each customer is fed through &mdash; the same size on
+            every one you are changing. Lengths are each cable&rsquo;s own
+            and are not touched.
+          </p>
+        </div>
       );
     }
 

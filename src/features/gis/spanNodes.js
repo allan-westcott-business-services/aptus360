@@ -508,7 +508,8 @@ const feedable = (features, cid) => {
      or a drawing from before feeder points existed, feeds span nodes
      exactly as it always did. */
   if (cid != null) {
-    const feps = features.filter((f) => f.Feature_Role === "feederpoint"
+    const feps = features.filter((f) => (f.Feature_Role === "feederpoint"
+      || (f.Feature_Role === "linkbox" && f.Attributes?.Span_Seq != null))
       && String(f.Attributes?.Circuit_ID) === String(cid)
       && Number(f.Attributes?.Span_Seq) !== 0
       && (f.Geometry || []).length);
@@ -687,7 +688,8 @@ export function runsThrough(line, node, opts = {}) {
    is the same on every run. */
 export function runThrough(node, features = [], opts = {}) {
   if (node?.Feature_Role !== "spannode"
-    && node?.Feature_Role !== "feederpoint") return null;
+    && node?.Feature_Role !== "feederpoint"
+    && node?.Feature_Role !== "linkbox") return null;
   if (Number(node.Attributes?.Span_Seq) === 0) return null;
   if (!(node.Geometry || []).length) return null;
   const own = node.Attributes?.Circuit_ID ?? null;

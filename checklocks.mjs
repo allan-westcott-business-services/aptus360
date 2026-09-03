@@ -84,11 +84,15 @@ if (!isLocked({ Feature_ID: 2 }, ["trench", "lt:trench_main"], ["lt:trench_main"
 {
   const line = (layer) => ({ Feature_Type: "line", Layer_Key: layer, Attributes: {} });
 
-  // 1. Cables and pipes refuse to be reshaped.
+  /* 1. Retired, on instruction: link boxes made hand-routed cables the
+     ordinary work \u2014 fed in and out of a box, re-routed as design
+     decisions \u2014 so no line is immovable for being one. The build still
+     deletes and re-lays its own generated runs, which is where the
+     trench-and-cable agreement now lives. */
   for (const layer of ["electric", "gas", "water", "lighting"]) {
-    if (!isRouted(line(layer))) fail(`a ${layer} line is not treated as routed`);
-    if (!isImmovable(line(layer), [], [])) {
-      fail(`a ${layer} cable or pipe can still be reshaped by hand`);
+    if (isRouted(line(layer))) fail(`a ${layer} line is still refused a move`);
+    if (isImmovable(line(layer), [], [])) {
+      fail(`a ${layer} cable or pipe cannot be re-routed by hand`);
     }
   }
 
@@ -105,27 +109,20 @@ if (!isLocked({ Feature_ID: 2 }, ["trench", "lt:trench_main"], ["lt:trench_main"
     fail("a meter is treated as a routed line");
   }
 
-  /* 3. The message says what to do, not how to unlock.
-
-     A lock is a preference somebody set and can unset. This is a fact
-     about what a cable is, so there is nothing to turn off — and a
-     message offering to unlock would send somebody looking for a
-     switch that does not exist. */
+  /* 3. With the routed rule retired, a cable's only refusal is a lock
+     somebody set \u2014 and the message says so plainly. The old case here
+     held the opposite: that a cable must answer "re-route the trench"
+     before any lock. That answer went with the rule. */
   {
-    const why = lockReason(line("electric"), [], []);
-    if (!/re-route the trench/.test(why)) {
-      fail(`a cable's refusal does not say to re-route the trench: "${why}"`);
+    const cable = { Feature_Type: "line", Layer_Key: "electric", Attributes: {} };
+    if (lockReason(cable, [], []) !== "") {
+      fail(`an unlocked cable now refuses with: "${lockReason(cable, [], [])}"`);
     }
-    if (/locked/i.test(why)) {
-      fail("a cable's refusal talks about locking, which cannot be undone here");
-    }
-    /* Said before the lock reason, or a LOCKED cable would report the
-       lock and send somebody to unlock it and try again. */
     const lockedCable = {
       Feature_Type: "line", Layer_Key: "electric", Attributes: { Locked: true },
     };
-    if (!/re-route the trench/.test(lockReason(lockedCable, [], []))) {
-      fail("a locked cable reports the lock, so unlocking it looks like the remedy");
+    if (!/locked/i.test(lockReason(lockedCable, [], []))) {
+      fail("a locked cable no longer reports its lock");
     }
   }
 

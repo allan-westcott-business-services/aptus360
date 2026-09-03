@@ -18,6 +18,7 @@
    Structural throughout: the object is stitched into the canvas and
    the editor, and what drifts is the stitching. */
 import { readFileSync, existsSync } from "node:fs";
+import { spanTrace } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -90,6 +91,57 @@ if (!/stored against the box's\n\s*id/.test(editor)
 }
 if (!/claimed twice/.test(editor)) {
   fail("a way claimed by two cables is no longer said plainly");
+}
+
+/* ── On a run, the box is a feeder end point ──
+
+   Placed on circuit 1's cable it takes the circuit, a sequence and the
+   arriving cable, and the trace stops at it — driven through the real
+   trace on a feeder-point drawing. */
+{
+  let id = 1;
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  const trench = (pts, key = "trench") => ({
+    Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const poc = { Feature_ID: id++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {} };
+  const plot = { Feature_ID: id++, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: 1, Geometry: [[200, 10]], Attributes: {} };
+  const meter = { Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 1, Geometry: [[200, 10]],
+    Attributes: { Seed_Feature_ID: plot.Feature_ID, Circuit_ID: 1 } };
+  const fep = (at, seq) => ({ Feature_ID: id++, Feature_Role: "feederpoint",
+    Feature_Type: "point", Layer_Key: "electric", Geometry: [at],
+    Attributes: { Circuit_ID: 1, Span_Seq: seq, Span_Label: `A${seq}`,
+      Span_Anchor: at, ...(seq ? { VD_Cable_Size_ID: 1 } : {}) } });
+  const f0 = fep([0, 0], 0);
+  const f1 = fep([200, 0], 1);
+  const box = { Feature_ID: id++, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[100, 0]],
+    Attributes: { Link_Ways: 4, Way_Fuse_A: {}, Circuit_ID: 1,
+      Span_Seq: 2, Span_Label: "A2", Span_Anchor: [100, 0], VD_Cable_Size_ID: 1 } };
+  const world = [poc, plot, meter, f0, f1, box,
+    trench([[0, 0], [100, 0], [200, 0]]),
+    trench([[200, 0], [200, 10]], "service_trench")];
+  const r = spanTrace(world, f0.Feature_ID, {
+    lineTypes, plotById: () => ({ kva_load: 2.5 }), stopAt: "spannodes",
+  });
+  if (r.error) fail(`the trace refused the boxed run: ${r.error}`);
+  else {
+    const stopIds = new Set((r.legs || []).map((l) => Number(l.stopId)));
+    if (!stopIds.has(Number(box.Feature_ID))) {
+      fail("the trace does not stop at a link box on the circuit's run");
+    }
+    const settleIds = new Set((r.spanNodes || []).map((x) => Number(x.feature?.Feature_ID)));
+    if (!settleIds.has(Number(box.Feature_ID))) {
+      fail("the volt drop does not settle cable at the link box");
+    }
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

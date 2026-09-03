@@ -56,11 +56,23 @@ export const LOCK_ATTR = "Locked";
 
    Told by layer: anything on a utility layer is laid in the ground.
    Trenches, seeds, meters and joints are not. */
-export function isRouted(f) {
-  if (f?.Feature_Type !== "line") return false;
-  const layer = f?.Layer_Key;
-  if (!layer) return false;
-  return layer !== "trench" && layer !== "boundary" && layer !== "survey";
+export function isRouted() {
+  /* ── Retired, on instruction ──
+
+     The rule above was written when every cable was the build's: laid
+     along a trench, remade by the next build, and a hand-drag could
+     only make the drawing lie. Link boxes changed the workflow \u2014
+     cables are now fed in and out of them by hand, re-routed as design
+     decisions, and a rule that refuses every such move refuses the
+     work itself. So no line is immovable for being a cable. What
+     remains true is said by the build instead: generated runs are
+     deleted and re-laid each Build LV Network, so a re-drag of one of
+     THOSE lasts until the next build \u2014 hand-drawn cables are the
+     designer's and last. The argument the old rule made \u2014 that trench
+     and cable must not disagree \u2014 still holds for trench-following
+     runs, and re-routing the trench still carries them; this change
+     only stops the canvas forbidding the other direction. */
+  return false;
 }
 
 /* Locked in its own right. */
@@ -113,10 +125,6 @@ export function lockReason(f, keys = [], lockedClasses = [], labelFor = (k) => k
      from a lock's. Said before "this feature is locked", which would be
      true of a locked cable and would send somebody to unlock it and try
      again. */
-  if (isRouted(f)) {
-    return "A cable or pipe follows the trench it is laid in \u2014 re-route the "
-      + "trench and the cable and pipe will come with it.";
-  }
   if (isFeatureLocked(f)) return "This feature is locked.";
   const set = new Set(lockedClasses);
   const hit = keys.find((k) => k != null && set.has(k));

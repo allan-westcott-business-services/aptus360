@@ -1482,8 +1482,9 @@ export function spanTrace(features = [], nodeId, opts = {}) {
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
   if (!node || (node.Feature_Role !== "spannode"
-    && node.Feature_Role !== "feederpoint")) {
-    return { error: "Select a feeder point or span node." };
+    && node.Feature_Role !== "feederpoint"
+    && node.Feature_Role !== "linkbox")) {
+    return { error: "Select a feeder point, link box or span node." };
   }
   const circuitId = wantedCircuit ?? node.Attributes?.Circuit_ID;
   if (circuitId == null) {
@@ -1568,9 +1569,17 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   const stopRole = features.some((f) => f.Feature_Role === "feederpoint"
     && Number(f.Attributes?.Circuit_ID) === Number(circuitId))
     ? "feederpoint" : "spannode";
+  /* A link box on this circuit's run is a stop too: the cable breaks
+     there by definition. It carries the same span fields a feeder
+     point does, so accepting the role is the whole of it. Only in
+     feeder-point mode \u2014 a pre-feeder-point drawing has no boxes with
+     circuits on them. */
+  const isStopFeature = (f) => f.Feature_Role === stopRole
+    || (stopRole === "feederpoint" && f.Feature_Role === "linkbox"
+      && f.Attributes?.Span_Seq != null);
 
   for (const sn of features) {
-    if (sn.Feature_Role !== stopRole) continue;
+    if (!isStopFeature(sn)) continue;
     const own = sn.Attributes?.Circuit_ID;
     if (stopRole === "feederpoint") {
       if (Number(own) !== Number(circuitId)) continue;
@@ -1619,7 +1628,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      these are where legs stop. */
   const stops = new Map();
   for (const sn of features) {
-    if (sn.Feature_Role !== stopRole) continue;
+    if (!isStopFeature(sn)) continue;
     if (Number(sn.Feature_ID) === Number(nodeId)) continue;
     /* This utility's nodes only.
 
@@ -1976,7 +1985,7 @@ export function spanTrace(features = [], nodeId, opts = {}) {
          exhausted with the fix one ladder rung away. The junction
          exclusion the note above argues for is untouched: junctions
          were never in `stops`. */
-      .filter(([, f]) => f.Feature_Role === stopRole)
+      .filter(([, f]) => isStopFeature(f))
       .map(([index, f]) => ({
         index,
         feature: f,

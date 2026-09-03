@@ -961,8 +961,8 @@ export default function FeatureEditor({
                 </div>
               ))}
               <p className="hint">
-                The numbers on the drawing's output nodes are these ways
-                \u2014 output 1 is fuse 1. The input is the unnumbered node
+                The numbers on the drawing’s output nodes are these ways
+                — output 1 is fuse 1. The input is the unnumbered node
                 on the other face.
               </p>
               {(() => {
@@ -987,7 +987,7 @@ export default function FeatureEditor({
                 if (!claims.length) {
                   return (
                     <p className="hint">
-                      No cable names a connection yet \u2014 open a cable that
+                      No cable names a connection yet — open a cable that
                       ends here and say which way it is on.
                     </p>
                   );
@@ -1003,11 +1003,23 @@ export default function FeatureEditor({
                         <p className="hint" key={w}
                           style={here.length > 1 ? { color: "#b91c1c" } : undefined}>
                           {w === "in" ? "Input" : `Output ${w}`}:{" "}
-                          {here.length === 0 ? "\u2014"
-                            : here.map((c) => c.line.Label
-                              || c.line.Attributes?.Circuit_Name
-                              || `cable #${c.line.Feature_ID}`).join(" AND ")}
-                          {here.length > 1 ? " \u2014 claimed twice" : ""}
+                          {here.length === 0 ? "—"
+                            : here.map((c) => {
+                              /* The size first \u2014 a link box schedule
+                                 exists to say what cable is on each
+                                 fuse \u2014 then whose circuit it is. The
+                                 override wins over the calculated
+                                 size, as it does everywhere. */
+                              const sid = sizeIdFor(c.line, "electric", "manual")
+                                ?? sizeIdFor(c.line, "electric");
+                              const cbl = (lookups?.cableSizes || []).find(
+                                (x) => String(x.Cable_Size_ID) === String(sid));
+                              const size = cbl?.Cable_Name ?? cbl?.Size_Label ?? null;
+                              const who = c.line.Attributes?.Circuit_Name
+                                || c.line.Label || `cable #${c.line.Feature_ID}`;
+                              return size ? `${size} (${who})` : who;
+                            }).join(" AND ")}
+                          {here.length > 1 ? " — claimed twice" : ""}
                         </p>
                       );
                     })}
@@ -1922,7 +1934,7 @@ export default function FeatureEditor({
                     return (
                       <div className="fld" key={e.key}>
                         <label htmlFor={`fe-lbw-${e.key}`}>
-                          {e.box.Label || "Link box"} \u2014 this cable\u2019s {e.word}
+                          {e.box.Label || "Link box"} — this cable’s {e.word}
                         </label>
                         <select id={`fe-lbw-${e.key}`}
                           value={stale || !cur ? "" : String(cur.way)}
@@ -1937,7 +1949,7 @@ export default function FeatureEditor({
                         </select>
                         {stale && (
                           <p className="hint">
-                            This cable named a way on a different box \u2014 it has
+                            This cable named a way on a different box — it has
                             been moved. Pick again.
                           </p>
                         )}

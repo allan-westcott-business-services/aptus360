@@ -8914,6 +8914,25 @@ export default function GISCanvasPage() {
         note = " \u2014 not on a cable yet, draw the feeders to it";
       }
       const count = features.filter((f) => f.Feature_Role === "linkbox").length + 1;
+      /* ── A link box on a run IS a feeder end point ──
+
+         The cable breaks here by definition \u2014 in through one face,
+         out through fuses \u2014 so the box takes the circuit of the run
+         it lands on, the next sequence number, and the arriving cable,
+         exactly as a hand-placed feeder point does. The trace stops at
+         it, levels are computed to it, and the build adopts it rather
+         than deleting it. A box placed in open ground has no circuit
+         yet and is none of these until it is on a run. */
+      const cid = hit?.line?.Attributes?.Circuit_ID ?? null;
+      const letter = cid != null
+        ? (hit.line.Attributes?.Circuit_Letter || String.fromCharCode(64 + Number(cid)))
+        : null;
+      const seq = cid != null
+        ? 1 + features
+          .filter((f) => (f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
+            && Number(f.Attributes?.Circuit_ID) === Number(cid))
+          .reduce((m, f) => Math.max(m, Number(f.Attributes?.Span_Seq) || 0), 0)
+        : null;
       try {
         await addFeature({
           Layer_Key: "electric",
@@ -8925,6 +8944,14 @@ export default function GISCanvasPage() {
             Link_Ways: ways,
             Way_Fuse_A: {},
             Angle_Deg: angle,
+            ...(cid != null ? {
+              Circuit_ID: cid,
+              Circuit_Name: hit.line.Attributes?.Circuit_Name ?? null,
+              Circuit_Letter: letter,
+              Span_Seq: seq, Span_Label: `${letter}${seq}`, Span_Anchor: point,
+              ...(hit.line.Attributes?.VD_Cable_Size_ID != null
+                ? { VD_Cable_Size_ID: hit.line.Attributes.VD_Cable_Size_ID } : {}),
+            } : {}),
           },
         });
         await load(projectId);
@@ -13015,7 +13042,12 @@ export default function GISCanvasPage() {
            it stands on a planned position, and sequenced after the walk
            where it does not \u2014 it is a break somebody chose, and the
            trace stops there. */
-        const oldFeps = src.filter((f) => f.Feature_Role === "feederpoint"
+        /* Link boxes ride in the same list: they carry the same span
+           fields, are never Generated, and so fall into the manual
+           set below \u2014 adopted where they stand, sequenced with the
+           walk, never deleted by a build. */
+        const oldFeps = src.filter((f) => (f.Feature_Role === "feederpoint"
+          || (f.Feature_Role === "linkbox" && f.Attributes?.Span_Seq != null))
           && Number(f.Attributes?.Circuit_ID) === Number(c.id));
         const fepKey = (pt) => `${pt[0].toFixed(2)},${pt[1].toFixed(2)}`;
         const fepOverrides = new Map();

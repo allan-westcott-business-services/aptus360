@@ -73,6 +73,25 @@ if (!existsSync("./supabase/migrations/0202_link_box.sql")) {
   }
 }
 
+/* ── The way is a fact of the connection ──
+
+   The output dots are drawn in screen space; the box is one point in
+   the world and every cable ends at it. So the cable states its way
+   (input, or output 1–3) in its own editor — offered only for an end
+   standing on a box, stored against the box's id so a moved cable
+   cannot carry a stale claim — and the box's editor reads the claims
+   back as a schedule, saying plainly when a way is claimed twice. */
+if (!/Link_Connections/.test(editor)) {
+  fail("the cable no longer states which way of a link box it is on");
+}
+if (!/stored against the box's\n\s*id/.test(editor)
+  && !/Number\(cur\.box\) !== Number\(e\.box\.Feature_ID\)/.test(editor)) {
+  fail("a cable moved to another box keeps a stale way claim");
+}
+if (!/claimed twice/.test(editor)) {
+  fail("a way claimed by two cables is no longer said plainly");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Link boxes behave (2 or 4 way, fused, numbered, on the cable run).");
 process.exit(bad ? 1 : 0);

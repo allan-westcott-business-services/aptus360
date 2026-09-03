@@ -965,6 +965,55 @@ export default function FeatureEditor({
                 \u2014 output 1 is fuse 1. The input is the unnumbered node
                 on the other face.
               </p>
+              {(() => {
+                /* ── What is connected where ──
+
+                   Read off the cables, because the cable is where the
+                   claim is made: each electric main whose
+                   Link_Connections names this box, listed by way. A way
+                   claimed by two cables is a drawing fault a schedule
+                   must say, not average away. */
+                const claims = [];
+                for (const x of allFeatures || []) {
+                  if (x.Feature_Type !== "line" || x.Layer_Key !== "electric") continue;
+                  const lc = x.Attributes?.Link_Connections || {};
+                  for (const k of ["start", "end"]) {
+                    const c = lc[k];
+                    if (c && Number(c.box) === Number(feature.Feature_ID)) {
+                      claims.push({ way: c.way, line: x });
+                    }
+                  }
+                }
+                if (!claims.length) {
+                  return (
+                    <p className="hint">
+                      No cable names a connection yet \u2014 open a cable that
+                      ends here and say which way it is on.
+                    </p>
+                  );
+                }
+                const ways = Number(f.Attributes.Link_Ways) === 4 ? 3 : 1;
+                const rows = ["in", ...Array.from({ length: ways }, (_, i) => i + 1)];
+                return (
+                  <div className="fld">
+                    <label>Connected</label>
+                    {rows.map((w) => {
+                      const here = claims.filter((c) => String(c.way) === String(w));
+                      return (
+                        <p className="hint" key={w}
+                          style={here.length > 1 ? { color: "#b91c1c" } : undefined}>
+                          {w === "in" ? "Input" : `Output ${w}`}:{" "}
+                          {here.length === 0 ? "\u2014"
+                            : here.map((c) => c.line.Label
+                              || c.line.Attributes?.Circuit_Name
+                              || `cable #${c.line.Feature_ID}`).join(" AND ")}
+                          {here.length > 1 ? " \u2014 claimed twice" : ""}
+                        </p>
+                      );
+                    })}
+                  </div>
+                );
+              })()}
             </>);
           })()}
 
@@ -1831,6 +1880,71 @@ export default function FeatureEditor({
                     + "for this line instead of the drawn "
                     + `${length.toFixed(1)} m. Clear the box to go back to the drawing.`}
               </p>
+
+              {/* ── Which way of a link box this cable is on ──
+
+                  The box's output dots are symbolic \u2014 drawn in screen
+                  space, scaling with zoom \u2014 while the box is one point
+                  in the world and every cable ends at that point. So
+                  the way is a fact of the CONNECTION, stated here on
+                  the cable: input, or output 1\u20133, matching the numbers
+                  on the drawing. Offered per end, only for an end that
+                  actually stands on a box, and stored against the box's
+                  id so a cable moved to another box does not carry a
+                  stale claim. The box's own editor shows the whole
+                  schedule and says when a way is claimed twice. */}
+              {feature.Layer_Key === "electric"
+                && String(f.Attributes.Line_Type || "").includes("main")
+                && (() => {
+                  const g = feature.Geometry || [];
+                  if (g.length < 2) return null;
+                  const boxes = (allFeatures || [])
+                    .filter((x) => x.Feature_Role === "linkbox" && (x.Geometry || []).length);
+                  if (!boxes.length) return null;
+                  const near = (pt) => boxes.find((b) =>
+                    Math.hypot(b.Geometry[0][0] - pt[0], b.Geometry[0][1] - pt[1]) <= 1);
+                  const ends = [
+                    { key: "start", at: g[0], word: "start" },
+                    { key: "end", at: g[g.length - 1], word: "end" },
+                  ].map((e) => ({ ...e, box: near(e.at) })).filter((e) => e.box);
+                  if (!ends.length) return null;
+                  const conns = f.Attributes.Link_Connections || {};
+                  const setConn = (key, box, v) => setAttr("Link_Connections")({
+                    ...conns,
+                    [key]: v === "" ? null
+                      : { box: Number(box.Feature_ID),
+                        way: v === "in" ? "in" : Number(v) },
+                  });
+                  return ends.map((e) => {
+                    const ways = Number(e.box.Attributes?.Link_Ways) === 4 ? 3 : 1;
+                    const cur = conns[e.key];
+                    const stale = cur && Number(cur.box) !== Number(e.box.Feature_ID);
+                    return (
+                      <div className="fld" key={e.key}>
+                        <label htmlFor={`fe-lbw-${e.key}`}>
+                          {e.box.Label || "Link box"} \u2014 this cable\u2019s {e.word}
+                        </label>
+                        <select id={`fe-lbw-${e.key}`}
+                          value={stale || !cur ? "" : String(cur.way)}
+                          onChange={(ev) => setConn(e.key, e.box, ev.target.value)}>
+                          <option value="">Not said</option>
+                          <option value="in">Input</option>
+                          {Array.from({ length: ways }, (_, i) => i + 1).map((w) => (
+                            <option key={w} value={w}>
+                              {ways === 1 ? "Output" : `Output ${w}`}
+                            </option>
+                          ))}
+                        </select>
+                        {stale && (
+                          <p className="hint">
+                            This cable named a way on a different box \u2014 it has
+                            been moved. Pick again.
+                          </p>
+                        )}
+                      </div>
+                    );
+                  });
+                })()}
 
               {/* Line type is in the row above for a trench, alongside
                   the layer and the label. */}

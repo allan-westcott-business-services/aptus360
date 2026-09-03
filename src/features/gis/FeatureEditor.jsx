@@ -638,6 +638,11 @@ export default function FeatureEditor({
        and calling it a span node in the header would re-conflate the
        two things the feature exists to keep apart. */
     : feature.Feature_Role === "feederpoint" ? "Feeder end point"
+    /* Ways in the header, because "Link box" alone leaves the one
+       question a reader has \u2014 how many fused outputs \u2014 to a field
+       further down. */
+    : feature.Feature_Role === "linkbox"
+      ? `Link box (${Number(feature.Attributes?.Link_Ways) === 4 ? "4" : "2"} way)`
     /* The two are the same fitting and the same symbol, but one is a
        service take-off and the other is the main dividing, and somebody
        who has opened it wants to know which they are looking at. */
@@ -914,6 +919,54 @@ export default function FeatureEditor({
               );
             })()}
           </>)}
+
+          {feature.Feature_Role === "linkbox" && (() => {
+            /* ── Ways and fuses ──
+
+               A 2 way is one input and one fused output; a 4 way, one
+               input and three. The ratings on offer are the box's own
+               catalogue \u2014 200, 315, 400, 630 A \u2014 listed here and
+               nowhere else, so a new rating is one edit. Switching a
+               4 way down to 2 keeps way 1's fuse and simply stops
+               showing 2 and 3: nothing is deleted, so switching back
+               finds them where they were, and a box saved as 2 way is
+               read by everything as 2 way regardless. */
+            const FUSES = [200, 315, 400, 630];
+            const ways = Number(f.Attributes.Link_Ways) === 4 ? 4 : 2;
+            const fuses = f.Attributes.Way_Fuse_A || {};
+            const setFuse = (w, v) => setAttr("Way_Fuse_A")({
+              ...fuses, [w]: v === "" ? null : Number(v),
+            });
+            return (<>
+              <div className="fld">
+                <label htmlFor="fe-lb-ways">Ways</label>
+                <select id="fe-lb-ways" value={ways}
+                  onChange={(e) => setAttr("Link_Ways")(Number(e.target.value))}>
+                  <option value={2}>2 way — one fused output</option>
+                  <option value={4}>4 way — three fused outputs</option>
+                </select>
+              </div>
+              {Array.from({ length: ways === 4 ? 3 : 1 }, (_, i) => i + 1).map((w) => (
+                <div className="fld" key={w}>
+                  <label htmlFor={`fe-lb-fuse-${w}`}>
+                    {ways === 4 ? `Fuse \u2014 output ${w} (A)` : "Fuse (A)"}
+                  </label>
+                  <select id={`fe-lb-fuse-${w}`} value={fuses[w] ?? ""}
+                    onChange={(e) => setFuse(w, e.target.value)}>
+                    <option value="">Not set</option>
+                    {FUSES.map((a) => (
+                      <option key={a} value={a}>{a} A</option>
+                    ))}
+                  </select>
+                </div>
+              ))}
+              <p className="hint">
+                The numbers on the drawing's output nodes are these ways
+                \u2014 output 1 is fuse 1. The input is the unnumbered node
+                on the other face.
+              </p>
+            </>);
+          })()}
 
           {isTee && (<>
             <div className="fld">

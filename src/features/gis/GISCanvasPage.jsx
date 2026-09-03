@@ -4036,6 +4036,73 @@ export default function GISCanvasPage() {
                circle on top of it. */
             return;
           }
+          if (f.Feature_Role === "linkbox") {
+            /* ── One input, fused outputs, drawn as wired ──
+
+               A yellow square like a joint, rotated to the cable it
+               was placed on, with its connection nodes on the faces:
+               the input alone on the back face, the outputs on the
+               front \u2014 one for a 2 way, three for a 4 way, numbered
+               1\u20133 so a schedule can say which fuse is which. Nodes
+               and numbers arrive with zoom the way the valve's letters
+               do; from a distance it is a square, which is enough to
+               find it by. */
+            const deg = Number(f.Attributes?.Angle_Deg);
+            const rad = Number.isFinite(deg) ? (deg * Math.PI) / 180 : 0;
+            const ways = Number(f.Attributes?.Link_Ways) === 4 ? 4 : 2;
+            const half = Math.max(5, (on ? 1.3 : 1) * ps.symbolPx);
+            const ux = Math.cos(rad), uy = Math.sin(rad);
+            const vx = -uy, vy = ux;
+
+            ctx.save();
+            ctx.translate(p.x, p.y);
+            ctx.rotate(rad);
+            ctx.fillStyle = on ? "#1d4ed8" : (ps.colour ?? "#f59e0b");
+            ctx.strokeStyle = "#0f172a";
+            ctx.lineWidth = 1.5;
+            ctx.beginPath();
+            ctx.rect(-half, -half, half * 2, half * 2);
+            ctx.fill();
+            ctx.stroke();
+            ctx.restore();
+
+            if (view.scale > 1.2) {
+              const nodeR = Math.max(2, half * 0.28);
+              const dot = (cx, cy) => {
+                ctx.beginPath();
+                ctx.arc(cx, cy, nodeR, 0, Math.PI * 2);
+                ctx.fillStyle = "#0f172a";
+                ctx.fill();
+                ctx.strokeStyle = "#f8fafc";
+                ctx.lineWidth = 1;
+                ctx.stroke();
+              };
+              /* Input on the back face, alone. */
+              dot(p.x - ux * half, p.y - uy * half);
+              /* Outputs on the front face: centred for a 2 way, spread
+                 for a 4 way. */
+              const outs = ways === 4 ? [-0.6, 0, 0.6] : [0];
+              outs.forEach((t, i) => {
+                const cx = p.x + ux * half + vx * (t * half);
+                const cy = p.y + uy * half + vy * (t * half);
+                dot(cx, cy);
+                if (ways === 4 && view.scale > 2.2) {
+                  ctx.fillStyle = on ? "#1d4ed8"
+                    : styleFor(f, { labelColour: "#0f172a" }).labelColour;
+                  ctx.font = "700 9px ui-sans-serif, system-ui, sans-serif";
+                  ctx.textAlign = "center";
+                  ctx.textBaseline = "middle";
+                  ctx.fillText(String(i + 1),
+                    cx + ux * (nodeR + 6), cy + uy * (nodeR + 6));
+                  ctx.textBaseline = "alphabetic";
+                }
+              });
+            }
+            /* The label pass below writes the name; nothing else to
+               draw \u2014 the square is the symbol. */
+            return;
+          }
+
           const r = (on ? 1.3 : 1) * (isMeter ? ps.symbolPx * 0.6 : ps.symbolPx);
 
           /* Worked out here because `r` is the meter's drawn radius and
@@ -6228,7 +6295,7 @@ export default function GISCanvasPage() {
       const { point } = resolve(raw[0], raw[1]);
       const at = plantPlace;
       setPlantPlace(null);
-      placePlantAt(point, at.role, at.layerKey);
+      placePlantAt(point, at.role, at.layerKey, at);
       return;
     }
 
@@ -8105,7 +8172,8 @@ export default function GISCanvasPage() {
       const rows = next
         .filter((f) => touched.has(Number(f.Feature_ID))
           && (f.Feature_Type === "line" || f.Feature_Role === "spannode"
-          || f.Feature_Role === "feederpoint"))
+          || f.Feature_Role === "feederpoint"
+          || f.Feature_Role === "linkbox"))
         .map((f) => ({ f, Connects: linksFor(f, next) }))
         .filter(({ f, Connects }) => {
           const was = f.Attributes?.Connects || [];
@@ -8755,7 +8823,7 @@ export default function GISCanvasPage() {
      beside it. Both fall back to where you clicked, with the reason
      said out loud — the original lets you place one before the network
      exists and draw through it afterwards. */
-  function placeNode(role, forLayer = null) {
+  function placeNode(role, forLayer = null, extra = null) {
     if (!projectId) return;
     /* The layer is named by the caller where it matters.
 
@@ -8774,14 +8842,15 @@ export default function GISCanvasPage() {
        fact, and which trench it lands on decides which network it
        owns. So the menu arms a click and the click says where. Escape
        puts the button back. */
-    setPlantPlace({ role, layerKey });
+    setPlantPlace({ role, layerKey, ...(extra || {}) });
     setTool("select");
     const what = role === "substation" ? "the substation"
       : role === "governor" ? "the governor"
         : role === "servicevalve" ? "the service valve"
           : role === "pumping" ? "the pumping station"
             : role === "feederpoint" ? "the feeder end point"
-              : "the POC";
+              : role === "linkbox" ? "the link box"
+                : "the POC";
     setStatus(`Click where ${what} goes \u2014 on the main to sit on it, `
       + "Esc to cancel");
   }
@@ -8807,8 +8876,65 @@ export default function GISCanvasPage() {
      being overruled. A click in open ground places exactly there, with
      the reason said out loud — the original lets you place plant
      before the network exists and draw through it afterwards. */
-  async function placePlantAt(point, role, layerKey) {
+  async function placePlantAt(point, role, layerKey, armed = null) {
     let note = "";
+
+    /* ── A link box sits in the cable run ──
+
+       One input, one or three fused outputs \u2014 a point the feeder
+       cables connect to. Snapped onto an electric main within a
+       click's reach so it lands in the run it belongs to, taking the
+       cable's bearing so the input and output nodes draw along it; a
+       click in open ground places it flat and says so \u2014 the box can
+       be put down before the cables are, and the cables drawn to it.
+       Ways and fuses are the editor's to fill in: 2 way seeds one
+       empty fuse way, 4 way three, and the ratings on offer live in
+       one place there. */
+    if (role === "linkbox") {
+      const ways = armed?.ways === 4 ? 4 : 2;
+      const reach = Math.max(0.5, SNAP_PX / (view.scale || 1));
+      let hit = null;
+      for (const t of visible) {
+        if (t.Feature_Type !== "line" || t.Layer_Key !== "electric") continue;
+        if (!String(t.Attributes?.Line_Type || "").includes("main")) continue;
+        const r = nearestOnPolyline(point, t.Geometry || []);
+        if (r && r.d <= reach && (!hit || r.d < hit.d)) hit = { ...r, line: t };
+      }
+      let angle = null;
+      if (hit) {
+        point = hit.q;
+        note = ` on ${hit.line.Attributes?.Circuit_Name ?? "the main"}`;
+        const g = hit.line.Geometry || [];
+        const a = g[hit.index - 1];
+        const b = g[hit.index];
+        if (a && b && Math.hypot(b[0] - a[0], b[1] - a[1])) {
+          angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
+        }
+      } else {
+        note = " \u2014 not on a cable yet, draw the feeders to it";
+      }
+      const count = features.filter((f) => f.Feature_Role === "linkbox").length + 1;
+      try {
+        await addFeature({
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: "linkbox",
+          Geometry: [point],
+          Label: `Link Box ${count}`,
+          Attributes: {
+            Link_Ways: ways,
+            Way_Fuse_A: {},
+            Angle_Deg: angle,
+          },
+        });
+        await load(projectId);
+        setStatus(`Link Box ${count} (${ways} way) placed${note} \u2014 set its `
+          + "fuses in the editor");
+        setTimeout(() => setStatus(""), 8000);
+        setError("");
+      } catch (e) { setError(e.message); }
+      return;
+    }
 
     /* ── A feeder end point is one circuit's ──
 
@@ -10896,7 +11022,8 @@ export default function GISCanvasPage() {
         const rows = next
           .filter((f) => touched.has(Number(f.Feature_ID))
             && (f.Feature_Type === "line" || f.Feature_Role === "spannode"
-          || f.Feature_Role === "feederpoint"))
+          || f.Feature_Role === "feederpoint"
+          || f.Feature_Role === "linkbox"))
           .map((f) => ({ f, Connects: linksFor(f, next) }))
           .filter(({ f, Connects }) => {
             const was = f.Attributes?.Connects || [];
@@ -13013,7 +13140,7 @@ export default function GISCanvasPage() {
       const all = fresh.features || [];
       const links = all
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
-          || f.Feature_Role === "feederpoint")
+          || f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
@@ -14671,7 +14798,7 @@ export default function GISCanvasPage() {
       const all = fresh.features || [];
       const links = all
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
-          || f.Feature_Role === "feederpoint")
+          || f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
@@ -15050,7 +15177,7 @@ export default function GISCanvasPage() {
 
       const links = all
         .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "spannode"
-          || f.Feature_Role === "feederpoint")
+          || f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },
@@ -18599,6 +18726,14 @@ export default function GISCanvasPage() {
                         disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
                       <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
                         disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
+                      <MenuItem label="+ Link Box (2 way)"
+                        hint="One input, one fused output — click on the cable run"
+                        disabled={!projectId}
+                        onClick={() => placeNode("linkbox", "electric", { ways: 2 })} />
+                      <MenuItem label="+ Link Box (4 way)"
+                        hint="One input, three fused outputs — click on the cable run"
+                        disabled={!projectId}
+                        onClick={() => placeNode("linkbox", "electric", { ways: 4 })} />
                       <MenuItem label="+ Feeder End Point"
                         hint="A break in one circuit's cable — click on the run it belongs to"
                         disabled={!projectId}

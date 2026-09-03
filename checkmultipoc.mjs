@@ -229,6 +229,70 @@ else {
   }
 }
 
+/* ── A name is found however the meters are linked ──
+
+   From project 2202.043: every meter named, and the build banner read
+   "nearest" twice, both circuits from one POC. Those meters carry no
+   Seed_Feature_ID — they are linked to their plots by Plot_ID, the
+   older linkage — and the model's scan matched members back through
+   Seed_Feature_ID alone, so the names were invisible. Held three ways:
+   the scan now walks the Plot_ID linkage too; the build states the
+   origin outright from the members in hand; and the trace states it
+   beside its membership. */
+{
+  let id2 = 9000;
+  const trench2 = (pts, key = "trench") => ({
+    Feature_ID: id2++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const pocAt = (at, label) => ({
+    Feature_ID: id2++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Label: label, Geometry: [at], Attributes: {},
+  });
+  const pA2 = pocAt([0, 0], "West");
+  const pB2 = pocAt([400, 0], "East");
+  const plot2 = (n, at) => ({
+    Feature_ID: id2++, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: n, Geometry: [at], Attributes: {},
+  });
+  const q1 = plot2(1, [150, 10]);
+  const q2 = plot2(2, [160, 10]);
+  /* No Seed_Feature_ID: Plot_ID is the whole link. */
+  const m1 = { Feature_ID: id2++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 1, Geometry: [[150, 10]],
+    Attributes: { Circuit_ID: 1, Circuit_Origin_ID: pA2.Feature_ID } };
+  const m2 = { Feature_ID: id2++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 2, Geometry: [[160, 10]],
+    Attributes: { Circuit_ID: 2, Circuit_Origin_ID: pB2.Feature_ID } };
+  const fs2 = [pA2, pB2,
+    trench2([[0, 0], [150, 0], [160, 0], [400, 0]]),
+    trench2([[150, 0], [150, 10]], "service_trench"),
+    trench2([[160, 0], [160, 10]], "service_trench"),
+    q1, q2, m1, m2];
+  /* seedIds as buildLvNetwork constructs them for such meters: the
+     plots found by Plot_ID. Both circuits' plots sit nearer West, so
+     "nearest" would put both there — the fault as reported. */
+  const r1 = buildFeederModel(fs2, { lineTypes, seedIds: new Set([q1.Feature_ID]) });
+  const r2 = buildFeederModel(fs2, { lineTypes, seedIds: new Set([q2.Feature_ID]) });
+  if (r1.error) fail(`Plot_ID-linked circuit 1 refused: ${r1.error}`);
+  else if (r1.origin !== pA2 || r1.originBy !== "named") {
+    fail(`Plot_ID-linked circuit 1 fed by "${r1.originBy}" from `
+      + `${r1.origin?.Label} — its name was not seen`);
+  }
+  if (r2.error) fail(`Plot_ID-linked circuit 2 refused: ${r2.error}`);
+  else if (r2.origin !== pB2 || r2.originBy !== "named") {
+    fail(`Plot_ID-linked circuit 2 fed by "${r2.originBy}" from `
+      + `${r2.origin?.Label} — its name was not seen`);
+  }
+  /* And stated outright beats everything, whatever the linkage. */
+  const r3 = buildFeederModel(fs2, {
+    lineTypes, seedIds: new Set([q1.Feature_ID]), originId: pB2.Feature_ID,
+  });
+  if (r3.origin !== pB2 || r3.originBy !== "named") {
+    fail("a stated originId was not taken as the named origin");
+  }
+}
+
 /* ── The linking flow captures the decision ──
 
    Structural, because createCircuitFrom is stitched into the canvas:

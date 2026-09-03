@@ -12448,6 +12448,15 @@ export default function GISCanvasPage() {
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
           seedIds,
+          /* The circuit's named POC, read off the members in hand and
+             stated outright. The model's own scan matched members back
+             through Seed_Feature_ID only, and a drawing whose meters
+             are linked by Plot_ID carried its names invisibly: "named"
+             became "nearest" and both circuits routed from one POC
+             with every meter correctly named in the database. */
+          originId: c.meters
+            .map((m) => m.Attributes?.Circuit_Origin_ID)
+            .find((x) => x != null) ?? null,
           /* `bottleEndTailM` was passed here: a spare length past the
              last plot (0185), drawn as trench nobody had dug so the
              bottle end had somewhere to sit other than on top of the

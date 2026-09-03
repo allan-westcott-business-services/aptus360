@@ -382,7 +382,15 @@ export function buildFeederModel(features = [], opts = {}) {
     /* The circuit's own ground: its first seed or member meter, taken
        to the nearest trench node the same way the origins are. */
     let seedNode = -1;
-    let named = null;
+    /* The caller's statement first. buildLvNetwork and spanTrace hold
+       the circuit's own meters and read Circuit_Origin_ID off them
+       directly \u2014 the scan below is for callers that only know seeds,
+       and it failed silently on a real drawing: meters linked to their
+       plots by Plot_ID alone carry no Seed_Feature_ID, so the scan
+       matched nothing, "named" quietly became "nearest", and both
+       circuits routed from one POC with every meter correctly named
+       in the database. A statement cannot miss. */
+    let named = opts.originId != null ? Number(opts.originId) : null;
     for (const f of features) {
       const isSeed = seedIds?.size && f.Feature_Role === "plot"
         && seedIds.has(Number(f.Feature_ID));
@@ -401,14 +409,25 @@ export function buildFeederModel(features = [], opts = {}) {
        came in as seeds: the meter that carries the name is a member of
        the circuit whichever way the circuit was described. */
     if (named == null && seedIds?.size) {
+      /* Both linkages, the same two the build itself uses to turn
+         members into seeds: Seed_Feature_ID where a meter carries it,
+         and the plot found by Plot_ID where it does not. Matching only
+         the first is how older drawings' names went unseen. */
+      const plotByNumber = new Map();
+      for (const f of features) {
+        if (f.Feature_Role === "plot" && f.Plot_ID != null) {
+          plotByNumber.set(Number(f.Plot_ID), Number(f.Feature_ID));
+        }
+      }
       for (const f of features) {
         if (f.Feature_Role !== "meter") continue;
+        if (f.Attributes?.Circuit_Origin_ID == null) continue;
         const sid = f.Attributes?.Seed_Feature_ID;
-        if (sid == null || !seedIds.has(Number(sid))) continue;
-        if (f.Attributes?.Circuit_Origin_ID != null) {
-          named = Number(f.Attributes.Circuit_Origin_ID);
-          break;
-        }
+        const seedId = sid != null ? Number(sid)
+          : (f.Plot_ID != null ? plotByNumber.get(Number(f.Plot_ID)) : undefined);
+        if (seedId == null || !seedIds.has(seedId)) continue;
+        named = Number(f.Attributes.Circuit_Origin_ID);
+        break;
       }
     }
 
@@ -1490,7 +1509,17 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     return { error: `${circuitName} has no supplies on it — nothing to trace.` };
   }
 
-  const M = buildFeederModel(features, { lineTypes, plotById, nrsById, seedIds, meterIds });
+  /* The circuit's named origin, stated outright. The membership scan
+     inside the model also finds it (meterIds is passed), but a
+     statement cannot depend on how the meters happen to be linked. */
+  const namedHere = features.find((f) => f.Feature_Role === "meter"
+    && f.Layer_Key === "electric"
+    && Number(f.Attributes?.Circuit_ID) === Number(circuitId)
+    && f.Attributes?.Circuit_Origin_ID != null);
+  const M = buildFeederModel(features, {
+    lineTypes, plotById, nrsById, seedIds, meterIds,
+    originId: namedHere ? Number(namedHere.Attributes.Circuit_Origin_ID) : null,
+  });
   if (M.error) return { error: M.error };
   const { nodes, parent, parSvc, cum, S } = M;
 

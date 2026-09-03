@@ -573,6 +573,13 @@ export default function FeatureEditor({
     ).trim().toLowerCase();
 
     const fits = sizes.filter((c) => {
+      /* Retired catalogue rows stay out of the menu, same rule as the
+         bulk editor: Is_Active on the type or the size. A size already
+         on the drawing still resolves and labels by id \u2014 only the
+         offering is filtered. */
+      const t = types.find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+      if (t && t.Is_Active === false) return false;
+      if (c.Is_Active === false) return false;
       const u = usageOf(c);
       return !u || u === cableUsage;
     });

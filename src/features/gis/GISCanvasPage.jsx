@@ -20231,6 +20231,7 @@ export default function GISCanvasPage() {
           features={selectedFeatures}
           allFeatures={features}
           cableSizes={lookups?.cableSizes || []}
+          cableTypes={lookups?.cableTypes || []}
           mode={bulkMode}
           configs={lookups?.propertyConfigs || []}
           propertyTypes={lookups?.propertyTypes || []}

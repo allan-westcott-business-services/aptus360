@@ -46,8 +46,10 @@ import { classesIn, fieldsForMany, planBulkEditOn, CLEAR } from "./bulkEdit.js";
 export default function BulkEditor({
   features = [], allFeatures = [], lineTypes, surfaceTypes = [], layers,
   configs = [], propertyTypes = [], mode: openWith = "selection", onApply, onClose,
-  /* The electric cable catalogue, for sizing service tails in bulk. */
-  cableSizes = [],
+  /* The electric cable catalogue and its types, for sizing service
+     tails in bulk \u2014 usage rides on the TYPE, and the label is the
+     type's name plus the size, exactly as the cable editor shows it. */
+  cableSizes = [], cableTypes = [],
 }) {
   const typeName = (id) =>
     propertyTypes.find((t) => t.Property_Type_ID === id)?.Property_Type ?? "";
@@ -323,9 +325,31 @@ export default function BulkEditor({
       );
     }
     if (f.kind === "cable") {
-      const svcCables = cableSizes
-        .filter((c) => /service/i.test(String(c.Usage ?? "")));
-      const list = svcCables.length ? svcCables : cableSizes;
+      /* The same filter and the same words as the cable editor: usage
+         is a fact of the cable TYPE, so the list is the sizes whose
+         type says "service" (a type saying nothing fits anywhere), and
+         each is named type-plus-size \u2014 "95" alone is two different
+         cables in a catalogue with waveform and insulated both. */
+      const typeOf = (c) => (cableTypes || [])
+        .find((t) => t.Cable_Type_ID === c.Cable_Type_ID);
+      const fits = cableSizes.filter((c) => {
+        const t = typeOf(c);
+        /* Retired types stay out of the menu \u2014 Is_Active is a column
+           on the type, set from the same admin screen as Usage, and a
+           cable taken out of use is not one to put on new tails. A
+           size already ON a drawing still resolves by id everywhere;
+           only the offering is filtered. */
+        if (t && t.Is_Active === false) return false;
+        if (c.Is_Active === false) return false;
+        const u = String(t?.Usage_Type ?? "").trim().toLowerCase();
+        return !u || u === "service";
+      });
+      const list = fits.length ? fits : cableSizes;
+      const nameOf = (c) => {
+        const t = (cableTypes || []).find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
+        return [t?.Cable_Type, c.Size_Label ?? c.Cable_Name].filter(Boolean).join(" ")
+          || String(c.Cable_Size_ID);
+      };
       return (
         <div className="fld" key={f.key}>
           <label htmlFor={`be-${f.key}`}>{f.label}</label>
@@ -335,7 +359,7 @@ export default function BulkEditor({
             <option value="">Leave as they are</option>
             {list.map((c) => (
               <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
-                {c.Cable_Name ?? c.Size_Label ?? c.Cable_Size_ID}
+                {nameOf(c)}
               </option>
             ))}
           </select>

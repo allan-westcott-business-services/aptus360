@@ -4090,69 +4090,73 @@ export default function GISCanvasPage() {
               const outs = ways === 4 ? [-0.6, 0, 0.6] : [0];
               const wayInk = f.Attributes?.Way_Colours || {};
 
-              /* ── The cables it is connected to ──
+              /* ── The cables landing on it ──
 
                  The box is one point in the world and its dots are
-                 symbolic, so a cable ending "at" the box ends at the
+                 symbolic, so a cable ending "at" the box ends in the
                  middle of the square and reads as passing behind it.
-                 A short leader from each dot to the cable that claims
-                 it says which cable is on which way, in the way's own
-                 colour \u2014 the same claim the box's schedule lists and
-                 the build routes by, drawn. Input claims lead from the
-                 back face; a run with no claim at all is left alone
-                 rather than guessed at. */
+                 A stub from each dot to the anchor shows the four
+                 terminations as terminations, in each way's colour.
+
+                 Only cables that actually END at the anchor count. The
+                 first cut drew a leader to the nearest point of every
+                 cable claiming this box \u2014 and after a build, dozens of
+                 runs across the site carry that claim, so the box grew
+                 a fan of dashes to all of them. A connection is a cable
+                 ARRIVING here, which is a fact about its ends. */
+              const anchorPt = f.Attributes?.Span_Anchor || f.Geometry?.[0];
+              if (!anchorPt) return;
+              const aPx = toPx(anchorPt);
+              const reachPx = Math.max(6, half * 1.5);
               const claimOf = (line) => {
-                const st = line.Attributes?.Link_Box_ID;
-                if (st != null && Number(st) === Number(f.Feature_ID)
-                  && line.Attributes?.Link_Way != null) {
-                  return Number(line.Attributes.Link_Way);
-                }
                 const lc = line.Attributes?.Link_Connections || {};
                 for (const k of ["start", "end"]) {
                   const c = lc[k];
                   if (c && Number(c.box) === Number(f.Feature_ID)) return c.way;
                 }
+                const st = line.Attributes?.Link_Box_ID;
+                if (st != null && Number(st) === Number(f.Feature_ID)
+                  && line.Attributes?.Link_Way != null) {
+                  return Number(line.Attributes.Link_Way);
+                }
                 return null;
               };
-              const dotAt = (way) => {
-                if (way === "in") {
-                  return { x: p.x - ux * half, y: p.y - uy * half };
-                }
-                const i = Math.max(0, Math.min(outs.length - 1, Number(way) - 1));
-                return { x: p.x + ux * half + vx * (outs[i] * half),
-                  y: p.y + uy * half + vy * (outs[i] * half) };
-              };
+              const landed = new Set();
               for (const line of visible) {
                 if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
-                const way = claimOf(line);
-                if (way == null) continue;
                 const g2 = line.Geometry || [];
                 if (g2.length < 2) continue;
-                /* Where that cable comes closest to the box, drawn
-                   where the cable is drawn \u2014 offsets and all, so the
-                   leader lands on the line the eye sees. */
-                const fp2 = feederPlan.get(Number(line.Feature_ID));
-                const nudge2 = fp2?.offsetPx ?? servicePairOffset(line, hatchLayers);
-                const px2 = g2.map((m2) => { const q2 = toPx(m2); return [q2.x, q2.y]; });
-                const drawn2 = nudge2 ? offsetPolyline(px2, nudge2) : px2;
-                let near = null;
-                for (const q2 of drawn2) {
-                  const d2 = Math.hypot(q2[0] - p.x, q2[1] - p.y);
-                  if (!near || d2 < near.d) near = { d: d2, at: q2 };
+                /* An end of this cable, at this anchor. */
+                const ends = [g2[0], g2[g2.length - 1]].map((m2) => toPx(m2));
+                if (!ends.some((q2) => Math.hypot(q2.x - aPx.x, q2.y - aPx.y) <= reachPx)) {
+                  continue;
                 }
-                if (!near) continue;
-                const from = dotAt(way);
+                const way = claimOf(line);
+                landed.add(way == null ? "?" : way);
+              }
+              const stub = (way, ink) => {
+                const from = way === "in"
+                  ? { x: p.x - ux * half, y: p.y - uy * half }
+                  : (() => {
+                    const i = Math.max(0, Math.min(outs.length - 1, Number(way) - 1));
+                    return { x: p.x + ux * half + vx * (outs[i] * half),
+                      y: p.y + uy * half + vy * (outs[i] * half) };
+                  })();
                 ctx.save();
-                ctx.strokeStyle = (way !== "in" && wayInk[way])
-                  || fp2?.colour || "#0f172a";
+                ctx.strokeStyle = ink || "#0f172a";
                 ctx.lineWidth = 2;
-                ctx.setLineDash([4, 3]);
+                ctx.setLineDash([3, 2]);
                 ctx.beginPath();
                 ctx.moveTo(from.x, from.y);
-                ctx.lineTo(near.at[0], near.at[1]);
+                ctx.lineTo(aPx.x, aPx.y);
                 ctx.stroke();
                 ctx.restore();
+              };
+              for (const way of landed) {
+                if (way === "?") continue;
+                stub(way, way === "in" ? null : (wayInk[way] || null));
               }
+
               outs.forEach((t, i) => {
                 const cx = p.x + ux * half + vx * (t * half);
                 const cy = p.y + uy * half + vy * (t * half);

@@ -319,6 +319,23 @@ else {
   }
 }
 
+/* ── A fitting follows its own circuit's cable, not the trench-mate ──
+
+   Structural: the follow rule lives in the canvas's drag setup. With
+   two circuits' mains sharing one trench, both have a vertex at a
+   service joint's tee, and geometry alone attached the joint to each
+   — dragging one joint moved two circuits' cables. The guard reads
+   both sides' Circuit_ID and stands down only when both name one and
+   they differ, so hand-placed fittings and older drawings keep the
+   behaviour they had. */
+{
+  const { readFileSync } = await import("fs");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/ptCid != null && lineCid != null\n\s*&& Number\(ptCid\) !== Number\(lineCid\)\) continue;/.test(canvas)) {
+    fail("a dragged fitting follows other circuits' cables again");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Two electric POCs behave (named, substation, then nearest \u2014 and shared trenches route).");
 process.exit(bad ? 1 : 0);

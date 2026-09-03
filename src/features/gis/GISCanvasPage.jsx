@@ -6400,6 +6400,23 @@ export default function GISCanvasPage() {
              had: a meter dragged still takes its service end with it. */
           if (isJoint && line.Layer_Key !== pt.Layer_Key) continue;
 
+          /* ── And on its own circuit ──
+
+             Two circuits' cables share a trench now, so both mains run
+             through the tee a service joint sits on, and both have a
+             vertex within tolerance of it. Geometry alone said the
+             joint was attached to each \u2014 dragging one service joint
+             took two circuits' cables with it. A fitting belongs to
+             one circuit's cable; the build stamps Circuit_ID on the
+             joints it makes, and a point that names a circuit follows
+             only lines on the same one. Either side naming none keeps
+             the old behaviour, so hand-placed fittings and older
+             drawings move exactly as they did. */
+          const ptCid = pt.Attributes?.Circuit_ID;
+          const lineCid = line.Attributes?.Circuit_ID;
+          if (ptCid != null && lineCid != null
+            && Number(ptCid) !== Number(lineCid)) continue;
+
           const candidates = isJoint && isFeeder
             ? g.map((_, i) => i)
             : [0, g.length - 1];

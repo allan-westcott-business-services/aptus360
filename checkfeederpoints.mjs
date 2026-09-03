@@ -21,7 +21,7 @@
    - the origin resolves to the circuit's Seq-0 feeder point;
    - the same drawing without feeder points behaves as it always did. */
 import { spanTrace } from "./src/features/gis/feeder.js";
-import { originNodeFor } from "./src/features/gis/electric.js";
+import { originNodeFor, originMissing } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -163,6 +163,45 @@ if (o1?.Feature_Role !== "feederpoint" || Number(o1.Attributes?.Circuit_ID) !== 
     if (!stopIds.has(Number(spanNodes[0].Feature_ID))) {
       fail("a drawing with no feeder points no longer stops at its span nodes");
     }
+  }
+}
+
+/* ── Levels only from a declared origin ──
+
+   Everything downstream is computed against the origin's figures, and
+   a missing one defaults silently — every label reads better than the
+   truth. originMissing is the single definition of "fully declared":
+   the canvas cascade gates each circuit's feeder-point labels on it. */
+{
+  const bare = { Feature_ID: 1, Feature_Role: "poc", Layer_Key: "electric",
+    Geometry: [[0, 0]], Attributes: {} };
+  const m1 = originMissing(bare);
+  if (m1.length !== 3) {
+    fail(`a bare POC is missing ${m1.length} figure(s), expected 3 (impedance, upstream, voltage)`);
+  }
+  const declared = { ...bare, Attributes: {
+    Source_Loop_Impedance_Ohm: 0.28, Source_Volt_Drop_Pct: 0, Output_V: 400 } };
+  if (originMissing(declared).length) {
+    fail("a fully declared POC (upstream declared as 0) still reads as missing something");
+  }
+  const noZ = { ...bare, Attributes: { Source_Volt_Drop_Pct: 0.8, Output_V: 400 } };
+  if (!originMissing(noZ).some((x) => /loop impedance/.test(x))) {
+    fail("a POC without declared impedance is not named as missing it");
+  }
+  const subBare = { Feature_ID: 2, Feature_Role: "substation", Layer_Key: "electric",
+    Geometry: [[0, 0]], Attributes: {} };
+  if (!originMissing(subBare, []).some((x) => /transformer/.test(x))) {
+    fail("a substation without a transformer size is not named as missing it");
+  }
+  const subOk = { ...subBare, Attributes: { VD_Transformer_Size_ID: 3 } };
+  if (originMissing(subOk, [{ Transformer_Size_ID: 3, Loop_Impedance_Ohm: 0.02 }]).length) {
+    fail("a substation with its transformer set still reads as missing something");
+  }
+  /* And the canvas gates on it, per circuit, before any leg is kept. */
+  const { readFileSync } = await import("fs");
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(originMissing\(r\.model\?\.origin \|\| station,\n\s*lookups\?\.transformerSizes \|\| \[\]\)\.length\) continue;/.test(canvas)) {
+    fail("the label cascade no longer gates a circuit's levels on its declared origin");
   }
 }
 

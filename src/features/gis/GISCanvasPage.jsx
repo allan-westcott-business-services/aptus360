@@ -33,7 +33,7 @@ import {
   planAutoService, mainsTrenches, teeIntoMains, nearestOnPolyline,
   isServed, meterHasService, layServices, isExistingFeature, skipSummary,
 } from "./autoService.js";
-import {
+import { originMissing,
   circuitLetter, nextCircuitId, metredSeedsInside, metersOfSeeds, metredSuppliesInside, circuitKva,
   assignWay, releaseWays, circuitsFrom, pocUnit, spanLabel, originNodeFor, traceFrom,
   sourceImpedance, NO_SOURCE_NOTE, upstreamVoltDropPct, workingVoltage, voltageOf,
@@ -1445,6 +1445,24 @@ export default function GISCanvasPage() {
         stopAt: "spannodes",
       });
       if (r.error) continue;
+
+      /* ── No declared origin, no levels ──
+
+         Everything downstream is computed against the origin's own
+         figures, and a POC missing one does not fail \u2014 it defaults,
+         and every label on the circuit reads better than the truth by
+         the missing amount. A number on the drawing is read as a
+         measurement; one resting on an undeclared source is worse
+         than a blank, for the reason the no-cable rule below gives.
+         So a circuit whose origin is not fully declared shows nothing
+         at its feeder points, per circuit \u2014 on a two-POC site the
+         declared circuit keeps its levels while the other waits.
+         originMissing is the one place "fully declared" is defined;
+         the Run Levels Check panel still runs and still says what is
+         absent, because a panel can carry words and a label cannot. */
+      if (originMissing(r.model?.origin || station,
+        lookups?.transformerSizes || []).length) continue;
+
       for (const leg of r.legs || []) {
         if (leg.stopId == null) continue;
 

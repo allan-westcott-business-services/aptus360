@@ -1711,3 +1711,42 @@ export function workingVoltage(origin) {
 
 /* Just the number, for the many callers that only want it. */
 export const voltageOf = (origin) => workingVoltage(origin).volts;
+
+/* ── Whether an origin is ready to be calculated from ──
+
+   The levels of every point downstream are computed against the
+   origin's own figures, and a POC missing one does not fail \u2014 it
+   defaults, silently, and every label reads better than the truth by
+   the missing amount. So the drawing shows no levels for a circuit
+   whose origin is not fully declared, and this is the one place that
+   says what "fully declared" means:
+
+     a POC \u2014 the DNO's declared loop impedance, the upstream volt
+     drop it has already used (a written figure, even if that figure
+     is 0), and the working voltage;
+     a substation \u2014 its transformer size, from which the impedance
+     table answers, and nothing upstream by definition.
+
+   Returns the list of what is missing, empty when ready, so a caller
+   can gate on length and a panel can say the words. */
+export function originMissing(origin, transformerSizes = []) {
+  if (!origin) return ["an origin \u2014 place a substation or an electric POC"];
+  const missing = [];
+  if (origin.Feature_Role === "substation") {
+    if (!sourceImpedance(origin, transformerSizes)) {
+      missing.push("the transformer size on the substation");
+    }
+    return missing;
+  }
+  if (!sourceImpedance(origin)) {
+    missing.push("the DNO's declared loop impedance on the POC");
+  }
+  const up = origin.Attributes?.Source_Volt_Drop_Pct;
+  if (up == null || up === "" || !Number.isFinite(Number(up))) {
+    missing.push("the upstream volt drop on the POC (0 is a figure; blank is not)");
+  }
+  if (workingVoltage(origin).assumed) {
+    missing.push("the output voltage on the POC");
+  }
+  return missing;
+}

@@ -189,8 +189,12 @@ const SERVICES = { serviceTypes: new Set(["trench_service"]) };
   if (at(130, 0)) fail("a span node was placed where a service joins the main");
   if (!at(100, 0)) fail("the junction of two mains got no node");
   if (!at(160, 0) || !at(100, 60)) fail("a mains end got no node");
-  if (plan.nodes.some((n) => !/^A\d+$/.test(n.label))) {
-    fail("a span node is not labelled A followed by a number");
+  /* Bare numbers now: the letters belong to the circuits' feeder end
+     points (A0, A1\u2026 per circuit), and a span node called A1 beside a
+     feeder point called A1 was two facts wearing one name. The dig's
+     points are 1, 2, 3\u2026 \u2014 numbered, never lettered. */
+  if (plan.nodes.some((n) => !/^\d+$/.test(n.label))) {
+    fail("a span node is not labelled with a bare number");
   }
 }
 

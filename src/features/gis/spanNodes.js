@@ -425,7 +425,15 @@ export function planSpanNodes(trenches = [], plant, opts = {}) {
     plant: plant ? { feature: plant, label: plantLabel(plant) } : null,
     nodes: ordered.map((o, i) => ({
       at: o.point.at,
-      label: `A${i + 1}`,
+      /* A bare number. The letters belong to the circuits now: feeder
+         end points are A0, A1\u2026 in circuit A's colour, B0, B1\u2026 in
+         B's, and a span node called A1 standing beside a feeder point
+         called A1 was two different facts wearing one name. The dig's
+         points are 1, 2, 3\u2026 outward from the origin \u2014 no letter,
+         because the dig has no circuit. Place Span Nodes re-labels
+         nodes it adopts, so an existing drawing takes the new names
+         on its next re-place. */
+      label: `${i + 1}`,
       seq: i + 1,
       /* How far along the trenches it is, which is what the numbering
          follows and worth keeping for anybody checking it. */

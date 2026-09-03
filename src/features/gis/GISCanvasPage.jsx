@@ -5776,18 +5776,43 @@ export default function GISCanvasPage() {
         ? Math.max(HIT_PX, (styleFor(f)?.symbolPx ?? 0) + 2)
         : HIT_PX;
 
-      for (const m of g) {
-        const p = toPx(m);
+      /* Vertices measured where they are drawn too \u2014 see the note
+         below on offset lines. Points have no offset and read as
+         before. */
+      const fpV = f.Feature_Type !== "point"
+        ? feederPlan.get(Number(f.Feature_ID)) : null;
+      const nudgeV = f.Feature_Type !== "point"
+        ? (fpV?.offsetPx ?? servicePairOffset(f, hatchLayers)) : 0;
+      const vpts = nudgeV ? offsetPolyline(g.map((m) => toPx(m)), nudgeV) : null;
+      g.forEach((m, i) => {
+        const p = vpts ? vpts[i] : toPx(m);
         const d = Math.hypot(p.x - px, p.y - py);
         if (d <= drawnPx && (!best || d < best.d)) best = { d, via: "vertex" };
-      }
+      });
 
       if (f.Feature_Type !== "point") {
+        /* ── Hit where it is drawn, not where it is stored ──
+
+           Two cables sharing a trench are drawn offset either side of
+           it so they can be read \u2014 offsetPolyline, a few pixels, a
+           drawing convention. The hit test measured against the stored
+           geometry, which is IN the trench: a click dead on the drawn
+           cable missed it by exactly the offset, and a click on the
+           trench selected the cable. Rendering and picking must apply
+           the same nudge through the same function, or every offset
+           line is clickable only where it is not. Same rule for the
+           gas/water service pairs, which use the same nudge. */
+        const fpHit = feederPlan.get(Number(f.Feature_ID));
+        const nudge = fpHit?.offsetPx ?? servicePairOffset(f, hatchLayers);
+        const drawn = nudge
+          ? offsetPolyline(g.map((m) => toPx(m)), nudge)
+          : null;
+
         const closed = f.Feature_Type === "polygon";
         const segs = closed ? g.length : g.length - 1;
         for (let k = 0; k < segs; k++) {
-          const a = toPx(g[k]);
-          const b = toPx(g[(k + 1) % g.length]);
+          const a = drawn ? drawn[k] : toPx(g[k]);
+          const b = drawn ? drawn[(k + 1) % g.length] : toPx(g[(k + 1) % g.length]);
           const vx = b.x - a.x, vy = b.y - a.y;
           const len2 = vx * vx + vy * vy;
           if (!len2) continue;

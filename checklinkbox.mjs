@@ -355,6 +355,23 @@ if (!/claimed twice/.test(editor)) {
     Layer_Key: "electric", Geometry: [[100, 0]],
     Attributes: { Link_Ways: 4, Circuit_ID: 1, Span_Seq: 2, Span_Anchor: [100, 0] } };
   const after = planJoints([...world, bx], circuits, { lineTypes: lt });
+  /* Placed by eye, a box lands a foot or so off the junction. The
+     first cut matched at the drawing's 0.25 joining tolerance and
+     missed, so the drawing carried both a box and the breech it
+     replaces, with the cables terminating at the breech. */
+  const offBy = { ...bx, Feature_ID: bx.Feature_ID + 1,
+    Geometry: [[101.2, 0]], Attributes: { ...bx.Attributes, Span_Anchor: [101.2, 0] } };
+  if (planJoints([...world, offBy], circuits, { lineTypes: lt })
+    .some((j) => Math.hypot(j.point[0] - 100, j.point[1]) < 0.5)) {
+    fail("a box a metre off the junction leaves the joint it replaces");
+  }
+  /* But a box genuinely elsewhere does not swallow a real joint. */
+  const far = { ...bx, Feature_ID: bx.Feature_ID + 2,
+    Geometry: [[108, 0]], Attributes: { ...bx.Attributes, Span_Anchor: [108, 0] } };
+  if (!planJoints([...world, far], circuits, { lineTypes: lt })
+    .some((j) => Math.hypot(j.point[0] - 100, j.point[1]) < 0.5)) {
+    fail("a box eight metres away suppressed a joint that is nothing to do with it");
+  }
   if (kindsAt(after, 100, 0).length) {
     fail(`a joint is still planned where a link box stands: ${kindsAt(after, 100, 0)}`);
   }

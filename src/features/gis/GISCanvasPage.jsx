@@ -9010,6 +9010,25 @@ export default function GISCanvasPage() {
     if (role === "linkbox") {
       const ways = armed?.ways === 4 ? 4 : 2;
       const hit = drawnMainAt(point);
+      /* ── It takes the junction's place ──
+
+         A link box replaces the joint at its point, and "its point"
+         has to be the junction itself: the runs meet there, so a box
+         a metre up the road leaves the cables terminating at the
+         breech and the box standing beside the work. Snapped to the
+         nearest vertex of the run it landed on when one is within a
+         few metres \u2014 vertices are where runs meet and where joints
+         are planned \u2014 and left exactly where it was clicked
+         otherwise, mid-span being a legitimate place to break a run. */
+      if (hit) {
+        const g2 = hit.line.Geometry || [];
+        let near = null;
+        for (const v of g2) {
+          const d = Math.hypot(v[0] - hit.q[0], v[1] - hit.q[1]);
+          if (d <= 3 && (!near || d < near.d)) near = { d, at: v };
+        }
+        if (near) hit.q = [near.at[0], near.at[1]];
+      }
       let angle = null;
       if (hit) {
         point = hit.q;

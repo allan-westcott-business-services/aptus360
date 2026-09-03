@@ -705,8 +705,13 @@ export function planJoints(features = [], circuits = [], opts = {}) {
     .filter((f) => f.Feature_Role === "linkbox")
     .map((f) => f.Attributes?.Span_Anchor || f.Geometry?.[0])
     .filter(Boolean);
+  /* Two metres, not the drawing's 0.25 joining tolerance. A box is
+     placed by eye on a run and ends up a foot or so off the junction
+     the walk would joint at \u2014 close enough that the fitting is plainly
+     the same one, far enough that a joining-tolerance match missed it
+     and the drawing carried both a box and the breech it replaces. */
   const onABox = (pt) => boxAt.some((b) =>
-    Math.hypot(b[0] - pt[0], b[1] - pt[1]) <= (opts.tolM ?? 0.25));
+    Math.hypot(b[0] - pt[0], b[1] - pt[1]) <= (opts.boxTolM ?? 2));
 
   return out.filter((j) => {
     if (j.kind !== "service" && j.kind !== "bottleend" && onABox(j.point)) {

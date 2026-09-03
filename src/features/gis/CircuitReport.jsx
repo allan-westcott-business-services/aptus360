@@ -55,6 +55,9 @@ export default function CircuitReport({
   /* Names which POC feeds a circuit, written across its members by the
      canvas. Only offered where report.origins has more than one. */
   onSetCircuitOrigin,
+  /* The circuit's drawn colour: current values by circuit id, and the
+     setter that writes a choice to the circuit's own origin. */
+  onSetCircuitColour, circuitInk,
 }) {
   const drag = useDragHandle();
   const [sort, setSort] = useState({ key: "plot", dir: "asc" });
@@ -418,6 +421,26 @@ export default function CircuitReport({
                       </select>
                     </span>
                   )}
+                  {/* The circuit's cable colour, beside its feed \u2014 the
+                      report is where every circuit is in view, so the
+                      choice reads against its neighbours. Immediate,
+                      because the report has no Save; the small \u00D7
+                      puts the circuit back on the palette. */}
+                  {onSetCircuitColour && c.id !== "unlinked" && (
+                    <span className="cr-ink">
+                      <label title={`Colour of ${c.name} on the drawing`}>
+                        <input type="color" disabled={!!busy}
+                          value={circuitInk?.get?.(Number(c.id)) || "#64748b"}
+                          aria-label={`Cable colour for ${c.name}`}
+                          onChange={(e) => onSetCircuitColour(c.id, e.target.value)} />
+                        <span className="cr-ink-sw"
+                          style={{ background: circuitInk?.get?.(Number(c.id)) || "#64748b" }} />
+                      </label>
+                      <button type="button" className="cr-ink-x" disabled={!!busy}
+                        title="Back to the automatic palette colour"
+                        onClick={() => onSetCircuitColour(c.id, null)}>&times;</button>
+                    </span>
+                  )}
                   <span className="cr-meta">
                     {report.origins?.length > 1 ? "" : `from ${report.station} \u00B7 `}
                     {c.count} meter{c.count === 1 ? "" : "s"}
@@ -741,6 +764,15 @@ export default function CircuitReport({
 }
 
 const CSS = `
+.cr-ink { display: inline-flex; align-items: center; gap: 4px; margin-left: 10px; }
+.cr-ink label { position: relative; display: inline-flex; width: 22px; height: 16px;
+  cursor: pointer; }
+.cr-ink input[type="color"] { position: absolute; inset: 0; opacity: 0; cursor: pointer; }
+.cr-ink-sw { display: inline-block; width: 22px; height: 16px; border-radius: 4px;
+  border: 1.5px solid #e2e8f0; pointer-events: none; }
+.cr-ink-x { border: none; background: none; color: #94a3b8; cursor: pointer;
+  font-size: 14px; padding: 0 2px; }
+.cr-ink-x:hover { color: #dc2626; }
 .cr-fed { display: inline-flex; align-items: center; gap: 6px; margin-left: 10px; }
 .cr-fed label { font-size: 12px; color: #64748b; }
 .cr-fed select { padding: 3px 6px; border: 1.5px solid #e2e8f0; border-radius: 6px;

@@ -1934,11 +1934,31 @@ export default function GISCanvasPage() {
       : null,
   ].filter(Boolean), []);
 
+  /* ── The chosen circuit colours, from every origin ──
+
+     The map rode on the substation, and a POC-fed drawing has none \u2014
+     so there was nowhere to put a choice at all. Each origin now
+     carries the colours of the circuits it feeds, set from its own
+     editor or the Circuit Report, and the readers merge the lot.
+     First origin wins a duplicate (substations first, then POCs in
+     drawing order), and the report's setter strips a colour from the
+     other origins when it writes one, so a duplicate is a passing
+     state rather than a fight. */
+  const chosenCircuitColours = useMemo(() => {
+    const out = {};
+    for (const o of lvOrigins(features)) {
+      const m = o.Attributes?.Circuit_Colours || {};
+      for (const [k, v] of Object.entries(m)) {
+        if (out[k] == null && v) out[k] = v;
+      }
+    }
+    return out;
+  }, [features]);
+
   /* One colour per circuit, the same as the feeders use — so a ring and
      the cable leaving it are never different colours. */
   const ringColours = useMemo(() => {
-    const sub = features.find((f) => f.Feature_Role === "substation");
-    const chosen = sub?.Attributes?.Circuit_Colours;
+    const chosen = chosenCircuitColours;
     const out = circuitColours(features, chosen);
 
     /* Circuits that exist but have no feeder drawn yet.
@@ -1961,7 +1981,7 @@ export default function GISCanvasPage() {
       out.set(c.id, chosen?.[c.id] ?? chosen?.[String(c.id)] ?? feederColourAt(i));
     });
     return out;
-  }, [features]);
+  }, [chosenCircuitColours, features]);
 
   /* Which proposed group each meter is in, while a suggestion is on
      screen. Keyed by feature id because a proposal has no circuit to key
@@ -2218,9 +2238,14 @@ export default function GISCanvasPage() {
          with it, which are the whole point of this view. */
       if (lightingView) return inLightingView(f);
 
-      const keys = f.Feature_Role === "spannode" || f.Feature_Role === "feederpoint"
-        ? [`role:${f.Feature_Role}`, `${f.Layer_Key}:role:${f.Feature_Role}`]
-        : classKeys(f);
+      /* Through classKeys like everything else \u2014 which includes the
+         layer, so hiding Trenches hides the span nodes standing on
+         them and hiding Electric hides the feeder points. The special
+         case that dropped the layer key made the markers immortal:
+         the dig vanished and its numbering hung in space. The other
+         direction \u2014 unhiding the markers must not unhide the dig \u2014
+         is kinOf's business, which knows a layer from a role. */
+      const keys = classKeys(f);
       /* ── What is being placed is always on screen ──
 
          A seed hidden while seeds are being placed means tapping the
@@ -2518,13 +2543,50 @@ export default function GISCanvasPage() {
      Gathered from the features rather than from a list of key shapes,
      so a class this file has never heard of behaves the same. */
   const kinOf = useCallback((key) => {
-    const out = new Set([key]);
+    const gathered = new Set([key]);
     for (const f of features) {
       const ks = classKeys(f);
-      if (ks.includes(key)) ks.forEach((k) => out.add(k));
+      if (ks.includes(key)) ks.forEach((k) => gathered.add(k));
+    }
+
+    /* ── The sweep respects the hierarchy ──
+
+       Gathering every key the class's features carry is right for the
+       isolate case this exists for \u2014 a plot seed hidden as "plot",
+       "role:plot" and "plot:role:plot" must come back with one press.
+       But a span node carries "trench", its LAYER, and sweeping that
+       meant unhiding Span Nodes unhid the whole dig: a child putting
+       its parent back on screen.
+
+       Two exclusions, and the reasons:
+
+       Never a bare layer key other than the one pressed. A layer is
+       the parent; unhiding a role within it says nothing about it.
+
+       And when the key pressed IS a layer, a role that covers only
+       part of it keeps its own state \u2014 Span Nodes hidden by their own
+       switch stay hidden when Trenches come back, because that switch
+       is a decision someone made and this press was about the layer.
+       A role that covers the WHOLE layer (every plot-layer feature is
+       role:plot) is the layer under another name and is swept, which
+       is the isolate case again. */
+    const isRole = (k) => /(^|:)role:/.test(String(k));
+    const isLayer = (k) => (layers || []).some((l) => l.Layer_Key === k)
+      || k === "plot" || k === "boundary";
+    const out = new Set();
+    for (const k of gathered) {
+      if (k !== key && isLayer(k)) continue;
+      if (k !== key && isLayer(key) && isRole(k)) {
+        const partial = features.some((f) => {
+          const ks = classKeys(f);
+          return ks.includes(key) && !ks.includes(k);
+        });
+        if (partial) continue;
+      }
+      out.add(k);
     }
     return out;
-  }, [features, classKeys]);
+  }, [features, classKeys, layers]);
 
   const hideClass = useCallback((key) => {
     /* Hiding one of the layers a list is showing takes it off the list,
@@ -2801,11 +2863,10 @@ export default function GISCanvasPage() {
        a circuit is many cable sections — putting it on the sections
        would mean keeping them all in step and would drift the moment one
        was redrawn. */
-    const sub = features.find((f) => f.Feature_Role === "substation");
     return feederRenderPlan(features, {
-      chosenColours: sub?.Attributes?.Circuit_Colours || {},
+      chosenColours: chosenCircuitColours,
     });
-  }, [features]);
+  }, [features, chosenCircuitColours]);
 
   /* Put the remembered choice back once there are features to work it
      out against.
@@ -9341,6 +9402,47 @@ export default function GISCanvasPage() {
       setTimeout(() => setStatus(""), 10000);
       return true;
     } catch (e) { setError(e.message); return false; }
+    finally { setBusy(""); }
+  }
+
+  /* A circuit's cable colour, set from the Circuit Report.
+
+     Written to the circuit's own origin \u2014 its named POC where it has
+     one, the first origin otherwise \u2014 and stripped from every other
+     origin in the same breath, because the readers merge first-wins
+     and a stale copy on an earlier origin would shadow the choice.
+     Null puts the circuit back on the palette. Immediate, unlike the
+     editor's board, because the report has no Save. */
+  async function setCircuitColourNow(circuitId, colour) {
+    const origins = lvOrigins(features);
+    if (!origins.length) { setError("Place a substation or an electric POC first."); return; }
+    const namedId = features
+      .filter((x) => x.Feature_Role === "meter"
+        && Number(x.Attributes?.Circuit_ID) === Number(circuitId))
+      .map((x) => x.Attributes?.Circuit_Origin_ID)
+      .find((x) => x != null) ?? null;
+    const target = origins.find((o) => Number(o.Feature_ID) === Number(namedId))
+      || origins[0];
+    setBusy("circuit");
+    try {
+      for (const o of origins) {
+        const map = { ...(o.Attributes?.Circuit_Colours || {}) };
+        const has = map[circuitId] != null;
+        if (o === target) {
+          if (colour == null) delete map[circuitId];
+          else map[circuitId] = colour;
+          if (colour == null && !has) continue;
+        } else {
+          if (!has) continue;
+          delete map[circuitId];
+        }
+        await updateFeature(projectId, o.Feature_ID, {
+          Attributes: { ...o.Attributes, Circuit_Colours: map },
+        });
+      }
+      await load(projectId);
+      setError("");
+    } catch (e) { setError(e.message); }
     finally { setBusy(""); }
   }
 
@@ -19511,6 +19613,8 @@ export default function GISCanvasPage() {
           <CircuitReport
             report={r}
             onSetCircuitOrigin={setCircuitOrigin}
+            onSetCircuitColour={setCircuitColourNow}
+            circuitInk={ringColours}
             /* The rings are one setting with two ways in — this and the
                Layers menu — so turning them on here shows the same thing
                and the menu agrees afterwards. */

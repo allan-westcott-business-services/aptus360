@@ -868,6 +868,51 @@ export default function FeatureEditor({
                     + "drop and loop impedance are measured from it."}
               </p>
             </div>
+
+            {/* ── The colours of the circuits fed from here ──
+
+                The choice belongs to the circuit and rides on its own
+                origin, the way it has always ridden on the substation:
+                one write, drifting with nothing. On a drawing with more
+                than one POC the board lists only the circuits this one
+                feeds \u2014 the other POC's circuits are its own board's
+                business \u2014 and on a one-origin drawing it lists them
+                all. The swatch resolves through the same module the
+                canvas draws with, so it cannot show one colour while
+                the cables show another. Held in the draft and written
+                by Save, like every other field here. */}
+            {feature.Feature_Role === "poc" && (() => {
+              const many = lvOrigins(allFeatures || []).length > 1;
+              const namedOf = (cid) => (allFeatures || [])
+                .filter((x) => x.Feature_Role === "meter"
+                  && Number(x.Attributes?.Circuit_ID) === Number(cid))
+                .map((x) => x.Attributes?.Circuit_Origin_ID)
+                .find((x) => x != null) ?? null;
+              const mine = circuits.filter((c) => !many
+                || Number(namedOf(c.id)) === Number(feature.Feature_ID));
+              if (!mine.length) return null;
+              return (
+                <div className="fld">
+                  <label>Circuit cable colours</label>
+                  {mine.map((c) => (
+                    <div key={c.id} className="fe-circ-colour">
+                      <span className="fe-circ-name">{c.name}</span>
+                      <label className="fe-swatch"
+                        title={`Colour of ${c.name} on the drawing`}>
+                        <input type="color" value={colourFor(c.id)}
+                          aria-label={`Line colour for ${c.name}`}
+                          onChange={(e) => setCircuitColour(c.id, e.target.value)} />
+                        <span style={{ background: colourFor(c.id) }} />
+                      </label>
+                    </div>
+                  ))}
+                  <p className="hint">
+                    The cables, feeder points and report rings of each
+                    circuit, everywhere it is drawn. Saved with Save.
+                  </p>
+                </div>
+              );
+            })()}
           </>)}
 
           {isTee && (<>
@@ -2796,6 +2841,9 @@ const CSS = `
 .fe-bar { display: block; height: 5px; border-radius: 3px; background: var(--bg); overflow: hidden; }
 .fe-bar i { display: block; height: 100%; }
 .fe-bar.big { height: 8px; margin: 4px 0 6px; }
+.fe-circ-colour { display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; padding: 3px 0; }
+.fe-circ-name { font-size: 13px; }
 .fe-swatch { position: relative; display: block; width: 34px; height: 24px; cursor: pointer; }
 .fe-swatch input { position: absolute; inset: 0; opacity: 0; width: 100%; height: 100%;
   cursor: pointer; }

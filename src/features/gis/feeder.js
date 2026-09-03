@@ -1966,7 +1966,17 @@ export function spanTrace(features = [], nodeId, opts = {}) {
        sum. The junctions are stops for the table and nothing more; the
        arithmetic is identical to the ordinary check. */
     spanNodes: [...stops]
-      .filter(([, f]) => f.Feature_Role === "spannode")
+      /* The measuring points, whichever kind this circuit uses \u2014 the
+         same stopRole decision the stops themselves were gathered by.
+         This filter said "spannode" alone after feeder points took
+         over as the stops, so on any rebuilt drawing the list held
+         only the origin: the volt drop had no points to settle cable
+         at, and the scenario search had nothing it could upsize \u2014
+         "out of tolerance, suggest changes" pressed and came back
+         exhausted with the fix one ladder rung away. The junction
+         exclusion the note above argues for is untouched: junctions
+         were never in `stops`. */
+      .filter(([, f]) => f.Feature_Role === stopRole)
       .map(([index, f]) => ({
         index,
         feature: f,

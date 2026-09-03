@@ -129,8 +129,38 @@ if (o1?.Feature_Role !== "feederpoint" || Number(o1.Attributes?.Circuit_ID) !== 
     if (!stopIds.has(Number(c1feps[1].Feature_ID))) {
       fail("circuit 1's feeder point at the shared junction is not a stop");
     }
+    /* And in spanNodes \u2014 the list the volt drop settles cable at and
+       the scenario search upsizes. Its filter said "spannode" alone
+       after feeder points took over as the stops, so on any rebuilt
+       drawing it held only the origin: legs were charged end to end on
+       the arriving cable whatever stood between, and "suggest changes"
+       had nothing to change \u2014 pressed, it came back exhausted with
+       the fix one ladder rung away. */
+    const settled = new Set((r.spanNodes || [])
+      .map((x) => Number(x.feature?.Feature_ID)).filter(Boolean));
+    if (!settled.has(Number(c1feps[1].Feature_ID))
+      || !settled.has(Number(c1feps[2].Feature_ID))) {
+      fail("the circuit's feeder points are not in spanNodes \u2014 the volt drop"
+        + " has no points to settle cable at and the scenario nothing to upsize");
+    }
     if ([...stopIds].some((x) => c2feps.some((f) => Number(f.Feature_ID) === x))) {
       fail("circuit 1's trace stopped at circuit 2's feeder point");
+    }
+
+    /* ── And the settle list holds them too ──
+
+       spanNodes is the list the volt drop settles cable at and the
+       scenario search upsizes. It filtered for "spannode" after feeder
+       points became the stops, so on a rebuilt drawing it held only
+       the origin: every leg was charged as the whole run carrying the
+       whole load \u2014 a levels export read 639 m and 16% between
+       neighbouring points \u2014 and "suggest changes" had nothing to
+       change and reported exhausted. From project 2202.043. */
+    const settleIds = new Set((r.spanNodes || []).map((x) => Number(x.feature?.Feature_ID)));
+    if (!settleIds.has(Number(c1feps[1].Feature_ID))
+      || !settleIds.has(Number(c1feps[2].Feature_ID))) {
+      fail("the trace's settle list is missing the circuit's feeder points \u2014 "
+        + "the volt drop charges every leg as the whole run again");
     }
   }
 }

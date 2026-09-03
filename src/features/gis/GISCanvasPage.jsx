@@ -6277,7 +6277,17 @@ export default function GISCanvasPage() {
       return;
     }
     setPicker(null);
-    const hit = cands[0]?.feature ?? null;
+    /* The one already chosen, where it is among them \u2014 not the first.
+
+       The guard above skips the list because "a click on something
+       already selected goes straight to dragging it", and then this
+       line took cands[0]: with E0 and A0 stacked on one POC, picking
+       A0 from the list and clicking again selected-and-dragged E0.
+       Choosing from the list is the choosing; the next click acts on
+       the choice. Shift keeps its old meaning through the same line,
+       since the chosen candidate is the one toggled. */
+    const hit = (cands.find((c) => selected.includes(c.feature.Feature_ID))
+      ?? cands[0])?.feature ?? null;
     if (hit) {
       const next = e.shiftKey
         ? (selected.includes(hit.Feature_ID)

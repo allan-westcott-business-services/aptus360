@@ -21,7 +21,7 @@
 
 import { readFileSync } from "node:fs";
 import { planJoints } from "./src/features/gis/joints.js";
-import { circuitMembership } from "./src/features/gis/feeder.js";
+import { circuitMembership, feederSections } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -642,6 +642,55 @@ const at = (x) => planned.filter((j) => Math.hypot(j.point[0] - x, j.point[1]) <
     if (/j\.onTail/.test(jt)) {
       fail("the tail-move block is still moving bottle ends onto a tail that is not dug");
     }
+  }
+}
+
+/* ── The build routes to a supply, not only to plots ──
+
+   From real ground: Build LV Network ran no cable to a pumping
+   station. The build kept its own copy of the membership walk — seeds
+   only — so a supply that answers by meter (NRS_ID, no plot) was
+   invisible to the router while the circuit report listed it. The
+   build now calls circuitMembership and hands the router both sets;
+   held here by driving the router with exactly what the build passes,
+   and by pinning that the build calls the shared walk. */
+{
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  let id = 5000;
+  const trench = (pts, key = "trench") => ({
+    Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const poc = { Feature_ID: id++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {} };
+  const plotF = { Feature_ID: id++, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: 1, Geometry: [[50, 10]], Attributes: {} };
+  const house = { Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 1, Geometry: [[50, 10]],
+    Attributes: { Seed_Feature_ID: plotF.Feature_ID, Circuit_ID: 9 } };
+  const pump = { Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[120, 10]],
+    Attributes: { NRS_ID: 7, Circuit_ID: 9 } };
+  const world = [poc, plotF, house, pump,
+    trench([[0, 0], [50, 0], [120, 0], [140, 0]]),
+    trench([[50, 0], [50, 10]], "service_trench"),
+    trench([[120, 0], [120, 10]], "service_trench")];
+  const mem = circuitMembership(world, 9);
+  const rr = feederSections(world, {
+    lineTypes, plotById: () => ({ kva_load: 2.5 }),
+    nrsById: () => ({ Requested_kVA: 40 }),
+    seedIds: mem.seedIds, meterIds: mem.meterIds,
+  });
+  if (rr.error) fail(`the router refused the supply circuit: ${rr.error}`);
+  else if (!rr.sections.some((sec) => sec.pts.some((q) => Math.hypot(q[0] - 120, q[1]) < 1))) {
+    fail("no run reaches the supply's tee — the meter-carried member is invisible again");
+  }
+  const canvasSrc = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const \{ seedIds, meterIds \} = circuitMembership\(src, c\.id\);/.test(canvasSrc)) {
+    fail("Build LV Network no longer uses the one membership walk");
   }
 }
 

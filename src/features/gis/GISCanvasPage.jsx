@@ -75,7 +75,7 @@ import {
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
+import { circuitMembership, SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins } from "./feeder.js";
@@ -12602,16 +12602,19 @@ export default function GISCanvasPage() {
       for (const [i, c] of circuits.entries()) {
         setProgress({ done: i, total: circuits.length, label: `Routing ${c.name}` });
 
-        const seedIds = new Set();
-        for (const m of c.meters) {
-          const sid = m.Attributes?.Seed_Feature_ID;
-          if (sid != null) { seedIds.add(Number(sid)); continue; }
-          const seed = src.find((f) => f.Feature_Role === "plot"
-            && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
-          if (seed) seedIds.add(Number(seed.Feature_ID));
-        }
-        if (!seedIds.size) {
-          failed.push(`${c.name}: its meters aren't linked to a plot seed`);
+        /* ── One walk, both readers ──
+
+           This was the build's own copy of the membership walk, and it
+           was the copy circuitMembership's comment warns about: it
+           gathered seeds only, so a supply that answers by meter \u2014 a
+           pumping station, any non-residential load \u2014 was invisible
+           to the router, and Build LV Network ran no cable to it while
+           the circuit report happily listed it. Recurring fault 27,
+           found on real ground. The shared walk gathers both sets, and
+           the refusal fires only when a circuit has neither. */
+        const { seedIds, meterIds } = circuitMembership(src, c.id);
+        if (!seedIds.size && !meterIds.size) {
+          failed.push(`${c.name}: its meters aren't linked to a plot or a supply`);
           continue;
         }
 
@@ -12619,7 +12622,7 @@ export default function GISCanvasPage() {
           lineTypes,
           plotById: (id) => plotList.find((p) => p.plot_id === id),
           nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
-          seedIds,
+          seedIds, meterIds,
           /* The circuit's named POC, read off the members in hand and
              stated outright. The model's own scan matched members back
              through Seed_Feature_ID only, and a drawing whose meters

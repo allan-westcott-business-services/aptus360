@@ -77,7 +77,7 @@ import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
   carriedOverrides, carriedOverrideFor } from "./feeder.js";
-import { planFeederPoints } from "./feederPoints.js";
+import { planFeederPoints, planInsertion } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
@@ -1522,7 +1522,13 @@ export default function GISCanvasPage() {
           || f.Feature_Role === "spannode" || f.Feature_Role === "plot"
           /* A feeder point is a stop the cascade computes to, so a
              change to one must re-run it. */
-          || f.Feature_Role === "feederpoint");
+          || f.Feature_Role === "feederpoint"
+          /* And a link box, for the same reason: the trace stops at it,
+             so its figures are computed to it. Left out, a box moved
+             along the run kept the levels it had at the old place \u2014
+             the check does not re-run, because nothing it watches has
+             changed. */
+          || f.Feature_Role === "linkbox");
       if (!wanted) continue;
       k.push(f.Feature_ID, f.Feature_Role, f.Layer_Key, f.Geometry, f.Plot_ID,
         a.Line_Type, a.Circuit_ID, a.Span_Seq, a.Seed_Feature_ID,
@@ -5541,7 +5547,24 @@ export default function GISCanvasPage() {
        cannot be covered by construction rather than by ordering luck. */
     for (const f of visible) {
       if (f.Feature_Role !== "spannode"
-        && f.Feature_Role !== "feederpoint") continue;
+        && f.Feature_Role !== "feederpoint"
+        /* ── And the link box ──
+
+           A box on a run is that circuit's feeder end point, and the
+           trace already stops at it: the levels map is keyed on the
+           leg's stopId, and the box's id is in there. What was missing
+           was any pass that would draw it. So the figures existed, were
+           correct, and appeared on every stop except the one a designer
+           can point at on site \u2014 which reads as the box being outside
+           the design rather than as a drawing that never asked.
+
+           Widened rather than copied into the box's own branch, which
+           would be two pieces of code drawing one plate and would drift
+           the first time one was changed. What the box does NOT take
+           from this pass is the round node symbol: it is guarded below
+           with `isBox`, so the square and its fuse numbers stand. */
+        && f.Feature_Role !== "linkbox") continue;
+      const isBox = f.Feature_Role === "linkbox";
       const g = f.Geometry || [];
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
@@ -5678,7 +5701,14 @@ export default function GISCanvasPage() {
          Below about seven pixels there is no room for a legible code, so
          it is dropped rather than drawn as an unreadable smudge — the
          node is still there and still says where it is. */
-      const r = Math.max(3, ps.symbolPx) * (on ? 1.25 : 1);
+      /* A box's square is sized differently from a node's circle, and
+         the plate is placed at `r` from the centre \u2014 so taking the
+         node's radius for a box would drop the figures on top of the
+         symbol. Its own half-width, worked out the way its branch works
+         it out. */
+      const r = isBox
+        ? Math.max(5, (on ? 1.3 : 1) * ps.symbolPx)
+        : Math.max(3, ps.symbolPx) * (on ? 1.25 : 1);
       /* Floored, and capped at the radius rather than just over it: a
          monospace cap is about 0.72 of its point size, so a font of r
          gives a glyph comfortably inside a circle of diameter 2r. Round
@@ -5759,16 +5789,23 @@ export default function GISCanvasPage() {
       }
 
       /* A white ring under the fill, so the node reads as sitting on top
-         of whatever it covers rather than merging into it. */
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, r + 1.5, 0, Math.PI * 2);
-      ctx.fillStyle = "#fff";
-      ctx.fill();
+         of whatever it covers rather than merging into it.
 
-      ctx.beginPath();
-      ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
-      ctx.fillStyle = on ? "#1d4ed8" : (circuitColour ?? ps.colour ?? "#0f172a");
-      ctx.fill();
+         Not for a link box: its symbol is the yellow square with the
+         input and output nodes on its faces, drawn with the rest of
+         the features, and a circle here would cover it. The box is in
+         this pass for the figures beside it, not for a symbol. */
+      if (!isBox) {
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, r + 1.5, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, r, 0, Math.PI * 2);
+        ctx.fillStyle = on ? "#1d4ed8" : (circuitColour ?? ps.colour ?? "#0f172a");
+        ctx.fill();
+      }
 
       /* Past its limit on loop impedance or volt drop.
 
@@ -5788,7 +5825,10 @@ export default function GISCanvasPage() {
          unmarked dot, and the codes are what the trace, the circuit
          report and the cable schedule are all read against — hiding them
          hides the drawing's index rather than tidying it. */
-      if (code && fontPx >= 7 && view.scale > 1.2) {
+      /* The box draws its own code on its square, so it is not drawn
+         again here \u2014 in white, centred, over a symbol this pass did
+         not paint. */
+      if (code && !isBox && fontPx >= 7 && view.scale > 1.2) {
         ctx.font = `700 ${fontPx}px ui-monospace, Menlo, monospace`;
         ctx.fillStyle = "#fff";
         ctx.textAlign = "center";
@@ -9243,12 +9283,18 @@ export default function GISCanvasPage() {
       const letter = cid != null
         ? (hit.line.Attributes?.Circuit_Letter || String.fromCharCode(64 + Number(cid)))
         : null;
-      const seq = cid != null
-        ? 1 + features
-          .filter((f) => (f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
-            && Number(f.Attributes?.Circuit_ID) === Number(cid))
-          .reduce((m, f) => Math.max(m, Number(f.Attributes?.Span_Seq) || 0), 0)
-        : null;
+      /* Its place on the run, not a count of what exists.
+
+         This was max-plus-one, so a box put on the cable just past the
+         POC \u2014 the first stop there is \u2014 came out A10 on a circuit
+         with nine points, and the drawing read A0, A10, A2, A3. The
+         number means position; the count only agrees with it if every
+         point is placed in order outward and none is ever added in the
+         middle, which is not how anybody draws. */
+      const ins = cid != null
+        ? planInsertion({ features, circuit: { id: cid, name: null, letter }, at: point })
+        : { seq: null, label: null, writes: [] };
+      const seq = ins.seq;
       try {
         await addFeature({
           Layer_Key: "electric",
@@ -9264,23 +9310,30 @@ export default function GISCanvasPage() {
               Circuit_ID: cid,
               Circuit_Name: hit.line.Attributes?.Circuit_Name ?? null,
               Circuit_Letter: letter,
-              Span_Seq: seq, Span_Label: `${letter}${seq}`, Span_Anchor: point,
+              Span_Anchor: point,
+              /* Where no distance along the cable could be worked out,
+                 no code: the build gives it one when a run reaches it,
+                 and a guessed number is worse than a blank because it
+                 looks like an answer. */
+              ...(seq != null
+                ? { Span_Seq: seq, Span_Label: ins.label } : {}),
               ...(hit.line.Attributes?.VD_Cable_Size_ID != null
                 ? { VD_Cable_Size_ID: hit.line.Attributes.VD_Cable_Size_ID } : {}),
             } : {}),
           },
         });
+        /* The stops beyond it move up, in the same act. Placing a point
+           in the middle of a run and leaving two points calling
+           themselves A2 is a schedule nobody can read. */
+        if (ins.writes.length) await bulkUpdateFeatures(projectId, ins.writes);
         await load(projectId);
         setStatus(`Link Box ${count} (${ways} way) placed${note} \u2014 set its `
           + "fuses in the editor"
-          /* Its number is the last on the circuit plus one, which is
-             all placement can know. Said out loud because a box put on
-             the first stop reads A10 until the walk renumbers it, and
-             a code that changes on its own looks like a fault unless
-             the app said it would. */
-          + (cid != null
-            ? `. It is ${letter}${seq} until the next Build LV Network puts `
-              + "it in sequence"
+          + (seq != null
+            ? `. It is ${ins.label} on the run`
+              + (ins.writes.length
+                ? `, and ${ins.writes.length} point(s) beyond it moved up`
+                : "")
             : ""));
         setTimeout(() => setStatus(""), 8000);
         setError("");
@@ -9309,14 +9362,25 @@ export default function GISCanvasPage() {
       }
       const at = hit.q;
       const cid = hit.line.Attributes.Circuit_ID;
-      /* Sequenced after the circuit's last point for now; the next
-         Build LV Network walks the circuit and puts it in order. */
-      const seq = 1 + features
-        .filter((f) => f.Feature_Role === "feederpoint"
-          && Number(f.Attributes?.Circuit_ID) === Number(cid))
-        .reduce((m, f) => Math.max(m, Number(f.Attributes?.Span_Seq) || 0), 0);
       const letter = hit.line.Attributes?.Circuit_Letter
         || String.fromCharCode(64 + Number(cid));
+      /* Its place on the run. This was max-plus-one too \u2014 the same
+         fault as the link box, on the same field, in the function
+         below the one that had it. A break put in the middle of a run
+         is numbered where it stands and the stops beyond it move up.
+
+         Falling back to the end where no distance could be worked out:
+         a feeder point is always ON a cable (a click in open ground is
+         refused above), so this only happens on a circuit whose origin
+         is not on the same cable, and putting it last is the same
+         answer this always gave. */
+      const ins = planInsertion({
+        features, circuit: { id: cid, name: null, letter }, at,
+      });
+      const seq = ins.seq ?? (1 + features
+        .filter((f) => f.Feature_Role === "feederpoint"
+          && Number(f.Attributes?.Circuit_ID) === Number(cid))
+        .reduce((m, f) => Math.max(m, Number(f.Attributes?.Span_Seq) || 0), 0));
       const label = `${letter}${seq}`;
       try {
         await addFeature({
@@ -9336,10 +9400,13 @@ export default function GISCanvasPage() {
                adopts it rather than deleting it. */
           },
         });
+        if (ins.writes.length) await bulkUpdateFeatures(projectId, ins.writes);
         await load(projectId);
         setStatus(`${label} placed on ${hit.line.Attributes?.Circuit_Name
-          ?? `circuit ${cid}`} \u2014 the trace now stops here. The next Build `
-          + "LV Network puts it in sequence.");
+          ?? `circuit ${cid}`} \u2014 the trace now stops here`
+          + (ins.writes.length
+            ? `, and ${ins.writes.length} point(s) beyond it moved up.`
+            : "."));
         setTimeout(() => setStatus(""), 8000);
         setError("");
       } catch (e) { setError(e.message); }

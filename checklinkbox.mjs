@@ -21,6 +21,7 @@ import { readFileSync, existsSync } from "node:fs";
 import { spanTrace, circuitBuildParts } from "./src/features/gis/feeder.js";
 import { feederRenderPlan } from "./src/features/gis/feederColour.js";
 import { planJoints } from "./src/features/gis/joints.js";
+import { planFeederPoints } from "./src/features/gis/feederPoints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -47,6 +48,39 @@ if (!/const outs = ways === 4 \? \[-0\.6, 0, 0\.6\] : \[0\];/.test(canvas)) {
 if (!/ctx\.fillText\(String\(i \+ 1\),/.test(canvas)) {
   fail("the 4 way's outputs are not numbered");
 }
+/* And the box wears its place on the run, like every other stop.
+
+   The pass that draws the span codes takes span nodes and feeder
+   points, and a link box is neither \u2014 so the one stop a designer can
+   point at on site was the one the drawing would not name. Drawn in
+   the box's own branch: widening that pass would put its circle over
+   the square. */
+if (!/const boxCode = f\.Attributes\?\.Span_Label/.test(canvas)) {
+  fail("the link box does not draw its span code \u2014 the box on the run "
+    + "is the one stop the drawing will not name");
+}
+/* ── And the levels beside it ──
+
+   The volt drop and loop impedance at a stop are what a designer works
+   to, and the trace already stops at a box: the levels map is keyed on
+   the leg's stopId and the box's id is in it. The figures existed, were
+   correct, and were drawn on every stop except this one, because the
+   pass that draws them took span nodes and feeder points only. A box
+   showing nothing reads as being outside the design.
+
+   Three things have to hold, and the third is the one that bites: the
+   pass takes the box, it does NOT paint its round symbol over the
+   square, and a box moved along the run re-runs the check. */
+if (!/&& f\.Feature_Role !== "linkbox"\) continue;/.test(canvas)) {
+  fail("the levels pass still skips link boxes \u2014 no figures beside the box");
+}
+if (!/if \(!isBox\) \{\n\s*ctx\.beginPath\(\);/.test(canvas)) {
+  fail("the node circle is drawn for a link box, covering its square");
+}
+if (!/\|\| f\.Feature_Role === "linkbox"\);/.test(canvas)) {
+  fail("a box moved along the run does not re-run the levels check, so it "
+    + "keeps the figures it had at the old place");
+}
 
 if (!/const FUSES = \[200, 315, 400, 630\];/.test(editor)) {
   fail("the fuse ladder is missing or moved — 200, 315, 400, 630");
@@ -56,6 +90,13 @@ if (!/Link box \(\$\{Number\(feature\.Attributes\?\.Link_Ways\) === 4 \? "4" : "
 }
 if (!/length: ways === 4 \? 3 : 1/.test(editor)) {
   fail("the editor does not show one fuse for a 2 way and three for a 4 way");
+}
+/* A box on a run is that circuit's feeder end point, and its place in
+   the sequence is a fact about it \u2014 corrected on every build and,
+   until now, with nowhere on screen to be read. A box in open ground
+   has no circuit yet and is deliberately not offered a code. */
+if (!/Feature_Role === "linkbox"\s*\n\s*&& f\.Attributes\.Circuit_ID != null/.test(editor)) {
+  fail("the editor does not show a box its place on the run");
 }
 
 /* Cables connect: the five link passes carry the role. Counted rather
@@ -142,6 +183,55 @@ if (!/claimed twice/.test(editor)) {
     const settleIds = new Set((r.spanNodes || []).map((x) => Number(x.feature?.Feature_ID)));
     if (!settleIds.has(Number(box.Feature_ID))) {
       fail("the volt drop does not settle cable at the link box");
+    }
+  }
+}
+
+/* ── The figures are computed TO the box ──
+
+   The drawing half above is only worth anything if the trace actually
+   produces a figure keyed on the box. Driven through the real trace:
+   the leg that stops at the box carries its id, which is the key the
+   canvas looks the levels up by. */
+{
+  let id = 6000;
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  const trench = (pts, key = "trench") => ({
+    Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const poc = { Feature_ID: id++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {} };
+  const plot = { Feature_ID: id++, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: 1, Geometry: [[200, 10]], Attributes: {} };
+  const mtr = { Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 1, Geometry: [[200, 10]],
+    Attributes: { Seed_Feature_ID: plot.Feature_ID, Circuit_ID: 1 } };
+  const f0 = { Feature_ID: id++, Feature_Role: "feederpoint", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]],
+    Attributes: { Circuit_ID: 1, Span_Seq: 0, Span_Label: "A0",
+      Span_Anchor: [0, 0] } };
+  const bx = { Feature_ID: id++, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[100, 0]],
+    Attributes: { Link_Ways: 4, Way_Fuse_A: {}, Circuit_ID: 1, Span_Seq: 1,
+      Span_Label: "A1", Span_Anchor: [100, 0], VD_Cable_Size_ID: 1 } };
+  const r = spanTrace([poc, plot, mtr, f0, bx,
+    trench([[0, 0], [100, 0], [200, 0]]),
+    trench([[200, 0], [200, 10]], "service_trench")], f0.Feature_ID, {
+    lineTypes, plotById: () => ({ kva_load: 2.5 }), stopAt: "spannodes",
+  });
+  if (r.error) fail(`the trace refused the drawing: ${r.error}`);
+  else {
+    const leg = (r.legs || []).find((l) => Number(l.stopId) === Number(bx.Feature_ID));
+    if (!leg) {
+      fail("no leg stops at the link box, so there is no figure to key on "
+        + "its id and nothing for the canvas to draw beside it");
+    } else if (leg.endIdx == null) {
+      fail("the leg at the box has no node index, so the cascade cannot "
+        + "compute a level to it");
     }
   }
 }
@@ -391,14 +481,34 @@ if (!/claimed twice/.test(editor)) {
    the box standing next to it holding nothing, and a run split at a
    place with no physical meaning. The joint rule already reaches two
    metres for the same reason; the two now agree. */
+/* Driven rather than matched: the reaches moved into feederPoints.js
+   with the rest of the sequencing, and a regex over the canvas would
+   now report the rule missing while it holds. */
 {
-  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/const reach = f\.Feature_Role === "linkbox" \? 2 : 1;/.test(src)) {
+  const box = (at) => ({ Feature_ID: 301, Feature_Role: "linkbox",
+    Feature_Type: "point", Layer_Key: "electric", Label: "Link Box 1",
+    Geometry: [at], Attributes: { Link_Ways: 4, Span_Anchor: at } });
+  const pt = (at) => ({ Feature_ID: 302, Feature_Role: "feederpoint",
+    Feature_Type: "point", Layer_Key: "electric", Label: "Point A4",
+    Geometry: [at], Attributes: { Circuit_ID: 1, Span_Seq: 4,
+      Span_Label: "A4", Span_Anchor: at } });
+  const run = (f) => planFeederPoints({
+    nodes: [{ point: [0, 0], kind: "origin" }, { point: [100, 0], kind: "junction" }],
+    existing: [f], circuit: { id: 1, name: "Circuit 1", letter: "A" },
+  });
+  const madeAtNode = (r) => (r.create || []).some((p) =>
+    Math.hypot(p.Geometry[0][0] - 100, p.Geometry[0][1]) < 0.5);
+
+  if (madeAtNode(run(box([101.2, 0])))) {
     fail("a link box is adopted at the same one-metre reach as everything "
       + "else \u2014 the build makes a feeder point beside it again");
   }
-  if (!/if \(d > reach\) continue;/.test(src)) {
+  if (!madeAtNode(run(pt([101.2, 0])))) {
     fail("the adoption no longer judges each kind against its own reach");
+  }
+  /* And a box genuinely elsewhere is not dragged onto the node. */
+  if (!madeAtNode(run(box([108, 0])))) {
+    fail("a box eight metres away was adopted as the stop");
   }
 }
 

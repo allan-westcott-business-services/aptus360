@@ -1940,20 +1940,29 @@ export default function FeatureEditor({
                 </div>
                 <div className="fld">
                   <label htmlFor="fe-measured-len">Measured length (m)</label>
+                  {/* Its own attribute, not Length_m.
+
+                      Length_m is maintained by the database trigger
+                      from the geometry, so offering it here meant every
+                      line arrived with a "measured" length equal to its
+                      drawn length and the note below announced that
+                      calculations read 299.8 m instead of the drawn
+                      299.8 m. Written by a person and by nothing else,
+                      an entry here means what it says. */}
                   <input id="fe-measured-len" type="number" step="0.1" min="0"
-                    value={f.Attributes.Length_m ?? ""}
+                    value={f.Attributes.Measured_Length_m ?? ""}
                     placeholder="as drawn"
-                    onChange={(e) => setAttr("Length_m")(
+                    onChange={(e) => setAttr("Measured_Length_m")(
                       e.target.value === "" ? null : Number(e.target.value))} />
                 </div>
               </div>
               <p className="hint">
-                {f.Attributes.Length_m == null
+                {f.Attributes.Measured_Length_m == null
                   ? "Every calculation measures this line off the drawing. Enter "
                     + "the real run \u2014 risers, ducts, slack \u2014 and the levels, "
                     + "distances and tails use that figure instead, scaled along "
                     + "the line. The drawing itself does not move."
-                  : `Calculations read ${Number(f.Attributes.Length_m).toFixed(1)} m `
+                  : `Calculations read ${Number(f.Attributes.Measured_Length_m).toFixed(1)} m `
                     + "for this line instead of the drawn "
                     + `${length.toFixed(1)} m. Clear the box to go back to the drawing.`}
               </p>
@@ -2004,7 +2013,13 @@ export default function FeatureEditor({
                         <select id={`fe-lbw-${e.key}`}
                           value={stale || !cur ? "" : String(cur.way)}
                           onChange={(ev) => setConn(e.key, e.box, ev.target.value)}>
-                          <option value="">Not said</option>
+                          {/* "Not set", which is what every other unset
+                              option in this panel says \u2014 the POC
+                              picker, the circuit picker, the two joint
+                              pickers. "Not said" was the odd one out,
+                              and a phrase used once is one somebody has
+                              to stop and read. */}
+                          <option value="">Not set</option>
                           <option value="in">Input</option>
                           {Array.from({ length: ways }, (_, i) => i + 1).map((w) => (
                             <option key={w} value={w}>

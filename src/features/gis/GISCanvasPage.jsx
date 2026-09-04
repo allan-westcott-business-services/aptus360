@@ -40,16 +40,25 @@ import { originMissing,
   circuitReport,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
+import { drawnLength, runLength, hasMeasured } from "./lengths.js";
 
 /* What a line's label says about its length: the measured figure where
    somebody entered one, marked so the drawing admits the number is not
-   the geometry under it, and the drawn length everywhere else. */
-const lengthLabel = (f) => {
-  const stated = Number(f.Attributes?.Length_m ?? 0) || 0;
-  return stated > 0
-    ? `${stated.toFixed(1)} m entered`
-    : `${lineLength(f.Geometry).toFixed(1)} m`;
-};
+   the geometry under it, and the drawn length everywhere else.
+
+   The drawn length is computed from the geometry every time, never read
+   from a stored figure. That is what makes a line rubber-banded by a
+   joint or a meter being dragged show its new length as it moves —
+   a stored figure is a snapshot of where the line used to be.
+
+   It read `Length_m`, which the database trigger keeps equal to the
+   drawn length, so every line on the drawing claimed a measurement
+   nobody had entered and the label said "299.8 m entered" about its own
+   geometry. `Measured_Length_m` is written by a person and by nothing
+   else — see lengths.js. */
+const lengthLabel = (f) => (hasMeasured(f)
+  ? `${runLength(f).toFixed(1)} m entered`
+  : `${drawnLength(f).toFixed(1)} m`);
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
@@ -505,6 +514,26 @@ export default function GISCanvasPage() {
   /* Off until asked for. The report has the button, and rings appearing
      unbidden on a drawing nobody has asked about circuits is noise. */
   const [circuitRings, setCircuitRings] = useState(false);
+
+  /* ── A measured length, and the drawing moving under it ──
+
+     A measurement is a deliberate statement about the world: a run that
+     rises through ducts, slack the plan cannot show. Nothing writes it
+     but a person.
+
+     Which means that when the line is redrawn, the app cannot know what
+     the person intended. The measurement might still be right — the
+     drawing was tidied, the run did not change — or it might be the
+     thing that just changed. Keeping it silently makes a stale figure
+     that every calculation trusts; clearing it silently throws away
+     something somebody went out and measured. Both are worse than
+     asking.
+
+     Watched here rather than hooked into the ten places that save
+     geometry: an effect over `features` catches every one of them,
+     including undo, and cannot be forgotten by the eleventh. */
+  const [measuredAsk, setMeasuredAsk] = useState(null);
+  const measuredSeen = useRef(new Map());
 
   /* A proposed grouping, before anything is written.
 
@@ -1191,6 +1220,61 @@ export default function GISCanvasPage() {
      per plot — so it cannot be a modal with a backdrop. */
   const [placeOpen, setPlaceOpen] = useState(false);
   const [trenchCheck, setTrenchCheck] = useState(null);
+
+  /* Noticed after the drawing settles, not during it: `features` is
+     rewritten on every frame of a drag, and a length still moving is not
+     a number to ask about.
+
+     The baseline moves on whether or not anybody answers. Otherwise the
+     comparison stays true and the dialog returns on every render. */
+  useEffect(() => {
+    if (drag.current) return;
+    const next = new Map();
+    const changed = [];
+    for (const f of features) {
+      if (f.Feature_Type !== "line" || !hasMeasured(f)) continue;
+      const now = drawnLength(f);
+      next.set(f.Feature_ID, now);
+      const before = measuredSeen.current.get(f.Feature_ID);
+      if (before == null) continue;
+      /* Float noise off a database round trip is not a redraw. */
+      if (Math.abs(before - now) > 0.01) changed.push({ feature: f, before, now });
+    }
+    measuredSeen.current = next;
+    if (changed.length) {
+      setMeasuredAsk({
+        rows: changed,
+        /* Pre-filled with the redrawn length, which is the answer most
+           of the time \u2014 but typed over freely, because the whole point
+           of a measured length is that the drawing is not it. */
+        entry: changed[0].now.toFixed(1),
+      });
+    }
+  }, [features]);
+
+  /* Keep, remove, or update \u2014 the three answers.
+
+     Keeping writes nothing at all: the measurement is already what it
+     should be, and the baseline above has moved on, so there is nothing
+     left to record. */
+  async function answerMeasured(how) {
+    const ask = measuredAsk;
+    setMeasuredAsk(null);
+    if (!ask || how === "keep") return;
+    const v = how === "update" ? Number(ask.entry) : null;
+    const rows = ask.rows.map((r) => ({
+      Feature_ID: r.feature.Feature_ID,
+      Attributes: { ...r.feature.Attributes, Measured_Length_m: v },
+    }));
+    try {
+      await bulkUpdateFeatures(projectId, rows);
+      await load(projectId);
+      setStatus(how === "remove"
+        ? `${rows.length} measured length(s) cleared \u2014 the drawing answers again`
+        : `${rows.length} measured length(s) set to ${v.toFixed(1)} m`);
+      setTimeout(() => setStatus(""), 8000);
+    } catch (e) { setError(e.message); }
+  }
   /* A ref, not state: the loop below has to read the current value
      between awaits, and a state read there would see the value from the
      render that started it. */
@@ -1897,6 +1981,64 @@ export default function GISCanvasPage() {
   }, [callOffOnly, projectId]);
 
   useEffect(() => { remember("gisProject", projectId || null); }, [projectId]);
+
+  /* Lines carrying a measurement, and what they were drawn as when we
+     last looked. Only those: a drawing is mostly lines nobody has
+     measured, and they are none of this effect's business. */
+  useEffect(() => {
+    /* Not mid-drag. `features` changes on every frame while something
+       is being dragged, and asking about a length that is still moving
+       would be asking about a number that does not exist yet. */
+    if (drag.current) return;
+
+    const seen = measuredSeen.current;
+    const next = new Map();
+    let ask = null;
+    for (const f of features) {
+      if (f.Feature_Type !== "line" || !hasMeasured(f)) continue;
+      const now = drawnLength(f);
+      next.set(f.Feature_ID, now);
+      const before = seen.get(f.Feature_ID);
+      /* A centimetre, so float noise off a round trip through the
+         database is not a redraw. */
+      if (before != null && Math.abs(before - now) > 0.01 && !ask) {
+        ask = {
+          id: f.Feature_ID,
+          name: f.Label || typeOf(f)?.Label || `#${f.Feature_ID}`,
+          measured: Number(f.Attributes.Measured_Length_m),
+          was: before,
+          drawn: now,
+        };
+      }
+    }
+    /* The new lengths become the baseline whether or not anybody
+       answers, so a line is asked about once per redraw and not on
+       every render after it. */
+    measuredSeen.current = next;
+    if (ask && !measuredAsk) setMeasuredAsk({ ...ask, entry: ask.drawn.toFixed(1) });
+  }, [features, typeOf, measuredAsk]);
+
+  /* Answering it. `keep` writes nothing \u2014 the measurement stands as it
+     was, which is a real answer and the safe one. */
+  async function answerMeasured(how, value) {
+    const ask = measuredAsk;
+    setMeasuredAsk(null);
+    if (!ask || how === "keep") return;
+    const f = features.find((x) => Number(x.Feature_ID) === Number(ask.id));
+    if (!f) return;
+    const next = how === "remove" ? null : (Number(value) || null);
+    try {
+      await bulkUpdateFeatures(projectId, [{
+        Feature_ID: f.Feature_ID,
+        Attributes: { ...f.Attributes, Measured_Length_m: next },
+      }]);
+      await load(projectId);
+      setStatus(next == null
+        ? `${ask.name}: measured length removed \u2014 back to the drawing`
+        : `${ask.name}: measured length now ${Number(next).toFixed(1)} m`);
+      setTimeout(() => setStatus(""), 7000);
+    } catch (e) { setError(e.message); }
+  }
   useEffect(() => { if (projectId) load(projectId); }, [projectId, load]);
   /* The history for this project, read once when it opens. Separate from
      load so a history that fails to read cannot stop the drawing. */
@@ -20726,6 +20868,54 @@ export default function GISCanvasPage() {
         );
       })()}
 
+      {measuredAsk && (
+        /* No backdrop click and no close cross: the three answers are
+           the only ways out, because "keep", "remove" and "update" are
+           three different designs and dismissing this would silently
+           pick one of them. */
+        <div className="cpick-backdrop">
+          <div className="cpick" onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-label="Measured length">
+            <h3>This line has a measured length</h3>
+            <p className="hint">
+              {measuredAsk.name} was measured at{" "}
+              <b>{measuredAsk.measured.toFixed(1)} m</b>, and has just been
+              redrawn — {measuredAsk.was.toFixed(1)} m to{" "}
+              <b>{measuredAsk.drawn.toFixed(1)} m</b> on the drawing.
+              Calculations use the measurement, so it stands until you say
+              otherwise.
+            </p>
+
+            <div className="fld">
+              <label htmlFor="ml-new">Measured length (m)</label>
+              <input id="ml-new" type="number" step="0.1" min="0"
+                value={measuredAsk.entry}
+                onChange={(e) => setMeasuredAsk({ ...measuredAsk, entry: e.target.value })} />
+              <p className="hint">
+                Starts at the new drawn length. Change it to whatever the
+                run really is.
+              </p>
+            </div>
+
+            <div className="cpick-actions">
+              {/* Keep first and default: it changes nothing, and doing
+                  nothing should be the easiest answer to give. */}
+              <button className="btn ghost" onClick={() => answerMeasured("keep")}>
+                Keep {measuredAsk.measured.toFixed(1)} m
+              </button>
+              <button className="btn ghost" onClick={() => answerMeasured("remove")}>
+                Remove it
+              </button>
+              <button className="btn accent"
+                disabled={!(Number(measuredAsk.entry) > 0)}
+                onClick={() => answerMeasured("update", measuredAsk.entry)}>
+                Update
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {circuitPick && (
         <div className="cpick-backdrop" onClick={() => setCircuitPick(null)}>
           <div className="cpick" onClick={(e) => e.stopPropagation()}
@@ -20834,6 +21024,79 @@ export default function GISCanvasPage() {
                     ?? "circuit"}`}
               </button>
             </div>
+          </div>
+        </div>
+      )}
+
+      {/* ── A measured line has been redrawn ──
+
+          Three answers, because only the person who entered the figure
+          can say which they meant. The numbers are on screen: a dialog
+          asking "keep or remove?" without saying keep WHAT makes
+          somebody close it and go looking.
+
+          No backdrop dismissal and no close cross. Dismissing would
+          silently pick one of three different designs, which is the
+          decision this exists to avoid making for somebody. */}
+      {measuredAsk && (
+        <div className="modal-back" role="dialog" aria-modal="true"
+          aria-labelledby="ml-h">
+          <div className="modal cpick">
+            <h3 id="ml-h">
+              {measuredAsk.rows.length === 1
+                ? "This line has a measured length"
+                : `${measuredAsk.rows.length} lines have measured lengths`}
+            </h3>
+            <p className="cpick-sub">
+              Entered by hand, and the drawing has changed since. The
+              measurement has not.
+            </p>
+
+            <div className="cpick-list ml-list">
+              {measuredAsk.rows.slice(0, 6).map((r) => (
+                <div className="ml-row" key={r.feature.Feature_ID}>
+                  <span className="cpick-name">
+                    {r.feature.Label || `#${r.feature.Feature_ID}`}
+                  </span>
+                  <span className="cpick-n">
+                    measured{" "}
+                    {Number(r.feature.Attributes?.Measured_Length_m).toFixed(1)} m
+                    {" \u00b7 "}drawn {r.before.toFixed(1)} m &rarr; {r.now.toFixed(1)} m
+                  </span>
+                </div>
+              ))}
+              {measuredAsk.rows.length > 6 && (
+                <p className="hint">and {measuredAsk.rows.length - 6} more.</p>
+              )}
+            </div>
+
+            <div className="fld">
+              <label htmlFor="ml-entry">Updated measured length (m)</label>
+              <input id="ml-entry" type="number" step="0.1" min="0"
+                value={measuredAsk.entry}
+                onChange={(e) => setMeasuredAsk({
+                  ...measuredAsk, entry: e.target.value,
+                })} />
+            </div>
+
+            <div className="cpick-actions ml-actions">
+              <button className="btn ghost" onClick={() => answerMeasured("remove")}>
+                Remove it
+              </button>
+              <button className="btn ghost"
+                /* Neither a measurement nor a removal: a blank or a zero
+                   is somebody halfway through a thought. */
+                disabled={!(Number(measuredAsk.entry) > 0)}
+                onClick={() => answerMeasured("update")}>
+                Update to this
+              </button>
+              <button className="btn accent" onClick={() => answerMeasured("keep")}>
+                Keep it as entered
+              </button>
+            </div>
+            <p className="hint">
+              Keep it where the drawing was tidied and the run did not change.
+            </p>
           </div>
         </div>
       )}
@@ -23638,6 +23901,13 @@ const CSS = `
   box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
 
 .cpick-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
+.ml-list { max-height: 220px; overflow: auto; }
+.ml-row { display: flex; align-items: baseline; justify-content: space-between;
+  gap: 10px; padding: 6px 8px; border-bottom: 1px solid var(--border); }
+.ml-row:last-child { border-bottom: none; }
+/* Three answers do not fit the usual right-aligned pair on a narrow
+   window, and wrapping them mid-row hides one. */
+.ml-actions { flex-wrap: wrap; }
 .gis { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 520px; }
 .gis-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .gis-proj { display: flex; gap: 8px; align-items: center; }

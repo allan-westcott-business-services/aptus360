@@ -2004,7 +2004,14 @@ export default function GISCanvasPage() {
       if (before != null && Math.abs(before - now) > 0.01 && !ask) {
         ask = {
           id: f.Feature_ID,
-          name: f.Label || typeOf(f)?.Label || `#${f.Feature_ID}`,
+          /* Its own label, or its id. NOT typeOf(f): this effect sits
+             above where typeOf is declared, and a dependency array is
+             evaluated during render — naming it there read a const in
+             its dead zone and took the whole canvas down with
+             "Cannot access before initialization". An effect placed
+             near the state it watches has to live within what has been
+             declared by that point. */
+          name: f.Label || `#${f.Feature_ID}`,
           measured: Number(f.Attributes.Measured_Length_m),
           was: before,
           drawn: now,
@@ -2016,7 +2023,7 @@ export default function GISCanvasPage() {
        every render after it. */
     measuredSeen.current = next;
     if (ask && !measuredAsk) setMeasuredAsk({ ...ask, entry: ask.drawn.toFixed(1) });
-  }, [features, typeOf, measuredAsk]);
+  }, [features, measuredAsk]);
 
   /* Answering it. `keep` writes nothing \u2014 the measurement stands as it
      was, which is a real answer and the safe one. */

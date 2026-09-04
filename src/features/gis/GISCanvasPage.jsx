@@ -6852,11 +6852,31 @@ export default function GISCanvasPage() {
              is still the fallback, so nothing that worked stops
              working. */
           /* The chosen feeder, and no other. Services and everything
-             else are unaffected: they follow by their ends as before. */
-          if (jointFeeder !== undefined && isFeeder
+             else are unaffected: they follow by their ends as before.
+
+             ── Except a breech, which is several cables by definition ──
+
+             "A joint sits ON one cable" is true of a service joint,
+             which is a fitting let into a run, and false of a breech —
+             a breech is the fitting where a run ENDS and others begin.
+             At one on a live drawing, three feeders meet: the incoming
+             cable's last vertex and two outgoing cables' first. Picking
+             the nearest single feeder let one of the three follow and
+             left the other two behind, so dragging the joint tore the
+             cable apart at the very fitting that joins it.
+
+             So the narrowing is for joints that sit on a run. A breech
+             takes every feeder that meets it — still on its own circuit,
+             and still only the vertices actually at it. */
+          const isBreech = String(pt.Attributes?.Joint_Type ?? "")
+            .toLowerCase() === "breech";
+          if (jointFeeder !== undefined && isFeeder && !isBreech
             && Number(line.Feature_ID) !== Number(jointFeeder?.Feature_ID)) continue;
 
-          const candidates = isJoint && isFeeder
+          /* A breech joins cable ENDS. Offering it every vertex would
+             let it claim an interior point of a cable that merely
+             passes close by, and pull a run out of shape. */
+          const candidates = isJoint && isFeeder && !isBreech
             ? g.map((_, i) => i)
             : [0, g.length - 1];
 
@@ -8607,6 +8627,22 @@ export default function GISCanvasPage() {
      rather than as it was. */
   async function applyScenario(suggestion) {
     const startId = trace?.startId;
+    /* ── Re-run the check that produced the panel ──
+
+       This always re-ran runFullTrace, which traces from ONE node. The
+       panel it is answering is usually the levels check, which traces
+       every circuit and hands back parts — so applying a suggestion
+       swapped a whole-site levels report for a single-node trace: the
+       circuit picker vanished, the other circuits with it, and the
+       volt drop columns went with the `levels` flag.
+
+       Which run made this trace is on the trace, so re-run that one.
+       And the circuit being read is remembered: runLevelsCheck clears
+       the selection, which would drop somebody back to the first
+       circuit after a change they made on the third. */
+    const wasLevels = !!trace?.levels;
+    const wasAdvanced = !!trace?.advanced;
+    const wasShowing = traceCircuit;
     const rows = [];
 
     for (const ch of suggestion.changes || []) {
@@ -8670,7 +8706,15 @@ export default function GISCanvasPage() {
       setFeatures(after);
 
       setScenario(null);
-      if (startId != null) runFullTrace({ srcFeatures: after, startId });
+      if (wasLevels) {
+        runLevelsCheck({
+          srcFeatures: after,
+          stopAt: wasAdvanced ? "junctions" : "spannodes",
+        });
+        if (wasShowing) setTraceCircuit(wasShowing);
+      } else if (startId != null) {
+        runFullTrace({ srcFeatures: after, startId });
+      }
 
       setStatus(`${suggestion.changes
         .map((c) => `${c.fromLabel}\u2192${c.spanLabel} now ${c.toLabel}`).join(", ")}`

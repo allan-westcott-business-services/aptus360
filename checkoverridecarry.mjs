@@ -91,13 +91,42 @@ if (typeof carriedOverrides !== "function" || typeof carriedOverrideFor !== "fun
     }
   }
 
-  // 5. Float noise off the database does not lose a size. Geometry goes
-  //    through JSON and back; two reads of one point can differ in the
-  //    third decimal and are still the same place.
+  // 5. The arrival comes back a few centimetres off, which is what a
+  //    rebuild actually does.
+  //
+  //    This was keyed on the arrival quantised to centimetres and looked
+  //    up exactly, and on a live drawing two of five hand-set sizes were
+  //    lost to it: one run re-routed to 286.484 where it had ended at
+  //    286.46, dropping a cable size over 24 mm, and the trunk's
+  //    terminus moved 0.55 m when the link box became the end of the run
+  //    and took a 300 with it. "The same place" means the same place on
+  //    the ground, not the same string.
   {
-    const m = carriedOverrides([run(1, [[0, 0], [200.001, 0.004]], 7)]);
-    if (carriedOverrideFor(m, 1, [200, 0]) !== 7) {
-      fail("a hair of float noise on the stored geometry lost the override");
+    const m = carriedOverrides([run(1, [[0, 0], [286.46, 126.54]], 7)]);
+    if (carriedOverrideFor(m, 1, [286.484, 126.532]) !== 7) {
+      fail("a run re-routed 24 mm from where it ended lost its size");
+    }
+    if (carriedOverrideFor(m, 1, [286.46 + 0.55, 126.54]) !== 7) {
+      fail("a terminus that moved half a metre lost its size");
+    }
+    /* And not so loose that it claims the next stop along. */
+    if (carriedOverrideFor(m, 1, [289.5, 126.54]) != null) {
+      fail("an arrival three metres away claimed another run's override");
+    }
+  }
+
+  // 6. Nearest wins where two arrivals are close enough that both are in
+  //    reach — the one actually at this point is nearer.
+  {
+    const m = carriedOverrides([
+      run(1, [[0, 0], [100, 0]], 7),
+      run(1, [[0, 50], [101.2, 0]], 9),
+    ]);
+    if (carriedOverrideFor(m, 1, [100, 0]) !== 7) {
+      fail("a nearby arrival's override was taken instead of this one's");
+    }
+    if (carriedOverrideFor(m, 1, [101.2, 0]) !== 9) {
+      fail("the nearer of two close arrivals did not win");
     }
   }
 }

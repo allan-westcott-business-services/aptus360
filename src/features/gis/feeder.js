@@ -81,25 +81,47 @@ export function cableIdOf(feature, mode = "manual") {
 
    Quantised to centimetres, the same grain fepKey always used, so float
    noise off a JSON round trip does not read as a different place. */
-const arrivalKey = (circuitId, pt) =>
-  `${Number(circuitId)}|${pt[0].toFixed(2)},${pt[1].toFixed(2)}`;
+/* ── Matched by nearest arrival, not by an exact key ──
+
+   The first cut keyed on the arrival quantised to centimetres and
+   looked it up exactly. That is too brittle: a rebuild re-routes, and
+   the same junction comes back a few centimetres off — 286.484 where
+   the old run ended at 286.46. A whole cable size was dropped over
+   24 mm. The trunk was worse: its terminus moved 0.55 m when the link
+   box became the end of the run, and the 300 set by hand on it was
+   lost.
+
+   "The same place" has to mean the same place on the ground, not the
+   same string. Nearest arrival on the same circuit within a couple of
+   metres, which is far tighter than the gap between two stops and far
+   looser than the noise of re-routing. */
+const CARRY_REACH_M = 2;
 
 export function carriedOverrides(oldRuns) {
-  const m = new Map();
+  const out = [];
   for (const f of oldRuns || []) {
     const id = f.Attributes?.Manual_VD_Cable_Size_ID;
     if (id == null) continue;
     const g = f.Geometry || [];
     const end = g[g.length - 1];
     if (!end) continue;
-    m.set(arrivalKey(f.Attributes?.Circuit_ID, end), id);
+    out.push({ cid: Number(f.Attributes?.Circuit_ID), at: [end[0], end[1]], id });
   }
-  return m;
+  return out;
 }
 
-export function carriedOverrideFor(map, circuitId, point) {
-  if (!map || !Array.isArray(point)) return null;
-  return map.get(arrivalKey(circuitId, point)) ?? null;
+export function carriedOverrideFor(carry, circuitId, point) {
+  if (!Array.isArray(carry) || !Array.isArray(point)) return null;
+  let best = null;
+  for (const c of carry) {
+    if (Number(c.cid) !== Number(circuitId)) continue;
+    const d = Math.hypot(c.at[0] - point[0], c.at[1] - point[1]);
+    if (d > CARRY_REACH_M) continue;
+    /* Nearest wins. Two stops closer together than the reach would both
+       be candidates, and the one actually at this arrival is nearer. */
+    if (!best || d < best.d) best = { d, id: c.id };
+  }
+  return best ? best.id : null;
 }
 
 /* Meters per cable. Above this the run needs another cable beside it,

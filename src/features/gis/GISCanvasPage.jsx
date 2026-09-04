@@ -6628,6 +6628,39 @@ export default function GISCanvasPage() {
 
       for (const pt of movedPoints) {
         const at = pt.Geometry[0];
+
+        /* ── A joint joins ONE feeder ──
+
+           Stated as the rule rather than left to a filter. A service
+           joint sits on one cable and lets one or more services into
+           it; two circuits sharing a trench both pass within
+           connecting distance of it, and every guard that worked by
+           EXCLUDING the wrong one failed whenever the joint could not
+           name its circuit \u2014 a hand-placed joint has no Circuit_ID, so
+           there was nothing to compare and both mains followed.
+
+           So the feeder is CHOSEN, once, before anything follows: the
+           one on the joint's own circuit where the joint names one,
+           otherwise the single feeder within reach. Two feeders and no
+           circuit to choose between them is an ambiguity, and the
+           honest answer is to move neither \u2014 the services still
+           follow, and the joint can be told its circuit. */
+        const jointFeeder = (() => {
+          if (pt.Feature_Role !== "joint") return undefined;
+          const near = features.filter((line) => {
+            return line.Feature_Type === "line"
+              && line.Layer_Key === pt.Layer_Key
+              && /main/i.test(String(line.Attributes?.Line_Type ?? ""))
+              && (line.Geometry || []).some((q) =>
+                Math.hypot(q[0] - at[0], q[1] - at[1]) <= CONNECT_M);
+          });
+          if (near.length <= 1) return near[0] ?? null;
+          const cid = pt.Attributes?.Circuit_ID;
+          const mine = cid == null ? [] : near.filter((l) =>
+            Number(l.Attributes?.Circuit_ID) === Number(cid));
+          return mine.length === 1 ? mine[0] : null;
+        })();
+
         for (const line of features) {
           if (line.Feature_Type !== "line") continue;
           if (next.includes(line.Feature_ID)) continue;   // already moving whole
@@ -6711,9 +6744,10 @@ export default function GISCanvasPage() {
              drawing, a joint placed before the passes ran \u2014 geometry
              is still the fallback, so nothing that worked stops
              working. */
-          const linked = pt.Attributes?.Connects;
-          if (Array.isArray(linked) && linked.length
-            && !linked.map(Number).includes(Number(line.Feature_ID))) continue;
+          /* The chosen feeder, and no other. Services and everything
+             else are unaffected: they follow by their ends as before. */
+          if (jointFeeder !== undefined && isFeeder
+            && Number(line.Feature_ID) !== Number(jointFeeder?.Feature_ID)) continue;
 
           const candidates = isJoint && isFeeder
             ? g.map((_, i) => i)

@@ -75,7 +75,10 @@ import {
 import * as XLSX from "xlsx";
 import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
-import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL } from "./feeder.js";
+import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
+  carriedOverrides, carriedOverrideFor } from "./feeder.js";
+import { planFeederPoints } from "./feederPoints.js";
+import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
   spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins } from "./feeder.js";
@@ -4101,6 +4104,41 @@ export default function GISCanvasPage() {
             ctx.stroke();
             ctx.restore();
 
+            /* ── Its place on the run, on the box ──
+
+               A box standing on a circuit's cable IS that circuit's
+               feeder end point, and every other stop on the run wears
+               its code. This one wore nothing: the pass that draws the
+               codes takes span nodes and feeder points, and a link box
+               is neither, so the one stop a designer can point at on
+               site was the one stop the drawing would not name.
+
+               Drawn here rather than by widening that pass, which
+               would put its circle over the square and undo the symbol.
+               Upright, not rotated with the box: a code is read, and a
+               box on a cable running south-west would have it upside
+               down.
+
+               Same rule as the nodes for when there is room \u2014 the
+               style sizes the symbol and the text is scaled to sit
+               inside it, dropped rather than drawn as a smudge below
+               about seven pixels. */
+            const boxCode = f.Attributes?.Span_Label ?? "";
+            if (boxCode && view.scale > 1.2) {
+              const codePx = Math.floor(
+                Math.min(half, (half * 2) / Math.max(1, boxCode.length) * 1.15),
+              );
+              if (codePx >= 7) {
+                ctx.save();
+                ctx.font = `700 ${codePx}px ui-monospace, Menlo, monospace`;
+                ctx.fillStyle = "#fff";
+                ctx.textAlign = "center";
+                ctx.textBaseline = "middle";
+                ctx.fillText(boxCode, p.x, p.y);
+                ctx.restore();
+              }
+            }
+
             if (view.scale > 1.2) {
               const nodeR = Math.max(2, half * 0.28);
               const dot = (cx, cy, ink = null) => {
@@ -6597,6 +6635,17 @@ export default function GISCanvasPage() {
         if (f) drag.current.origin[id] = f.Geometry;
       });
 
+      /* A link box takes its anchor with it.
+
+         Its anchor is where the chamber stands, not a marker's note
+         about where a label was moved from \u2014 see anchorFollow.js for
+         why a span node's does the opposite. Recorded here because the
+         frame update rebuilds from the start position rather than
+         nudging what it finds. */
+      drag.current.anchors = anchorSnapshot(next
+        .map((id) => features.find((x) => x.Feature_ID === id))
+        .filter(Boolean));
+
       /* Moving a point that a line ends on drags that end with it.
 
          A meter or a joint sits on the network because a cable reaches
@@ -7062,6 +7111,7 @@ export default function GISCanvasPage() {
     const dm = [dx / view.scale, dy / view.scale];
     const origin = d.origin;
     const rubber = d.rubber || [];
+    const anchors = d.anchors || new Map();
     setFeatures((fs) => fs.map((f) => {
       const orig = origin[f.Feature_ID];
       if (!orig) return f;
@@ -7077,7 +7127,12 @@ export default function GISCanvasPage() {
             (ends.includes(i) ? [pnt[0] + dm[0], pnt[1] + dm[1]] : pnt)),
         };
       }
-      return { ...f, Geometry: orig.map(([x, y]) => [x + dm[0], y + dm[1]]) };
+      /* And whatever carries its anchor with it takes the same delta.
+         Everything else comes back from this untouched. */
+      return withMovedAnchor(
+        { ...f, Geometry: orig.map(([x, y]) => [x + dm[0], y + dm[1]]) },
+        anchors.get(f.Feature_ID), dm,
+      );
     }));
   }
 
@@ -7355,6 +7410,24 @@ export default function GISCanvasPage() {
     try {
       await moveFeatures(projectId, updates);
 
+      /* The anchor is an attribute, so a move does not carry it: the
+         geometry goes through moveFeatures and this goes beside it.
+         Only where a box was actually dragged, so the ordinary drag is
+         still one request.
+
+         Through bulkUpdateFeatures rather than moveFeatures because
+         that is the call that writes Attributes \u2014 under mocks
+         moveFeatures applies Geometry alone, so an anchor sent that way
+         would work against the API and quietly do nothing in the mock
+         fixtures, which is exactly the shape of a feature that ships
+         inert. */
+      const anchorRows = anchorUpdates(
+        updates.map((u) => features.find((f) => f.Feature_ID === u.Feature_ID))
+          .filter(Boolean),
+        d.anchors || new Map(),
+      );
+      if (anchorRows.length) await bulkUpdateFeatures(projectId, anchorRows);
+
       /* Dragging something out of place is the accident undo exists for.
 
          The before-state comes from d.origin, which the drag captured at
@@ -7363,11 +7436,20 @@ export default function GISCanvasPage() {
          by a moved point are in there too, and they have to be, or undo
          would put the point back and leave the cables stretched to where
          it used to be. */
+      /* And the anchor with it, from the snapshot taken at the same
+         moment. Restoring the geometry and leaving the anchor moved is
+         a drawing nobody drew \u2014 and the readers that measure to the
+         anchor would go on describing the undone position. */
       const beforeRows = updates
         .map((u) => {
           const now = features.find((f) => f.Feature_ID === u.Feature_ID);
           const was = d.origin?.[u.Feature_ID];
-          return now && was ? { ...now, Geometry: was } : null;
+          if (!now || !was) return null;
+          const anchorWas = d.anchors?.get(u.Feature_ID);
+          return anchorWas
+            ? { ...now, Geometry: was,
+              Attributes: { ...now.Attributes, Span_Anchor: anchorWas } }
+            : { ...now, Geometry: was };
         })
         .filter(Boolean);
       const afterRows = updates
@@ -9190,7 +9272,16 @@ export default function GISCanvasPage() {
         });
         await load(projectId);
         setStatus(`Link Box ${count} (${ways} way) placed${note} \u2014 set its `
-          + "fuses in the editor");
+          + "fuses in the editor"
+          /* Its number is the last on the circuit plus one, which is
+             all placement can know. Said out loud because a box put on
+             the first stop reads A10 until the walk renumbers it, and
+             a code that changes on its own looks like a fault unless
+             the app said it would. */
+          + (cid != null
+            ? `. It is ${letter}${seq} until the next Build LV Network puts `
+              + "it in sequence"
+            : ""));
         setTimeout(() => setStatus(""), 8000);
         setError("");
       } catch (e) { setError(e.message); }
@@ -13329,32 +13420,19 @@ export default function GISCanvasPage() {
          not do. The calculated size is the build's to replace; the
          override is not.
 
-         Remembered by geometry rather than by id, because the new
-         features are new rows: the same length of main is the same
-         points on the ground whether it was laid a minute or a month
-         ago. */
-      /* ── Copied from the gas build, and never finished ──
-
-         The paragraph above is true of the gas build, where the map is
-         read back when the mains are re-laid. Here it read
-         Manual_Gas_Pipe_Size_ID \u2014 the gas field, on an electric cable
-         \u2014 so it was always empty, and nothing below ever read it
-         anyway. Every cable size set by hand on a run was lost on every
-         rebuild, and the sentence saying that is the one thing a
-         rebuild must not do sat directly above the code doing it.
-
-         Found when a designer's sizes came back as the build's defaults
-         and the levels check moved with them. The electric override is
-         Manual_VD_Cable_Size_ID, and it is put back onto the new run at
-         the same points below. */
-      const geomKey = (f) => (f.Geometry || [])
-        .map((q) => `${q[0].toFixed(2)},${q[1].toFixed(2)}`).join(" ");
-      const overrides = new Map();
-      for (const f of old) {
-        const id = f.Attributes?.Manual_VD_Cable_Size_ID;
-        if (id == null) continue;
-        overrides.set(geomKey(f), id);
-      }
+         Remembered by where the run ARRIVES, per circuit \u2014 not by id,
+         because the new features are new rows, and not by geometry,
+         because the geometry is exactly what a rebuild changes. It was
+         keyed on every vertex of the old run, two decimal places, and
+         put back only on a new run laid along exactly the same points:
+         a plot added breaks the run somewhere new, a trench nudged
+         moves an interior vertex, and either way the key changed and
+         the hand-set size was silently back on the default \u2014 lost on
+         every build, on any drawing being worked on. The arrival is the
+         feeder end point the run feeds, which stands on a trench
+         junction the interior of the run can change around. The keying
+         lives in feeder.js, where checkoverridecarry drives it. */
+      const overrides = carriedOverrides(old);
 
       if (old.length) await deleteFeatures(projectId, old.map((f) => f.Feature_ID));
       /* The tails dug by the last run, out with the cables they
@@ -13369,8 +13447,24 @@ export default function GISCanvasPage() {
       const total = totalRuns + totalNodes;
       let runs = 0, cables = 0, renumbered = 0, fepsMade = 0;
 
+      /* Points already spoken for, across every circuit in this build.
+
+         A link box with no circuit of its own is offered to whichever
+         circuit's walk stops on it, and each circuit is planned against
+         `src` — the drawing as it was read before any of this — so
+         nothing in the drawing records that the first one took it. One
+         box would be adopted twice and end the build holding the second
+         circuit's number. */
+      const adoptedFeps = new Set();
+
       for (const { circuit: c, sections, nodes } of planned) {
         for (const [i, sec] of sections.entries()) {
+          /* Where this run arrives, which is the key its hand-set size
+             was remembered against. Sections are walked outward from
+             the origin, so the last point is the feeder end point this
+             run feeds. */
+          const arrivesAt = sec.pts[sec.pts.length - 1];
+          const carried = carriedOverrideFor(overrides, c.id, arrivesAt);
           await addFeature({
             Layer_Key: "electric",
             Feature_Type: "line",
@@ -13383,15 +13477,13 @@ export default function GISCanvasPage() {
               ...(sec.linkWay != null
                 ? { Link_Box_ID: sec.linkBoxId, Link_Way: sec.linkWay } : {}),
               ...(startCable ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
-              /* The size somebody chose for this length of main last
-                 time, where the run is laid along the same points. A
-                 run that broke differently \u2014 a plot added, the cable
-                 count crossed \u2014 is a new run and starts on the
-                 default, which is the honest answer for a length whose
-                 load has changed. */
-              ...(overrides.has(geomKey({ Geometry: sec.pts }))
-                ? { Manual_VD_Cable_Size_ID: overrides.get(geomKey({ Geometry: sec.pts })) }
-                : {}),
+              /* The size somebody chose for the main arriving here last
+                 time. A run that now breaks somewhere new arrives
+                 somewhere new and starts on the default, which is the
+                 honest answer for a length whose load has just changed
+                 \u2014 while the length still arriving where it did keeps
+                 the size, however its interior was redrawn. */
+              ...(carried != null ? { Manual_VD_Cable_Size_ID: carried } : {}),
               /* How far this run carries on past the last take-off,
                  where the designer laid the main beyond it. Measured
                  from the drawing rather than added to it — see
@@ -13453,29 +13545,31 @@ export default function GISCanvasPage() {
            where it does not \u2014 it is a break somebody chose, and the
            trace stops there. */
         /* Link boxes ride in the same list: they carry the same span
-           fields, are never Generated, and so fall into the manual
-           set below \u2014 adopted where they stand, sequenced with the
-           walk, never deleted by a build. */
-        const oldFeps = src.filter((f) => (f.Feature_Role === "feederpoint"
-          || (f.Feature_Role === "linkbox" && f.Attributes?.Span_Seq != null))
-          && Number(f.Attributes?.Circuit_ID) === Number(c.id));
+           fields, are never Generated, and so are adopted where they
+           stand, sequenced with the walk, never deleted by a build \u2014
+           including one placed in open ground before any cable reached
+           it, which is where the stray duplicate came from.
+
+           The rules are in feederPoints.js and driven by
+           checklinkboxseq. They were ninety lines here, inside a
+           function that deletes rows and reports progress, so nothing
+           could get at them and every fault in them was found on a
+           live drawing. */
         const fepKey = (pt) => `${pt[0].toFixed(2)},${pt[1].toFixed(2)}`;
         const fepOverrides = new Map();
-        for (const f of oldFeps) {
+        for (const f of src) {
+          if (f.Feature_Role !== "feederpoint" && f.Feature_Role !== "linkbox") continue;
+          if (Number(f.Attributes?.Circuit_ID) !== Number(c.id)) continue;
           const anchor = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
           if (f.Attributes?.Manual_VD_Cable_Size_ID != null && anchor) {
             fepOverrides.set(fepKey(anchor), f.Attributes.Manual_VD_Cable_Size_ID);
           }
         }
-        const doomedFeps = oldFeps.filter((f) => f.Attributes?.Generated);
-        if (doomedFeps.length) {
-          await deleteFeatures(projectId, doomedFeps.map((f) => f.Feature_ID));
-        }
-        const manualFeps = oldFeps.filter((f) => !f.Attributes?.Generated);
 
         /* The cable arriving at a point: the section whose far end is
-           it. Overrides read off the planned geometry, because the run
-           carrying them is being laid from the same points. */
+           it. Which is also how a run's carried size is found \u2014 the
+           arrival is the key, so the section reaching this point brings
+           whatever was set on the run that reached it last time. */
         const arriving = (pt) => {
           for (const sec of sections) {
             const last = sec.pts[sec.pts.length - 1];
@@ -13484,96 +13578,40 @@ export default function GISCanvasPage() {
           return null;
         };
 
-        const claimed = new Set();
-        const fepWrites = [];
-        let seq = 0;
-        for (const nd of nodes) {
-          step += 1;
-          setProgress({ done: step, total, label: `${c.letter}: feeder points` });
-          const num = nd.kind === "origin" ? 0 : (seq += 1);
-          const label = spanLabel(c.letter, num);
-          const sec = nd.kind === "origin" ? null : arriving(nd.point);
-          const manual = fepOverrides.get(fepKey(nd.point))
-            ?? (sec ? overrides.get(geomKey({ Geometry: sec.pts })) : null)
-            ?? null;
+        /* One walk, planned in one place: which existing point stands
+           at each stop, what it is now called, and where a new one is
+           needed. The cable arriving at a stop brings the size set on
+           the run that reached it last time. */
+        const plan = planFeederPoints({
+          nodes,
+          existing: src,
+          circuit: { id: c.id, name: c.name, letter: c.letter },
+          /* Shared across circuits. Each is planned against the drawing
+             as it was read, so without this a box adopted by circuit A
+             is still circuitless when circuit B looks at it. */
+          claimed: adoptedFeps,
+          startCableId: startCable ? startCable.Cable_Size_ID : null,
+          overrideFor: (pt) => {
+            const sec = arriving(pt);
+            return fepOverrides.get(fepKey(pt))
+              ?? (sec
+                ? carriedOverrideFor(overrides, c.id, sec.pts[sec.pts.length - 1])
+                : null)
+              ?? null;
+          },
+        });
 
-          /* A hand-placed point standing on this position keeps its
-             identity \u2014 its id, its name, its own cable \u2014 and takes
-             the number. Nearest within a metre, ties on the lower id,
-             for the reason the span-node adoption held: "first found"
-             is scan order deciding a schedule. */
-          /* Two metres for a link box, one for anything else.
+        step += nodes.length;
+        setProgress({ done: step, total, label: `${c.letter}: feeder points` });
 
-             A box is placed by eye on the run and lands a foot or so
-             from the node the walk stops at \u2014 far enough to miss a
-             one-metre adoption, so the build made a point of its own
-             BESIDE it: a meaningless two-metre leg into a generated
-             A10, with the box standing next to it holding nothing. The
-             joint rule already reaches two metres for exactly this
-             reason, and where a link box stands it IS the feeder end
-             point, so the two reaches should agree. */
-          let match = null, best = Infinity;
-          for (const f of manualFeps) {
-            if (claimed.has(f.Feature_ID)) continue;
-            const pAt = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
-            if (!pAt) continue;
-            /* Each kind judged against its own reach. */
-            const reach = f.Feature_Role === "linkbox" ? 2 : 1;
-            const d = Math.hypot(pAt[0] - nd.point[0], pAt[1] - nd.point[1]);
-            if (d > reach) continue;
-            if (match && d > best) continue;
-            if (match && d === best && Number(f.Feature_ID) >= Number(match.Feature_ID)) continue;
-            match = f; best = d;
-          }
-          if (match) {
-            claimed.add(match.Feature_ID);
-            if (String(match.Attributes?.Span_Seq) !== String(num)
-              || match.Attributes?.Span_Kind !== nd.kind) {
-              fepWrites.push({
-                Feature_ID: match.Feature_ID,
-                Attributes: { ...match.Attributes,
-                  Span_Seq: num, Span_Kind: nd.kind,
-                  Circuit_Name: c.name, Circuit_Letter: c.letter },
-              });
-            }
-            continue;
-          }
-
-          await addFeature({
-            Layer_Key: "electric",
-            Feature_Type: "point",
-            Feature_Role: "feederpoint",
-            Geometry: [nd.point],
-            Label: `Point ${label}`,
-            Attributes: {
-              Circuit_ID: c.id, Circuit_Name: c.name, Circuit_Letter: c.letter,
-              Span_Seq: num, Span_Label: label, Span_Kind: nd.kind,
-              Span_Anchor: nd.point,
-              ...(nd.kind !== "origin" && startCable
-                ? { VD_Cable_Size_ID: startCable.Cable_Size_ID } : {}),
-              ...(manual != null ? { Manual_VD_Cable_Size_ID: manual } : {}),
-              Generated: true,
-            },
-          });
+        if (plan.remove.length) await deleteFeatures(projectId, plan.remove);
+        for (const payload of plan.create) {
+          await addFeature(payload);
           fepsMade += 1;
         }
-
-        /* Hand-placed points the walk did not land on \u2014 mid-run breaks
-           somebody chose. Sequenced after the planned positions, left
-           otherwise alone. */
-        for (const f of manualFeps) {
-          if (claimed.has(f.Feature_ID)) continue;
-          if (Number(f.Attributes?.Span_Seq) === 0) continue;
-          seq += 1;
-          if (String(f.Attributes?.Span_Seq) === String(seq)) continue;
-          fepWrites.push({
-            Feature_ID: f.Feature_ID,
-            Attributes: { ...f.Attributes, Span_Seq: seq },
-          });
-        }
-        if (fepWrites.length) {
-          await bulkUpdateFeatures(projectId, fepWrites);
-          renumbered += fepWrites.length;
+        if (plan.adopt.length) {
+          await bulkUpdateFeatures(projectId, plan.adopt);
+          renumbered += plan.adopt.length;
         }
       }
 

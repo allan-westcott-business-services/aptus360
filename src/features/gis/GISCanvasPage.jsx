@@ -10289,8 +10289,13 @@ export default function GISCanvasPage() {
       return;
     }
 
+    /* Pre-chosen where there is nothing to choose between. A site's
+       first circuit has no list to pick from, and making somebody tick
+       the only option before the button lights is a step that carries
+       no decision. */
     setCircuitPick({ meters: free, seeds: seeds.length, taken, circuits,
-      origin: "", how: `${seeds.length} plot(s)` });
+      origin: "", how: `${seeds.length} plot(s)`,
+      target: circuits.length ? null : "new" });
   }
 
   /* Answering that dialog. `joinId` null means a new circuit. */
@@ -10340,8 +10345,10 @@ export default function GISCanvasPage() {
     const how = `picked from the report${skipped
       ? `, ${skipped} already on a circuit skipped` : ""}`;
     if (lvOrigins(features).length > 1 || circuitsFrom(features).length) {
+      const onDrawing = circuitsFrom(features);
       setCircuitPick({ meters, seeds: meters.length, taken: skipped,
-        circuits: circuitsFrom(features), origin: "", how });
+        circuits: onDrawing, origin: "", how,
+        target: onDrawing.length ? null : "new" });
       return;
     }
     await createCircuitFrom(meters, how);
@@ -20632,10 +20639,28 @@ export default function GISCanvasPage() {
               </div>
             )}
 
+            {/* ── Choosing, then committing ──
+
+                These rows used to BE the commit: clicking one assigned
+                the meters and closed the dialog. On a drawing with
+                circuits already on it that reads well enough, but the
+                first circuit on a site has none — so the only thing
+                that would commit was the dashed "+ New circuit", which
+                reads as an option to create rather than as the button
+                that does the work. With a POC picker above it and
+                Cancel below, the dialog looked like a form with no OK,
+                and the meters went nowhere.
+
+                So a row is a choice and the action row commits. One
+                commit control, not two: a dialog where both the row and
+                a button assign is the duplicated control of fault 18,
+                and the two would drift. */}
             <div className="cpick-list">
               {circuitPick.circuits.map((c) => (
-                <button key={c.id} className="cpick-item"
-                  onClick={() => finishCircuitPick(c.id)}>
+                <button key={c.id}
+                  className={`cpick-item${String(circuitPick.target) === String(c.id) ? " on" : ""}`}
+                  aria-pressed={String(circuitPick.target) === String(c.id)}
+                  onClick={() => setCircuitPick({ ...circuitPick, target: c.id, note: null })}>
                   <span className="cpick-name">{c.name}</span>
                   <span className="cpick-n">
                     {c.meters.length} meter{c.meters.length === 1 ? "" : "s"}
@@ -20646,8 +20671,9 @@ export default function GISCanvasPage() {
                   on: adding to one is the reason this dialog exists,
                   and starting another is what happened by default
                   before it did. */}
-              <button className="cpick-item new"
-                onClick={() => finishCircuitPick(null)}>
+              <button className={`cpick-item new${circuitPick.target === "new" ? " on" : ""}`}
+                aria-pressed={circuitPick.target === "new"}
+                onClick={() => setCircuitPick({ ...circuitPick, target: "new", note: null })}>
                 <span className="cpick-name">+ New circuit</span>
               </button>
             </div>
@@ -20655,6 +20681,20 @@ export default function GISCanvasPage() {
             <div className="cpick-actions">
               <button className="btn ghost" onClick={() => setCircuitPick(null)}>
                 Cancel
+              </button>
+              {/* Named for what it will do, so the button and the choice
+                  above it cannot say different things. Disabled only
+                  before a choice is made \u2014 the "fed from" rule is
+                  answered on press, with its reason, rather than by a
+                  button that will not move and does not say why. */}
+              <button className="btn accent" disabled={circuitPick.target == null}
+                onClick={() => finishCircuitPick(
+                  circuitPick.target === "new" ? null : circuitPick.target)}>
+                {circuitPick.target === "new" || circuitPick.target == null
+                  ? "Create circuit"
+                  : `Add to ${circuitPick.circuits
+                    .find((c) => String(c.id) === String(circuitPick.target))?.name
+                    ?? "circuit"}`}
               </button>
             </div>
           </div>
@@ -23453,8 +23493,12 @@ const CSS = `
 .cpick-note { flex-basis: 100%; margin: 2px 0 0; font-size: 12px; color: #b91c1c; }
 .cpick-item.new { margin-top: 6px; border-style: dashed; color: var(--muted); }
 .cpick-item.new:hover { color: var(--accent); }
+/* The chosen row, so the button below and the list above agree about
+   what is about to happen. */
+.cpick-item.on { border-color: var(--accent); border-style: solid;
+  box-shadow: inset 0 0 0 1px var(--accent); color: var(--text); }
 
-.cpick-actions { display: flex; justify-content: flex-end; margin-top: 14px; }
+.cpick-actions { display: flex; justify-content: flex-end; gap: 8px; margin-top: 14px; }
 .gis { display: flex; flex-direction: column; height: calc(100vh - 120px); min-height: 520px; }
 .gis-bar { display: flex; align-items: center; gap: 10px; flex-wrap: wrap; margin-bottom: 10px; }
 .gis-proj { display: flex; gap: 8px; align-items: center; }

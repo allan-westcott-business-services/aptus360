@@ -133,6 +133,7 @@ caught a fault that had already shipped at least once.
 | `node checkanchormove.mjs` | Whose `Span_Anchor` follows the point when it is dragged |
 | `node checkplaceseq.mjs` | A newly placed point takes the number of the place it stands |
 | `node checkdownloaddrawing.mjs` | Download Drawing is on the menu and signed like every other call |
+| `node checkcabletrace.mjs` | A boxed circuit traces along the cable, each output carrying its own load |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -786,6 +787,55 @@ keep working.
 The item reads through `listGis` rather than the drawing in memory:
 `features` carries optimistic `tmp-` rows mid-edit, and a drawing sent
 for diagnosis has to be what the database holds.
+
+32. **One walk for two cables.** A link box's outputs are separate
+    cables leaving one point, and they share a dig for as long as the
+    designer runs them together. The levels check traced the circuit as
+    one network — and the walk follows the TRENCH, so two cables in one
+    trench had one path, and therefore one leg, one cable size and the
+    two loads added together.
+
+    On a live drawing that reported 61 m of a 185 mm output as 95 mm,
+    the neighbouring output's cable, because the node where they parted
+    company had been given whichever run was written to it last. Every
+    plot on that output read worse than it is.
+
+    Three parts to the fix, and **the tempting small one makes it
+    worse**: the stop where the cables diverge is not an electrical
+    event, and deleting it alone leaves the walk crossing the shared
+    stretch on the way to both ends, so the plots teeing off it are
+    counted twice. One error traded for a worse one. It had to be all
+    three or none.
+
+    - `circuitTraceParts` traces the trunk from the origin to the box,
+      then each output rooted at the box and pruned to its own plots.
+      The shared trench is walked once per output, each time carrying
+      only its own load. A circuit with no box comes back as one part
+      and behaves exactly as it always did.
+    - `spanTrace` was building its own meter map filtered on
+      `Circuit_ID` alone, ignoring the membership it had been handed —
+      so a pruned output still picked up the neighbour's plots. Two
+      prunings of one fact with only one of them told, which is fault
+      27 again.
+    - `marksOnPart`: a build part may only mark nodes on the cable it
+      lays. The trunk's model is the whole circuit's, deliberately, so
+      marking off it marked every fork of the dig. **A bend is not a
+      stop, and a fork of the dig is not a fork of the cable.**
+
+    The volt drop carries across the join through hooks that already
+    existed and were written for this argument: `startPct` is what the
+    feeding network has spent and `transformer.Loop_Impedance_Ohm` is
+    what it starts from. An output's feeding network is the trunk, so
+    an output starts from the trunk's figures AT THE BOX.
+
+    **Not verified against a known-good figure.** The topology and the
+    loads are driven and proven; the arithmetic is proven only to be
+    self-consistent. Check a boxed circuit against a hand calc before
+    issuing anything from it.
+
+    Two boxes in series on one circuit is a design error — it should be
+    refused by name rather than rendered, and it is NOT refused yet.
+    The levels sheet groups per output (option B) — also not built.
 
 **Length_m has two writers and one meaning too few — OPEN.** The
 attribute is maintained by `gis_length_trg`, a database trigger that

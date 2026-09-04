@@ -397,3 +397,38 @@ function writeFor(f, { num, label, kind, circuit }) {
     },
   };
 }
+
+/* ── What a build part may mark ──
+
+   Each part of a build — the trunk to a link box, then each output —
+   walks its own model and marks the junctions and ends it finds. The
+   trunk's model is the WHOLE circuit's, deliberately, so the origin
+   rules answer as they do for the circuit entire; its sections are one
+   chain, origin to the box.
+
+   Marking straight off that model marked every fork of the DIG anywhere
+   on the circuit. Where two outputs leave a box down one trench and part
+   company further along, the trench forks and the full model calls it a
+   junction — but no cable divides there, each output simply carries on.
+   The mark became a numbered point in the middle of an output's run,
+   splitting one 90 m cable into two legs and lending the first the other
+   output's size.
+
+   A part marks what stands on the cable it lays. A bend is not a stop,
+   and a fork of the dig is not a fork of the cable. */
+export function marksOnPart(marks = [], sections = [], tol = 0.5) {
+  const near = (p, pts) => {
+    for (let i = 1; i < pts.length; i++) {
+      const [ax, ay] = pts[i - 1];
+      const [bx, by] = pts[i];
+      const vx = bx - ax; const vy = by - ay;
+      const len2 = vx * vx + vy * vy;
+      let t = len2 ? ((p[0] - ax) * vx + (p[1] - ay) * vy) / len2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      if (Math.hypot(p[0] - (ax + t * vx), p[1] - (ay + t * vy)) <= tol) return true;
+    }
+    return false;
+  };
+  return (marks || []).filter((m) => Array.isArray(m?.point)
+    && (sections || []).some((sec) => near(m.point, sec.pts || [])));
+}

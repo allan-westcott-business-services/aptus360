@@ -1372,6 +1372,98 @@ export function servicesReachingMains(services = [], mains = [], tol = CONNECT_E
   return reach;
 }
 
+/* ── A circuit traced in the parts the cable actually runs in ──
+
+   Without a link box a circuit is one cable network from the origin and
+   this is `spanTrace` with a label on.
+
+   With one, it is not. The box's outputs are separate cables leaving a
+   single point, each fused on its own, and they share a dig for as long
+   as the designer runs them together. Traced as one circuit the shared
+   dig collapses them: the walk follows the TRENCH, so two cables in one
+   trench become one leg carrying one cable size and the combined load
+   of both. On a real drawing that reported 61 m of a 185 mm output as
+   95 mm — the other output's cable — and inserted a stop where the two
+   parted company, which is a junction of the dig and of nothing
+   electrical.
+
+   So: the trunk from the origin to the box, carrying everything beyond
+   it, and then each output traced as its own network rooted at the box
+   and pruned to its own plots. Same walk, run once per cable rather
+   than once per trench.
+
+   Each part carries its own model, so a caller computing volt drop has
+   to start an output from where the trunk left off — `startAtIdx` names
+   the trunk node the box stands on, and the parts come back in order,
+   trunk first. */
+export function circuitTraceParts(features = [], originId, opts = {}) {
+  const { circuitId } = opts;
+  const asg = circuitId != null
+    ? linkWayAssignments(features, circuitId)
+    : { boxes: [] };
+
+  if (!asg.boxes.length) {
+    const r = spanTrace(features, originId, opts);
+    return r.error ? [{ error: r.error, via: "origin" }] : [{ ...r, via: "origin" }];
+  }
+
+  const parts = [];
+
+  /* The trunk, with the whole circuit's membership so the load arriving
+     at the box is everything beyond it. Its legs are cut at the box:
+     anything past it is the merged walk this exists to replace, and
+     reporting both would say every plot twice. */
+  const trunk = spanTrace(features, originId, opts);
+  if (trunk.error) parts.push({ error: trunk.error, via: "trunk" });
+  else {
+    const M = trunk.model;
+    const boxIdx = new Map();
+    for (const { box } of asg.boxes) {
+      const at = box.Attributes?.Span_Anchor || box.Geometry?.[0];
+      if (!at || !M?.nodes) continue;
+      let bi = -1, bd = Infinity;
+      for (let i = 0; i < M.nodes.length; i++) {
+        const d = dist(M.nodes[i], at);
+        if (d < bd) { bd = d; bi = i; }
+      }
+      if (bi >= 0) boxIdx.set(Number(box.Feature_ID), bi);
+    }
+    /* Everything between the origin and a box, the box included. A leg
+       ending on that chain is the input cable; one ending past it is an
+       output, and the output's own trace reports it properly. */
+    const keep = new Set();
+    for (const bi of boxIdx.values()) {
+      for (let u = bi; u >= 0; u = M.parent[u]) {
+        keep.add(u);
+        if (u === M.S) break;
+      }
+    }
+    parts.push({
+      ...trunk,
+      legs: (trunk.legs || []).filter((l) => keep.has(l.endIdx)),
+      via: "trunk",
+      boxIdx,
+    });
+  }
+
+  /* Then each output, rooted at the box and carrying only its plots. */
+  for (const { box, ways } of asg.boxes) {
+    for (const [w, g] of [...ways.entries()].sort((a, b) => a[0] - b[0])) {
+      const r = spanTrace(features, box.Feature_ID, {
+        ...opts,
+        seedIds: g.seedIds,
+        meterIds: g.meterIds,
+        rootFeature: box,
+      });
+      const via = `way ${w}`;
+      if (r.error) { parts.push({ error: r.error, via, box, way: w }); continue; }
+      parts.push({ ...r, via, box, way: w });
+    }
+  }
+
+  return parts;
+}
+
 export function serviceTrenchCheck(features = [], opts = {}) {
   const { lineTypes = [], eps = CONNECT_EPS } = opts;
 
@@ -1718,6 +1810,26 @@ export function spanTrace(features = [], nodeId, opts = {}) {
        "that span node doesn't belong to a circuit", about the node it
        had just been given and with no way to know which. */
     circuitId: wantedCircuit = null,
+    /* ── Tracing one output of a link box ──
+
+       A box's outputs are independent cables leaving one point, and
+       they share a dig for as long as the designer runs them together.
+       Traced as one circuit they collapse: the walk follows the TRENCH,
+       so two cables in one dig become one leg, the leg takes one of the
+       two cables, and the plots teeing off the shared stretch are
+       counted on whichever legs happen to pass.
+
+       So an output is traced as its own circuit: rooted at the box, and
+       pruned to the plots assigned to that output. The trench is then
+       walked once per output and each walk carries only its own load —
+       which is what makes the shared stretch honest rather than
+       double-counted.
+
+       Absent, membership is worked out from the circuit as before, so
+       every existing caller behaves exactly as it did. */
+    seedIds: wantSeeds = null,
+    meterIds: wantMeters = null,
+    rootFeature = null,
   } = opts;
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
@@ -1742,7 +1854,9 @@ export function spanTrace(features = [], nodeId, opts = {}) {
 
   /* Only this circuit's plots and supplies, so the model prunes branches
      serving someone else's. */
-  const { seedIds, meterIds } = circuitMembership(features, circuitId);
+  const { seedIds, meterIds } = (wantSeeds || wantMeters)
+    ? { seedIds: wantSeeds ?? new Set(), meterIds: wantMeters ?? new Set() }
+    : circuitMembership(features, circuitId);
   /* Either kind is something to trace. A circuit serving one commercial
      unit and no dwellings is a real circuit, and refusing it for having
      no metered plots would be refusing it for the wrong reason. */
@@ -1759,7 +1873,12 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     && f.Attributes?.Circuit_Origin_ID != null);
   const M = buildFeederModel(features, {
     lineTypes, plotById, nrsById, seedIds, meterIds,
-    originId: namedHere ? Number(namedHere.Attributes.Circuit_Origin_ID) : null,
+    /* Rooted at the box where one is given: an output's cable begins
+       there and knows nothing of the POC behind it. */
+    ...(rootFeature ? { rootFeature } : {}),
+    originId: rootFeature
+      ? null
+      : (namedHere ? Number(namedHere.Attributes.Circuit_Origin_ID) : null),
   });
   if (M.error) return { error: M.error };
   const { nodes, parent, parSvc, cum, S } = M;
@@ -1940,6 +2059,25 @@ export function spanTrace(features = [], nodeId, opts = {}) {
       ? features.find((f) => f.Feature_Role === "plot" && Number(f.Feature_ID) === Number(sid))
       : features.find((f) => f.Feature_Role === "plot"
           && m.Plot_ID != null && Number(f.Plot_ID) === Number(m.Plot_ID));
+
+    /* ── The membership this trace was given, not the whole circuit ──
+
+       This asked only whether the meter is on the circuit, which is the
+       right question when the whole circuit is one network. Tracing ONE
+       OUTPUT of a link box it is the wrong one: the model has been
+       pruned to that output's plots and this had not, so a leg picked up
+       every plot on the circuit as it passed — the neighbouring output's
+       included.
+
+       The model prunes on exactly this test (`seedIds` for a plot,
+       `meterIds` for a supply with no seed), so it is applied here in
+       the same form. Two prunings of one fact, and only one of them
+       told — the shape of fault 27. */
+    const isNrsMeter = m.Attributes?.NRS_ID != null;
+    const mine = isNrsMeter
+      ? (meterIds ? meterIds.has(Number(m.Feature_ID)) : true)
+      : (seedIds ? !!(seed && seedIds.has(Number(seed.Feature_ID))) : true);
+    if (!mine) continue;
 
     const anchor = (seed ? serviceFootFor(seed.Feature_ID) : null)
       || (seed?.Geometry || [])[0]

@@ -22,6 +22,7 @@
 
 import { readFileSync, readdirSync, statSync } from "node:fs";
 import { join } from "node:path";
+import { levelsForParts } from "./src/features/gis/voltDrop.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -199,8 +200,25 @@ for (const file of jsxFiles("./src")) {
   const fn = canvas.slice(canvas.indexOf("const levelsByNode = useCallback"),
     canvas.indexOf("const levelsKey = useMemo"));
 
-  if (!/if \(!cableAtNode\(src, leg\.stopId\)\) continue;/.test(fn)) {
+  /* The test moved into the leg gathering when the levels went per
+     link-box output: a circuit is traced in parts now, and each part's
+     legs are filtered on the way through rather than in a loop here.
+     Driven rather than matched, because a regex over the source proves
+     the text has not moved, which is not the rule. */
+  if (!/skip: \(leg\) => !cableAtNode\(src, leg\.stopId\)/.test(fn)) {
     fail("a span node with no cable reaching it is still given levels");
+  }
+  {
+    const model = { nodes: [[0, 0], [10, 0]], parent: [-1, 0], cum: [1, 1],
+      cumKva: [1, 1], meterKva: [0, 1], meterCount: [0, 1], S: 0, parSvc: [] };
+    const part = { via: "origin", model, spanNodes: [],
+      legs: [{ stopId: 7, endIdx: 1, cableSizeId: null }] };
+    if (levelsForParts([part], { skip: () => true }).size) {
+      fail("the no-cable rule no longer keeps a node out of the levels");
+    }
+    if (!levelsForParts([part], {}).size) {
+      fail("a node WITH a cable was dropped — the fixture proves nothing");
+    }
   }
   /* Measured against the drawing, not read off the node.
 

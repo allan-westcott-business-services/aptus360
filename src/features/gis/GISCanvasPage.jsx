@@ -77,12 +77,14 @@ import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
   carriedOverrides, carriedOverrideFor } from "./feeder.js";
-import { planFeederPoints, planInsertion } from "./feederPoints.js";
+import { planFeederPoints, planInsertion, marksOnPart } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
-  spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins } from "./feeder.js";
-import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable } from "./voltDrop.js";
+  spanTrace, orderNodesFromRoot, lvOrigin, lvOrigins,
+  circuitTraceParts } from "./feeder.js";
+import { cumulativeToNode, serviceVoltDrop, VD_DEFAULTS, defaultFeederCable,
+  levelsForParts } from "./voltDrop.js";
 import {
   feederRenderPlan, offsetPolyline, circuitColours, circuitIdOf, feederColourAt,
 } from "./feederColour.js";
@@ -1436,7 +1438,10 @@ export default function GISCanvasPage() {
     for (const c of circuits) {
       const origin = originNodeFor(src, c.id);
       if (!origin) continue;
-      const r = spanTrace(src, origin.Feature_ID, {
+      /* In parts, so a link box's outputs are traced as the separate
+         cables they are. Without a box this is one part and behaves
+         exactly as the single trace did. */
+      const parts = circuitTraceParts(src, origin.Feature_ID, {
         lineTypes, circuitId: c.id,
         plotById: (id) => plotList.find((pl) => pl.plot_id === id),
         /* Non-residential supplies bring their own kVA, having no plot
@@ -1447,7 +1452,8 @@ export default function GISCanvasPage() {
         nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         stopAt: "spannodes",
       });
-      if (r.error) continue;
+      const r = parts.find((x) => !x.error) || parts[0] || {};
+      if (!r.model) continue;
 
       /* ── No declared origin, no levels ──
 
@@ -1466,47 +1472,25 @@ export default function GISCanvasPage() {
       if (originMissing(r.model?.origin || station,
         lookups?.transformerSizes || []).length) continue;
 
-      for (const leg of r.legs || []) {
-        if (leg.stopId == null) continue;
-
-        /* ── No cable, no levels ──
-
-           A span node's volt drop and loop impedance are properties of
-           the cable feeding it. The walk runs on the TRENCH network, so
-           a node reached by a dig with nothing laid in it yet still got
-           a leg — and the label showed a figure worked out from a
-           conductor that does not exist.
-
-           A number on the drawing is read as a measurement of the
-           design. One computed from an absent cable is worse than a
-           blank: a blank says "not yet", and a number says "this is
-           what it will be", which nobody can tell apart at a glance.
-
-           ── What counts as "a cable reaches it" ──
-
-           An LV cable drawn on the electric layer, passing the node.
-           Not the size recorded ON the node: Build LV Network writes
-           VD_Cable_Size_ID there, and deleting the cable afterwards
-           leaves it behind. So a node whose cable had been deleted
-           still had a size, still passed the test, and still showed
-           levels for a conductor that was no longer on the drawing.
-
-           That was the first attempt at this and it was the same
-           mistake one layer down — reading a record of the cable
-           instead of looking for the cable. */
-        if (!cableAtNode(src, leg.stopId)) continue;
-
-        out.set(Number(leg.stopId), cumulativeToNode({
-          model: r.model, targetIdx: leg.endIdx, spanNodes: r.spanNodes,
-          partialCableId: leg.cableSizeId ?? null, ...ctx,
-          /* This circuit's own origin, not the site's first \u2014 the
+      /* Every part's legs, with each output starting from the trunk's
+         figures at the box. */
+      const figures = levelsForParts(parts, {
+        base: {
+          ...ctx,
+          /* This circuit's own origin, not the site's first — the
              figures of the POC this circuit actually runs back to. */
           transformer: sourceImpedance(r.model?.origin || station,
             lookups?.transformerSizes || []),
           voltageV: voltageOf(r.model?.origin || station),
           startPct: upstreamVoltDropPct(r.model?.origin || station),
-        }));
-      }
+        },
+        /* The no-cable rule below, applied where the legs are gathered
+           rather than after: a node with no cable near it has no figure
+           to show, and one computed from an absent conductor is worse
+           than a blank. */
+        skip: (leg) => !cableAtNode(src, leg.stopId),
+      });
+      for (const [stopId, figure] of figures) out.set(stopId, figure);
     }
     return out.size ? out : null;
   }, [lookups, lineTypes, plotList, cableAtNode]);
@@ -13470,13 +13454,33 @@ export default function GISCanvasPage() {
            twin beside it. */
         const seen = new Set();
         const walked = [];
+        /* ── A part may only mark nodes on the cable it lays ──
+
+           The trunk's model is the WHOLE circuit's, deliberately, so the
+           origin rules answer as they do for the circuit entire. Its
+           sections are one chain — origin to the box — but the marking
+           read junctions off that full model, so it marked every fork of
+           the DIG anywhere on the circuit.
+
+           That is where the phantom stop came from. Where two outputs
+           leave the box down one trench and part company further along,
+           the trench forks and the full model calls it a junction. No
+           cable divides there: each output simply carries on. It was
+           marked, numbered, and then reported in the middle of an
+           output's run, splitting a single 90 m cable into two legs and
+           lending the first one the other output's size.
+
+           A part marks what stands on its own sections and nothing else.
+           A bend is not a stop; a fork of the dig is not a fork of the
+           cable. */
         for (const pt of good) {
           const pm = [
             ...junctionNodes(pt.model).map((j) => ({ ...j, kind: "junction" })),
             ...endOfLineNodes(pt.model).map((e) => ({ ...e, kind: "end" })),
           ];
-          const byIndex = new Map(pm.map((m) => [m.index, m]));
-          for (const i of orderNodesFromRoot(pt.model, pm.map((m) => m.index))) {
+          const marks = marksOnPart(pm, pt.sections);
+          const byIndex = new Map(marks.map((m) => [m.index, m]));
+          for (const i of orderNodesFromRoot(pt.model, marks.map((m) => m.index))) {
             const m = byIndex.get(i);
             if (!m) continue;
             const key = `${Math.round(m.point[0] * 100)},${Math.round(m.point[1] * 100)}`;
@@ -18036,7 +18040,20 @@ export default function GISCanvasPage() {
           + "\u2014 run Build LV Network, which places it");
         continue;
       }
-      const r = spanTrace(src, origin.Feature_ID, {
+      /* ── In parts, along the cable ──
+
+         A circuit with a link box is not one network: the trunk runs
+         from the origin to the box and each output leaves it as its own
+         cable, fused on its own, serving its own plots. Traced as one
+         circuit the walk follows the TRENCH, so two outputs sharing a
+         dig came back as one leg carrying one cable size and both
+         loads — 61 m of a 185 mm run reported as the neighbouring
+         output's 95 mm, with a numbered stop invented where the dig
+         forked and no cable divided.
+
+         A circuit with no box comes back as one part and behaves
+         exactly as the single trace did. */
+      const traced = circuitTraceParts(src, origin.Feature_ID, {
         lineTypes,
         /* The circuit being checked. The origin serves them all and so
            names none; without this the trace could not tell which. */
@@ -18045,9 +18062,15 @@ export default function GISCanvasPage() {
         nrsById: (id) => nrsList.find((n) => Number(n.NRS_ID) === Number(id)) || null,
         stopAt,
       });
-      if (r.error) { failed.push(`${c.name}: ${r.error}`); continue; }
-      r.startId = origin.Feature_ID;
-      parts.push(r);
+      for (const t of traced) {
+        if (t.error) {
+          failed.push(`${c.name}${t.via && t.via !== "origin" ? ` (${t.via})` : ""}: ${t.error}`);
+          continue;
+        }
+        t.startId = origin.Feature_ID;
+        t.circuitId = c.id;
+        parts.push(t);
+      }
     }
 
     /* Meters the model could not attach to the network.
@@ -18103,6 +18126,38 @@ export default function GISCanvasPage() {
            report did not \u2014 the same shape of miss as startPct. */
         jointEquivM: Number(lookups.vdSettings[0].Joint_Equivalent_M) || 0,
       } : {}) };
+      /* Where each output begins.
+
+         An output's model is rooted at the box and starts from zero, so
+         without this every output would be computed as though it left
+         the transformer — the trunk's 637 m and its drop simply absent
+         from every plot beyond the box. The two hooks were already
+         there and written for this argument: startPct is what the
+         feeding network has spent, and the transformer's impedance is
+         what it starts from. An output's feeding network is the trunk.
+
+         Computed from the trunk part of the SAME circuit, so a two-POC
+         site does not read one circuit's trunk against another's
+         outputs. */
+      const startAtBox = new Map();
+      for (const part of parts) {
+        if (part.via !== "trunk" || !part.boxIdx) continue;
+        const origin = part.model?.origin || station;
+        const trunkCtx = {
+          cableById: (id) => cables.find((cb) => String(cb.Cable_Size_ID) === String(id)) || null,
+          cableTypes: lookups?.cableTypes || [],
+          transformer: sourceImpedance(origin, lookups?.transformerSizes || []),
+          voltageV: voltageOf(origin),
+          startPct: upstreamVoltDropPct(origin),
+          settings: limits,
+        };
+        for (const [boxId, idx] of part.boxIdx) {
+          startAtBox.set(`${part.circuitId}:${Number(boxId)}`,
+            cumulativeToNode({ ...trunkCtx, model: part.model, targetIdx: idx,
+              spanNodes: part.spanNodes }));
+        }
+      }
+
       for (const part of parts) {
         /* This circuit's own origin, where the model knows it \u2014 a
            site fed from two POCs has two, each with its own declared
@@ -18130,6 +18185,21 @@ export default function GISCanvasPage() {
             && f.Layer_Key === "electric" && !/service/i.test(f.Attributes?.Line_Type || "")),
           settings: limits,
         };
+
+        /* An output starts from the trunk's figures at its box, not
+           from the transformer. Where the trunk could not reach the box
+           the output is still reported from the circuit's own baseline
+           rather than dropped: a missing row reads as a missing design,
+           and the figures being optimistic is said by the box carrying
+           no trunk rather than by silence. */
+        const from = part.way != null && part.box
+          ? startAtBox.get(`${part.circuitId}:${Number(part.box.Feature_ID)}`)
+          : null;
+        if (from) {
+          ctx.transformer = { Loop_Impedance_Ohm: from.ohms };
+          ctx.startPct = from.pct;
+        }
+
         for (const leg of part.legs) {
           leg.vd = cumulativeToNode({
             model: part.model, targetIdx: leg.endIdx, spanNodes: part.spanNodes,

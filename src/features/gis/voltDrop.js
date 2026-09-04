@@ -544,3 +544,83 @@ export function defaultFeederCable(cableSizes = [], cableTypes = [], opts = {}) 
     return Number(a.Cable_Size_ID) - Number(b.Cable_Size_ID);
   })[0];
 }
+
+/* ── Levels across a circuit built in parts ──
+
+   A circuit with a link box is not one network: the trunk runs from the
+   origin to the box, and each output leaves the box as its own cable
+   with its own fuse and its own plots. `circuitTraceParts` traces them
+   separately, which is what stops two cables in one trench being
+   reported as one leg carrying one size and both loads.
+
+   Separately traced, each output's model is rooted at the box and
+   starts from zero — so the figures have to be carried across the join
+   or every output would read as though it began at the transformer.
+   The two hooks already exist and were written for exactly this
+   argument: `startPct` is what the feeding network has already used,
+   and `transformer.Loop_Impedance_Ohm` is the impedance it starts from.
+   An output's feeding network is the trunk, so the trunk's figures AT
+   THE BOX are what it starts from.
+
+   Trunk first, always, because the outputs are computed from its
+   answer. Returned keyed on stopId, which is what the drawing and the
+   report both look levels up by. */
+export function levelsForParts(parts = [], opts = {}) {
+  /* Read plainly rather than destructured with a rename: checkdefs
+     reads a renamed binding as an undeclared call, and a check that
+     reports two permanent false positives is a check people learn to
+     skim. */
+  const base = opts.base || {};
+  const skipLeg = typeof opts.skip === "function" ? opts.skip : () => false;
+  const out = new Map();
+
+  const trunk = parts.find((p) => !p.error
+    && (p.via === "trunk" || p.via === "origin"));
+
+  const figureAt = (part, targetIdx, start) => cumulativeToNode({
+    ...base,
+    ...start,
+    model: part.model,
+    targetIdx,
+    spanNodes: part.spanNodes,
+  });
+
+  const atBox = new Map();
+  if (trunk) {
+    for (const leg of trunk.legs || []) {
+      if (leg.stopId == null || skipLeg(leg)) continue;
+      out.set(Number(leg.stopId), figureAt(trunk, leg.endIdx, {
+        partialCableId: leg.cableSizeId ?? null,
+      }));
+    }
+    /* The figures where each output begins. Computed whether or not a
+       leg happens to stop at the box, because an output needs them even
+       on a drawing where the trunk's last stop is somewhere else. */
+    for (const [boxId, idx] of (trunk.boxIdx || new Map())) {
+      atBox.set(Number(boxId), figureAt(trunk, idx, {}));
+    }
+  }
+
+  for (const part of parts) {
+    if (part.error || part === trunk) continue;
+    const from = atBox.get(Number(part.box?.Feature_ID));
+    /* No trunk figure — a box the trunk could not reach. The output is
+       still reported, from the same baseline the circuit uses, rather
+       than dropped: a missing row reads as a missing design. */
+    const start = from
+      ? {
+        transformer: { Loop_Impedance_Ohm: from.ohms },
+        startPct: from.pct,
+      }
+      : {};
+    for (const leg of part.legs || []) {
+      if (leg.stopId == null || skipLeg(leg)) continue;
+      out.set(Number(leg.stopId), figureAt(part, leg.endIdx, {
+        ...start,
+        partialCableId: leg.cableSizeId ?? null,
+      }));
+    }
+  }
+
+  return out;
+}

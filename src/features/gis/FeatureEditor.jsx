@@ -11,6 +11,7 @@ import {
   lineLength, isTrenchType, isTrenchFeature, classLabel,
 } from "./snapping.js";
 import { EASEMENT_KEY } from "./easement.js";
+import { cableMenu, cableMenuName } from "./cableMenu.js";
 import { contentsOf } from "./trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
 import { trenchSize, concurrentCount, dominantOf } from "./trenchSize.js";
@@ -565,61 +566,14 @@ export default function FeatureEditor({
     return [t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ");
   }, [lookups]);
 
-  const cableChoices = useMemo(() => {
-    const sizes = lookups?.cableSizes || [];
-    const types = lookups?.cableTypes || [];
-    const usageOf = (c) => String(
-      types.find((t) => t.Cable_Type_ID === c.Cable_Type_ID)?.Usage_Type ?? "",
-    ).trim().toLowerCase();
-
-    const fits = sizes.filter((c) => {
-      /* Retired catalogue rows stay out of the menu, same rule as the
-         bulk editor: Is_Active on the type or the size. A size already
-         on the drawing still resolves and labels by id \u2014 only the
-         offering is filtered. */
-      const t = types.find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
-      if (t && t.Is_Active === false) return false;
-      if (c.Is_Active === false) return false;
-
-      /* ── Rated cables only ──
-
-         `Rating_Amps` is what the catalogue says the cable can carry,
-         and a row without one is a name somebody typed and never
-         finished. The menu offered all of them: HV cores, earth cables,
-         pilot cable and 20 kV triplex, in a list where a designer is
-         picking an LV main. Choosing one of those sets a size the
-         network cannot be checked against.
-
-         Usage narrows it to the right kind of cable; this narrows it to
-         the ones the catalogue has actually specified. */
-      if (c.Rating_Amps == null || Number(c.Rating_Amps) <= 0) return false;
-
-      const u = usageOf(c);
-      return !u || u === cableUsage;
-    });
-
-    /* Alphabetical, on the name as it reads in the menu.
-
-       The catalogue's own order is the order rows were entered, which
-       put "3c WAVE 300" above "4c WAVE 95" and the HV cores among the
-       mains. Sorted on the label somebody actually sees, with numbers
-       compared as numbers so 95 comes before 185 rather than after it.
-
-       A copy: sort() is in place, and this array is the lookups array
-       where nothing else was filtered out. */
-    const nameOf = (c) => [
-      types.find((x) => x.Cable_Type_ID === c.Cable_Type_ID)?.Cable_Type,
-      c.Size_Label,
-    ].filter(Boolean).join(" ");
-    const byName = [...fits].sort((a, b) => nameOf(a).localeCompare(
-      nameOf(b), undefined, { numeric: true, sensitivity: "base" },
-    ));
-
-    /* Never an empty menu. Where a catalogue has nothing rated for this
-       usage the whole list is offered rather than none, and `filtered`
-       says which happened so the panel can tell somebody. */
-    return { list: byName.length ? byName : sizes, filtered: byName.length > 0 };
-  }, [lookups, cableUsage]);
+  /* One menu rule for all three cable dropdowns \u2014 see cableMenu.js.
+     The mains editor, the service editor and Edit by kind each had a
+     copy of the naming and the filtering, agreeing by accident and
+     differing everywhere they had been corrected once. */
+  const cableChoices = useMemo(() => cableMenu(
+    lookups?.cableSizes || [], lookups?.cableTypes || [],
+    { usage: cableUsage, requireRating: true },
+  ), [lookups, cableUsage]);
 
   /* The unit actually chosen, so its figures can be shown rather than
      just its name. */
@@ -1604,15 +1558,13 @@ export default function FeatureEditor({
                       in unsorted catalogue order, for a designer
                       choosing an LV main. */}
                   {cableChoices.list.map((c) => {
-                    const t = (lookups?.cableTypes || [])
-                      .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
                     /* Most of the catalogue is names only. Saying so here
                        is the difference between choosing a cable and
                        wondering later why the leg reports nothing. */
                     const usable = c.Loop_Impedance_Ohm != null || c.Volt_Drop_Base != null;
                     return (
                       <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
-                        {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
+                        {cableMenuName(c, lookups?.cableTypes || [])}
                         {c.Material ? ` (${c.Material})` : ""}
                         {usable ? "" : " — no figures"}
                       </option>
@@ -2167,15 +2119,11 @@ export default function FeatureEditor({
                           option and turned a list of sizes into a list
                           of sentences \u2014 both are below, about the one
                           actually chosen. */}
-                      {cableChoices.list.map((c) => {
-                        const t = (lookups?.cableTypes || [])
-                          .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
-                        return (
-                          <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
-                            {[t?.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
-                          </option>
-                        );
-                      })}
+                      {cableChoices.list.map((c) => (
+                        <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
+                          {cableMenuName(c, lookups?.cableTypes || [])}
+                        </option>
+                      ))}
                     </select>
                     {(() => {
                       /* What was lost from the options, said once about

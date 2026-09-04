@@ -6,6 +6,7 @@ import { lineLength } from "./snapping.js";
 import { statusesFor } from "./buildStatus.js";
 import { bulkDeleteCategories, idsForKeys } from "./bulkDelete.js";
 import { classesIn, fieldsForMany, planBulkEditOn, CLEAR } from "./bulkEdit.js";
+import { cableMenu, cableMenuName } from "./cableMenu.js";
 
 /* Editing many features at once, by selecting them or by naming them.
 
@@ -330,26 +331,21 @@ export default function BulkEditor({
          type says "service" (a type saying nothing fits anywhere), and
          each is named type-plus-size \u2014 "95" alone is two different
          cables in a catalogue with waveform and insulated both. */
-      const typeOf = (c) => (cableTypes || [])
-        .find((t) => t.Cable_Type_ID === c.Cable_Type_ID);
-      const fits = cableSizes.filter((c) => {
-        const t = typeOf(c);
-        /* Retired types stay out of the menu \u2014 Is_Active is a column
-           on the type, set from the same admin screen as Usage, and a
-           cable taken out of use is not one to put on new tails. A
-           size already ON a drawing still resolves by id everywhere;
-           only the offering is filtered. */
-        if (t && t.Is_Active === false) return false;
-        if (c.Is_Active === false) return false;
-        const u = String(t?.Usage_Type ?? "").trim().toLowerCase();
-        return !u || u === "service";
-      });
-      const list = fits.length ? fits : cableSizes;
-      const nameOf = (c) => {
-        const t = (cableTypes || []).find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
-        return [t?.Cable_Type, c.Size_Label ?? c.Cable_Name].filter(Boolean).join(" ")
-          || String(c.Cable_Size_ID);
-      };
+      /* One menu rule for all three cable dropdowns \u2014 see
+         cableMenu.js. This carried its own copy of the naming and the
+         usage filter, and no sort at all, so the list came out in the
+         order the catalogue rows were entered.
+
+         requireRating is OFF here deliberately, and the two menus
+         therefore differ: the feature editor offers only cables the
+         catalogue has rated, and this offers every active service
+         cable. Left as it was because turning it on would take most of
+         the service sizes out of a bulk edit without anyone asking for
+         that. It is a decision, not an oversight \u2014 whoever settles it
+         should set the same answer in both. */
+      const menu = cableMenu(cableSizes, cableTypes, { usage: "service" });
+      const list = menu.list;
+      const nameOf = (c) => cableMenuName(c, cableTypes);
       return (
         <div className="fld" key={f.key}>
           <label htmlFor={`be-${f.key}`}>{f.label}</label>

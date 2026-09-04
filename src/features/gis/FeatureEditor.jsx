@@ -1441,11 +1441,21 @@ export default function FeatureEditor({
             />
           )}
 
-          {(feature.Feature_Role === "spannode" || feature.Feature_Role === "feederpoint") && (
+          {(feature.Feature_Role === "spannode" || feature.Feature_Role === "feederpoint"
+            /* A box on a run is that circuit's feeder end point, so it
+               has a place in the sequence like any other stop \u2014 and no
+               way of showing it. The read-only branch only: a box in
+               open ground has no circuit yet, and offering to name it
+               would be offering a code that means nothing until a
+               cable reaches it. */
+            || (feature.Feature_Role === "linkbox"
+              && f.Attributes.Circuit_ID != null)) && (
             <div className="fld">
               {f.Attributes.Circuit_ID != null ? (
                 <>
-                  <label>Span node</label>
+                  <label>
+                    {feature.Feature_Role === "spannode" ? "Span node" : "Feeder end point"}
+                  </label>
                   <p className="sn-code">{f.Attributes.Span_Label}</p>
                   <p className="hint">
                     Point {f.Attributes.Span_Seq} on {f.Attributes.Circuit_Name}

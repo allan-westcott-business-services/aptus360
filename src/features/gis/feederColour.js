@@ -450,13 +450,45 @@ export function feederRenderPlan(features = [], opts = {}) {
       for (const m of meters) {
         const way = Number(m.Attributes.Link_Way);
         /* The run nearest the meter is the one feeding it; the path
-           back to the box is everything that carries its load. */
+           back to the box is everything that carries its load.
+
+           ── Except where the outputs share a trench ──
+
+           Which is the ordinary case: a box's outputs leave through one
+           dig, storing routes a few centimetres apart, and the
+           separation on screen is display offset rather than geometry.
+           So "nearest the meter" is a coin toss between them, and the
+           meter then stamped ITS way onto whichever run won — output
+           2's cable came back wearing output 3's colour, and the
+           service tee'd into it read as being on the wrong feeder.
+
+           Where the drawing already says which run belongs to this
+           output, that answers: the build stamps Link_Box_ID and
+           Link_Way on what it lays. Nearest is kept as the fallback,
+           because it is the answer that exists on a drawing made before
+           the stamps did, and it is right whenever the outputs are not
+           on top of one another.
+
+           Third instance of this fault \u2014 see cableSizes.pickMain and
+           the joint-feeder pick in the move handler. Same shape every
+           time: several features sharing a route, resolved by geometry
+           alone. */
+        const reachable = mains.filter((r) => cameBy.has(r.id));
+        const stamped = reachable.filter((r) =>
+          Number(r.feature?.Attributes?.Link_Way) === way
+          && Number(r.feature?.Attributes?.Link_Box_ID) === Number(box.Feature_ID));
+        const pool = stamped.length ? stamped : reachable;
+
         let best = null;
-        for (const r of mains) {
-          if (!cameBy.has(r.id)) continue;
+        for (const r of pool) {
           for (let i = 1; i < r.geometry.length; i++) {
             const d = segDist(m.Geometry[0], r.geometry[i - 1], r.geometry[i]);
-            if (!best || d < best.d) best = { d, id: r.id };
+            /* Ties on the lower id, so one drawing gives one answer
+               however the rows came back from the database. */
+            if (!best || d < best.d
+              || (d === best.d && Number(r.id) < Number(best.id))) {
+              best = { d, id: r.id };
+            }
           }
         }
         if (!best) continue;

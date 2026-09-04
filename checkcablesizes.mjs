@@ -131,6 +131,68 @@ const F = [
   }
 }
 
+// 8. Downstream of a link box, where three runs of one circuit lie in
+//    one trench.
+//
+//    A box's outputs leave through the same dig and store overlapping
+//    routes \u2014 the separation on screen is display offset, not geometry.
+//    So a service tee'ing in touches more than one main, and `.find()`
+//    answered with whichever came first in the feature array. Plots on
+//    output 3 were reported as fed by output 2's cable, which is the
+//    wrong size on the jointing sheet and the wrong cable named in the
+//    field.
+//
+//    This is the fault the joint-feeder pick already had, and the
+//    drawnMainAt comment already describes: array order deciding a
+//    schedule. The meter says which output it is on \u2014 the build stamps
+//    Link_Box_ID and Link_Way on what it lays, and the meter carries the
+//    same \u2014 so the run on that output answers, and where nothing says,
+//    the NEAREST run does rather than the first one found.
+{
+  const out2 = { Feature_ID: 60, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [100, 0]],
+    Attributes: { Line_Type: "elec_main", Size: "95mm AL WF",
+      Circuit_ID: 1, Link_Box_ID: 9, Link_Way: 2 } };
+  /* Output 3's run, in the same trench, a few centimetres away \u2014 which
+     is what two cables in one dig actually are. Later in the array, so
+     "first found" cannot get it right by luck. */
+  const out3 = { Feature_ID: 61, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0.2], [100, 0.2]],
+    Attributes: { Line_Type: "elec_main", Size: "185mm AL WF",
+      Circuit_ID: 1, Link_Box_ID: 9, Link_Way: 3 } };
+  const svc48 = { Feature_ID: 62, Feature_Type: "line", Layer_Key: "electric",
+    Plot_ID: 48, Geometry: [[50, 0.2], [50, 6]],
+    Attributes: { Line_Type: "elec_service", Size: "35mm CNE" } };
+  const mtr48 = { Feature_ID: 63, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 48, Geometry: [[50, 6]],
+    Attributes: { Circuit_ID: 1, Link_Box_ID: 9, Link_Way: 3 } };
+
+  const world = [out2, out3, svc48, mtr48];
+  const r = sizesForPlot(world, 48);
+  if (r.in !== "185mm AL WF") {
+    fail(`plot 48 is on output 3 and its cable in reads ${r.in} \u2014 the `
+      + "other output's run, picked by array order");
+  }
+  if (r.out !== "35mm CNE") fail("the plot's own service size was lost");
+
+  /* And the joint at the tee, which the field form reads. */
+  const j = sizesAt(world, [50, 0.2], 0.35, { way: 3, box: 9 });
+  if (j.in !== "185mm AL WF") {
+    fail(`the joint on output 3 reports ${j.in} as the main it is cut into`);
+  }
+
+  /* With nothing saying which output, the nearest run answers rather
+     than the first in the list. The service leaves output 3's cable, so
+     output 3 is what it is joined to whatever the meter carries. */
+  const anon = [out2, out3,
+    { ...svc48, Attributes: { ...svc48.Attributes } },
+    { ...mtr48, Attributes: { Circuit_ID: 1 } }];
+  if (sizesForPlot(anon, 48).in !== "185mm AL WF") {
+    fail("with no output claim the service took the first main in the "
+      + "array rather than the one it actually meets");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Cable sizes are read off the design (in from the main, out to the meter).");
 process.exit(bad ? 1 : 0);

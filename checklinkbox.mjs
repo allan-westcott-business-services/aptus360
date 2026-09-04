@@ -382,6 +382,43 @@ if (!/claimed twice/.test(editor)) {
       fail("the shared trunk no longer keeps the circuit's colour");
     }
   }
+  /* ── Two outputs down one trench ──
+
+     Which is the ordinary case, not an edge one: a box's outputs leave
+     through the same dig, storing routes a few centimetres apart, and
+     the separation on screen is display offset. "The run nearest the
+     meter" is then a coin toss between them \u2014 and the meter stamped
+     ITS way onto whichever won, so output 2's cable came back wearing
+     output 3's colour and the service tee'd into it read as being on
+     the wrong feeder. The drawing already says which run is whose. */
+  {
+    const bx = { Feature_ID: 90, Feature_Role: "linkbox", Feature_Type: "point",
+      Layer_Key: "electric", Geometry: [[100, 0]],
+      Attributes: { Link_Ways: 4, Circuit_ID: 1, Span_Seq: 2,
+        Span_Anchor: [100, 0], Way_Colours: { 2: "#ea580c", 3: "#e11d48" } } };
+    const outRun = (fid, pts, way) => ({ Feature_ID: fid, Feature_Type: "line",
+      Layer_Key: "electric", Geometry: pts,
+      Attributes: { Line_Type: "elec_main", Circuit_ID: 1,
+        Link_Box_ID: 90, Link_Way: way } });
+    /* Plot 48 is on output 3, and sits on the side of the trench nearer
+       output 2's stored line \u2014 which is the whole difficulty. */
+    const m48 = { Feature_ID: 93, Feature_Role: "meter", Feature_Type: "point",
+      Layer_Key: "electric", Geometry: [[200, -6]],
+      Attributes: { Circuit_ID: 1, Link_Box_ID: 90, Link_Way: 3 } };
+    const shared = feederRenderPlan([bx,
+      outRun(91, [[100, 0], [200, 0]], 2),
+      outRun(92, [[100, 0], [200, 0.2]], 3),
+      m48], { chosenColours: { 1: "#2563eb" } });
+    if (shared.get(91)?.colour !== "#ea580c") {
+      fail("output 2's cable wears another output's colour where the two "
+        + "share a trench \u2014 a service tee'd into it reads as on the wrong "
+        + "feeder");
+    }
+    if (shared.get(92)?.colour !== "#e11d48") {
+      fail("output 3's own run lost its colour");
+    }
+  }
+
   const ink = (fid) => plan.get(fid)?.colour ?? null;
   if (ink(2) !== "#2563eb") fail("the trunk no longer wears the circuit's colour");
   if (ink(3) !== "#e11d48") fail("a built output run does not wear its output's colour");

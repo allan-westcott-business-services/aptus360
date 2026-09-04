@@ -24,6 +24,7 @@ import {
   runsThrough,
 } from "./src/features/gis/spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes } from "./src/features/gis/feeder.js";
+import { planFeederPoints } from "./src/features/gis/feederPoints.js";
 import { labelOf } from "./src/features/gis/mainsCallOff.js";
 import { buildGraph } from "./src/features/gis/electric.js";
 
@@ -965,20 +966,52 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
   if (!/Feature_Role: "feederpoint"/.test(canvas)) {
     fail("the build creates no feeder points");
   }
-  /* A hand-placed feeder point adopted onto a planned position keeps
-     its own name and cable \u2014 the build writes its sequence and kind,
-     nothing else of identity. */
-  if (!/Span_Seq: num, Span_Kind: nd\.kind/.test(canvas)) {
-    fail("the build no longer records which position on the circuit a point is");
-  }
+  /* ── And what the build may rename ──
 
-  /* And the leftover pass, which renamed anything the walk did not ask
-     for. Sequence only now. */
-  if (/Attributes: \{ \.\.\.f\.Attributes, Span_Seq: seq, Span_Label: label \}/.test(canvas)) {
-    fail("the build still renames nodes the walk did not ask for");
+     A span node is not the build's to rename; a feeder point and a
+     link box are, because for them the name IS the sequence. "Point
+     A3" is not a name somebody chose, it is where the point stands on
+     its circuit, and the editor says as much on the panel: not
+     editable, the number is its place in the sequence. Leaving it
+     behind when the sequence moves is the fault the other way round —
+     a box resequenced to 1 and still called A10 in every report.
+
+     These were two regexes over the canvas, matching the sequencing
+     pass where it used to be written out inline. It is
+     planFeederPoints now, so this drives it: a check matching source
+     text proves the text has not moved, which is not the rule. */
+  const seqPlan = planFeederPoints({
+    nodes: [{ point: [0, 0], kind: "origin" }, { point: [100, 0], kind: "junction" }],
+    existing: [
+      { Feature_ID: 41, Feature_Role: "feederpoint", Feature_Type: "point",
+        Layer_Key: "electric", Label: "Point A9", Geometry: [[100, 0]],
+        Attributes: { Circuit_ID: 1, Span_Seq: 9, Span_Label: "A9",
+          Span_Anchor: [100, 0], Manual_VD_Cable_Size_ID: 77 } },
+      /* A span node standing at the same junction. The build stopped
+         adopting these when feeder points arrived, and must not have
+         started again by the back door. */
+      { Feature_ID: 42, Feature_Role: "spannode", Feature_Type: "point",
+        Layer_Key: "trench", Label: "Point A28", Geometry: [[100, 0]],
+        Attributes: { Span_Seq: 28, Span_Label: "A28", Span_Anchor: [100, 0] } },
+    ],
+    circuit: { id: 1, name: "Circuit 1", letter: "A" },
+  });
+  const seqWrite = (seqPlan.adopt || []).find((w) => w.Feature_ID === 41);
+  if (!seqWrite || String(seqWrite.Attributes.Span_Seq) !== "1") {
+    fail("the build no longer records which position on the circuit a point is");
+  } else {
+    if (seqWrite.Attributes.Span_Label !== "A1") {
+      fail("a point resequenced to 1 is still called " +
+        `${seqWrite.Attributes.Span_Label} \u2014 every report names it that`);
+    }
+    /* Its cable is its own: the sequence is all the build writes of it. */
+    if (seqWrite.Attributes.Manual_VD_Cable_Size_ID !== 77) {
+      fail("adopting a point took its hand-set cable off it");
+    }
   }
-  if (!/Attributes: \{ \.\.\.f\.Attributes, Span_Seq: seq \}/.test(canvas)) {
-    fail("the leftover pass no longer records a position on the circuit");
+  if ((seqPlan.adopt || []).some((w) => w.Feature_ID === 42)
+    || (seqPlan.remove || []).includes(42)) {
+    fail("the build still adopts span nodes into circuits");
   }
 
   /* The origin is the one node the build may name, because it has no

@@ -1,8 +1,22 @@
 # Aptus360 — handover notes
 
-Migrations run to **0195**. **0196 is written and not yet run** — see the note in it.
+The migrations folder now runs to **0203**. The line here said 0195 and
+0196-not-yet-run, which was true when it was written; 0196 to 0203 have
+landed since, and **0198 is absent** — `checkdevelopers` reads it and
+throws. Whether 0196 onwards have been pasted into Supabase is not
+something this file can know, since there is no migration runner: check
+the SQL editor's history before assuming the schema matches the folder.
 
-**Last session was a test-suite session**, not a feature one. `npm test`
+**Last session was a GIS session.** Three faults in Build LV Network
+and the link box are fixed and written up as recurring faults 28, 29
+and 30: cable size overrides lost on every rebuild, a link box's label
+and sequence not following the walk, and a `Span_Anchor` left behind
+when its point is dragged. Two modules came out of `GISCanvasPage.jsx`
+in the process — `feederPoints.js` and `anchorFollow.js` — because in
+both cases the rule could not be tested where it lived. Three checks
+were added. Nothing in the schema changed; no migration was written.
+
+**The session before was a test-suite session**, not a feature one. `npm test`
 now runs — it did not before, and this file used to record that as a
 standing fact. See **Testing** for what changed and what still fails.
 Four faults it uncovered are fixed: the `reducer` feature role (0187),
@@ -87,11 +101,21 @@ everything** rather than stopping at the first red one. Individual
 scripts still work: `node checkspannodes.mjs`, or
 `node checkall.mjs --only span` for a subset.
 
-As of this session: **88 of 93 pass in about 45 seconds.** The five
-that don't are listed at the foot of this section. It said three, and
-that was true when it was written — two more have gone red since, both
-reporting something real. A handover that lies about the suite costs
-the same as one that lies about the schema.
+As of this session: **99 of 108 pass in about 40 seconds**, with three
+of those new — `checkoverridecarry`, `checklinkboxseq` and
+`checkanchormove`. It said 88 of 93 and five failing; the count moved
+because three checks were added and because the numbers below have to
+be re-counted rather than carried forward. The nine that don't pass are
+listed at the foot of this section, and **none of them are new** — the
+five recorded last time, plus `checkdevelopers`, `checkstatusrules` and
+`checkvehicles`, which had already gone red before this session started.
+A handover that lies about the suite costs the same as one that lies
+about the schema.
+
+Note also that the suite needs `npm install` first. Four of the nine
+"failures" were jsdom crashes on a fresh clone with no `node_modules`,
+which is a different thing from a check reporting a fault and reads
+identically in the summary line.
 
 Run these after touching the relevant area. They exist because each one
 caught a fault that had already shipped at least once.
@@ -104,6 +128,10 @@ caught a fault that had already shipped at least once.
 | `node checkhr.mjs` | Mounts all sixteen HR modules; icons, modals, sidebar bridge |
 | `node checklazy.mjs` | Lazy pages recover from a deploy: one reload on a stale chunk, none on anything else |
 | `node checkspannodes.mjs` | Span node origins, and which node a cable run feeds |
+| `node checkoverridecarry.mjs` | A hand-set cable size survives Build LV Network |
+| `node checklinkboxseq.mjs` | Which point stands at each stop on a circuit, and what it is called |
+| `node checkanchormove.mjs` | Whose `Span_Anchor` follows the point when it is dragged |
+| `node checkplaceseq.mjs` | A newly placed point takes the number of the place it stands |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -123,8 +151,9 @@ why a seed cascade rejected something. It has nothing to assert without
 an argument. `checkall.mjs` names it, and the reason, in
 `NOT_A_SUITE_CHECK`.
 
-`checkorder.py` currently reports **four** hits — `missingMetersFor`,
-`rollback`, `addFeature` and `zoomToPoints`. All four are false
+`checkorder.py` currently reports **three** hits — `rollback`,
+`addFeature` and `zoomToPoints`. It said four; `missingMetersFor`
+dropped out when the feeder-point sequencing moved to its own module. All four are false
 positives, and for the same reason: each is referenced inside a
 `function` body — `onDown`, `placeAt` — that only runs on user action,
 by which time the `const` is initialised. It exits 0. Don't "fix" them.
@@ -158,7 +187,7 @@ left out has to say why.
 difference matters: a check reporting "3 problem(s)" looked at
 something, and one that throws never got to look.
 
-### The five that still fail
+### The nine that still fail
 
 Two are **migrations that were pasted into Supabase by hand and never
 committed.** The folder has 110 files across 0001–0195 and eighty-five
@@ -182,7 +211,15 @@ they no longer take the rest of the suite down with them. That pattern —
 `try` the read, `fail("... is missing")`, skip the section — is the one
 to copy for any check that reads a file it does not own.
 
-Three more, none of them about a missing file:
+`checkdevelopers.mjs` fails the same way and was not recorded: it needs
+`0198_developer_organisation_branch.sql`, and it still THROWS rather
+than degrading to a named failure, so it takes its own report down. It
+wants the same `try`/`fail`/skip treatment as the two above — left
+alone this session because the fix is a check nobody has read against a
+migration nobody has recovered, and guessing at either is how the two
+above got their warning.
+
+Six more, none of them about a missing file:
 
 - `checkorphans.mjs` — `src/api/calloffs-API.js`,
   `src/features/poc/forms/openForm.js` and
@@ -198,6 +235,12 @@ Three more, none of them about a missing file:
   wearing a different hat.
 - `checkaslaidplan.mjs` — the re-take refuses without saying why, which
   is the fault the check was written for.
+- `checkstatusrules.mjs` — "there is no bulk status setter".
+- `checkvehicles.mjs` — no warn expiry badge; sample data or urgency.
+
+The last two were red before this session and are not described
+anywhere. Neither was touched here; both are reporting something and
+neither has been read.
 
 And `checkbuttons.py`, which runs only under `npm run check`, is 30
 house-style deviations across the admin screens and two GIS panels. Cosmetic, pre-existing, and never
@@ -491,6 +534,226 @@ check or write the exemption down here.
     of them given what it needs to read it.** When adding a second way
     to look something up, put it beside the first rather than behind it.
 
+28. **A key made of the thing the operation changes.** Build LV Network
+    deletes its generated mains and lays them again, so a hand-set cable
+    size has to be carried across the gap. It was carried in a map keyed
+    on the run's GEOMETRY — every vertex to two decimal places — and put
+    back only onto a new run laid along exactly the same points.
+
+    Geometry is precisely what a rebuild changes. A plot added breaks
+    the run somewhere new, a trench nudged moves an interior vertex, and
+    either way the key no longer matches: the override is dropped and
+    the run comes back on the build's default. Every drawing anybody was
+    working on lost its sizes on every build, and the levels check moved
+    with them.
+
+    The carry is keyed on where the run ARRIVES now, per circuit —
+    `carriedOverrides` / `carriedOverrideFor` in `feeder.js`. A section
+    is walked outward from the origin, so its last point is the feeder
+    end point it feeds, and that stands on a trench junction the
+    interior of the run can be redrawn around. A run that genuinely
+    breaks somewhere new arrives somewhere new and starts on the
+    default, which is the honest answer for a length whose load has just
+    changed.
+
+    Worth separating from fault 13. Nothing here was two records
+    drifting: there was one record, correctly written, filed under a
+    name that stopped existing. **When something has to survive an
+    operation, key it on what the operation does not touch** — and if
+    nothing about the thing is stable, that is worth knowing before
+    writing the carry rather than after.
+
+    This one also carries fault 22's signature and its own note about
+    it: the previous version read `Manual_Gas_Pipe_Size_ID` on an
+    electric cable, so the map was always empty and nothing read it
+    back. The comment above it said, correctly, that losing an override
+    is the one thing a rebuild must not do. A paragraph describing the
+    intent is not evidence of the behaviour.
+
+29. **One point, two positions, and only one of them dragged.** A
+    `Span_Anchor` means opposite things on the two kinds of point that
+    carry it, and the drag knew about neither.
+
+    A span node and a feeder point are MARKERS: dragged clear of the
+    trench so a label can be read, with the anchor holding the place on
+    the dig everything measures to. Their anchor must not follow — and
+    does not, and each has a handle for correcting it.
+
+    A link box is not a marker. It is a chamber with fuses in it, and
+    its anchor is where it stands. It has no handle, so nothing could
+    move its anchor at all: dragging a box left the anchor behind, and
+    every reader went on describing where the box used to be. The joint
+    pass suppressed the joint at the old spot, the stubs drew to the old
+    spot, and the next build matched its walk against the old spot,
+    missed, and made a generated feeder point standing there.
+
+    That last symptom is the same stray duplicate that fault 30 covers,
+    arriving by a different route — which is the thing to notice.
+    **Two mechanisms producing one symptom means fixing either one
+    leaves it apparently half-fixed**, and the drawing looks the same
+    whichever half is missing.
+
+    The rule is `anchorFollow.js`, in one place because the drag is four
+    places — capture, frame update, save, undo — and all four have to
+    agree. The save goes through `bulkUpdateFeatures` rather than
+    `moveFeatures` deliberately: under `VITE_USE_MOCKS`, `moveFeatures`
+    applies `Geometry` alone, so an anchor sent that way would work
+    against the API and do nothing in the fixtures. That is fault 22
+    waiting to happen in the one environment where it would not be
+    noticed.
+
+30. **A name that does not follow the number it is a name for.**
+    Adoption in Build LV Network wrote `Span_Seq` and `Span_Kind` and
+    not `Span_Label`. For a span node that was right and deliberate —
+    its name is its own, site-wide, and the build renaming it is the
+    fault recorded at the head of `checkspannodes`. For a feeder point
+    or a link box it is the opposite: the name IS the sequence. "Point
+    A3" is where the point stands on its circuit, and the editor says so
+    on the panel — not editable, the number is its place in the order.
+
+    So a box placed after nine feeder points takes A10 (max plus one,
+    all placement can know), gets resequenced to 1 by the next build,
+    and goes on being called A10 in the circuit report, the call-off
+    spans and the levels table. A feeder point had it worse, carrying
+    the stale code in its own `Label` too.
+
+    The same pass had two more faults in it. A box placed in open
+    ground — no cable under the click, cables drawn to it afterwards —
+    has no circuit and no sequence, so the build never considered it and
+    made a generated point on top of it. And once circuitless boxes ARE
+    considered, nothing stopped the second circuit adopting the same
+    box, because each circuit is planned against the drawing as it was
+    read: hence the shared claim set.
+
+    And placement was writing max-plus-one into that same field, which
+    is the fault stated at its plainest: **a count of how many points
+    exist, written where the position on the run goes.** A box put on
+    the cable just past the POC — the first stop there is — came out
+    A10 on a circuit with nine points, so the drawing read A0, A10, A2,
+    A3. The two agree only if every point is placed in order outward
+    and none is ever added in the middle, which is not how anybody
+    draws. `planInsertion` measures how far along the cable the new
+    point stands, drops it into that slot, and moves the ones beyond it
+    up. It does NOT re-derive the existing order — that came from the
+    build's walk, and a second derivation of it here would be two
+    writers of one fact. Distance is along the run and projected onto
+    the segment, not to the nearest corner: a box goes where the
+    chamber goes, which is usually mid-span.
+
+    The slot is decided by which points lie **on the way to** the new
+    one, not by which have a smaller distance. Those are different
+    things on a branched circuit, and every circuit on an estate is
+    branched: the build walks one branch to its end before starting the
+    next, so A2 can be 150 m down one branch while A3 is 60 m up
+    another, and the numbers are not in distance order across the
+    drawing. The first cut compared distances and put a point 70 m up
+    the second branch at A2, ahead of the A3 the cable passes to reach
+    it. P is on the way to N when the distance out to P plus the
+    distance on from P to N is the distance out to N — within a metre,
+    since both go through projections onto segments.
+
+    And a fourth, found by somebody looking at the drawing after the
+    other three were fixed: **the box never drew its code at all.** The
+    pass that draws span codes takes span nodes and feeder points, and
+    a link box is neither, so the one stop a designer can point at on
+    site was the one stop the drawing would not name. The data was
+    correct and invisible, which is indistinguishable from the data
+    being wrong. It draws in the box's own branch — widening that pass
+    would put its circle over the square.
+
+    The same was true of its **levels**, and worse, because a figure is
+    what the design is worked to. The trace already stopped at a box —
+    the levels map is keyed on the leg's `stopId` and the box's id was
+    in it — so the volt drop and loop impedance were computed, correct,
+    and drawn on every stop except the one a designer can point at on
+    site. A box showing nothing reads as being outside the design.
+
+    The pass takes link boxes now, with the round node symbol guarded
+    behind `isBox` so the square and its fuse numbers stand. Widened
+    rather than copied into the box's own branch: two pieces of code
+    drawing one plate would drift the first time either was touched.
+    `levelsKey` gained the role too, or a box moved along the run keeps
+    the figures it had at the old place — the check does not re-run,
+    because nothing it watches has changed.
+
+    Worth keeping as the note on the whole group: three of these were
+    fixed against the checks and the fourth was only ever going to be
+    found by opening a drawing. **A record being right is not the same
+    as it being readable**, and a fix that stops at the database is
+    half a fix wherever a person is meant to read the answer.
+
+    The rules are `feederPoints.js` now. They were ninety lines inside
+    `buildLvNetwork`, a function that deletes rows, calls the database
+    and reports progress, so nothing could drive them and **every fault
+    in them was found on a live drawing.** Two checks had pinned them by
+    matching source text over `GISCanvasPage.jsx`; both now drive
+    `planFeederPoints`, because a regex proves the text has not moved,
+    which is not the rule.
+
+31. **Array order deciding a schedule, for the third time.** A link
+    box's outputs are three runs of ONE circuit lying in one trench:
+    they store overlapping routes, and the separation on screen is
+    display offset, not geometry. So a service tee'ing in touches more
+    than one main and something has to choose which it came off.
+
+    `sizesForPlot` and `sizesAt` did not choose — `.find()` answered
+    with whichever run came first in the feature array. Plots on output
+    3 were reported as fed by output 2's cable: the wrong size on the
+    jointing sheet and the wrong cable named to the gang, on a drawing
+    that looked right.
+
+    Worth noting how well-signposted this was. `drawnMainAt` carries a
+    comment describing exactly this ("a snap measured against the stored
+    geometry is a coin toss between them"), and the joint-feeder pick in
+    the move handler was already fixed for it ("three matches, no
+    winner"). Two places had been found and corrected and the third was
+    never looked for. **When a fault is about a SHAPE in the data —
+    several features sharing a route — fixing the instance is not
+    fixing the fault; every reader that resolves that shape by geometry
+    has it.** The readers of "which main is this on" are worth listing
+    the next time one of these turns up.
+
+    The pick is the output claim first (the build stamps `Link_Box_ID`
+    and `Link_Way` on the runs it lays, and the meter carries the same
+    pair), then the NEAREST run, ties on the lower id. Nearest is the
+    part that works on every drawing, including ones from before the
+    stamps existed.
+
+**Length_m has two writers and one meaning too few — OPEN.** The
+attribute is maintained by `gis_length_trg`, a database trigger that
+recomputes it from the geometry (see the comments in `0050` and
+`0056`), AND it is written by hand from the Feature Editor's "Measured
+length" field, which exists precisely so a run that rises through ducts
+can say it is longer than it is drawn. Those are opposite meanings for
+one column, and neither writer knows about the other.
+
+The visible symptom is a line label reading "12.4 m entered" after the
+trench has been re-routed — `lengthLabel` prefers `Length_m` and marks
+it as entered, so a trigger-written figure is indistinguishable from a
+measurement somebody took, and a stale one is indistinguishable from a
+current one.
+
+**The trigger's body is not in the repo** — it is one of the
+eighty-five absent migrations — so which of these is happening cannot
+be settled from the folder:
+
+- the trigger fires on geometry change and the browser simply does not
+  re-read (the move handler saves and does not reload), so the value is
+  right in the database and stale on screen; or
+- the trigger does not fire on the paths a re-route uses, and the
+  stored figure really is stale; or
+- the trigger fires and silently destroys hand-entered measurements
+  whenever anything is dragged.
+
+The fix differs completely between the three, and the third is a data
+loss nobody has reported yet. **Get the trigger out of Supabase before
+touching this** (`pg_dump --schema-only`, or the dashboard's function
+list) — this is the same instruction as recovering 0138 and 0163 and
+for the same reason. The likely end state is two attributes rather than
+one, a derived drawn length and a `Measured_Length_m` nobody but a
+person writes, but splitting them means deciding what every existing
+`Length_m` value MEANS, and that cannot be guessed per row.
+
 **A seed is three points.** The symbol, the boundary position, then
 where the service trench ends — and only then its meters. The boundary
 and the end of the dig were one point until 26 Aug, which made every
@@ -659,11 +922,18 @@ plus generic table editors.
      screens. Nothing in it is built.
    - **Equipment absorbed Generator Hire.** Says so on the placeholder.
 
-5. **`GISCanvasPage.jsx` is 12,169 lines** and 806 kB built — the
+5. **`GISCanvasPage.jsx` is 23,779 lines** and 685 kB built — the
    largest chunk in the app by a wide margin, and where most new work
    lands. Not a bug, but it is now the biggest structural risk in the
    repo. The extracted modules beside it (`feeder.js`, `gasNetwork.js`,
-   `routing.js`) are the pattern to keep pulling on.
+   `routing.js`, and now `feederPoints.js` and `anchorFollow.js`) are
+   the pattern to keep pulling on.
+
+   The line count above said 12,169 and was about half the truth. Worth
+   reading as a measure of how fast this file grows rather than as a
+   figure to trust: check it before quoting it. Faults 29 and 30 are
+   both cases of a rule that could not be tested because of where it
+   lived, so the argument for pulling on this is not tidiness.
 
 6. **Contract Designs tab** is still a placeholder pending a modelling
    decision: `CD_*` columns on `Project_Scope` versus a separate

@@ -1524,9 +1524,33 @@ export function linkWayAssignments(features = [], circuitId) {
       plotByNumber.set(Number(f.Plot_ID), Number(f.Feature_ID));
     }
   }
+  /* ── Which boxes are this circuit's ──
+
+     A box has no circuit of its own. It is on the circuit of the plots
+     fed THROUGH it, and the assignment says which those are — so a box
+     that has never been near a cable is a complete statement of intent
+     once plots are lassoed onto its outputs, and the ways gathered
+     below decide membership.
+
+     This required `Circuit_ID` and `Span_Seq`, both of which placement
+     can only write when the box is clicked onto an existing electric
+     main. Before Build LV Network there are no mains, only trenches, so
+     a box snapped to the dig had neither and this pass could not see
+     it: the build routed as though it were not there. That forced the
+     two-pass shuffle — build a network nobody wants so the box has a
+     cable to be clicked onto, place it, lasso, build again.
+
+     `Span_Seq` is gone from the test entirely. It was a proxy for "on a
+     run" and did no routing work; the sequence is the build's to assign
+     and planFeederPoints assigns it, stamping the circuit on at the
+     same time.
+
+     A box that DOES name a circuit is still only that circuit's.
+     Reading a box with no circuit must not mean reading every box on
+     the site into whichever build runs first. */
   const boxes = features.filter((f) => f.Feature_Role === "linkbox"
-    && f.Attributes?.Span_Seq != null
-    && Number(f.Attributes?.Circuit_ID) === Number(circuitId));
+    && (f.Attributes?.Circuit_ID == null
+      || Number(f.Attributes.Circuit_ID) === Number(circuitId)));
   const out = [];
   const assignedSeedIds = new Set();
   const assignedMeterIds = new Set();

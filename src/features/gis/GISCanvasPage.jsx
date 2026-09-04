@@ -9256,6 +9256,34 @@ export default function GISCanvasPage() {
         }
         if (near) hit.q = [near.at[0], near.at[1]];
       }
+      /* ── Before any cable exists, the dig is what it stands on ──
+
+         A box is a chamber in the ground. Placed before Build LV
+         Network — which is the order to work in, because the build can
+         then lay the input and each output in one pass — there is no
+         cable to snap to, only the trench the cable will run along. It
+         used to be left exactly where the click landed with "not on a
+         cable yet", so a box put down by eye sat beside the dig and the
+         router measured its trunk to whichever node happened to be
+         nearest.
+
+         The cable wins where there is one: a box being added to a
+         network already built belongs in the run, not merely near it. */
+      if (!hit) {
+        const reachM = Math.max(0.5, SNAP_PX / (view.scale || 1));
+        let onDig = null;
+        for (const t of visible) {
+          if (t.Feature_Type !== "line") continue;
+          if (!isTrenchType(t.Attributes?.Line_Type, lineTypes)) continue;
+          const r = nearestOnPolyline(point, t.Geometry || []);
+          if (r && r.d <= reachM && (!onDig || r.d < onDig.d)) onDig = { ...r, line: t };
+        }
+        if (onDig?.q) {
+          point = [onDig.q[0], onDig.q[1]];
+          note = " on the trench";
+        }
+      }
+
       let angle = null;
       if (hit) {
         point = hit.q;
@@ -9266,8 +9294,9 @@ export default function GISCanvasPage() {
         if (a && b && Math.hypot(b[0] - a[0], b[1] - a[1])) {
           angle = (Math.atan2(b[1] - a[1], b[0] - a[0]) * 180) / Math.PI;
         }
-      } else {
-        note = " \u2014 not on a cable yet, draw the feeders to it";
+      } else if (!note) {
+        note = " \u2014 not on a trench or a cable, so nothing will route "
+          + "through it yet";
       }
       const count = features.filter((f) => f.Feature_Role === "linkbox").length + 1;
       /* ── A link box on a run IS a feeder end point ──
@@ -10043,18 +10072,43 @@ export default function GISCanvasPage() {
     setTool("select"); setDraft([]);
     const box = features.find((x) => Number(x.Feature_ID) === Number(armed?.boxId));
     if (!box) { setError("That link box is no longer on the drawing."); return; }
-    const cid = box.Attributes?.Circuit_ID;
-    if (cid == null) {
-      setError("That link box is not on a circuit's run yet \u2014 place it on "
-        + "the cable, or rebuild, then lasso.");
-      return;
-    }
     const seeds = metredSeedsInside(features, ring, pointInPolygon);
     const supplies = metredSuppliesInside(features, ring, pointInPolygon);
     const meters = metersOfSeeds(features, [...seeds, ...supplies]);
     if (!meters.length) {
       setError("No plot seeds with an electric meter, and no supplies, "
         + "inside that outline.");
+      return;
+    }
+
+    /* ── The box takes the circuit of what is lassoed onto it ──
+
+       This refused outright where the box had no circuit yet: "place it
+       on the cable, or rebuild, then lasso". Which meant a network had
+       to be built before the box could be assigned, and built again
+       afterwards to route through it \u2014 the first build laying a design
+       nobody wanted, purely so the box had a cable to be clicked onto.
+
+       A box has no circuit of its own. It is on the circuit of the
+       plots fed through it, so the lasso is the statement, and the box
+       takes what it is given. Where it already names one, that still
+       governs: an output feeds a share of its own circuit, and a lasso
+       reaching into another is the mistake it always was. */
+    const claimed = box.Attributes?.Circuit_ID ?? null;
+    const inRing = [...new Set(meters
+      .map((m) => m.Attributes?.Circuit_ID)
+      .filter((x) => x != null)
+      .map(Number))];
+    if (claimed == null && inRing.length > 1) {
+      setError("That outline covers plots on more than one circuit \u2014 an "
+        + "output feeds a share of ONE circuit, so lasso the plots of the "
+        + "circuit this box is on.");
+      return;
+    }
+    const cid = claimed ?? inRing[0] ?? null;
+    if (cid == null) {
+      setError("Nothing in that outline is on a circuit yet \u2014 link the "
+        + "plots to a circuit first, then lasso them onto an output.");
       return;
     }
     const mine = meters.filter((m) =>
@@ -10067,16 +10121,42 @@ export default function GISCanvasPage() {
     }
     setBusy("circuit");
     try {
-      await bulkUpdateFeatures(projectId, mine.map((m) => ({
+      const rows = mine.map((m) => ({
         Feature_ID: m.Feature_ID,
         Attributes: { ...m.Attributes,
           Link_Box_ID: Number(box.Feature_ID), Link_Way: armed.way },
-      })));
+      }));
+
+      /* The box records the circuit it has just been told it is on, so
+         the next output's lasso is judged against the same circuit and
+         the build reads one answer rather than deriving it again. Its
+         sequence is NOT written here: where the box stands in the order
+         is the walk's to say, and Build LV Network says it.
+
+         Named from a meter rather than looked up, because the meters
+         carry the circuit's name and letter already and a second
+         lookup is a second thing to keep in step. */
+      if (claimed == null) {
+        const from = mine[0]?.Attributes || {};
+        rows.push({
+          Feature_ID: box.Feature_ID,
+          Attributes: { ...box.Attributes,
+            Circuit_ID: Number(cid),
+            ...(from.Circuit_Name != null ? { Circuit_Name: from.Circuit_Name } : {}),
+            ...(from.Circuit_Letter != null ? { Circuit_Letter: from.Circuit_Letter } : {}),
+          },
+        });
+      }
+
+      await bulkUpdateFeatures(projectId, rows);
       await load(projectId);
       setStatus(`${mine.length} meter(s) onto ${box.Label || "the link box"} `
         + `output ${armed.way}`
         + (foreign ? ` \u00b7 ${foreign} on other circuits left alone` : "")
-        + " \u2014 run Build LV Network to re-route");
+        + (claimed == null
+          ? " \u2014 the box is on that circuit now. Build LV Network lays the"
+            + " input and each output"
+          : " \u2014 run Build LV Network to re-route"));
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }

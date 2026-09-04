@@ -327,6 +327,109 @@ if (!/claimed twice/.test(editor)) {
   }
 }
 
+/* ── A box placed before the build, which is the order to work in ──
+
+   The two-pass shuffle this replaces: build, place the box on the
+   cable, lasso plots onto its outputs, build AGAIN. The first build
+   lays a network nobody wants, only so the box has a cable to be
+   clicked onto \u2014 and the box took its circuit from that cable, which
+   is why it needed one.
+
+   A box has no circuit of its own. It is on the circuit of the plots
+   fed through it, and the assignment says which those are. So a box
+   snapped to a bare trench with plots lassoed onto its outputs is a
+   complete statement of intent, and one Build LV Network can lay the
+   trunk to its input and a run from each output.
+
+   Driven through circuitBuildParts with a box carrying NO Circuit_ID
+   and NO Span_Seq \u2014 exactly what placement writes when there is no
+   cable under the click. */
+{
+  let id = 7500;
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  const trench = (pts, key = "trench") => ({
+    Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
+    Geometry: pts, Attributes: { Line_Type: key },
+  });
+  const poc = { Feature_ID: id++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Label: "POC", Geometry: [[0, 0]], Attributes: {} };
+  const mkPlot = (n, at) => ({ Feature_ID: id++, Feature_Role: "plot",
+    Feature_Type: "point", Plot_ID: n, Geometry: [at], Attributes: {} });
+  const q1 = mkPlot(1, [160, 10]);
+  const q2 = mkPlot(2, [160, -10]);
+  /* No Circuit_ID, no Span_Seq: it is standing on a trench, not a
+     cable, because no cable has been laid yet. */
+  const bare = { Feature_ID: id++, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Label: "Link Box 1", Geometry: [[100, 0]],
+    Attributes: { Link_Ways: 4, Way_Fuse_A: {}, Span_Anchor: [100, 0] } };
+  const meter = (pl, at, way) => ({ Feature_ID: id++, Feature_Role: "meter",
+    Feature_Type: "point", Layer_Key: "electric", Plot_ID: pl.Plot_ID,
+    Geometry: [at],
+    Attributes: { Seed_Feature_ID: pl.Feature_ID, Circuit_ID: 1,
+      Link_Box_ID: bare.Feature_ID, Link_Way: way } });
+  const world = [poc, q1, q2, bare,
+    meter(q1, [160, 10], 1),
+    meter(q2, [160, -10], 2),
+    trench([[0, 0], [100, 0]]),
+    trench([[100, 0], [160, 0], [200, 0]]),
+    trench([[160, 0], [160, 10]], "service_trench"),
+    trench([[160, 0], [160, -10]], "service_trench")];
+
+  const parts = circuitBuildParts(world, {
+    lineTypes, circuitId: 1,
+    plotById: () => ({ kva_load: 3 }), nrsById: () => null,
+    seedIds: new Set([q1.Feature_ID, q2.Feature_ID]),
+    meterIds: new Set(),
+  });
+  const at = (sec, x, y) => sec.pts.some((q) => Math.hypot(q[0] - x, q[1] - y) < 0.5);
+  const of = (via) => parts.filter((x) => x.via === via && !x.error);
+
+  if (parts.some((x) => x.error)) {
+    fail(`a part refused: ${parts.find((x) => x.error).error}`);
+  }
+  const trunk = of("trunk")[0];
+  if (!trunk) {
+    fail("a box placed before the build lays no trunk \u2014 the assignment "
+      + "is not read unless the box already sits on a cable, which is the "
+      + "two-pass shuffle");
+  } else {
+    if (!trunk.sections.some((sec) => at(sec, 0, 0) && at(sec, 100, 0))) {
+      fail("the trunk does not run origin \u2192 box");
+    }
+    const tk = trunk.sections.reduce((m, sec) => m + (sec.kva || 0), 0);
+    if (Math.abs(tk - 6) > 0.01) {
+      fail(`the trunk carries ${tk} kVA, expected the outputs' total of 6`);
+    }
+  }
+  for (const [via, px, py] of [["way 1", 160, 10], ["way 2", 160, -10]]) {
+    const pt = of(via)[0];
+    if (!pt) { fail(`no ${via} part from a box placed before the build`); continue; }
+    if (!pt.sections.some((sec) => at(sec, 100, 0))) {
+      fail(`${via} does not start at the box`);
+    }
+    const kva = pt.sections.reduce((m, sec) => m + (sec.kva || 0), 0);
+    if (Math.abs(kva - 3) > 0.01) {
+      fail(`${via} carries ${kva} kVA, expected its own plot's 3`);
+    }
+  }
+
+  /* Another circuit's box is still another circuit's. Reading a box
+     with no circuit must not mean reading every box on the site. */
+  const theirs = { ...bare, Feature_ID: 9999,
+    Attributes: { ...bare.Attributes, Circuit_ID: 2 } };
+  const mine = circuitBuildParts([...world, theirs], {
+    lineTypes, circuitId: 1,
+    plotById: () => ({ kva_load: 3 }), nrsById: () => null,
+    seedIds: new Set([q1.Feature_ID, q2.Feature_ID]), meterIds: new Set(),
+  });
+  if (mine.filter((x) => x.via === "trunk").length !== 1) {
+    fail("a box belonging to another circuit was built into this one");
+  }
+}
+
 /* ── Each output can wear its own colour ──
 
    Telling a split's runs apart is the point of colouring them. A
@@ -507,6 +610,34 @@ if (!/claimed twice/.test(editor)) {
   }
   if (!kindsAt(after, 100, -40).includes("bottleend")) {
     fail("a run stopping dead is no longer sealed");
+  }
+}
+
+/* ── Placed on the dig, and the lasso says whose circuit it is ──
+
+   The two halves of the one-pass order that live in the canvas: a box
+   put down before any cable snaps to the TRENCH (it is a chamber in the
+   ground, and before Build LV Network the trench is all there is), and
+   the lasso no longer refuses a box with no circuit \u2014 it gives it one,
+   from the plots being assigned. */
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/isTrenchType\(t\.Attributes\?\.Line_Type, lineTypes\)\) continue;\n\s*const r = nearestOnPolyline/.test(src)) {
+    fail("a box placed before the build no longer snaps to the trench, so "
+      + "it sits beside the dig it is supposed to stand in");
+  }
+  if (/That link box is not on a circuit's run yet/.test(src)) {
+    fail("the lasso still refuses a box with no circuit \u2014 which forces a "
+      + "build before the box can be assigned, and another after");
+  }
+  if (!/const claimed = box\.Attributes\?\.Circuit_ID \?\? null;/.test(src)) {
+    fail("the lasso does not take the box's circuit from what is lassoed");
+  }
+  /* And a lasso spanning two circuits is still refused: an output feeds
+     a share of ONE circuit, and picking one of two would be a guess
+     about a schedule. */
+  if (!/covers plots on more than one circuit/.test(src)) {
+    fail("a lasso across two circuits silently picks one of them");
   }
 }
 

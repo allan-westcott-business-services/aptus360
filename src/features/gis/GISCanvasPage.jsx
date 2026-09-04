@@ -2046,6 +2046,7 @@ export default function GISCanvasPage() {
      hidden by hand, and hiding a layer afterwards silently ended the
      isolation. Kept apart, they compose, and either can be changed
      without disturbing the other. */
+  const [heldHidden, setHeldHidden] = useState([]);
   const [isolatedCircuit, setIsolatedCircuit] = useState(null);
 
   /* Which circuit an electric service cable belongs to.
@@ -2530,10 +2531,8 @@ export default function GISCanvasPage() {
        So anything already hidden and still kept stays hidden: pressing
        a utility never turns a layer on. Their own H still puts them
        back, which is the toggle's job. */
-    setHidden((prev) => {
-      const held = new Set(prev.filter((k) => keep.has(k)));
-      return [...new Set([...[...all].filter((k) => !keep.has(k)), ...held])];
-    });
+    const held = heldHiddenRef.current.filter((k) => keep.has(k));
+    setHidden([...new Set([...[...all].filter((k) => !keep.has(k)), ...held])]);
   }, [features, classKeys]);
 
   /* S isolates, and more than one can be lit.
@@ -2611,6 +2610,14 @@ export default function GISCanvasPage() {
   }, [features, classKeys, layers]);
 
   const hideClass = useCallback((key) => {
+    /* Remembered as a deliberate act. An isolate's sweep also hides
+       things, and the two must not be confused: carrying every hidden
+       key through an isolate kept the utility being asked for hidden,
+       because the previous isolate had swept it away and that looked
+       exactly like somebody pressing H. Only what is pressed here is
+       held through a later isolate. */
+    setHeldHidden((h) => (h.includes(key)
+      ? h.filter((x) => x !== key) : [...h, key]));
     /* Hiding one of the layers a list is showing takes it off the list,
        rather than hiding it twice over. Otherwise pressing H on the
        only layer showing would leave an empty list still in force and
@@ -2653,6 +2660,12 @@ export default function GISCanvasPage() {
      matters — a feature is hidden if ANY of its keys is hidden, so
      soloing an electric line type has to leave "electric" visible or the
      thing being soloed disappears with everything else. */
+  /* Layers somebody switched off by hand, kept off through an isolate.
+     A ref beside the state so applyShown can read it without listing
+     it as a dependency and rebuilding on every hide. */
+  const heldHiddenRef = useRef([]);
+  useEffect(() => { heldHiddenRef.current = heldHidden; }, [heldHidden]);
+
   const soloClass = useCallback((key, only = false) => {
     /* The same act as S, with room for one. Pressing it again shows
        everything, which is the only way back from an isolate that does

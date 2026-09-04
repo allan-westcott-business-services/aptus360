@@ -1022,8 +1022,14 @@ const onScreen = (keys) => {
     fail("an isolate rebuilds the hidden list from nothing \u2014 a layer hidden "
       + "on purpose comes back when a utility menu is opened");
   }
-  if (!/const held = new Set\(prev\.filter\(\(k\) => keep\.has\(k\)\)\);/.test(src)) {
+  /* Only HAND-made hides are carried. Carrying every hidden key kept
+     the utility being asked for hidden, because the previous isolate's
+     own sweep looked exactly like somebody pressing H. */
+  if (!/const held = heldHiddenRef\.current\.filter\(\(k\) => keep\.has\(k\)\);/.test(src)) {
     fail("a deliberately hidden layer is no longer carried through an isolate");
+  }
+  if (!/setHeldHidden\(\(h\) =>/.test(src)) {
+    fail("nothing records which hides were made by hand");
   }
 }
 

@@ -38,7 +38,7 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
      second job \u2014 carrying deliberate hides through, so opening a
      utility never switches a layer back on \u2014 so the boundary is its
      opening now rather than the old one-liner. */
-  const to = canvas.indexOf("setHidden((prev) => {");
+  const to = canvas.indexOf("const held = heldHiddenRef.current");
   if (from < 0 || to < 0 || to <= from) {
     fail("could not find the isolate sweep \u2014 the assertions below are not being made");
   } else {

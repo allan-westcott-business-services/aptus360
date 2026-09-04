@@ -383,6 +383,25 @@ if (!/claimed twice/.test(editor)) {
   }
 }
 
+/* ── A box near the walk's node IS that node ──
+
+   Adoption reached one metre. A box is placed by eye and lands a foot
+   or so off the node the walk stops at, so the build made a generated
+   point BESIDE it: a meaningless two-metre leg into a new A10, with
+   the box standing next to it holding nothing, and a run split at a
+   place with no physical meaning. The joint rule already reaches two
+   metres for the same reason; the two now agree. */
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const reach = f\.Feature_Role === "linkbox" \? 2 : 1;/.test(src)) {
+    fail("a link box is adopted at the same one-metre reach as everything "
+      + "else \u2014 the build makes a feeder point beside it again");
+  }
+  if (!/if \(d > reach\) continue;/.test(src)) {
+    fail("the adoption no longer judges each kind against its own reach");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Link boxes behave (2 or 4 way, fused, numbered, on the cable run).");
 process.exit(bad ? 1 : 0);

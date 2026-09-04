@@ -13502,13 +13502,26 @@ export default function GISCanvasPage() {
              the number. Nearest within a metre, ties on the lower id,
              for the reason the span-node adoption held: "first found"
              is scan order deciding a schedule. */
-          let match = null, best = 1;
+          /* Two metres for a link box, one for anything else.
+
+             A box is placed by eye on the run and lands a foot or so
+             from the node the walk stops at \u2014 far enough to miss a
+             one-metre adoption, so the build made a point of its own
+             BESIDE it: a meaningless two-metre leg into a generated
+             A10, with the box standing next to it holding nothing. The
+             joint rule already reaches two metres for exactly this
+             reason, and where a link box stands it IS the feeder end
+             point, so the two reaches should agree. */
+          let match = null, best = Infinity;
           for (const f of manualFeps) {
             if (claimed.has(f.Feature_ID)) continue;
             const pAt = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
             if (!pAt) continue;
+            /* Each kind judged against its own reach. */
+            const reach = f.Feature_Role === "linkbox" ? 2 : 1;
             const d = Math.hypot(pAt[0] - nd.point[0], pAt[1] - nd.point[1]);
-            if (d > best) continue;
+            if (d > reach) continue;
+            if (match && d > best) continue;
             if (match && d === best && Number(f.Feature_ID) >= Number(match.Feature_ID)) continue;
             match = f; best = d;
           }

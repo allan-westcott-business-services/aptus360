@@ -223,6 +223,47 @@ if (typeof planFeederPoints !== "function") {
   }
 }
 
+/* ── The box the trunk runs to is stop one ──
+
+   A part lays a length of cable and the far end of it is a stop by
+   definition. `marksOnPart` can only filter marks the MODEL produced,
+   and the full-circuit model calls a link box nothing at all — a box
+   standing mid-network is neither a fork of the dig nor an end of one.
+
+   So no stop was ever offered at the box's position, the walk never
+   adopted it, and it kept the number placement gave it: C10 on a
+   circuit with nine points, with the whole sequence reading C10 first
+   and C1 two hundred metres later. Before parts were filtered the
+   trunk marked every junction on the circuit, which happened to include
+   the box whenever it sat on a trench junction — it worked by accident
+   and stopped the day a box was placed mid-span. */
+{
+  const model = {
+    nodes: [[0, 0], [50, 0], [100, 0]],
+    parent: [-1, 0, 1], cum: [2, 2, 2], S: 0,
+  };
+  const sections = [{ pts: [[0, 0], [50, 0], [100, 0]] }];
+
+  const term = fp.partEndMark?.(model, sections);
+  if (!term) {
+    fail("a part does not mark the far end of the cable it lays, so a link "
+      + "box mid-network is never adopted and keeps its placement number");
+  } else if (term.index !== 2) {
+    fail(`the terminus was marked at node ${term.index}, wanted the last`);
+  }
+
+  /* Not something merely near it: a terminus two metres off the end of
+     the cable is a different point, and claiming it would renumber
+     whatever stands there. */
+  if (fp.partEndMark?.(model, [{ pts: [[0, 0], [50, 0], [80, 0]] }])) {
+    fail("a node twenty metres from the end of the cable was marked as its "
+      + "terminus");
+  }
+
+  /* And a part with nothing to lay marks nothing. */
+  if (fp.partEndMark?.(model, [])) fail("a part with no sections marked a stop");
+}
+
 /* And the build consumes it, rather than keeping a second copy of the
    rule beside the one under test. */
 {
@@ -231,6 +272,10 @@ if (typeof planFeederPoints !== "function") {
   if (at < 0) fail("buildLvNetwork has gone");
   else {
     const body = canvas.slice(at, at + 30000);
+    if (!/partEndMark\(pt\.model, pt\.sections\)/.test(body)) {
+      fail("the build does not mark the far end of each part, so the link "
+        + "box the trunk runs to is never numbered");
+    }
     if (!/planFeederPoints\(/.test(body)) {
       fail("Build LV Network no longer plans its feeder points through "
         + "planFeederPoints");

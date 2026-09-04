@@ -86,7 +86,8 @@ import CircuitReport from "./CircuitReport.jsx";
 import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
   carriedOverrides, carriedOverrideFor } from "./feeder.js";
-import { planFeederPoints, planInsertion, marksOnPart } from "./feederPoints.js";
+import { planFeederPoints, planInsertion, marksOnPart,
+  partEndMark } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
@@ -10830,13 +10831,44 @@ export default function GISCanvasPage() {
     };
 
     /* ── First, the node each run ends at ── */
+
+    /* Gathered before anything is written, because more than one run
+       can claim a node.
+
+       "Last one wins where two sections meet at a node, which cannot
+       happen on a routed network — a node has one run feeding it" is
+       what stood here, and it is false at a link box by design: the
+       trunk ENDS there and every output STARTS there. Three runs
+       claimed one box, the last processed won, and the box came back
+       carrying an output's 185 when its input is 300. Nothing else on
+       the drawing says 185 at that point \u2014 not the system size, not
+       the manual one \u2014 so the number appeared from nowhere.
+
+       A node takes the cable of the run that ARRIVES at it. A run
+       leaving it is the next length of cable and has its own node
+       further on. */
+    const claims = new Map();
     for (const line of lines) {
       const node = nodeFedBy(line, src);
       if (!node) continue;
+      if (!claims.has(node.Feature_ID)) claims.set(node.Feature_ID, { node, lines: [] });
+      claims.get(node.Feature_ID).lines.push(line);
+    }
+    for (const { node, lines: claimants } of claims.values()) {
       claimed.add(node.Feature_ID);
-      /* Last one wins where two sections meet at a node, which cannot
-         happen on a routed network — a node has one run feeding it. */
-      mirror(node, line);
+      const at = node.Attributes?.Span_Anchor ?? node.Geometry?.[0];
+      /* Arriving = the run's LAST vertex is the one at this node. */
+      const arriving = at ? claimants.filter((l) => {
+        const g = l.Geometry || [];
+        if (g.length < 2) return false;
+        const first = Math.hypot(g[0][0] - at[0], g[0][1] - at[1]);
+        const last = Math.hypot(g[g.length - 1][0] - at[0], g[g.length - 1][1] - at[1]);
+        return last <= first;
+      }) : [];
+      const pick = (arriving.length ? arriving : claimants)
+        /* Ties on the lower id, so one drawing gives one answer. */
+        .sort((a, b) => Number(a.Feature_ID) - Number(b.Feature_ID))[0];
+      if (pick) mirror(node, pick);
     }
 
     /* ── Then the nodes a run passes straight through ──
@@ -13749,6 +13781,11 @@ export default function GISCanvasPage() {
             ...endOfLineNodes(pt.model).map((e) => ({ ...e, kind: "end" })),
           ];
           const marks = marksOnPart(pm, pt.sections);
+          /* And the far end of what this part lays, which is a stop by
+             definition — for the trunk that is the link box, which the
+             full-circuit model calls nothing at all. */
+          const term = partEndMark(pt.model, pt.sections);
+          if (term && !marks.some((m) => m.index === term.index)) marks.push(term);
           const byIndex = new Map(marks.map((m) => [m.index, m]));
           for (const i of orderNodesFromRoot(pt.model, marks.map((m) => m.index))) {
             const m = byIndex.get(i);

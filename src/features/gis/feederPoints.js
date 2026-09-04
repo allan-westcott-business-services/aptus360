@@ -432,3 +432,41 @@ export function marksOnPart(marks = [], sections = [], tol = 0.5) {
   return (marks || []).filter((m) => Array.isArray(m?.point)
     && (sections || []).some((sec) => near(m.point, sec.pts || [])));
 }
+
+/* ── Where a part's own cable ends ──
+
+   A part lays a length of cable, and the far end of it is a stop by
+   definition: for an output that is a leaf or a junction the model
+   already knows about, and for the TRUNK it is the link box the cable
+   is run to.
+
+   `marksOnPart` filters marks the model produced. It cannot add the one
+   the model never made — and the full-circuit model does not call a
+   link box anything, because a box standing mid-network is neither a
+   fork of the dig nor an end of it. Before parts were filtered at all
+   the trunk marked every junction on the circuit, which happened to
+   include the box whenever it sat on a trench junction. It worked by
+   accident, and stopped the moment a box was placed mid-span.
+
+   The symptom: the box keeps whatever number placement gave it — C10 on
+   a circuit with nine points — because no stop is ever offered at its
+   position for it to be adopted onto. The whole sequence then starts at
+   C10 instead of C1.
+
+   So the terminus is marked explicitly. Nearest model node to the last
+   point the part lays, which is the node the walk would have used. */
+export function partEndMark(model, sections = [], tol = 2) {
+  const last = sections[sections.length - 1];
+  const pts = last?.pts || [];
+  const end = pts[pts.length - 1];
+  const nodes = model?.nodes || [];
+  if (!Array.isArray(end) || !nodes.length) return null;
+
+  let best = null;
+  for (let i = 0; i < nodes.length; i++) {
+    const d = Math.hypot(nodes[i][0] - end[0], nodes[i][1] - end[1]);
+    if (!best || d < best.d) best = { d, i };
+  }
+  if (!best || best.d > tol) return null;
+  return { index: best.i, point: nodes[best.i], kind: "end" };
+}

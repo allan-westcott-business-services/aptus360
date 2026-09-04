@@ -187,6 +187,43 @@ if (!/claimed twice/.test(editor)) {
   }
 }
 
+/* ── A node takes the cable of the run that ARRIVES at it ──
+
+   Apply Cable Sizes mirrors a run's cable onto the node it feeds, under
+   a comment saying two runs meeting at one node "cannot happen on a
+   routed network". At a link box it happens by design: the trunk ENDS
+   there and every output STARTS there. Three runs claimed one box, the
+   last processed won, and the box came back carrying an output's 185
+   where its input is 300 — a number that appears nowhere else at that
+   point, neither as the system size nor as the manual one.
+
+   A run leaving a node is the next length of cable and has its own node
+   further on. */
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const fn = src.slice(src.indexOf("async function syncNodeCables"),
+    src.indexOf("Nodes still without a cable"));
+  if (!fn) fail("syncNodeCables has gone");
+  else {
+    /* The code, not the prose. The comment above the fix QUOTES the old
+       sentence to explain what was wrong with it, and a check grepping
+       for that sentence reports the explanation as the fault. */
+    if (/for \(const line of lines\) \{[\s\S]{0,240}?mirror\(node, line\);/.test(fn)) {
+      fail("a node still takes whichever run was processed last, so a link "
+        + "box reports an output's cable as its input");
+    }
+    if (!/const claims = new Map\(\);/.test(fn)) {
+      fail("claims on a node are not gathered before one is chosen");
+    }
+    if (!/return last <= first;/.test(fn)) {
+      fail("nothing tells an arriving run from a leaving one");
+    }
+    if (!/arriving\.length \? arriving : claimants/.test(fn)) {
+      fail("a node with only leaving runs is left with no cable at all");
+    }
+  }
+}
+
 /* ── The figures are computed TO the box ──
 
    The drawing half above is only worth anything if the trace actually

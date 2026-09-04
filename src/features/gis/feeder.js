@@ -320,7 +320,7 @@ export function buildFeederModel(features = [], opts = {}) {
      geometric \u2014 a measured length changes how far the electricity
      travels, not where the trench is. */
   const measuredScale = (f) => {
-    const stated = Number(f.Attributes?.Length_m ?? 0) || 0;
+    const stated = Number(f.Attributes?.Measured_Length_m ?? 0) || 0;
     if (!(stated > 0)) return 1;
     const g = f.Geometry || [];
     let drawn = 0;
@@ -1156,7 +1156,8 @@ export function trenchComponents(features = [], opts = {}) {
   for (const [fid, ids] of runNodes) {
     const g = groups[comp[ids[0]]];
     const f = runs.find((x) => x.Feature_ID === fid);
-    const metres = Number(f.Attributes?.Length_m ?? 0) || polylineLength(f.Geometry);
+    const metres = Number(f.Attributes?.Measured_Length_m ?? 0)
+      || polylineLength(f.Geometry);
     g.featureIds.push(fid);
     /* The runs themselves, not just their ids. A panel listing an orphan
        has to name its trenches for anyone to go and find them, and a
@@ -1454,6 +1455,8 @@ export function circuitTraceParts(features = [], originId, opts = {}) {
         seedIds: g.seedIds,
         meterIds: g.meterIds,
         rootFeature: box,
+        linkWay: w,
+        linkBoxId: box.Feature_ID,
       });
       const via = `way ${w}`;
       if (r.error) { parts.push({ error: r.error, via, box, way: w }); continue; }
@@ -1516,7 +1519,7 @@ export function serviceTrenchCheck(features = [], opts = {}) {
     const row = {
       id: sv.Feature_ID,
       label: sv.Label || `Service trench ${sv.Feature_ID}`,
-      metres: Number(sv.Attributes?.Length_m ?? 0) || polylineLength(g),
+      metres: Number(sv.Attributes?.Measured_Length_m ?? 0) || polylineLength(g),
       gap: Math.round(gap * 100) / 100,
       at: g[0],
     };
@@ -1830,6 +1833,10 @@ export function spanTrace(features = [], nodeId, opts = {}) {
     seedIds: wantSeeds = null,
     meterIds: wantMeters = null,
     rootFeature = null,
+    /* Which output of which box, where one is being traced. Used only
+       to tell two runs apart where they share a trench. */
+    linkWay = null,
+    linkBoxId = null,
   } = opts;
 
   const node = features.find((f) => Number(f.Feature_ID) === Number(nodeId));
@@ -2270,7 +2277,71 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      rather than a list of things measured from the same place. */
   const labelOf = (i) => {
     const f = stops.get(i);
-    return f?.Attributes?.Span_Label ?? f?.Label ?? `#${f?.Feature_ID ?? i}`;
+    return f?.Attributes?.Span_Label ?? f?.Attributes?.Label ?? f?.Label ?? `#${f?.Feature_ID ?? i}`;
+  };
+
+  /* The mains of this circuit, for reading a leg's cable off the run it
+     lies along rather than off a copy mirrored onto a node. */
+  const legRuns = features.filter((f) => f.Feature_Type === "line"
+    && f.Layer_Key === "electric"
+    && String(f.Attributes?.Line_Type ?? "").includes("main")
+    && (f.Attributes?.Circuit_ID == null
+      || Number(f.Attributes.Circuit_ID) === Number(circuitId)));
+
+  const offTo = (p, g) => {
+    let best = Infinity;
+    for (let i = 1; i < g.length; i++) {
+      const [ax, ay] = g[i - 1];
+      const [bx, by] = g[i];
+      const vx = bx - ax; const vy = by - ay;
+      const l2 = vx * vx + vy * vy;
+      let t = l2 ? ((p[0] - ax) * vx + (p[1] - ay) * vy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const d = Math.hypot(p[0] - (ax + t * vx), p[1] - (ay + t * vy));
+      if (d < best) best = d;
+    }
+    return best;
+  };
+
+  /* Sampled along the middle of the leg. Both ends of a leg sit on a
+     junction where several runs meet, so an end tells you nothing about
+     which of them this leg is; the middle belongs to one run. */
+  const legCableId = (trail) => {
+    if (!Array.isArray(trail) || trail.length < 2 || !legRuns.length) return null;
+    const pts = [];
+    for (let i = 1; i < trail.length; i++) {
+      const a = nodes[trail[i - 1]]; const b = nodes[trail[i]];
+      if (a && b) pts.push([(a[0] + b[0]) / 2, (a[1] + b[1]) / 2]);
+    }
+    if (!pts.length) return null;
+    /* Where the caller is tracing one output, its own runs answer
+       first. On the stretch a box's outputs share, both cables cover
+       the leg and nearest cannot choose between them — the fifth place
+       in this repo where several features share a route and something
+       has to say which is which. The build stamps Link_Box_ID and
+       Link_Way on what it lays. */
+    const claimed = linkWay != null
+      ? legRuns.filter((r) => Number(r.Attributes?.Link_Way) === Number(linkWay)
+        && (linkBoxId == null
+          || Number(r.Attributes?.Link_Box_ID) === Number(linkBoxId)))
+      : [];
+    let best = null;
+    for (const r of (claimed.length ? claimed : legRuns)) {
+      const g = r.Geometry || [];
+      if (g.length < 2) continue;
+      let worst = 0;
+      for (const p of pts) worst = Math.max(worst, offTo(p, g));
+      /* Every sample has to lie on it: a run that covers half the leg
+         is a different length of cable, and reporting its size for the
+         whole leg is the fault in a new place. */
+      if (worst > 1) continue;
+      if (!best || worst < best.worst
+        || (worst === best.worst
+          && Number(r.Feature_ID) < Number(best.r.Feature_ID))) {
+        best = { worst, r };
+      }
+    }
+    return best ? cableIdOf(best.r) : null;
   };
 
   const walk = (prev, cur, metres, along, path, fromLabel) => {
@@ -2291,11 +2362,26 @@ export function spanTrace(features = [], nodeId, opts = {}) {
         /* And where it began, so the voltage arriving at this length of
            cable can be shown as well as the voltage leaving it. */
         fromIdx: trail[0],
-        /* The cable this leg is made of, carried on the leg rather than
-           looked up from spanNodes — a junction is not in that list, on
-           purpose, so a lookup would find nothing and the column would
-           read "not set" on every junction row. */
-        cableSizeId: cableIdOf(stops.get(cur)),
+        /* ── The cable this leg is made of ──
+
+           From the RUN the leg lies along, and only from the node it
+           ends at where no run can be found.
+
+           It read the node alone. A node's cable is a copy, mirrored
+           onto it by Apply Cable Sizes from "the run feeding it", under
+           a comment saying two runs meeting at one node "cannot happen
+           on a routed network". At a link box it happens by design:
+           the trunk arrives and three outputs leave, all touching one
+           point. The last run processed won, so the trunk leg reported
+           an output's cable — 300 mm of input reported as the 185 an
+           output happened to be set to, on a sheet somebody sizes a
+           network from.
+
+           The run is where the cable actually lives; the node's copy is
+           fault 13 waiting to be read. Taken from the middle of the
+           leg, not its ends, because every run at a junction touches
+           the ends and only the right one covers the middle. */
+        cableSizeId: legCableId(trail) ?? cableIdOf(stops.get(cur)),
         /* Meters picked up along the way — the load this length of cable
            carries directly. */
         distribution: along.length,

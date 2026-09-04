@@ -192,7 +192,55 @@ const of = (via) => parts.find((x) => x.via === via);
   }
 }
 
-// 7. And the build stops MAKING the phantom stop.
+// 7. An output follows its own load and nothing else.
+//
+//    Rooted at the box, the graph radiates in every direction — back up
+//    the trunk toward the POC, and out along the other outputs' cables.
+//    Those branches carry no load for this output, but they are covered
+//    in stops, and the walk keeps a loadless branch that holds one. So
+//    an output walked back up its own input and out along its
+//    neighbours, reporting their stops as its own: two outputs produced
+//    a leg to the same point with different figures, and the levels
+//    table showed one leg twice.
+{
+  const legsOf = (via) => (of(via)?.legs || []);
+  for (const via of ["way 2", "way 3"]) {
+    const back = legsOf(via).some((l) => (l.path || [])
+      .some((pt) => pt[0] < 40 - 0.5));
+    if (back) {
+      fail(`${via} walks back up the trunk towards the origin`);
+    }
+  }
+  /* And no leg is reported by two outputs. */
+  const seen = new Map();
+  for (const via of ["way 2", "way 3"]) {
+    for (const l of legsOf(via)) {
+      const k = `${l.from}->${l.to}`;
+      seen.set(k, (seen.get(k) || 0) + 1);
+    }
+  }
+  const twice = [...seen].filter(([, n]) => n > 1).map(([k]) => k);
+  if (twice.length) {
+    fail(`${twice.join(", ")} reported by more than one output`);
+  }
+
+  /* The circuit's own walk still keeps a loadless branch that holds a
+     stop — a node at the end of a dead trench gets its row. Only an
+     output's walk is confined. */
+  const plainWorld = world.filter((f) => f.Feature_Role !== "linkbox")
+    .map((f) => {
+      if (f.Feature_Role !== "meter") return f;
+      const a = { ...f.Attributes };
+      delete a.Link_Box_ID; delete a.Link_Way;
+      return { ...f, Attributes: a };
+    });
+  const whole = circuitTraceParts(plainWorld, f0.Feature_ID, opts)[0];
+  if (!whole || whole.error || !(whole.legs || []).length) {
+    fail("a circuit with no box lost its legs when outputs were confined");
+  }
+}
+
+// 8. And the build stops MAKING the phantom stop.
 //
 //    The trunk's model is the whole circuit's, so its junctions include
 //    every fork of the dig — including the one where two outputs part

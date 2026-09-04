@@ -17683,11 +17683,25 @@ export default function GISCanvasPage() {
 
   /* The circuit on show, resolved once so the table, the export and
      the header selector all mean the same one. */
+  /* ── Circuits, not parts ──
+
+     A circuit used to be one part, so listing the parts listed the
+     circuits. A circuit with a link box is several parts now — the
+     trunk and one per output — all naming the same circuit, so the
+     picker showed "Circuit 3" three times over and the header counted
+     four circuits where there were two.
+
+     Deduped here rather than at the select, so the header count, the
+     picker and the export cannot disagree about how many there are. */
+  const tracedCircuits = useMemo(() => {
+    if (!trace?.parts) return [];
+    return [...new Set(trace.parts.map((x) => x.circuitName).filter(Boolean))];
+  }, [trace]);
+
   const shownCircuit = useMemo(() => {
-    if (!trace?.parts || trace.parts.length < 2) return null;
-    const names = trace.parts.map((x) => x.circuitName);
-    return names.includes(traceCircuit) ? traceCircuit : names[0];
-  }, [trace, traceCircuit]);
+    if (tracedCircuits.length < 2) return null;
+    return tracedCircuits.includes(traceCircuit) ? traceCircuit : tracedCircuits[0];
+  }, [tracedCircuits, traceCircuit]);
 
   const tracePlan = useMemo(() => {
     if (!trace?.legs) return [];
@@ -18291,7 +18305,13 @@ export default function GISCanvasPage() {
       /* Whether the voltage everything was calculated against came from
          the drawing or from the fallback. */
       voltageAssumed: workingVoltage(lvOrigin(src)).assumed,
-      circuitName: parts.length === 1 ? parts[0].circuitName : `${parts.length} circuits`,
+      /* Counted over the circuits, not the parts. A boxed circuit is a
+         trunk plus one part per output, so this said "4 circuits" on a
+         drawing with two. */
+      circuitName: (() => {
+        const names = [...new Set(parts.map((x) => x.circuitName).filter(Boolean))];
+        return names.length === 1 ? names[0] : `${names.length} circuits`;
+      })(),
       legs: parts.flatMap((p) => p.legs.map((l) => ({ ...l, circuitName: p.circuitName }))),
       parts,
       model: parts[0].model,
@@ -22981,18 +23001,20 @@ export default function GISCanvasPage() {
                     onClick={() => setSchematic(true)}>
                     Schematic
                   </button>
-                  {trace?.parts?.length > 1 && (
+                  {tracedCircuits.length > 1 && (
                     /* One circuit at a time. Levels are per circuit now
                        \u2014 a point two circuits share has two figures \u2014
                        and a table interleaving them reads as one network
-                       contradicting itself. */
+                       contradicting itself.
+
+                       Over the circuits rather than the parts: a boxed
+                       circuit is a trunk and one part per output, and
+                       listing the parts named it once per output. */
                     <select className="tr-circ" value={shownCircuit ?? ""}
                       title="Which circuit's levels are shown — the export follows"
                       onChange={(e) => setTraceCircuit(e.target.value)}>
-                      {trace.parts.map((x) => (
-                        <option key={x.circuitName} value={x.circuitName}>
-                          {x.circuitName}
-                        </option>
+                      {tracedCircuits.map((name) => (
+                        <option key={name} value={name}>{name}</option>
                       ))}
                     </select>
                   )}

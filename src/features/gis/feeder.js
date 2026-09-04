@@ -1978,7 +1978,24 @@ export function spanTrace(features = [], nodeId, opts = {}) {
   const kids = new Map();
   for (let i = 0; i < nodes.length; i++) {
     if (parent[i] < 0 || parSvc[i]) continue;
-    if (cum[i] <= 0 && !hasSpanNode.has(i)) continue;
+    /* ── An output follows its load and nothing else ──
+
+       A branch carrying no load is kept where it holds a stop, so a
+       node at the end of a dead trench still gets a row. That is right
+       for a circuit, whose walk covers the whole of it.
+
+       It is wrong for ONE OUTPUT of a link box. Rooted at the box, the
+       graph radiates in every direction — including back up the trunk
+       towards the POC, and out along the other outputs' cables. Those
+       branches carry no load for THIS output, but they are covered in
+       stops, so the exception kept them: the output walked back up its
+       own input and out along its neighbours, and reported their stops
+       as its own. Two outputs then produced a leg to the same point
+       with different figures, and the table showed one leg twice.
+
+       So the exception is for a circuit's walk. An output's walk goes
+       where its own plots are. */
+    if (cum[i] <= 0 && (rootFeature || !hasSpanNode.has(i))) continue;
     if (!kids.has(parent[i])) kids.set(parent[i], []);
     kids.get(parent[i]).push(i);
   }

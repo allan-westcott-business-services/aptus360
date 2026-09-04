@@ -22762,6 +22762,10 @@ export default function GISCanvasPage() {
                               export's reason: contributes-nothing and
                               nobody-said must not read alike. */}
                           <th className="num"
+                            title="Length of the worst service tail off this leg, along its drawn route">
+                            Svc m
+                          </th>
+                          <th className="num"
                             title="Worst service tail off this leg — its own drawn route, cable and load">
                             Svc%
                           </th>

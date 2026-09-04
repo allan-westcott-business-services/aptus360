@@ -94,7 +94,28 @@ export function useTableLayout(storageKey, columns) {
       const p = JSON.parse(raw);
       const valid = new Set(def.order);
       const order = (p.order || []).filter((k) => valid.has(k));
-      def.order.forEach((k) => !order.includes(k) && order.push(k));
+      /* ── A new column lands where it was declared ──
+
+         Appended to the end, a column added to a table went to the far
+         right for everybody who had ever opened it — which is everybody,
+         since the layout is saved on first use. A Usage column asked for
+         as the second column arrived fourteenth, and the only way to
+         find it was to know it had been added.
+
+         Inserted after whichever of its declared neighbours is already
+         in the saved order instead, so it appears where the code says
+         it should while leaving every column somebody has arranged
+         alone. */
+      for (const k of def.order) {
+        if (order.includes(k)) continue;
+        const declared = def.order.indexOf(k);
+        let at = 0;
+        for (let i = declared - 1; i >= 0; i--) {
+          const before = order.indexOf(def.order[i]);
+          if (before >= 0) { at = before + 1; break; }
+        }
+        order.splice(at, 0, k);
+      }
       /* Saved preferences win, except the first time the set of
          default-hidden columns changes. Without that, a column newly
          defaulted off would stay visible for everyone who had ever used

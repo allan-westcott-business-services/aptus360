@@ -129,6 +129,17 @@ export default function ElectricSpecsAdmin() {
       { key: "Cable_Type_ID", label: "Cable type", type: "select", width: 180,
         options: (data.types || []).map((t) => ({
           value: t.Cable_Type_ID, label: t.Cable_Type })) },
+      /* Whose Usage this size inherits.
+
+         Usage lives on the cable TYPE, and it decides which sizes the
+         drawing offers for a main and which for a service. From this
+         table there was no way to see it, so the answer to "why is that
+         cable not in the menu" meant crossing to Cable Types and
+         matching rows by name. Read-only, because it belongs to the
+         type and is edited there. */
+      { key: "Usage_Type", label: "Usage", width: 100, from: "Cable Types",
+        value: (r) => (data.types || [])
+          .find((t) => t.Cable_Type_ID === r.Cable_Type_ID)?.Usage_Type ?? "" },
       { key: "Size_Label", label: "Size", width: 90 },
       { key: "Material", label: "Material", width: 110 },
       { key: "CSA_mm2", label: "CSA mm\u00B2", type: "number", width: 90 },

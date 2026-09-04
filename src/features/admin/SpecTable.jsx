@@ -32,6 +32,11 @@ export default function SpecTable({
   /* What a cell shows, as opposed to what it holds. Sorting and
      filtering both work from this. */
   const shown = (r, c) => {
+    /* A column read from somewhere else. `value` computes it from the
+       row — a cable's Usage lives on its TYPE, not on the size — and
+       everything here works from `shown`, so it sorts and filters like
+       any other column without being editable. */
+    if (typeof c.value === "function") return c.value(r) ?? "";
     if (c.type === "select") {
       const o = (c.options || []).find((x) => String(x.value) === String(r[c.key]));
       return o ? o.label : "";
@@ -138,7 +143,14 @@ export default function SpecTable({
             <tr key={r[pk]}>
               {layout.visible.map((c) => (
                 <td key={c.key}>
-                  {c.type === "checkbox" ? (
+                  {typeof c.value === "function" ? (
+                    /* Read-only: it belongs to another table, and a box
+                       that takes typing and throws it away is worse
+                       than one that does not. */
+                    <input className="es-in es-ro" readOnly tabIndex={-1}
+                      title={c.from ? `From ${c.from}` : undefined}
+                      value={shown(r, c)} />
+                  ) : c.type === "checkbox" ? (
                     <input type="checkbox" checked={!!r[c.key]}
                       onChange={(e) => {
                         onCell(r[pk], c.key, e.target.checked);
@@ -200,6 +212,10 @@ const CSS = `
 .dt.es .es-in { width: 100%; box-sizing: border-box; padding: 5px 7px;
   border: 1.5px solid var(--border); border-radius: 6px; font: inherit; font-size: 12.5px; }
 .dt.es .es-in.num { text-align: right; font-variant-numeric: tabular-nums; }
+/* A column read from another table. Flat and greyed so it does not
+   invite typing that would be thrown away. */
+.dt.es .es-in.es-ro { background: var(--bg); border-style: dashed;
+  color: var(--muted); cursor: default; }
 .dt.es .es-in:focus { border-color: var(--accent); outline: none; }
 .dt.es th { cursor: pointer; }
 .dt.es tr.filter-row th { cursor: default; }

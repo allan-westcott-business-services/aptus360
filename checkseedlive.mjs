@@ -7,14 +7,22 @@
 
    ── Getting the data ──
 
-   With the GIS canvas open on the project, in the browser console:
+   **Setup → Download Drawing**, on the GIS canvas. It saves exactly
+   what this reads.
 
-     copy(JSON.stringify(await (await fetch(
-       `/api/gis?project=${new URLSearchParams(location.search).get("project")
-        || sessionStorage.getItem("gisProject")?.replace(/"/g,"")}`
-     )).json()))
+   What was here before was a fetch to paste into the browser console,
+   and it was wrong in two ways at once: the route had moved to
+   /api/projects/:projectId/gis when the functions were split one per
+   endpoint, and a bare fetch carries no token, so every endpoint
+   answers "Sign in to use this." Both were found the hard way — by
+   somebody following these instructions and getting a file with an
+   error message in it.
 
-   Paste into a file, then:
+   Worth keeping as the note: **an instruction in a comment is code
+   nothing runs.** No check reads comments, so it goes stale exactly as
+   quietly as a hand-kept list does.
+
+   Then:
 
      node checkseedlive.mjs drawing.json <Feature_ID of the seed>
 

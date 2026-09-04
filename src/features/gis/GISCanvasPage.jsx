@@ -17685,6 +17685,45 @@ export default function GISCanvasPage() {
        meant the cards followed a filter and the table did not. */
   }, [trace, traceOrder, traceEnds, shownCircuit]);
 
+  /* ── The drawing, as the app reads it ──
+
+     Everything the canvas was given: the features, the layers, the line
+     types and the styles, exactly as `listGis` returned them. Not a
+     report and not an export format — the same JSON, so a check or a
+     diagnostic can be run against a real site rather than a fixture,
+     and so a fault on a drawing can be sent to whoever is looking at it.
+
+     This existed only as a snippet to paste into the browser console,
+     which is a poor thing to ask of anyone and was wrong twice over:
+     the route in the instructions had moved, and a bare fetch carries
+     no token so it came back "Sign in to use this." A menu item goes
+     through the API layer, which already signs the request.
+
+     Read again rather than serialising what is in memory. `features`
+     here has optimistic rows on it mid-edit — a seed drawn a moment ago
+     with a `tmp-` id — and a drawing sent for diagnosis should be what
+     the database holds, not what this tab is part way through. */
+  async function downloadDrawing() {
+    if (!projectId) return;
+    setBusy("download");
+    try {
+      const res = await listGis(projectId);
+      const name = `drawing-${projectId}-${new Date().toISOString().slice(0, 10)}.json`;
+      const blob = new Blob([JSON.stringify(res, null, 2)],
+        { type: "application/json" });
+      const url = URL.createObjectURL(blob);
+      const a = document.createElement("a");
+      a.href = url;
+      a.download = name;
+      a.click();
+      URL.revokeObjectURL(url);
+      setStatus(`${(res.features || []).length} feature(s) saved as ${name}`);
+      setTimeout(() => setStatus(""), 8000);
+      setError("");
+    } catch (e) { setError(e.message); }
+    finally { setBusy(""); }
+  }
+
   function exportTrace() {
     if (!trace) return;
     const rows = tracePlan.map(({ leg: l }) => ({
@@ -18904,6 +18943,14 @@ export default function GISCanvasPage() {
                         onClick={() => setShowGrid(!showGrid)} />
                       <MenuItem label="Reset View"
                         onClick={() => setView({ x: 60, y: 60, scale: 4 })} />
+                      {/* Last, under its own divider: it is not a drawing
+                          tool and not a view setting, it is taking a copy
+                          of the drawing away with you. */}
+                      <div className="gm-sep" />
+                      <MenuItem label={busy === "download" ? "Saving\u2026" : "Download Drawing"}
+                        hint="The drawing as JSON \u2014 for sending on when something needs looking at"
+                        disabled={!projectId || !!busy}
+                        onClick={downloadDrawing} />
                     </Menu>
 
                     {/* Two columns: what is shown on the left, what is

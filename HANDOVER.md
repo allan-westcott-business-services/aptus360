@@ -132,6 +132,7 @@ caught a fault that had already shipped at least once.
 | `node checklinkboxseq.mjs` | Which point stands at each stop on a circuit, and what it is called |
 | `node checkanchormove.mjs` | Whose `Span_Anchor` follows the point when it is dragged |
 | `node checkplaceseq.mjs` | A newly placed point takes the number of the place it stands |
+| `node checkdownloaddrawing.mjs` | Download Drawing is on the menu and signed like every other call |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -718,6 +719,73 @@ check or write the exemption down here.
     pair), then the NEAREST run, ties on the lower id. Nearest is the
     part that works on every drawing, including ones from before the
     stamps existed.
+
+    **And a fourth instance, in the colour.** `feederRenderPlan`'s live
+    membership takes "the run nearest the meter" and stamps the METER's
+    way onto it, so where two outputs share a trench the nearer stored
+    line won and output 2's cable came back wearing output 3's colour.
+    That is what a designer actually sees: the service tees into a
+    cable drawn in the wrong output's colour, which reads as the plot
+    being on the wrong feeder. Same fix — stamped runs first, nearest as
+    the fallback.
+
+    Two of these four were found only because somebody looked at a
+    drawing and said the colour was wrong. The list of readers that
+    answer "which main is this on" is now: `cableSizes.pickMain`,
+    `feederRenderPlan`'s live membership, the joint-feeder pick in the
+    move handler, and `drawnMainAt`. **If a fifth is added, it needs the
+    same two-step rule**, and if one of these four is changed the other
+    three are worth re-reading.
+
+**The link box goes down BEFORE Build LV Network.** The order to work
+in is: draw the trenches, Link to Circuit, snap the box to the trench,
+lasso plots onto its outputs, Build LV Network, Auto Lay Services,
+levels check. One pass.
+
+It used to take two builds, and the first one existed only to give the
+box a cable to be clicked onto. `linkWayAssignments` required
+`Circuit_ID` and `Span_Seq` on the box, and placement can only write
+those when the click lands on an existing electric main — before the
+build there are no mains, only trenches. So a box on the dig was
+invisible to the router, which laid the circuit as though it were not
+there; and the lasso refused outright ("place it on the cable, or
+rebuild, then lasso").
+
+**A box has no circuit of its own.** It is on the circuit of the plots
+fed through it, and the assignment is what says which those are. So the
+lasso now gives the box its circuit and the router reads a box that has
+never been near a cable. `Span_Seq` came out of that filter entirely —
+it was a proxy for "on a run" doing no routing work, and where the box
+stands in the order is the walk's to say. A box that already names a
+circuit is still only that circuit's, and a lasso spanning two is
+refused rather than resolved to one.
+
+Placement snaps a box with no cable under it to the nearest trench, for
+the same reason a substation snaps to one: it is a chamber in the
+ground. The cable still wins where there is one — a box added to a
+network already built belongs in the run, not near it.
+
+**Setup → Download Drawing** saves the drawing as JSON — the same
+payload `listGis` returns, features, layers, line types and styles.
+
+It exists because there was no way to get a drawing out of the app, and
+the workaround was a fetch pasted into the browser console. The
+instructions for that, at the head of `checkseedlive.mjs`, were wrong in
+two ways at once: the route had moved to `/api/projects/:projectId/gis`
+when the functions were split one per endpoint, and a bare fetch carries
+no token, so every endpoint answers "Sign in to use this." Both faults
+were found by somebody following the instructions and getting a file
+with an error message in it.
+
+**An instruction in a comment is code nothing runs.** No check reads
+comments, so it goes stale exactly as quietly as a hand-kept list does —
+fault 23 in a form the checks cannot see. Where a comment tells somebody
+to call something, prefer pointing at a thing in the app that has to
+keep working.
+
+The item reads through `listGis` rather than the drawing in memory:
+`features` carries optimistic `tmp-` rows mid-edit, and a drawing sent
+for diagnosis has to be what the database holds.
 
 **Length_m has two writers and one meaning too few — OPEN.** The
 attribute is maintained by `gis_length_trg`, a database trigger that

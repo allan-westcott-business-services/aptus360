@@ -59,6 +59,49 @@ export function cableIdOf(feature, mode = "manual") {
   return a.Manual_VD_Cable_Size_ID ?? a.VD_Cable_Size_ID ?? null;
 }
 
+/* ── A hand-set size survives the rebuild ──
+
+   Build LV Network deletes its generated mains and lays them again, so
+   an override on a run has to be remembered across the gap. It was
+   remembered by the run's GEOMETRY — every vertex, two decimal places —
+   and the geometry is exactly what a rebuild changes: a plot added
+   breaks the run somewhere new, a nudged trench moves an interior
+   vertex, and either way the key changed and the size was silently back
+   on the default. Lost on every build, for any drawing being worked on.
+
+   What holds still is where the run ARRIVES. Generated runs are walked
+   outward from the origin, so the last point of one is the feeder end
+   point it feeds — a trench junction or a leaf end, which the interior
+   of the run can change around without moving. So the size is keyed to
+   the arrival, per circuit: two circuits ending at one junction are two
+   runs and keep two sizes. A run that breaks somewhere NEW arrives
+   somewhere new and starts on the default, which is the honest answer
+   for a length whose load has just changed — the old far half, still
+   arriving where it did, keeps the override.
+
+   Quantised to centimetres, the same grain fepKey always used, so float
+   noise off a JSON round trip does not read as a different place. */
+const arrivalKey = (circuitId, pt) =>
+  `${Number(circuitId)}|${pt[0].toFixed(2)},${pt[1].toFixed(2)}`;
+
+export function carriedOverrides(oldRuns) {
+  const m = new Map();
+  for (const f of oldRuns || []) {
+    const id = f.Attributes?.Manual_VD_Cable_Size_ID;
+    if (id == null) continue;
+    const g = f.Geometry || [];
+    const end = g[g.length - 1];
+    if (!end) continue;
+    m.set(arrivalKey(f.Attributes?.Circuit_ID, end), id);
+  }
+  return m;
+}
+
+export function carriedOverrideFor(map, circuitId, point) {
+  if (!map || !Array.isArray(point)) return null;
+  return map.get(arrivalKey(circuitId, point)) ?? null;
+}
+
 /* Meters per cable. Above this the run needs another cable beside it,
    which is what makes a run break mid-trench. */
 export const METERS_PER_CABLE = 70;

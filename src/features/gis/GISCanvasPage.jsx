@@ -2517,7 +2517,23 @@ export default function GISCanvasPage() {
       if (k === "trench" || k.startsWith("lt:trench") || k.startsWith("trench:")) keep.add(k);
     }
 
-    setHidden([...all].filter((k) => !keep.has(k)));
+    /* ── A layer somebody hid stays hidden ──
+
+       The kept set stops an isolate SWEEPING the trenches, the seeds
+       and the survey away as a side effect of asking for a utility.
+       But this rebuilt the hidden list from nothing, so a trench layer
+       switched off on purpose was quietly switched back on by opening
+       the Electric menu \u2014 the sweep was not taking it away, the rebuild
+       was putting it back. The two are different acts and only the
+       first is this function's business.
+
+       So anything already hidden and still kept stays hidden: pressing
+       a utility never turns a layer on. Their own H still puts them
+       back, which is the toggle's job. */
+    setHidden((prev) => {
+      const held = new Set(prev.filter((k) => keep.has(k)));
+      return [...new Set([...[...all].filter((k) => !keep.has(k)), ...held])];
+    });
   }, [features, classKeys]);
 
   /* S isolates, and more than one can be lit.
@@ -8980,8 +8996,12 @@ export default function GISCanvasPage() {
       if (g.length < 2) continue;
       const fp = feederPlan.get(Number(t.Feature_ID));
       const nudge = fp?.offsetPx ?? servicePairOffset(t, hatchLayers);
-      const pxLine = g.map((m) => { const q = toPx(m); return [q.x, q.y]; });
-      const drawn = nudge ? offsetPolyline(pxLine, nudge) : pxLine;
+      /* offsetPolyline speaks {x, y}, the shape the renderer hands it;
+         an array of pairs comes back NaN and silently stops offsetting.
+         Converted on the way out, where nearestOnPolyline wants pairs. */
+      const pxLine = g.map((m) => toPx(m));
+      const drawn = (nudge ? offsetPolyline(pxLine, nudge) : pxLine)
+        .map((q) => [q.x, q.y]);
       const r = nearestOnPolyline([clickPx.x, clickPx.y], drawn);
       if (r && r.d <= SNAP_PX && (!hit || r.d < hit.d)) {
         const a = g[r.index - 1];

@@ -1007,6 +1007,26 @@ const onScreen = (keys) => {
   }
 }
 
+/* ── Opening a utility never turns a layer back on ──
+
+   The kept set stops an isolate sweeping the trenches, seeds and survey
+   away as a side effect of asking for a utility. It is not permission
+   to switch them ON: a trench layer hidden on purpose was reappearing
+   the moment the Electric menu was opened, because the hidden list was
+   rebuilt from nothing each time and the trench, being kept, simply
+   was not on the new list. Sweeping and restoring are different acts
+   and only the first belongs to an isolate. */
+{
+  const src = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/setHidden\(\[\.\.\.all\]\.filter\(\(k\) => !keep\.has\(k\)\)\);/.test(src)) {
+    fail("an isolate rebuilds the hidden list from nothing \u2014 a layer hidden "
+      + "on purpose comes back when a utility menu is opened");
+  }
+  if (!/const held = new Set\(prev\.filter\(\(k\) => keep\.has\(k\)\)\);/.test(src)) {
+    fail("a deliberately hidden layer is no longer carried through an isolate");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Utility menus behave (empty utilities shown as empty; isolate first, menu second).");
 process.exit(bad ? 1 : 0);

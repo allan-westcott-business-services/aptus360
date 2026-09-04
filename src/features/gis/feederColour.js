@@ -290,13 +290,57 @@ export function offsetPolyline(pts = [], offsetPx = 0) {
    same amount would lay one on top of the other — the very thing the
    offset exists to prevent. Comparing overall direction gives each run a
    sign, so the spread holds however they were drawn. */
-export function alignSign(reference = [], other = []) {
+export function alignSign(reference = [], other = [], opts = {}) {
   if (reference.length < 2 || other.length < 2) return 1;
-  const rv = [reference[reference.length - 1][0] - reference[0][0],
-    reference[reference.length - 1][1] - reference[0][1]];
-  const ov = [other[other.length - 1][0] - other[0][0],
-    other[other.length - 1][1] - other[0][1]];
-  return (rv[0] * ov[0] + rv[1] * ov[1]) < 0 ? -1 : 1;
+
+  /* ── Compared where the runs are together ──
+
+     This took the whole-polyline vector of each run and compared those.
+     Two cables sharing a trench and then parting company \u2014 one carrying
+     on south-east, the other turning south-west \u2014 have end-to-end
+     vectors pointing away from each other, so a run drawn the SAME way
+     along the shared stretch was called reversed. Its slot was then
+     flipped onto its neighbour's and the two were drawn on precisely the
+     same line: from project 2202.043, two mains 0.00 px apart with their
+     dashes interleaving, which no amount of zoom separated.
+
+     What matters is the direction each run has WHERE THEY ARE
+     ALONGSIDE. So the reference is sampled along its length, each
+     sample is matched to the nearest point of the other run, and only
+     samples where the two are genuinely close \u2014 within the same
+     tolerance the overlap test uses \u2014 are counted. The verdict is the
+     sign of the summed agreement, so a long shared stretch outweighs a
+     brief crossing, and one sample landing where the runs diverge
+     cannot decide it alone. With no shared stretch at all there is
+     nothing to align to, and the run keeps the direction it was drawn.
+  */
+  const { tolM = 2.0 } = opts;
+  const tangentAt = (pts, i) => {
+    const a = pts[Math.max(0, i - 1)];
+    const b = pts[Math.min(pts.length - 1, i + 1)];
+    return [b[0] - a[0], b[1] - a[1]];
+  };
+  let sum = 0;
+  for (let i = 0; i < reference.length; i++) {
+    const p = reference[i];
+    let near = -1;
+    let bestD = Infinity;
+    for (let k = 0; k < other.length; k++) {
+      const d = Math.hypot(other[k][0] - p[0], other[k][1] - p[1]);
+      if (d < bestD) { bestD = d; near = k; }
+    }
+    if (near < 0 || bestD > tolM) continue;
+    const rv = tangentAt(reference, i);
+    const ov = tangentAt(other, near);
+    const rl = Math.hypot(rv[0], rv[1]);
+    const ol = Math.hypot(ov[0], ov[1]);
+    if (!rl || !ol) continue;
+    /* Unit vectors, so a long segment does not shout down a short one
+       \u2014 what is being counted is agreement, not distance. */
+    sum += (rv[0] * ov[0] + rv[1] * ov[1]) / (rl * ol);
+  }
+  if (!sum) return 1;
+  return sum < 0 ? -1 : 1;
 }
 
 /* Everything the canvas needs, worked out once per frame.
@@ -304,6 +348,16 @@ export function alignSign(reference = [], other = []) {
    Returns a map from Feature_ID to { colour, offsetPx }. Features not in
    it are drawn exactly as before, so nothing that is not an LV feeder
    main is affected by any of this. */
+/* Point to segment, for matching a meter to the run feeding it. */
+function segDist(p, a, b) {
+  const vx = b[0] - a[0], vy = b[1] - a[1];
+  const len2 = vx * vx + vy * vy;
+  if (!len2) return Math.hypot(p[0] - a[0], p[1] - a[1]);
+  let t = ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / len2;
+  t = Math.max(0, Math.min(1, t));
+  return Math.hypot(p[0] - (a[0] + t * vx), p[1] - (a[1] + t * vy));
+}
+
 export function feederRenderPlan(features = [], opts = {}) {
   const { spacingPx = 5, chosenColours = {}, ...groupOpts } = opts;
 
@@ -329,6 +383,98 @@ export function feederRenderPlan(features = [], opts = {}) {
      way, the box's Way_Colours map answers \u2014 set per output in the
      box's editor \u2014 and a way with no colour set falls back to the
      circuit's, so an unpainted split looks exactly as it did. */
+  /* ── Which output a run belongs to, live ──
+
+     The build stamps Link_Box_ID and Link_Way on what it lays, but a
+     colour must not wait for a rebuild: a circuit colour resolves at
+     once because every run already carries its Circuit_ID, and an
+     output's colour should behave the same. So membership is worked
+     out from the drawing itself \u2014 walk the mains outward from the
+     box, and every run on the path to an assigned meter belongs to
+     that meter's output. A run on the way to two different outputs is
+     shared and keeps the circuit's colour, which is the honest answer
+     for a length of cable feeding both. */
+  const liveWays = (() => {
+    const boxes = features.filter((f) => f.Feature_Role === "linkbox"
+      && f.Attributes?.Way_Colours
+      && Object.keys(f.Attributes.Way_Colours).length);
+    const empty = { ways: new Map(), boxOf: new Map() };
+    if (!boxes.length) return empty;
+    const mains = runs.filter((r) => r.geometry.length > 1);
+    if (!mains.length) return empty;
+
+    const key = (p) => `${Math.round(p[0] * 20)},${Math.round(p[1] * 20)}`;
+    const at = new Map();
+    const touch = (k, r) => {
+      if (!at.has(k)) at.set(k, []);
+      at.get(k).push(r);
+    };
+    for (const r of mains) {
+      touch(key(r.geometry[0]), r);
+      touch(key(r.geometry[r.geometry.length - 1]), r);
+    }
+
+    const out = new Map();
+    const boxOf = new Map();
+    for (const box of boxes) {
+      const bAt = box.Attributes?.Span_Anchor || box.Geometry?.[0];
+      if (!bAt) continue;
+      /* Breadth first from the box, remembering how each run was
+         reached, so a meter's run gives back the whole path. */
+      const start = key(bAt);
+      const cameBy = new Map();          // runId -> previous runId | null
+      const seen = new Set([start]);
+      let edge = (at.get(start) || []).map((r) => ({ r, from: start }));
+      for (const e of edge) cameBy.set(e.r.id, null);
+      while (edge.length) {
+        const next = [];
+        for (const { r, from } of edge) {
+          const a = key(r.geometry[0]);
+          const b = key(r.geometry[r.geometry.length - 1]);
+          const far = a === from ? b : a;
+          if (seen.has(far)) continue;
+          seen.add(far);
+          for (const nr of at.get(far) || []) {
+            if (cameBy.has(nr.id)) continue;
+            cameBy.set(nr.id, r.id);
+            next.push({ r: nr, from: far });
+          }
+        }
+        edge = next;
+      }
+
+      const byId = new Map(mains.map((r) => [r.id, r]));
+      const meters = features.filter((m) => m.Feature_Role === "meter"
+        && Number(m.Attributes?.Link_Box_ID) === Number(box.Feature_ID)
+        && m.Attributes?.Link_Way != null && (m.Geometry || []).length);
+      for (const m of meters) {
+        const way = Number(m.Attributes.Link_Way);
+        /* The run nearest the meter is the one feeding it; the path
+           back to the box is everything that carries its load. */
+        let best = null;
+        for (const r of mains) {
+          if (!cameBy.has(r.id)) continue;
+          for (let i = 1; i < r.geometry.length; i++) {
+            const d = segDist(m.Geometry[0], r.geometry[i - 1], r.geometry[i]);
+            if (!best || d < best.d) best = { d, id: r.id };
+          }
+        }
+        if (!best) continue;
+        for (let id = best.id; id != null; id = cameBy.get(id) ?? null) {
+          const held = out.get(id);
+          if (held === undefined) {
+            out.set(id, way);
+            boxOf.set(id, box);
+          } else if (held !== way) {
+            out.set(id, null);          // shared: keeps the circuit colour
+          }
+          if (!byId.has(id)) break;
+        }
+      }
+    }
+    return { ways: out, boxOf };
+  })();
+
   const wayColourOf = (f) => {
     let boxId = f.Attributes?.Link_Box_ID ?? null;
     let way = f.Attributes?.Link_Way ?? null;
@@ -350,9 +496,15 @@ export function feederRenderPlan(features = [], opts = {}) {
      the same colour from the substation to the far end \u2014 unless the
      run is an output's, which wears the output's own. A section with
      no circuit gets none and is left to the style cascade. */
+  const liveColour = (r) => {
+    const way = liveWays.ways?.get(r.id);
+    if (way == null) return null;
+    return liveWays.boxOf.get(r.id)?.Attributes?.Way_Colours?.[way] ?? null;
+  };
   runs.forEach((r) => {
     plan.set(r.id, {
-      colour: wayColourOf(r.feature)
+      colour: liveColour(r)
+        ?? wayColourOf(r.feature)
         ?? (r.circuitId == null ? null : byCircuit.get(r.circuitId) ?? null),
       circuitId: r.circuitId,
       offsetPx: 0,

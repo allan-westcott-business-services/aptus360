@@ -980,6 +980,43 @@ if (plantLabel({ Feature_Role: "poc" })) fail("a bare POC returned a plant label
      pass where it used to be written out inline. It is
      planFeederPoints now, so this drives it: a check matching source
      text proves the text has not moved, which is not the rule. */
+  /* ── An origin that has been dragged is still that origin ──
+
+     The marker is the one part of a span node that moves: it is pulled
+     clear of the plant so the label can be read, and the ANCHOR says
+     where it belongs. The origin match looked at the marker, within
+     1.5 m, so an origin nudged two metres off its substation stopped
+     matching and the next run made a second E0 on top of the plant —
+     two origins on one drawing, which is the one thing a network
+     measured from an origin cannot have. Found on a live drawing with
+     two E0s and two E0bs.
+
+     The rule was already written for every other node twenty lines
+     further down: five metres, against the anchor. Held here to the
+     same two, so they cannot drift apart again. */
+  {
+    const fn = canvas.slice(canvas.indexOf("for (const [key, origin] of originsOf(world))"),
+      canvas.indexOf("for (const nd of plan.nodes)"));
+    if (!fn) fail("the origin placement has gone");
+    else {
+      if (/Math\.hypot\(\(\(x\.Geometry \|\| \[\]\)\[0\]/.test(fn)) {
+        fail("an existing origin is still matched by its marker — drag one "
+          + "clear and the next run makes a second");
+      }
+      if (!/Span_Anchor/.test(fn)) {
+        fail("the origin match does not read the anchor");
+      }
+      if (!/e\.d < 5/.test(fn)) {
+        fail("the origin match reaches a shorter distance than every other "
+          + "node, so a moved origin is not reclaimed");
+      }
+      if (!/claimed\.add\(existing\.Feature_ID\)/.test(fn)) {
+        fail("a matched origin is not claimed, so the node pass below can "
+          + "reclaim it as an ordinary node and renumber it");
+      }
+    }
+  }
+
   const seqPlan = planFeederPoints({
     nodes: [{ point: [0, 0], kind: "origin" }, { point: [100, 0], kind: "junction" }],
     existing: [

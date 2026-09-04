@@ -11462,12 +11462,42 @@ export default function GISCanvasPage() {
            four copies stacked on one spot, four things to keep in step
            for no gain. No Circuit_ID on it: naming one would make it
            that circuit's origin and leave the rest without. */
-        const existing = features.find((x) => x.Feature_Role === "spannode"
-          && Number(x.Attributes?.Span_Seq) === 0
-          && x.Layer_Key === layer
-          && Math.hypot(((x.Geometry || [])[0]?.[0] ?? 0) - at[0],
-            ((x.Geometry || [])[0]?.[1] ?? 0) - at[1]) < 1.5);
-        if (existing) continue;
+        /* ── Matched by its ANCHOR, at the same reach as every other
+              node ──
+
+           This looked at the marker, within 1.5 m. The marker is the
+           one part of a span node that moves: it is dragged clear of
+           the plant so its label can be read, and the anchor is what
+           says where it belongs. So an origin nudged two metres off
+           the substation stopped matching, and the next Place Span
+           Nodes made a second E0 on top of the plant while the first
+           sat beside it — two origins, which is the one thing a
+           network measured from an origin cannot have.
+
+           The rule was already written twenty lines below, for every
+           other node: five metres, against the anchor, because a node
+           somebody moved by hand is exactly the case to recover. The
+           origins never got it. Same reach and same field here, so the
+           two cannot drift apart again.
+
+           Claimed as well, or the node loop below could reclaim an
+           origin as an ordinary node and renumber it. */
+        const originAt = (x) => {
+          const a = x.Attributes?.Span_Anchor;
+          return (Array.isArray(a) && a.length === 2) ? a : (x.Geometry || [])[0];
+        };
+        const existing = features
+          .filter((x) => x.Feature_Role === "spannode"
+            && Number(x.Attributes?.Span_Seq) === 0
+            && x.Layer_Key === layer
+            && !claimed.has(x.Feature_ID))
+          .map((x) => {
+            const p = originAt(x);
+            return { x, d: p ? Math.hypot(p[0] - at[0], p[1] - at[1]) : Infinity };
+          })
+          .filter((e) => e.d < 5)
+          .sort((a, b) => a.d - b.d)[0]?.x;
+        if (existing) { claimed.add(existing.Feature_ID); continue; }
 
         await addFeature({
           Layer_Key: layer,

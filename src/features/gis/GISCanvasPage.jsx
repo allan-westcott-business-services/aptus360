@@ -6655,10 +6655,28 @@ export default function GISCanvasPage() {
                 Math.hypot(q[0] - at[0], q[1] - at[1]) <= CONNECT_M);
           });
           if (near.length <= 1) return near[0] ?? null;
+          /* Narrow to the joint's own circuit where it names one, then
+             take the NEAREST of what is left.
+
+             Requiring exactly one match failed downstream of a link
+             box, where a circuit's outputs are three runs of the same
+             circuit passing the same joint: three matches, no winner,
+             and the joint moved no cable at all while upstream joints
+             \u2014 with only the trunk in reach \u2014 behaved. A joint sits ON
+             one cable, so the nearest is the answer, and it is an
+             answer that exists whatever the drawing looks like. */
           const cid = pt.Attributes?.Circuit_ID;
-          const mine = cid == null ? [] : near.filter((l) =>
-            Number(l.Attributes?.Circuit_ID) === Number(cid));
-          return mine.length === 1 ? mine[0] : null;
+          const mine = cid == null ? near : (near.filter((l) =>
+            Number(l.Attributes?.Circuit_ID) === Number(cid)) || []);
+          const pool = mine.length ? mine : near;
+          let best = null;
+          for (const l of pool) {
+            for (const q of l.Geometry || []) {
+              const d = Math.hypot(q[0] - at[0], q[1] - at[1]);
+              if (!best || d < best.d) best = { d, line: l };
+            }
+          }
+          return best?.line ?? null;
         })();
 
         for (const line of features) {

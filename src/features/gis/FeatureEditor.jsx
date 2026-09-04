@@ -580,10 +580,45 @@ export default function FeatureEditor({
       const t = types.find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
       if (t && t.Is_Active === false) return false;
       if (c.Is_Active === false) return false;
+
+      /* ── Rated cables only ──
+
+         `Rating_Amps` is what the catalogue says the cable can carry,
+         and a row without one is a name somebody typed and never
+         finished. The menu offered all of them: HV cores, earth cables,
+         pilot cable and 20 kV triplex, in a list where a designer is
+         picking an LV main. Choosing one of those sets a size the
+         network cannot be checked against.
+
+         Usage narrows it to the right kind of cable; this narrows it to
+         the ones the catalogue has actually specified. */
+      if (c.Rating_Amps == null || Number(c.Rating_Amps) <= 0) return false;
+
       const u = usageOf(c);
       return !u || u === cableUsage;
     });
-    return { list: fits.length ? fits : sizes, filtered: fits.length > 0 };
+
+    /* Alphabetical, on the name as it reads in the menu.
+
+       The catalogue's own order is the order rows were entered, which
+       put "3c WAVE 300" above "4c WAVE 95" and the HV cores among the
+       mains. Sorted on the label somebody actually sees, with numbers
+       compared as numbers so 95 comes before 185 rather than after it.
+
+       A copy: sort() is in place, and this array is the lookups array
+       where nothing else was filtered out. */
+    const nameOf = (c) => [
+      types.find((x) => x.Cable_Type_ID === c.Cable_Type_ID)?.Cable_Type,
+      c.Size_Label,
+    ].filter(Boolean).join(" ");
+    const byName = [...fits].sort((a, b) => nameOf(a).localeCompare(
+      nameOf(b), undefined, { numeric: true, sensitivity: "base" },
+    ));
+
+    /* Never an empty menu. Where a catalogue has nothing rated for this
+       usage the whole list is offered rather than none, and `filtered`
+       says which happened so the panel can tell somebody. */
+    return { list: byName.length ? byName : sizes, filtered: byName.length > 0 };
   }, [lookups, cableUsage]);
 
   /* The unit actually chosen, so its figures can be shown rather than
@@ -1277,7 +1312,7 @@ export default function FeatureEditor({
                     onChange={(e) => onSetCircuitOrigin(cid,
                       e.target.value === "" ? null : Number(e.target.value))}>
                     <option value="">
-                      Not set \u2014 the build picks the nearest POC
+                      {"Not set \u2014 the build picks the nearest POC"}
                     </option>
                     {lvOrigins(allFeatures).map((o) => (
                       <option key={o.Feature_ID} value={String(o.Feature_ID)}>
@@ -1563,7 +1598,12 @@ export default function FeatureEditor({
                   onChange={(e) => setAttr("Manual_VD_Cable_Size_ID")(
                     e.target.value ? Number(e.target.value) : null)}>
                   <option value="">Not overridden</option>
-                  {(lookups?.cableSizes || []).map((c) => {
+                  {/* The same list the service editor offers, rather
+                      than the raw catalogue: this one showed every row
+                      in it \u2014 HV cores, earth, pilot, 20 kV triplex \u2014
+                      in unsorted catalogue order, for a designer
+                      choosing an LV main. */}
+                  {cableChoices.list.map((c) => {
                     const t = (lookups?.cableTypes || [])
                       .find((x) => x.Cable_Type_ID === c.Cable_Type_ID);
                     /* Most of the catalogue is names only. Saying so here
@@ -2160,14 +2200,19 @@ export default function FeatureEditor({
                     {cableChoices.filtered ? (
                       <p className="hint">
                         {cableUsage === "service"
-                          ? "Service cables only \u2014 set by Usage on the cable type."
-                          : "Mains cables only \u2014 set by Usage on the cable type."}
+                          ? "Service cables with a rating \u2014 set by Usage and Rating A on the cable type."
+                          : "Mains cables with a rating \u2014 set by Usage and Rating A on the cable type."}
                       </p>
                     ) : (
                       <p className="hint">
+                        {/* Two reasons the narrowing can come to nothing
+                            and they want different answers, so both are
+                            named rather than blaming Usage for a
+                            catalogue with no ratings in it. */}
                         No cable type is marked as
-                        {cableUsage === "service" ? " Service" : " Mains"},
-                        so the whole catalogue is shown. Set Usage in
+                        {cableUsage === "service" ? " Service" : " Mains"}
+                        {" "}with a Rating A, so the whole catalogue is
+                        shown. Set Usage and Rating A in
                         Admin &rsaquo; Electric Specs to narrow it.
                       </p>
                     )}

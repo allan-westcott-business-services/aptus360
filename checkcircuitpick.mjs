@@ -24,6 +24,7 @@
      button that will not move and does not say why is the same dead end
      in a different place. */
 import { readFileSync } from "node:fs";
+import { circuitsFrom } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -81,6 +82,50 @@ if (!/target: circuits\.length \? null : "new"/.test(canvas)) {
 if (!/\.cpick-item\.on \{/.test(canvas)) {
   fail("a chosen circuit is not marked, so nothing on screen says which "
     + "one the button will use");
+}
+
+/* ── A box naming a circuit that is gone ──
+
+   A circuit exists while meters name it — `circuitsFrom` derives the
+   list from the meters, so the last meter leaving takes the circuit with
+   it. The box's Circuit_ID is a second record of the same fact and
+   nothing clears it, so a box that was on Circuit 1 goes on saying so
+   afterwards. The lasso measured against that stamp and refused
+   everything: "Nothing in that outline is on Circuit 1" — about a
+   circuit not in the report, which reads as the app caching something.
+
+   The meters are the fact and the stamp is a copy. A copy naming
+   something that is not there is dropped. */
+{
+  const lasso = canvas.slice(canvas.indexOf("async function finishLinkWayAssign"),
+    canvas.indexOf("async function moveToLinkWay"));
+  if (!lasso) fail("the link-way lasso has gone");
+  else {
+    if (!/const live = circuitsFrom\(features\);/.test(lasso)) {
+      fail("the lasso does not check that the box's circuit still exists");
+    }
+    if (!/const claimed = stale \? null : stamped;/.test(lasso)) {
+      fail("a box still governs the lasso with a circuit that has no "
+        + "meters left on it");
+    }
+    /* And it says so, rather than changing the box's circuit quietly. */
+    if (!/which no longer has any meters on it/.test(lasso)) {
+      fail("the box changes circuit silently when its old one has gone");
+    }
+  }
+
+  /* The rule the above rests on: a circuit is its meters. If
+     circuitsFrom ever starts reporting circuits from something else,
+     "no longer exists" stops meaning what this assumes. */
+  const gone = circuitsFrom([
+    { Feature_ID: 1, Feature_Role: "linkbox", Feature_Type: "point",
+      Layer_Key: "electric", Geometry: [[0, 0]],
+      Attributes: { Circuit_ID: 1, Circuit_Name: "Circuit 1" } },
+  ]);
+  if (gone.length) {
+    fail("a link box alone now makes a circuit exist — the staleness test "
+      + "in the lasso rests on it not doing that");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

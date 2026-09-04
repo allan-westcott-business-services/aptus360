@@ -4253,7 +4253,23 @@ export default function GISCanvasPage() {
              says what the thing is and a DNO may draw meters as
              hexagons, so the circuit has to be said without taking that
              over. */
-          if (isMeter && circuitRings) {
+          /* ── And always while the lasso is armed ──
+
+             The rings are a setting, off by default, and the one moment
+             they are indispensable is the moment nobody has turned them
+             on: drawing round plots to link them to a circuit. A meter
+             already assigned looks exactly like a free one, so the same
+             plots get lassoed twice — the dialog does refuse them
+             ("N already on a circuit were left alone"), which means the
+             work is not lost, but it is a count in a paragraph rather
+             than something visible on the drawing while the outline is
+             being drawn.
+
+             So they show whenever the circuit lasso is up, whatever the
+             setting says, and go back to the setting when it is put
+             down. Not a second switch \u2014 one setting, temporarily
+             overridden by the job in hand. */
+          if (isMeter && (circuitRings || tool === "circuit")) {
             /* A proposed group takes precedence over a real circuit:
                while a suggestion is being looked at, the rings have to
                show what is being suggested rather than what is already
@@ -6016,7 +6032,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -10078,7 +10094,25 @@ export default function GISCanvasPage() {
        takes what it is given. Where it already names one, that still
        governs: an output feeds a share of its own circuit, and a lasso
        reaching into another is the mistake it always was. */
-    const claimed = box.Attributes?.Circuit_ID ?? null;
+    /* ── A stamp naming a circuit that is gone is not a claim ──
+
+       A circuit exists while meters name it: `circuitsFrom` derives the
+       list from the meters, and the last meter leaving takes the circuit
+       with it. The box's `Circuit_ID` is a second record of that same
+       fact, and nothing clears it — so a box that was on Circuit 1 goes
+       on saying so after Circuit 1 has ceased to exist, and the lasso
+       measured against it and refused everything: "Nothing in that
+       outline is on Circuit 1", about a circuit not in the report.
+
+       Fault 13's shape once more, two records of one fact editable
+       apart. The meters are the fact; the stamp is a copy. So a copy
+       naming something that is not there is dropped and the lasso
+       stands, which is also what happens to a box that never had one. */
+    const live = circuitsFrom(features);
+    const stamped = box.Attributes?.Circuit_ID ?? null;
+    const stale = stamped != null
+      && !live.some((c) => Number(c.id) === Number(stamped));
+    const claimed = stale ? null : stamped;
     const inRing = [...new Set(meters
       .map((m) => m.Attributes?.Circuit_ID)
       .filter((x) => x != null)
@@ -10140,7 +10174,13 @@ export default function GISCanvasPage() {
         + (claimed == null
           ? " \u2014 the box is on that circuit now. Build LV Network lays the"
             + " input and each output"
-          : " \u2014 run Build LV Network to re-route"));
+          : " \u2014 run Build LV Network to re-route")
+        /* Said, not done silently. A box quietly changing circuits is
+           the kind of thing somebody finds three drawings later. */
+        + (stale
+          ? `. It still named ${box.Attributes?.Circuit_Name ?? "a circuit"},`
+            + " which no longer has any meters on it"
+          : ""));
       setTimeout(() => setStatus(""), 10000);
       setError("");
     } catch (e) { setError(e.message); }
@@ -19025,7 +19065,7 @@ export default function GISCanvasPage() {
                           of the drawing away with you. */}
                       <div className="gm-sep" />
                       <MenuItem label={busy === "download" ? "Saving\u2026" : "Download Drawing"}
-                        hint="The drawing as JSON \u2014 for sending on when something needs looking at"
+                        hint={"The drawing as JSON \u2014 for sending on when something needs looking at"}
                         disabled={!projectId || !!busy}
                         onClick={downloadDrawing} />
                     </Menu>
@@ -19575,7 +19615,10 @@ export default function GISCanvasPage() {
 
                       <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
                         active={tool === "circuit"} disabled={!projectId}
-                        hint="Draw round the plot seeds it serves"
+                        /* Says that the rings appear, so a ringed meter
+                           reads as "already spoken for" rather than as
+                           the drawing having changed under you. */
+                        hint={"Draw round the plot seeds it serves \u2014 meters already on a circuit are ringed"}
                         onClick={() => {
                           setTool(tool === "circuit" ? "select" : "circuit");
                           setSelected([]); setDraft([]);

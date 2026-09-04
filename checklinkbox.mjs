@@ -630,7 +630,9 @@ if (!/claimed twice/.test(editor)) {
     fail("the lasso still refuses a box with no circuit \u2014 which forces a "
       + "build before the box can be assigned, and another after");
   }
-  if (!/const claimed = box\.Attributes\?\.Circuit_ID \?\? null;/.test(src)) {
+  /* The stamp is read, but only counts where the circuit it names still
+     has meters on it — see the staleness case in checkcircuitpick. */
+  if (!/const stamped = box\.Attributes\?\.Circuit_ID \?\? null;/.test(src)) {
     fail("the lasso does not take the box's circuit from what is lassoed");
   }
   /* And a lasso spanning two circuits is still refused: an output feeds

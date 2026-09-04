@@ -6682,6 +6682,26 @@ export default function GISCanvasPage() {
           if (ptCid != null && lineCid != null
             && Number(ptCid) !== Number(lineCid)) continue;
 
+          /* ── What it is connected to, where that is recorded ──
+
+             The circuit guard above settles two circuits' MAINS sharing
+             a trench. It does nothing for services, which carry no
+             Circuit_ID at all: lineCid is null, the guard passes, and a
+             service joint dragged at a tee took every service ending
+             near it \u2014 two plots' cables moving because one joint did.
+
+             A joint knows its own cables: the link passes record
+             Connects when the drawing is loaded and when features are
+             joined. Where that list exists it is the answer, because it
+             says what this joint is connected to rather than what
+             happens to end nearby. Where it does not \u2014 an older
+             drawing, a joint placed before the passes ran \u2014 geometry
+             is still the fallback, so nothing that worked stops
+             working. */
+          const linked = pt.Attributes?.Connects;
+          if (Array.isArray(linked) && linked.length
+            && !linked.map(Number).includes(Number(line.Feature_ID))) continue;
+
           const candidates = isJoint && isFeeder
             ? g.map((_, i) => i)
             : [0, g.length - 1];

@@ -67,6 +67,201 @@ const mineFor = (existing, circuitId, claimed) => (existing || []).filter((f) =>
   return cid == null || Number(cid) === Number(circuitId);
 });
 
+/* ── Where a newly placed point goes in the sequence ──
+
+   A0 is the origin, A1 the first stop reached from it, A2 the next.
+   The number IS the position on the run, which is why the editor
+   refuses to let anyone type it.
+
+   Placement did not do that. It took the highest number on the circuit
+   and added one, so a link box put on the cable just past the POC — the
+   first stop there is — came out A10 on a circuit that already had
+   nine. The drawing then read A0, A10, A2, A3: a jump over A1, with the
+   first thing reached after the POC carrying the last number in the
+   schedule. "Max plus one" is a count of how many points exist, written
+   into a field that means position; the two agree only if every point
+   is placed in order from the origin outward and none is ever added in
+   the middle, which is not how anybody draws.
+
+   So a new point is INSERTED. How far along the cable it stands decides
+   which slot it drops into; the points beyond it move up. The existing
+   ORDER is not re-derived — it came from the build's own walk, and
+   working it out again here would be a second writer of one fact, which
+   is fault 13 in a new place. All this decides is the slot. */
+
+/* Metres along the circuit's mains from the origin, by Dijkstra over
+   the cable vertices. Along the cable rather than across the site: a
+   stop up a long branch is further out than one close by in a straight
+   line, and a schedule ordered by how the crow flies describes no route
+   anybody drives. */
+const JOIN_M = 0.25;
+
+function mainsGraph(features, circuitId) {
+  const runs = (features || []).filter((f) => f.Feature_Type === "line"
+    && f.Layer_Key === "electric"
+    && String(f.Attributes?.Line_Type ?? "").includes("main")
+    && (f.Attributes?.Circuit_ID == null
+      || Number(f.Attributes.Circuit_ID) === Number(circuitId)));
+
+  const pts = [];
+  const idx = (p) => {
+    for (let i = 0; i < pts.length; i++) {
+      if (Math.hypot(pts[i][0] - p[0], pts[i][1] - p[1]) <= JOIN_M) return i;
+    }
+    pts.push([p[0], p[1]]);
+    return pts.length - 1;
+  };
+  const adj = new Map();
+  const segs = [];
+  const link = (a, b, w) => {
+    if (!adj.has(a)) adj.set(a, []);
+    adj.get(a).push([b, w]);
+  };
+  for (const r of runs) {
+    const g = r.Geometry || [];
+    for (let i = 1; i < g.length; i++) {
+      const a = idx(g[i - 1]); const b = idx(g[i]);
+      const w = Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
+      link(a, b, w); link(b, a, w);
+      segs.push({ a, b, w, pa: g[i - 1], pb: g[i] });
+    }
+  }
+  if (!pts.length) return null;
+
+  /* Distances along the cable from any point standing on it, by
+     Dijkstra from a virtual node spliced into the segment that point
+     projects onto \u2014 so a box mid-span measures from where it stands
+     rather than from the nearest corner. */
+  const project = (p) => {
+    if (!Array.isArray(p)) return null;
+    let best = null;
+    for (const s of segs) {
+      const vx = s.pb[0] - s.pa[0]; const vy = s.pb[1] - s.pa[1];
+      const len2 = vx * vx + vy * vy;
+      const t = len2 ? Math.max(0, Math.min(1,
+        ((p[0] - s.pa[0]) * vx + (p[1] - s.pa[1]) * vy) / len2)) : 0;
+      const qx = s.pa[0] + vx * t; const qy = s.pa[1] + vy * t;
+      const off = Math.hypot(p[0] - qx, p[1] - qy);
+      if (best && off >= best.off) continue;
+      best = { off, s, t };
+    }
+    return best && best.off <= ADOPT_REACH_BOX_M ? best : null;
+  };
+
+  const distancesFrom = (p) => {
+    const at = project(p);
+    if (!at) return null;
+    const n = pts.length;
+    const dist = new Array(n + 1).fill(Infinity);
+    const virt = n;
+    const extra = new Map([[virt, [
+      [at.s.a, at.s.w * at.t],
+      [at.s.b, at.s.w * (1 - at.t)],
+    ]]]);
+    dist[virt] = 0;
+    const left = new Set([...pts.map((_, i) => i), virt]);
+    while (left.size) {
+      let u = null;
+      for (const i of left) if (u == null || dist[i] < dist[u]) u = i;
+      if (dist[u] === Infinity) break;
+      left.delete(u);
+      for (const [v, w] of (extra.get(u) || adj.get(u) || [])) {
+        if (dist[u] + w < dist[v]) dist[v] = dist[u] + w;
+      }
+    }
+    return (q) => {
+      const to = project(q);
+      if (!to) return null;
+      const d = Math.min(
+        dist[to.s.a] + to.s.w * to.t,
+        dist[to.s.b] + to.s.w * (1 - to.t),
+      );
+      return Number.isFinite(d) ? d : null;
+    };
+  };
+
+  return { distancesFrom };
+}
+
+export function planInsertion({ features = [], circuit, at, excludeId = null }) {
+  const letter = circuit?.letter ?? "A";
+  const none = { seq: null, label: null, writes: [] };
+  if (!Array.isArray(at)) return none;
+
+  const onCircuit = features.filter((f) =>
+    (f.Feature_Role === "feederpoint" || f.Feature_Role === "linkbox")
+    && Number(f.Attributes?.Circuit_ID) === Number(circuit?.id)
+    && Number(f.Feature_ID) !== Number(excludeId));
+
+  const originPt = (() => {
+    const o = onCircuit.find((f) => Number(f.Attributes?.Span_Seq) === 0);
+    const a = o?.Attributes?.Span_Anchor ?? o?.Geometry?.[0];
+    return Array.isArray(a) ? a : null;
+  })();
+  if (!originPt) return none;
+
+  const graph = mainsGraph(features, circuit?.id);
+  const fromOrigin = graph?.distancesFrom(originPt) ?? null;
+  const fromNew = graph?.distancesFrom(at) ?? null;
+  /* No cable under it yet — a box placed in open ground before the
+     feeders are drawn. It gets no number rather than a guessed one; the
+     next build gives it one when a run reaches it. */
+  if (!fromOrigin || !fromNew) return none;
+  const mine = fromOrigin(at);
+  if (mine == null) return none;
+
+  /* ── Which points it goes after ──
+
+     The ones BETWEEN the origin and it along the cable, which on a
+     branched circuit is not the same as the ones with a smaller
+     distance. The first cut compared distances alone, so a point 70 m
+     up one branch was numbered against a point 150 m down another and
+     landed at A2 when A3 already stood at 60 m on its own branch.
+     Nothing about that is readable on a drawing: the number is supposed
+     to say what order the cable reaches things in.
+
+     A point P is on the way to N when the distance out to P plus the
+     distance on from P to N is the distance out to N. Within a metre,
+     because both are measured through projections onto segments and two
+     routes to one place will not agree to the millimetre. */
+  const onTheWay = (p) => {
+    const out = fromOrigin(p);
+    const on = fromNew(p);
+    if (out == null || on == null) return false;
+    if (out >= mine) return false;
+    return Math.abs(out + on - mine) <= 1;
+  };
+
+  const stops = onCircuit
+    .filter((f) => Number(f.Attributes?.Span_Seq) !== 0)
+    .map((f) => ({
+      f,
+      seq: Number(f.Attributes?.Span_Seq) || 0,
+      up: onTheWay(f.Attributes?.Span_Anchor ?? f.Geometry?.[0]),
+    }))
+    .sort((a, b) => a.seq - b.seq);
+
+  /* Straight after the last thing on the way to it. Everything from
+     that number outward moves up, so the sequence stays unbroken. */
+  const slot = stops.reduce((m, s) => (s.up ? Math.max(m, s.seq + 1) : m), 1);
+
+  const writes = [];
+  for (const s of stops) {
+    if (s.seq < slot) continue;
+    const seq = s.seq + 1;
+    const label = spanLabelFor(letter, seq);
+    writes.push({
+      Feature_ID: s.f.Feature_ID,
+      /* A link box keeps its own name; a feeder point has none but its
+         code, so its Label moves with it. */
+      Label: s.f.Feature_Role === "linkbox" ? s.f.Label : `Point ${label}`,
+      Attributes: { ...s.f.Attributes, Span_Seq: seq, Span_Label: label },
+    });
+  }
+
+  return { seq: slot, label: spanLabelFor(letter, slot), writes };
+}
+
 export function planFeederPoints({
   nodes = [],
   existing = [],

@@ -190,12 +190,33 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
    features \u2014 writing over it would bury the fitting. */
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/if \(code && f\.Feature_Role === "joint" && view\.scale > 1\.2\)/.test(canvas)) {
-    fail("a straight joint carries a span code and does not show it, so it "
-      + "cannot be found in the schedule from the drawing");
+
+  /* Drawn as a feeder end point, because that is what it is: circle,
+     code inside it, figures beside it, at the size every other stop
+     uses. A code as loose text beside a diamond reads as a different
+     kind of thing. */
+  if (!/const isBox = f\.Feature_Role === "linkbox";/.test(canvas)) {
+    fail("a straight joint is treated as carrying its own symbol, so it "
+      + "gets no circle and its code sits loose beside the diamond");
   }
-  if (!/ctx\.strokeText\(code, q\.x, jy\);/.test(canvas)) {
-    fail("the joint's code has no halo, so it is unreadable over a trench");
+  /* And sized as a node. The box formula made the joint's circle and
+     figures larger than every other stop's, for no reason a reader
+     could see. */
+  if (!/const r = isBox\s*\n\s*\? Math\.max\(5, \(on \? 1\.3 : 1\) \* ps\.symbolPx\)/.test(canvas)) {
+    fail("a joint is sized by the link box's formula, so its text comes out "
+      + "bigger than every other stop's");
+  }
+
+  /* ── The link box is still in the pass ──
+
+     Adding the joint, the `linkbox` clause was deleted with the line it
+     shared: the box dropped out of the filter entirely and its levels
+     vanished from the drawing. A filter is a list of what is wanted,
+     and editing one by rewriting the line before it is how an entry
+     goes missing. */
+  if (!/&& f\.Feature_Role !== "linkbox"\n\s*&& !\(f\.Feature_Role === "joint"/.test(canvas)) {
+    fail("the link box is no longer in the levels pass, so a box shows no "
+      + "figures at all");
   }
 
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");

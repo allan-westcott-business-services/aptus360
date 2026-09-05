@@ -77,9 +77,17 @@ if (!/&& f\.Feature_Role !== "linkbox"\) continue;/.test(canvas)) {
 if (!/if \(!isBox\) \{\n\s*ctx\.beginPath\(\);/.test(canvas)) {
   fail("the node circle is drawn for a link box, covering its square");
 }
-if (!/\|\| f\.Feature_Role === "linkbox"\);/.test(canvas)) {
-  fail("a box moved along the run does not re-run the levels check, so it "
-    + "keeps the figures it had at the old place");
+/* In the list, not necessarily last in it. This required the closing
+   paren immediately after, so adding the straight joint below it read
+   as the box having been removed. A check should say what must be
+   there, not what must come after it. */
+{
+  const at = canvas.indexOf("const levelsKey = useMemo");
+  const key = at < 0 ? "" : canvas.slice(at, at + 2000);
+  if (!/f\.Feature_Role === "linkbox"/.test(key)) {
+    fail("a box moved along the run does not re-run the levels check, so it "
+      + "keeps the figures it had at the old place");
+  }
 }
 
 if (!/const FUSES = \[200, 315, 400, 630\];/.test(editor)) {

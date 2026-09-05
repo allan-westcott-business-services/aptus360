@@ -1404,6 +1404,22 @@ Worth stating generally, because this is the third time it has come up:
 **proximity is evidence of connection, not connection.** Where the
 drawing records the fact, read the record.
 
+**It is drawn as a feeder end point**, because that is what it is: the
+same circle, the same code inside it, the same figures at the same size
+as every other stop. A code shown as loose text beside a diamond reads
+as a different kind of thing, and sizing it by the link box's formula
+made its text larger than every other stop's for no reason a reader
+could see. The fitting's diamond sits under the circle, which is the
+right way round — somebody reading levels is reading the network, not
+the ironmongery.
+
+**A filter is a list of what is wanted.** Adding the joint to the
+levels pass, the `linkbox` clause was deleted along with the line it
+shared, so the box dropped out of the pass and its levels vanished from
+every drawing. Editing a filter by rewriting the line before it is how
+an entry goes missing, and nothing failed — the box simply stopped
+being asked about.
+
 **It wears its code.** C2, C3 — a feeder end point belongs in the
 sequence, so a designer reading the drawing can find it in the schedule
 and quote a level at it. Beside the symbol rather than over it: a node's

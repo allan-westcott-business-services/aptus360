@@ -5764,13 +5764,30 @@ export default function GISCanvasPage() {
            ends there and the next begins, so the figures are quoted at
            it like any other stop. A service joint is not \u2014 one cable
            passes through it and nothing about the run changes. */
+        && f.Feature_Role !== "linkbox"
         && !(f.Feature_Role === "joint"
           && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight")) continue;
-      const isBox = f.Feature_Role === "linkbox"
-        /* Both wear their own symbol, drawn with the rest of the
-           features; this pass is here for the figures beside them, not
-           for a circle over the top. */
-        || f.Feature_Role === "joint";
+
+      /* Only the BOX keeps its own symbol here. Adding the joint to
+         this pass, the `linkbox` clause above was deleted with the
+         line it shared — so the box dropped out of the pass entirely
+         and its levels vanished from the drawing. A filter is a list of
+         what is wanted; editing one by rewriting the line before it is
+         how an entry goes missing. */
+      const isBox = f.Feature_Role === "linkbox";
+
+      /* ── A straight joint is drawn as a feeder end point ──
+
+         Because that is what it is: the cable ends there and the next
+         begins. The other stops wear a circle with the code inside it,
+         and a joint carrying a code as loose text beside a diamond
+         reads as a different kind of thing altogether.
+
+         So it takes the node path whole — same circle, same code, same
+         figures, at the same size. The fitting's diamond sits under it
+         and the point on the run is what the eye lands on, which is
+         the right way round: a designer reading levels is reading the
+         network, not the ironmongery. */
       const g = f.Geometry || [];
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
@@ -5912,6 +5929,15 @@ export default function GISCanvasPage() {
          node's radius for a box would drop the figures on top of the
          symbol. Its own half-width, worked out the way its branch works
          it out. */
+      /* A box's square is sized differently from a node's circle, and
+         the plate is placed at `r` from the centre \u2014 so taking the
+         node's radius for a box would drop the figures on top of the
+         symbol.
+
+         A JOINT takes the node's radius, not the box's. It is drawn as
+         a node here, and the box formula made its circle and its
+         figures larger than every other stop's for no reason a reader
+         could see. */
       const r = isBox
         ? Math.max(5, (on ? 1.3 : 1) * ps.symbolPx)
         : Math.max(3, ps.symbolPx) * (on ? 1.25 : 1);
@@ -6041,30 +6067,6 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "middle";
         ctx.fillText(code, q.x, q.y);
         ctx.textBaseline = "alphabetic";
-      }
-
-      /* ── A straight joint wears its code beside its symbol ──
-
-         It is a feeder end point like any other and belongs in the
-         sequence, so a designer reading the drawing can find it in the
-         schedule and quote a level at it. What it cannot do is carry
-         the code the way a node does: a node's is white inside its own
-         circle, and a joint's symbol is a small diamond drawn with the
-         features — writing over it would bury the fitting.
-
-         So it goes above, in the circuit's colour with a white halo, at
-         the same zoom the other codes appear at. */
-      if (code && f.Feature_Role === "joint" && view.scale > 1.2) {
-        const jf = Math.max(9, Math.min(13, Math.round(r * 1.6)));
-        ctx.font = `700 ${jf}px ui-monospace, Menlo, monospace`;
-        ctx.textAlign = "center";
-        ctx.textBaseline = "alphabetic";
-        const jy = q.y - r - 4;
-        ctx.lineWidth = 3;
-        ctx.strokeStyle = "#fff";
-        ctx.strokeText(code, q.x, jy);
-        ctx.fillStyle = circuitColour ?? "#0f172a";
-        ctx.fillText(code, q.x, jy);
       }
 
       /* ── The pressure at this node ──

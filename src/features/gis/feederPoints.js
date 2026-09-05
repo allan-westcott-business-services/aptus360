@@ -59,11 +59,20 @@ const at = (f) => {
    because a point belonging to no circuit stops no trace and shows no
    level. A box can, because a box is a thing in the ground whether or
    not a cable has reached it yet. */
+/* A straight joint is a fitting where one cable ends and the next
+   begins — placed so a designer can change size either side of it. That
+   makes it a stop like a link box, and the walk adopts it the same way.
+
+   A service joint is not: one cable passes through it. A breech is
+   where a run divides and the walk already marks that as a junction. */
+const isStraightJoint = (f) => f?.Feature_Role === "joint"
+  && String(f?.Attributes?.Joint_Type ?? "").toLowerCase() === "straight";
+
 const mineFor = (existing, circuitId, claimed) => (existing || []).filter((f) => {
   if (claimed?.has(f.Feature_ID)) return false;
   const cid = f.Attributes?.Circuit_ID;
   if (f.Feature_Role === "feederpoint") return Number(cid) === Number(circuitId);
-  if (f.Feature_Role !== "linkbox") return false;
+  if (f.Feature_Role !== "linkbox" && !isStraightJoint(f)) return false;
   return cid == null || Number(cid) === Number(circuitId);
 });
 
@@ -294,7 +303,13 @@ export function planFeederPoints({
       if (took.has(f.Feature_ID)) continue;
       const pAt = at(f);
       if (!pAt) continue;
-      const reach = f.Feature_Role === "linkbox" ? ADOPT_REACH_BOX_M : ADOPT_REACH_M;
+      /* A box is placed by eye and lands a foot or so off the node; a
+         straight joint is clicked onto the cable and the run is broken
+         at that very point, so it is exact. Both are fittings placed by
+         hand, and the wider reach costs nothing on a point that is
+         already where it should be. */
+      const reach = (f.Feature_Role === "linkbox" || isStraightJoint(f))
+        ? ADOPT_REACH_BOX_M : ADOPT_REACH_M;
       const d = Math.hypot(pAt[0] - nd.point[0], pAt[1] - nd.point[1]);
       if (d > reach) continue;
       if (match && d > best) continue;
@@ -373,14 +388,18 @@ export function planFeederPoints({
 function writeFor(f, { num, label, kind, circuit }) {
   const a = f.Attributes || {};
   const wantKind = kind === undefined ? a.Span_Kind : kind;
-  const isBox = f.Feature_Role === "linkbox";
-  const wantLabel = isBox ? f.Label : `Point ${label}`;
+  /* A box and a joint keep their own names \u2014 "Link Box 3" and
+     "Straight Joint" are what they are called, and the span code is
+     what they are called ON the run. A feeder point has no name but its
+     code, so its Label follows. */
+  const named = f.Feature_Role === "linkbox" || isStraightJoint(f);
+  const wantLabel = named ? f.Label : `Point ${label}`;
 
   const same = String(a.Span_Seq) === String(num)
     && a.Span_Label === label
     && a.Span_Kind === wantKind
     && Number(a.Circuit_ID) === Number(circuit?.id)
-    && (isBox || f.Label === wantLabel);
+    && (named || f.Label === wantLabel);
   if (same) return null;
 
   return {

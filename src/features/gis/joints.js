@@ -833,3 +833,48 @@ export function servedPlots(joint, features = [], opts = {}) {
         : String(a.number).localeCompare(String(b.number));
     });
 }
+
+/* ── A straight joint is one cable in and one cable out ──
+
+   That is what the fitting is: two ends brought together so the run can
+   change size, or simply carry on. Three cables at one is a breech, and
+   one is a bottle end — both are different fittings that get ordered,
+   installed and jointed differently.
+
+   So it is worth saying when a drawing shows otherwise. Not refused:
+   the drawing is mid-edit for most of its life, and a joint with one
+   cable on it is what you have between placing the fitting and drawing
+   the second run. Reported, so the person who meant to draw the second
+   cable finds out from the app rather than from site.
+
+   Counted by cable ENDS at the fitting, not by cables passing near it.
+   A main running past a joint two metres away is not connected to it,
+   and a run that merely touches at an interior vertex is passing
+   through — which is a service joint's arrangement, not this one. */
+export function straightJointCables(joint, features = [], tol = 0.35) {
+  const at = joint?.Attributes?.Span_Anchor ?? joint?.Geometry?.[0];
+  if (!Array.isArray(at)) return [];
+  return (features || []).filter((f) => {
+    if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") return false;
+    if (!/main/i.test(String(f.Attributes?.Line_Type ?? ""))) return false;
+    const g = f.Geometry || [];
+    if (g.length < 2) return false;
+    const ends = [g[0], g[g.length - 1]];
+    return ends.some((q) => Math.hypot(q[0] - at[0], q[1] - at[1]) <= tol);
+  });
+}
+
+/* What to say about it, or null where there is nothing to say. */
+export function straightJointWarning(joint, features = [], tol = 0.35) {
+  const type = String(joint?.Attributes?.Joint_Type ?? "").toLowerCase();
+  if (type !== "straight") return null;
+  const n = straightJointCables(joint, features, tol).length;
+  if (n === 2) return null;
+  if (n < 2) {
+    return `${n} cable end${n === 1 ? "" : "s"} here. A straight joint `
+      + "takes one cable in and one out \u2014 draw the second, or this is a "
+      + "bottle end.";
+  }
+  return `${n} cable ends here. A straight joint takes one in and one out `
+    + "\u2014 where a run divides, the fitting is a breech joint.";
+}

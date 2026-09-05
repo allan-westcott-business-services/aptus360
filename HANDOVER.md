@@ -146,6 +146,7 @@ caught a fault that had already shipped at least once.
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
 | `node checkjointonline.mjs` | A joint clicked onto a cable breaks it there |
+| `node checkstraightjoint.mjs` | A straight joint is a stop, one cable in and one out |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -1332,9 +1333,46 @@ together. The test is a LIST of kinds rather than "is not a service
 joint", so a kind added later has to say which it is rather than
 inheriting a rule by default.
 
+**Drawn on the click.** It went in with `addFeature` and then
+`breakLineAt` did its own save, two reads and a Connects rewrite —
+nothing appeared until all of it came back, so the click looked ignored
+and the fitting arrived seconds later, long enough to click again and
+place two. Every other placement here draws optimistically for exactly
+that reason; this one did not, because it was written as a call to the
+API rather than as a placement. Rolled back if the save fails, so a
+joint that was never stored does not sit on the drawing looking as
+though it was.
+
+The break still round-trips — `breakLineAt` recomputes `Connects` for
+both halves and everything that touched them, and doing that on guessed
+geometry is worse than a moment's wait. So the fitting lands at once and
+the cable parts a beat later.
+
 The menu's other three joint items are unchanged. They drop one in the
 middle of the view and snap it to the nearest feeder, which answers
 "somewhere on this circuit"; this answers "here". Both are wanted.
+
+**A straight joint is a feeder end point.** It takes one cable in and
+one out, and exists so a designer can change size either side of it —
+the cable genuinely STOPS there and another begins, which is the
+definition. So the walk adopts it exactly as it adopts a link box, the
+trace stops at it, and the volt drop and impedance are drawn beside it
+on the canvas. The two lengths either side become two legs carrying two
+cable sizes, which is the whole point of placing one.
+
+A service joint is NOT one: a cable passes through it and nothing about
+the run changes. A breech is where a run divides and the walk already
+marks that as a junction.
+
+**One in, one out — said, not refused.** Three cables at one is a
+breech and one is a bottle end, and the editor names the fitting it
+actually is. It does not block: a drawing is mid-edit for most of its
+life, and a joint with one cable on it is exactly what you have between
+placing the fitting and drawing the second run. The person who meant to
+draw it should find out from the panel rather than from site. Counted by
+cable ENDS at the fitting — a main running past is not connected to it,
+and one touching at an interior vertex is passing through, which is a
+service joint's arrangement.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

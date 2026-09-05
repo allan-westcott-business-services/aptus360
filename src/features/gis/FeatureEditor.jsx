@@ -22,7 +22,7 @@ import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/hea
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { sizeIdFor, isOverridden } from "./sizeMode.js";
 import { lvOrigins } from "./electric.js";
-import { servedPlots, JOINT_KINDS } from "./joints.js";
+import { servedPlots, JOINT_KINDS, straightJointWarning } from "./joints.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
@@ -1225,6 +1225,22 @@ export default function FeatureEditor({
                   </span>
                 )}
               </div>
+              {/* ── One cable in, one cable out ──
+
+                  That is what the fitting is. Three cables at one is a
+                  breech and one is a bottle end — different fittings,
+                  ordered, installed and jointed differently.
+
+                  Said, not refused. A drawing is mid-edit for most of
+                  its life, and a joint with one cable on it is exactly
+                  what you have between placing the fitting and drawing
+                  the second run. The person who meant to draw it should
+                  find out here rather than on site. */}
+              {straightJointWarning(feature, allFeatures || []) && (
+                <p className="fe-joint-warn">
+                  {straightJointWarning(feature, allFeatures || [])}
+                </p>
+              )}
               <div className="fe-joint-p">
                 <span>Serves</span>
                 {served.length
@@ -3184,6 +3200,9 @@ const CSS = `
   margin-bottom: 10px; display: grid; gap: 4px; }
 .fe-joint-h { display: flex; align-items: baseline; gap: 8px; }
 .fe-joint-h strong { font-size: 12.5px; }
+.fe-joint-warn { margin: 6px 0 0; padding: 6px 8px; border-radius: 6px;
+  background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
+  font-size: 12px; line-height: 1.45; }
 .fe-joint-why { font-size: 11px; color: var(--muted); }
 .fe-joint-p { display: flex; gap: 8px; font-size: 12px; }
 .fe-joint-p > span { color: var(--muted); }

@@ -1599,7 +1599,10 @@ export default function GISCanvasPage() {
              along the run kept the levels it had at the old place \u2014
              the check does not re-run, because nothing it watches has
              changed. */
-          || f.Feature_Role === "linkbox");
+          || f.Feature_Role === "linkbox"
+          /* A straight joint is a stop too, so moving one or changing
+             the cable either side of it changes the figures. */
+          || f.Feature_Role === "joint");
       if (!wanted) continue;
       k.push(f.Feature_ID, f.Feature_Role, f.Layer_Key, f.Geometry, f.Plot_ID,
         a.Line_Type, a.Circuit_ID, a.Span_Seq, a.Seed_Feature_ID,
@@ -5757,8 +5760,17 @@ export default function GISCanvasPage() {
            the first time one was changed. What the box does NOT take
            from this pass is the round node symbol: it is guarded below
            with `isBox`, so the square and its fuse numbers stand. */
-        && f.Feature_Role !== "linkbox") continue;
-      const isBox = f.Feature_Role === "linkbox";
+        /* And a straight joint, which is a feeder end point: the cable
+           ends there and the next begins, so the figures are quoted at
+           it like any other stop. A service joint is not \u2014 one cable
+           passes through it and nothing about the run changes. */
+        && !(f.Feature_Role === "joint"
+          && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight")) continue;
+      const isBox = f.Feature_Role === "linkbox"
+        /* Both wear their own symbol, drawn with the rest of the
+           features; this pass is here for the figures beside them, not
+           for a circle over the top. */
+        || f.Feature_Role === "joint";
       const g = f.Geometry || [];
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
@@ -7949,24 +7961,40 @@ export default function GISCanvasPage() {
         return;
       }
 
+      /* ── Drawn on the click, confirmed after ──
+
+         The joint went in with `addFeature` and then `breakLineAt` did
+         its own save, two reads and a Connects rewrite. Nothing
+         appeared until all of that came back, so the click looked
+         ignored and the fitting arrived seconds later — long enough to
+         click again.
+
+         The same optimistic add every other placement here uses: show
+         it now, because the click has already happened and showing it
+         is honest, then reconcile with what the server says. Rolled
+         back if the save fails, so a joint that was never stored does
+         not sit on the drawing looking as though it was. */
+      const draftJoint = {
+        Layer_Key: "electric",
+        Feature_Type: "point",
+        Feature_Role: "joint",
+        Geometry: [best.q],
+        Label: spec?.label ?? "Joint",
+        Attributes: {
+          Joint_Type: kind,
+          Joint_Code: spec?.code ?? null,
+          Joint_Reasons: ["manual"],
+          Ways_In: null,
+          Services: null,
+          Circuit_ID: best.line.Attributes?.Circuit_ID ?? null,
+          Generated: false,
+        },
+      };
+      const tempId = addOptimistic(draftJoint);
+
       setBusy("joint");
       try {
-        await addFeature({
-          Layer_Key: "electric",
-          Feature_Type: "point",
-          Feature_Role: "joint",
-          Geometry: [best.q],
-          Label: spec?.label ?? "Joint",
-          Attributes: {
-            Joint_Type: kind,
-            Joint_Code: spec?.code ?? null,
-            Joint_Reasons: ["manual"],
-            Ways_In: null,
-            Services: null,
-            Circuit_ID: best.line.Attributes?.Circuit_ID ?? null,
-            Generated: false,
-          },
-        });
+        reconcile(tempId, await addFeature(draftJoint));
         /* The break, on the cable that was clicked. Its own load and
            reload, so Connects is right before anything reads it. */
         await breakLineAt(best.line, best.q);
@@ -7974,7 +8002,10 @@ export default function GISCanvasPage() {
           + `${best.line.Label ?? "the feeder"}, and the cable broken there`);
         setTimeout(() => setStatus(""), 9000);
         setError("");
-      } catch (e) { setError(e.message); }
+      } catch (e) {
+        rollback(tempId);
+        setError(e.message);
+      }
       finally { setBusy(""); }
       return;
     }

@@ -2357,6 +2357,15 @@ export default function GISCanvasPage() {
 
   const placing = queue.some((q) => !q.done);
 
+  /* A joint being placed by clicking the cable it goes on.
+
+     Distinct from the menu's + Service Joint, which drops one in the
+     middle of the view and snaps it to the nearest feeder: that answers
+     "I need a joint somewhere on this circuit", and this answers "I
+     need one HERE". Both are wanted; a fitting whose position is the
+     whole point should be placed by pointing at it. */
+  const [jointFor, setJointFor] = useState(null);
+
   /* ── Declared here, above `visible`, not beside the placement state ──
 
      `visible` keeps whatever is being placed on screen, so it reads
@@ -2378,7 +2387,7 @@ export default function GISCanvasPage() {
      because there were two of them and only one was wrong, which is
      how the prompt drew correctly over a click that did nothing. */
   const awaitingClick = placing || !!meterFor || !!nrsFor
-    || !!boundaryFor || !!trenchEndFor;
+    || !!boundaryFor || !!trenchEndFor || !!jointFor;
 
   const visible = useMemo(
     () => features.filter((f) => {
@@ -5516,6 +5525,23 @@ export default function GISCanvasPage() {
     if (awaitingClick && cursor) {
       ctx.save();
 
+      /* A joint waiting for a cable. Drawn as the fitting it will be —
+         a ring at the pointer — so the gesture reads as placing that
+         thing rather than as some general "click somewhere" mode. The
+         ON LINE badge from the snap does the rest. */
+      if (jointFor) {
+        const c = toPx(cursor);
+        ctx.globalAlpha = 0.85;
+        ctx.beginPath();
+        ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#0f172a";
+        ctx.lineWidth = 2;
+        ctx.stroke();
+        ctx.globalAlpha = 1;
+      }
+
       if (trenchEndFor) {
         /* A dashed leader from the boundary point, and a hollow square
            at the cursor. From the boundary rather than from the seed
@@ -6200,7 +6226,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -7184,7 +7210,10 @@ export default function GISCanvasPage() {
       }
     } else if (plotTip) setPlotTip(null);
 
-    if (drawing || placing) {
+    if (drawing || placing || jointFor) {
+      /* Armed to place a joint on a cable, the snap is what makes the
+         cable say ON LINE under the pointer \u2014 which is the whole
+         instruction for this mode. */
       const { point, hit } = resolve(raw[0], raw[1]);
       setCursor(point);
       setSnapHit(hit);
@@ -7860,6 +7889,77 @@ export default function GISCanvasPage() {
   }
 
   async function placeAt(point) {
+    /* ── A joint clicked onto a cable, which then breaks there ──
+
+       A joint IS a break in the cable: two lengths of conductor come
+       into a fitting and are joined inside it. Placing the fitting and
+       leaving one unbroken run through it draws something that does not
+       exist, and every reader downstream believes the run — the levels
+       walk it as one leg, the bill counts its whole length as one
+       cable, the schedule quotes one drum.
+
+       So the two happen together. `breakLineAt` already exists for
+       breaking a line by hand and does the harder half: it recomputes
+       Connects for both halves and for everything that touched them,
+       rather than copying the old list onto two runs that no longer go
+       where it says. */
+    if (jointFor) {
+      const kind = jointFor;
+      const spec = JOINT_KINDS[kind];
+      setJointFor(null);
+      setSnapHit(null);
+
+      /* Feeders only. A joint is a fitting on an LV main; one on a
+         trench or a service is in a place no main runs, and the levels
+         check reads joints off the feeders. */
+      const feeders = visible.filter((f) => f.Feature_Type === "line"
+        && f.Layer_Key === "electric"
+        && f.Attributes?.Line_Type === "elec_main");
+      let best = null;
+      for (const t of feeders) {
+        const r = nearestOnPolyline(point, t.Geometry || []);
+        if (r && (!best || r.d < best.d)) best = { ...r, line: t };
+      }
+      /* Within reach of a cable, or nothing happens. Dropping a joint
+         where the click landed would leave a fitting joining nothing,
+         and this mode exists precisely to put one ON a cable. */
+      const reach = Math.max(1, SNAP_PX / (view.scale || 1));
+      if (!best || best.d > reach) {
+        setError("Click on an LV feeder cable \u2014 the cable says ON LINE "
+          + "under the pointer when you are on it.");
+        return;
+      }
+
+      setBusy("joint");
+      try {
+        await addFeature({
+          Layer_Key: "electric",
+          Feature_Type: "point",
+          Feature_Role: "joint",
+          Geometry: [best.q],
+          Label: spec?.label ?? "Joint",
+          Attributes: {
+            Joint_Type: kind,
+            Joint_Code: spec?.code ?? null,
+            Joint_Reasons: ["manual"],
+            Ways_In: null,
+            Services: null,
+            Circuit_ID: best.line.Attributes?.Circuit_ID ?? null,
+            Generated: false,
+          },
+        });
+        /* The break, on the cable that was clicked. Its own load and
+           reload, so Connects is right before anything reads it. */
+        await breakLineAt(best.line, best.q);
+        setStatus(`${spec?.label ?? "Joint"} placed on `
+          + `${best.line.Label ?? "the feeder"}, and the cable broken there`);
+        setTimeout(() => setStatus(""), 9000);
+        setError("");
+      } catch (e) { setError(e.message); }
+      finally { setBusy(""); }
+      return;
+    }
+
     /* A non-residential supply.
 
        Written as a meter, deliberately. It attaches to the network,
@@ -18933,6 +19033,15 @@ export default function GISCanvasPage() {
 
       if (e.key === "Escape" && historyOpen) { setHistoryOpen(false); return; }
       if (e.key === "Escape" && picker) { setPicker(null); return; }
+      /* An armed placement with no way out is a canvas that will not
+         let go: every click puts a joint somewhere until the page is
+         reloaded. */
+      if (e.key === "Escape" && jointFor) {
+        setJointFor(null); setSnapHit(null);
+        setStatus("Joint placement stopped");
+        setTimeout(() => setStatus(""), 4000);
+        return;
+      }
       /* Out of the meter catch-up before anything else Escape does, so
          a half-finished plot does not leave the mode on with a meter
          still waiting for a click. */
@@ -20042,6 +20151,22 @@ export default function GISCanvasPage() {
                           question at different grain, and named as the
                           fittings rather than as "add joint" so the menu
                           says what will be in the ground. */}
+                      {/* Placed by pointing at the cable. The menu's
+                          other three drop one in the middle of the view
+                          and snap it to the nearest feeder, which
+                          answers "somewhere on this circuit"; this
+                          answers "here", and breaks the cable where it
+                          lands because that is what a joint is. */}
+                      <MenuItem label={jointFor
+                        ? "Click the cable\u2026 (Esc to stop)"
+                        : "+ Joint on a Cable"} indent
+                        active={!!jointFor}
+                        hint={"Click where the joint goes \u2014 the cable says ON LINE, and breaks there"}
+                        disabled={!!busy || !projectId}
+                        onClick={() => {
+                          setJointFor(jointFor ? null : "service");
+                          setSelected([]); setDraft([]);
+                        }} />
                       <MenuItem label="+ Service Joint" indent
                         hint="One joint, snapped to the nearest LV feeder"
                         disabled={!!busy || !projectId}

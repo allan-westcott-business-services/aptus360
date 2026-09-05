@@ -145,6 +145,7 @@ caught a fault that had already shipped at least once.
 | `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
+| `node checkjointonline.mjs` | A joint clicked onto a cable breaks it there |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -1295,6 +1296,28 @@ the schema has. `checkbomroles` reads the newest definition in the
 folder rather than a named file, so it keeps working when the next
 rewrite lands, and it holds both halves: the markers stay off and the
 plant stays on.
+
+**A joint can be clicked onto a cable, and the cable breaks there.**
+`+ Joint on a Cable` arms a placement: the cable says ON LINE under the
+pointer, the click puts the fitting on it, and `breakLineAt` splits the
+run at the same point.
+
+**The break is not a nicety.** A joint IS a break in the cable — two
+lengths of conductor come into a fitting and are joined inside it.
+Drawing the fitting and leaving one unbroken run through it draws
+something that does not exist, and every reader downstream believes the
+run: the levels walk it as one leg, the bill counts its whole length as
+one cable, the schedule quotes one drum.
+
+It reuses what was there rather than adding a second way to do either
+half: the ON LINE badge is the existing edge snap, and the split is the
+same `breakLineAt` that breaking a line by hand uses — which recomputes
+`Connects` for both halves and for everything that touched them, rather
+than copying the old list onto two runs that no longer go where it says.
+
+The menu's other three joint items are unchanged. They drop one in the
+middle of the view and snap it to the nearest feeder, which answers
+"somewhere on this circuit"; this answers "here". Both are wanted.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

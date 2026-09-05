@@ -142,6 +142,7 @@ caught a fault that had already shipped at least once.
 | `node checklengths.mjs` | Drawn follows the drawing; measured is somebody's word |
 | `node checkdeadzone.mjs` | No hook depends on something declared later |
 | `node checkrealdrawing.mjs` | A real site still gives the answers recorded for it |
+| `node checktrace.mjs` | The trace follows one cable, one way, forking where it does |
 | `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
 | `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
@@ -2066,24 +2067,40 @@ everywhere else, and a bigger change than this one.
     converges, and picking by distance cannot**, because the distance is
     the same in both directions.
 
-**Directional tracing is still wrong on a shared trench — OPEN.** With
-the above fixed, "both ways" from that cable traces the whole output
-correctly: 15 paths, 19 cables, exactly the 14 meters lassoed onto it.
-Upstream and downstream return two cables and stop.
+65. **Direction was measured across a cable it was not tracing.** An
+    output and the trunk feeding it share a trench for hundreds of
+    metres, drawn on the same line, so a graph keyed on POSITION let the
+    distance-from-source take the trunk as a shortcut. The ordering
+    along the output stopped increasing, and downstream halted at the
+    first step that measured as going back — while "both ways", which
+    asks no such question, walked the whole output correctly. Reported
+    as *"it works both ways, can you make one direction work"*.
 
-The reason is the one already recorded at fault 58: the graph is keyed
-on POSITION, so an output and the trunk feeding it share every vertex
-along the trench they share. "Downstream" means the distance from the
-source increases, and that distance takes the shortcut, so the ordering
-along the output is not monotonic and the walk stops at the first step
-that measures as going back.
+    The distance is measured along the cable being traced and the
+    lengths it feeds now, by carrying the OUTPUT through `fromSource` as
+    well as the circuit. On the live drawing, downstream from that
+    output: **14 paths reaching exactly the 14 plots lassoed onto it**,
+    and upstream a single route back.
 
-**The honest fix is to stop welding two cables that merely share a
-trench** — joining them only where a fitting or an end says they meet,
-which is the same rule as everywhere else in this file. I tried a
-narrower version (outputs meet their feed only AT the box) and it made
-the traces worse, so it is reverted rather than left in half-working.
-Do it properly or not at all.
+    **Two attempts before it.** One narrowed the walk (an output meets
+    its feed only AT the box) and made every trace worse. One rebuilt
+    the graph so each cable kept its own chain, joined only where a
+    fitting or an end says — the right shape in principle, and it broke
+    the basic fork fixture, so it was reverted rather than left in
+    half-working. The fix that held was the smallest: the walk was
+    already right, and only the MEASUREMENT crossed between cables.
+
+    **When two rules disagree, change the one that is wrong.** Both
+    earlier attempts changed the walk, which was already correct.
+
+    A third drawing is in `fixtures/` for this —
+    `drawing-2202-043-straight-joint.json`, the site with the straight
+    joint on output 1. A synthetic fixture was tried first and was worse
+    than useless: to show the shortcut an output has to run back along
+    its own trunk, and a small fixture that does so ends up touching the
+    source, which changes the right answer. The site has the shape; use
+    the site. The check was proved by removing the fix and watching it
+    fail on the right line.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

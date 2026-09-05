@@ -543,6 +543,78 @@ const world = [
   }
 }
 
+// Direction is measured along the cable being traced.
+//
+//    An output and the trunk feeding it share a trench for hundreds of
+//    metres, drawn on the same line, so a graph keyed on position lets
+//    the DISTANCE take the trunk as a shortcut. The ordering along the
+//    output then stops increasing, and downstream halts at the first
+//    step that measures as going back — while "both ways", which asks
+//    no such question, walks the whole output correctly. That is
+//    exactly what somebody reported.
+//
+//    Asserted on the real drawing it happened on. A synthetic one was
+//    tried first and was worse than useless: to show the shortcut the
+//    output has to run back along its own trunk, and a small fixture
+//    that does so ends up touching the source, which changes the right
+//    answer. The site has the shape; use the site.
+{
+  const raw = JSON.parse(
+    readFileSync("./fixtures/drawing-2202-043-straight-joint.json", "utf8"));
+  const f = raw.features;
+  const isTrench = (t) => /trench/i.test(String(t ?? ""));
+  const cables = f.filter((x) => x.Feature_Type === "line"
+    && x.Layer_Key === "electric" && !isTrench(x.Attributes?.Line_Type));
+  const sources = f.filter((x) => ["poc", "substation"].includes(x.Feature_Role))
+    .map((x) => x.Geometry?.[0]).filter(Boolean);
+  const joints = f.filter((x) => x.Feature_Role === "joint");
+  const meters = f.filter((x) => x.Feature_Role === "meter");
+
+  /* The cable a straight joint was placed on: output 1 of the link box,
+     broken in two, the halves 0.093 m apart. */
+  const head = cables.find((c) => Number(c.Feature_ID) === 45886);
+  if (!head) fail("the straight-joint fixture no longer holds cable 45886");
+  else {
+    const g = head.Geometry;
+    const at = [(g[1][0] + g[2][0]) / 2, (g[1][1] + g[2][1]) / 2];
+    const reached = (r) => meters.filter((m) => r.paths.some((p) => {
+      const e = p.pts[p.pts.length - 1];
+      return Math.hypot(e[0] - m.Geometry[0][0], e[1] - m.Geometry[0][1]) <= 2;
+    }));
+
+    const down = traceTree(cables, at, { direction: "down", sourcePoints: sources,
+      reach: 2, startLineId: head.Feature_ID, joints });
+    if (down.error) fail(`downstream along output 1: ${down.error}`);
+    else {
+      /* It crosses the joint, and reaches the plots lassoed onto this
+         output \u2014 fourteen of them \u2014 and no others. */
+      if (!down.lineIds.includes(46002)) {
+        fail("downstream stops at the straight joint: the two halves are "
+          + "0.093 m apart and were never joined in the graph");
+      }
+      const got = reached(down);
+      const mine = got.filter((m) => Number(m.Attributes?.Link_Way) === 1).length;
+      if (mine < 14) {
+        fail(`downstream reaches ${mine} of the 14 plots on this output \u2014 `
+          + "the distance is taking the trunk beside it as a shortcut");
+      }
+      const theirs = got.length - mine;
+      if (theirs > 2) {
+        fail(`downstream also reaches ${theirs} plots on other outputs`);
+      }
+    }
+
+    /* And upstream is a route back, not a fan through the cable lying
+       beside it. */
+    const up = traceTree(cables, at, { direction: "up", sourcePoints: sources,
+      reach: 2, startLineId: head.Feature_ID, joints });
+    if (up.error) fail(`upstream along output 1: ${up.error}`);
+    else if (up.paths.length > 3) {
+      fail(`upstream returned ${up.paths.length} routes towards one source`);
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

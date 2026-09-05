@@ -237,6 +237,16 @@ function waysFromJoints(lines, joints) {
   return { ways, circuits };
 }
 
+/* ── Which network a length belongs to ──
+
+   The graph is keyed on POSITION, so two cables with a vertex at the
+   same place share a node. That is true of the drawing — they really
+   are in one trench — and the fault is treating it as a connection.
+
+   Each edge therefore carries its circuit and, where a link box laid
+   it, its output, and the walk refuses a step onto a different one. A
+   cable naming neither — a service — takes them from the fitting that
+   holds it: see waysFromJoints. */
 function buildGraph(lines, byJoint = new Map(), circuitByJoint = new Map()) {
   const at = new Map();          // key -> point
   const next = new Map();        // key -> [{ to, pts, lineId }]
@@ -251,44 +261,16 @@ function buildGraph(lines, byJoint = new Map(), circuitByJoint = new Map()) {
   };
   for (const f of lines) {
     const g = f.Geometry || [];
-    /* ── Which network this length belongs to ──
-
-       Two circuits share a trench, so their cables have vertices at the
-       same places, and a graph keyed on position welds them into one
-       network. A trace then walks from one circuit onto another at any
-       shared point and carries on — which on a real drawing means a
-       DOWNSTREAM trace hopping across and coming back the way it came,
-       reported as the trace running both ways.
-
-       Carried on every edge so the walk can refuse the crossing. Not
-       fixed by keying the nodes differently: the cables really are at
-       the same place, and the drawing is right about that. What is
-       wrong is treating being in the same trench as being connected. */
-    /* ── And which OUTPUT of a link box ──
-
-       A box's outputs are independent cables leaving one point, and
-       they run together for as long as the designer keeps them in one
-       trench. They are all the same circuit, so the circuit rule lets
-       the walk step between them at any shared vertex \u2014 and a trace of
-       output 1 then reaches output 2's services and reports the lot.
-
-       The build stamps the box and the way on what it lays, so a run
-       says which output it is. Two runs naming different outputs are
-       two cables that happen to share a dig. */
+    const id = Number(f.Feature_ID);
     const way = f.Attributes?.Link_Way;
     const box = f.Attributes?.Link_Box_ID;
-    /* A service takes the circuit of the main it is jointed to. Output
-       alone was not enough: a circuit with no link box has no output to
-       inherit, so its services stayed unstamped \u2014 and an unstamped
-       cable is followed from anywhere. */
-    const lineCircuit = f.Attributes?.Circuit_ID
-      ?? circuitByJoint.get(Number(f.Feature_ID)) ?? null;
     const wayKey = (way != null && box != null)
       ? `${Number(box)}:${Number(way)}`
-      /* Or the output of the main this one is jointed to. */
-      : (byJoint.get(Number(f.Feature_ID)) ?? null);
+      : (byJoint.get(id) ?? null);
+    const lineCircuit = f.Attributes?.Circuit_ID
+      ?? circuitByJoint.get(id) ?? null;
     for (let i = 1; i < g.length; i++) {
-      add(g[i - 1], g[i], Number(f.Feature_ID),
+      add(g[i - 1], g[i], id,
         lineCircuit == null ? null : Number(lineCircuit), wayKey);
     }
   }
@@ -377,7 +359,7 @@ function nearestOnSegments(lines, point, reach) {
    The walk is bounded to one circuit already, so measuring for that one
    is the same question asked once rather than a general answer nobody
    needs. */
-function fromSource(graph, sourceKeys, circuitId = null) {
+function fromSource(graph, sourceKeys, circuitId = null, wayKey = null) {
   const seen = new Map();
   const queue = [];
   for (const k of sourceKeys) {
@@ -395,6 +377,21 @@ function fromSource(graph, sourceKeys, circuitId = null) {
       /* This circuit's cables, and the unnamed lengths they feed. */
       if (circuitId != null && e.circuitId != null
         && e.circuitId !== circuitId) continue;
+      /* ── And not through a cable it is not measuring ──
+
+         An output and the trunk feeding it share a trench for hundreds
+         of metres, drawn on the same line, so a graph keyed on position
+         lets the distance take the trunk as a shortcut. The ordering
+         along the output then stops increasing, and DOWNSTREAM halts at
+         the first step that measures as going back \u2014 while both ways,
+         which asks no such question, walks the whole output correctly.
+
+         Measured along the cable being traced and the ones it feeds:
+         the output, and the services hanging off it. The trunk is a
+         different length of cable, and the distance to a point on the
+         output is the distance along the output, not the distance to
+         something lying beside it. */
+      if (wayKey != null && e.wayKey != null && e.wayKey !== wayKey) continue;
       const d = seen.get(k) + dist(e.pts[0], e.pts[1]);
       if (!seen.has(e.to) || d < seen.get(e.to) - 1e-9) {
         seen.set(e.to, d);
@@ -510,6 +507,13 @@ export function traceTree(lines = [], startPoint, opts = {}) {
     : ((graph.next.get(startKey) || [])
       .map((e) => e.circuitId).find((c) => c != null) ?? null);
 
+  /* The output the trace is on, needed before the depth: the distance
+     is measured along THIS cable and what it feeds. */
+  const traceWay = (startOn?.Attributes?.Link_Way != null
+    && startOn?.Attributes?.Link_Box_ID != null)
+    ? `${Number(startOn.Attributes.Link_Box_ID)}:${Number(startOn.Attributes.Link_Way)}`
+    : null;
+
   let depth = null;
   if (direction === "up" || direction === "down") {
     const keys = sourcePoints
@@ -521,7 +525,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
           + "no meaning here. Trace both ways instead.",
       };
     }
-    depth = fromSource(graph, keys, traceCircuit);
+    depth = fromSource(graph, keys, traceCircuit, traceWay);
     if (!depth.has(startKey)) {
       return { error: "That point is not connected to a source." };
     }
@@ -598,10 +602,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
   const startCircuit = traceCircuit;
   /* The output the trace is on, from the cable that settled the
      circuit: the same answer to the same question. */
-  const startWay = (startOn?.Attributes?.Link_Way != null
-    && startOn?.Attributes?.Link_Box_ID != null)
-    ? `${Number(startOn.Attributes.Link_Box_ID)}:${Number(startOn.Attributes.Link_Way)}`
-    : null;
+  const startWay = traceWay;
   step(startKey, [graph.at.get(startKey)], new Set(), startCircuit, startWay);
 
   if (!paths.length) {

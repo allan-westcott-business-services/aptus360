@@ -1689,9 +1689,22 @@ export default function GISCanvasPage() {
   const cutoutAtMeter = useMemo(() => {
     const out = new Map();
     if (!elecLevelsAt) return out;
+    /* ── Countable ──
+
+       Whether a figure reaches the drawing depends on three things
+       being true at once, and when it did not appear there was no way
+       to tell which had failed: no levels at all, levels with no
+       service on them, or a service with no cable specified. Reading
+       the code for it took longer than the feature.
+
+       So the tally is kept and reported beside the levels. A number is
+       an answer; an empty drawing is a question. */
+    let noService = 0;
+    let noSpec = 0;
     for (const vd of elecLevelsAt.values()) {
       const id = vd?.service?.meterId;
-      if (id == null || !vd.atCutout || vd.service?.missingSpec) continue;
+      if (id == null || !vd.atCutout) { noService += 1; continue; }
+      if (vd.service?.missingSpec) { noSpec += 1; continue; }
       const was = out.get(Number(id));
       /* A meter can be the worst on more than one stop where two stops
          serve it; the worse figure is the one that has to pass. */
@@ -1699,6 +1712,7 @@ export default function GISCanvasPage() {
         out.set(Number(id), { pct: vd.atCutout.pct, ohms: vd.atCutout.ohms });
       }
     }
+    out.why = { stops: elecLevelsAt.size, noService, noSpec };
     return out;
   }, [elecLevelsAt]);
 
@@ -24964,6 +24978,30 @@ export default function GISCanvasPage() {
                     <p className="gt-sub">
                       {trace.circuitName} &middot; {trace.legs.length} leg(s) &middot;{" "}
                       {trace.totalMeters} meter(s) beyond this point
+                      {/* ── How many cut-out figures reached the drawing ──
+
+                          The percentage at a customer's cut-out is drawn
+                          beside their meter, and whether it appears
+                          depends on three things being true at once: the
+                          levels ran, the stop found a service, and that
+                          service names a cable with figures. When
+                          nothing appeared there was no way to tell which
+                          had failed, and reading the code for it took
+                          longer than the feature.
+
+                          A number is an answer; an empty drawing is a
+                          question. */}
+                      {cutoutAtMeter.why && (
+                        <> &middot; {cutoutAtMeter.size} cut-out figure
+                          {cutoutAtMeter.size === 1 ? "" : "s"} on the drawing
+                          {cutoutAtMeter.why.noService
+                            ? `, ${cutoutAtMeter.why.noService} stop(s) with no service`
+                            : ""}
+                          {cutoutAtMeter.why.noSpec
+                            ? `, ${cutoutAtMeter.why.noSpec} with no cable figures`
+                            : ""}
+                        </>
+                      )}
                       {/* Said where the figures are read.
 
                           The voltage was a literal nobody could see, and

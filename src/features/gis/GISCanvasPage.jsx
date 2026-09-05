@@ -13799,6 +13799,11 @@ export default function GISCanvasPage() {
 
         planned.push({
           circuit: c,
+          /* How many parts this circuit was laid in \u2014 one where there
+             is no box, trunk plus outputs where there is. Reported at
+             the end, because it is the fact that decides everything
+             else about the routing and numbering. */
+          parts: good.length,
           sections: r.sections,
           nodes: [
             ...(originAt ? [{ point: originAt, kind: "origin", seq: 0 }] : []),
@@ -14169,7 +14174,24 @@ export default function GISCanvasPage() {
          designer laid the main beyond it. Counted rather than set:
          there is no setting any more, and this says what the drawing
          actually gave the cable to run along. */
+      /* ── What the build actually did ──
+
+         A circuit with a link box is laid in parts: a trunk to the box
+         and one per output. Whether it found the box is the single fact
+         that decides how the whole circuit is routed and numbered, and
+         it was reported nowhere. When a box came back numbered C10 on a
+         drawing whose meters were plainly assigned to it, four rounds
+         went into inferring from exported drawings whether the box had
+         been seen at all \u2014 a question the build could have answered in
+         four words as it finished.
+
+         **Anything that changes the shape of the answer should say so
+         while it happens.** */
+      const partsSaid = planned.reduce((n, p) => n + (p.parts || 1), 0);
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
+        + (partsSaid > planned.length
+          ? `, ${partsSaid} part(s) \u2014 link box trunk and outputs`
+          : ", no link box in the routing")
         + (ranOn
           ? `, ${ranOn} run(s) carried to the end of the dig`
           : ", no run had main laid past its last plot")

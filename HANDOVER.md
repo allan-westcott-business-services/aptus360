@@ -142,6 +142,7 @@ caught a fault that had already shipped at least once.
 | `node checklengths.mjs` | Drawn follows the drawing; measured is somebody's word |
 | `node checkdeadzone.mjs` | No hook depends on something declared later |
 | `node checkrealdrawing.mjs` | A real site still gives the answers recorded for it |
+| `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -1233,6 +1234,28 @@ is the thing nothing in this suite could do before. It found the
       build's own banner — is what finally separated "not deployed" from
       "deployed and wrong", and it did so in one line. **Anything that
       changes the shape of an answer should say so while it happens.**
+
+**The levels sheet groups by cable (option B).** A circuit with a link
+box is a trunk to the box and one cable per output, each fused on its
+own. Two outputs sharing a trench produce two legs over the same
+stretch — genuinely two cables, and on a flat table two rows that read
+as the same row twice. The panel now heads a section per part, naming
+the box and the output and its fuse; the export carries the same fact
+as a `Part` column, since a spreadsheet cannot hold a heading and a
+filter on it gives one output's design on its own.
+
+A circuit with NO link box gets neither: one part, no headings, no
+column value, exactly the table it always was.
+
+**Two link boxes in series is refused by name.** A box takes one input
+and splits it; feeding one from another output fuses everything beyond
+twice. `circuitTraceParts` returns an error naming both boxes rather
+than tracing it, because a trunk-then-outputs report of a nested pair
+reads as though it were sound — the figures are consistent and the
+shape is simply wrong. **Where a drawing states something nobody means,
+say so instead of describing it.** Boxes side by side on one circuit
+are two independent splits and trace normally; `checkcabletrace` holds
+both halves.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

@@ -1430,6 +1430,46 @@ export function circuitTraceParts(features = [], originId, opts = {}) {
     return r.error ? [{ error: r.error, via: "origin" }] : [{ ...r, via: "origin" }];
   }
 
+  /* ── Two boxes in series is a design error, not a shape to render ──
+
+     A link box takes one input and splits it. Feeding one box from
+     another output makes the second box's input the first's output, and
+     everything downstream is then fused twice — which is not a design
+     anybody draws on purpose.
+
+     Refused by name rather than traced. A trunk-then-outputs report of
+     a nested pair reads as though it were fine: the figures are
+     arithmetically consistent and the shape is simply wrong. **Where a
+     drawing states something nobody means, say so instead of describing
+     it.** Boxes side by side on one circuit are untouched — that is two
+     independent splits and a normal thing to draw. */
+  if (asg.boxes.length > 1) {
+    const at = (b) => b.box.Attributes?.Span_Anchor ?? b.box.Geometry?.[0];
+    for (const a of asg.boxes) {
+      for (const b of asg.boxes) {
+        if (a === b) continue;
+        const pa = at(a); const pb = at(b);
+        if (!pa || !pb) continue;
+        /* Is b standing on a run that leaves a? The build stamps the
+           box and way on what it lays, so an output's own runs name it. */
+        const downstream = features.some((f) => f.Feature_Type === "line"
+          && String(f.Attributes?.Line_Type ?? "").includes("main")
+          && Number(f.Attributes?.Link_Box_ID) === Number(a.box.Feature_ID)
+          && (f.Geometry || []).some((q) =>
+            Math.hypot(q[0] - pb[0], q[1] - pb[1]) <= SNAP_TOL));
+        if (downstream) {
+          return [{
+            via: "origin",
+            error: `${b.box.Label || "A link box"} is fed from an output of `
+              + `${a.box.Label || "another link box"}. Two link boxes in `
+              + "series fuses everything beyond twice \u2014 feed the second "
+              + "from the substation, or lasso its plots onto the first.",
+          }];
+        }
+      }
+    }
+  }
+
   const parts = [];
 
   /* The trunk, with the whole circuit's membership so the load arriving

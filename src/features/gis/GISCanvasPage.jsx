@@ -1,4 +1,5 @@
-import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo } from "react";
+import { useState, useEffect, useLayoutEffect, useRef, useCallback, useMemo,
+  Fragment } from "react";
 import Banner from "../../components/Banner.jsx";
 import { utilitiesTakenBy } from "../../lib/utilities.js";
 import { listProjects, getProject } from "../../api/projects.js";
@@ -18094,6 +18095,14 @@ export default function GISCanvasPage() {
   function exportTrace() {
     if (!trace) return;
     const rows = tracePlan.map(({ leg: l }) => ({
+      /* Which length of cable this leg belongs to. A spreadsheet cannot
+         carry the panel's section headings, so the same fact rides in a
+         column \u2014 and a filter on it gives an output's design on its
+         own, which is what the headings are for. Blank on a circuit
+         with no link box, where there is only one answer. */
+      Part: l.part === "trunk" ? `Input to ${l.boxLabel || "link box"}`
+        : l.way != null ? `${l.boxLabel || "Link box"} output ${l.way}`
+          : "",
       From: l.from,
       To: l.to ?? "dead end",
       "Length (m)": l.metres,
@@ -18614,7 +18623,21 @@ export default function GISCanvasPage() {
         const names = [...new Set(parts.map((x) => x.circuitName).filter(Boolean))];
         return names.length === 1 ? names[0] : `${names.length} circuits`;
       })(),
-      legs: parts.flatMap((p) => p.legs.map((l) => ({ ...l, circuitName: p.circuitName }))),
+      /* Which part laid each leg, carried onto the leg so the sheet can
+         group by it. A boxed circuit is a trunk and one length of cable
+         per output; without this the rows are a flat list in which two
+         outputs running the same stretch look like the same row twice. */
+      legs: parts.flatMap((p) => p.legs.map((l) => ({
+        ...l,
+        circuitName: p.circuitName,
+        part: p.via ?? "origin",
+        way: p.way ?? null,
+        boxLabel: p.box?.Label ?? p.box?.Attributes?.Span_Label ?? null,
+        wayFuse: p.way != null && p.box
+          ? p.box.Attributes?.[`Way_Fuse_${String.fromCharCode(64 + Number(p.way))}`]?.rating
+            ?? p.box.Attributes?.[`Way_Fuse_${String.fromCharCode(64 + Number(p.way))}`]
+          : null,
+      }))),
       parts,
       model: parts[0].model,
       spanNodes: parts[0].spanNodes,
@@ -23622,8 +23645,33 @@ export default function GISCanvasPage() {
                     </tr>
                   </thead>
                   <tbody>
-                    {tracePlan.map(({ leg: l, i }) => (
-                      <tr key={i} className={traceLeg === i ? "gt-on" : undefined}>
+                    {tracePlan.map(({ leg: l, i }, at) => (
+                      <Fragment key={i}>
+                        {/* ── A section per part ──
+
+                            A circuit with a link box is not one cable.
+                            The trunk runs to the box and each output
+                            leaves it as its own cable, fused on its own
+                            and serving its own plots — so two outputs
+                            sharing a trench produce two rows that read
+                            as the same row twice unless the sheet says
+                            whose they are.
+
+                            Only where there is more than one part: a
+                            circuit with no box gets no headings at all
+                            and reads exactly as it always did. */}
+                        {l.part && l.part !== "origin"
+                          && l.part !== (tracePlan[at - 1]?.leg?.part) && (
+                          <tr className="gt-sect">
+                            <td colSpan={12}>
+                              {l.part === "trunk"
+                                ? `Input to ${l.boxLabel || "the link box"}`
+                                : `${l.boxLabel || "Link box"} \u00b7 output ${l.way}`}
+                              {l.wayFuse ? ` \u00b7 ${l.wayFuse} A` : ""}
+                            </td>
+                          </tr>
+                        )}
+                      <tr className={traceLeg === i ? "gt-on" : undefined}>
                         {trace.hasVd && (
                           <td className="num gt-v">
                             {l.volts != null ? `${l.volts.toFixed(1)} V` : "\u2014"}
@@ -23745,6 +23793,7 @@ export default function GISCanvasPage() {
                           </button>
                         </td>
                       </tr>
+                      </Fragment>
                     ))}
                     <tr className="gt-tot">
                       <td colSpan={trace.hasVd ? 3 : 2}>{trace.legs.length} leg(s)</td>
@@ -24174,7 +24223,13 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-hi { background: none; border: 1px solid var(--border); border-radius: 5px; cursor: pointer;
   font: 600 10.5px inherit; padding: 2px 7px; color: var(--muted); }
 .gt-hi:hover { border-color: var(--accent); color: var(--accent); }
-.dt .gt-on, .gt-tbl tr.gt-on { background: var(--accent-light); }
+.dt .gt-on, .gt-tbl tr.gt-dead { color: var(--muted); font-style: italic; }
+/* A section heading inside the table: the trunk, then each output. Quiet
+   enough to read as a divider rather than as another leg. */
+.gt-sect td { padding: 12px 8px 4px; font-size: 11px; font-weight: 700;
+  letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
+  border-top: 1px solid var(--line); background: none; }
+.gt-on { background: var(--accent-light); }
 /* The step-through bar. Sits with the other floating panels rather than
    in a dialog: the point of it is watching the drawing while moving from
    meter to meter. */

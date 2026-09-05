@@ -279,6 +279,45 @@ const of = (via) => parts.find((x) => x.via === via);
   }
 }
 
+// 9. Two link boxes in series is refused by name.
+//
+//    A box takes one input and splits it. Feeding one box from another
+//    output makes the second's input the first's output, and everything
+//    beyond is fused twice. A trunk-then-outputs report of a nested pair
+//    reads as though it were fine — the figures are consistent and the
+//    shape is simply wrong. Where a drawing states something nobody
+//    means, say so instead of describing it.
+{
+  const second = { Feature_ID: 8801, Feature_Role: "linkbox", Feature_Type: "point",
+    Layer_Key: "electric", Label: "Link Box 2", Geometry: [[150, 0]],
+    Attributes: { Link_Ways: 4, Circuit_ID: 1, Span_Anchor: [150, 0] } };
+  /* Output 2's run, stamped as the first box lays it, passing through
+     where the second box stands. */
+  const outRun = { Feature_ID: 8802, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[40, 0], [100, 0], [150, 0]],
+    Attributes: { Line_Type: "elec_main", Circuit_ID: 1,
+      Link_Box_ID: box.Feature_ID, Link_Way: 2 } };
+  const nested = [...world, second, outRun,
+    { ...meter(p2b, [150, 8], { Link_Box_ID: second.Feature_ID, Link_Way: 1 }) }];
+  const r = circuitTraceParts(nested, f0.Feature_ID, opts);
+  const err = r.find((x) => x.error);
+  if (!err) {
+    fail("two link boxes in series are traced as though the design were "
+      + "sound \u2014 everything beyond the second is fused twice");
+  } else if (!/in series/.test(err.error)) {
+    fail(`the refusal does not say what is wrong: "${err.error}"`);
+  }
+
+  /* Two boxes SIDE BY SIDE on one circuit are two independent splits
+     and a normal thing to draw. They must still trace. */
+  const sideBySide = [...world, { ...second, Feature_ID: 8810, Geometry: [[40, 60]],
+    Attributes: { ...second.Attributes, Span_Anchor: [40, 60] } }];
+  if (circuitTraceParts(sideBySide, f0.Feature_ID, opts).some((x) => x.error
+    && /in series/.test(x.error))) {
+    fail("two boxes side by side were refused as though they were in series");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "A boxed circuit traces along the cable (trunk to the box, then each "
   + "output on its own, each carrying only its own load).");

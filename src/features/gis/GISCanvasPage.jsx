@@ -5806,6 +5806,20 @@ export default function GISCanvasPage() {
         ? (((f.Attributes?.Connects || [])
           .map((id) => feederPlan.get(Number(id))?.colour)
           .find(Boolean))
+          /* Connects is written by the link passes and by breakLineAt,
+             and a joint placed before either ran has none. Falling
+             straight through to the circuit's colour there put a stop
+             on a coloured output in the circuit's colour, which reads
+             as belonging to something else — so the cables ENDING at it
+             are asked directly before giving up. */
+          || (isJointFep ? visible
+            .filter((l) => l.Feature_Type === "line"
+              && l.Layer_Key === "electric"
+              && /main/i.test(String(l.Attributes?.Line_Type ?? ""))
+              && (l.Geometry || []).some((qq) =>
+                Math.hypot(qq[0] - g[0][0], qq[1] - g[0][1]) <= CONNECT_M))
+            .map((l) => feederPlan.get(Number(l.Feature_ID))?.colour)
+            .find(Boolean) : null)
           || ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
           || null)
         : null;
@@ -5898,6 +5912,24 @@ export default function GISCanvasPage() {
          here throws on render and takes the canvas out, which the build
          does not catch and checkdeadzone only sees in a hook's
          dependency array. */
+      /* ── Styled as a feeder end point, because that is what it is ──
+
+         `ps` is the JOINT's style, and reading the circle's size from
+         it made the circle and its figures several times the size of
+         every other stop: a joint's symbol is drawn large and scales
+         with the ground, a feeder point's does not. The circle stands
+         for the point on the run, so it takes the point's style.
+
+         Resolved through the same styleFor everything else uses, on a
+         stand-in feature, so a project that restyles its feeder points
+         restyles these with them rather than leaving one kind behind. */
+      const fepStyle = isJointFep
+        ? styleFor({
+          Feature_Type: "point", Feature_Role: "feederpoint",
+          Layer_Key: "electric", Attributes: {},
+        })
+        : ps;
+
       const jointStep = Math.max(14, (ps.symbolPx || 7) + 9);
       const q = isJointFep
         ? { x: at0.x + jointStep, y: at0.y - jointStep }
@@ -5977,7 +6009,7 @@ export default function GISCanvasPage() {
          could see. */
       const r = isBox
         ? Math.max(5, (on ? 1.3 : 1) * ps.symbolPx)
-        : Math.max(3, ps.symbolPx) * (on ? 1.25 : 1);
+        : Math.max(3, fepStyle.symbolPx) * (on ? 1.25 : 1);
       /* Floored, and capped at the radius rather than just over it: a
          monospace cap is about 0.72 of its point size, so a font of r
          gives a glyph comfortably inside a circle of diameter 2r. Round
@@ -8080,10 +8112,39 @@ export default function GISCanvasPage() {
 
       setBusy("joint");
       try {
-        reconcile(tempId, await addFeature(draftJoint));
+        const savedJoint = await addFeature(draftJoint);
+        reconcile(tempId, savedJoint);
         /* The break, on the cable that was clicked. Its own load and
            reload, so Connects is right before anything reads it. */
         await breakLineAt(best.line, best.q);
+
+        /* ── And the joint records the two halves it now holds ──
+
+           `breakLineAt` recomputes Connects for both halves and for
+           everything that ALREADY referenced them. The joint referenced
+           nothing: it was created a moment earlier with an empty list,
+           so it was not in that set and came out of the break holding
+           no record of what it joins.
+
+           Which meant the drag fell through to geometry — and where
+           cables share a trench, "a cable end within a quarter of a
+           metre" is not only the two the fitting holds. Dragging the
+           joint took a cable that merely passes it.
+
+           Written from the drawing as it now stands, through the same
+           linksFor every other link pass uses, so the joint says what
+           it holds rather than what happens to be near it. */
+        const fresh = await listGis(projectId);
+        const all = fresh.features || [];
+        const jf = all.find((x) =>
+          Number(x.Feature_ID) === Number(savedJoint?.Feature_ID));
+        if (jf) {
+          await bulkUpdateFeatures(projectId, [{
+            Feature_ID: jf.Feature_ID,
+            Attributes: { ...jf.Attributes, Connects: linksFor(jf, all) },
+          }]);
+          await load(projectId);
+        }
         setStatus(`${spec?.label ?? "Joint"} placed on `
           + `${best.line.Label ?? "the feeder"}, and the cable broken there`);
         setTimeout(() => setStatus(""), 9000);
@@ -18156,7 +18217,21 @@ export default function GISCanvasPage() {
       const fresh = await listGis(projectId);
       const all = fresh.features || [];
       const relink = all
-        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "meter")
+        /* ── And the joints ──
+
+           Lines and meters only, so no joint on any drawing has ever
+           carried a Connects of its own: a joint got one only where
+           something else happened to reference it. Which meant the drag
+           had nothing to read and fell back to geometry — and where
+           cables share a trench, "a cable end within a quarter of a
+           metre" is not only the ones the fitting holds. Dragging a
+           straight joint took a cable that merely passes it.
+
+           A joint is a thing that connects cables; it belongs in the
+           pass that records what connects to what. Repairs every joint
+           already placed, on the next build. */
+        .filter((f) => f.Feature_Type === "line" || f.Feature_Role === "meter"
+          || f.Feature_Role === "joint")
         .map((f) => ({
           Feature_ID: f.Feature_ID,
           Attributes: { ...f.Attributes, Connects: linksFor(f, all) },

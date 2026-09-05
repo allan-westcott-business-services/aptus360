@@ -1387,6 +1387,19 @@ produced and the other adds the end of a part's cable, and the model has
 never heard of the joint. Without it the joint is never adopted, never
 numbered, and carries no levels.
 
+**No joint on any drawing had a `Connects` of its own.** The relink
+pass — the thing that records what connects to what — filtered to lines
+and meters. A joint got a link only where something else happened to
+reference it, and `breakLineAt` rewrites the features that ALREADY
+reference the halves, which a joint created a moment earlier does not.
+So the joint came out of the break holding no record of what it joins.
+
+That is why reading `Connects` did not stop the wrong cable moving:
+there was nothing to read, and the geometry fallback ran. Joints are in
+the relink pass now, which repairs every one already placed on the next
+build, and a joint placed on a cable writes its own links as it is
+made.
+
 **And it drags only the cables it holds.** Lifting the single-feeder
 narrowing for breech and straight joints let in anything with a vertex
 within reach — and where cables share a trench that is not only the two

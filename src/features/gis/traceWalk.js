@@ -45,18 +45,34 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
 function buildGraph(lines) {
   const at = new Map();          // key -> point
   const next = new Map();        // key -> [{ to, pts, lineId }]
-  const add = (a, b, lineId) => {
+  const add = (a, b, lineId, circuitId) => {
     const ka = KEY(a); const kb = KEY(b);
     if (ka === kb) return;
     at.set(ka, a); at.set(kb, b);
     if (!next.has(ka)) next.set(ka, []);
     if (!next.has(kb)) next.set(kb, []);
-    next.get(ka).push({ to: kb, pts: [a, b], lineId });
-    next.get(kb).push({ to: ka, pts: [b, a], lineId });
+    next.get(ka).push({ to: kb, pts: [a, b], lineId, circuitId });
+    next.get(kb).push({ to: ka, pts: [b, a], lineId, circuitId });
   };
   for (const f of lines) {
     const g = f.Geometry || [];
-    for (let i = 1; i < g.length; i++) add(g[i - 1], g[i], Number(f.Feature_ID));
+    /* ── Which network this length belongs to ──
+
+       Two circuits share a trench, so their cables have vertices at the
+       same places, and a graph keyed on position welds them into one
+       network. A trace then walks from one circuit onto another at any
+       shared point and carries on — which on a real drawing means a
+       DOWNSTREAM trace hopping across and coming back the way it came,
+       reported as the trace running both ways.
+
+       Carried on every edge so the walk can refuse the crossing. Not
+       fixed by keying the nodes differently: the cables really are at
+       the same place, and the drawing is right about that. What is
+       wrong is treating being in the same trench as being connected. */
+    const cid = f.Attributes?.Circuit_ID;
+    for (let i = 1; i < g.length; i++) {
+      add(g[i - 1], g[i], Number(f.Feature_ID), cid == null ? null : Number(cid));
+    }
   }
   return { at, next };
 }
@@ -106,12 +122,14 @@ function nearestOnSegments(lines, point, reach) {
       const q = [a[0] + vx * t, a[1] + vy * t];
       const d = dist(q, point);
       if (d <= reach && (!best || d < best.d)) {
-        /* The nearer end of the segment the click landed on. */
-        best = { d, node: dist(a, point) <= dist(b, point) ? a : b };
+        /* The nearer end of the segment the click landed on, and the
+           cable it belongs to \u2014 which is what says WHICH network the
+           trace is on where several share the point. */
+        best = { d, node: dist(a, point) <= dist(b, point) ? a : b, line: f };
       }
     }
   }
-  return best?.node ?? null;
+  return best ?? null;
 }
 
 /* Distance from the nearest source, along the network. */
@@ -145,6 +163,14 @@ export function traceTree(lines = [], startPoint, opts = {}) {
     direction = "both",
     sourcePoints = [],
     reach = 3,
+    /* Which cable the trace is ON, where the caller knows.
+
+       Cables sharing a trench are stored with the SAME geometry \u2014 the
+       separation on screen is display offset \u2014 so no amount of
+       measuring can tell which one a click meant. Where several lie
+       under the pointer the caller asks, and passes the answer here.
+       Nothing in this file guesses at it. */
+    startLineId = null,
     /* A guard, not a limit anybody should meet: a network that walks
        past this is a network with a loop the edge marking missed, and
        running out of memory is a worse way to find out. */
@@ -159,11 +185,13 @@ export function traceTree(lines = [], startPoint, opts = {}) {
      common case \u2014 clicking a joint, an end, a node \u2014 and it is exact;
      the segment search is what makes clicking the MIDDLE of a cable
      work, which is what most people do. */
+  /* The cable the click landed on, whatever else lies at that point.
+     Found by SEGMENT distance, so it is the line under the pointer
+     rather than the one that happens to own the nearest vertex. */
+  const onLine = nearestOnSegments(usable, startPoint, reach);
+
   let startKey = nearestNode(graph, startPoint, reach);
-  if (!startKey) {
-    const onLine = nearestOnSegments(usable, startPoint, reach);
-    if (onLine) startKey = nearestNode(graph, onLine, reach + 1e6);
-  }
+  if (!startKey && onLine) startKey = nearestNode(graph, onLine.node, reach + 1e6);
   if (!startKey) {
     return { error: "Nothing to trace at that point \u2014 click on a line." };
   }
@@ -194,10 +222,17 @@ export function traceTree(lines = [], startPoint, opts = {}) {
   const paths = [];
   const lineIds = new Set();
 
-  const step = (key, trail, ids) => {
+  const step = (key, trail, ids, circuitId) => {
     if (paths.length >= maxPaths) return;
     const outs = (graph.next.get(key) || []).filter((e) => {
       if (walked.has(edgeKey(key, e.to))) return false;
+      /* Same network, or one of them says nothing. A service carries no
+         circuit and is reached from the main that feeds it; two mains
+         that name DIFFERENT circuits are two networks that happen to
+         share a trench, and stepping between them is the walk inventing
+         a connection nobody drew. */
+      if (circuitId != null && e.circuitId != null
+        && e.circuitId !== circuitId) return false;
       if (depth) {
         const here = depth.get(key);
         const there = depth.get(e.to);
@@ -217,11 +252,34 @@ export function traceTree(lines = [], startPoint, opts = {}) {
     for (const e of outs) {
       walked.add(edgeKey(key, e.to));
       lineIds.add(e.lineId);
-      step(e.to, [...trail, e.pts[1]], new Set([...ids, e.lineId]));
+      /* The circuit follows the walk: once it is on a named network it
+         stays there, and an unnamed length \u2014 a service \u2014 does not
+         lose it. */
+      step(e.to, [...trail, e.pts[1]], new Set([...ids, e.lineId]),
+        e.circuitId ?? circuitId);
     }
   };
 
-  step(startKey, [graph.at.get(startKey)], new Set());
+  /* ── The circuit the trace is on ──
+
+     From the cable that was CLICKED, not from whichever edge happens to
+     be listed first at that node. Where two circuits share a trench,
+     both have an edge there, and taking either one at random started
+     half the traces on the wrong network \u2014 a trace begun on circuit 3
+     reporting circuit 2's cables.
+
+     Null where the click landed on a cable naming no circuit, which is
+     honest: a service says nothing about which network it is on, and
+     the walk picks the circuit up from the first named length it
+     meets. */
+  const chosen = startLineId != null
+    ? usable.find((f) => Number(f.Feature_ID) === Number(startLineId))
+    : null;
+  const clicked = (chosen ?? onLine?.line)?.Attributes?.Circuit_ID;
+  const startCircuit = clicked != null ? Number(clicked)
+    : ((graph.next.get(startKey) || [])
+      .map((e) => e.circuitId).find((c) => c != null) ?? null);
+  step(startKey, [graph.at.get(startKey)], new Set(), startCircuit);
 
   if (!paths.length) {
     return {

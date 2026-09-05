@@ -8466,18 +8466,19 @@ export default function GISCanvasPage() {
      The walk is done once and held: re-walking every frame would be the
      same answer sixty times a second, and a network of a few thousand
      segments is not free. */
-  const runTrace = useCallback((point, { layerKey, kind, direction }) => {
+  const runTrace = useCallback((point, { layerKey, kind, direction, startLineId = null }) => {
     const r = traceTree(traceFollow(layerKey, kind), point, {
       direction,
       sourcePoints: traceSources(layerKey, kind),
       reach: Math.max(2, HIT_PX / (view.scale || 1)),
+      startLineId,
     });
     if (r.error) {
       setError(r.error);
       return;
     }
     setError("");
-    setTraceRun({ ...r, layerKey, kind, direction });
+    setTraceRun({ ...r, layerKey, kind, direction, startLineId });
     setTracedM(0);
   }, [traceFollow, traceSources, view.scale]);
 
@@ -8676,7 +8677,45 @@ export default function GISCanvasPage() {
       const spec = traceFrom;
       setTraceFrom(null);
       setSnapHit(null);
-      runTrace(point, spec);
+
+      /* ── Which cable, where several lie under the pointer ──
+
+         Cables sharing a trench are STORED with the same geometry \u2014 the
+         separation on screen is display offset \u2014 so no measuring can
+         tell which one the click meant. Taking the nearest started
+         traces on the wrong circuit, and once on it the walk ran off in
+         directions that had nothing to do with the question.
+
+         Asked, exactly as placing a joint asks, and for the same
+         reason. One cable under the pointer needs no question. */
+      const reach = Math.max(2, HIT_PX / (view.scale || 1));
+      const near = traceFollow(spec.layerKey, spec.kind)
+        .map((line) => ({ line, hit: nearestOnPolyline(point, line.Geometry || []) }))
+        .filter((x) => x.hit && x.hit.d <= reach)
+        .sort((a, b) => a.hit.d - b.hit.d);
+
+      if (near.length > 1 && spec.kind !== "trench") {
+        setJointPick({
+          purpose: "trace",
+          spec,
+          at: point,
+          options: near.map(({ line, hit }) => ({
+            id: Number(line.Feature_ID),
+            at: hit.q,
+            label: line.Label ?? "Feeder",
+            circuit: line.Attributes?.Circuit_Name
+              ?? (line.Attributes?.Circuit_ID != null
+                ? `Circuit ${line.Attributes.Circuit_ID}` : null),
+            way: line.Attributes?.Link_Way ?? null,
+            colour: feederPlan.get(Number(line.Feature_ID))?.colour
+              ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
+              ?? null,
+            metres: drawnLength(line).toFixed(1),
+          })),
+        });
+        return;
+      }
+      runTrace(point, { ...spec, startLineId: near[0]?.line?.Feature_ID ?? null });
       return;
     }
 
@@ -12049,6 +12088,26 @@ export default function GISCanvasPage() {
     });
 
     if (!silent) setBusy("joints");
+
+    /* ── Say what it is doing ──
+
+       Every joint is its own round trip, so on an estate this runs for
+       a good few seconds with nothing on screen but a menu that has
+       closed. Somebody who cannot tell it from a dead click runs it
+       again, and the second run works on a drawing the first has not
+       finished changing.
+
+       Counted across the whole job \u2014 the joints added, the ones
+       reclassified, the ones removed and the connections recorded \u2014
+       because a bar that reaches the end and then sits there while more
+       work happens is worse than no bar at all. */
+    const total = add.length + update.length + staleMine.length + 1;
+    let done = 0;
+    const step = (label) => {
+      if (!silent) setProgress({ done, total, label });
+    };
+    step("Placing joints");
+
     try {
       for (const j of add) {
         await addFeature({
@@ -12059,6 +12118,8 @@ export default function GISCanvasPage() {
           Label: JOINT_KINDS[j.kind]?.label ?? "Joint",
           Attributes: attrsFor(j),
         });
+        done += 1;
+        step(`Placing joints \u2014 ${done} of ${add.length}`);
       }
       if (update.length) {
         const rows = update.map((u) => ({
@@ -12067,6 +12128,8 @@ export default function GISCanvasPage() {
         }));
         for (let i = 0; i < rows.length; i += 100) {
           await bulkUpdateFeatures(projectId, rows.slice(i, i + 100));
+          done += Math.min(100, rows.length - i);
+          step("Reclassifying");
         }
       }
       /* The app's own joints that the network has moved off. Batched
@@ -12078,6 +12141,8 @@ export default function GISCanvasPage() {
         const ids = staleMine.map((f) => f.Feature_ID);
         for (let i = 0; i < ids.length; i += 100) {
           await deleteFeatures(projectId, ids.slice(i, i + 100));
+          done += Math.min(100, ids.length - i);
+          step("Removing joints no longer called for");
         }
       }
 
@@ -12097,6 +12162,7 @@ export default function GISCanvasPage() {
          Written only where it changes something, so a rebuild that
          finds the same joints holding the same cables is not a hundred
          needless writes. */
+      step("Recording what each joint holds");
       const fresh = await listGis(projectId);
       const all = fresh.features || [];
       const holdRows = all
@@ -12126,7 +12192,9 @@ export default function GISCanvasPage() {
       setError("");
       return add.length + update.length;
     } catch (e) { setError(e.message); return 0; }
-    finally { if (!silent) setBusy(""); }
+    /* The bar goes with the busy flag, or a run that failed leaves one
+       on screen at whatever fraction it got to. */
+    finally { if (!silent) { setBusy(""); setProgress(null); } }
   }
 
   /* The incoming supply, from the point of connection to the substation.
@@ -22305,20 +22373,27 @@ export default function GISCanvasPage() {
             role="dialog" aria-label="Which cable">
             <h3>Which cable?</h3>
             <p className="hint">
-              {jointPick.options.length} feeder cables run through that point.
-              The joint breaks the one you choose.
+              {jointPick.options.length} cables run through that point.
+              {jointPick.purpose === "trace"
+                ? " The trace follows the one you choose."
+                : " The joint breaks the one you choose."}
             </p>
             <div className="cpick-list">
               {jointPick.options.map((o) => (
                 <button key={o.id} className="cpick-item"
                   onClick={() => {
-                    const kind = jointPick.kind;
+                    const pick = jointPick;
                     setJointPick(null);
                     const line = features.find((x) =>
                       Number(x.Feature_ID) === Number(o.id));
-                    if (line) {
+                    if (!line) return;
+                    /* The same question serves both: which cable did
+                       you mean. What is done with the answer differs. */
+                    if (pick.purpose === "trace") {
+                      runTrace(pick.at, { ...pick.spec, startLineId: line.Feature_ID });
+                    } else {
                       withUndo("Place straight joint",
-                        () => placeJointOnCable(kind, line, o.at));
+                        () => placeJointOnCable(pick.kind, line, o.at));
                     }
                   }}>
                   <span className="jp-sw" style={{ background: o.colour || "#94a3b8" }} />

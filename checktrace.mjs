@@ -193,6 +193,47 @@ const world = [
   if (atEnd.error) fail(`a click on a vertex was refused: ${atEnd.error}`);
 }
 
+// A trace stays on the network it started on.
+//
+//    Two circuits share a trench, so their cables have vertices at the
+//    same places, and a graph keyed on position welds them into one
+//    network. A DOWNSTREAM trace then walked from one circuit onto
+//    another at a shared point and carried on — which on a real drawing
+//    meant hopping across and coming back the way it came, reported as
+//    the trace running both ways. Measured on a live site: a trace
+//    begun on circuit 3 returned 88 cables across both circuits.
+{
+  const on = (id, g, cid) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g,
+    Attributes: { Line_Type: "elec_main", Circuit_ID: cid } });
+  /* Two circuits down one trench: the same geometry, as the drawing
+     really stores it. */
+  const a = on(1, [[0, 0], [50, 0], [100, 0]], 3);
+  const b = on(2, [[0, 0], [50, 0], [100, 0]], 2);
+  /* And a service, which names no circuit and must still be followed. */
+  const svc = { ...on(3, [[50, 0], [50, 8]], null),
+    Attributes: { Line_Type: "elec_service" } };
+
+  const r = traceTree([a, b, svc], [25, 0], { direction: "both",
+    sourcePoints: [], reach: 3, startLineId: 1 });
+  if (r.error) fail(`a trace told which cable it is on was refused: ${r.error}`);
+  else {
+    if (r.lineIds.includes(2)) {
+      fail("the trace crossed onto another circuit's cable sharing the same "
+        + "trench \u2014 which is how a one-way trace appears to run both ways");
+    }
+    if (!r.lineIds.includes(3)) {
+      fail("the trace refused a service, which names no circuit and is fed "
+        + "by the cable it is on");
+    }
+  }
+
+  /* Told the other one, it follows the other one. */
+  const r2 = traceTree([a, b, svc], [25, 0], { direction: "both",
+    sourcePoints: [], reach: 3, startLineId: 2 });
+  if (r2.lineIds.includes(1)) fail("told cable 2, it walked cable 1");
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

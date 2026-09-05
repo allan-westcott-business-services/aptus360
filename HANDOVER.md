@@ -147,6 +147,7 @@ caught a fault that had already shipped at least once.
 | `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
 | `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
 | `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
+| `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -1865,6 +1866,49 @@ id that has gone from the drawing altogether, which is not an opinion.
     *"Electric Service · 12.8 m"* for one the build laid with no name of
     its own. The id survives as a last resort, because a cable with
     nothing else to say still has to be called something.
+
+**Auto Place Feeder Joints shows its progress.** Every joint is its own
+round trip, so on an estate it ran for several seconds with nothing on
+screen but a menu that had closed — and somebody who cannot tell that
+from a dead click runs it again, with the second run working on a
+drawing the first has not finished changing.
+
+Counted across the whole job: joints added, reclassified, removed, and
+the connections recorded. **A bar that reaches the end and then sits
+there while more work happens is worse than no bar**, because it says
+the opposite of what is true. Cleared with the busy flag, so a run that
+fails does not leave one stuck at whatever fraction it reached, and
+silent runs stay silent so they do not draw over the bar of whatever
+called them.
+
+**Auto Lay Service Cable places its own service joints** — one per
+service, as it lays each cable — and does NOT run the full joint pass.
+Breeches, straight joints and bottle ends come only from Auto Place
+Feeder Joints, which reads the routed network. Both record what their
+joints hold.
+
+58. **A trace ran both ways when one was asked for.** The walk builds a
+    graph keyed on POSITION, and two circuits sharing a trench have
+    vertices at the same places — so the graph welded them into one
+    network. A downstream trace walked from one circuit onto another at
+    a shared point and carried on, which on the ground means hopping
+    across and coming back the way it came. Measured on the live site: a
+    trace begun on circuit 3 returned **88 cables across both
+    circuits**.
+
+    Every edge carries its circuit now, and the walk refuses a step onto
+    a cable naming a DIFFERENT one. A cable naming none — a service — is
+    still followed, because it is fed by the cable it hangs off.
+
+    **And which cable the click meant cannot be measured.** Cables
+    sharing a trench are STORED with the same geometry; the separation
+    on screen is display offset. Taking the nearest started half the
+    traces on the wrong circuit. So the trace asks, through the same
+    "Which cable?" dialog placing a joint uses, and passes the answer to
+    the walk as `startLineId`. Nothing in traceWalk.js guesses at it.
+
+    The general point, and the third time this session: **where the
+    drawing genuinely cannot answer, ask — do not measure harder.**
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

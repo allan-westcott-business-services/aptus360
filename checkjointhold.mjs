@@ -13,7 +13,8 @@
    stops a cable coming adrift from its fitting by accident. */
 import { readFileSync } from "node:fs";
 import { jointCables, holdsCable, withCable, withoutCable, jointAtEnd,
-  jointAtPoint, cableEndsAt, JOIN_REACH_M } from "./src/features/gis/joints.js";
+  jointAtPoint, cableEndsAt, JOIN_REACH_M, cablesHeldAt }
+  from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -228,6 +229,74 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   }
   if (!/if \(!namedHere\) \{\n\s*const ptCid/.test(canvas)) {
     fail("the circuit guard still applies to a cable the fitting names");
+  }
+}
+
+// 6. A joint the BUILD placed holds what the build joined.
+//
+//    Auto Place Feeder Joints puts a fitting where a service leaves a
+//    main and recorded none of it, so the editor said "nothing joined
+//    to this fitting yet" on a joint the app had just placed between
+//    two cables it had just laid.
+//
+//    Read at the moment of placement, which is the one moment the
+//    drawing is exactly what the build laid. Inferring the same thing
+//    later, off a drawing somebody has been editing, is the guess this
+//    area keeps being bitten by.
+{
+  const j = { Feature_Role: "joint", Layer_Key: "electric", Geometry: [[50, 0]],
+    Attributes: { Joint_Type: "service", Circuit_ID: 3, Generated: true } };
+  const line = (id, g, type, cid) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g,
+    Attributes: { Line_Type: type, Circuit_ID: cid } });
+
+  const world = [
+    line(11, [[0, 0], [50, 0], [100, 0]], "elec_main", 3),
+    line(22, [[50, 0], [50, 8]], "elec_service", null),
+    line(44, [[0, 0], [50, 0], [100, 0]], "elec_main", 2),
+    line(55, [[60, 0], [60, 8]], "elec_service", null),
+    { ...line(66, [[50, 0], [50, 8]], "trench_service", null), Layer_Key: "trench" },
+  ];
+  const held = cablesHeldAt(j, world).sort();
+
+  /* The main it is let into, by an INTERIOR vertex, and the service
+     leaving it by its end. */
+  if (held.join() !== "11,22") {
+    fail(`a built joint holds ${held.join(", ") || "nothing"} \u2014 wanted the `
+      + "main it is let into and the service leaving it");
+  }
+  /* Another circuit's main on the same route is NOT what this fitting
+     holds, however close it lies. */
+  if (held.includes(44)) {
+    fail("a built joint holds another circuit's main, so moving it drags a "
+      + "cable it has nothing to do with");
+  }
+  if (held.includes(55)) fail("a service ten metres away counts as held");
+  if (held.includes(66)) fail("a trench counts as a cable");
+
+  /* A joint with no circuit takes what is there: a hand-placed fitting
+     on a drawing with one circuit should not be excluded for saying
+     nothing about which. */
+  const loose = cablesHeldAt({ ...j, Attributes: { ...j.Attributes, Circuit_ID: null } },
+    world);
+  if (!loose.includes(44)) {
+    fail("a joint naming no circuit refuses a main that names one \u2014 it has "
+      + "no basis to");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/cablesHeldAt\(j, all\)/.test(canvas)) {
+    fail("the build does not record what its joints hold");
+  }
+  /* Written only where it changes something: a rebuild finding the same
+     joints holding the same cables must not be a hundred needless
+     writes. */
+  if (!/was\.join\(","\) !== \[\.\.\.held\]\.sort\(\)\.join\(","\)/.test(canvas)) {
+    fail("every joint is rewritten on every build, changed or not");
+  }
+  /* And only its OWN joints: one somebody placed by hand is theirs. */
+  if (!/f\.Feature_Role === "joint" && f\.Attributes\?\.Generated/.test(canvas)) {
+    fail("the build overwrites the connections on a hand-placed joint");
   }
 }
 

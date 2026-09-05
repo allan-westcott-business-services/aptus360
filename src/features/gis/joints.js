@@ -998,3 +998,56 @@ export function cableEndsAt(joint, features = [], reach = JOIN_REACH_M) {
       Math.hypot(e[0] - at[0], e[1] - at[1]) <= reach);
   });
 }
+
+/* ── What a joint the BUILD placed is holding ──
+
+   Auto Place Feeder Joints puts a fitting where a service leaves a
+   main, where a run divides, where a cable stops. It knew what it was
+   joining and recorded none of it, so every automatic joint held
+   nothing: the editor said "nothing joined to this fitting yet" on a
+   joint the app itself had just placed between two cables it had just
+   laid.
+
+   Read from the drawing at the moment the build makes it, which is the
+   one moment the drawing is exactly what the build laid — no stale
+   geometry, nothing dragged since. That is not the same as inferring it
+   later from a drawing somebody has been editing.
+
+   Deliberately narrow, because a wrong entry here moves a cable that
+   should not move:
+
+   - a SERVICE counts by its END. A service runs from a main to a plot,
+     and the end at the fitting is the join;
+   - a MAIN counts by ANY vertex, because a service joint is let into
+     the middle of one — but only where the circuits agree. A main from
+     another circuit sharing the trench passes the same point and is
+     not what this fitting holds. */
+export function cablesHeldAt(joint, features = [], reach = JOIN_REACH_M) {
+  const at = joint?.Attributes?.Span_Anchor ?? joint?.Geometry?.[0];
+  if (!Array.isArray(at)) return [];
+  const jc = joint?.Attributes?.Circuit_ID;
+
+  const held = [];
+  for (const f of features) {
+    if (f.Feature_Type !== "line" || f.Layer_Key !== joint.Layer_Key) continue;
+    const type = String(f.Attributes?.Line_Type ?? "");
+    const g = f.Geometry || [];
+    if (g.length < 2) continue;
+
+    if (/service/i.test(type)) {
+      const ends = [g[0], g[g.length - 1]];
+      if (ends.some((e) => Math.hypot(e[0] - at[0], e[1] - at[1]) <= reach)) {
+        held.push(Number(f.Feature_ID));
+      }
+      continue;
+    }
+    if (!/main/i.test(type)) continue;
+
+    const fc = f.Attributes?.Circuit_ID;
+    if (jc != null && fc != null && Number(jc) !== Number(fc)) continue;
+    if (g.some((q) => Math.hypot(q[0] - at[0], q[1] - at[1]) <= reach)) {
+      held.push(Number(f.Feature_ID));
+    }
+  }
+  return held;
+}

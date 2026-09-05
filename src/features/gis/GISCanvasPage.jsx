@@ -104,7 +104,7 @@ import {
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
   jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
-  JOIN_REACH_M,
+  JOIN_REACH_M, cablesHeldAt,
 } from "./joints.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -12054,8 +12054,43 @@ export default function GISCanvasPage() {
         }
       }
 
+      /* ── And each one records what it holds ──
+
+         The build knew what it was joining and wrote none of it down,
+         so every automatic joint held nothing: the editor said "nothing
+         joined to this fitting yet" on a joint the app had just placed
+         between two cables it had just laid.
+
+         Read here, from the drawing as it now stands, which is the one
+         moment it is exactly what the build laid \u2014 nothing dragged
+         since, no stale geometry. Inferring the same thing later, off a
+         drawing somebody has been editing, is the guess this whole area
+         has been bitten by; doing it at the moment of placement is not.
+
+         Written only where it changes something, so a rebuild that
+         finds the same joints holding the same cables is not a hundred
+         needless writes. */
+      const fresh = await listGis(projectId);
+      const all = fresh.features || [];
+      const holdRows = all
+        .filter((f) => f.Feature_Role === "joint" && f.Attributes?.Generated)
+        .map((j) => ({ j, held: cablesHeldAt(j, all) }))
+        .filter(({ j, held }) => {
+          const was = (j.Attributes?.Joint_Cables || []).map(Number).sort();
+          return held.length
+            && was.join(",") !== [...held].sort().join(",");
+        })
+        .map(({ j, held }) => ({
+          Feature_ID: j.Feature_ID,
+          Attributes: { ...j.Attributes, Joint_Cables: held },
+        }));
+      for (let i = 0; i < holdRows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, holdRows.slice(i, i + 100));
+      }
+
       if (!silent) await load(projectId);
       setStatus(`${add.length} joint(s) placed`
+        + (holdRows.length ? `, ${holdRows.length} holding their cables` : "")
         + (update.length ? `, ${update.length} reclassified` : "")
         + (staleMine.length ? `, ${staleMine.length} removed` : "")
         + (staleTheirs.length ? `, ${staleTheirs.length} left alone` : ""));

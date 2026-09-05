@@ -1780,6 +1780,26 @@ branches finishing early is the trace showing which way is further.
     **Where a fact was stated, state-beats-infer, and the tolerance that
     recorded it is the tolerance that honours it.**
 
+**A joint the build placed holds what the build joined.** Auto Place
+Feeder Joints puts a fitting where a service leaves a main, where a run
+divides, where a cable stops — and recorded none of it. So the editor
+said *"nothing joined to this fitting yet"* on a joint the app had just
+placed between two cables it had just laid, and moving it left both
+behind.
+
+Read at the moment of placement, which is the one moment the drawing is
+exactly what the build laid: nothing dragged since, no stale geometry.
+**Inferring the same thing later, off a drawing somebody has been
+editing, is the guess this area keeps being bitten by; doing it as the
+thing is created is not.**
+
+`cablesHeldAt` is deliberately narrow, because a wrong entry moves a
+cable that should not move. A SERVICE counts by its end. A MAIN counts
+by any vertex — a service joint is let into the middle of one — but only
+where the circuits agree, so another circuit's main sharing the trench
+is excluded. Written only where it changes something, and only on the
+build's own joints: one somebody placed by hand is theirs.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

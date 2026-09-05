@@ -1701,14 +1701,24 @@ export default function GISCanvasPage() {
     let noService = 0;
     let noSpec = 0;
     for (const l of legs) {
-      const id = l?.service?.meterId;
-      if (id == null || !l.atCutout) { noService += 1; continue; }
-      if (l.service?.missingSpec) { noSpec += 1; continue; }
-      const was = out.get(Number(id));
-      /* A meter can be the worst on more than one leg where two serve
-         it; the worse figure is the one that has to pass. */
-      if (!was || l.atCutout.pct > was.pct) {
-        out.set(Number(id), { pct: l.atCutout.pct, ohms: l.atCutout.ohms });
+      const rows = l?.cutouts?.length
+        ? l.cutouts
+        /* An older result, from before every meter was kept: the leg's
+           worst is all there is, and one figure is better than none. */
+        : (l?.service?.meterId != null && l.atCutout
+          ? [{ meterId: l.service.meterId, missingSpec: l.service.missingSpec,
+            pct: l.atCutout.pct, ohms: l.atCutout.ohms }]
+          : []);
+      if (!rows.length) { noService += 1; continue; }
+      for (const r of rows) {
+        if (r.meterId == null) continue;
+        if (r.missingSpec) { noSpec += 1; continue; }
+        const was = out.get(Number(r.meterId));
+        /* A meter served from two legs keeps the worse figure: that is
+           the one that has to pass. */
+        if (!was || r.pct > was.pct) {
+          out.set(Number(r.meterId), { pct: r.pct, ohms: r.ohms });
+        }
       }
     }
     out.why = { legs: legs.length, noService, noSpec };
@@ -19560,6 +19570,9 @@ export default function GISCanvasPage() {
        average. A node feeding six plots is judged on the longest or
        thinnest of the six. The others are inside it by definition. */
     let service = null;
+    /* Every meter on this leg with its own figure, so the drawing can
+       label all of them rather than one. */
+    const each = [];
     /* ── Which meters this leg serves ──
 
        This read part.model.metersAt[leg.endIdx]: the meters attached AT
@@ -19624,6 +19637,18 @@ export default function GISCanvasPage() {
           kva,
           voltageV: startV,
         });
+        /* ── Every meter's own figure, not only the worst ──
+
+           The worst is what the leg has to pass on, and it was the only
+           one kept. So one meter in a leg carried a number and the rest
+           carried nothing \u2014 and on a drawing a missing figure reads as a
+           good figure. Two plots on one street, one labelled and one
+           blank, and the blank one looks better when it may be worse.
+
+           Held per meter as well, so the drawing can say something
+           about all of them. The worst is still the leg's figure and
+           still what the sheet reports. */
+        each.push({ ...r, meterId: meter.Feature_ID, plotId: meter.Plot_ID ?? null });
         const worse = !service
           || r.ohms > service.ohms
           || (r.ohms === service.ohms && r.pct > service.pct);
@@ -19649,6 +19674,16 @@ export default function GISCanvasPage() {
         ohms: (Number(leg.vd?.ohms) || 0) + service.ohms,
         pct: (Number(leg.vd?.pct) || 0) + service.pct,
       } : null,
+      /* The same sum for every meter on the leg, so each plot can carry
+         its own number. The leg's drop is common to all of them; only
+         the service tail differs. */
+      cutouts: each.map((r) => ({
+        meterId: r.meterId,
+        plotId: r.plotId,
+        missingSpec: !!r.missingSpec,
+        ohms: (Number(leg.vd?.ohms) || 0) + r.ohms,
+        pct: (Number(leg.vd?.pct) || 0) + r.pct,
+      })),
     };
   }, []);
 

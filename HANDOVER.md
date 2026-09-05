@@ -2111,9 +2111,19 @@ appeared only in the report. So the one figure a design is judged on
 could be read only by finding a row in a table and then finding the plot
 on the drawing.
 
-Drawn beside that meter, one per stop. **The worst of the meters a stop
-serves is the one that has to pass**, and putting the same figure
-against every plot on the leg would be twenty labels saying one thing.
+Drawn at EVERY meter, each with its own service in it.
+
+It was one per leg at first, on the reasoning that the worst is what has
+to pass and twenty labels would say one thing. That reasoning was wrong,
+and the drawing said so: **a missing figure reads as a good figure.**
+Two plots on one street, one labelled and one blank, and the blank looks
+better when it may be worse — reported as "why is 41 worse than 39" when
+39 had no figure at all and was in fact further downstream.
+
+The leg's drop is common to the plots on it; only the service tail
+differs, so every meter's figure is that sum. The leg's own worst is
+unchanged and is still what the sheet reports and what the limit is
+judged on.
 
 Behind the SPAN NODE LEVELS switch with the other level labels, at the
 same zoom, and red only past the limit — the main's allowance plus the

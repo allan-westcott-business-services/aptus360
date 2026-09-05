@@ -43,17 +43,31 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
       fail("the figures do not come from the levels check, so the drawing "
         + "and the sheet can disagree about them");
     }
-    if (!/l\?\.service\?\.meterId/.test(fn)) {
-      fail("the figure is not tied to the worst-served meter the check names");
+    /* ── Every meter, not one per leg ──
+
+       The leg's worst is what the leg has to pass on, and it was the
+       only figure kept \u2014 so one meter in a leg carried a number and the
+       rest carried nothing. On a drawing a MISSING figure reads as a
+       good figure: two plots on one street, one labelled and one blank,
+       and the blank looks better when it may be worse. Reported as "why
+       is 41 worse than 39" when 39 had no figure at all. */
+    if (!/l\?\.cutouts\?\.length/.test(fn)) {
+      fail("only the leg's worst meter is labelled, so every other plot "
+        + "shows nothing and a blank reads as a good figure");
+    }
+    /* A result from before every meter was kept still gives its one
+       figure rather than none. */
+    if (!/l\?\.service\?\.meterId != null && l\.atCutout/.test(fn)) {
+      fail("an older levels result draws nothing at all");
     }
     /* A service with no cable spec has no figure, and drawing one would
        be inventing it. */
-    if (!/l\.service\?\.missingSpec/.test(fn)) {
+    if (!/if \(r\.missingSpec\)/.test(fn)) {
       fail("a service with no cable specified still gets a figure");
     }
     /* Where two legs serve one meter, the worse is the one that has to
        pass. */
-    if (!/l\.atCutout\.pct > was\.pct/.test(fn)) {
+    if (!/r\.pct > was\.pct/.test(fn)) {
       fail("a meter served by two legs keeps whichever was found first "
         + "rather than the worse figure");
     }
@@ -162,6 +176,25 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
+/* And the levels keep every meter's figure, not only the worst. */
+{
+  const at = canvas.indexOf("const each = [];");
+  if (at < 0) fail("the levels keep only the worst meter on each leg");
+  if (!/cutouts: each\.map\(\(r\) => \(\{/.test(canvas)) {
+    fail("the per-meter figures are gathered and never returned");
+  }
+  /* The leg's drop is common to all of them; only the service differs. */
+  if (!/pct: \(Number\(leg\.vd\?\.pct\) \|\| 0\) \+ r\.pct/.test(canvas)) {
+    fail("a meter's figure does not add the leg's drop to its own service");
+  }
+  /* The worst is still the leg's figure and still what the sheet
+     reports \u2014 this adds to it rather than replacing it. */
+  if (!/atCutout: service \? \{/.test(canvas)) {
+    fail("the leg's own worst figure has gone, which is what the sheet "
+      + "reports and what the limit is judged on");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
-  : "Cut-out figures behave (at the worst-served meter, one per stop).");
+  : "Cut-out figures behave (one at every meter, its own service in it).");
 process.exit(bad ? 1 : 0);

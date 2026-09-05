@@ -103,7 +103,7 @@ import {
 } from "./feederColour.js";
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
-  jointAtEnd, withCable, withoutCable, jointCables,
+  jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
 } from "./joints.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -7412,7 +7412,19 @@ export default function GISCanvasPage() {
           /* A breech joins cable ENDS. Offering it every vertex would
              let it claim an interior point of a cable that merely
              passes close by, and pull a run out of shape. */
-          const candidates = isJoint && isFeeder && !joinsEnds
+          /* ── Which vertices of a named cable follow ──
+
+             Where the joint SAYS it holds this cable, the vertices that
+             follow are the ones standing on it, wherever they fall. A
+             service joint is let into the middle of a main, so its
+             cable meets it at an interior vertex \u2014 and offering only
+             the ends would leave a deliberately joined cable behind
+             while the fitting moved out from under it.
+
+             The record says which cable; the distance test below says
+             which of its vertices. Neither has to guess. */
+          const candidates = (isJoint && isFeeder && !joinsEnds)
+            || (isJoint && told.has(Number(line.Feature_ID)))
             ? g.map((_, i) => i)
             : [0, g.length - 1];
 
@@ -7918,8 +7930,10 @@ export default function GISCanvasPage() {
         }
 
         /* Dropped on a joint, so it is joined to it \u2014 this is the
-           gesture that says so, and the drop has already snapped. */
-        await joinEndToJoint(f);
+           gesture that says so, and the drop has already snapped. The
+           index is the vertex that moved: an end, or the middle of a
+           main being put onto a service joint. */
+        await joinEndToJoint(f, d.index);
 
         /* Said out loud when a ring is shut.
 
@@ -8438,9 +8452,17 @@ export default function GISCanvasPage() {
     };
   }, [traceRun]);
 
-  async function joinEndToJoint(line) {
+  async function joinEndToJoint(line, vertexIndex = null) {
     const joints = features.filter((f) => f.Feature_Role === "joint");
-    const j = jointAtEnd(line, joints);
+    /* The vertex that was dragged, where the caller knows which one \u2014
+       an END is the common case, and the MIDDLE of a main is how a
+       service joint is let into it. Both are somebody putting a point
+       of a cable onto a fitting on purpose. */
+    const moved = vertexIndex != null
+      ? (line.Geometry || [])[vertexIndex] : null;
+    const j = moved
+      ? jointAtPoint(moved, joints)
+      : jointAtEnd(line, joints);
     if (!j) return;
     const attrs = withCable(j, line.Feature_ID);
     if (attrs === j.Attributes) return;

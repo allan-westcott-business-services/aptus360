@@ -13,7 +13,7 @@
    stops a cable coming adrift from its fitting by accident. */
 import { readFileSync } from "node:fs";
 import { jointCables, holdsCable, withCable, withoutCable, jointAtEnd,
-  cableEndsAt } from "./src/features/gis/joints.js";
+  jointAtPoint, cableEndsAt } from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -78,12 +78,14 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
 
-  if (!/async function joinEndToJoint\(line\)/.test(canvas)) {
+  /* It takes the index of the vertex that moved now: an end, or the
+     middle of a main being put onto a service joint. */
+  if (!/async function joinEndToJoint\(line, vertexIndex = null\)/.test(canvas)) {
     fail("nothing records a cable end dropped on a joint");
   }
   /* The drag path is the one people actually use: grab an end, drag it,
      drop it. */
-  if (!/await joinEndToJoint\(f\);/.test(canvas)) {
+  if (!/await joinEndToJoint\(f, d\.index\);/.test(canvas)) {
     fail("dragging a cable end onto a joint does not join it");
   }
   /* ANY joint, not only the ones that join ends: a cable snapped to a
@@ -149,6 +151,48 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/async function connectCable\(jointId, cableId\)/.test(canvas)) {
     fail("Connect is not wired to anything");
+  }
+}
+
+// 4. A MIDPOINT dragged onto a joint is joined to it too.
+//
+//    `jointAtEnd` asks about a cable's two ends, which is right when a
+//    cable is drawn to a fitting. It is not the only way a cable meets
+//    one: a service joint sits ON a main, at a vertex in the middle of
+//    it, and somebody dragging that vertex onto the fitting is joining
+//    them just as deliberately. Asked about by position, because the
+//    caller knows which vertex it moved.
+{
+  const j = joint();
+  const main = { Feature_ID: 11, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [50, 0], [100, 0]], Attributes: {} };
+
+  if (!jointAtPoint(main.Geometry[1], [j])) {
+    fail("a midpoint dropped on a joint is not seen as joined to it");
+  }
+  /* Which the ends alone cannot find \u2014 the whole reason for asking by
+     position. */
+  if (jointAtEnd(main, [j])) {
+    fail("the fixture is wrong: this main has an END on the joint, so it "
+      + "proves nothing about midpoints");
+  }
+  /* Still bounded: a vertex two metres away was not dropped on it. */
+  if (jointAtPoint([52, 0], [j])) {
+    fail("a vertex two metres off the fitting counts as joined to it");
+  }
+  if (jointAtPoint(null, [j])) fail("nothing at all counts as a point");
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* The vertex that MOVED, passed in by the drag that moved it. */
+  if (!/await joinEndToJoint\(f, d\.index\);/.test(canvas)) {
+    fail("the drag does not say which vertex it dropped, so a midpoint "
+      + "dragged onto a joint is never recorded");
+  }
+  /* And a named cable follows at whatever vertex stands on the joint,
+     or a service joint moves out from under the main it is let into. */
+  if (!/\|\| \(isJoint && told\.has\(Number\(line\.Feature_ID\)\)\)/.test(canvas)) {
+    fail("a cable the joint says it holds follows only by its ends, so a "
+      + "main joined at its middle is left behind");
   }
 }
 

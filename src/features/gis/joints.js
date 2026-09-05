@@ -928,6 +928,29 @@ export function withoutCable(joint, cableId) {
    treating it as joined is how a joint came to drag a run that merely
    crosses its position. `reach` is the snap distance, so what counts as
    dropped on it is what the drawing showed as snapping to it. */
+/* The joint a POINT has been dropped on.
+
+   `jointAtEnd` asks about a cable's two ends, which is right when a
+   cable is drawn to a fitting. It is not the only way a cable meets
+   one: a service joint sits ON a main, at a vertex in the middle of it,
+   and somebody dragging that vertex onto the fitting is joining them
+   just as deliberately.
+
+   So the vertex that was actually dragged is asked about, by position.
+   The caller knows which one it moved; nothing here has to guess. */
+export function jointAtPoint(point, joints = [], reach = 0.35) {
+  if (!Array.isArray(point)) return null;
+  let best = null;
+  for (const j of joints) {
+    if (j?.Feature_Role !== "joint") continue;
+    const at = j.Attributes?.Span_Anchor ?? j.Geometry?.[0];
+    if (!Array.isArray(at)) continue;
+    const d = Math.hypot(point[0] - at[0], point[1] - at[1]);
+    if (d <= reach && (!best || d < best.d)) best = { d, joint: j };
+  }
+  return best ? best.joint : null;
+}
+
 export function jointAtEnd(line, joints = [], reach = 0.35) {
   const g = line?.Geometry || [];
   if (g.length < 2) return null;

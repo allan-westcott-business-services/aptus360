@@ -149,6 +149,7 @@ caught a fault that had already shipped at least once.
 | `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
 | `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
+| `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
@@ -2101,6 +2102,23 @@ everywhere else, and a bigger change than this one.
     source, which changes the right answer. The site has the shape; use
     the site. The check was proved by removing the fix and watching it
     fail on the right line.
+
+**The cut-out figure is on the drawing.** A stop's levels are the drop
+to that POINT on the main; what a customer gets is that plus their own
+service. The levels already computed it — `atCutout`, for the
+worst-served meter on the stop, whose id is recorded with it — and it
+appeared only in the report. So the one figure a design is judged on
+could be read only by finding a row in a table and then finding the plot
+on the drawing.
+
+Drawn beside that meter, one per stop. **The worst of the meters a stop
+serves is the one that has to pass**, and putting the same figure
+against every plot on the leg would be twenty labels saying one thing.
+
+Behind the SPAN NODE LEVELS switch with the other level labels, at the
+same zoom, and red only past the limit — the main's allowance plus the
+service's, because the figure includes the service. Every figure in red
+is a drawing nobody reads.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

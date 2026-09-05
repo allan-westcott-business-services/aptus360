@@ -1670,6 +1670,38 @@ export default function GISCanvasPage() {
     [liveLevels, hidden],
   );
 
+  /* ── The figure at the cut-out, at the cut-out ──
+
+     A stop's levels are the drop to that POINT on the main. What a
+     customer actually gets is that plus their own service, and the
+     levels already work it out: `atCutout`, for the worst-served meter
+     on the stop, whose id is recorded with it.
+
+     It was in the report and nowhere on the drawing \u2014 so the one figure
+     a designer is judged on, the volts at somebody's cut-out, could only
+     be read by finding the row in a table and then finding the plot.
+
+     Keyed on that meter, so the number is drawn where it applies rather
+     than beside the stop it was measured from. One per stop: the worst
+     of the meters it serves is the one that has to pass, and drawing
+     the same figure against every plot on the leg would be twenty
+     labels saying one thing. */
+  const cutoutAtMeter = useMemo(() => {
+    const out = new Map();
+    if (!elecLevelsAt) return out;
+    for (const vd of elecLevelsAt.values()) {
+      const id = vd?.service?.meterId;
+      if (id == null || !vd.atCutout || vd.service?.missingSpec) continue;
+      const was = out.get(Number(id));
+      /* A meter can be the worst on more than one stop where two stops
+         serve it; the worse figure is the one that has to pass. */
+      if (!was || vd.atCutout.pct > was.pct) {
+        out.set(Number(id), { pct: vd.atCutout.pct, ohms: vd.atCutout.ohms });
+      }
+    }
+    return out;
+  }, [elecLevelsAt]);
+
 
 
 
@@ -4507,6 +4539,45 @@ export default function GISCanvasPage() {
              setting says, and go back to the setting when it is put
              down. Not a second switch \u2014 one setting, temporarily
              overridden by the job in hand. */
+          /* ── What this customer gets, beside this customer ──
+
+             The drop to the stop plus their own service. It is the
+             figure the design is judged on and it lived only in the
+             report, so reading it meant finding a row in a table and
+             then finding the plot on the drawing.
+
+             Drawn at the same zoom as the other level labels and behind
+             the same switch, because it is one of them: turned off with
+             SPAN NODE LEVELS, which is where somebody looking for
+             figures on the drawing already goes.
+
+             Red past the limit, and only then. Every figure in red is a
+             drawing nobody reads. */
+          if (isMeter && cutoutAtMeter.size && showLabels
+            && labelShown("levels") && view.scale > 1.2) {
+            const co = cutoutAtMeter.get(Number(f.Feature_ID));
+            if (co) {
+              const main = Number(lookups?.vdSettings?.[0]?.Max_Volt_Drop_Pct);
+              const svc = Number(lookups?.vdSettings?.[0]?.Max_Service_Volt_Drop_Pct);
+              const lim = (Number.isFinite(main) ? main : Infinity)
+                + (Number.isFinite(svc) ? svc : 0);
+              const text = `${co.pct.toFixed(2)}%`;
+              ctx.save();
+              ctx.font = "600 11px system-ui, sans-serif";
+              ctx.textAlign = "left";
+              ctx.textBaseline = "middle";
+              const tx = p.x + r + 5;
+              /* A halo, because this lands over the plan and the plots
+                 beneath it are line work. */
+              ctx.lineWidth = 3;
+              ctx.strokeStyle = "#fff";
+              ctx.strokeText(text, tx, p.y);
+              ctx.fillStyle = co.pct > lim ? "#b91c1c" : "#334155";
+              ctx.fillText(text, tx, p.y);
+              ctx.restore();
+            }
+          }
+
           if (isMeter && (circuitRings || tool === "circuit")) {
             /* A proposed group takes precedence over a real circuit:
                while a suggestion is being looked at, the rings have to

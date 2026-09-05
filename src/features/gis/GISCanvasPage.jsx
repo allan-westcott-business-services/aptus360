@@ -1673,48 +1673,47 @@ export default function GISCanvasPage() {
   /* ── The figure at the cut-out, at the cut-out ──
 
      A stop's levels are the drop to that POINT on the main. What a
-     customer actually gets is that plus their own service, and the
-     levels already work it out: `atCutout`, for the worst-served meter
-     on the stop, whose id is recorded with it.
+     customer gets is that plus their own service, and the levels check
+     works it out: `atCutout`, for the worst-served meter on the stop,
+     whose id is recorded with it.
 
-     It was in the report and nowhere on the drawing \u2014 so the one figure
-     a designer is judged on, the volts at somebody's cut-out, could only
-     be read by finding the row in a table and then finding the plot.
+     ── From the CHECK, not from the live levels ──
 
-     Keyed on that meter, so the number is drawn where it applies rather
-     than beside the stop it was measured from. One per stop: the worst
-     of the meters it serves is the one that has to pass, and drawing
-     the same figure against every plot on the leg would be twenty
-     labels saying one thing. */
+     The canvas keeps its own figures for the labels beside each node,
+     and they are computed by `levelsForParts`, which has its own
+     `figureAt` — the volt drop and nothing else. The service and the
+     cut-out are added by the canvas's own figureAt, which only the
+     levels CHECK calls. So every attempt to read a cut-out off the live
+     levels found `service` undefined and drew nothing, on a build where
+     the rest of it was right.
+
+     Two functions of one name computing different things, and the one
+     in scope was the wrong one. Read from `trace` instead: the same
+     rows the report prints, so the drawing and the sheet cannot
+     disagree about a figure a design is judged on.
+
+     One per stop: the worst of the meters a stop serves is the one that
+     has to pass, and the same figure against every plot on the leg
+     would be twenty labels saying one thing. */
   const cutoutAtMeter = useMemo(() => {
     const out = new Map();
-    if (!elecLevelsAt) return out;
-    /* ── Countable ──
-
-       Whether a figure reaches the drawing depends on three things
-       being true at once, and when it did not appear there was no way
-       to tell which had failed: no levels at all, levels with no
-       service on them, or a service with no cable specified. Reading
-       the code for it took longer than the feature.
-
-       So the tally is kept and reported beside the levels. A number is
-       an answer; an empty drawing is a question. */
+    const legs = trace?.levels ? (trace.legs || []) : [];
     let noService = 0;
     let noSpec = 0;
-    for (const vd of elecLevelsAt.values()) {
-      const id = vd?.service?.meterId;
-      if (id == null || !vd.atCutout) { noService += 1; continue; }
-      if (vd.service?.missingSpec) { noSpec += 1; continue; }
+    for (const l of legs) {
+      const id = l?.service?.meterId;
+      if (id == null || !l.atCutout) { noService += 1; continue; }
+      if (l.service?.missingSpec) { noSpec += 1; continue; }
       const was = out.get(Number(id));
-      /* A meter can be the worst on more than one stop where two stops
-         serve it; the worse figure is the one that has to pass. */
-      if (!was || vd.atCutout.pct > was.pct) {
-        out.set(Number(id), { pct: vd.atCutout.pct, ohms: vd.atCutout.ohms });
+      /* A meter can be the worst on more than one leg where two serve
+         it; the worse figure is the one that has to pass. */
+      if (!was || l.atCutout.pct > was.pct) {
+        out.set(Number(id), { pct: l.atCutout.pct, ohms: l.atCutout.ohms });
       }
     }
-    out.why = { stops: elecLevelsAt.size, noService, noSpec };
+    out.why = { legs: legs.length, noService, noSpec };
     return out;
-  }, [elecLevelsAt]);
+  }, [trace]);
 
 
 
@@ -4574,7 +4573,7 @@ export default function GISCanvasPage() {
              time \u2014 so nothing was ever drawn. The switch these belong
              to is `labelKinds.levels`. */
           if (isMeter && cutoutAtMeter.size
-            && elecLevelsAt && labelKinds.levels !== false
+            && labelKinds.levels !== false
             && view.scale > 1.2) {
             const co = cutoutAtMeter.get(Number(f.Feature_ID));
             if (co) {
@@ -24995,7 +24994,7 @@ export default function GISCanvasPage() {
                         <> &middot; {cutoutAtMeter.size} cut-out figure
                           {cutoutAtMeter.size === 1 ? "" : "s"} on the drawing
                           {cutoutAtMeter.why.noService
-                            ? `, ${cutoutAtMeter.why.noService} stop(s) with no service`
+                            ? `, ${cutoutAtMeter.why.noService} leg(s) with no service`
                             : ""}
                           {cutoutAtMeter.why.noSpec
                             ? `, ${cutoutAtMeter.why.noSpec} with no cable figures`

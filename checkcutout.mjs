@@ -20,25 +20,48 @@ let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
 const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
-/* Keyed on the meter the levels name, not on the stop. */
+/* ── Read from the levels CHECK, not from the live levels ──
+
+   The canvas keeps its own figures for the labels beside each node, and
+   they come from `levelsForParts`, which has its own `figureAt`: the
+   volt drop and nothing else. The service and the cut-out are added by
+   the canvas's own figureAt, which only the levels check calls.
+
+   So reading a cut-out off the live levels found `service` undefined
+   and drew nothing at all \u2014 two functions of one name computing
+   different things, and the one in scope was the wrong one. */
 {
   const at = canvas.indexOf("const cutoutAtMeter = useMemo");
-  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("}, [elecLevelsAt]);", at));
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("}, [trace]);", at));
   if (!fn) fail("nothing maps a cut-out figure to the meter it belongs to");
   else {
-    if (!/vd\?\.service\?\.meterId/.test(fn)) {
-      fail("the figure is not tied to the worst-served meter the levels name");
+    if (/elecLevelsAt/.test(fn)) {
+      fail("the figures are read from the live levels, whose figureAt "
+        + "computes no service and no cut-out \u2014 nothing will be drawn");
+    }
+    if (!/trace\?\.levels \? \(trace\.legs \|\| \[\]\) : \[\]/.test(fn)) {
+      fail("the figures do not come from the levels check, so the drawing "
+        + "and the sheet can disagree about them");
+    }
+    if (!/l\?\.service\?\.meterId/.test(fn)) {
+      fail("the figure is not tied to the worst-served meter the check names");
     }
     /* A service with no cable spec has no figure, and drawing one would
        be inventing it. */
-    if (!/vd\.service\?\.missingSpec/.test(fn)) {
+    if (!/l\.service\?\.missingSpec/.test(fn)) {
       fail("a service with no cable specified still gets a figure");
     }
-    /* Where two stops serve one meter, the worse is the one that has to
+    /* Where two legs serve one meter, the worse is the one that has to
        pass. */
-    if (!/vd\.atCutout\.pct > was\.pct/.test(fn)) {
-      fail("a meter served by two stops keeps whichever was found first "
+    if (!/l\.atCutout\.pct > was\.pct/.test(fn)) {
+      fail("a meter served by two legs keeps whichever was found first "
         + "rather than the worse figure");
+    }
+    /* And the tally, so an empty drawing is an answer rather than a
+       question. */
+    if (!/out\.why = \{ legs: legs\.length, noService, noSpec \}/.test(fn)) {
+      fail("nothing counts the figures, so when none appear there is no way "
+        + "to tell which of three things failed");
     }
   }
 }
@@ -67,8 +90,8 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
       fail("it cannot be turned off with the other level labels");
     }
     /* And nothing is drawn before the levels check has run. */
-    if (!/elecLevelsAt && labelKinds\.levels/.test(draw)) {
-      fail("it draws without levels to draw");
+    if (!/cutoutAtMeter\.size/.test(draw)) {
+      fail("it draws without figures to draw");
     }
     if (!/view\.scale > 1\.2/.test(draw)) {
       fail("it draws at every zoom, so a whole estate is covered in "

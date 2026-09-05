@@ -147,6 +147,7 @@ caught a fault that had already shipped at least once.
 | `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
 | `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
 | `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
+| `node checktrace.mjs` | One token to the fork, two after it |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
 | `node checkjointonline.mjs` | A joint clicked onto a cable breaks it there |
@@ -1711,6 +1712,35 @@ worse than not following at all.
     Nothing is written for a gesture that never became a drag either —
     a save of unchanged geometry is still an undo entry and a version
     bump for having done nothing.
+
+**Trace from a Point.** Started from any utility's menu, so what is
+being followed is already answered; the click supplies the only thing a
+menu cannot. The panel then offers all three questions — cable or pipe
+versus trench, and upstream, downstream or both — and re-runs from the
+same point when either is changed, because "actually, show me the
+trench" is the same question about the same place.
+
+**The forking is geometry, not code.** `traceWalk.js` returns one
+polyline per LEAF, each running the whole way from the start, and the
+token on every branch travels at the same speed in METRES. So two
+branches sharing their first ninety metres carry their tokens over the
+same ground and read as one, then part at the fork. Nothing in the
+drawing knows what a fork is. A tree of nodes — the obvious shape —
+would have needed an explicit "now split" step and a rule for what
+happens to the token that was there.
+
+**Direction is distance ALONG the network from a source**, not as the
+crow flies: a run that loops back is further downstream at every step
+while getting closer to the POC in a straight line. A trench has no
+source, so upstream and downstream are not questions it can answer, and
+the panel greys them with the reason rather than hiding them — a
+control that disappears looks like a fault.
+
+Speed is in metres per second, so how far a trace went is part of what
+the animation says; a fraction would make a street and an estate take
+the same time. A token that arrives stops being drawn rather than
+sitting on the last point looking like it is still going, so the short
+branches finishing early is the trace showing which way is further.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

@@ -43,6 +43,7 @@ import { originMissing,
 import FeatureEditor from "./FeatureEditor.jsx";
 import { drawnLength, runLength, hasMeasured } from "./lengths.js";
 import { metersByPlot, outsideWay, wayColourOf } from "./linkWays.js";
+import { traceTree, pointAlong } from "./traceWalk.js";
 
 /* What a line's label says about its length: the measured figure where
    somebody entered one, marked so the drawing admits the number is not
@@ -218,6 +219,10 @@ const BASEMAP_KEY = "basemap";
 /* How far a pointer must travel before a press becomes a drag. Screen
    pixels, so it is the same hand movement at any zoom. */
 const DRAG_PX = 3;
+/* How fast a trace token travels, in metres of drawing per second. Slow
+   enough to follow with the eye on a street, fast enough that an estate
+   does not become a wait. */
+const TRACE_MPS = 45;
 const HIT_PX = 10;
 
 /* The boundary point is drawn in ink rather than in a utility's colour.
@@ -2362,6 +2367,21 @@ export default function GISCanvasPage() {
      need one HERE". Both are wanted; a fitting whose position is the
      whole point should be placed by pointing at it. */
   const [jointFor, setJointFor] = useState(null);
+
+  /* ── Following a network from a point ──
+
+     Three questions and an animation: where from, what to follow, and
+     which way. `traceRun` holds the answers and the walk; `tracedM` is
+     how far the token has travelled, in metres, advanced by a frame
+     loop. Not `traceAt` \u2014 that is taken, by the levels panel's note of
+     what the report was computed against, and two names a letter apart
+     for two unrelated things is how somebody reads the wrong one. Metres rather than a fraction so every branch moves at the
+     same speed and the short ones arrive first \u2014 which is the trace
+     showing you which way is further. */
+  const [traceFrom, setTraceFrom] = useState(null);
+  const [traceRun, setTraceRun] = useState(null);
+  const [tracedM, setTracedM] = useState(0);
+  const traceFrame = useRef(null);
   /* Which cable, where several lie under the pointer. */
   const [jointPick, setJointPick] = useState(null);
 
@@ -2386,7 +2406,7 @@ export default function GISCanvasPage() {
      because there were two of them and only one was wrong, which is
      how the prompt drew correctly over a click that did nothing. */
   const awaitingClick = placing || !!meterFor || !!nrsFor
-    || !!boundaryFor || !!trenchEndFor || !!jointFor;
+    || !!boundaryFor || !!trenchEndFor || !!jointFor || !!traceFrom;
 
   const visible = useMemo(
     () => features.filter((f) => {
@@ -5552,6 +5572,82 @@ export default function GISCanvasPage() {
     // What the next click will do
     /* The same guide when catching up on an old plot: the flow is the
        one thing that changed, not the drawing. */
+    /* ── The trace, and the tokens running along it ──
+
+       Drawn last, over everything, because it is an answer to a
+       question somebody just asked rather than part of the drawing.
+
+       The path behind each token is drawn as it is covered, so what has
+       been reached reads at a glance and the whole traced network is
+       still there when the tokens arrive \u2014 an animation that leaves
+       nothing behind has to be watched to be read.
+
+       Every branch travels at the same speed, so tokens on paths
+       sharing their first stretch sit on top of each other and read as
+       ONE, then part at the fork. No code here knows what a fork is. */
+    if (traceRun) {
+      ctx.save();
+      ctx.lineCap = "round";
+      ctx.lineJoin = "round";
+
+      for (const path of traceRun.paths) {
+        /* The covered part of this path. Drawn from the start each
+           frame rather than accumulated, so a restart or a scrub is
+           just a smaller number. */
+        let run = 0;
+        ctx.beginPath();
+        const p0 = toPx(path.pts[0]);
+        ctx.moveTo(p0.x, p0.y);
+        for (let i = 1; i < path.pts.length; i++) {
+          const seg = Math.hypot(path.pts[i][0] - path.pts[i - 1][0],
+            path.pts[i][1] - path.pts[i - 1][1]);
+          if (run + seg <= tracedM) {
+            const q = toPx(path.pts[i]);
+            ctx.lineTo(q.x, q.y);
+            run += seg;
+          } else {
+            const here = pointAlong(path.pts, tracedM);
+            if (here) {
+              const q = toPx(here);
+              ctx.lineTo(q.x, q.y);
+            }
+            break;
+          }
+        }
+        ctx.strokeStyle = "rgba(29,78,216,.85)";
+        ctx.lineWidth = 5;
+        ctx.stroke();
+      }
+
+      /* The tokens themselves, over the trail. */
+      for (const path of traceRun.paths) {
+        const here = pointAlong(path.pts, tracedM);
+        if (!here) continue;
+        const q = toPx(here);
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 7, 0, Math.PI * 2);
+        ctx.fillStyle = "#1d4ed8";
+        ctx.fill();
+        ctx.strokeStyle = "#fff";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+
+      /* Where it started, so a trace that has run off the top of the
+         view still says where the question was asked. */
+      if (traceRun.start) {
+        const q = toPx(traceRun.start);
+        ctx.beginPath();
+        ctx.arc(q.x, q.y, 5, 0, Math.PI * 2);
+        ctx.fillStyle = "#fff";
+        ctx.fill();
+        ctx.strokeStyle = "#1d4ed8";
+        ctx.lineWidth = 2.5;
+        ctx.stroke();
+      }
+      ctx.restore();
+    }
+
     if (awaitingClick && cursor) {
       ctx.save();
 
@@ -6294,7 +6390,7 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
+  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -7456,7 +7552,7 @@ export default function GISCanvasPage() {
       }
     } else if (plotTip) setPlotTip(null);
 
-    if (drawing || placing || jointFor) {
+    if (drawing || placing || jointFor || traceFrom) {
       /* Armed to place a joint on a cable, the snap is what makes the
          cable say ON LINE under the pointer \u2014 which is the whole
          instruction for this mode. */
@@ -8264,6 +8360,84 @@ export default function GISCanvasPage() {
     } catch (e) { setError(e.message); }
   }
 
+  /* What "the pipe" or "the cable" means on the menu you are standing
+     on, and what counts as a source for it.
+
+     A trench has no source \u2014 a dig is not fed from anywhere \u2014 so
+     upstream and downstream are not questions it can answer, and the
+     panel says so rather than offering a direction that would pick one
+     at random. */
+  const traceFollow = useCallback((layerKey, kind) => {
+    if (kind === "trench") {
+      return features.filter((f) => f.Feature_Type === "line"
+        && isTrenchType(f.Attributes?.Line_Type, lineTypes));
+    }
+    return features.filter((f) => f.Feature_Type === "line"
+      && f.Layer_Key === layerKey
+      && !isTrenchType(f.Attributes?.Line_Type, lineTypes));
+  }, [features, lineTypes]);
+
+  const traceSources = useCallback((layerKey, kind) => {
+    if (kind === "trench") return [];
+    const roles = new Set(["poc", "substation", "source", "governor"]);
+    return features
+      .filter((f) => f.Feature_Type === "point" && f.Layer_Key === layerKey
+        && roles.has(f.Feature_Role))
+      .map((f) => f.Attributes?.Span_Anchor ?? f.Geometry?.[0])
+      .filter(Boolean);
+  }, [features]);
+
+  /* Run it, from a point, and start the token moving.
+
+     The walk is done once and held: re-walking every frame would be the
+     same answer sixty times a second, and a network of a few thousand
+     segments is not free. */
+  const runTrace = useCallback((point, { layerKey, kind, direction }) => {
+    const r = traceTree(traceFollow(layerKey, kind), point, {
+      direction,
+      sourcePoints: traceSources(layerKey, kind),
+      reach: Math.max(2, HIT_PX / (view.scale || 1)),
+    });
+    if (r.error) {
+      setError(r.error);
+      return;
+    }
+    setError("");
+    setTraceRun({ ...r, layerKey, kind, direction });
+    setTracedM(0);
+  }, [traceFollow, traceSources, view.scale]);
+
+  /* The frame loop. Speed in metres per second, so a trace across a
+     housing estate takes about as long as one down a street rather
+     than the same number of seconds regardless of length \u2014 how far it
+     went is part of what the animation is saying.
+
+     Stops itself at the far end and leaves the token where it arrived,
+     so the finished state is a drawing of the whole traced network
+     rather than an empty one. */
+  useEffect(() => {
+    if (!traceRun) {
+      if (traceFrame.current) cancelAnimationFrame(traceFrame.current);
+      traceFrame.current = null;
+      return undefined;
+    }
+    let last = performance.now();
+    const tick = (now) => {
+      const dt = Math.min(0.05, (now - last) / 1000);
+      last = now;
+      setTracedM((m) => {
+        const next = m + TRACE_MPS * dt;
+        return next >= traceRun.furthest ? traceRun.furthest : next;
+      });
+      traceFrame.current = requestAnimationFrame(tick);
+    };
+    traceFrame.current = requestAnimationFrame(tick);
+    return () => {
+      if (traceFrame.current) cancelAnimationFrame(traceFrame.current);
+      traceFrame.current = null;
+    };
+  }, [traceRun]);
+
   async function joinEndToJoint(line) {
     const joints = features.filter((f) => f.Feature_Role === "joint");
     const j = jointAtEnd(line, joints);
@@ -8413,6 +8587,17 @@ export default function GISCanvasPage() {
        Connects for both halves and for everything that touched them,
        rather than copying the old list onto two runs that no longer go
        where it says. */
+    /* Where the trace starts. Armed from a utility menu, so what is
+       being followed and which way are already answered \u2014 the click
+       supplies the only thing the menu could not. */
+    if (traceFrom) {
+      const spec = traceFrom;
+      setTraceFrom(null);
+      setSnapHit(null);
+      runTrace(point, spec);
+      return;
+    }
+
     if (jointFor) {
       const kind = jointFor;
       setJointFor(null);
@@ -19569,6 +19754,10 @@ export default function GISCanvasPage() {
       /* An armed placement with no way out is a canvas that will not
          let go: every click puts a joint somewhere until the page is
          reloaded. */
+      if (e.key === "Escape" && (traceFrom || traceRun)) {
+        setTraceFrom(null); setTraceRun(null); setSnapHit(null);
+        return;
+      }
       if (e.key === "Escape" && jointFor) {
         setJointFor(null); setSnapHit(null);
         setStatus("Joint placement stopped");
@@ -20764,6 +20953,20 @@ export default function GISCanvasPage() {
                         }} />
 
                       <MenuGroup label="Tools & Reporting" />
+                      {/* Started from the utility's own menu, so what is
+                          being followed is already answered. The click
+                          supplies the only thing a menu cannot. */}
+                      <MenuItem label={traceFrom ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
+                        active={!!traceFrom}
+                        hint={hasTrench
+                          ? "Follow the network from a point \u2014 upstream, downstream or both"
+                          : "Nothing drawn yet to trace"}
+                        disabled={!projectId || !hasTrench}
+                        onClick={() => {
+                          setTraceRun(null);
+                          setTraceFrom({ layerKey: "electric", kind: "cable", direction: "down" });
+                          setSelected([]); setDraft([]);
+                        }} />
                       {/* ── Greyed on the same rule as everything else ──
 
                           This asked for a substation. Every other thing
@@ -21058,6 +21261,22 @@ export default function GISCanvasPage() {
                               hand. Kept apart because they are
                               backfilled at different times: the mains
                               go in long before the plots are served. */}
+                          {/* Every utility can be traced, and each from
+                              its own menu \u2014 which is how the trace knows
+                              whether "the pipe" means gas or water
+                              without being told. */}
+                          <MenuItem label={traceFrom?.layerKey === key
+                            ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
+                            active={traceFrom?.layerKey === key}
+                            hint={hasTrench
+                              ? "Follow the network from a point \u2014 upstream, downstream or both"
+                              : "Nothing drawn yet to trace"}
+                            disabled={!projectId || !hasTrench}
+                            onClick={() => {
+                              setTraceRun(null);
+                              setTraceFrom({ layerKey: key, kind: "cable", direction: "down" });
+                              setSelected([]); setDraft([]);
+                            }} />
                           {key === "gas" && (<>
                             <MenuItem
                               label={busy === "hvtt" ? "Placing\u2026" : "Place Top Tees"}
@@ -21822,6 +22041,96 @@ export default function GISCanvasPage() {
           No backdrop dismissal and no close cross. Dismissing would
           silently pick one of three different designs, which is the
           decision this exists to avoid making for somebody. */}
+      {(traceFrom || traceRun) && (
+        /* ── The trace panel ──
+
+            Three questions, and only the first is a click. What is
+            being followed comes from the menu it was started from, and
+            both it and the direction can be changed here without
+            starting again \u2014 "actually, show me the trench" is the same
+            question about the same point.
+
+            Small and out of the way rather than a modal: the answer is
+            ON the drawing, and a dialog over it would cover the thing
+            being asked about. */
+        <div className="gis-trace-panel" role="dialog" aria-label="Trace">
+          <div className="gt-p-head">
+            <strong>Trace</strong>
+            <button className="gt-p-x" aria-label="Stop tracing"
+              onClick={() => { setTraceFrom(null); setTraceRun(null); }}>
+              &times;
+            </button>
+          </div>
+
+          {traceFrom && !traceRun && (
+            <p className="hint">Click the line to trace from.</p>
+          )}
+
+          <div className="gt-p-row">
+            {/* Named for the utility it was started from: "Cable" on
+                electric, "Pipe" on gas and water, because that is what
+                the thing in the ground is called. */}
+            {[["cable", (traceRun?.layerKey ?? traceFrom?.layerKey) === "electric"
+              ? "Cable" : "Pipe"], ["trench", "Trench"]].map(([k, label]) => (
+              <button key={k}
+                className={`gt-p-b${(traceRun?.kind ?? traceFrom?.kind) === k ? " on" : ""}`}
+                onClick={() => {
+                  if (traceRun) {
+                    runTrace(traceRun.start,
+                      { ...traceRun, kind: k, direction: k === "trench" ? "both" : traceRun.direction });
+                  } else setTraceFrom({ ...traceFrom, kind: k });
+                }}>
+                {label}
+              </button>
+            ))}
+          </div>
+
+          <div className="gt-p-row">
+            {[["up", "Upstream"], ["down", "Downstream"], ["both", "Both ways"]].map(([k, label]) => {
+              /* A trench has no source, so upstream and downstream are
+                 not questions it can answer. Offered greyed with the
+                 reason rather than hidden: a control that disappears
+                 looks like a fault. */
+              const onTrench = (traceRun?.kind ?? traceFrom?.kind) === "trench";
+              return (
+                <button key={k} disabled={onTrench && k !== "both"}
+                  title={onTrench && k !== "both"
+                    ? "A trench is not fed from anywhere, so it has no upstream"
+                    : undefined}
+                  className={`gt-p-b${(traceRun?.direction ?? traceFrom?.direction) === k ? " on" : ""}`}
+                  onClick={() => {
+                    if (traceRun) runTrace(traceRun.start, { ...traceRun, direction: k });
+                    else setTraceFrom({ ...traceFrom, direction: k });
+                  }}>
+                  {label}
+                </button>
+              );
+            })}
+          </div>
+
+          {traceRun && (
+            <>
+              <p className="hint">
+                {`${traceRun.paths.length} branch`}
+                {traceRun.paths.length === 1 ? "" : "es"}
+                {` \u00b7 ${traceRun.furthest.toFixed(0)} m to the far end`}
+                {` \u00b7 ${traceRun.lineIds.length} line`}
+                {traceRun.lineIds.length === 1 ? "" : "s"}
+              </p>
+              <div className="gt-p-row">
+                <button className="gt-p-b" onClick={() => setTracedM(0)}>
+                  Play again
+                </button>
+                <button className="gt-p-b"
+                  onClick={() => setTracedM(traceRun.furthest)}>
+                  Show all
+                </button>
+              </div>
+            </>
+          )}
+        </div>
+      )}
+
       {jointPick && (
         /* ── Which cable is the joint going on? ──
 
@@ -25396,6 +25705,19 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
   border-radius: 20px; padding: 2px 9px; font: 700 10.5px inherit; display: inline-flex;
   align-items: center; gap: 5px; }
 .ge-c em { font-style: normal; font-weight: 600; color: var(--muted); }
+.gis-trace-panel { position: absolute; right: 14px; top: 64px; z-index: 7;
+  width: 234px; background: var(--white); border: 1px solid var(--border);
+  border-radius: 10px; padding: 10px; box-shadow: 0 10px 28px rgba(15,23,42,.16); }
+.gt-p-head { display: flex; align-items: center; justify-content: space-between;
+  margin-bottom: 6px; }
+.gt-p-x { background: none; border: none; cursor: pointer; font-size: 17px;
+  line-height: 1; color: var(--muted); }
+.gt-p-row { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
+.gt-p-b { flex: 1; min-width: 62px; padding: 5px 7px; border-radius: 6px;
+  border: 1px solid var(--border); background: var(--white); cursor: pointer;
+  font: inherit; font-size: 11.5px; }
+.gt-p-b.on { background: var(--accent); border-color: var(--accent); color: #fff; }
+.gt-p-b:disabled { color: var(--muted); cursor: not-allowed; background: var(--bg); }
 .gis-picker { position: absolute; z-index: 6; width: 290px; background: var(--white);
   border: 1px solid var(--border); border-radius: 8px; padding: 5px;
   box-shadow: 0 10px 28px rgba(15,23,42,.18); }

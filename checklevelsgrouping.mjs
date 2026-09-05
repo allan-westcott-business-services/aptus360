@@ -47,6 +47,25 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/l\.wayFuse \? ` \\u00b7 \$\{l\.wayFuse\} A`/.test(canvas)) {
     fail("an output's fuse is not on its heading");
   }
+  /* ── Read as a map of way to rating ──
+
+     `Way_Fuse_A` is keyed by way number and the A means AMPS, not a way
+     letter. Building a key from the way number — `Way_Fuse_` plus a
+     letter — hands output 1 the whole map, and the heading rendered
+     "[object Object] A" to a designer. The Circuit Report has always
+     read it correctly; the fault was inventing a second way to. */
+  if (/Way_Fuse_\$\{String\.fromCharCode/.test(canvas)) {
+    fail("the fuse is read by building a key from the way number, which "
+      + "yields the whole map and prints as [object Object]");
+  }
+  if (!/Way_Fuse_A\?\.\[String\(p\.way\)\]/.test(canvas)) {
+    fail("the fuse is not read as a map of way number to rating");
+  }
+  /* Number()'d, or a rating stored as text prints as a string that
+     happens to look like a figure. */
+  if (!/Number\(p\.box\.Attributes\?\.Way_Fuse_A/.test(canvas)) {
+    fail("the fuse is not coerced to a number");
+  }
 }
 
 /* And the export carries the same fact, since a sheet has no headings. */

@@ -1775,11 +1775,23 @@ export function circuitBuildParts(features = [], opts = {}) {
   const restMeters = new Set([...(opts.meterIds || [])]
     .filter((x) => !asg.assignedMeterIds.has(Number(x))));
 
-  /* The way parts first, so the trunk can carry their total. */
+  /* The way parts first, so the trunk can carry their total.
+
+     ── Counted per BOX, not across all of them ──
+
+     This kept one running total for the whole circuit and gave it to
+     every trunk. With one box that is the same thing. With two boxes
+     side by side on one circuit — two independent splits, which is a
+     normal thing to draw — each box's trunk was handed BOTH boxes'
+     load, so both input cables were sized for a load neither carries.
+
+     Nothing failed and no check caught it: the earlier one asserted
+     only that two boxes were not REFUSED, which is not the same as
+     saying the answer is right. */
   const wayParts = [];
-  let servedMeters = 0;
-  let servedKva = 0;
+  const servedBy = new Map();
   for (const { box, ways } of asg.boxes) {
+    servedBy.set(Number(box.Feature_ID), { meters: 0, kva: 0 });
     for (const [w, g] of [...ways.entries()].sort((a, b) => a[0] - b[0])) {
       const r = feederSections(features, {
         ...opts, rootFeature: box, originId: null,
@@ -1790,9 +1802,10 @@ export function circuitBuildParts(features = [], opts = {}) {
           via: `way ${w}` });
         continue;
       }
+      const tally = servedBy.get(Number(box.Feature_ID));
       for (const sec of r.sections) {
-        servedMeters += sec.meters || 0;
-        servedKva += sec.kva || 0;
+        tally.meters += sec.meters || 0;
+        tally.kva += sec.kva || 0;
       }
       wayParts.push({ ...r, via: `way ${w}`, box, way: w });
     }
@@ -1825,9 +1838,12 @@ export function circuitBuildParts(features = [], opts = {}) {
       parts.push({
         sections: [{
           pts: chain,
-          meters: servedMeters,
-          kva: servedKva,
-          cables: cablesFor(servedMeters, opts.perCable || METERS_PER_CABLE),
+          /* This box's own load, so two boxes on one circuit each get an
+             input sized for what passes through it. */
+          meters: servedBy.get(Number(box.Feature_ID))?.meters || 0,
+          kva: servedBy.get(Number(box.Feature_ID))?.kva || 0,
+          cables: cablesFor(servedBy.get(Number(box.Feature_ID))?.meters || 0,
+            opts.perCable || METERS_PER_CABLE),
           upNode: trunkModel.S, endNode: bi,
         }],
         model: trunkModel,

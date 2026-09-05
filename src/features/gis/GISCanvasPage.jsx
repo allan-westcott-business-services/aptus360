@@ -18633,9 +18633,18 @@ export default function GISCanvasPage() {
         part: p.via ?? "origin",
         way: p.way ?? null,
         boxLabel: p.box?.Label ?? p.box?.Attributes?.Span_Label ?? null,
+        /* `Way_Fuse_A` is a map of way number to rating \u2014 the A is
+           AMPS, not a way letter. Reading it as `Way_Fuse_` plus a
+           letter built from the way number handed output 1 the whole
+           map, and the heading rendered "[object Object] A" to a
+           designer. The Circuit Report has always read it correctly;
+           this is the one place that invented a second way to.
+
+           Number()'d, so a rating stored as text still prints as a
+           figure rather than as a string that happens to look like
+           one. */
         wayFuse: p.way != null && p.box
-          ? p.box.Attributes?.[`Way_Fuse_${String.fromCharCode(64 + Number(p.way))}`]?.rating
-            ?? p.box.Attributes?.[`Way_Fuse_${String.fromCharCode(64 + Number(p.way))}`]
+          ? Number(p.box.Attributes?.Way_Fuse_A?.[String(p.way)]) || null
           : null,
       }))),
       parts,

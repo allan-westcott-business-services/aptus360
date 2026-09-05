@@ -72,6 +72,29 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     }
     /* And a breech takes ends, not every vertex: offering it interior
        points would let it claim a cable that merely passes close. */
+    /* ── And only what it holds ──
+
+       Lifting the narrowing let in anything with a vertex within reach,
+       and where cables share a trench that is not only the ones the
+       fitting holds: a straight joint dragged took a cable that merely
+       passes it, because that cable's end lay within a quarter of a
+       metre.
+
+       `Connects` is the drawing's own record of what is joined to what,
+       rewritten by breakLineAt for both halves when a cable is broken.
+       Where the joint has one it is the answer; where it has none —
+       an older drawing — geometry stays the fallback. */
+    if (!/const held = new Set\(\(pt\.Attributes\?\.Connects \|\| \[\]\)\.map\(Number\)\);/.test(drag)) {
+      fail("a joint that joins ends does not read what it is connected to");
+    }
+    if (!/if \(joinsEnds && held\.size\s*\n\s*&& !held\.has\(Number\(line\.Feature_ID\)\)\) continue;/.test(drag)) {
+      fail("a joint that joins ends drags any cable ending near it, "
+        + "including one that merely passes");
+    }
+    if (!/held\.size/.test(drag)) {
+      fail("a joint with no Connects recorded follows nothing at all, so an "
+        + "older drawing stops working");
+    }
     if (!/isJoint && isFeeder && !joinsEnds/.test(drag)) {
       fail("a joint that joins ends is offered every vertex of a passing "
         + "cable, and can claim one that merely runs close by");

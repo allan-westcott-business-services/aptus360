@@ -7119,6 +7119,29 @@ export default function GISCanvasPage() {
              rather than inheriting a rule by default. */
           const joinsEnds = ["breech", "straight"].includes(
             String(pt.Attributes?.Joint_Type ?? "").toLowerCase());
+
+          /* ── What the joint says it is connected to ──
+
+             Lifting the single-feeder narrowing for these let in
+             anything with a vertex within reach, and on a drawing where
+             cables share a trench that is not only the ones the fitting
+             holds: a straight joint dragged took a cable that merely
+             passes it, because that cable's end happened to lie within
+             a quarter of a metre.
+
+             `Connects` is the drawing's own record of what is joined to
+             what, kept by the link passes and rewritten by breakLineAt
+             for both halves when a cable is broken. Where the joint has
+             one it IS the answer, and it says what this fitting holds
+             rather than what happens to end nearby.
+
+             Where it has none \u2014 an older drawing, a joint placed
+             before the passes ran \u2014 geometry stays the fallback, so
+             nothing that worked stops working. */
+          const held = new Set((pt.Attributes?.Connects || []).map(Number));
+          if (joinsEnds && held.size
+            && !held.has(Number(line.Feature_ID))) continue;
+
           if (jointFeeder !== undefined && isFeeder && !joinsEnds
             && Number(line.Feature_ID) !== Number(jointFeeder?.Feature_ID)) continue;
 

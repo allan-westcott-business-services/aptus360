@@ -1387,6 +1387,23 @@ produced and the other adds the end of a part's cable, and the model has
 never heard of the joint. Without it the joint is never adopted, never
 numbered, and carries no levels.
 
+**And it drags only the cables it holds.** Lifting the single-feeder
+narrowing for breech and straight joints let in anything with a vertex
+within reach — and where cables share a trench that is not only the two
+the fitting holds. A straight joint dragged took a cable that merely
+passes it, because that cable's end lay within a quarter of a metre.
+
+`Connects` is the drawing's own record of what is joined to what, kept
+by the link passes and rewritten by `breakLineAt` for both halves when a
+cable is broken. Where the joint has one it IS the answer: **it says
+what this fitting holds rather than what happens to end nearby.** Where
+it has none — an older drawing, a joint placed before the passes ran —
+geometry stays the fallback, so nothing that worked stops working.
+
+Worth stating generally, because this is the third time it has come up:
+**proximity is evidence of connection, not connection.** Where the
+drawing records the fact, read the record.
+
 **It wears its code.** C2, C3 — a feeder end point belongs in the
 sequence, so a designer reading the drawing can find it in the schedule
 and quote a level at it. Beside the symbol rather than over it: a node's

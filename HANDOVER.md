@@ -1993,6 +1993,34 @@ shared vertex — joining them only where a joint or an end says they meet
 — which is the same "sharing a trench is not being connected" rule as
 everywhere else, and a bigger change than this one.
 
+62. **A cable teeing into another was not joined to it.** The trace
+    graph joins lines where they share a VERTEX. A service does not
+    share one: it runs from a main to a plot and its end lands part way
+    along a segment of the main, between two corners. So the service was
+    an island — tracing from it found one cable, itself, and a trace
+    from anywhere else never reached the plot.
+
+    **Twelve of eighty-four services on the live drawing were
+    unreachable that way**, and nothing said so: they are drawn
+    touching, and they look joined.
+
+    A further three were islands because their end lands a sixth of a
+    metre from a vertex, and the graph keys positions to the centimetre
+    — 0.16 m apart is two nodes and two networks.
+
+    Both welded on a COPY before the graph is built: this is the trace
+    deciding what counts as joined, not an edit to the drawing. ENDS
+    only, both times — a line crossing another without stopping is not
+    joined to it, and inserting a vertex there would invent a connection
+    nobody drew.
+
+    Found by sweeping every cable on the drawing rather than trying one:
+    **966 traces, 73 errors before, 32 after — and 30 of those 32 are
+    correct answers** ("nothing downstream" at a cable's far end). A
+    fault that shows on one click in ten is a fault somebody reports as
+    "this never works", because their click lands in the same place
+    every time.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

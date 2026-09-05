@@ -364,6 +364,92 @@ const world = [
   if (u.error) fail(`upstream was refused: ${u.error}`);
 }
 
+// The walk begins ON the cable that was chosen.
+//
+//    The start was the nearest NODE to the click, whichever line it
+//    belonged to. Where cables share a route their vertices are metres
+//    apart along it, so the nearest node could belong to a DIFFERENT
+//    cable — and with the walk bounded to the chosen cable's circuit it
+//    then began somewhere that circuit has no edge at all, and reported
+//    nothing found.
+//
+//    Answering "which cable?" and then starting on another one makes
+//    the question pointless.
+{
+  const on = (id, g, cid) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g,
+    Attributes: { Line_Type: "elec_main", Circuit_ID: cid } });
+
+  /* Two cables down one route. The chosen one's vertices are coarse;
+     the other's are fine, so the nearest NODE to a click belongs to it. */
+  const chosen = on(1, [[0, 0], [100, 0]], 3);
+  const other = on(2, [[0, 0], [48, 0], [52, 0], [100, 0]], 2);
+  const world = [chosen, other];
+
+  const r = traceTree(world, [50, 0], { direction: "both", sourcePoints: [],
+    reach: 5, startLineId: 1 });
+  if (r.error) {
+    fail(`the trace began on a node belonging to another cable: ${r.error}`);
+  } else if (r.lineIds.includes(2)) {
+    fail("the trace walked the cable that was not chosen");
+  }
+
+  /* And with no choice made it still starts from the nearest node,
+     which is the behaviour every other click has. */
+  const any = traceTree(world, [50, 0], { direction: "both", sourcePoints: [], reach: 5 });
+  if (any.error) fail(`a trace with no cable chosen was refused: ${any.error}`);
+}
+
+// A cable teeing into another is joined to it.
+//
+//    The graph joins lines where they share a VERTEX. A service does
+//    not share one: it runs from a main to a plot and its end lands
+//    part way along a segment of that main, between two corners. So the
+//    service was an island — tracing from it found one cable, itself,
+//    and a trace from anywhere else never reached the plot. Twelve of
+//    eighty-four services on a live drawing were unreachable that way,
+//    and nothing said so: they are drawn touching, and they look joined.
+//
+//    And an end a hand's breadth from a vertex is that vertex. The
+//    graph keys positions to the centimetre, so 0.16 m apart is two
+//    nodes and two networks — three more services were islands for that
+//    reason alone.
+{
+  const main = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [100, 0]], Attributes: { Line_Type: "elec_main", Circuit_ID: 1 } };
+  /* Tees into the MIDDLE of the main's only segment. */
+  const tee = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[50, 0], [50, 8]], Attributes: { Line_Type: "elec_service" } };
+  /* Ends a sixth of a metre from the main's far vertex. */
+  const nearly = { Feature_ID: 3, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[100.16, 0], [100.16, 8]], Attributes: { Line_Type: "elec_service" } };
+
+  const r = traceTree([main, tee, nearly], [25, 0], { direction: "both",
+    sourcePoints: [], reach: 2, startLineId: 1 });
+  if (r.error) fail(`the main would not trace: ${r.error}`);
+  else {
+    if (!r.lineIds.includes(2)) {
+      fail("a service teeing into the middle of a main is not reached from "
+        + "it \u2014 it is an island, and it looks connected on the drawing");
+    }
+    if (!r.lineIds.includes(3)) {
+      fail("a service ending a sixth of a metre from a vertex is not "
+        + "reached \u2014 the graph keys to the centimetre, so that is two nodes");
+    }
+  }
+
+  /* And a line CROSSING another without stopping is still not joined to
+     it: inserting a vertex there would invent a connection nobody drew. */
+  const crossing = { Feature_ID: 4, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[25, -8], [25, 8]], Attributes: { Line_Type: "elec_main", Circuit_ID: 9 } };
+  const c = traceTree([main, crossing], [75, 0], { direction: "both",
+    sourcePoints: [], reach: 2, startLineId: 1 });
+  if (!c.error && c.lineIds.includes(4)) {
+    fail("a cable crossing the main without stopping was treated as joined "
+      + "to it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

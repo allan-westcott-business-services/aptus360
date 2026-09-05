@@ -42,6 +42,98 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
    they MEET, and two cables crossing at a drawn vertex meet there
    whether or not either of them ends. Whole-line edges would carry the
    token past a junction it should have branched at. */
+/* ── A cable teeing into another is joined to it ──
+
+   The graph joins lines where they share a VERTEX. A service does not
+   share one: it runs from a main to a plot, and its end lands part way
+   along a segment of that main, between two of its corners. So the
+   service was an island \u2014 tracing from one found one cable, itself,
+   and a trace from anywhere else never reached the plot.
+
+   Twelve of eighty-four services on a live drawing were unreachable
+   this way, and nothing said so: they are drawn touching the main, and
+   they look connected.
+
+   So an END that lands ON a segment splits it, and the two now share
+   the point. Ends only, and other lines only: a line crossing another
+   without stopping is not joined to it, and inserting a vertex there
+   would invent a connection nobody drew. */
+function weldTees(lines, tol) {
+  /* ── An end NEAR a vertex is that vertex ──
+
+     The graph keys nodes on position to the centimetre, so two points a
+     sixth of a metre apart are two nodes and the lines through them are
+     two networks. On a drawing built by hand that gap is nothing \u2014 the
+     cable was drawn to the main and lands a hand's breadth off \u2014 and
+     three services on the live site were islands because of it.
+
+     Snapped onto the vertex, on a COPY: this is the trace deciding what
+     counts as joined, not an edit to the drawing. Ends only, again,
+     because a passing line's middle is not a connection. */
+  const verts = [];
+  for (const f of lines) {
+    for (const q of f.Geometry || []) verts.push({ id: Number(f.Feature_ID), q });
+  }
+  const snapped = lines.map((f) => {
+    const g = f.Geometry || [];
+    if (g.length < 2) return f;
+    const id = Number(f.Feature_ID);
+    const fix = (p) => {
+      let best = null;
+      for (const v of verts) {
+        if (v.id === id) continue;
+        const d = Math.hypot(v.q[0] - p[0], v.q[1] - p[1]);
+        if (d > 0 && d <= tol && (!best || d < best.d)) best = { d, q: v.q };
+      }
+      return best ? [best.q[0], best.q[1]] : p;
+    };
+    const out = [...g];
+    out[0] = fix(out[0]);
+    out[out.length - 1] = fix(out[out.length - 1]);
+    return (out[0] === g[0] && out[out.length - 1] === g[g.length - 1])
+      ? f : { ...f, Geometry: out };
+  });
+
+  const ends = [];
+  for (const f of snapped) {
+    const g = f.Geometry || [];
+    if (g.length < 2) continue;
+    ends.push({ id: Number(f.Feature_ID), p: g[0] });
+    ends.push({ id: Number(f.Feature_ID), p: g[g.length - 1] });
+  }
+  if (!ends.length) return snapped;
+
+  return snapped.map((f) => {
+    const g = f.Geometry || [];
+    if (g.length < 2) return f;
+    const id = Number(f.Feature_ID);
+    const out = [g[0]];
+    for (let i = 1; i < g.length; i++) {
+      const a = out[out.length - 1];
+      const b = g[i];
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const l2 = vx * vx + vy * vy;
+      /* Every end that lands on this segment, in order along it, so a
+         main taking three services between two corners gains three
+         vertices rather than one. */
+      const hits = [];
+      for (const e of ends) {
+        if (e.id === id) continue;
+        let t = l2 ? ((e.p[0] - a[0]) * vx + (e.p[1] - a[1]) * vy) / l2 : 0;
+        if (t <= 0.0001 || t >= 0.9999) continue;
+        const q = [a[0] + vx * t, a[1] + vy * t];
+        if (Math.hypot(e.p[0] - q[0], e.p[1] - q[1]) > tol) continue;
+        hits.push({ t, q });
+      }
+      hits.sort((x, y) => x.t - y.t);
+      for (const h of hits) out.push(h.q);
+      out.push(b);
+    }
+    return out.length === g.length ? f : { ...f, Geometry: out };
+  });
+}
+
 function buildGraph(lines) {
   const at = new Map();          // key -> point
   const next = new Map();        // key -> [{ to, pts, lineId }]
@@ -209,7 +301,9 @@ export function traceTree(lines = [], startPoint, opts = {}) {
   const usable = (lines || []).filter((f) => (f.Geometry || []).length >= 2);
   if (!usable.length) return { error: "Nothing of that kind is drawn here." };
 
-  const graph = buildGraph(usable);
+  /* Tees welded before the graph is built, so a service that ends part
+     way along a main is connected to it. */
+  const graph = buildGraph(weldTees(usable, Math.min(reach, 0.35)));
   /* A vertex first, then anywhere along a line. The vertex is the
      common case \u2014 clicking a joint, an end, a node \u2014 and it is exact;
      the segment search is what makes clicking the MIDDLE of a cable
@@ -219,7 +313,39 @@ export function traceTree(lines = [], startPoint, opts = {}) {
      rather than the one that happens to own the nearest vertex. */
   const onLine = nearestOnSegments(usable, startPoint, reach);
 
-  let startKey = nearestNode(graph, startPoint, reach);
+  /* ── The walk begins ON the cable that was chosen ──
+
+     The start was the nearest NODE to the click, whichever line it
+     belonged to. Where cables share a route their vertices are metres
+     apart along it, so the nearest node could belong to a different
+     cable \u2014 and with the walk bounded to the chosen cable's circuit,
+     it then began somewhere that circuit has no edge at all and
+     reported nothing found.
+
+     Answering "which cable?" and then starting on another one makes the
+     question pointless. Where the caller has said which, the start is
+     the nearest vertex OF THAT LINE. */
+  const chosenLine = startLineId != null
+    ? usable.find((f) => Number(f.Feature_ID) === Number(startLineId))
+    : null;
+
+  /* The same cable that settles the circuit settles the start. With no
+     choice made that is the line under the pointer \u2014 and taking the
+     circuit from one cable and the start node from another is the same
+     fault wearing a different hat: the walk begins where its own
+     circuit has no edge. */
+  const startOn = chosenLine ?? onLine?.line ?? null;
+
+  let startKey = null;
+  if (startOn) {
+    let best = null;
+    for (const q of startOn.Geometry || []) {
+      const d = dist(q, startPoint);
+      if (!best || d < best.d) best = { d, q };
+    }
+    if (best) startKey = nearestNode(graph, best.q, reach + 1e6);
+  }
+  if (!startKey) startKey = nearestNode(graph, startPoint, reach);
   if (!startKey && onLine) startKey = nearestNode(graph, onLine.node, reach + 1e6);
   if (!startKey) {
     return { error: "Nothing to trace at that point \u2014 click on a line." };
@@ -227,10 +353,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
 
   /* Worked out before the depth, because the depth is measured FOR this
      circuit \u2014 see fromSource. */
-  const chosenEarly = startLineId != null
-    ? usable.find((f) => Number(f.Feature_ID) === Number(startLineId))
-    : null;
-  const clickedEarly = (chosenEarly ?? onLine?.line)?.Attributes?.Circuit_ID;
+  const clickedEarly = (chosenLine ?? onLine?.line)?.Attributes?.Circuit_ID;
   const traceCircuit = clickedEarly != null ? Number(clickedEarly)
     : ((graph.next.get(startKey) || [])
       .map((e) => e.circuitId).find((c) => c != null) ?? null);

@@ -260,6 +260,35 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
+/* ── The stop wears its output's colour ──
+
+   The link box output's colour where the point is on an output, the
+   circuit's where it is not. A stop on a coloured output drawn in the
+   circuit's colour reads as belonging to something else, which is the
+   whole reason the outputs are coloured.
+
+   Taken from the box's own `Way_Colours` \u2014 where the runs get theirs \u2014
+   so the cable and the stop standing on it cannot disagree. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/Way_Colours\?\.\[String\(way\)\]/.test(canvas)) {
+    fail("a feeder point on a link box output is drawn in the circuit's "
+      + "colour, so it reads as belonging to something else");
+  }
+  if (!/\|\| ringColours\?\.get\?\.\(Number\(f\.Attributes\?\.Circuit_ID\)\)/.test(canvas)) {
+    fail("a feeder point NOT on an output has no colour to fall back to");
+  }
+  /* And the point is stamped when it is made, or there is nothing to
+     read the output's colour from. */
+  const fn = canvas.slice(canvas.indexOf("async function placeJointOnCable"),
+    canvas.indexOf("async function placeAt(point)"));
+  if (!/Link_Box_ID: line\.Attributes\.Link_Box_ID/.test(fn)
+    || !/Link_Way: line\.Attributes\.Link_Way/.test(fn)) {
+    fail("the point does not take the cable's output, so its circle cannot "
+      + "wear the output's colour");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Straight joints behave (a stop on the run, one cable in and one out).");
 process.exit(bad ? 1 : 0);

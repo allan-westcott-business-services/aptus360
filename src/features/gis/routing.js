@@ -589,7 +589,7 @@ export function serviceFor(meter, services = [], mains = [], opts = {}) {
        plan, and the tail is charged on the cable, not the plan. */
     let len = 0;
     for (let i = 0; i + 1 < g.length; i++) len += dist(g[i], g[i + 1]);
-    const stated = Number(t.Attributes?.Length_m ?? 0) || 0;
+    const stated = Number(t.Attributes?.Measured_Length_m ?? 0) || 0;
     if (stated > 0 && len > 0) len = stated;
 
     /* Where that far end lands on a main. */

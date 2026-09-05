@@ -55,7 +55,11 @@ const LT = [
   const at = canvas.indexOf("async function buildLvNetwork");
   if (at < 0) { fail("buildLvNetwork has gone"); }
   else {
-    const body = canvas.slice(at, at + 20000);
+    /* To the end of the function, not a fixed number of characters.
+       buildLvNetwork has grown past twenty thousand, so the window
+       stopped short of the deletion and reported it missing. */
+    const ends = canvas.indexOf("\n  async function ", at + 10);
+    const body = canvas.slice(at, ends > at ? ends : at + 60000);
 
     /* Every filter for generated electric features inside the build has
        to carry the mains test. */

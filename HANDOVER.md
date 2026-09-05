@@ -1506,6 +1506,50 @@ cable ENDS at the fitting — a main running past is not connected to it,
 and one touching at an interior vertex is passing through, which is a
 service joint's arrangement.
 
+**A cable's colour is what tells it from the one beside it.** Three
+places asked "which cable" and only one of them showed the answer:
+
+- the **object picker** read the STYLE's colour, so three cables on one
+  route came up as three identical amber squares — and three cables on
+  one route is exactly when that dialog opens. It reads
+  `feederPlan → ringColours → style` now, the same precedence the canvas
+  strokes the run with, and names the circuit and the output in words
+  beside it;
+- placing a **joint** on a route with several cables asks which, rather
+  than taking the nearest, and offers the same colour, circuit, output
+  and length;
+- the link box's **input dot** was drawn slate. Every output wore its
+  way's colour, so the one termination that did not say which cable it
+  belonged to was the input — the trunk, which is the cable somebody is
+  usually tracing back. It takes the colour of the cable that ends at
+  the box and is not one of its own outputs.
+
+50. **The same feature, built twice.** The measured-length prompt had
+    TWO effects writing one piece of state in two different shapes, and
+    TWO dialogs reading it. The surviving producer set a single feature;
+    the consumer expected a list of rows. Whichever dialog rendered,
+    answering it would have thrown on `ask.rows` and taken the canvas
+    down — and it shipped, because nothing fails while nobody redraws a
+    measured line.
+
+    Nothing in the suite could see it: both halves were syntactically
+    fine, the build passed, and each check tested the half it knew
+    about. `checkdupes` now holds the rule — **one dialog and one
+    producer per piece of state** — because two of either means the same
+    thing was built twice and the two will disagree.
+
+    **Before adding a feature, look for it.**
+
+51. **A string that appears twice is not an anchor.** An edit anchored
+    on `if (jointFor) {` matched the DRAW pass rather than the click
+    handler and deleted two thousand lines between them. The build then
+    passed, because what was left was still valid JavaScript.
+
+    Recovered from the copy last delivered, which is the only reason
+    this was survivable. **Anchor inside the function being edited, and
+    assert the replaced span is the size you expect** — a bounds check
+    on the region would have caught it before it was written.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

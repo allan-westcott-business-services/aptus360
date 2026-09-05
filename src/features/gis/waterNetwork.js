@@ -597,7 +597,8 @@ export function waterMainRuns(features = [], opts = {}) {
       unreachable.push({
         id: f.Feature_ID,
         label: f.Label || `Trench ${f.Feature_ID}`,
-        metres: Math.round((Number(f.Attributes?.Length_m ?? 0) || lengthOf(geom)) * 10) / 10,
+        metres: Math.round((Number(f.Attributes?.Measured_Length_m ?? 0)
+          || lengthOf(geom)) * 10) / 10,
         at: geom[0] ?? null,
       });
       continue;

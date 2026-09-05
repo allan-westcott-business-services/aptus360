@@ -138,8 +138,14 @@ const label = (f) => (hasMeasured(f)
 
   /* Three answers, and no fourth way out — dismissing would silently
      pick one of three different designs. */
-  const dialog = canvas.slice(canvas.indexOf("{measuredAsk && ("),
-    canvas.indexOf("{circuitPick && ("));
+  /* Forward from the dialog, not to another one: the render order
+     changed when a duplicate copy of this dialog was removed, and
+     slicing to `{circuitPick && (` \u2014 which now comes EARLIER \u2014 ran
+     backwards and reported the dialog missing. A slice bounded by
+     another feature's position is a slice that breaks when either
+     moves. */
+  const dlgAt = canvas.indexOf("{measuredAsk && (");
+  const dialog = dlgAt < 0 ? "" : canvas.slice(dlgAt, dlgAt + 4000);
   if (!dialog) fail("the dialog has gone");
   else {
     for (const how of ["keep", "remove", "update"]) {

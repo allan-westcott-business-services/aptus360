@@ -1,3 +1,4 @@
+import { runLength } from "./lengths.js";
 /* Electric network: POC, substation, circuits.
 
    Ported from the original's gisSetPocOutput, gisSetSubAttr,
@@ -701,15 +702,11 @@ export function rootAt(graph, rootId) {
    A point has no length, which is right: a meter adds nothing to the
    run that reaches it. */
 const lengthOf = (f) => {
-  const stored = Number(f?.Attributes?.Length_m ?? 0) || 0;
-  if (stored) return stored;
-  const g = f?.Geometry || [];
-  if (g.length < 2) return 0;
-  let total = 0;
-  for (let i = 1; i < g.length; i++) {
-    total += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
-  }
-  return total;
+  /* The measurement where somebody typed one, the drawing otherwise —
+     lengths.js. This read Length_m, which the database trigger keeps
+     equal to the drawn length, so it was reading the drawing the long
+     way round and calling it a measurement. */
+  return runLength(f);
 };
 
 /* Walk outwards from a starting feature, closing a leg whenever another
@@ -897,7 +894,7 @@ function networkFrom(features, rootId) {
     for (let i = 1; i < g.length; i++) {
       drawn += Math.hypot(g[i][0] - g[i - 1][0], g[i][1] - g[i - 1][1]);
     }
-    const stated = Number(f.Attributes?.Length_m ?? 0) || 0;
+    const stated = Number(f.Attributes?.Measured_Length_m ?? 0) || 0;
     return stated && drawn ? stated / drawn : 1;
   };
 

@@ -1988,48 +1988,17 @@ export default function GISCanvasPage() {
 
   useEffect(() => { remember("gisProject", projectId || null); }, [projectId]);
 
-  /* Lines carrying a measurement, and what they were drawn as when we
-     last looked. Only those: a drawing is mostly lines nobody has
-     measured, and they are none of this effect's business. */
-  useEffect(() => {
-    /* Not mid-drag. `features` changes on every frame while something
-       is being dragged, and asking about a length that is still moving
-       would be asking about a number that does not exist yet. */
-    if (drag.current) return;
+  /* The measured-length watcher lives above, beside answerMeasured.
 
-    const seen = measuredSeen.current;
-    const next = new Map();
-    let ask = null;
-    for (const f of features) {
-      if (f.Feature_Type !== "line" || !hasMeasured(f)) continue;
-      const now = drawnLength(f);
-      next.set(f.Feature_ID, now);
-      const before = seen.get(f.Feature_ID);
-      /* A centimetre, so float noise off a round trip through the
-         database is not a redraw. */
-      if (before != null && Math.abs(before - now) > 0.01 && !ask) {
-        ask = {
-          id: f.Feature_ID,
-          /* Its own label, or its id. NOT typeOf(f): this effect sits
-             above where typeOf is declared, and a dependency array is
-             evaluated during render — naming it there read a const in
-             its dead zone and took the whole canvas down with
-             "Cannot access before initialization". An effect placed
-             near the state it watches has to live within what has been
-             declared by that point. */
-          name: f.Label || `#${f.Feature_ID}`,
-          measured: Number(f.Attributes.Measured_Length_m),
-          was: before,
-          drawn: now,
-        };
-      }
-    }
-    /* The new lengths become the baseline whether or not anybody
-       answers, so a line is asked about once per redraw and not on
-       every render after it. */
-    measuredSeen.current = next;
-    if (ask && !measuredAsk) setMeasuredAsk({ ...ask, entry: ask.drawn.toFixed(1) });
-  }, [features, measuredAsk]);
+     There were TWO of it: this feature was built twice across separate
+     changes, with two effects writing the same state in two different
+     shapes and two dialogs reading it. The producer here set a single
+     feature; the consumer expects a list of rows. Whichever dialog
+     rendered, answering it would have thrown on `ask.rows` and taken
+     the canvas down.
+
+     Nothing failed while nobody redrew a measured line, which is why it
+     survived. Before adding a feature, look for it. */
 
   /* Answering it. `keep` writes nothing \u2014 the measurement stands as it
      was, which is a real answer and the safe one. */
@@ -2368,6 +2337,8 @@ export default function GISCanvasPage() {
      need one HERE". Both are wanted; a fitting whose position is the
      whole point should be placed by pointing at it. */
   const [jointFor, setJointFor] = useState(null);
+  /* Which cable, where several lie under the pointer. */
+  const [jointPick, setJointPick] = useState(null);
 
   /* ── Declared here, above `visible`, not beside the placement state ──
 
@@ -4320,8 +4291,39 @@ export default function GISCanvasPage() {
                 ctx.lineWidth = 1;
                 ctx.stroke();
               };
-              /* Input on the back face, alone. */
-              dot(p.x - ux * half, p.y - uy * half);
+              /* ── Input on the back face, in its cable's colour ──
+
+                 It was drawn slate, the same as nothing in particular.
+                 The outputs each wear their way's colour, so the one
+                 dot that did NOT say which cable it belonged to was the
+                 input — the trunk, which is the cable a designer is
+                 usually tracing back.
+
+                 The colour of the cable that ENDS here and is not one
+                 of this box's outputs: that is the input by definition.
+                 Read from the feeder plan, which is what the canvas
+                 draws the run in, so the dot and the cable cannot
+                 disagree. */
+              const inInk = (() => {
+                const aP = f.Attributes?.Span_Anchor || f.Geometry?.[0];
+                if (!aP) return null;
+                for (const line of visible) {
+                  if (line.Feature_Type !== "line" || line.Layer_Key !== "electric") continue;
+                  if (!/main/i.test(String(line.Attributes?.Line_Type ?? ""))) continue;
+                  if (Number(line.Attributes?.Link_Box_ID) === Number(f.Feature_ID)
+                    && line.Attributes?.Link_Way != null) continue;
+                  const g2 = line.Geometry || [];
+                  if (g2.length < 2) continue;
+                  const ends = [g2[0], g2[g2.length - 1]];
+                  if (!ends.some((q2) =>
+                    Math.hypot(q2[0] - aP[0], q2[1] - aP[1]) <= SNAP_TOL)) continue;
+                  return feederPlan.get(Number(line.Feature_ID))?.colour
+                    ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
+                    ?? null;
+                }
+                return null;
+              })();
+              dot(p.x - ux * half, p.y - uy * half, inInk);
               /* Outputs on the front face: centred for a 2 way, spread
                  for a 4 way. */
               const outs = ways === 4 ? [-0.6, 0, 0.6] : [0];
@@ -5789,8 +5791,27 @@ export default function GISCanvasPage() {
          the fallback for a point whose circuit has no colour yet.
          Span nodes keep the style's trench brown: they are points on
          the dig. */
+      /* ── A stop wears the colour of the cable it stands on ──
+
+         The link box output's colour where the point is on an output,
+         and the circuit's where it is not. A stop on a coloured output
+         drawn in the circuit's colour reads as belonging to something
+         else — which is the whole reason the outputs are coloured.
+
+         The output's colour comes from the box's own `Way_Colours`,
+         which is where the runs get theirs, so the cable and the stop
+         on it cannot disagree. */
       const circuitColour = f.Feature_Role === "feederpoint"
-        ? (ringColours?.get?.(Number(f.Attributes?.Circuit_ID)) || null)
+        ? ((() => {
+          const boxId = f.Attributes?.Link_Box_ID;
+          const way = f.Attributes?.Link_Way;
+          if (boxId == null || way == null) return null;
+          const box = features.find((x) => x.Feature_Role === "linkbox"
+            && Number(x.Feature_ID) === Number(boxId));
+          return box?.Attributes?.Way_Colours?.[String(way)] || null;
+        })()
+          || ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
+          || null)
         : null;
 
       /* ── The leader back to the trench ──
@@ -7131,61 +7152,85 @@ export default function GISCanvasPage() {
              Where it has none \u2014 an older drawing, a joint placed
              before the passes ran \u2014 geometry stays the fallback, so
              nothing that worked stops working. */
-          const held = new Set((pt.Attributes?.Connects || []).map(Number));
-          if (joinsEnds && held.size
-            && !held.has(Number(line.Feature_ID))) continue;
+          /* ── What the fitting was told it holds ──
 
-          /* ── A straight joint holds exactly two cable ends ──
+             `Joint_Cables` is written when the joint is placed, from
+             the cable that was chosen and the half that came out of
+             breaking it. Both were KNOWN at that moment. Nothing
+             recomputes it.
 
-             That is what the fitting is, and it is a fact the drawing
-             cannot contradict: one cable in, one out. Where `Connects`
-             has not been written the rule fell back to "any cable end
-             within a quarter of a metre", and on a drawing where cables
-             share a trench that is not only the two it holds — a run
-             passing by, ending near the fitting, was dragged with it.
+             `Connects` is not that: the relink pass derives it from
+             geometry, and connectedTo takes anything with a vertex
+             within a quarter of a metre — so on a shared trench it
+             lists cables the joint has nothing to do with, and every
+             rule that read it dragged them. Four attempts at this
+             failed by re-deriving from a drawing that cannot express
+             which cable was meant.
 
-             So the fallback is bounded by what the fitting IS: the two
-             NEAREST cable ends, and no third. The two halves have a
-             vertex on the joint, so they are nearer than anything that
-             merely ends close to it, and the rule needs no record to be
-             right.
+             Where the joint was told, the telling is the answer. Where
+             it was not — a joint from before this, or one the build
+             made — the older rules below still apply. */
+          const told = new Set((pt.Attributes?.Joint_Cables || []).map(Number));
+          if (told.size) {
+            if (!told.has(Number(line.Feature_ID))) continue;
+          } else {
+            const held = new Set((pt.Attributes?.Connects || []).map(Number));
+            if (joinsEnds && held.size
+              && !held.has(Number(line.Feature_ID))) continue;
 
-             A breech is not bounded this way \u2014 it takes an incoming
-             main and sends several out, and how many is the designer's
-             business. */
-          /* Always, not only where no record was written.
+            /* ── A straight joint holds exactly two cable ends ──
 
-             `Connects` is computed from GEOMETRY — connectedTo takes
-             anything with a vertex within a quarter of a metre — so the
-             relink pass writes the passing cable into the joint's list
-             as readily as the two it holds. Treating that list as the
-             answer would put the bug straight back on the next build,
-             with the record now agreeing with it.
+               That is what the fitting is, and it is a fact the drawing
+               cannot contradict: one cable in, one out. Where `Connects`
+               has not been written the rule fell back to "any cable end
+               within a quarter of a metre", and on a drawing where cables
+               share a trench that is not only the two it holds — a run
+               passing by, ending near the fitting, was dragged with it.
 
-             A record derived from the same geometry that was wrong
-             cannot correct it. The fitting's own definition can: one
-             cable in, one out. So the bound applies whatever the list
-             says, and the list can only narrow it further. */
-          if (joinsEnds && isFeeder
-            && String(pt.Attributes?.Joint_Type ?? "").toLowerCase() === "straight") {
-            const endsNear = features
-              .filter((l) => l.Feature_Type === "line"
-                && l.Layer_Key === pt.Layer_Key
-                && /main/i.test(String(l.Attributes?.Line_Type ?? ""))
-                && (l.Geometry || []).length >= 2)
-              .map((l) => {
-                const lg = l.Geometry;
-                const d = Math.min(
-                  Math.hypot(lg[0][0] - at[0], lg[0][1] - at[1]),
-                  Math.hypot(lg[lg.length - 1][0] - at[0], lg[lg.length - 1][1] - at[1]),
-                );
-                return { id: Number(l.Feature_ID), d };
-              })
-              .filter((x) => x.d <= CONNECT_M)
-              .sort((a, b) => a.d - b.d || a.id - b.id)
-              .slice(0, 2)
-              .map((x) => x.id);
-            if (!endsNear.includes(Number(line.Feature_ID))) continue;
+               So the fallback is bounded by what the fitting IS: the two
+               NEAREST cable ends, and no third. The two halves have a
+               vertex on the joint, so they are nearer than anything that
+               merely ends close to it, and the rule needs no record to be
+               right.
+
+               A breech is not bounded this way \u2014 it takes an incoming
+               main and sends several out, and how many is the designer's
+               business. */
+            /* Always, not only where no record was written.
+
+               `Connects` is computed from GEOMETRY — connectedTo takes
+               anything with a vertex within a quarter of a metre — so the
+               relink pass writes the passing cable into the joint's list
+               as readily as the two it holds. Treating that list as the
+               answer would put the bug straight back on the next build,
+               with the record now agreeing with it.
+
+               A record derived from the same geometry that was wrong
+               cannot correct it. The fitting's own definition can: one
+               cable in, one out. So the bound applies whatever the list
+               says, and the list can only narrow it further. */
+            if (joinsEnds && isFeeder
+              && String(pt.Attributes?.Joint_Type ?? "").toLowerCase() === "straight") {
+              const endsNear = features
+                .filter((l) => l.Feature_Type === "line"
+                  && l.Layer_Key === pt.Layer_Key
+                  && /main/i.test(String(l.Attributes?.Line_Type ?? ""))
+                  && (l.Geometry || []).length >= 2)
+                .map((l) => {
+                  const lg = l.Geometry;
+                  const d = Math.min(
+                    Math.hypot(lg[0][0] - at[0], lg[0][1] - at[1]),
+                    Math.hypot(lg[lg.length - 1][0] - at[0], lg[lg.length - 1][1] - at[1]),
+                  );
+                  return { id: Number(l.Feature_ID), d };
+                })
+                .filter((x) => x.d <= CONNECT_M)
+                .sort((a, b) => a.d - b.d || a.id - b.id)
+                .slice(0, 2)
+                .map((x) => x.id);
+              if (!endsNear.includes(Number(line.Feature_ID))) continue;
+            }
+
           }
 
           if (jointFeeder !== undefined && isFeeder && !joinsEnds
@@ -8012,6 +8057,112 @@ export default function GISCanvasPage() {
     setPlotList((l) => l.map((x) => (x.plot_id === plotId ? { ...x, placed: true } : x)));
   }
 
+  /* ── Placing a straight joint on a chosen cable ──
+
+     Three things in one act, because they are one act: the cable is
+     broken, the fitting is placed on it, and the point on the run that
+     the break creates is put beside it.
+
+     Which cable is passed IN \u2014 chosen by the click, or by the person
+     when several lie under it. Never re-derived from geometry here,
+     which is what put joints on the wrong run. */
+  async function placeJointOnCable(kind, line, at) {
+    const spec = JOINT_KINDS[kind];
+
+    /* The break first, so the joint can record what it holds. At a
+       cable's END there is nothing to break and one cable is the whole
+       of it. */
+    const halves = await breakLineAt(line, at);
+
+    const draftJoint = {
+      Layer_Key: "electric",
+      Feature_Type: "point",
+      Feature_Role: "joint",
+      Geometry: [at],
+      Label: spec?.label ?? "Joint",
+      Attributes: {
+        Joint_Type: kind,
+        Joint_Code: spec?.code ?? null,
+        Joint_Reasons: ["manual"],
+        Ways_In: null,
+        Services: null,
+        Circuit_ID: line.Attributes?.Circuit_ID ?? null,
+        /* ── The cables this fitting holds ──
+
+           Written once, here, where they are KNOWN: the cable that was
+           chosen and the half that came out of breaking it.
+
+           Not `Connects`, which the relink pass recomputes from
+           geometry \u2014 connectedTo takes anything with a vertex within a
+           quarter of a metre, so on a shared trench it lists cables
+           this joint has nothing to do with, and every rule that read
+           it dragged them. A fact somebody stated outlives a fact
+           re-derived from a drawing that cannot express it. */
+        Joint_Cables: halves
+          ? [halves.headId, halves.tailId].filter((x) => Number.isFinite(x))
+          : [Number(line.Feature_ID)],
+        Generated: false,
+      },
+    };
+    const tempId = addOptimistic(draftJoint);
+
+    setBusy("joint");
+    try {
+      reconcile(tempId, await addFeature(draftJoint));
+
+      /* ── And the point on the run, beside it ──
+
+         A separate feature, as at a breech: the diamond is the fitting,
+         the circle is the stop, and each is moved without the other.
+         Made now rather than left to the next build, because the levels
+         belong to the break and the break has just happened.
+
+         It takes the cable's circuit AND its link box output, so its
+         circle wears the output's colour where there is one and the
+         circuit's where there is not. */
+      const circuitId = line.Attributes?.Circuit_ID ?? null;
+      const letter = line.Attributes?.Circuit_Letter
+        || (circuitId != null ? String.fromCharCode(64 + Number(circuitId)) : "A");
+      const ins = circuitId != null
+        ? planInsertion({ features, circuit: { id: circuitId, letter }, at })
+        : { seq: null, label: null, writes: [] };
+
+      await addFeature({
+        Layer_Key: "electric",
+        Feature_Type: "point",
+        Feature_Role: "feederpoint",
+        Geometry: [at],
+        Label: ins.label ? `Point ${ins.label}` : "Point",
+        Attributes: {
+          Circuit_ID: circuitId,
+          Circuit_Name: line.Attributes?.Circuit_Name ?? null,
+          Circuit_Letter: letter,
+          ...(ins.seq != null ? { Span_Seq: ins.seq, Span_Label: ins.label } : {}),
+          Span_Kind: "junction",
+          Span_Anchor: at,
+          ...(line.Attributes?.Link_Box_ID != null
+            ? { Link_Box_ID: line.Attributes.Link_Box_ID } : {}),
+          ...(line.Attributes?.Link_Way != null
+            ? { Link_Way: line.Attributes.Link_Way } : {}),
+          ...(line.Attributes?.VD_Cable_Size_ID != null
+            ? { VD_Cable_Size_ID: line.Attributes.VD_Cable_Size_ID } : {}),
+          Generated: true,
+        },
+      });
+      if (ins.writes?.length) await bulkUpdateFeatures(projectId, ins.writes);
+
+      await load(projectId);
+      setStatus(`${spec?.label ?? "Joint"} placed on ${line.Label ?? "the feeder"}`
+        + (halves ? ", the cable broken there" : " at its end")
+        + (ins.label ? `, and ${ins.label} added` : ""));
+      setTimeout(() => setStatus(""), 9000);
+      setError("");
+    } catch (e) {
+      rollback(tempId);
+      setError(e.message);
+    } finally { setBusy(""); }
+  }
+
   async function placeAt(point) {
     /* ── A joint clicked onto a cable, which then breaks there ──
 
@@ -8029,106 +8180,57 @@ export default function GISCanvasPage() {
        where it says. */
     if (jointFor) {
       const kind = jointFor;
-      const spec = JOINT_KINDS[kind];
       setJointFor(null);
       setSnapHit(null);
 
       /* Feeders only. A joint is a fitting on an LV main; one on a
-         trench or a service is in a place no main runs, and the levels
-         check reads joints off the feeders. */
-      const feeders = visible.filter((f) => f.Feature_Type === "line"
-        && f.Layer_Key === "electric"
-        && f.Attributes?.Line_Type === "elec_main");
-      let best = null;
-      for (const t of feeders) {
-        const r = nearestOnPolyline(point, t.Geometry || []);
-        if (r && (!best || r.d < best.d)) best = { ...r, line: t };
-      }
-      /* Within reach of a cable, or nothing happens. Dropping a joint
-         where the click landed would leave a fitting joining nothing,
-         and this mode exists precisely to put one ON a cable. */
+         trench or a service is in a place no main runs. */
       const reach = Math.max(1, SNAP_PX / (view.scale || 1));
-      if (!best || best.d > reach) {
+      const near = visible
+        .filter((f) => f.Feature_Type === "line"
+          && f.Layer_Key === "electric"
+          && f.Attributes?.Line_Type === "elec_main")
+        .map((line) => ({ line, hit: nearestOnPolyline(point, line.Geometry || []) }))
+        .filter((x) => x.hit && x.hit.d <= reach)
+        .sort((a, b) => a.hit.d - b.hit.d);
+
+      if (!near.length) {
         setError("Click on an LV feeder cable \u2014 the cable says ON LINE "
           + "under the pointer when you are on it.");
         return;
       }
 
-      /* ── Drawn on the click, confirmed after ──
+      /* ── Several cables under the pointer: ask which ──
 
-         The joint went in with `addFeature` and then `breakLineAt` did
-         its own save, two reads and a Connects rewrite. Nothing
-         appeared until all of that came back, so the click looked
-         ignored and the fitting arrived seconds later — long enough to
-         click again.
+         Downstream of a link box, and wherever two circuits share a
+         trench, cables lie on the same route and the separation on
+         screen is display offset. Taking the nearest is a coin toss,
+         and a joint on the wrong cable breaks the wrong run.
 
-         The same optimistic add every other placement here uses: show
-         it now, because the click has already happened and showing it
-         is honest, then reconcile with what the server says. Rolled
-         back if the save fails, so a joint that was never stored does
-         not sit on the drawing looking as though it was. */
-      const draftJoint = {
-        Layer_Key: "electric",
-        Feature_Type: "point",
-        Feature_Role: "joint",
-        Geometry: [best.q],
-        Label: spec?.label ?? "Joint",
-        Attributes: {
-          Joint_Type: kind,
-          Joint_Code: spec?.code ?? null,
-          Joint_Reasons: ["manual"],
-          Ways_In: null,
-          Services: null,
-          Circuit_ID: best.line.Attributes?.Circuit_ID ?? null,
-          Generated: false,
-        },
-      };
-      const tempId = addOptimistic(draftJoint);
-
-      setBusy("joint");
-      try {
-        const savedJoint = await addFeature(draftJoint);
-        reconcile(tempId, savedJoint);
-        /* The break, on the cable that was clicked. Its own load and
-           reload, so Connects is right before anything reads it. */
-        await breakLineAt(best.line, best.q);
-
-        /* ── And the joint records the two halves it now holds ──
-
-           `breakLineAt` recomputes Connects for both halves and for
-           everything that ALREADY referenced them. The joint referenced
-           nothing: it was created a moment earlier with an empty list,
-           so it was not in that set and came out of the break holding
-           no record of what it joins.
-
-           Which meant the drag fell through to geometry — and where
-           cables share a trench, "a cable end within a quarter of a
-           metre" is not only the two the fitting holds. Dragging the
-           joint took a cable that merely passes it.
-
-           Written from the drawing as it now stands, through the same
-           linksFor every other link pass uses, so the joint says what
-           it holds rather than what happens to be near it. */
-        const fresh = await listGis(projectId);
-        const all = fresh.features || [];
-        const jf = all.find((x) =>
-          Number(x.Feature_ID) === Number(savedJoint?.Feature_ID));
-        if (jf) {
-          await bulkUpdateFeatures(projectId, [{
-            Feature_ID: jf.Feature_ID,
-            Attributes: { ...jf.Attributes, Connects: linksFor(jf, all) },
-          }]);
-          await load(projectId);
-        }
-        setStatus(`${spec?.label ?? "Joint"} placed on `
-          + `${best.line.Label ?? "the feeder"}, and the cable broken there`);
-        setTimeout(() => setStatus(""), 9000);
-        setError("");
-      } catch (e) {
-        rollback(tempId);
-        setError(e.message);
+         The drawing cannot answer it and the pointer cannot either, so
+         the person who clicked is asked \u2014 named by what tells them
+         apart on screen: the circuit, the output, the colour. */
+      if (near.length > 1) {
+        setJointPick({
+          kind,
+          options: near.map(({ line, hit }) => ({
+            id: Number(line.Feature_ID),
+            at: hit.q,
+            label: line.Label ?? "Feeder",
+            circuit: line.Attributes?.Circuit_Name
+              ?? (line.Attributes?.Circuit_ID != null
+                ? `Circuit ${line.Attributes.Circuit_ID}` : null),
+            way: line.Attributes?.Link_Way ?? null,
+            colour: feederPlan.get(Number(line.Feature_ID))?.colour
+              ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
+              ?? null,
+            metres: drawnLength(line).toFixed(1),
+          })),
+        });
+        return;
       }
-      finally { setBusy(""); }
+
+      await placeJointOnCable(kind, near[0].line, near[0].hit.q);
       return;
     }
 
@@ -21330,54 +21432,6 @@ export default function GISCanvasPage() {
         );
       })()}
 
-      {measuredAsk && (
-        /* No backdrop click and no close cross: the three answers are
-           the only ways out, because "keep", "remove" and "update" are
-           three different designs and dismissing this would silently
-           pick one of them. */
-        <div className="cpick-backdrop">
-          <div className="cpick" onClick={(e) => e.stopPropagation()}
-            role="dialog" aria-label="Measured length">
-            <h3>This line has a measured length</h3>
-            <p className="hint">
-              {measuredAsk.name} was measured at{" "}
-              <b>{measuredAsk.measured.toFixed(1)} m</b>, and has just been
-              redrawn — {measuredAsk.was.toFixed(1)} m to{" "}
-              <b>{measuredAsk.drawn.toFixed(1)} m</b> on the drawing.
-              Calculations use the measurement, so it stands until you say
-              otherwise.
-            </p>
-
-            <div className="fld">
-              <label htmlFor="ml-new">Measured length (m)</label>
-              <input id="ml-new" type="number" step="0.1" min="0"
-                value={measuredAsk.entry}
-                onChange={(e) => setMeasuredAsk({ ...measuredAsk, entry: e.target.value })} />
-              <p className="hint">
-                Starts at the new drawn length. Change it to whatever the
-                run really is.
-              </p>
-            </div>
-
-            <div className="cpick-actions">
-              {/* Keep first and default: it changes nothing, and doing
-                  nothing should be the easiest answer to give. */}
-              <button className="btn ghost" onClick={() => answerMeasured("keep")}>
-                Keep {measuredAsk.measured.toFixed(1)} m
-              </button>
-              <button className="btn ghost" onClick={() => answerMeasured("remove")}>
-                Remove it
-              </button>
-              <button className="btn accent"
-                disabled={!(Number(measuredAsk.entry) > 0)}
-                onClick={() => answerMeasured("update", measuredAsk.entry)}>
-                Update
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-
       {circuitPick && (
         <div className="cpick-backdrop" onClick={() => setCircuitPick(null)}>
           <div className="cpick" onClick={(e) => e.stopPropagation()}
@@ -21500,6 +21554,59 @@ export default function GISCanvasPage() {
           No backdrop dismissal and no close cross. Dismissing would
           silently pick one of three different designs, which is the
           decision this exists to avoid making for somebody. */}
+      {jointPick && (
+        /* ── Which cable is the joint going on? ──
+
+            Several lie under the pointer wherever a link box's outputs
+            or two circuits share a trench, and the separation on screen
+            is display offset rather than distance. The nearest is a
+            coin toss, and a joint on the wrong cable breaks the wrong
+            run \u2014 which is the fault this area kept producing.
+
+            Named by what tells them apart ON SCREEN: the colour the
+            designer is looking at, the circuit, the output, the length.
+            Not a feature id, which is not on the drawing. */
+        <div className="cpick-backdrop" onClick={() => setJointPick(null)}>
+          <div className="cpick" onClick={(e) => e.stopPropagation()}
+            role="dialog" aria-label="Which cable">
+            <h3>Which cable?</h3>
+            <p className="hint">
+              {jointPick.options.length} feeder cables run through that point.
+              The joint breaks the one you choose.
+            </p>
+            <div className="cpick-list">
+              {jointPick.options.map((o) => (
+                <button key={o.id} className="cpick-item"
+                  onClick={() => {
+                    const kind = jointPick.kind;
+                    setJointPick(null);
+                    const line = features.find((x) =>
+                      Number(x.Feature_ID) === Number(o.id));
+                    if (line) {
+                      withUndo("Place straight joint",
+                        () => placeJointOnCable(kind, line, o.at));
+                    }
+                  }}>
+                  <span className="jp-sw" style={{ background: o.colour || "#94a3b8" }} />
+                  <span className="cpick-name">
+                    {o.label}
+                    {o.way != null ? ` \u00b7 output ${o.way}` : ""}
+                  </span>
+                  <span className="cpick-n">
+                    {o.circuit ?? "no circuit"} &middot; {o.metres} m
+                  </span>
+                </button>
+              ))}
+            </div>
+            <div className="cpick-actions">
+              <button className="btn ghost" onClick={() => setJointPick(null)}>
+                Cancel
+              </button>
+            </div>
+          </div>
+        </div>
+      )}
+
       {measuredAsk && (
         <div className="modal-back" role="dialog" aria-modal="true"
           aria-labelledby="ml-h">
@@ -21875,10 +21982,24 @@ export default function GISCanvasPage() {
                         /* Through seedStyle, like the canvas — the
                            swatch beside a plot has to be the colour the
                            plot is drawn in, and reading the seed's own
-                           stale copy made the two disagree. */
+                           stale copy made the two disagree.
+
+                           ── And through the feeder plan, for a cable ──
+
+                           The canvas draws a feeder run in `fp?.colour
+                           ?? st.colour`: the link box output's colour
+                           where it has one, the circuit's otherwise.
+                           The swatch read only the style, so three
+                           cables on one route \u2014 which is exactly when
+                           this dialog opens \u2014 came up as three
+                           identical amber squares, and the one thing
+                           that told them apart on screen was missing
+                           from the list asking which you meant. */
                         background: f.Feature_Role === "plot"
                           ? seedStyle(f, false).colour
-                          : styleFor(f).colour,
+                          : (feederPlan.get(Number(f.Feature_ID))?.colour
+                            ?? ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
+                            ?? styleFor(f).colour),
                         borderRadius: f.Feature_Type === "point" ? "50%" : "2px",
                       }} />
                       <span className="gp-name">
@@ -21886,6 +22007,15 @@ export default function GISCanvasPage() {
                       </span>
                       <span className="gp-kind">
                         {classLabel(f, lineTypes)}
+                        {/* Which circuit, and which output of a box. The
+                            colour says it at a glance; these say it in
+                            words, for a drawing whose outputs are close
+                            in hue or a reader who cannot tell them
+                            apart. */}
+                        {f.Attributes?.Circuit_Name
+                          ? ` \u00B7 ${f.Attributes.Circuit_Name}` : ""}
+                        {f.Attributes?.Link_Way != null
+                          ? ` \u00B7 output ${f.Attributes.Link_Way}` : ""}
                         {via === "vertex" && f.Feature_Type !== "point" && " \u00B7 end"}
                       </span>
                     </button>
@@ -24395,6 +24525,8 @@ const CSS = `
 .cpick-origin select { padding: 5px 8px; border: 1.5px solid var(--border);
   border-radius: 6px; background: var(--white); font: inherit; }
 .cpick-note { flex-basis: 100%; margin: 2px 0 0; font-size: 12px; color: #b91c1c; }
+.jp-sw { width: 12px; height: 12px; border-radius: 3px; flex: none;
+  border: 1px solid rgba(15,23,42,.25); }
 .cpick-item.new { margin-top: 6px; border-style: dashed; color: var(--muted); }
 .cpick-item.new:hover { color: var(--accent); }
 /* The chosen row, so the button below and the list above agree about

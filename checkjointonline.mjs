@@ -42,8 +42,11 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
 /* The placement itself. */
 {
-  const at = canvas.indexOf("async function placeAt(point) {");
-  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("if (nrsFor) {", at));
+  /* The placement moved into placeJointOnCable when the cable stopped
+     being guessed at: placeAt now gathers the candidates and either
+     places or asks. */
+  const at = canvas.indexOf("async function placeJointOnCable");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("async function placeAt(point)", at));
   if (!fn) fail("placeAt has gone");
   else {
     if (!/Feature_Role: "joint"/.test(fn)) fail("no joint is created");
@@ -57,20 +60,20 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     /* Feeders only: a joint on a trench or a service is a fitting in a
        place no main runs, and the levels check reads joints off the
        feeders. */
-    if (!/Line_Type === "elec_main"/.test(fn)) {
+    if (!/Line_Type === "elec_main"/.test(canvas)) {
       fail("the joint can land on a trench or a service cable");
     }
     /* Within reach, or nothing. A joint dropped where the click landed
        joins nothing, and this mode exists to put one ON a cable. */
-    if (!/best\.d > reach/.test(fn)) {
+    if (!/if \(!near\.length\) \{/.test(canvas)) {
       fail("a click that missed every cable still places a joint");
     }
-    if (!/await breakLineAt\(best\.line, best\.q\)/.test(fn)) {
+    if (!/await breakLineAt\(line, at\)/.test(fn)) {
       fail("the cable is not broken where the joint went \u2014 the drawing "
         + "then shows one unbroken run through a fitting that joins two");
     }
     /* The circuit comes from the cable, not from a guess. */
-    if (!/Circuit_ID: best\.line\.Attributes\?\.Circuit_ID/.test(fn)) {
+    if (!/Circuit_ID: line\.Attributes\?\.Circuit_ID/.test(fn)) {
       fail("the joint does not take the circuit of the cable it sits on");
     }
   }
@@ -87,8 +90,11 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
    this reason; this one did not, because it was written as a call to
    the API rather than as a placement. */
 {
-  const at = canvas.indexOf("async function placeAt(point) {");
-  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("if (nrsFor) {", at));
+  /* The placement moved into placeJointOnCable when the cable stopped
+     being guessed at: placeAt now gathers the candidates and either
+     places or asks. */
+  const at = canvas.indexOf("async function placeJointOnCable");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("async function placeAt(point)", at));
   if (!/const tempId = addOptimistic\(draftJoint\);/.test(fn)) {
     fail("the joint is not drawn until the server answers, so the click "
       + "looks ignored");
@@ -96,8 +102,7 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   /* The saved row is kept, because its id is needed afterwards to
      write the joint's Connects — so the reconcile is two statements
      now rather than one. */
-  if (!/const savedJoint = await addFeature\(draftJoint\);/.test(fn)
-    || !/reconcile\(tempId, savedJoint\);/.test(fn)) {
+  if (!/reconcile\(tempId, await addFeature\(draftJoint\)\);/.test(fn)) {
     fail("the drawn joint is never replaced by the saved one");
   }
   /* And taken away again if the save fails. A joint that was never
@@ -107,29 +112,71 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 }
 
-/* ── The joint records what it holds ──
+/* ── The joint is told which cables it holds ──
 
-   `breakLineAt` recomputes Connects for both halves and for everything
-   that ALREADY referenced them. A joint created a moment earlier
-   references nothing, so it was not in that set and came out of the
-   break holding no record of what it joins — and the drag, finding
-   nothing to read, fell back to geometry and took a cable that merely
-   passes.
+   `Joint_Cables` is written when the joint is placed, from the cable
+   that was CHOSEN and the half that came out of breaking it. Both were
+   known at that moment and nothing recomputes them.
 
-   Written at placement from the drawing as it then stands. And the
-   relink pass now covers joints, which repairs every one already
-   placed: it filtered to lines and meters, so no joint on any drawing
-   had ever carried a Connects of its own. */
+   `Connects` is not that: the relink pass derives it from geometry, and
+   connectedTo takes anything with a vertex within a quarter of a metre.
+   On a shared trench it lists cables the joint has nothing to do with,
+   and four attempts at this failed by reading it. */
 {
-  const at = canvas.indexOf("async function placeAt(point) {");
-  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("if (nrsFor) {", at));
-  if (!/Connects: linksFor\(jf, all\)/.test(fn)) {
-    fail("the joint does not record the two halves it holds, so dragging it "
-      + "falls back to geometry and takes whatever ends nearby");
+  const fn = canvas.slice(canvas.indexOf("async function placeJointOnCable"),
+    canvas.indexOf("async function placeAt(point)"));
+  if (!fn) fail("placeJointOnCable has gone");
+  else {
+    if (!/const halves = await breakLineAt\(line, at\);/.test(fn)) {
+      fail("the cable is not broken before the joint records what it holds");
+    }
+    if (!/Joint_Cables: halves/.test(fn)) {
+      fail("the joint does not record the two cables it holds, so the drag "
+        + "falls back to geometry and takes whatever ends nearby");
+    }
+    /* And the point on the run, made now rather than at the next build:
+       the levels belong to the break and the break has just happened. */
+    if (!/Feature_Role: "feederpoint"/.test(fn)) {
+      fail("no feeder end point is made beside the joint, so there are no "
+        + "levels until somebody rebuilds");
+    }
+    /* Its circle wears the output's colour where there is one. */
+    if (!/Link_Box_ID: line\.Attributes\.Link_Box_ID/.test(fn)
+      || !/Link_Way: line\.Attributes\.Link_Way/.test(fn)) {
+      fail("the point does not take the cable's link box output, so its "
+        + "circle cannot wear the output's colour");
+    }
   }
-  if (!/f\.Feature_Role === "meter"\n\s*\|\| f\.Feature_Role === "joint"\)/.test(canvas)) {
-    fail("the relink pass still skips joints, so a joint placed before this "
-      + "never gains a Connects and goes on dragging the wrong cable");
+
+  /* The drag prefers what the joint was told. */
+  if (!/const told = new Set\(\(pt\.Attributes\?\.Joint_Cables \|\| \[\]\)\.map\(Number\)\);/.test(canvas)) {
+    fail("the drag does not read what the joint was told it holds");
+  }
+  if (!/if \(told\.size\) \{\n\s*if \(!told\.has\(Number\(line\.Feature_ID\)\)\) continue;/.test(canvas)) {
+    fail("a joint that was told its cables still falls through to geometry");
+  }
+}
+
+/* ── Which cable, where several lie under the pointer ──
+
+   Downstream of a link box, and wherever two circuits share a trench,
+   the drawn separation is display offset rather than distance. Taking
+   the nearest is a coin toss, and a joint on the wrong cable breaks the
+   wrong run. */
+{
+  if (!/if \(near\.length > 1\) \{/.test(canvas)) {
+    fail("with several cables under the pointer the nearest is taken, which "
+      + "is a guess at which run to break");
+  }
+  if (!/\{jointPick && \(/.test(canvas)) {
+    fail("nothing asks which cable");
+  }
+  /* Named by what tells them apart on screen, not by a feature id. */
+  for (const field of ["colour", "circuit", "way", "metres"]) {
+    if (!new RegExp(`${field}:`).test(canvas)) {
+      fail(`the choice does not offer the ${field}, which is how a designer `
+        + "tells two cables on one route apart");
+    }
   }
 }
 

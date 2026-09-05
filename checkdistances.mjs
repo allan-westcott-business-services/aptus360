@@ -8,7 +8,7 @@
      from a graph of its own and never fills it in, so a built network
      had no edges at all.
 
-     And lengthOf read a stored Length_m, which a built cable has none
+     And lengthOf read a stored Measured_Length_m, which a built cable has none
      of — so even once connected, the walk added nothing at each step
      and every distance came out as zero.
 
@@ -33,7 +33,7 @@ const METER = {
   Geometry: [[100, 20]],
 };
 
-// 1. A built network, with no Connects and no Length_m anywhere.
+// 1. A built network, with no Connects and no Measured_Length_m anywhere.
 {
   const d = distancesFrom([SUB, CABLE, SERVICE, METER], 1);
   if (d.get(4) == null) fail("a meter on a built network has no distance");
@@ -52,7 +52,7 @@ const METER = {
 //    entered it has said something the geometry does not know — a
 //    trench dug round an obstruction, say.
 {
-  const measured = { ...CABLE, Attributes: { Length_m: 150 } };
+  const measured = { ...CABLE, Attributes: { Measured_Length_m: 150 } };
   const d = distancesFrom([SUB, measured, SERVICE, METER], 1);
   if (Math.abs(d.get(4) - 170) > 0.01) {
     fail(`a stored length was ignored (${d.get(4)} m, wanted 170)`);

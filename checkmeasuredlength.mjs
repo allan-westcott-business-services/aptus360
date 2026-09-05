@@ -1,8 +1,22 @@
 /* A measured length overrides the drawing, everywhere length means run.
 
+   ── Its own attribute ──
+
+   This was `Length_m`, which `gis_length_trg` maintains from the
+   geometry on every change. So every line arrived carrying a "measured"
+   length equal to its drawn length: the label said "299.8 m entered"
+   about a figure nobody had entered, the panel announced that
+   calculations read 299.8 m instead of the drawn 299.8 m, and a real
+   measurement would have been overwritten by the next drag.
+
+   `Measured_Length_m` is written by a person and by nothing else, so
+   its presence means what it says. `Length_m` goes back to being the
+   trigger's mirror of the drawing, which the bill of materials reads in
+   SQL and which nothing in the client reads at all.
+
    The plan is flat and the run is not: a duct that rises and falls, a
    trench dug round an obstruction, slack the drawing cannot show.
-   Length_m on a line says what the run really is, and every calculation
+   Measured_Length_m on a line says what the run really is, and every calculation
    that means "how far does the electricity travel" reads it — scaled
    along the line, so a tee half way along the drawing is half way along
    the measurement. Everything that means "how near is this thing"
@@ -13,6 +27,7 @@
    volt drop and the trace legs), the circuit-report distances, and the
    service tails. The gas network has honoured the same attribute since
    its metres were first read (gasNetwork.js). */
+import { readFileSync } from "node:fs";
 import { buildFeederModel, spanTrace } from "./src/features/gis/feeder.js";
 import { cumulativeToNode } from "./src/features/gis/voltDrop.js";
 import { distancesFrom } from "./src/features/gis/electric.js";
@@ -50,7 +65,7 @@ const sub = {
 const p1 = plot(101, [50, 10]);
 const drawing = [
   sub,
-  trench([[0, 0], [50, 0], [100, 0]], "trench", { Length_m: 150 }),
+  trench([[0, 0], [50, 0], [100, 0]], "trench", { Measured_Length_m: 150 }),
   trench([[50, 0], [50, 10]], "service_trench"),
   p1,
   meter(p1, [50, 10]),
@@ -135,7 +150,7 @@ else {
 /* A service with a measured length charges its tail on it. */
 {
   const svc = { Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
-    Geometry: [[50, 0], [50, 10]], Attributes: { Line_Type: "service_trench", Length_m: 18 } };
+    Geometry: [[50, 0], [50, 10]], Attributes: { Line_Type: "service_trench", Measured_Length_m: 18 } };
   const main = { Feature_ID: id++, Feature_Type: "line", Layer_Key: "trench",
     Geometry: [[0, 0], [100, 0]], Attributes: { Line_Type: "trench" } };
   const m = { Feature_ID: id++, Feature_Role: "meter", Geometry: [[50, 10]], Attributes: {} };
@@ -146,11 +161,11 @@ else {
   }
 }
 
-/* No measurement, no change: the same drawing without Length_m reads
+/* No measurement, no change: the same drawing without Measured_Length_m reads
    the drawn hundred. */
 {
-  const plain = drawing.map((f) => (f.Attributes?.Length_m
-    ? { ...f, Attributes: { ...f.Attributes, Length_m: null } } : f));
+  const plain = drawing.map((f) => (f.Attributes?.Measured_Length_m
+    ? { ...f, Attributes: { ...f.Attributes, Measured_Length_m: null } } : f));
   const m2 = buildFeederModel(plain, { lineTypes, plotById: () => ({ kva_load: 2.9 }) });
   const at = (p) => {
     let best = -1, d = Infinity;
@@ -162,6 +177,25 @@ else {
   };
   if (Math.abs(m2.mBetween(at([0, 0]), at([50, 0])) - 50) > 0.01) {
     fail("with no measurement entered, the drawn length is no longer the answer");
+  }
+}
+
+/* And nothing in the GIS client reads Length_m any more. Leaving one
+   reader behind would put a line's calculations back on a figure the
+   database rewrites underneath them. */
+{
+  const files = [
+    "GISCanvasPage.jsx", "FeatureEditor.jsx", "electric.js", "feeder.js",
+    "routing.js", "gasNetwork.js", "waterNetwork.js",
+  ];
+  for (const f of files) {
+    const src = readFileSync(`./src/features/gis/${f}`, "utf8");
+    /* In code, not in the comments that explain why it is not read. */
+    const code = src.replace(/\/\*[\s\S]*?\*\//g, "");
+    if (/Attributes\??\.?\??\.Length_m/.test(code)) {
+      fail(`${f} still reads Length_m, which the trigger rewrites from the `
+        + "geometry");
+    }
   }
 }
 

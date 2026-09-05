@@ -59,6 +59,45 @@ if (!/const boxCode = f\.Attributes\?\.Span_Label/.test(canvas)) {
   fail("the link box does not draw its span code \u2014 the box on the run "
     + "is the one stop the drawing will not name");
 }
+/* ── The input dot wears its cable's colour ──
+
+   The outputs each wear their way's colour, so the one dot that did not
+   say which cable it belonged to was the INPUT — the trunk, which is
+   the cable a designer is usually tracing back. It was drawn slate: the
+   same as nothing in particular.
+
+   The input is the cable that ENDS at the box and is not one of its own
+   outputs. Read from the feeder plan, which is what the canvas draws
+   the run in, so the dot and the cable cannot disagree. */
+if (!/dot\(p\.x - ux \* half, p\.y - uy \* half, inInk\);/.test(canvas)) {
+  fail("the link box's input dot is drawn in no particular colour, so the "
+    + "one termination that does not say which cable it is, is the input");
+}
+if (!/feederPlan\.get\(Number\(line\.Feature_ID\)\)\?\.colour/.test(canvas)) {
+  fail("the input dot's colour is not read from what the canvas draws the "
+    + "cable in, so the two can disagree");
+}
+/* Not one of its own outputs: those are the front face. */
+if (!/Link_Way != null\) continue;/.test(canvas)) {
+  fail("an output's cable can be taken as the input");
+}
+
+/* ── And the object picker shows a cable's real colour ──
+
+   Three cables on one route is exactly when that dialog opens, and the
+   swatch read the STYLE — so they came up as three identical amber
+   squares and the one thing telling them apart on screen was missing
+   from the list asking which you meant. The canvas draws a feeder in
+   `fp?.colour ?? st.colour`; the swatch now does the same. */
+if (!/background: f\.Feature_Role === "plot"\n\s*\? seedStyle\(f, false\)\.colour\n\s*: \(feederPlan\.get/.test(canvas)) {
+  fail("the picker's swatch shows the style's colour, not the colour the "
+    + "cable is drawn in \u2014 so cables on one route look identical");
+}
+if (!/output \$\{f\.Attributes\.Link_Way\}/.test(canvas)) {
+  fail("the picker does not name which output a cable is, which is what "
+    + "tells two of a box's cables apart in words");
+}
+
 /* ── And the levels beside it ──
 
    The volt drop and loop impedance at a stop are what a designer works

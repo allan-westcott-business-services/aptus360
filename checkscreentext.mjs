@@ -265,6 +265,42 @@ for (const file of jsxFiles("./src")) {
   }
 }
 
+/* ── One phrase for one thing ──
+
+   An empty option in the feature editor reads "Not set" — the POC
+   picker, the circuit picker and both joint pickers all say it. The
+   link box way picker said "Not said", alone in the app. A phrase used
+   once is one somebody has to stop and read, and it invites the next
+   person to invent a seventh way of saying nothing is chosen.
+
+   "Not overridden" is deliberately different and stays: it says a
+   calculated value stands, which is not the same as a field nobody has
+   filled in. */
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (/>Not said</.test(editor)) {
+    fail("an empty option still reads \"Not said\" where every other one in "
+      + "the panel says \"Not set\"");
+  }
+  const blanks = [...editor.matchAll(/<option value="">([^<]+)</g)]
+    .map((m) => m[1].trim()
+      /* Some are JSX expressions rather than bare text — an escape in
+         JSX text renders literally, so a phrase carrying an em dash has
+         to be written as a string in braces. */
+      .replace(/^\{"/, "").replace(/"\}$/, ""))
+    .filter((t) => !/^&mdash;/.test(t));
+  /* Begins with, not equals: "Not set — the build picks the nearest POC"
+     is the same phrase carrying a reason, which is the useful kind of
+     difference. A wholly different word is not. */
+  const odd = blanks.filter((t) =>
+    !/^Not set\b/.test(t) && !/^Not overridden\b/.test(t));
+  if (odd.length) {
+    fail(`empty options say: ${[...new Set(odd)].join(", ")} \u2014 "Not set" `
+      + "for a field nobody has filled in, \"Not overridden\" where a "
+      + "calculated value stands");
+  }
+}
+
 console.log(bad === 0
   ? "  ok  Screen text behaves (no escapes rendered raw, the origin named from the drawing)."
   : `\n${bad} problem(s)`);

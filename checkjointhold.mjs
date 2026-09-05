@@ -13,8 +13,8 @@
    stops a cable coming adrift from its fitting by accident. */
 import { readFileSync } from "node:fs";
 import { jointCables, holdsCable, withCable, withoutCable, jointAtEnd,
-  jointAtPoint, cableEndsAt, JOIN_REACH_M, cablesHeldAt }
-  from "./src/features/gis/joints.js";
+  jointAtPoint, cableEndsAt, JOIN_REACH_M, cablesHeldAt, servicesAt,
+  servedPlots } from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -297,6 +297,55 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   /* And only its OWN joints: one somebody placed by hand is theirs. */
   if (!/f\.Feature_Role === "joint" && f\.Attributes\?\.Generated/.test(canvas)) {
     fail("the build overwrites the connections on a hand-placed joint");
+  }
+}
+
+// 7. "Nothing here" and "here but unnamed" are two different facts.
+//
+//    `servedPlots` answers "which plots", and returns nothing for a
+//    cable that names none — so a fitting with a service ending exactly
+//    on it reported "no service cable reaches this point". On a live
+//    drawing that was all EIGHTY-TWO service joints, each with a cable
+//    touching it: not one of the eighty-four services carried a Plot_ID
+//    or a Seed_Feature_ID.
+//
+//    The first sends somebody looking for a missing cable. The second
+//    tells them where to look.
+{
+  const j = { Feature_Role: "joint", Layer_Key: "electric", Geometry: [[50, 0]],
+    Attributes: { Joint_Type: "service" } };
+  const svc = (id, g, plot) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g, ...(plot != null ? { Plot_ID: plot } : {}),
+    Attributes: { Line_Type: "elec_service" } });
+
+  /* A cable ending on it that names no plot: present, unnamed. */
+  const unnamed = [svc(1, [[50, 0], [50, 8]])];
+  if (servicesAt(j, unnamed).length !== 1) {
+    fail("a service ending on the fitting is not seen at all");
+  }
+  if (servedPlots(j, unnamed).length !== 0) {
+    fail("the fixture is wrong: this service names a plot, so it cannot "
+      + "show the difference between absent and unnamed");
+  }
+
+  /* One that does name its plot is still counted by both. */
+  const withPlot = [svc(2, [[50, 0], [50, 8]], 12)];
+  if (!servicesAt(j, withPlot).length || !servedPlots(j, withPlot).length) {
+    fail("a service that names its plot is not counted");
+  }
+
+  /* And a cable ten metres away is neither. */
+  if (servicesAt(j, [svc(3, [[60, 0], [60, 8]])]).length) {
+    fail("a service ten metres off counts as reaching the fitting");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/servicesAt\(feature, allFeatures \|\| \[\]\)\.length/.test(editor)) {
+    fail("the panel cannot tell a missing cable from an unnamed one, so it "
+      + "reports a cable that is there as absent");
+  }
+  if (!/none says which plot it feeds/.test(editor)) {
+    fail("the panel does not say what is actually wrong");
   }
 }
 

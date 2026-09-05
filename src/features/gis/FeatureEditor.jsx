@@ -23,7 +23,7 @@ import { circuitColours, feederColourAt } from "./feederColour.js";
 import { sizeIdFor, isOverridden } from "./sizeMode.js";
 import { lvOrigins } from "./electric.js";
 import { servedPlots, JOINT_KINDS, straightJointWarning,
-  jointCables, cableEndsAt } from "./joints.js";
+  jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
@@ -1330,6 +1330,27 @@ export default function FeatureEditor({
                      breech or a straight joint serves none — but on a
                      service joint it means the cable that should reach it
                      does not. */
+                  /* ── What is true, not what was assumed ──
+
+                      `servedPlots` answers "which plots", and returns
+                      nothing for a cable that names none. So a fitting
+                      with a service ending exactly on it said "no
+                      service cable reaches this point" — on a live
+                      drawing, all eighty-two of them, with a cable
+                      touching every one.
+
+                      Nothing here, and something here that does not
+                      say what it is for, are two different facts. The
+                      first sends somebody looking for a missing cable;
+                      the second tells them where to look. */
+                  : servicesAt(feature, allFeatures || []).length
+                    ? (
+                      <em className="fe-joint-soft">
+                        {servicesAt(feature, allFeatures || []).length} service
+                        {servicesAt(feature, allFeatures || []).length === 1 ? "" : "s"}
+                        {" here \u2014 none says which plot it feeds"}
+                      </em>
+                    )
                   : <em>{feature.Attributes?.Joint_Type === "service"
                       ? "no service cable reaches this point"
                       : "no plots \u2014 this joins the feeder to itself"}</em>}
@@ -3282,6 +3303,9 @@ const CSS = `
 .fe-held-row { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; margin-top: 5px; }
 .fe-held-off { color: var(--muted); }
+/* Present but incomplete: a statement of fact, not a warning. The red
+   is for a cable that is missing, and this one is not. */
+.fe-joint-soft { color: var(--muted); font-style: italic; }
 .fe-held-name { font-size: 12.5px; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .fe-joint-warn { margin: 6px 0 0; padding: 6px 8px; border-radius: 6px;

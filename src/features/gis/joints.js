@@ -1051,3 +1051,31 @@ export function cablesHeldAt(joint, features = [], reach = JOIN_REACH_M) {
   }
   return held;
 }
+
+/* The service cables reaching a joint, whether or not they say which
+   plot they feed.
+
+   `servedPlots` answers "which plots", and returns nothing for a cable
+   that names no plot — so a fitting with a service ending exactly on it
+   reported "no service cable reaches this point". On a live drawing
+   every one of eighty-two service joints said that, with a cable
+   touching every one of them: none of the eighty-four services carried
+   a Plot_ID or a Seed_Feature_ID.
+
+   Two different facts, and the panel has to be able to tell them apart:
+   nothing is here, versus something is here that does not say what it
+   is for. The first is a fault in the drawing; the second is a gap in
+   what the cable records, and reporting it as the first sends somebody
+   looking for a missing cable that is right in front of them. */
+export function servicesAt(joint, features = [], tolM = 0.25) {
+  const at = (joint?.Geometry || [])[0];
+  if (!at) return [];
+  return (features || []).filter((f) => {
+    if (f.Feature_Type !== "line" || f.Layer_Key !== "electric") return false;
+    if (!String(f.Attributes?.Line_Type || "").endsWith("_service")) return false;
+    const g = f.Geometry || [];
+    if (g.length < 2) return false;
+    return [g[0], g[g.length - 1]].some((p) =>
+      Math.hypot(p[0] - at[0], p[1] - at[1]) <= tolM);
+  });
+}

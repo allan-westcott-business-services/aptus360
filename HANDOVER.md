@@ -1800,6 +1800,29 @@ where the circuits agree, so another circuit's main sharing the trench
 is excluded. Written only where it changes something, and only on the
 build's own joints: one somebody placed by hand is theirs.
 
+56. **"Nothing here" and "here but unnamed" are two different facts.**
+    The joint panel's Serves line reads `servedPlots`, which answers
+    "which plots" and returns nothing for a cable that names none. So a
+    fitting with a service ending exactly on it reported **"no service
+    cable reaches this point"**.
+
+    On the live drawing that was all **82 service joints, each with a
+    cable touching it** — because not one of the 84 services carries a
+    `Plot_ID` or a `Seed_Feature_ID`. The panel was reporting a cable
+    that is right in front of the reader as absent, which sends somebody
+    hunting for a missing cable instead of at the thing that is actually
+    missing.
+
+    `servicesAt` answers the other question, and the panel now says
+    which it is. The first is a fault in the drawing; the second is a
+    gap in what the cable records.
+
+    **Left open, and it matters:** the services carry no plot link at
+    all. The jointing sheet's plot list depends on the same field, so
+    that is very likely blank too — the same shape as the `sizeOf` /
+    `VD_Cable_Size_ID` fault, where the call-off data depends on links
+    the build does not write. Worth taking together.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

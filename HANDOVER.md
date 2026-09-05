@@ -1910,6 +1910,40 @@ joints hold.
     The general point, and the third time this session: **where the
     drawing genuinely cannot answer, ask — do not measure harder.**
 
+**A trace starts from anything on the network.** The click looked for a
+LINE, so starting one from the thing somebody is actually looking at —
+the meter whose supply they are chasing, the joint they suspect, a
+feeder end point — worked only by accident, when a cable happened to lie
+within reach of where they clicked.
+
+A point feature under the pointer is now the start, at ITS position
+rather than at the click: a marker nudged clear for legibility is still
+the node it stands for, so the anchor is used where there is one. And
+the "Which cable?" question follows as before, which at a joint is the
+normal case rather than the exception — a main and a service both lie
+there.
+
+The engine never needed changing for this. `traceTree` already answered
+from a meter (correctly: nothing downstream of the end of the line),
+from a joint and from a service. **What was missing was the question
+being asked of the drawing at the point somebody clicked.**
+
+**The trace asks once.** What is being followed, which way, and — where
+several cables share the point — which one, are ONE decision about one
+click. They were a floating panel and a separate modal, so starting a
+trace meant answering in two places with the drawing in between.
+
+One dialog now, opened by the click. The cable list is re-read when the
+kind changes rather than stored, or switching to Trench and back would
+show the list from the other one, and it names what it will follow even
+when there is only one candidate rather than leaving that to be
+guessed.
+
+The floating panel stays for a trace already on screen, where the point
+is settled and only the reading of it is being adjusted — *"actually,
+show me the trench"* is the same question about the same place. Setting
+one up is a different moment from changing one.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

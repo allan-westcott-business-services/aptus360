@@ -2385,6 +2385,14 @@ export default function GISCanvasPage() {
   const traceFrame = useRef(null);
   /* Which cable, where several lie under the pointer. */
   const [jointPick, setJointPick] = useState(null);
+  /* ── The trace's three questions, asked together ──
+
+     What is being followed, which way, and \u2014 where several cables lie
+     under the pointer \u2014 which one. They were a floating panel and a
+     separate modal, so starting a trace meant answering in two places
+     with the drawing in between. They are one decision: this is the
+     click, and these are the things about it that are not yet known. */
+  const [tracePick, setTracePick] = useState(null);
 
   /* ── Declared here, above `visible`, not beside the placement state ──
 
@@ -8689,33 +8697,48 @@ export default function GISCanvasPage() {
          Asked, exactly as placing a joint asks, and for the same
          reason. One cable under the pointer needs no question. */
       const reach = Math.max(2, HIT_PX / (view.scale || 1));
+
+      /* ── A meter, a joint or a node is a place on the network too ──
+
+         The trace asked for a LINE, so starting one from the thing you
+         are actually looking at \u2014 the meter whose supply you are
+         chasing, the joint you suspect \u2014 worked only by accident, when
+         a cable happened to lie within reach of where you clicked.
+
+         Where a point feature is under the pointer, the trace starts at
+         ITS position rather than at the click: a marker nudged clear
+         for legibility is still the node it stands for, so the anchor
+         is used where there is one. */
+      const spot = visible
+        .filter((f) => f.Feature_Type === "point"
+          && ["meter", "joint", "feederpoint", "linkbox", "spannode",
+            "poc", "substation"].includes(f.Feature_Role))
+        .map((f) => {
+          const at = f.Attributes?.Span_Anchor ?? f.Geometry?.[0];
+          return { f, at, d: at ? Math.hypot(at[0] - point[0], at[1] - point[1]) : Infinity };
+        })
+        .filter((x) => x.d <= reach)
+        .sort((a, b) => a.d - b.d)[0];
+
+      const from = spot?.at ?? point;
       const near = traceFollow(spec.layerKey, spec.kind)
-        .map((line) => ({ line, hit: nearestOnPolyline(point, line.Geometry || []) }))
+        .map((line) => ({ line, hit: nearestOnPolyline(from, line.Geometry || []) }))
         .filter((x) => x.hit && x.hit.d <= reach)
         .sort((a, b) => a.hit.d - b.hit.d);
 
-      if (near.length > 1 && spec.kind !== "trench") {
-        setJointPick({
-          purpose: "trace",
-          spec,
-          at: point,
-          options: near.map(({ line, hit }) => ({
-            id: Number(line.Feature_ID),
-            at: hit.q,
-            label: line.Label ?? "Feeder",
-            circuit: line.Attributes?.Circuit_Name
-              ?? (line.Attributes?.Circuit_ID != null
-                ? `Circuit ${line.Attributes.Circuit_ID}` : null),
-            way: line.Attributes?.Link_Way ?? null,
-            colour: feederPlan.get(Number(line.Feature_ID))?.colour
-              ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
-              ?? null,
-            metres: drawnLength(line).toFixed(1),
-          })),
-        });
+      if (!near.length && spec.kind !== "trench") {
+        setError("Nothing to trace there \u2014 click a cable, a joint, a meter "
+          + "or a node on the network.");
         return;
       }
-      runTrace(point, { ...spec, startLineId: near[0]?.line?.Feature_ID ?? null });
+      /* Everything the trace needs that the click did not say. */
+      setTracePick({
+        at: from,
+        layerKey: spec.layerKey,
+        kind: spec.kind,
+        direction: spec.direction,
+        lineId: near[0]?.line?.Feature_ID ?? null,
+      });
       return;
     }
 
@@ -21184,7 +21207,7 @@ export default function GISCanvasPage() {
                       <MenuItem label={traceFrom ? "Click the line\u2026 (Esc to stop)" : "Trace from a Point"}
                         active={!!traceFrom}
                         hint={hasTrench
-                          ? "Follow the network from a point \u2014 upstream, downstream or both"
+                          ? "Click a cable, joint, meter or node \u2014 upstream, downstream or both"
                           : "Nothing drawn yet to trace"}
                         disabled={!projectId || !hasTrench}
                         onClick={() => {
@@ -22277,7 +22300,21 @@ export default function GISCanvasPage() {
 
             Small and out of the way rather than a modal: the answer is
             ON the drawing, and a dialog over it would cover the thing
-            being asked about. */
+            being asked about.
+
+            ── Only once a trace is running ──
+
+            Setting one UP is a different moment: the three things that
+            are not yet known \u2014 what to follow, which way, and which
+            cable where several share the point \u2014 are one decision, and
+            they were split between this panel and a separate modal, so
+            starting a trace meant answering in two places with the
+            drawing in between. That question is asked once, in one
+            dialog, when the click lands.
+
+            This stays for changing a trace already on screen, where the
+            point is settled and only the reading of it is being
+            adjusted. */
         <div className="gis-trace-panel" role="dialog" aria-label="Trace">
           <div className="gt-p-head">
             <strong>Trace</strong>
@@ -22288,9 +22325,15 @@ export default function GISCanvasPage() {
           </div>
 
           {traceFrom && !traceRun && (
-            <p className="hint">Click the line to trace from.</p>
+            <p className="hint">Click a cable, joint, meter or node to trace from.</p>
           )}
 
+          {/* The controls belong to a trace that is running. Before one
+              is, the dialog asks \u2014 offering the same buttons here as
+              well would be two places to answer one question, which is
+              what this change was made to stop. */}
+          {traceRun && (
+          <>
           <div className="gt-p-row">
             {/* Named for the utility it was started from: "Cable" on
                 electric, "Pipe" on gas and water, because that is what
@@ -22332,6 +22375,8 @@ export default function GISCanvasPage() {
               );
             })}
           </div>
+          </>
+          )}
 
           {traceRun && (
             <>
@@ -22355,6 +22400,134 @@ export default function GISCanvasPage() {
           )}
         </div>
       )}
+
+      {tracePick && (() => {
+        /* The cables under the click, for the kind currently chosen.
+           Worked out here rather than stored, so switching between
+           Cable and Trench re-asks the drawing instead of showing the
+           list from the other one. */
+        const reach = Math.max(2, HIT_PX / (view.scale || 1));
+        const opts = tracePick.kind === "trench" ? [] : traceFollow(
+          tracePick.layerKey, tracePick.kind,
+        )
+          .map((line) => ({ line, hit: nearestOnPolyline(tracePick.at, line.Geometry || []) }))
+          .filter((x) => x.hit && x.hit.d <= reach)
+          .sort((a, b) => a.hit.d - b.hit.d);
+
+        const chosen = opts.find((o) =>
+          Number(o.line.Feature_ID) === Number(tracePick.lineId)) ?? opts[0];
+        const onTrench = tracePick.kind === "trench";
+
+        return (
+          <div className="cpick-backdrop" onClick={() => setTracePick(null)}>
+            <div className="cpick" onClick={(e) => e.stopPropagation()}
+              role="dialog" aria-label="Trace">
+              <h3>Trace from here</h3>
+
+              {/* What is being followed. Named for the utility it was
+                  started from: "Cable" on electric, "Pipe" on gas and
+                  water, because that is what is in the ground. */}
+              <div className="gt-p-row">
+                {[["cable", tracePick.layerKey === "electric" ? "Cable" : "Pipe"],
+                  ["trench", "Trench"]].map(([k, label]) => (
+                  <button key={k}
+                    className={`gt-p-b${tracePick.kind === k ? " on" : ""}`}
+                    onClick={() => setTracePick({
+                      ...tracePick, kind: k,
+                      direction: k === "trench" ? "both" : tracePick.direction,
+                    })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* Which way. A trench is fed from nowhere, so upstream
+                  and downstream are not questions it can answer \u2014
+                  greyed with the reason rather than hidden, because a
+                  control that disappears looks like a fault. */}
+              <div className="gt-p-row">
+                {[["up", "Upstream"], ["down", "Downstream"],
+                  ["both", "Both ways"]].map(([k, label]) => (
+                  <button key={k} disabled={onTrench && k !== "both"}
+                    title={onTrench && k !== "both"
+                      ? "A trench is not fed from anywhere, so it has no upstream"
+                      : undefined}
+                    className={`gt-p-b${tracePick.direction === k ? " on" : ""}`}
+                    onClick={() => setTracePick({ ...tracePick, direction: k })}>
+                    {label}
+                  </button>
+                ))}
+              </div>
+
+              {/* And which one, where several lie under the pointer.
+                  Cables sharing a trench are stored with the same
+                  geometry, so no measuring can answer it. Shown even
+                  when there is only one, so the dialog says what it is
+                  about to follow rather than leaving it to be
+                  guessed. */}
+              {!onTrench && (
+                <>
+                  <p className="hint">
+                    {opts.length > 1
+                      ? `${opts.length} cables run through that point \u2014 which one?`
+                      : opts.length === 1 ? "Following this cable:"
+                        : "Nothing of that kind at that point."}
+                  </p>
+                  <div className="cpick-list">
+                    {opts.map(({ line }) => {
+                      const on = chosen && line.Feature_ID === chosen.line.Feature_ID;
+                      return (
+                        <button key={line.Feature_ID}
+                          className={`cpick-item${on ? " on" : ""}`}
+                          onClick={() => setTracePick({
+                            ...tracePick, lineId: line.Feature_ID })}>
+                          <span className="jp-sw" style={{
+                            background: feederPlan.get(Number(line.Feature_ID))?.colour
+                              ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
+                              ?? "#94a3b8",
+                          }} />
+                          <span className="cpick-name">
+                            {line.Label ?? "Feeder"}
+                            {line.Attributes?.Link_Way != null
+                              ? ` \u00b7 output ${line.Attributes.Link_Way}` : ""}
+                          </span>
+                          <span className="cpick-n">
+                            {line.Attributes?.Circuit_Name
+                              ?? (line.Attributes?.Circuit_ID != null
+                                ? `Circuit ${line.Attributes.Circuit_ID}` : "no circuit")}
+                            {" \u00b7 "}
+                            {drawnLength(line).toFixed(1)} m
+                          </span>
+                        </button>
+                      );
+                    })}
+                  </div>
+                </>
+              )}
+
+              <div className="cpick-actions">
+                <button className="btn ghost" onClick={() => setTracePick(null)}>
+                  Cancel
+                </button>
+                <button className="btn accent"
+                  disabled={!onTrench && !chosen}
+                  onClick={() => {
+                    const p = tracePick;
+                    setTracePick(null);
+                    runTrace(p.at, {
+                      layerKey: p.layerKey,
+                      kind: p.kind,
+                      direction: p.direction,
+                      startLineId: chosen?.line?.Feature_ID ?? null,
+                    });
+                  }}>
+                  Trace
+                </button>
+              </div>
+            </div>
+          </div>
+        );
+      })()}
 
       {jointPick && (
         /* ── Which cable is the joint going on? ──

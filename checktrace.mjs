@@ -234,6 +234,73 @@ const world = [
   if (r2.lineIds.includes(1)) fail("told cable 2, it walked cable 1");
 }
 
+/* Started from whatever is on the network, and asked which cable
+   whenever more than one lies there.
+
+   The click looked for a LINE, so tracing from the thing somebody is
+   actually looking at \u2014 the meter whose supply they are chasing, the
+   joint they suspect \u2014 worked only by accident, when a cable happened
+   to lie within reach of where they clicked. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("if (traceFrom) {");
+  const fn = at < 0 ? "" : canvas.slice(at, at + 3000);
+  if (!fn) fail("the trace start handler has gone");
+  else {
+    for (const role of ["meter", "joint", "feederpoint", "linkbox", "spannode"]) {
+      if (!new RegExp(`"${role}"`).test(fn)) {
+        fail(`a trace cannot be started from a ${role}`);
+      }
+    }
+    /* From the FEATURE's position, not the click: a marker nudged clear
+       for legibility is still the node it stands for. */
+    if (!/f\.Attributes\?\.Span_Anchor \?\? f\.Geometry\?\.\[0\]/.test(fn)) {
+      fail("a nudged marker traces from where it was drawn rather than from "
+        + "the point on the network it stands for");
+    }
+    if (!/const from = spot\?\.at \?\? point;/.test(fn)) {
+      fail("the trace starts at the raw click rather than at what was clicked");
+    }
+    /* ── Asked once, in one dialog ──
+
+       What is being followed, which way, and which cable where several
+       share the point are ONE decision. They were a floating panel and
+       a separate modal, so starting a trace meant answering in two
+       places with the drawing in between. */
+    if (!/setTracePick\(\{/.test(fn)) {
+      fail("the click does not open the trace dialog");
+    }
+    const dlg = canvas.slice(canvas.indexOf("{tracePick && (() => {"),
+      canvas.indexOf("{jointPick && ("));
+    if (!dlg) fail("the trace dialog has gone");
+    else {
+      /* All three questions in it. */
+      for (const [what, probe] of [
+        ["what is followed", '["trench", "Trench"]'],
+        ["which way", '["both", "Both ways"]'],
+        ["which cable", "cables run through that point"],
+      ]) {
+        if (!dlg.includes(probe)) fail(`the dialog does not ask ${what}`);
+      }
+      /* The cable list is re-read when the kind changes, or switching
+         to Trench and back shows the list from the other one. */
+      if (!/const opts = tracePick\.kind === "trench" \? \[\] : traceFollow\(/.test(dlg)) {
+        fail("the cable list is stored rather than re-read, so it goes stale "
+          + "when the kind is changed");
+      }
+      /* And it shows what it will follow even when there is only one,
+         rather than leaving it to be guessed. */
+      if (!/opts\.length === 1 \? "Following this cable:"/.test(dlg)) {
+        fail("with one cable the dialog does not say which it will follow");
+      }
+    }
+    /* And says so plainly when the click was on nothing. */
+    if (!/Nothing to trace there/.test(fn)) {
+      fail("a click on nothing starts a trace from somewhere arbitrary");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

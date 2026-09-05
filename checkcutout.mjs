@@ -68,8 +68,13 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
 /* Drawn at the meter, behind the same switch as the other levels. */
 {
+  /* To the end of the block, not a fixed number of characters: the
+     block grew when the figure was made draggable and a 1600-character
+     window stopped short of the halo, reporting two things missing that
+     were there. Fault 33, again. */
   const at = canvas.indexOf("if (isMeter && cutoutAtMeter.size");
-  const draw = at < 0 ? "" : canvas.slice(at, at + 1600);
+  const ends = canvas.indexOf("if (isMeter && (circuitRings", at);
+  const draw = at < 0 ? "" : canvas.slice(at, ends > at ? ends : at + 4000);
   if (!draw) fail("the cut-out figure is never drawn");
   else {
     /* ── The gate that actually controls it ──
@@ -110,9 +115,50 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
       fail("the limit does not include the service allowance, so a figure "
         + "that includes the service is judged against the main's alone");
     }
-    if (!/ctx\.strokeText\(text, tx, p\.y\)/.test(draw)) {
+    if (!/ctx\.strokeText\(text, tx, ty\)/.test(draw)) {
       fail("no halo, so the figure is unreadable over the plan beneath it");
     }
+  }
+}
+
+/* ── It says which kind of figure it is, and it moves ──
+
+   A percentage beside a meter and a percentage beside a stop looked
+   identical apart from the impedance, and nothing said one includes a
+   service and the other does not. Two numbers a few metres apart then
+   read as disagreeing when they agree \u2014 the node figure plus the
+   service IS the cut-out figure. Reported as "how can 58 be worse than
+   59", which it was not.
+
+   And it moves: on a terrace the meters sit a few metres apart and the
+   figures land on the plan and on each other. */
+{
+  const at = canvas.indexOf("if (isMeter && cutoutAtMeter.size");
+  const ends = canvas.indexOf("if (isMeter && (circuitRings", at);
+  const draw = at < 0 ? "" : canvas.slice(at, ends);
+
+  if (!/% cut-out`/.test(draw)) {
+    fail("the figure does not say what kind it is, so it reads as a node "
+      + "level that disagrees with the node beside it");
+  }
+  /* Its OWN offset. A meter can carry a name and a cut-out figure, and
+     one offset would move the pair. */
+  if (!/f\.Attributes\?\.Cutout_Offset/.test(draw)) {
+    fail("the figure cannot be moved off the plan");
+  }
+  if (!/Cutout_Offset: moved/.test(canvas)) {
+    fail("dragging the figure writes nothing");
+  }
+  if (!/lab\.kind === "cutout"/.test(canvas)) {
+    fail("the drag does not know where the figure started, so it jumps on "
+      + "the first movement");
+  }
+  if (!/kind: "cutout"/.test(draw)) {
+    fail("the figure is not registered as something that can be picked up");
+  }
+  /* Moved clear, it still says which meter it belongs to. */
+  if (!/ctx\.lineTo\(tx - 2, ty\)/.test(draw)) {
+    fail("a figure dragged clear has no leader back to its meter");
   }
 }
 

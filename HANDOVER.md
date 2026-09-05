@@ -2120,6 +2120,24 @@ same zoom, and red only past the limit — the main's allowance plus the
 service's, because the figure includes the service. Every figure in red
 is a drawing nobody reads.
 
+**A figure has to say which figure it is.** A percentage beside a meter
+and a percentage beside a stop looked identical apart from the
+impedance, and nothing said that one includes a service and the other
+does not. Two numbers a few metres apart then read as disagreeing when
+they agree — the node figure plus the service IS the cut-out figure.
+Reported as *"how can plot 58 be worse than 59"*, and it was not: 58's
+was a cut-out and 59's neighbour was a node.
+
+It reads `5.94% cut-out` now. The word costs a little width and settles
+the question on the drawing rather than in somebody's head.
+
+**And it moves.** On a terrace the meters sit a few metres apart and the
+figures land on the plan and on each other. `Cutout_Offset`, its own —
+a meter can carry a name and a cut-out figure, and one offset would move
+the pair — with a leader back to the meter so a figure dragged clear
+still says which plot it belongs to. Saved by the label drag's existing
+path, which writes the whole attributes object.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

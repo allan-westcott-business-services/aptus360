@@ -4581,20 +4581,68 @@ export default function GISCanvasPage() {
               const svc = Number(lookups?.vdSettings?.[0]?.Max_Service_Volt_Drop_Pct);
               const lim = (Number.isFinite(main) ? main : Infinity)
                 + (Number.isFinite(svc) ? svc : 0);
-              const text = `${co.pct.toFixed(2)}%`;
+              /* ── Said to be a cut-out figure ──
+
+                 A percentage beside a meter and a percentage beside a
+                 stop looked identical apart from the impedance, and
+                 nothing said that one includes a service and the other
+                 does not. Two numbers a few metres apart then read as
+                 disagreeing when they agree: the node figure plus the
+                 service IS the cut-out figure.
+
+                 So this one says what it is. The word costs a little
+                 width and settles the question on the drawing rather
+                 than in somebody's head. */
+              const text = `${co.pct.toFixed(2)}% cut-out`;
               ctx.save();
               ctx.font = "600 11px system-ui, sans-serif";
               ctx.textAlign = "left";
               ctx.textBaseline = "middle";
-              const tx = p.x + r + 5;
+              const w = ctx.measureText(text).width;
+
+              /* ── And it moves ──
+
+                 On a terrace the meters sit a few metres apart and the
+                 figures land on the plan and on each other. Its own
+                 offset, like the node levels: `Cutout_Offset`, dragged
+                 by the same machinery, with a leader back to the meter
+                 so a figure moved clear still says which plot it
+                 belongs to. */
+              const off = f.Attributes?.Cutout_Offset;
+              const dragged = Array.isArray(off) && off.length === 2;
+              const lp = dragged
+                ? toPx([f.Geometry[0][0] + off[0], f.Geometry[0][1] + off[1]])
+                : null;
+              const tx = dragged ? lp.x : p.x + r + 5;
+              const ty = dragged ? lp.y : p.y;
+
+              if (dragged) {
+                ctx.setLineDash([2, 3]);
+                ctx.strokeStyle = "rgba(15,23,42,.4)";
+                ctx.lineWidth = 1;
+                ctx.beginPath();
+                ctx.moveTo(p.x, p.y);
+                ctx.lineTo(tx - 2, ty);
+                ctx.stroke();
+                ctx.setLineDash([]);
+              }
+
               /* A halo, because this lands over the plan and the plots
                  beneath it are line work. */
               ctx.lineWidth = 3;
               ctx.strokeStyle = "#fff";
-              ctx.strokeText(text, tx, p.y);
+              ctx.strokeText(text, tx, ty);
               ctx.fillStyle = co.pct > lim ? "#b91c1c" : "#334155";
-              ctx.fillText(text, tx, p.y);
+              ctx.fillText(text, tx, ty);
               ctx.restore();
+
+              labelHits.current.push({
+                id: f.Feature_ID, idx: null, kind: "cutout",
+                anchor: f.Geometry[0], txt: text,
+                cx: tx + w / 2, cy: ty,
+                x: tx - 2, y: ty - 7, w: w + 4, h: 14,
+                spin: 0,
+              });
             }
           }
 
@@ -6698,6 +6746,8 @@ export default function GISCanvasPage() {
             ? f?.Attributes?.Pressure_Offset
             : lab.kind === "levels"
               ? f?.Attributes?.Levels_Offset
+              : lab.kind === "cutout"
+                ? f?.Attributes?.Cutout_Offset
               : lab.idx != null
               ? f?.Attributes?.Labels?.[lab.idx]?.off
               : f?.Attributes?.Label_Offset) ?? [0, 0],
@@ -7776,6 +7826,11 @@ export default function GISCanvasPage() {
         }
         if (d.labelKind === "levels") {
           return { ...f, Attributes: { ...f.Attributes, Levels_Offset: moved } };
+        }
+        /* Its own, not the node's: a meter can carry both a name and a
+           cut-out figure, and one offset would move the pair. */
+        if (d.labelKind === "cutout") {
+          return { ...f, Attributes: { ...f.Attributes, Cutout_Offset: moved } };
         }
         if (d.labelIdx != null && Array.isArray(f.Attributes?.Labels)) {
           const list = f.Attributes.Labels.map((pl, i) =>
@@ -16595,8 +16650,26 @@ export default function GISCanvasPage() {
         const again = await listGis(projectId);
         setFeatures(again.features || []);
       } else setFeatures(after);
+      /* ── Said when the cables come out bare ──
+
+         An electric service is sized from the scope's "Service cable"
+         default, and with none set the pass lays every cable with no
+         size at all. Nothing said so, and nothing downstream refuses:
+         the levels compute the service leg against no conductor, which
+         is a contribution of ZERO, so every cut-out figure comes out
+         flattering and complete-looking.
+
+         On this site that meant eighty-four services set by hand after
+         the fact, and the levels quietly optimistic until they were.
+         The pass knows at the moment it happens; it should say so. */
+      const bare = utility === "electric"
+        && made.length
+        && defaultsFor("elec_service").VD_Cable_Size_ID == null;
+
       setStatus(`${made.length} ${utility} service(s) laid`
         + (holdRows.length ? ` \u00b7 ${holdRows.length} joint(s) updated` : "")
+        + (bare ? " \u00b7 no cable size \u2014 set Service cable on the design's "
+          + "electric scope, or the levels count the service as nothing" : "")
         /* Said, because it is a fitting on the take-off and work for a
            gang. Zero where they were all already there, which is the
            ordinary case on a second run and worth being able to tell

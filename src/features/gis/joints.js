@@ -938,7 +938,14 @@ export function withoutCable(joint, cableId) {
 
    So the vertex that was actually dragged is asked about, by position.
    The caller knows which one it moved; nothing here has to guess. */
-export function jointAtPoint(point, joints = [], reach = 0.35) {
+/* How near a point must be to a fitting to count as put on it, and
+   therefore how near it stays to count as still held. One number, and
+   exported, because the recording and the following are the same
+   question asked twice \u2014 written down at one distance and honoured at
+   a smaller one, a vertex was glued on paper and adrift on the drawing. */
+export const JOIN_REACH_M = 0.35;
+
+export function jointAtPoint(point, joints = [], reach = JOIN_REACH_M) {
   if (!Array.isArray(point)) return null;
   let best = null;
   for (const j of joints) {
@@ -951,7 +958,7 @@ export function jointAtPoint(point, joints = [], reach = 0.35) {
   return best ? best.joint : null;
 }
 
-export function jointAtEnd(line, joints = [], reach = 0.35) {
+export function jointAtEnd(line, joints = [], reach = JOIN_REACH_M) {
   const g = line?.Geometry || [];
   if (g.length < 2) return null;
   const ends = [g[0], g[g.length - 1]];
@@ -979,7 +986,7 @@ export function jointAtEnd(line, joints = [], reach = 0.35) {
 
    Ends only, for the reason jointAtEnd gives: a cable passing across a
    fitting is not joined to it. */
-export function cableEndsAt(joint, features = [], reach = 0.35) {
+export function cableEndsAt(joint, features = [], reach = JOIN_REACH_M) {
   const at = joint?.Attributes?.Span_Anchor ?? joint?.Geometry?.[0];
   if (!Array.isArray(at)) return [];
   return (features || []).filter((f) => {

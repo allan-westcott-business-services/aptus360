@@ -104,6 +104,7 @@ import {
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
   jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
+  JOIN_REACH_M,
 } from "./joints.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -7214,6 +7215,11 @@ export default function GISCanvasPage() {
              had: a meter dragged still takes its service end with it. */
           if (isJoint && line.Layer_Key !== pt.Layer_Key) continue;
 
+          /* Any joint, not only the ones that join ends: a cable
+             snapped to a service joint is held by it too, and the
+             record says so whatever kind of fitting it is. */
+          const told = new Set(jointCables(pt));
+
           /* ── And on its own circuit ──
 
              Two circuits' cables share a trench now, so both mains run
@@ -7226,10 +7232,27 @@ export default function GISCanvasPage() {
              only lines on the same one. Either side naming none keeps
              the old behaviour, so hand-placed fittings and older
              drawings move exactly as they did. */
-          const ptCid = pt.Attributes?.Circuit_ID;
-          const lineCid = line.Attributes?.Circuit_ID;
-          if (ptCid != null && lineCid != null
-            && Number(ptCid) !== Number(lineCid)) continue;
+          /* ── What the fitting SAYS it holds settles it ──
+
+             Asked before any of the guesses below, and it answers both
+             ways: named, the cable follows; not named while others are,
+             it does not.
+
+             The circuit guard underneath is an inference \u2014 a good one,
+             for cables nobody has spoken about \u2014 and it was overruling
+             the record. A joint carrying one circuit's stamp refused to
+             move a cable from another that somebody had deliberately
+             joined to it, which is the fitting disagreeing with the
+             person who placed it. */
+          const namedHere = told.has(Number(line.Feature_ID));
+          if (told.size && !namedHere) continue;
+
+          if (!namedHere) {
+            const ptCid = pt.Attributes?.Circuit_ID;
+            const lineCid = line.Attributes?.Circuit_ID;
+            if (ptCid != null && lineCid != null
+              && Number(ptCid) !== Number(lineCid)) continue;
+          }
 
           /* ── What it is connected to, where that is recorded ──
 
@@ -7322,10 +7345,7 @@ export default function GISCanvasPage() {
              Where the joint was told, the telling is the answer. Where
              it was not — a joint from before this, or one the build
              made — the older rules below still apply. */
-          /* Any joint, not only the ones that join ends: a cable
-             snapped to a service joint is held by it too, and the
-             record says so whatever kind of fitting it is. */
-          const told = new Set(jointCables(pt));
+
           if (told.size) {
             if (!told.has(Number(line.Feature_ID))) continue;
           } else {
@@ -7428,8 +7448,21 @@ export default function GISCanvasPage() {
             ? g.map((_, i) => i)
             : [0, g.length - 1];
 
+          /* ── Followed at the distance it was joined at ──
+
+             A vertex is recorded as joined within JOIN_REACH_M and was
+             followed within CONNECT_M, which is smaller. A vertex
+             snapped a third of a metre from the fitting was therefore
+             written down as held and then never moved with it: glued
+             on paper, adrift on the drawing.
+
+             Two numbers for one question. The record's own reach is the
+             answer for a cable the fitting names; everything else keeps
+             the tighter one, which is what "touching" means for a cable
+             nobody has spoken about. */
+          const near = namedHere ? JOIN_REACH_M : CONNECT_M;
           for (const idx of candidates) {
-            if (Math.hypot(g[idx][0] - at[0], g[idx][1] - at[1]) <= CONNECT_M) {
+            if (Math.hypot(g[idx][0] - at[0], g[idx][1] - at[1]) <= near) {
               drag.current.rubber.push({ id: line.Feature_ID, index: idx });
               if (!drag.current.origin[line.Feature_ID]) {
                 drag.current.origin[line.Feature_ID] = g;

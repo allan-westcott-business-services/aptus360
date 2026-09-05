@@ -1759,6 +1759,27 @@ branches finishing early is the trace showing which way is further.
     line", and widening it to make the middle work would make a click in
     a field trace the nearest cable in the county.
 
+55. **Two numbers for one question.** A vertex was RECORDED as joined
+    to a fitting within 0.35 m and FOLLOWED within `CONNECT_M`, 0.25.
+    So a vertex snapped a third of a metre from the joint was written
+    down as held and then never moved with it — **glued on paper and
+    adrift on the drawing**, which is worse than not being glued at all,
+    because the editor says it is connected.
+
+    `JOIN_REACH_M` is the one number now, exported from joints.js and
+    used by both. Everything the fitting does NOT name keeps the tighter
+    tolerance, which is what "touching" means for a cable nobody has
+    spoken about.
+
+    And the record is consulted BEFORE the guesses. The circuit guard —
+    a good inference for cables nobody has spoken about — was overruling
+    it, so a joint carrying one circuit's stamp refused to move a cable
+    from another that somebody had deliberately joined to it: the
+    fitting disagreeing with the person who placed it.
+
+    **Where a fact was stated, state-beats-infer, and the tolerance that
+    recorded it is the tolerance that honours it.**
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

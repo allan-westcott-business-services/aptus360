@@ -13,7 +13,7 @@
    stops a cable coming adrift from its fitting by accident. */
 import { readFileSync } from "node:fs";
 import { jointCables, holdsCable, withCable, withoutCable, jointAtEnd,
-  jointAtPoint, cableEndsAt } from "./src/features/gis/joints.js";
+  jointAtPoint, cableEndsAt, JOIN_REACH_M } from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -193,6 +193,41 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   if (!/\|\| \(isJoint && told\.has\(Number\(line\.Feature_ID\)\)\)/.test(canvas)) {
     fail("a cable the joint says it holds follows only by its ends, so a "
       + "main joined at its middle is left behind");
+  }
+}
+
+// 5. Followed at the distance it was joined at.
+//
+//    A vertex was RECORDED as joined within 0.35 m and FOLLOWED within
+//    0.25 m. So a vertex snapped a third of a metre from the fitting
+//    was written down as held and then never moved with it: glued on
+//    paper, adrift on the drawing. Two numbers for one question.
+{
+  if (JOIN_REACH_M <= 0.25) {
+    fail("the join reach is no wider than the touch tolerance, so the two "
+      + "cannot be told apart \u2014 this test proves nothing");
+  }
+  const j = joint();
+  /* Recorded at a distance the old follow test would have rejected. */
+  if (!jointAtPoint([50 + 0.3, 0], [j])) {
+    fail("a vertex a third of a metre from the fitting is not recorded as "
+      + "joined, so this fault cannot arise \u2014 check the fixture");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const near = namedHere \? JOIN_REACH_M : CONNECT_M;/.test(canvas)) {
+    fail("a cable the fitting NAMES is followed at the tighter touch "
+      + "tolerance, so one joined at arm's length is left behind");
+  }
+  /* And the record is asked BEFORE the guesses, or a joint carrying one
+     circuit's stamp refuses to move a cable from another that somebody
+     deliberately joined to it. */
+  if (!/const namedHere = told\.has\(Number\(line\.Feature_ID\)\);\n\s*if \(told\.size && !namedHere\) continue;/.test(canvas)) {
+    fail("the record is not consulted before the circuit guard, so an "
+      + "inference overrules what somebody stated");
+  }
+  if (!/if \(!namedHere\) \{\n\s*const ptCid/.test(canvas)) {
+    fail("the circuit guard still applies to a cable the fitting names");
   }
 }
 

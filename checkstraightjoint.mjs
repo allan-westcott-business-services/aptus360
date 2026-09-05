@@ -271,7 +271,10 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
    so the cable and the stop standing on it cannot disagree. */
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/Way_Colours\?\.\[String\(way\)\]/.test(canvas)) {
+  /* Through the shared rule now: the drawing and the "objects here"
+     picker both ask, and working it out in each place is how the
+     swatch came to show amber for a point drawn pink. */
+  if (!/wayColourOf\(f, features\)/.test(canvas)) {
     fail("a feeder point on a link box output is drawn in the circuit's "
       + "colour, so it reads as belonging to something else");
   }

@@ -63,3 +63,28 @@ export function outsideWay(feature, iso, byPlot = new Map()) {
   if (!mine) return false;
   return mine.box === Number(iso.box) && mine.way !== Number(iso.way);
 }
+
+/* ── The colour a stop on an output is drawn in ──
+
+   A feeder end point on a link box output wears that output's colour,
+   not the circuit's: a stop on a coloured output drawn in the circuit's
+   colour reads as belonging to something else, which is the whole
+   reason the outputs are coloured.
+
+   Taken from the box's own `Way_Colours` — where the runs get theirs —
+   so the cable, the stop standing on it and any list naming it cannot
+   disagree. Null where the point is not on an output, which is the
+   caller's cue to fall back to the circuit.
+
+   Here rather than in the canvas because two places ask: the drawing,
+   and the "objects here" picker. The picker asked the STYLE and got
+   amber for every one of them — on a dialog whose whole job is telling
+   apart things that lie on top of each other. */
+export function wayColourOf(feature, features = []) {
+  const boxId = feature?.Attributes?.Link_Box_ID;
+  const way = feature?.Attributes?.Link_Way;
+  if (boxId == null || way == null) return null;
+  const box = (features || []).find((x) => x.Feature_Role === "linkbox"
+    && Number(x.Feature_ID) === Number(boxId));
+  return box?.Attributes?.Way_Colours?.[String(way)] || null;
+}

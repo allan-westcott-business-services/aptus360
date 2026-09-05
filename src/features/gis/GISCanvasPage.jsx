@@ -42,7 +42,7 @@ import { originMissing,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import { drawnLength, runLength, hasMeasured } from "./lengths.js";
-import { metersByPlot, outsideWay } from "./linkWays.js";
+import { metersByPlot, outsideWay, wayColourOf } from "./linkWays.js";
 
 /* What a line's label says about its length: the measured figure where
    somebody entered one, marked so the drawing admits the number is not
@@ -5823,14 +5823,7 @@ export default function GISCanvasPage() {
          which is where the runs get theirs, so the cable and the stop
          on it cannot disagree. */
       const circuitColour = f.Feature_Role === "feederpoint"
-        ? ((() => {
-          const boxId = f.Attributes?.Link_Box_ID;
-          const way = f.Attributes?.Link_Way;
-          if (boxId == null || way == null) return null;
-          const box = features.find((x) => x.Feature_Role === "linkbox"
-            && Number(x.Feature_ID) === Number(boxId));
-          return box?.Attributes?.Way_Colours?.[String(way)] || null;
-        })()
+        ? (wayColourOf(f, features)
           || ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
           || null)
         : null;
@@ -22049,9 +22042,17 @@ export default function GISCanvasPage() {
                            identical amber squares, and the one thing
                            that told them apart on screen was missing
                            from the list asking which you meant. */
+                        /* A stop on an output wears the output's
+                           colour on the drawing, so the swatch beside
+                           it has to as well \u2014 it showed amber for a
+                           point drawn pink, on a dialog whose whole job
+                           is telling apart things lying on top of each
+                           other. Same rule the canvas uses, from
+                           linkWays.js, so the two cannot drift. */
                         background: f.Feature_Role === "plot"
                           ? seedStyle(f, false).colour
                           : (feederPlan.get(Number(f.Feature_ID))?.colour
+                            ?? wayColourOf(f, features)
                             ?? ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
                             ?? styleFor(f).colour),
                         borderRadius: f.Feature_Type === "point" ? "50%" : "2px",

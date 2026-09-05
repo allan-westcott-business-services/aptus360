@@ -13,7 +13,7 @@
    from where it stands is the geometry-guessing this repo keeps being
    bitten by. */
 import { readFileSync } from "node:fs";
-import { wayOf, outsideWay, metersByPlot } from "./src/features/gis/linkWays.js";
+import { wayOf, outsideWay, metersByPlot, wayColourOf } from "./src/features/gis/linkWays.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -105,6 +105,51 @@ const hidden = (f) => outsideWay(f, iso, byPlot);
   }
   if (!/setIsolatedWay\(null\);/.test(canvas)) {
     fail("Show everything does not end an output isolation");
+  }
+}
+
+/* ── The colour of a stop on an output ──
+
+   A feeder end point on a link box output wears that output's colour,
+   not the circuit's: a stop on a coloured output drawn in the circuit's
+   colour reads as belonging to something else.
+
+   One rule, because two places ask — the drawing and the "objects here"
+   picker. The picker asked the STYLE and showed amber for a point drawn
+   pink, on a dialog whose whole job is telling apart things lying on
+   top of each other. */
+{
+  const box = { Feature_ID: 10, Feature_Role: "linkbox",
+    Attributes: { Way_Colours: { 1: "#f50ad6", 2: "#fa9e00" } } };
+  const fep = (way) => ({ Feature_Role: "feederpoint",
+    Attributes: { Circuit_ID: 3, Link_Box_ID: 10, Link_Way: way } });
+
+  if (wayColourOf(fep(1), [box]) !== "#f50ad6") {
+    fail("a stop on output 1 does not take output 1's colour");
+  }
+  if (wayColourOf(fep(2), [box]) === wayColourOf(fep(1), [box])) {
+    fail("two outputs' stops come out the same colour");
+  }
+  /* Null, not a guess, so the caller falls back to the circuit. */
+  if (wayColourOf({ Attributes: { Circuit_ID: 3 } }, [box]) != null) {
+    fail("a point that is not on an output was given an output's colour");
+  }
+  if (wayColourOf(fep(1), []) != null) {
+    fail("a point whose box has gone was given a colour from nowhere");
+  }
+  if (wayColourOf(fep(4), [box]) != null) {
+    fail("an output with no colour set was given one anyway");
+  }
+
+  /* And both readers go through it. */
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const uses = canvas.split("wayColourOf(").length - 1;
+  if (uses < 2) {
+    fail(`${uses} place(s) use the shared rule \u2014 the drawing and the picker `
+      + "both need it, or the swatch and the symbol disagree");
+  }
+  if (/const boxId = f\.Attributes\?\.Link_Box_ID;/.test(canvas)) {
+    fail("the canvas still works the output's colour out for itself");
   }
 }
 

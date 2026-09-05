@@ -1596,6 +1596,25 @@ order and the removed item). **A check that names a menu item is a check
 that will fail when the menu is reorganised** — which is right, so long
 as whoever reorganises reads it rather than deleting it.
 
+**One rule for the colour of a stop.** A feeder end point on a link box
+output wears that output's colour, not the circuit's. Two places ask —
+the drawing and the "objects here" picker — and the picker asked the
+STYLE, so it showed amber for a point drawn pink, on a dialog whose
+whole job is telling apart things lying on top of each other.
+
+`wayColourOf` in linkWays.js is the one answer, driven by
+`checklinkwayisolate`, and `checkstraightjoint` holds that the canvas
+goes through it rather than working it out again. Null where the point
+is not on an output, which is the caller's cue to fall back to the
+circuit — a colour invented for a point that has none would be worse
+than no colour at all.
+
+The general shape, now seen enough times to state: **a swatch beside a
+thing must be the colour that thing is drawn in.** Anywhere a list
+names features, the colour is doing the work of telling them apart, and
+a list that computes it differently from the canvas is a list that
+lies.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

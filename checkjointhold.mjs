@@ -230,6 +230,14 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   if (!/if \(!namedHere\) \{\n\s*const ptCid/.test(canvas)) {
     fail("the circuit guard still applies to a cable the fitting names");
   }
+  /* And neither does the nearest-feeder narrowing. It picks the single
+     nearest main, which is right for a fitting nobody has spoken about
+     and wrong for one that names its cables: where two circuits share a
+     trench it threw away the very cable the joint holds. */
+  if (!/if \(!namedHere && jointFeeder !== undefined/.test(canvas)) {
+    fail("the nearest-feeder guess overrules the record, so a joint can "
+      + "refuse to move the cable it says it holds");
+  }
 }
 
 // 6. A joint the BUILD placed holds what the build joined.

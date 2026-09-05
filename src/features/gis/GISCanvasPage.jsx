@@ -7426,7 +7426,18 @@ export default function GISCanvasPage() {
 
           }
 
-          if (jointFeeder !== undefined && isFeeder && !joinsEnds
+          /* ── And this guess does not overrule the record either ──
+
+             `jointFeeder` picks the single nearest main, which is right
+             for a fitting nobody has spoken about. It ran AFTER the
+             record, so where two circuits share a trench it could throw
+             away the very cable the joint names \u2014 the fitting saying
+             "I hold this one" and the drag answering "the other one is
+             nearer".
+
+             Same rule as the circuit guard above: stated beats
+             inferred. */
+          if (!namedHere && jointFeeder !== undefined && isFeeder && !joinsEnds
             && Number(line.Feature_ID) !== Number(jointFeeder?.Feature_ID)) continue;
 
           /* A breech joins cable ENDS. Offering it every vertex would

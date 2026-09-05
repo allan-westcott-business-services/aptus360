@@ -1780,6 +1780,17 @@ branches finishing early is the trace showing which way is further.
     **Where a fact was stated, state-beats-infer, and the tolerance that
     recorded it is the tolerance that honours it.**
 
+    Three separate inferences sat between the record and the cable, and
+    each had to be told to stand down: the **circuit guard**, the
+    **nearest-feeder narrowing** (`jointFeeder`), and the **tolerance**.
+    All three are good rules for a fitting nobody has spoken about. Any
+    one of them left in front of the record was enough to make a joint
+    refuse to move a cable it says it holds.
+
+    Worth expecting: **a guess does not know it is a guess.** When a
+    stated fact is added to a system built on inference, every inference
+    already in the path has to be found and put behind it.
+
 **A joint the build placed holds what the build joined.** Auto Place
 Feeder Joints puts a fitting where a service leaves a main, where a run
 divides, where a cable stops — and recorded none of it. So the editor

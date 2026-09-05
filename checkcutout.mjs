@@ -49,8 +49,26 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const draw = at < 0 ? "" : canvas.slice(at, at + 1600);
   if (!draw) fail("the cut-out figure is never drawn");
   else {
-    if (!/labelShown\("levels"\)/.test(draw)) {
+    /* ── The gate that actually controls it ──
+
+       `labelShown` takes a FEATURE and asks whether that feature's
+       label shows. Passing it the string "levels" asked about a feature
+       that does not exist, and it answered no every time \u2014 so the
+       figures were never drawn at all, on a build where everything else
+       was right.
+
+       The switch these belong to is `labelKinds.levels`, which is what
+       the node levels beside them use. */
+    if (/labelShown\("levels"\)/.test(draw)) {
+      fail("the gate asks labelShown for a kind, which answers no every "
+        + "time \u2014 nothing is drawn");
+    }
+    if (!/labelKinds\.levels !== false/.test(draw)) {
       fail("it cannot be turned off with the other level labels");
+    }
+    /* And nothing is drawn before the levels check has run. */
+    if (!/elecLevelsAt && labelKinds\.levels/.test(draw)) {
+      fail("it draws without levels to draw");
     }
     if (!/view\.scale > 1\.2/.test(draw)) {
       fail("it draws at every zoom, so a whole estate is covered in "

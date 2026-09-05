@@ -4553,8 +4553,15 @@ export default function GISCanvasPage() {
 
              Red past the limit, and only then. Every figure in red is a
              drawing nobody reads. */
-          if (isMeter && cutoutAtMeter.size && showLabels
-            && labelShown("levels") && view.scale > 1.2) {
+          /* The same gate the node levels use, exactly. `labelShown`
+             takes a FEATURE and asks whether that feature's label
+             shows; passing it the string "levels" asked about a
+             feature that does not exist, and it answered no every
+             time \u2014 so nothing was ever drawn. The switch these belong
+             to is `labelKinds.levels`. */
+          if (isMeter && cutoutAtMeter.size
+            && elecLevelsAt && labelKinds.levels !== false
+            && view.scale > 1.2) {
             const co = cutoutAtMeter.get(Number(f.Feature_ID));
             if (co) {
               const main = Number(lookups?.vdSettings?.[0]?.Max_Volt_Drop_Pct);

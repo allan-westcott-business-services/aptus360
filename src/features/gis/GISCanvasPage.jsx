@@ -19606,13 +19606,19 @@ export default function GISCanvasPage() {
         while (foot >= 0 && M.parSvc?.[foot] && guard++ < 10000) {
           foot = M.parent[foot];
         }
-        if (foot >= 0 && chain.has(foot)) here.push(...ms);
+        /* The foot travels with the meter: it is the node on the MAIN
+           that this plot's service leaves from, and the drop there is
+           what that plot actually sees before its service starts. */
+        if (foot >= 0 && chain.has(foot)) {
+          here.push(...ms.map((x) => ({ ...x, foot })));
+        }
       }
     }
     if (here.length) {
       const svcLines = (ctx.services || []);
       const mainLines = (ctx.mains || []);
-      for (const { meter, kva } of here) {
+      for (const m of here) {
+        const { meter, kva } = m;
         /* The same reach the feeder model used to decide this meter is
            connected at all.
 
@@ -19648,7 +19654,34 @@ export default function GISCanvasPage() {
            Held per meter as well, so the drawing can say something
            about all of them. The worst is still the leg's figure and
            still what the sheet reports. */
-        each.push({ ...r, meterId: meter.Feature_ID, plotId: meter.Plot_ID ?? null });
+        /* ── The drop at THIS plot's tee, not at the leg's end ──
+
+           Every meter on a leg was given the leg's own figure, which is
+           measured at the leg's END. So a plot teeing in thirty metres
+           earlier was charged the whole leg, and the only thing telling
+           two plots apart was the length of their services \u2014 which is
+           how a plot upstream with a longer service came out worse than
+           one downstream with a shorter one. Reported exactly that way.
+
+           The leg's end is still the leg's figure and still what the
+           limit is judged on: it is the worst point on the run. But a
+           plot is connected where it is connected. */
+        const foot = m.foot;
+        const atFoot = foot != null && foot !== leg.endIdx
+          ? cumulativeToNode({
+            model: part.model, targetIdx: foot, spanNodes: part.spanNodes,
+            partialCableId: leg.cableSizeId ?? null,
+            cableById: ctx.cableById, transformer: ctx.transformer,
+            startPct: ctx.startPct ?? 0,
+            voltageV: startV, settings: ctx.settings,
+          })
+          : null;
+        each.push({ ...r,
+          meterId: meter.Feature_ID,
+          plotId: meter.Plot_ID ?? null,
+          mainOhms: atFoot ? (Number(atFoot.ohms) || 0) : null,
+          mainPct: atFoot ? (Number(atFoot.pct) || 0) : null,
+        });
         const worse = !service
           || r.ohms > service.ohms
           || (r.ohms === service.ohms && r.pct > service.pct);
@@ -19681,8 +19714,11 @@ export default function GISCanvasPage() {
         meterId: r.meterId,
         plotId: r.plotId,
         missingSpec: !!r.missingSpec,
-        ohms: (Number(leg.vd?.ohms) || 0) + r.ohms,
-        pct: (Number(leg.vd?.pct) || 0) + r.pct,
+        /* This plot's own tee where it is known, and the leg's end
+           where it is not \u2014 which is the leg's own figure, and the
+           conservative answer. */
+        ohms: (r.mainOhms != null ? r.mainOhms : (Number(leg.vd?.ohms) || 0)) + r.ohms,
+        pct: (r.mainPct != null ? r.mainPct : (Number(leg.vd?.pct) || 0)) + r.pct,
       })),
     };
   }, []);

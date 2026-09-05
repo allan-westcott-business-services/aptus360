@@ -183,9 +183,24 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/cutouts: each\.map\(\(r\) => \(\{/.test(canvas)) {
     fail("the per-meter figures are gathered and never returned");
   }
-  /* The leg's drop is common to all of them; only the service differs. */
-  if (!/pct: \(Number\(leg\.vd\?\.pct\) \|\| 0\) \+ r\.pct/.test(canvas)) {
-    fail("a meter's figure does not add the leg's drop to its own service");
+  /* ── At the plot's own tee, not the leg's end ──
+
+     Every meter on a leg was given the leg's figure, which is measured
+     at the leg's END. A plot teeing in thirty metres earlier was
+     charged the whole leg, so the only thing separating two plots was
+     the length of their services — and a plot UPSTREAM with a longer
+     service came out worse than one downstream with a shorter one.
+     Reported exactly that way, twice. */
+  if (!/const foot = m\.foot;/.test(canvas)) {
+    fail("a meter does not know which node on the main its service leaves "
+      + "from, so every plot on a leg shares one figure");
+  }
+  if (!/targetIdx: foot, spanNodes: part\.spanNodes/.test(canvas)) {
+    fail("the drop is not measured at the plot's own tee");
+  }
+  if (!/r\.mainPct != null \? r\.mainPct : \(Number\(leg\.vd\?\.pct\) \|\| 0\)/.test(canvas)) {
+    fail("a plot whose tee is unknown gets no figure rather than the leg's, "
+      + "which is the conservative answer");
   }
   /* The worst is still the leg's figure and still what the sheet
      reports \u2014 this adds to it rather than replacing it. */

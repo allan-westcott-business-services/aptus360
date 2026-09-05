@@ -2120,10 +2120,23 @@ Two plots on one street, one labelled and one blank, and the blank looks
 better when it may be worse — reported as "why is 41 worse than 39" when
 39 had no figure at all and was in fact further downstream.
 
-The leg's drop is common to the plots on it; only the service tail
-differs, so every meter's figure is that sum. The leg's own worst is
-unchanged and is still what the sheet reports and what the limit is
-judged on.
+**And each plot is measured at its own tee.** Every meter on a leg was
+first given the LEG's figure, which is taken at the leg's END — so a
+plot teeing in thirty metres earlier was charged the whole leg, and the
+only thing separating two plots was the length of their services. A plot
+upstream with a longer service then came out worse than one downstream
+with a shorter one: *"how can 43 be worse than 39 when 39 is 36 m
+further downstream"*, and it could not.
+
+The node the plot's service leaves from is already known — the model
+walks a meter back to its foot on the main to decide which leg claims
+it — and the drop there is what that plot sees before its own service
+starts. A plot whose foot is unknown still gets the leg's end, which is
+the conservative answer.
+
+The leg's own worst is unchanged, and is still what the sheet reports
+and what the limit is judged on: the end of a leg is the worst point on
+it.
 
 Behind the SPAN NODE LEVELS switch with the other level labels, at the
 same zoom, and red only past the limit — the main's allowance plus the

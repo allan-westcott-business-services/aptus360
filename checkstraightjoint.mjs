@@ -191,13 +191,43 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
-  /* Drawn as a feeder end point, because that is what it is: circle,
-     code inside it, figures beside it, at the size every other stop
-     uses. A code as loose text beside a diamond reads as a different
-     kind of thing. */
+  /* ── The fitting and the stop are two things ──
+
+     A straight joint is a fitting AND a feeder end point. The diamond
+     says what is in the ground; the circle says where this is on the
+     run. Drawing the circle OVER the diamond made the fitting vanish —
+     a joint that looks like a node is a joint nobody can see — and
+     leaving the code as loose text beside the diamond made the stop
+     look like a different kind of thing from every other stop.
+
+     So the circle stands beside it on a leader, exactly as a generated
+     feeder point does at a breech. */
   if (!/const isBox = f\.Feature_Role === "linkbox";/.test(canvas)) {
-    fail("a straight joint is treated as carrying its own symbol, so it "
-      + "gets no circle and its code sits loose beside the diamond");
+    fail("the link box's own-symbol rule has been widened again, which puts "
+      + "a circle over the joint's diamond");
+  }
+  if (!/const isJointFep = f\.Feature_Role === "joint";/.test(canvas)) {
+    fail("a straight joint is not told apart, so its circle sits on top of "
+      + "the fitting instead of beside it");
+  }
+  if (!/const q = isJointFep\n\s*\? \{ x: at0\.x \+ jointStep, y: at0\.y - jointStep \}/.test(canvas)) {
+    fail("the FEP circle is not offset from the joint");
+  }
+  /* Off the style's symbol size, not off `r` — `r` is the circle's own
+     radius and is declared far below. Reading it there throws on render
+     and takes the canvas out, which the build does not catch. */
+  if (/y: at0\.y - Math\.max\(14, r \+ 8\)/.test(canvas)) {
+    fail("the offset reads `r` before it is declared \u2014 the canvas throws "
+      + "on render");
+  }
+  /* And a leader, or the circle is a node floating beside a joint. */
+  if (!/if \(isJointFep\) \{\n\s*ctx\.save\(\);\n\s*ctx\.setLineDash\(\[2, 3\]\);/.test(canvas)) {
+    fail("no leader from the circle back to the fitting it belongs to");
+  }
+  /* The output's colour where the cable it holds has one, so the stop
+     reads as part of that output rather than as a stray node. */
+  if (!/\.map\(\(id\) => feederPlan\.get\(Number\(id\)\)\?\.colour\)/.test(canvas)) {
+    fail("the circle does not take the colour of the cable it holds");
   }
   /* And sized as a node. The box formula made the joint's circle and
      figures larger than every other stop's, for no reason a reader

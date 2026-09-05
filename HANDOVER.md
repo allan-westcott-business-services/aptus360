@@ -1404,14 +1404,21 @@ Worth stating generally, because this is the third time it has come up:
 **proximity is evidence of connection, not connection.** Where the
 drawing records the fact, read the record.
 
-**It is drawn as a feeder end point**, because that is what it is: the
-same circle, the same code inside it, the same figures at the same size
-as every other stop. A code shown as loose text beside a diamond reads
-as a different kind of thing, and sizing it by the link box's formula
-made its text larger than every other stop's for no reason a reader
-could see. The fitting's diamond sits under the circle, which is the
-right way round — somebody reading levels is reading the network, not
-the ironmongery.
+**The fitting and the stop are two things.** A straight joint is a
+fitting AND a feeder end point: the diamond says what is in the ground,
+the circle says where this is on the run. Two wrong answers were tried
+before the right one — a code as loose text beside the diamond, which
+made the stop look unlike every other stop; then the circle drawn OVER
+the diamond, which made the fitting vanish. A joint that looks like a
+node is a joint nobody can see.
+
+The circle stands BESIDE it on a leader, exactly as a generated feeder
+point does at a breech, in the colour of the cable it holds — the link
+box output's colour where the run has one. The diamond is untouched.
+
+Sizing it by the link box's formula also made its text larger than every
+other stop's, for no reason a reader could see; it takes the node's
+radius.
 
 **A filter is a list of what is wanted.** Adding the joint to the
 levels pass, the `linkbox` clause was deleted along with the line it

@@ -5776,18 +5776,18 @@ export default function GISCanvasPage() {
          how an entry goes missing. */
       const isBox = f.Feature_Role === "linkbox";
 
-      /* ── A straight joint is drawn as a feeder end point ──
+      /* ── A straight joint keeps its own symbol ──
 
-         Because that is what it is: the cable ends there and the next
-         begins. The other stops wear a circle with the code inside it,
-         and a joint carrying a code as loose text beside a diamond
-         reads as a different kind of thing altogether.
+         It is a fitting AND a feeder end point, and those are two
+         things: the diamond says what is in the ground, the circle says
+         where this is on the run. Drawing the circle over the diamond
+         made the fitting disappear \u2014 a joint that looks like a node is
+         a joint nobody can see.
 
-         So it takes the node path whole — same circle, same code, same
-         figures, at the same size. The fitting's diamond sits under it
-         and the point on the run is what the eye lands on, which is
-         the right way round: a designer reading levels is reading the
-         network, not the ironmongery. */
+         So the FEP circle stands BESIDE it, on a leader, exactly as a
+         generated feeder point does at a breech. The diamond is
+         untouched, drawn with the rest of the features. */
+      const isJointFep = f.Feature_Role === "joint";
       const g = f.Geometry || [];
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
@@ -5798,8 +5798,16 @@ export default function GISCanvasPage() {
          the fallback for a point whose circuit has no colour yet.
          Span nodes keep the style's trench brown: they are points on
          the dig. */
-      const circuitColour = f.Feature_Role === "feederpoint"
-        ? (ringColours?.get?.(Number(f.Attributes?.Circuit_ID)) || null)
+      const circuitColour = (f.Feature_Role === "feederpoint" || f.Feature_Role === "joint")
+        /* A joint's circle wears the colour of the cable it holds \u2014 the
+           link box output's colour where the run has one, so the stop
+           reads as part of that output rather than as a stray node.
+           The circuit's colour where it does not. */
+        ? (((f.Attributes?.Connects || [])
+          .map((id) => feederPlan.get(Number(id))?.colour)
+          .find(Boolean))
+          || ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
+          || null)
         : null;
 
       /* ── The leader back to the trench ──
@@ -5879,8 +5887,37 @@ export default function GISCanvasPage() {
          clicked reads as a deletion. */
       if (!on && !ps.visible) continue;
 
-      const q = toPx(g[0]);
+      const at0 = toPx(g[0]);
+      /* Up and to the right of the fitting, far enough to clear the
+         diamond at any zoom. A fixed screen offset rather than a
+         distance on the ground: this is an annotation, and it should sit
+         the same way at every scale.
+
+         Off the STYLE's symbol size, not off `r` — `r` is the circle's
+         own radius and is declared eighty lines below this. Reading it
+         here throws on render and takes the canvas out, which the build
+         does not catch and checkdeadzone only sees in a hook's
+         dependency array. */
+      const jointStep = Math.max(14, (ps.symbolPx || 7) + 9);
+      const q = isJointFep
+        ? { x: at0.x + jointStep, y: at0.y - jointStep }
+        : at0;
       const code = f.Attributes?.Span_Label ?? "";
+
+      /* The leader back to the fitting it belongs to, so the circle is
+         not a node floating beside a joint. Same faint dotted line the
+         span nodes use for their anchors. */
+      if (isJointFep) {
+        ctx.save();
+        ctx.setLineDash([2, 3]);
+        ctx.strokeStyle = "rgba(15,23,42,.45)";
+        ctx.lineWidth = 1;
+        ctx.beginPath();
+        ctx.moveTo(at0.x, at0.y);
+        ctx.lineTo(q.x, q.y);
+        ctx.stroke();
+        ctx.restore();
+      }
 
       /* ── A node that is carrying future load ──
 

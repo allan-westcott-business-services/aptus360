@@ -11,7 +11,8 @@
    already marks that as a junction. */
 import { readFileSync } from "node:fs";
 import { straightJointWarning, straightJointCables } from "./src/features/gis/joints.js";
-import { planFeederPoints } from "./src/features/gis/feederPoints.js";
+import { planFeederPoints, jointMarks } from "./src/features/gis/feederPoints.js";
+import { feederSections, circuitMembership } from "./src/features/gis/feeder.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -88,6 +89,75 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
+// 3. The BUILD breaks its run there, and offers a stop for the joint.
+//
+//    This is what makes a straight joint survive a rebuild. Build LV
+//    Network deletes every generated main and lays them again from the
+//    trench routing — and a joint is not in that routing. It is a
+//    fitting somebody clicked onto a cable, usually mid-span between
+//    two trench vertices, so nothing in the model knows it is there.
+//    Left alone, a rebuild lays ONE run straight through the fitting
+//    and the two sizes either side become one: the designer's work
+//    undone by the next build, silently.
+{
+  const lineTypes = [
+    { Type_Key: "trench", Label: "Trench", Layer_Key: "trench" },
+    { Type_Key: "service_trench", Label: "Service trench", Layer_Key: "trench" },
+  ];
+  let id = 500;
+  const tr = (pts, k = "trench", seed = null) => ({ Feature_ID: id++,
+    Feature_Type: "line", Layer_Key: "trench", Geometry: pts,
+    Attributes: { Line_Type: k, ...(seed ? { Seed_Feature_ID: seed } : {}) } });
+  const poc = { Feature_ID: id++, Feature_Role: "poc", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[0, 0]], Attributes: {} };
+  const p1 = { Feature_ID: id++, Feature_Role: "plot", Feature_Type: "point",
+    Plot_ID: 1, Geometry: [[120, 8]], Attributes: {} };
+  const mtr = { Feature_ID: id++, Feature_Role: "meter", Feature_Type: "point",
+    Layer_Key: "electric", Plot_ID: 1, Geometry: [[120, 8]],
+    Attributes: { Seed_Feature_ID: p1.Feature_ID, Circuit_ID: 1 } };
+  /* Clicked onto the cable 60 m along a 120 m run \u2014 mid-span, where
+     the trench has no vertex. */
+  const j = { Feature_ID: id++, Feature_Role: "joint", Feature_Type: "point",
+    Layer_Key: "electric", Label: "Straight Joint", Geometry: [[60, 0]],
+    Attributes: { Joint_Type: "straight", Circuit_ID: 1 } };
+  const world = [poc, p1, mtr, j,
+    tr([[0, 0], [120, 0]]),
+    tr([[120, 0], [120, 8]], "service_trench", p1.Feature_ID)];
+  const opts = { lineTypes, circuitId: 1, plotById: () => ({ kva_load: 3 }),
+    nrsById: () => null, ...circuitMembership(world, 1) };
+
+  const r = feederSections(world, opts);
+  const ends = (r.sections || []).map((sec) =>
+    sec.pts[sec.pts.length - 1][0].toFixed(0));
+  if (!ends.includes("60")) {
+    fail("the build lays one run straight through the joint \u2014 a rebuild "
+      + "would undo the break and the two cable sizes with it");
+  }
+  if ((r.sections || []).length !== 2) {
+    fail(`${(r.sections || []).length} section(s), expected the run broken in two`);
+  }
+  /* The load does not change at a straight joint: nothing leaves there.
+     Both halves carry what the whole length carried. */
+  for (const sec of r.sections || []) {
+    if (sec.meters !== 1) fail(`a half carries ${sec.meters} meter(s), expected 1`);
+  }
+
+  /* And a stop is offered there, or the joint is never adopted. */
+  const marks = jointMarks(world, r.model, r.sections);
+  if (marks.length !== 1) {
+    fail(`${marks.length} joint mark(s), expected one at the fitting`);
+  } else if (Math.abs(marks[0].point[0] - 60) > 0.5) {
+    fail(`the stop is at ${marks[0].point[0]}, not where the fitting stands`);
+  }
+
+  /* A joint NOT on this part's cable is not this part's stop. */
+  const elsewhere = [...world, { ...j, Feature_ID: 9999, Geometry: [[60, 400]],
+    Attributes: { ...j.Attributes, Span_Anchor: [60, 400] } }];
+  if (jointMarks(elsewhere, r.model, r.sections).length !== 1) {
+    fail("a joint four hundred metres off the cable was marked as a stop on it");
+  }
+}
+
 /* The trace stops there, and the drawing shows the figures. */
 {
   const fdr = readFileSync("./src/features/gis/feeder.js", "utf8");
@@ -96,6 +166,10 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
       + "runs straight through it and reports one cable size for two");
   }
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/for \(const jm of jointMarks\(src, pt\.model, pt\.sections\)\)/.test(canvas)) {
+    fail("the build does not offer a stop at a straight joint, so it is "
+      + "never adopted and never carries levels");
+  }
   if (!/&& !\(f\.Feature_Role === "joint"/.test(canvas)) {
     fail("the levels are not drawn at a straight joint");
   }

@@ -783,6 +783,82 @@ export const cablesFor = (meters, perCable = METERS_PER_CABLE) =>
 /* ── The runs ──
    The tree turned into cable runs. One entry per run, each a polyline
    with the load it carries and how many cables that needs. */
+
+/* Where a straight joint stands, for breaking a run at it.
+
+   Anchored where the drawing anchors everything else: Span_Anchor once
+   the walk has adopted it, its geometry before that. */
+function straightJointPoints(features = []) {
+  return (features || [])
+    .filter((f) => f.Feature_Role === "joint"
+      && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight")
+    .map((f) => {
+      const a = f.Attributes?.Span_Anchor;
+      return (Array.isArray(a) && a.length === 2) ? a : (f.Geometry || [])[0];
+    })
+    .filter(Boolean);
+}
+
+/* Split each section wherever a straight joint stands on it.
+
+   The load does not change at a straight joint — it is not a junction,
+   nothing leaves there — so both halves carry the meters, kVA and cable
+   count the whole length carried. What changes is that they are two
+   lengths of cable, which is what lets them be two sizes.
+
+   A joint at either END of a section is already a break and is left
+   alone; splitting there would make a length of nothing. */
+export function breakAtStraightJoints(sections = [], features = [], tol = 0.5) {
+  const joints = straightJointPoints(features);
+  if (!joints.length) return sections;
+
+  const out = [];
+  for (const sec of sections) {
+    let pieces = [sec];
+    for (const j of joints) {
+      const next = [];
+      for (const piece of pieces) {
+        const pts = piece.pts || [];
+        const ends = [pts[0], pts[pts.length - 1]];
+        if (ends.some((q) => q && Math.hypot(q[0] - j[0], q[1] - j[1]) <= tol)) {
+          next.push(piece);
+          continue;
+        }
+        const cut = splitPtsAt(pts, j, tol);
+        if (!cut) { next.push(piece); continue; }
+        next.push(
+          { ...piece, pts: cut[0], endNode: null, tailAt: cut[0][cut[0].length - 1].slice() },
+          { ...piece, pts: cut[1], upNode: null, tailAt: cut[1][cut[1].length - 1].slice() },
+        );
+      }
+      pieces = next;
+    }
+    out.push(...pieces);
+  }
+  return out;
+}
+
+/* The point inserted into both halves, so neither loses the corner. */
+function splitPtsAt(pts = [], at, tol) {
+  if (pts.length < 2 || !Array.isArray(at)) return null;
+  let seg = -1; let best = Infinity; let q = null;
+  for (let i = 0; i + 1 < pts.length; i++) {
+    const a = pts[i]; const b = pts[i + 1];
+    const vx = b[0] - a[0]; const vy = b[1] - a[1];
+    const l2 = vx * vx + vy * vy;
+    let t = l2 ? ((at[0] - a[0]) * vx + (at[1] - a[1]) * vy) / l2 : 0;
+    t = Math.max(0, Math.min(1, t));
+    const p = [a[0] + vx * t, a[1] + vy * t];
+    const d = Math.hypot(at[0] - p[0], at[1] - p[1]);
+    if (d < best) { best = d; seg = i; q = p; }
+  }
+  if (seg < 0 || best > tol) return null;
+  const head = [...pts.slice(0, seg + 1), q];
+  const tail = [q, ...pts.slice(seg + 1)];
+  if (head.length < 2 || tail.length < 2) return null;
+  return [head, tail];
+}
+
 export function feederSections(features = [], opts = {}) {
   const M = buildFeederModel(features, opts);
   if (M.error) return { error: M.error };
@@ -909,7 +985,24 @@ export function feederSections(features = [], opts = {}) {
   }
 
   return {
-    sections,
+    /* ── And broken again at every straight joint on the route ──
+
+       A straight joint is one cable in and one out: the run genuinely
+       stops there and the next begins, which is the whole reason for
+       placing one — so a designer can change size either side of it.
+
+       The router breaks at junctions, at ends and where the cable count
+       changes, all of which come from the trench graph. A joint is not
+       in that graph: it is a fitting somebody clicked onto a cable,
+       usually mid-span between two trench vertices, so nothing in the
+       model knows it is there. Left alone, a rebuild lays ONE run
+       straight through the fitting and the two sizes either side become
+       one — the designer's work undone by the next build, silently.
+
+       Done here, on the sections, rather than by adding nodes to the
+       graph: the graph is the dig, shared by every circuit, and a
+       fitting on one circuit's cable is not a fact about the ground. */
+    sections: breakAtStraightJoints(sections, features),
     S,
     totalMeters: cum[S],
     totalKva: Math.round((cumKva[S] || 0) * 10) / 10,

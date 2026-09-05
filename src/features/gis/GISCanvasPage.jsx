@@ -89,7 +89,7 @@ import BulkDelete from "./BulkDelete.jsx";
 import { circuitBuildParts, circuitMembership, SPAN_REACH_M, SNAP_TOL,
   carriedOverrides, carriedOverrideFor } from "./feeder.js";
 import { planFeederPoints, planInsertion, marksOnPart,
-  partEndMark } from "./feederPoints.js";
+  partEndMark, jointMarks } from "./feederPoints.js";
 import { anchorSnapshot, withMovedAnchor, anchorUpdates } from "./anchorFollow.js";
 import { nodeFedBy as nodeFedByLine, runThrough as runThroughNode } from "./spanNodes.js";
 import { feederSections, junctionNodes, endOfLineNodes, trenchComponents, serviceTrenchCheck,
@@ -13971,6 +13971,16 @@ export default function GISCanvasPage() {
              full-circuit model calls nothing at all. */
           const term = partEndMark(pt.model, pt.sections);
           if (term && !marks.some((m) => m.index === term.index)) marks.push(term);
+          /* And a stop wherever a straight joint stands on this part's
+             cable. The model is the dig and has never heard of a
+             fitting clicked onto a cable, so nothing else can offer
+             one — and without it the joint is never numbered, never
+             becomes a feeder end point, and the leg runs through it
+             reporting one cable size for two. */
+          for (const jm of jointMarks(src, pt.model, pt.sections)) {
+            if (!marks.some((m) => Math.hypot(m.point[0] - jm.point[0],
+              m.point[1] - jm.point[1]) < 0.5)) marks.push(jm);
+          }
           const byIndex = new Map(marks.map((m) => [m.index, m]));
           for (const i of orderNodesFromRoot(pt.model, marks.map((m) => m.index))) {
             const m = byIndex.get(i);

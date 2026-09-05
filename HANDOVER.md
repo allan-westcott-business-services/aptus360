@@ -1364,6 +1364,29 @@ A service joint is NOT one: a cable passes through it and nothing about
 the run changes. A breech is where a run divides and the walk already
 marks that as a junction.
 
+**And the build breaks its run there.** This is what makes a straight
+joint survive a rebuild, and without it the feature was unusable: Build
+LV Network deletes every generated main and lays them again from the
+trench routing, and a joint is NOT in that routing — it is a fitting
+somebody clicked onto a cable, usually mid-span between two trench
+vertices, so nothing in the model knows it is there. Left alone, a
+rebuild lays one run straight through the fitting and the two sizes
+either side become one: the designer's work undone by the next build,
+silently.
+
+Done on the sections rather than by adding nodes to the graph. **The
+graph is the dig, shared by every circuit; a fitting on one circuit's
+cable is not a fact about the ground.** The load does not change at a
+straight joint — nothing leaves there — so both halves carry what the
+whole length carried; what changes is that they are two lengths, which
+is what lets them be two sizes.
+
+`jointMarks` then offers a stop at the fitting, because neither
+`marksOnPart` nor `partEndMark` can: one filters marks the model
+produced and the other adds the end of a part's cable, and the model has
+never heard of the joint. Without it the joint is never adopted, never
+numbered, and carries no levels.
+
 **One in, one out — said, not refused.** Three cables at one is a
 breech and one is a bottle end, and the editor names the fitting it
 actually is. It does not block: a drawing is mid-edit for most of its

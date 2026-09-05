@@ -489,3 +489,59 @@ export function partEndMark(model, sections = [], tol = 2) {
   if (!best || best.d > tol) return null;
   return { index: best.i, point: nodes[best.i], kind: "end" };
 }
+
+/* ── A stop where a straight joint stands ──
+
+   `marksOnPart` filters marks the model produced, and `partEndMark`
+   adds the far end of what a part lays. Neither can offer a stop at a
+   straight joint: the joint is a fitting somebody clicked onto a cable,
+   usually mid-span between two trench vertices, so the model — which is
+   the dig — has never heard of it.
+
+   Without a stop there the joint is never adopted, never numbered, and
+   never becomes a feeder end point: no levels beside it, and the leg
+   runs through it reporting one cable size for two.
+
+   Same shape as `partEndMark`, and for the same reason: the model does
+   not know everything the drawing does.
+
+   The node index is the nearest one, used only for ordering the walk.
+   The POINT is the joint's own position, which is what the adoption
+   matches on and what a new point would be created at — a stop must be
+   where the fitting is, not where the nearest trench corner happens to
+   fall. */
+export function jointMarks(features = [], model, sections = [], tol = 0.5) {
+  const nodes = model?.nodes || [];
+  if (!nodes.length) return [];
+
+  const onSections = (p) => (sections || []).some((sec) => {
+    const pts = sec.pts || [];
+    for (let i = 1; i < pts.length; i++) {
+      const a = pts[i - 1]; const b = pts[i];
+      const vx = b[0] - a[0]; const vy = b[1] - a[1];
+      const l2 = vx * vx + vy * vy;
+      let t = l2 ? ((p[0] - a[0]) * vx + (p[1] - a[1]) * vy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      if (Math.hypot(p[0] - (a[0] + vx * t), p[1] - (a[1] + vy * t)) <= tol) return true;
+    }
+    return false;
+  });
+
+  const out = [];
+  for (const f of features) {
+    if (f.Feature_Role !== "joint") continue;
+    if (String(f.Attributes?.Joint_Type ?? "").toLowerCase() !== "straight") continue;
+    const a = f.Attributes?.Span_Anchor;
+    const at = (Array.isArray(a) && a.length === 2) ? a : (f.Geometry || [])[0];
+    if (!Array.isArray(at) || !onSections(at)) continue;
+
+    let best = null;
+    for (let i = 0; i < nodes.length; i++) {
+      const d = Math.hypot(nodes[i][0] - at[0], nodes[i][1] - at[1]);
+      if (!best || d < best.d) best = { d, i };
+    }
+    if (!best) continue;
+    out.push({ index: best.i, point: [at[0], at[1]], kind: "junction" });
+  }
+  return out;
+}

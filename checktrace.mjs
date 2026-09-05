@@ -615,6 +615,51 @@ const world = [
   }
 }
 
+/* The dialog names cables in a way that tells them apart.
+
+   Two services to neighbouring plots came out as "Feeder · no circuit ·
+   18.1 m", twice: neither carries a Label, neither carries a
+   Circuit_ID, and they are the same length. The dialog was asking which
+   one and giving no way to answer.
+
+   A service is named by the PLOT it feeds, which is the only thing a
+   designer thinks of it by \u2014 and is not on the cable. It is read from
+   the meter its far end reaches, and shown as the plot NUMBER rather
+   than the row id: "Plot 1562" is a database key, and the designer
+   knows it as Plot 12. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("const cableTitle = useCallback");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("const runTrace", at));
+  if (!fn) fail("cables in the trace dialog have no name of their own");
+  else {
+    if (/line\.Label \?\? "Feeder"/.test(canvas)) {
+      fail('every unlabelled cable is still called "Feeder"');
+    }
+    if (!/classLabel\(line, lineTypes\)/.test(fn)) {
+      fail("a cable with no label is not named by what kind it is");
+    }
+    if (!/Feature_Role === "meter"/.test(fn)) {
+      fail("a service is not named by the plot it feeds, so two services to "
+        + "neighbouring plots read identically");
+    }
+    if (!/plot_number \?\? p\?\.Plot_Number \?\? plot/.test(fn)) {
+      fail("the plot is named by its row id rather than its number");
+    }
+  }
+}
+
+/* And the utility menus say nothing when a press isolates rather than
+   opening. The drawing visibly changes, which is the answer to "did
+   that do anything"; the banner sat over the drawing somebody had just
+   asked to see, on every switch, for the whole session. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/press \$\{label\} again for its menu/.test(canvas)) {
+    fail("switching utility still announces itself every time");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

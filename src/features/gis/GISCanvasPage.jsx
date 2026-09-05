@@ -2885,23 +2885,25 @@ export default function GISCanvasPage() {
      electric drawing under it and opens the menu.
 
      Returning false is what holds the menu shut; see the note on
-     `onOpen` in GisMenus.jsx. The refusal is announced, because a
-     button that appears to do nothing sends somebody looking for a
-     control that already exists — the same fault the isolate-only-if-
-     it-has-something guard had, and the reason it went. Here the
-     drawing does visibly change, but nothing on screen says a second
-     press is what opens the menu, and nobody guesses that.
+     `onOpen` in GisMenus.jsx.
 
-     Named rather than keyed off the layer, so a utility with no layer
-     on this drawing still reads properly in the message. */
+     ── And says nothing ──
+
+     The refusal was announced, on the reasoning that a button which
+     appears to do nothing sends somebody looking for a control that
+     already exists. That reasoning was wrong here, twice over: the
+     drawing VISIBLY changes on the press, which already answers "did
+     that do anything", and the banner then sat across the top of the
+     drawing somebody had just asked to see, on every switch between
+     utilities, for the whole session.
+
+     A hint worth showing once is not worth a mechanism to show it once.
+     The gesture teaches itself on the second press. */
   const utilityMenuOpen = useCallback((key, name) => {
     if (utilityMenuPress(key, { solo, shownOnly }) === "open") return true;
     soloClass(key, true);
-    const label = layers.find((l) => l.Layer_Key === key)?.Label ?? name;
-    setStatus(`Showing ${label} only \u2014 press ${label} again for its menu`);
-    setTimeout(() => setStatus(""), 6000);
     return false;
-  }, [solo, shownOnly, soloClass, layers]);
+  }, [solo, shownOnly, soloClass]);
 
   /* Show one circuit and hide the rest.
 
@@ -8474,6 +8476,47 @@ export default function GISCanvasPage() {
      The walk is done once and held: re-walking every frame would be the
      same answer sixty times a second, and a network of a few thousand
      segments is not free. */
+  /* ── What to call a cable in a list of cables ──
+
+     "Feeder \u00b7 no circuit \u00b7 18.1 m", twice over, is what two services to
+     neighbouring plots came out as: neither carries a Label, neither
+     carries a Circuit_ID, and they are the same length. The dialog was
+     asking which one and giving no way to tell.
+
+     So: what it is, then whatever tells it from the one beside it. A
+     service is named by the PLOT it feeds \u2014 which is the only thing a
+     designer thinks of it by, and is not on the cable: it is read from
+     the meter its far end reaches. Nothing else on the drawing says it,
+     which is the same gap the jointing sheet has. */
+  const cableTitle = useCallback((line) => {
+    const kind = classLabel(line, lineTypes) || "Cable";
+    const bits = [];
+    if (line.Label) bits.push(line.Label);
+    else bits.push(kind);
+    if (line.Attributes?.Link_Way != null) {
+      bits.push(`output ${line.Attributes.Link_Way}`);
+    }
+    if (/service/i.test(String(line.Attributes?.Line_Type ?? ""))) {
+      const g = line.Geometry || [];
+      const ends = [g[0], g[g.length - 1]].filter(Boolean);
+      const m = features.find((x) => x.Feature_Role === "meter"
+        && ends.some((e) => {
+          const q = x.Geometry?.[0];
+          return q && Math.hypot(q[0] - e[0], q[1] - e[1]) <= 2;
+        }));
+      const plot = m?.Plot_ID ?? m?.Attributes?.Plot_ID;
+      if (plot != null) {
+        /* The number on the drawing, not the row id. "Plot 1562" is a
+           database key; the designer knows it as Plot 12, and a list
+           that names it the other way is a list they have to translate. */
+        const p = plotList?.find((x) =>
+          Number(x.plot_id ?? x.Plot_ID) === Number(plot));
+        bits.push(`Plot ${p?.plot_number ?? p?.Plot_Number ?? plot}`);
+      }
+    }
+    return bits.join(" \u00b7 ");
+  }, [features, lineTypes, plotList]);
+
   const runTrace = useCallback((point, { layerKey, kind, direction, startLineId = null }) => {
     const r = traceTree(traceFollow(layerKey, kind), point, {
       direction,
@@ -8790,7 +8833,10 @@ export default function GISCanvasPage() {
           options: near.map(({ line, hit }) => ({
             id: Number(line.Feature_ID),
             at: hit.q,
-            label: line.Label ?? "Feeder",
+            /* The same naming the trace dialog uses \u2014 two cables under
+               one pointer is the same question wherever it is asked,
+               and "Feeder" answered it in neither place. */
+            label: cableTitle(line),
             circuit: line.Attributes?.Circuit_Name
               ?? (line.Attributes?.Circuit_ID != null
                 ? `Circuit ${line.Attributes.Circuit_ID}` : null),
@@ -22470,11 +22516,7 @@ export default function GISCanvasPage() {
                               ?? ringColours?.get?.(Number(line.Attributes?.Circuit_ID))
                               ?? "#94a3b8",
                           }} />
-                          <span className="cpick-name">
-                            {line.Label ?? "Feeder"}
-                            {line.Attributes?.Link_Way != null
-                              ? ` \u00b7 output ${line.Attributes.Link_Way}` : ""}
-                          </span>
+                          <span className="cpick-name">{cableTitle(line)}</span>
                           <span className="cpick-n">
                             {line.Attributes?.Circuit_Name
                               ?? (line.Attributes?.Circuit_ID != null

@@ -1649,6 +1649,18 @@ the editor and the drag read one definition: `jointCables`, `withCable`,
 treating it as joined is how a joint came to drag a run that merely
 crosses its position.
 
+**And the panel shows on every joint, not only the ones holding
+something.** Every joint drawn before connections were recorded holds
+nothing, so a panel listing only what is HELD showed nothing on the
+joints somebody already had — the feature read as missing on every kind
+of joint but the one that writes the record when it is placed.
+
+It lists what is STANDING at the fitting too, greyed, with **Connect**.
+Offered rather than assumed: a cable ending at a joint is usually joined
+to it and on a shared trench sometimes is not, so one click says who
+decided. That is how a finished drawing catches up without a migration
+and without anything being inferred behind somebody's back.
+
 The point of the whole thing: **`Connects` is derived from geometry and
 `Joint_Cables` is not.** Everything that read the derived one moved the
 wrong cable sooner or later, on a drawing where cables share a trench.

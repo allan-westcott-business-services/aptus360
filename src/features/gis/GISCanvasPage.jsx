@@ -8138,6 +8138,26 @@ export default function GISCanvasPage() {
     } catch (e) { setError(e.message); }
   }
 
+  /* Joining, from the joint's own panel. The same record the drop
+     writes \u2014 one fact, two ways of stating it, because a joint drawn
+     before connections were recorded holds nothing and re-snapping
+     every cable on a finished drawing is not a reasonable ask. */
+  async function connectCable(jointId, cableId) {
+    const j = features.find((x) => Number(x.Feature_ID) === Number(jointId));
+    if (!j) return;
+    const attrs = withCable(j, cableId);
+    if (attrs === j.Attributes) return;
+    try {
+      await bulkUpdateFeatures(projectId, [{ Feature_ID: j.Feature_ID, Attributes: attrs }]);
+      setFeatures((fs) => fs.map((x) =>
+        (x.Feature_ID === j.Feature_ID ? { ...x, Attributes: attrs } : x)));
+      const c = features.find((x) => Number(x.Feature_ID) === Number(cableId));
+      setStatus(`${c?.Label ?? "Cable"} joined to ${j.Label ?? "the joint"}`
+        + " \u2014 it moves with it now");
+      setTimeout(() => setStatus(""), 6000);
+    } catch (e) { setError(e.message); }
+  }
+
   async function joinEndToJoint(line) {
     const joints = features.filter((f) => f.Feature_Role === "joint");
     const j = jointAtEnd(line, joints);
@@ -21841,6 +21861,7 @@ export default function GISCanvasPage() {
           onIsolateCircuit={isolateCircuit}
           onIsolateWay={isolateWay}
           onDisconnectCable={disconnectCable}
+          onConnectCable={connectCable}
           isolatedWay={isolatedWay}
           onSetCircuitOrigin={setCircuitOrigin}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}

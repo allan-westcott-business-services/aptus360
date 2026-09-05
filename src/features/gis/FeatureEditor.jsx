@@ -23,7 +23,7 @@ import { circuitColours, feederColourAt } from "./feederColour.js";
 import { sizeIdFor, isOverridden } from "./sizeMode.js";
 import { lvOrigins } from "./electric.js";
 import { servedPlots, JOINT_KINDS, straightJointWarning,
-  jointCables } from "./joints.js";
+  jointCables, cableEndsAt } from "./joints.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
@@ -63,7 +63,7 @@ export default function FeatureEditor({
   onSetCircuitOrigin,
   /* Link box outputs: arm the lasso for one, or clear it. */
   onLassoLinkWay, onClearLinkWay, onIsolateWay, isolatedWay,
-  onDisconnectCable,
+  onDisconnectCable, onConnectCable,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -1250,15 +1250,18 @@ export default function FeatureEditor({
                   "disconnect all", because a breech holds several and
                   releasing the wrong one silently would be worse than
                   the accident this prevents. */}
-              {jointCables(feature).length > 0 && (
+              {(jointCables(feature).length > 0
+                || cableEndsAt(feature, allFeatures || []).length > 0) && (
                 <div className="fe-joint-held">
                   <span className="hint">
                     {/* In braces: an escape written straight into JSX
                         TEXT renders as the characters \\u2014 rather than
                         as a dash. Fault 34, in a new place. */}
-                    {`Joined to ${jointCables(feature).length} cable`}
-                    {jointCables(feature).length === 1 ? "" : "s"}
-                    {" \u2014 they move with it"}
+                    {jointCables(feature).length
+                      ? `Joined to ${jointCables(feature).length} cable`
+                        + `${jointCables(feature).length === 1 ? "" : "s"}`
+                        + " \u2014 they move with it"
+                      : "Nothing joined to this fitting yet \u2014 connect what it holds"}
                   </span>
                   {jointCables(feature).map((id) => {
                     const c = (allFeatures || []).find((x) =>
@@ -1279,6 +1282,33 @@ export default function FeatureEditor({
                       </div>
                     );
                   })}
+
+                  {/* ── And what is standing there, unconnected ──
+
+                      Every joint drawn before connections were recorded
+                      holds nothing, so a panel listing only what is held
+                      shows nothing on the joints somebody already has.
+
+                      Offered rather than assumed: a cable ending at a
+                      fitting is USUALLY joined to it, and on a shared
+                      trench sometimes is not. Connecting is one click
+                      and says who decided. */}
+                  {cableEndsAt(feature, allFeatures || [])
+                    .filter((c) => !jointCables(feature).includes(Number(c.Feature_ID)))
+                    .map((c) => (
+                      <div className="fe-held-row" key={c.Feature_ID}>
+                        <span className="fe-held-name fe-held-off">
+                          {c.Label ?? `#${c.Feature_ID}`}
+                          {c.Attributes?.Circuit_Name
+                            ? ` \u00b7 ${c.Attributes.Circuit_Name}` : ""}
+                        </span>
+                        <button type="button" className="btn sm"
+                          title="Join this cable to the fitting. It moves with the joint from then on."
+                          onClick={() => onConnectCable?.(feature.Feature_ID, c.Feature_ID)}>
+                          Connect
+                        </button>
+                      </div>
+                    ))}
                 </div>
               )}
 
@@ -3251,6 +3281,7 @@ const CSS = `
   background: var(--bg); border: 1px solid var(--line); }
 .fe-held-row { display: flex; align-items: center; justify-content: space-between;
   gap: 8px; margin-top: 5px; }
+.fe-held-off { color: var(--muted); }
 .fe-held-name { font-size: 12.5px; min-width: 0; overflow: hidden;
   text-overflow: ellipsis; white-space: nowrap; }
 .fe-joint-warn { margin: 6px 0 0; padding: 6px 8px; border-radius: 6px;

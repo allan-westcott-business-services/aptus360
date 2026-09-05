@@ -12,8 +12,8 @@
    drawing can be moved about and the connection stands — which is what
    stops a cable coming adrift from its fitting by accident. */
 import { readFileSync } from "node:fs";
-import { jointCables, holdsCable, withCable, withoutCable, jointAtEnd }
-  from "./src/features/gis/joints.js";
+import { jointCables, holdsCable, withCable, withoutCable, jointAtEnd,
+  cableEndsAt } from "./src/features/gis/joints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -101,6 +101,54 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   }
   if (!/onDisconnectCable=\{disconnectCable\}/.test(canvas)) {
     fail("the editor's Disconnect is not wired to anything");
+  }
+}
+
+// 3. What is standing at a joint, whether or not it holds it.
+//
+//    Every joint drawn before connections were recorded holds nothing,
+//    so a panel listing only what is HELD shows nothing on the joints
+//    somebody already has — and the feature reads as missing on every
+//    kind of joint but the one that writes the record when it is placed.
+//
+//    Offered rather than assumed: a cable ending at a fitting is
+//    usually joined to it, and on a shared trench sometimes is not.
+{
+  const j = joint();
+  const line = (id, g) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g, Attributes: {} });
+  const world = [
+    line(11, [[0, 0], [50, 0]]),        // ends on it
+    line(99, [[50, 0], [100, 0]]),      // ends on it
+    line(5, [[0, 0], [100, 0]]),        // passes across it
+    line(7, [[0, 40], [40, 40]]),       // nowhere near
+    { ...line(8, [[0, 0], [50, 0]]), Layer_Key: "trench" }, // another layer
+  ];
+  const at = cableEndsAt(j, world).map((f) => f.Feature_ID).sort();
+  if (at.join() !== "11,99") {
+    fail(`cables at the joint came out as ${at.join(", ")} \u2014 wanted the two `
+      + "whose ends are on it, and nothing that passes across or lies on "
+      + "another layer");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  /* The panel shows on a joint holding nothing, or the feature is
+     invisible on every joint already drawn. */
+  if (!/jointCables\(feature\)\.length > 0\n\s*\|\| cableEndsAt\(feature, allFeatures \|\| \[\]\)\.length > 0/.test(editor)) {
+    fail("the panel is hidden on a joint that holds nothing, which is every "
+      + "joint drawn before this");
+  }
+  if (!/onConnectCable\?\.\(feature\.Feature_ID, c\.Feature_ID\)/.test(editor)) {
+    fail("there is no way to join a cable that is standing at the fitting");
+  }
+  /* Already held is not offered again. */
+  if (!/\.filter\(\(c\) => !jointCables\(feature\)\.includes\(Number\(c\.Feature_ID\)\)\)/.test(editor)) {
+    fail("a cable already held is offered to be connected again");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/async function connectCable\(jointId, cableId\)/.test(canvas)) {
+    fail("Connect is not wired to anything");
   }
 }
 

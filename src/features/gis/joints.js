@@ -944,3 +944,27 @@ export function jointAtEnd(line, joints = [], reach = 0.35) {
   }
   return best ? best.joint : null;
 }
+
+/* The cables whose END is at this joint, whether or not it holds them.
+
+   The other side of `jointAtEnd`, and it exists for the editor: a joint
+   placed before connections were recorded holds nothing, so a panel
+   that lists only what is held has nothing to show and reads as the
+   feature being absent. Offering what is standing there, to be
+   connected on purpose, is how an existing drawing catches up without
+   anything being inferred behind somebody's back.
+
+   Ends only, for the reason jointAtEnd gives: a cable passing across a
+   fitting is not joined to it. */
+export function cableEndsAt(joint, features = [], reach = 0.35) {
+  const at = joint?.Attributes?.Span_Anchor ?? joint?.Geometry?.[0];
+  if (!Array.isArray(at)) return [];
+  return (features || []).filter((f) => {
+    if (f.Feature_Type !== "line") return false;
+    if (f.Layer_Key !== joint.Layer_Key) return false;
+    const g = f.Geometry || [];
+    if (g.length < 2) return false;
+    return [g[0], g[g.length - 1]].some((e) =>
+      Math.hypot(e[0] - at[0], e[1] - at[1]) <= reach);
+  });
+}

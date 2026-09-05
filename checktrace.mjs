@@ -294,6 +294,28 @@ const world = [
         fail("with one cable the dialog does not say which it will follow");
       }
     }
+
+    /* ── The panel reports; it does not ask again ──
+
+       The same two rows of buttons were in the result panel as well, so
+       finishing a trace put the questions back on screen \u2014 which reads
+       as the dialog reopening rather than as a result. */
+    const panelAt = canvas.indexOf('<div className="gis-trace-panel"');
+    const panel = panelAt < 0 ? "" : canvas.slice(panelAt,
+      canvas.indexOf("{tracePick && (() => {", panelAt));
+    if (!panel) fail("the trace panel has gone");
+    else {
+      if (/\["cable", \(traceRun\?\.layerKey/.test(panel)
+        || /\["both", "Both ways"\]/.test(panel)) {
+        fail("the result panel asks what to follow and which way again, "
+          + "which reads as the dialog reopening");
+      }
+      /* One way back to the question, at the same point. */
+      if (!/setTracePick\(\{\n\s*at: traceRun\.start,/.test(panel)) {
+        fail("there is no way back to the dialog from a finished trace, so "
+          + "changing direction means starting again");
+      }
+    }
     /* And says so plainly when the click was on nothing. */
     if (!/Nothing to trace there/.test(fn)) {
       fail("a click on nothing starts a trace from somewhere arbitrary");

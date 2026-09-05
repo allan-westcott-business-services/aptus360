@@ -22328,56 +22328,14 @@ export default function GISCanvasPage() {
             <p className="hint">Click a cable, joint, meter or node to trace from.</p>
           )}
 
-          {/* The controls belong to a trace that is running. Before one
-              is, the dialog asks \u2014 offering the same buttons here as
-              well would be two places to answer one question, which is
-              what this change was made to stop. */}
-          {traceRun && (
-          <>
-          <div className="gt-p-row">
-            {/* Named for the utility it was started from: "Cable" on
-                electric, "Pipe" on gas and water, because that is what
-                the thing in the ground is called. */}
-            {[["cable", (traceRun?.layerKey ?? traceFrom?.layerKey) === "electric"
-              ? "Cable" : "Pipe"], ["trench", "Trench"]].map(([k, label]) => (
-              <button key={k}
-                className={`gt-p-b${(traceRun?.kind ?? traceFrom?.kind) === k ? " on" : ""}`}
-                onClick={() => {
-                  if (traceRun) {
-                    runTrace(traceRun.start,
-                      { ...traceRun, kind: k, direction: k === "trench" ? "both" : traceRun.direction });
-                  } else setTraceFrom({ ...traceFrom, kind: k });
-                }}>
-                {label}
-              </button>
-            ))}
-          </div>
+          {/* ── The panel reports; the dialog asks ──
 
-          <div className="gt-p-row">
-            {[["up", "Upstream"], ["down", "Downstream"], ["both", "Both ways"]].map(([k, label]) => {
-              /* A trench has no source, so upstream and downstream are
-                 not questions it can answer. Offered greyed with the
-                 reason rather than hidden: a control that disappears
-                 looks like a fault. */
-              const onTrench = (traceRun?.kind ?? traceFrom?.kind) === "trench";
-              return (
-                <button key={k} disabled={onTrench && k !== "both"}
-                  title={onTrench && k !== "both"
-                    ? "A trench is not fed from anywhere, so it has no upstream"
-                    : undefined}
-                  className={`gt-p-b${(traceRun?.direction ?? traceFrom?.direction) === k ? " on" : ""}`}
-                  onClick={() => {
-                    if (traceRun) runTrace(traceRun.start, { ...traceRun, direction: k });
-                    else setTraceFrom({ ...traceFrom, direction: k });
-                  }}>
-                  {label}
-                </button>
-              );
-            })}
-          </div>
-          </>
-          )}
-
+              These same two rows were here as well, so finishing a
+              trace put the questions back on screen \u2014 which reads as
+              the dialog reopening rather than as a result. One place
+              answers each: the dialog decides what to follow, this says
+              what was found, and Change reopens the dialog at the same
+              point rather than repeating it here. */}
           {traceRun && (
             <>
               <p className="hint">
@@ -22394,6 +22352,22 @@ export default function GISCanvasPage() {
                 <button className="gt-p-b"
                   onClick={() => setTracedM(traceRun.furthest)}>
                   Show all
+                </button>
+                {/* Back to the one dialog, at the same point: "actually,
+                    show me the trench" is the same question about the
+                    same place, and it belongs where it was asked. */}
+                <button className="gt-p-b"
+                  onClick={() => {
+                    setTracePick({
+                      at: traceRun.start,
+                      layerKey: traceRun.layerKey,
+                      kind: traceRun.kind,
+                      direction: traceRun.direction,
+                      lineId: traceRun.startLineId ?? null,
+                    });
+                    setTraceRun(null);
+                  }}>
+                  Change&hellip;
                 </button>
               </div>
             </>
@@ -26118,7 +26092,16 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-p-x { background: none; border: none; cursor: pointer; font-size: 17px;
   line-height: 1; color: var(--muted); }
 .gt-p-row { display: flex; gap: 5px; margin-top: 7px; flex-wrap: wrap; }
-.gt-p-b { flex: 1; min-width: 62px; padding: 5px 7px; border-radius: 6px;
+/* An equal share of the row let the longest label overflow its own box:
+   "Downstream" came out clipped. Grown from the content instead, so a
+   button is at least as wide as the word in it and the row wraps when
+   they will not fit.
+
+   No backticks in here. This stylesheet is a template literal, and one
+   in a comment ends the string \u2014 the build then fails somewhere else
+   entirely, on the next line that happens to be invalid JavaScript. */
+.gt-p-b { flex: 1 1 auto; min-width: max-content; padding: 5px 9px;
+  border-radius: 6px;
   border: 1px solid var(--border); background: var(--white); cursor: pointer;
   font: inherit; font-size: 11.5px; }
 .gt-p-b.on { background: var(--accent); border-color: var(--accent); color: #fff; }

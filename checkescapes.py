@@ -46,6 +46,27 @@ for path in sorted(glob.glob("src/**/*.jsx", recursive=True)):
     raw = open(path).read()
     src = strip_comments(raw)
 
+    # -- A backtick inside a CSS comment ends the stylesheet --
+    #
+    #    These files hold their styles in a template literal, so a
+    #    comment written in `code style` inside one terminates the
+    #    string. The build then fails somewhere else entirely, on the
+    #    next line that happens not to be valid JavaScript, a long way
+    #    from the line that caused it.
+    #
+    #    Read from the RAW text, because strip_comments removes the very
+    #    comments this is looking inside.
+    for cm in re.finditer(r"/\*.*?\*/", raw, re.S):
+        if "`" not in cm.group(0):
+            continue
+        # Inside a template literal: an odd number of backticks before it.
+        if raw[:cm.start()].count("`") % 2 == 0:
+            continue
+        line = raw[:cm.start()].count("\n") + 1
+        print(f"  {path}:{line}  backtick in a comment inside a template "
+              "literal - it ends the string")
+        bad += 1
+
     for i, line in enumerate(src.split("\n"), 1):
         # attribute="..." containing a backslash-u, not inside braces
         for m in re.finditer(r'\b(\w+)="([^"]*\\u[0-9a-fA-F]{4}[^"]*)"', line):

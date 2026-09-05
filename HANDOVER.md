@@ -1944,6 +1944,25 @@ is settled and only the reading of it is being adjusted — *"actually,
 show me the trench"* is the same question about the same place. Setting
 one up is a different moment from changing one.
 
+**The result panel reports; the dialog asks.** The panel carried the
+same Cable/Trench and direction rows as the dialog, so finishing a trace
+put the questions back on screen — which reads as the dialog reopening
+rather than as a result. It shows what was found, with **Play again**,
+**Show all** and **Change…**, and Change reopens the one dialog at the
+same point.
+
+59. **A backtick in a comment ends a template literal.** These files
+    hold their stylesheets in a template literal, and a comment written
+    in `code style` inside one terminates the string. The build then
+    fails somewhere else entirely, on the next line that happens not to
+    be valid JavaScript — the reported line was three hundred lines from
+    the cause.
+
+    `checkescapes.py` catches it now, and it is proven the only way
+    worth proving: the fault was put back, the check fired on the right
+    line, and it passed once removed. **A check written after a fix and
+    never seen to fail is a check that passes for the wrong reason.**
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

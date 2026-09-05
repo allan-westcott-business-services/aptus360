@@ -1963,6 +1963,36 @@ same point.
     line, and it passed once removed. **A check written after a fix and
     never seen to fail is a check that passes for the wrong reason.**
 
+60. **Two rules, one drawing, no agreement.** "Downstream" means the
+    distance from the source increases — and that distance was measured
+    across every edge regardless of circuit, so it took shortcuts the
+    supply cannot. On the live drawing the distance to the link box was
+    measured along a NEIGHBOURING circuit's cable sharing the trench;
+    the box came out nearer the source than the cable feeding it, every
+    output measured as leading BACK towards the source, and a downstream
+    trace from one said **"nothing downstream of there"** with half the
+    estate beyond it.
+
+    The walk had been taught not to cross circuits (fault 58) and the
+    distance had not. **Half-applying a rule is worse than not applying
+    it**: the two disagreed about the same drawing and the answer looked
+    considered.
+
+    Fixing it also needed the search state to change. Keying Dijkstra on
+    the node alone, a node first reached along one circuit locked the
+    other out and six of the box's eight outputs came back "not
+    connected to a source". Measured FOR the circuit being traced
+    instead, which the walk is bounded to anyway.
+
+**Known and not fixed: upstream fans out.** From deep in an output,
+upstream returns dozens of paths where it should return one. Two outputs
+sharing a trench are welded at every coincident vertex, which makes a
+loop, and in a loop the distance decreases in both directions from the
+far point. The honest fix is to stop welding two DIFFERENT cables at a
+shared vertex — joining them only where a joint or an end says they meet
+— which is the same "sharing a trench is not being connected" rule as
+everywhere else, and a bigger change than this one.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

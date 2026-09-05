@@ -132,8 +132,34 @@ function nearestOnSegments(lines, point, reach) {
   return best ?? null;
 }
 
-/* Distance from the nearest source, along the network. */
-function fromSource(graph, sourceKeys) {
+/* Distance from the nearest source, along the network.
+
+   ── Along THIS network ──
+
+   Measured across every edge regardless of circuit, this took shortcuts
+   the supply cannot: two circuits sharing a trench are welded in a
+   graph keyed on position, so the distance to a link box could be
+   measured along a NEIGHBOURING circuit's cable. The box then came out
+   nearer the source than the cable feeding it, every output measured as
+   leading back towards the source, and a downstream trace from one
+   reported "nothing downstream of there" with half the estate beyond
+   it.
+
+   The walk was taught not to cross circuits and this was not, so the
+   two disagreed about the same drawing \u2014 which is worse than either
+   rule alone, because the answer looks considered.
+
+   Measured FOR one circuit \u2014 the one the trace is on \u2014 rather than
+   carrying a circuit through the search. Carrying it needs the search
+   state to be (node, circuit): a node first reached along one circuit
+   recorded that circuit and locked the other out, so six of a link
+   box's eight output cables came back "not connected to a source" when
+   the whole estate hangs off them.
+
+   The walk is bounded to one circuit already, so measuring for that one
+   is the same question asked once rather than a general answer nobody
+   needs. */
+function fromSource(graph, sourceKeys, circuitId = null) {
   const seen = new Map();
   const queue = [];
   for (const k of sourceKeys) {
@@ -148,6 +174,9 @@ function fromSource(graph, sourceKeys) {
     queue.sort((a, b) => seen.get(a) - seen.get(b));
     const k = queue.shift();
     for (const e of graph.next.get(k) || []) {
+      /* This circuit's cables, and the unnamed lengths they feed. */
+      if (circuitId != null && e.circuitId != null
+        && e.circuitId !== circuitId) continue;
       const d = seen.get(k) + dist(e.pts[0], e.pts[1]);
       if (!seen.has(e.to) || d < seen.get(e.to) - 1e-9) {
         seen.set(e.to, d);
@@ -196,6 +225,16 @@ export function traceTree(lines = [], startPoint, opts = {}) {
     return { error: "Nothing to trace at that point \u2014 click on a line." };
   }
 
+  /* Worked out before the depth, because the depth is measured FOR this
+     circuit \u2014 see fromSource. */
+  const chosenEarly = startLineId != null
+    ? usable.find((f) => Number(f.Feature_ID) === Number(startLineId))
+    : null;
+  const clickedEarly = (chosenEarly ?? onLine?.line)?.Attributes?.Circuit_ID;
+  const traceCircuit = clickedEarly != null ? Number(clickedEarly)
+    : ((graph.next.get(startKey) || [])
+      .map((e) => e.circuitId).find((c) => c != null) ?? null);
+
   let depth = null;
   if (direction === "up" || direction === "down") {
     const keys = sourcePoints
@@ -207,7 +246,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
           + "no meaning here. Trace both ways instead.",
       };
     }
-    depth = fromSource(graph, keys);
+    depth = fromSource(graph, keys, traceCircuit);
     if (!depth.has(startKey)) {
       return { error: "That point is not connected to a source." };
     }
@@ -272,13 +311,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
      honest: a service says nothing about which network it is on, and
      the walk picks the circuit up from the first named length it
      meets. */
-  const chosen = startLineId != null
-    ? usable.find((f) => Number(f.Feature_ID) === Number(startLineId))
-    : null;
-  const clicked = (chosen ?? onLine?.line)?.Attributes?.Circuit_ID;
-  const startCircuit = clicked != null ? Number(clicked)
-    : ((graph.next.get(startKey) || [])
-      .map((e) => e.circuitId).find((c) => c != null) ?? null);
+  const startCircuit = traceCircuit;
   step(startKey, [graph.at.get(startKey)], new Set(), startCircuit);
 
   if (!paths.length) {

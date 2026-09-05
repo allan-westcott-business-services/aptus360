@@ -323,6 +323,47 @@ const world = [
   }
 }
 
+// Depth is measured on the SAME network the walk uses.
+//
+//    "Downstream" means the distance from the source increases, and
+//    that distance was measured across every edge regardless of
+//    circuit — so it took shortcuts the supply cannot. On a live
+//    drawing the distance to a link box was measured along a
+//    NEIGHBOURING circuit's cable sharing the trench, the box came out
+//    nearer the source than the cable feeding it, and every output
+//    measured as leading BACK towards the source: "nothing downstream
+//    of there", with half the estate beyond it.
+//
+//    The walk had been taught not to cross circuits and this had not,
+//    so the two disagreed about the same drawing — which is worse than
+//    either rule alone, because the answer looks considered.
+{
+  const on = (id, g, cid) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: g,
+    Attributes: { Line_Type: "elec_main", Circuit_ID: cid } });
+
+  /* Circuit 3 runs the long way round to a box; circuit 2 shares the
+     trench on the short leg. Measured across both, the box is nearer
+     the source than the cable feeding it. */
+  const trunk = on(1, [[0, 0], [0, 100], [100, 100]], 3);   // 200 m round
+  const shortcut = on(2, [[0, 0], [100, 100]], 2);          // 141 m direct
+  const output = on(3, [[100, 100], [200, 100]], 3);        // beyond the box
+  const world = [trunk, shortcut, output];
+
+  const r = traceTree(world, [150, 100], { direction: "down",
+    sourcePoints: [[0, 0]], reach: 3, startLineId: 3 });
+  if (r.error) {
+    fail(`downstream of a link box output was refused: ${r.error} \u2014 the `
+      + "distance to the box was measured along another circuit's cable");
+  }
+
+  /* And the source is still reachable for the circuit being traced,
+     even where a shared node was first met along the other one. */
+  const u = traceTree(world, [150, 100], { direction: "up",
+    sourcePoints: [[0, 0]], reach: 3, startLineId: 3 });
+  if (u.error) fail(`upstream was refused: ${u.error}`);
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

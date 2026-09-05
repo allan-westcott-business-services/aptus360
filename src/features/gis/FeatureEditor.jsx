@@ -12,6 +12,7 @@ import {
 } from "./snapping.js";
 import { EASEMENT_KEY } from "./easement.js";
 import { cableMenu, cableMenuName } from "./cableMenu.js";
+import { wayOf, metersByPlot } from "./linkWays.js";
 import { contentsOf } from "./trenchContents.js";
 import { UTILITIES } from "../../lib/utilities.js";
 import { trenchSize, concurrentCount, dominantOf } from "./trenchSize.js";
@@ -60,7 +61,7 @@ export default function FeatureEditor({
      has more than one. Written across every member, by the canvas. */
   onSetCircuitOrigin,
   /* Link box outputs: arm the lasso for one, or clear it. */
-  onLassoLinkWay, onClearLinkWay,
+  onLassoLinkWay, onClearLinkWay, onIsolateWay, isolatedWay,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -536,6 +537,19 @@ export default function FeatureEditor({
      work, and that is worse than one offering too much. */
   const cableUsage = f.Attributes?.Line_Type === "elec_service" ? "service" : "mains";
 
+  /* Which output of which box this feature is on, if any \u2014 read the
+     way the drawing reads it, not by a second rule written here. */
+  const ownWay = useMemo(() => {
+    const w = wayOf(feature, metersByPlot(allFeatures || []));
+    if (!w) return null;
+    const box = (allFeatures || []).find((x) =>
+      Number(x.Feature_ID) === Number(w.box));
+    return { ...w, boxLabel: box?.Label ?? box?.Attributes?.Span_Label ?? null };
+  }, [feature, allFeatures]);
+  const ownWayIsolated = !!(ownWay && isolatedWay
+    && Number(isolatedWay.box) === Number(ownWay.box)
+    && Number(isolatedWay.way) === Number(ownWay.way));
+
   /* The plots a joint serves.
 
      A joint records how many services leave the feeder at its point but
@@ -988,6 +1002,31 @@ export default function FeatureEditor({
                           }}>&times;</button>
                       )}
                     </div>
+                    {/* Reading one output with the others put away.
+
+                        Three cables in one trench wearing three colours
+                        is not enough past a certain density. Offered
+                        per output rather than as one control, because
+                        "which one" is the whole question. */}
+                    {onIsolateWay && (
+                      <div className="fe-lb-assign">
+                        <span className="hint">
+                          {isolatedWay
+                            && Number(isolatedWay.box) === Number(feature.Feature_ID)
+                            && Number(isolatedWay.way) === w
+                            ? "Only this output is shown"
+                            : "Show this output on its own"}
+                        </span>
+                        <button type="button" className="btn sm"
+                          title="Hide the other outputs of this box. The input, the trenches and everything else stay."
+                          onClick={() => onIsolateWay(feature.Feature_ID, w)}>
+                          {isolatedWay
+                            && Number(isolatedWay.box) === Number(feature.Feature_ID)
+                            && Number(isolatedWay.way) === w
+                            ? "Show all outputs" : "Isolate"}
+                        </button>
+                      </div>
+                    )}
                     {onLassoLinkWay && (
                       <div className="fe-lb-assign">
                         <span className="hint">
@@ -1234,6 +1273,30 @@ export default function FeatureEditor({
                   : "Hide every other circuit. Trenches, plots and the other utilities stay."}
                 onClick={() => onIsolateCircuit?.(feature.Attributes.Circuit_ID)}>
                 {circuitIsolated ? "Show all circuits" : "Isolate this circuit"}
+              </button>
+            </div>
+          )}
+
+          {/* ── And the output, from anything standing on it ──
+
+              Isolating an output is wanted while looking at a cable or a
+              meter, not only from the box: the thing in front of you is
+              what raised the question. Which output this is on comes
+              from the same stamps the build and the lasso write, and
+              from the plot's meter for a service \u2014 wayOf, so this panel
+              and the drawing cannot disagree about whose it is. */}
+          {onIsolateWay && ownWay && (
+            <div className="fe-circuit">
+              <span>
+                <strong>{ownWay.boxLabel || "Link box"}</strong>
+                <span className="fe-cl">output {ownWay.way}</span>
+              </span>
+              <button type="button" className="fe-iso"
+                title={ownWayIsolated
+                  ? "Bring back the other outputs"
+                  : "Hide the other outputs of this box. The input and the trenches stay."}
+                onClick={() => onIsolateWay(ownWay.box, ownWay.way)}>
+                {ownWayIsolated ? "Show all outputs" : "Isolate this output"}
               </button>
             </div>
           )}

@@ -42,6 +42,7 @@ import { originMissing,
 } from "./electric.js";
 import FeatureEditor from "./FeatureEditor.jsx";
 import { drawnLength, runLength, hasMeasured } from "./lengths.js";
+import { metersByPlot, outsideWay } from "./linkWays.js";
 
 /* What a line's label says about its length: the measured figure where
    somebody entered one, marked so the drawing admits the number is not
@@ -2193,6 +2194,20 @@ export default function GISCanvasPage() {
   const [heldHidden, setHeldHidden] = useState([]);
   const [isolatedCircuit, setIsolatedCircuit] = useState(null);
 
+  /* One output of a link box, with the others put away.
+
+     A box's outputs are three cables in one trench wearing three
+     colours, and past a certain density that is not enough to read one
+     of them. Same shape as isolating a circuit: a piece of state, a
+     rule about what it hides, and the same banner offering to bring
+     everything back. */
+  const [isolatedWay, setIsolatedWay] = useState(null);
+  const metersByPlotId = useMemo(() => metersByPlot(features), [features]);
+  const isolateWay = useCallback((box, way) => {
+    setIsolatedWay((cur) => (cur && Number(cur.box) === Number(box)
+      && Number(cur.way) === Number(way) ? null : { box: Number(box), way: Number(way) }));
+  }, []);
+
   /* Which circuit an electric service cable belongs to.
 
      Circuit membership is written on the meter and nowhere else, so a
@@ -2417,6 +2432,7 @@ export default function GISCanvasPage() {
 
       if (keys.some((k) => hidden.includes(k))) return false;
       if (outsideCircuit(f, isolatedCircuit)) return false;
+      if (outsideWay(f, isolatedWay, metersByPlotId)) return false;
 
       if (liveTrenchOnly && liveTrenchIds
         && f.Feature_Type === "line"
@@ -2426,6 +2442,7 @@ export default function GISCanvasPage() {
       return true;
     }),
     [features, hidden, classKeys, isolatedCircuit, outsideCircuit,
+      isolatedWay, metersByPlotId,
       liveTrenchOnly, liveTrenchIds, lineTypes, lightingView, awaitingClick]
   );
 
@@ -21265,6 +21282,8 @@ export default function GISCanvasPage() {
           onSavePlot={savePlot}
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
+          onIsolateWay={isolateWay}
+          isolatedWay={isolatedWay}
           onSetCircuitOrigin={setCircuitOrigin}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
           onCableSized={async (edited) => {
@@ -22608,12 +22627,14 @@ export default function GISCanvasPage() {
               </button>
             )}
 
-            {(hidden.length > 0 || isolatedCircuit != null || liveTrenchOnly
+            {(hidden.length > 0 || isolatedCircuit != null || isolatedWay != null
+              || liveTrenchOnly
               || (!showBasemap && basemap?.Metres_Per_Pixel)) && (
               <button className="gis-hidden"
-                title="Unhide every layer and end any circuit isolation"
+                title="Unhide every layer and end any isolation"
                 onClick={() => {
                   setHidden([]); setSolo(null); setShownOnly([]); setIsolatedCircuit(null);
+                  setIsolatedWay(null);
                   setShowBasemap(true); setLiveTrenchOnly(false);
                   setGapList(null);
                 }}>
@@ -22629,6 +22650,16 @@ export default function GISCanvasPage() {
                     Showing {circuitsFrom(features)
                       .find((c) => String(c.id) === String(isolatedCircuit))?.name
                       ?? `circuit ${isolatedCircuit}`} only
+                  </span>
+                )}
+                {/* An isolate with nothing on screen saying so is a
+                    drawing somebody will believe. Named here like the
+                    circuit isolate, and cleared by the same button. */}
+                {isolatedWay != null && (
+                  <span>
+                    Showing {features.find((x) =>
+                      Number(x.Feature_ID) === Number(isolatedWay.box))?.Label
+                      ?? "link box"} output {isolatedWay.way} only
                   </span>
                 )}
                 {hidden.length > 0 && (

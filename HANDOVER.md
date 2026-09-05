@@ -143,6 +143,7 @@ caught a fault that had already shipped at least once.
 | `node checkdeadzone.mjs` | No hook depends on something declared later |
 | `node checkrealdrawing.mjs` | A real site still gives the answers recorded for it |
 | `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
+| `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -1256,6 +1257,24 @@ shape is simply wrong. **Where a drawing states something nobody means,
 say so instead of describing it.** Boxes side by side on one circuit
 are two independent splits and trace normally; `checkcabletrace` holds
 both halves.
+
+**An output of a link box can be isolated.** Same shape as isolating a
+circuit — a piece of state, a rule about what it hides, the same banner
+offering everything back — reached from the box's editor per output, or
+from any object standing on that output.
+
+The rule is in `linkWays.js`. What says which output something is on is
+what the build and the lasso WROTE: `Link_Box_ID` and `Link_Way` on the
+runs and the meters, and for anything holding a `Plot_ID`, the output of
+that plot's meter. **Nothing is guessed from position.** A feeder point
+at a junction carries no stamp, and inventing one for it from where it
+stands is the geometry-guessing that produced faults 31, 38, 39 and 46.
+
+It hides the other outputs of the same box and nothing else — not the
+input, not the trenches, not another circuit. Somebody reading output 3
+wants to see what feeds it and where it runs. An unstamped feature
+stays, because "not known to be on another output" is not "on this
+one", and hiding on a guess loses work.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

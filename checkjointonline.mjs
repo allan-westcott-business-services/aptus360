@@ -102,7 +102,8 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   /* The saved row is kept, because its id is needed afterwards to
      write the joint's Connects — so the reconcile is two statements
      now rather than one. */
-  if (!/reconcile\(tempId, await addFeature\(draftJoint\)\);/.test(fn)) {
+  if (!/const savedJoint = await addFeature\(draftJoint\);/.test(fn)
+    || !/reconcile\(tempId, savedJoint\);/.test(fn)) {
     fail("the drawn joint is never replaced by the saved one");
   }
   /* And taken away again if the save fails. A joint that was never

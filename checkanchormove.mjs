@@ -167,6 +167,55 @@ if (typeof anchorFollows !== "function" || typeof withMovedAnchor !== "function"
   }
 }
 
+/* ── A stop standing at a joint goes with it ──
+
+   A feeder point placed with a straight joint stands AT the fitting:
+   its anchor is the joint's position, its leader is drawn from there to
+   wherever its marker was nudged. Move the joint alone and the leader
+   ends in mid air pointing at nothing.
+
+   Its MARKER does not move — somebody put that where it reads best, and
+   the two are separate objects on purpose. Only the anchor travels, so
+   the leader stretches, which is what being attached looks like. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* Matched on a stamp the placement writes, not on position: two
+     joints a metre apart would each claim the other's stop. */
+  if (!/At_Joint_ID: Number\(savedJoint\?\.Feature_ID\)/.test(canvas)) {
+    fail("a feeder point placed with a joint does not record which fitting "
+      + "it stands at");
+  }
+  if (!/Number\(f\.Attributes\.At_Joint_ID\) === Number\(j\.Feature_ID\)/.test(canvas)) {
+    fail("the drag does not find the stops belonging to the joint");
+  }
+  /* A bridge for points made before the stamp existed \u2014 narrow, and
+     only where nothing is stamped. */
+  if (!/f\.Attributes\?\.At_Joint_ID == null\n\s*&& Array\.isArray\(jAt\)/.test(canvas)) {
+    fail("a point made before the stamp existed never follows its joint");
+  }
+
+  /* The anchor moves and the marker does not. */
+  if (!/const anchorOnly = d\.anchorOnly \|\| new Map\(\);/.test(canvas)) {
+    fail("nothing carries an anchor without its marker");
+  }
+  if (!/Span_Anchor: \[startAnchor\[0\] \+ dm\[0\], startAnchor\[1\] \+ dm\[1\]\]/.test(canvas)) {
+    fail("the anchor does not take the drag's delta");
+  }
+
+  /* And it is SAVED. The geometry never moved, so these are not in
+     `updates` and moveFeatures never sees them: the leader would follow
+     until the next reload and then jump back, which looks right while
+     being wrong. */
+  if (!/const followRows = \[\.\.\.\(d\.anchorOnly \|\| new Map\(\)\)\.keys\(\)\]/.test(canvas)) {
+    fail("a stop's travelled anchor is never written, so it jumps back on "
+      + "the next reload");
+  }
+  if (!/if \(followRows\.length\) await bulkUpdateFeatures\(projectId, followRows\);/.test(canvas)) {
+    fail("the travelled anchors are gathered and not saved");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Anchors behave (a link box takes its own with it, a marker leaves "
   + "its own where the dig is).");

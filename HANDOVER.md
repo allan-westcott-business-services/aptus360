@@ -1666,6 +1666,27 @@ The point of the whole thing: **`Connects` is derived from geometry and
 wrong cable sooner or later, on a drawing where cables share a trench.
 A record of what somebody did outlives a guess about what they meant.
 
+**A stop standing at a joint travels with it.** The feeder point placed
+with a straight joint has its anchor at the fitting and its leader drawn
+from there to wherever its marker was nudged. Moving the joint alone
+left the leader ending in mid air, pointing at nothing.
+
+The ANCHOR follows; the marker does not. Somebody put the marker where
+it reads best, and the two being separate objects is the point — so the
+leader stretches, which is what attached looks like.
+
+Matched on `At_Joint_ID`, stamped by the placement, **not on position**:
+two joints a metre apart would each claim the other's stop. Points made
+before the stamp existed fall back to standing within a third of a
+metre at the moment the drag begins — a bridge for drawings already
+made, narrow enough not to be a guess.
+
+And it is SAVED through `bulkUpdateFeatures`. These points' geometry
+never moves, so they are not in the move's updates and `moveFeatures`
+never sees them. Left out, the leader would follow until the next reload
+and then jump back — **which looks right while being wrong**, and is
+worse than not following at all.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

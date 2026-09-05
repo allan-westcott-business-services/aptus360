@@ -6945,6 +6945,44 @@ export default function GISCanvasPage() {
         .map((id) => features.find((x) => x.Feature_ID === id))
         .filter(Boolean));
 
+      /* ── The stops standing at a joint being moved ──
+
+         A feeder point placed with a straight joint stands AT it: its
+         anchor is the fitting's position and its leader is drawn from
+         there to wherever its marker was nudged. Move the joint alone
+         and the leader ends in mid air pointing at nothing.
+
+         Its marker does NOT move \u2014 somebody put that where it reads
+         best, and the two are separate objects on purpose. Only the
+         anchor travels, so the leader stretches.
+
+         Matched on `At_Joint_ID`, which the placement stamps. Points
+         made before that stamp existed fall back to standing within a
+         third of a metre of the fitting at the moment the drag begins:
+         a bridge for drawings already made, narrow enough that two
+         joints a metre apart cannot claim each other's. */
+      const jointIds = next
+        .map((id) => features.find((x) => x.Feature_ID === id))
+        .filter((f) => f?.Feature_Role === "joint");
+      if (jointIds.length) {
+        const follow = new Map();
+        for (const j of jointIds) {
+          const jAt = j.Attributes?.Span_Anchor ?? j.Geometry?.[0];
+          for (const f of features) {
+            if (f.Feature_Role !== "feederpoint") continue;
+            const a = f.Attributes?.Span_Anchor;
+            if (!Array.isArray(a)) continue;
+            const stamped = f.Attributes?.At_Joint_ID != null
+              && Number(f.Attributes.At_Joint_ID) === Number(j.Feature_ID);
+            const nearby = f.Attributes?.At_Joint_ID == null
+              && Array.isArray(jAt)
+              && Math.hypot(a[0] - jAt[0], a[1] - jAt[1]) <= 0.35;
+            if (stamped || nearby) follow.set(f.Feature_ID, [a[0], a[1]]);
+          }
+        }
+        if (follow.size) drag.current.anchorOnly = follow;
+      }
+
       /* Moving a point that a line ends on drags that end with it.
 
          A meter or a joint sits on the network because a cable reaches
@@ -7574,7 +7612,18 @@ export default function GISCanvasPage() {
     const origin = d.origin;
     const rubber = d.rubber || [];
     const anchors = d.anchors || new Map();
+    /* Anchors that follow a DIFFERENT feature: a feeder point standing
+       at a joint. Its marker stays where somebody put it and its anchor
+       goes with the fitting, so the leader between them stretches \u2014
+       which is what being attached looks like. */
+    const anchorOnly = d.anchorOnly || new Map();
     setFeatures((fs) => fs.map((f) => {
+      const startAnchor = anchorOnly.get(f.Feature_ID);
+      if (startAnchor) {
+        return { ...f,
+          Attributes: { ...f.Attributes,
+            Span_Anchor: [startAnchor[0] + dm[0], startAnchor[1] + dm[1]] } };
+      }
       const orig = origin[f.Feature_ID];
       if (!orig) return f;
 
@@ -7893,6 +7942,18 @@ export default function GISCanvasPage() {
         d.anchors || new Map(),
       );
       if (anchorRows.length) await bulkUpdateFeatures(projectId, anchorRows);
+
+      /* And the stops that travelled with a joint. Their GEOMETRY never
+         moved, so they are not in `updates` and moveFeatures never sees
+         them \u2014 only the anchor changed, and only bulkUpdateFeatures
+         writes attributes. Left out, the leader would follow the joint
+         until the next reload and then jump back, which is worse than
+         not following at all: it would look right while being wrong. */
+      const followRows = [...(d.anchorOnly || new Map()).keys()]
+        .map((id) => features.find((f) => f.Feature_ID === id))
+        .filter((f) => Array.isArray(f?.Attributes?.Span_Anchor))
+        .map((f) => ({ Feature_ID: f.Feature_ID, Attributes: { ...f.Attributes } }));
+      if (followRows.length) await bulkUpdateFeatures(projectId, followRows);
 
       /* Dragging something out of place is the accident undo exists for.
 
@@ -8218,7 +8279,13 @@ export default function GISCanvasPage() {
 
     setBusy("joint");
     try {
-      reconcile(tempId, await addFeature(draftJoint));
+      /* The saved row is kept: its id is what the stop beside it
+         records as the fitting it stands at. An earlier version of this
+         reached for a `savedJoint` that had never been declared \u2014 the
+         build compiled it, because a bare identifier is only a fault
+         when the line runs. */
+      const savedJoint = await addFeature(draftJoint);
+      reconcile(tempId, savedJoint);
 
       /* ── And the point on the run, beside it ──
 
@@ -8250,6 +8317,19 @@ export default function GISCanvasPage() {
           ...(ins.seq != null ? { Span_Seq: ins.seq, Span_Label: ins.label } : {}),
           Span_Kind: "junction",
           Span_Anchor: at,
+          /* ── Which fitting this stop stands at ──
+
+             The point and the joint are two objects, moved
+             independently \u2014 that is what was asked for. But the point
+             is AT the joint: its anchor is the joint's position, and
+             its leader is drawn from there to wherever its marker has
+             been nudged. Move the joint and leave the anchor behind,
+             and the leader ends in mid air pointing at nothing.
+
+             So the stop remembers its fitting, and the anchor travels
+             with it. Not inferred from position at drag time: two
+             joints a metre apart would each claim the other's. */
+          At_Joint_ID: Number(savedJoint?.Feature_ID) || null,
           ...(line.Attributes?.Link_Box_ID != null
             ? { Link_Box_ID: line.Attributes.Link_Box_ID } : {}),
           ...(line.Attributes?.Link_Way != null

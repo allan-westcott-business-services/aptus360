@@ -2327,6 +2327,27 @@ export default function GISCanvasPage() {
     return utilities.length > 0 && !utilities.includes("water");
   }, [shownOnly]);
 
+  /* ── What the drawing has, for the menus that need it ──
+
+     Almost everything on these menus works on the dig: routing a
+     circuit, laying a service, placing span nodes, checking the joins.
+     With no trench drawn they cannot do anything, and offering them
+     means a click that reports nothing found — which reads as the
+     feature being broken rather than as the drawing not being ready.
+
+     Two facts rather than a test at each item, so every menu agrees
+     about what the drawing holds. */
+  const hasTrench = useMemo(() => features.some((f) => f.Feature_Type === "line"
+    && isTrenchType(f.Attributes?.Line_Type, lineTypes)), [features, lineTypes]);
+
+  const hasServiceTrench = useMemo(() => {
+    const svc = new Set(["trench_service", ...lineTypes
+      .filter((t) => t.Layer_Key === "trench" && /service/i.test(t.Type_Key))
+      .map((t) => t.Type_Key)]);
+    return features.some((f) => f.Feature_Type === "line"
+      && svc.has(String(f.Attributes?.Line_Type ?? "")));
+  }, [features, lineTypes]);
+
   const placing = queue.some((q) => !q.done);
 
   /* A joint being placed by clicking the cable it goes on.
@@ -20181,8 +20202,14 @@ export default function GISCanvasPage() {
                           heading that tells you nothing the item does not
                           already say. */}
                       <MenuItem label="Place Span Nodes"
-                        hint="At every junction and end of the trench network, A1 upwards"
-                        disabled={!!busy || !projectId}
+                        /* Nodes go at the junctions and ends of the
+                           trench network. With no trench there are no
+                           junctions and no ends, so this can only place
+                           nothing. */
+                        hint={hasTrench
+                          ? "At every junction and end of the trench network, A1 upwards"
+                          : "No trench drawn yet"}
+                        disabled={!!busy || !projectId || !hasTrench}
                         /* Under undo, because this now cuts trenches as
                            well as marking them. Placing a marker was
                            nothing much to take back; replacing a length
@@ -20199,8 +20226,14 @@ export default function GISCanvasPage() {
                           behind it. */}
                       <MenuItem label={busy === "autoservice"
                         ? "Laying\u2026" : "Auto Lay Service Trench"} indent
-                        hint="Draws the service trench to every plot, and nothing in it"
-                        disabled={!!busy || !projectId}
+                        /* It runs a service off the MAINS trench to each
+                           plot. With no mains trench there is nothing to
+                           run off, and it can only report that it found
+                           nothing to do. */
+                        hint={hasTrench
+                          ? "Draws the service trench to every plot, and nothing in it"
+                          : "No mains trench drawn yet to run services off"}
+                        disabled={!!busy || !projectId || !hasTrench}
                         onClick={() => runStep("service", () => withUndo(
                           "Auto Service", () => runAutoService({ trenchesOnly: true })))} />
                       {typesOn("trench").map((t) => (
@@ -20239,15 +20272,26 @@ export default function GISCanvasPage() {
                       <div className="gm-sep" />
                       <MenuGroup label="Checks" />
                       <MenuItem label="Check Trench Connectivity"
-                        disabled={!projectId}
+                        hint={hasTrench
+                          ? "Whether the dig is one network or several"
+                          : "No trench drawn yet"}
+                        disabled={!projectId || !hasTrench}
                         onClick={() => setTrenchCheck(trenchComponents(features, { lineTypes }))} />
 
                       <MenuItem label="Check Trench Joins"
-                        hint="Trench ends close to another trench but not joined"
-                        disabled={!!busy || !projectId}
+                        hint={hasTrench
+                          ? "Trench ends close to another trench but not joined"
+                          : "No trench drawn yet"}
+                        disabled={!!busy || !projectId || !hasTrench}
                         onClick={findGaps} />
                       <MenuItem label="Check Services Reach the Mains"
-                        disabled={!projectId}
+                        /* It reports which service trenches fail to
+                           reach a main. With none drawn it can only
+                           report nothing, which reads as a pass. */
+                        disabled={!projectId || !hasServiceTrench}
+                        hint={!hasServiceTrench
+                          ? "No service trenches drawn yet"
+                          : "Which service trenches do not reach a main"}
                         onClick={() => setSvcCheck(serviceTrenchCheck(features, { lineTypes }))} />
                       {/* Routing was here: Trace All Meters, Step Through
                           Traces, Suggest Trench Route, Only Live Trench.
@@ -20410,11 +20454,19 @@ export default function GISCanvasPage() {
                           with no reason is the problem runStep was
                           written to avoid, one menu along. */}
                       <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
-                        hint={circuitsFrom(features).length
-                          ? "Routes each circuit's cables along the trenches"
-                          : "No circuits yet \u2014 draw round the plot seeds with Link to "
-                            + "Circuit first, and this becomes available"}
-                        disabled={busy === "feeder" || !circuitsFrom(features).length}
+                        /* Two things it cannot do without: a circuit to
+                           route, and a dig to route it along. Named
+                           separately, because they are fixed in
+                           different places and "unavailable" without a
+                           reason is a dead end. */
+                        hint={!hasTrench
+                          ? "No trench drawn yet \u2014 the cables are routed along it"
+                          : circuitsFrom(features).length
+                            ? "Routes each circuit's cables along the trenches"
+                            : "No circuits yet \u2014 draw round the plot seeds with Link to "
+                              + "Circuit first, and this becomes available"}
+                        disabled={busy === "feeder" || !hasTrench
+                          || !circuitsFrom(features).length}
                         onClick={() => runStep("build",
                           () => withUndo("Build LV Network", () => buildLvNetwork()))} />
                       {/* Straight after the build, because it finishes

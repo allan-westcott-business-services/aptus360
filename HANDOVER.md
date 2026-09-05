@@ -134,6 +134,14 @@ caught a fault that had already shipped at least once.
 | `node checkplaceseq.mjs` | A newly placed point takes the number of the place it stands |
 | `node checkdownloaddrawing.mjs` | Download Drawing is on the menu and signed like every other call |
 | `node checkcabletrace.mjs` | A boxed circuit traces along the cable, each output carrying its own load |
+| `node checkcircuitpick.mjs` | Link to Circuit: rows choose, one button commits |
+| `node checkcircuitrings.mjs` | Assigned meters are ringed while the circuit lasso is up |
+| `node checkbreechdrag.mjs` | Every cable follows its breech; a levels panel stays one |
+| `node checkcablemenu.mjs` | Cable menus offer rated cables of the right usage, sorted |
+| `node checkspectable.mjs` | Derived columns, and where a new column lands |
+| `node checklengths.mjs` | Drawn follows the drawing; measured is somebody's word |
+| `node checkdeadzone.mjs` | No hook depends on something declared later |
+| `node checkrealdrawing.mjs` | A real site still gives the answers recorded for it |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -837,40 +845,480 @@ for diagnosis has to be what the database holds.
     refused by name rather than rendered, and it is NOT refused yet.
     The levels sheet groups per output (option B) — also not built.
 
-**Length_m has two writers and one meaning too few — OPEN.** The
-attribute is maintained by `gis_length_trg`, a database trigger that
-recomputes it from the geometry (see the comments in `0050` and
-`0056`), AND it is written by hand from the Feature Editor's "Measured
-length" field, which exists precisely so a run that rises through ducts
-can say it is longer than it is drawn. Those are opposite meanings for
-one column, and neither writer knows about the other.
+33. **A dialog whose commit did not look like one.** Link to Circuit
+    lists the circuits on the drawing and clicking one WAS the assign —
+    the row committed and closed. Fine on a drawing that already has
+    circuits; the FIRST circuit on a site has none, so the list was
+    empty and the only thing that would commit was a dashed
+    "+ New circuit", under a "Fed from" picker and above Cancel. It
+    read as a form with no OK. People cancelled believing nothing had
+    been assigned, which was true.
 
-The visible symptom is a line label reading "12.4 m entered" after the
-trench has been re-routed — `lengthLabel` prefers `Length_m` and marks
-it as entered, so a trigger-written figure is indistinguishable from a
-measurement somebody took, and a stale one is indistinguishable from a
-current one.
+    A row is a choice now and the action row commits, with the button
+    named for what it will do. **One commit control, not two** — a row
+    that assigns and a button that assigns is fault 18's duplicated
+    control, and they would drift. Where there is nothing to choose
+    between the choice is made already: a list with one option is not a
+    decision.
 
-**The trigger's body is not in the repo** — it is one of the
-eighty-five absent migrations — so which of these is happening cannot
-be settled from the folder:
+    The tell: a control that is both the option and the action reads as
+    the action only when there are several of them. Worth looking at
+    the other pick-one dialogs for the same shape.
 
-- the trigger fires on geometry change and the browser simply does not
-  re-read (the move handler saves and does not reload), so the value is
-  right in the database and stale on screen; or
-- the trigger does not fire on the paths a re-route uses, and the
-  stored figure really is stale; or
-- the trigger fires and silently destroys hand-entered measurements
-  whenever anything is dragged.
+**Circuit rings show while the lasso is up.** A meter on a circuit is
+ringed in that circuit's colour — an existing setting, off by default,
+reachable from the Layers menu and the Circuit Report. The one moment it
+is indispensable is the moment nobody has turned it on: drawing round
+plots for Link to Circuit, where an assigned meter looks exactly like a
+free one and the same plots get lassoed twice. The dialog refuses them,
+so no work is lost, but that is a count in a paragraph after the fact
+rather than something visible while the outline is being drawn.
 
-The fix differs completely between the three, and the third is a data
-loss nobody has reported yet. **Get the trigger out of Supabase before
-touching this** (`pg_dump --schema-only`, or the dashboard's function
-list) — this is the same instruction as recovering 0138 and 0163 and
-for the same reason. The likely end state is two attributes rather than
-one, a derived drawn length and a `Measured_Length_m` nobody but a
-person writes, but splitting them means deciding what every existing
-`Length_m` value MEANS, and that cannot be guessed per row.
+So they show whenever `tool === "circuit"`, whatever the setting says,
+and go back to the setting afterwards. **One setting temporarily
+overridden by the job in hand, not a second switch** — `checkcircuitrings`
+holds that: one toggle, and anything else may only turn them on.
+
+Worth generalising: a setting that is off by default and needed by one
+particular job is a setting somebody has to know about before they can
+do the job. The other display toggles are worth reading with that
+question in mind.
+
+34. **A check that could only see one line.** `\u2014` in JSX text
+    renders as six characters on screen — recurring fault 6, which
+    `checkescapes.py` exists for. It shipped anyway, into a dropdown a
+    customer reads: "Not set \u2014 the build picks the nearest POC".
+
+    The check looked for `>text<` **on a single line**. JSX text is
+    wrapped like prose, so the tag, the text and the closing tag are
+    usually on three lines, and a per-line rule cannot see it. It was
+    found on screen, which is the one place the check exists to stop it
+    being found.
+
+    It reads whole files now, with comments blanked first — every file
+    here carries long comments full of em dashes written as escapes,
+    quite correctly, and scanning them is what kept the rule narrow
+    enough to miss the real thing.
+
+    **Two narrowings, both learned from false positives**: the `>` must
+    end a tag (not `=>`), and the span may not contain a quote. Seven of
+    the first ten hits were escapes sitting legitimately inside JS
+    strings in JSX expressions. A check whose output includes hits
+    nobody acts on teaches everyone to skim it.
+
+    It immediately found **two more, written this session** — both
+    `hint="…\u2014…"` on menu items. The rule is old and the faults were
+    new, which is the argument for widening a check rather than fixing
+    the one instance.
+
+35. **A stamp outliving the thing it names.** A circuit exists while
+    meters name it — `circuitsFrom` derives the list from the meters, so
+    the last meter leaving takes the circuit with it. A link box's
+    `Circuit_ID` is a second record of that same fact, and nothing
+    clears it. So a box that was on Circuit 1 went on saying so after
+    Circuit 1 had ceased to exist, and the output lasso measured against
+    it and refused everything: *"Nothing in that outline is on Circuit
+    1"* — naming a circuit that is not in the report, which reads as the
+    app caching something.
+
+    Fault 13 again: two records of one fact, editable apart. The meters
+    are the fact and the stamp is a copy, so **a copy naming something
+    that is not there is not a claim.** It is dropped, the lasso stands,
+    and the status says the old name was dropped rather than the box
+    changing circuits quietly.
+
+    Worth checking the other carriers of `Circuit_ID` against this — a
+    feeder point, a joint, a run — all hold the same copy and none of
+    them is cleared when a circuit dissolves. Only the box's copy is
+    known to have bitten.
+
+36. **Parts counted as circuits.** Splitting a boxed circuit into trunk
+    and outputs made `parts` several per circuit, and everything that had
+    been counting parts went on counting them: the levels picker listed
+    "Circuit 3" three times, and the header said four circuits on a
+    drawing with two. Deduped by circuit name in one place, so the
+    count, the picker and the export cannot disagree.
+
+    The shape to watch when splitting a collection: **every reader that
+    said "one of these is one of those" is now wrong**, and none of them
+    fails — they just count differently.
+
+37. **An output walked its neighbours' cable.** Rooted at the box, the
+    graph radiates in every direction: back up the trunk toward the POC,
+    and out along the other outputs. Those branches carry no load for
+    this output, but the walk keeps a loadless branch that holds a stop —
+    correct for a circuit's walk, which covers the whole of it, and wrong
+    for one output.
+
+    So an output walked back up its own input and out along its
+    neighbours, reporting their stops as its own. Two outputs produced a
+    leg to the same point with different figures and the table showed
+    one leg twice, which is what somebody spotted on screen.
+
+    The exception is now for a circuit's walk only: an output goes where
+    its own plots are. Verified on a live drawing — the back-legs gone,
+    and with the bend point removed as a rebuild removes it, output 2 is
+    one 106.8 m leg and output 3 one 89.1 m leg, no duplicates.
+
+38. **Two origins, because the first had been dragged.** Place Span
+    Nodes matched an existing ORIGIN node by its marker, within 1.5 m.
+    The marker is the one part of a span node that moves — it is pulled
+    clear of the plant so its label can be read — and the anchor is what
+    says where it belongs. So an origin nudged two metres off its
+    substation stopped matching, and the next run made a second E0 on
+    top of the plant while the first sat beside it. Found on a live
+    drawing carrying two E0s and two E0bs.
+
+    The galling part: **the rule was already written twenty lines
+    below**, for every other node, with a comment explaining precisely
+    this — *"A node nudged off the trench by hand is the case this has
+    to recover: at one metre it was not matched, so re-placing added a
+    second node beside it."* Five metres, against the anchor. The
+    origins were added later and never got it.
+
+    A fix applied to a loop and not to the special case beside it is
+    fault 27's shape in one function. Both now use the anchor and five
+    metres, and a matched origin is claimed so the node pass cannot
+    reclaim it as an ordinary node and renumber it.
+
+    **Existing duplicates are not cleaned up by this** — it stops more
+    being made. A drawing that already has two has to have one deleted
+    by hand, and the one to keep is the older, since call-offs and legs
+    may name it.
+
+39. **"A joint sits on one cable" — true of a service joint, false of a
+    breech.** The drag narrows a joint to the single nearest feeder, for
+    a good reason: two circuits' mains share a trench, so a service
+    joint at a tee would otherwise drag both. A **breech** is not a
+    fitting let into a run — it is where a run ENDS and others begin.
+    Three feeders meet at one on a live drawing: the incoming cable's
+    last vertex and two outgoing cables' first. One followed and two
+    stayed, so dragging the joint tore the cable apart at the fitting
+    whose whole purpose is joining it.
+
+    The narrowing now applies to joints that sit on a run, and a breech
+    takes every feeder meeting it — same circuit, and END vertices only,
+    since offering it every vertex would let it claim a cable that
+    merely passes close and pull it out of shape.
+
+    Worth reading `Joint_Type` as a real distinction rather than a
+    label: `service`, `bottleend` and `breech` are three different
+    things geometrically, and a rule written for one of them will be
+    wrong for at least one of the others.
+
+40. **A panel re-run as something else.** Applying a suggested cable
+    change re-ran `runFullTrace` — a SINGLE-NODE trace — whatever had
+    produced the panel. The levels check traces every circuit and hands
+    back parts, so applying a suggestion swapped a whole-site levels
+    report for one node's legs: the circuit picker vanished, the other
+    circuits with it, and the volt drop columns went with the `levels`
+    flag that was no longer set.
+
+    Which run made the trace is recorded on the trace. It re-runs that
+    one, at the same depth, and keeps the circuit being read — the
+    levels check clears the selection, which would drop somebody back to
+    the first circuit after a change made on the third.
+
+41. **One narrowing, applied to one of the two menus.** The service
+    cable editor filtered its "Manually set" list by Usage and by the
+    active flags, through `cableChoices`. The mains editor beside it
+    read the raw catalogue: HV cores, earth cable, pilot cable and 20 kV
+    triplex, in the order rows were entered, offered to a designer
+    choosing an LV feeder.
+
+    Both read `cableChoices` now, with two rules added to it rather than
+    to one caller: **`Rating_Amps` must have a value** — a row without
+    one is a name somebody typed and never finished, and choosing it
+    sets a size the network cannot be checked against — and the list is
+    sorted on the label as it reads on screen, numbers compared as
+    numbers so 95 sorts before 185.
+
+    Never an empty menu: where nothing survives the narrowing the whole
+    catalogue is offered and the panel says so, because a designer
+    facing an empty dropdown cannot tell a filtered list from a broken
+    one. The message names both reasons — no Usage set, or no rating —
+    since they want different answers.
+
+    Same shape as fault 38: a rule written for one place and not the
+    near-identical one beside it. **When a menu is narrowed, the check
+    is whether every menu offering the same thing was narrowed.**
+
+42. **A new column went to the far right, for everybody.**
+    `useTableLayout` saves a column order on first use — so everybody has
+    one — and merged a new column by APPENDING it. A column added as the
+    second arrived last, and the only way to find it was to know it had
+    been added. It is inserted after whichever of its declared
+    neighbours is already in the saved order now, leaving arranged
+    columns alone. Every table in the app is affected, not just this
+    one.
+
+    `SpecTable` also gained derived columns: `value(row)` computes a
+    cell from somewhere else, read-only, sorting and filtering like any
+    other because everything goes through `shown`. Cable Specs uses it
+    to show the Usage each size inherits from its cable TYPE — which is
+    what decides whether the drawing offers it for a main or a service,
+    and could previously only be found by crossing to Cable Types and
+    matching rows by name.
+
+43. **One question, three answers.** The mains editor, the service
+    editor and Edit by kind each built their own cable menu — naming,
+    filtering and ordering written out three times. They agreed on the
+    naming by accident and differed everywhere one of them had been
+    corrected: usage filtering in two of the three, the raw catalogue in
+    the third, and no sort in any of them.
+
+    `cableMenu.js` is the one answer now, and all three go through it:
+    name (type plus size), order (alphabetical, numbers as numbers so 95
+    sorts before 185), usage, active flags, and `requireRating` as an
+    option.
+
+    **The rating rule deliberately differs between callers** and that is
+    a decision, not drift: the feature editor offers only rated cables,
+    Edit by kind offers every active service cable, because turning it
+    on there would take most of the service sizes out of a bulk edit
+    without anyone asking. The note sits above the call and
+    `checkcablemenu` holds both halves so it stays deliberate.
+
+45. **A dependency array is evaluated during render.** The effect body
+    is not — it runs long after everything is declared — so an effect
+    placed near the state it watches can safely CALL something declared
+    a thousand lines below, and cannot safely NAME it in the array. A
+    watcher added at line 1928 listed `typeOf`, declared at 3014, and
+    the canvas would not open at all: *"Cannot access '$r' before
+    initialization"*.
+
+    **`vite build` compiles it happily.** It is a runtime fault and
+    legal to write, so nothing caught it before a person opened the
+    page. `checkdeadzone.mjs` now walks every hook's array and reports a
+    name declared later in the same top-level function.
+
+    Writing that check took three passes, and the two wrong ones are the
+    lesson: it first recorded whichever declaration a regex matched
+    first, so a local `const rows` inside a handler shadowed the
+    `useState` above it and nine working pages were reported broken;
+    then it was file-scoped, so one component's parameter was measured
+    against another's state. **Earliest declaration, and the same
+    top-level function.** Both narrowings lose real faults in theory and
+    neither invents one — the right way round, because a check that
+    cries wolf gets switched off and then catches nothing at all.
+
+    Proven by putting the fault back and watching it fail, which is
+    worth doing for any check written after the fact.
+
+46. **A leg's cable read off a copy.** `spanTrace` took each leg's cable
+    size from the NODE it ends at. A node's cable is mirrored onto it by
+    Apply Cable Sizes from "the run feeding it", under a comment saying
+    two runs meeting at one node "cannot happen on a routed network".
+    At a link box it happens by design — the trunk arrives and three
+    outputs leave, all touching one point — so the last run processed
+    won, and the trunk leg reported an output's 185 where the input is
+    300. On a sheet somebody sizes a network from.
+
+    A leg now takes its cable from the RUN it lies along, sampled at the
+    MIDDLE of the leg: every run at a junction touches the ends and only
+    the right one covers the middle. Where a box's outputs share a
+    trench and several runs cover the whole leg, the run stamped with
+    that output wins — the same two-step rule as the other four places.
+
+    Fault 13 once more: the run holds the fact, the node holds a copy,
+    and the copy was being read.
+
+**`checkrealdrawing.mjs` — a real site, and the answers it is known to
+give.** Every other check here is built from a fixture written to show
+one rule, which is right, and has a gap: a fixture only contains what
+its author thought of. Every fault found on screen this session was
+invisible to fixtures because none of them held a link box with three
+outputs down one trench, or a node somebody had dragged.
+
+So `fixtures/drawing-2202-043.json` — a Download Drawing export — and
+the figures it produces. **Not a specification.** Several of the
+recorded answers were wrong when it was written, and one still is: the
+breech joint's cable in is recorded as `null`, because `sizeOf` looks
+for `Size`/`Cable_Size`/`Size_Label` and the build writes
+`VD_Cable_Size_ID`, so every jointing sheet goes to the gang blank. That
+is recorded rather than fixed because fixing it needs a decision — the
+call-off feeds a tablet that has no catalogue — and **when it starts
+reporting a cable the check will fail, which is the fix arriving.**
+
+A failure here is a question: did you mean to change this? Where the new
+answer is better, update the numbers and say so. Where it is not, a
+regression has been caught before it reached a designer's screen, which
+is the thing nothing in this suite could do before. It found the
+`sizeOf` fault on its first run.
+
+47. **Two assumptions that only held while the box sat on a junction.**
+    A redesign moved a link box to the far end of its network, mid-span
+    on a trench rather than at a fork of it, and two separate things
+    broke at once.
+
+    - **The box was never numbered.** `planFeederPoints` numbers what
+      the walk MARKS, and the full-circuit model calls a mid-span box
+      nothing — neither a fork of the dig nor an end of one. So no stop
+      was offered at its position, it was never adopted, and it kept the
+      number placement gave it: C10 on a circuit with nine points, the
+      sequence starting at ten. It had worked only by accident: before
+      each part's marks were filtered, the trunk marked every junction
+      on the circuit, which included the box whenever it stood on one.
+      `partEndMark` marks the far end of what each part lays, because
+      **that is a stop by definition — it is where the cable ends**.
+
+    - **The box carried an output's cable.** `syncNodeCables` mirrored a
+      run onto the node it feeds, last one wins, under a comment saying
+      two runs meeting at one node "cannot happen on a routed network".
+      At a box it happens by design: the trunk ENDS there and every
+      output STARTS there. Three runs claimed the box and an output won,
+      so it carried 185 where its input is 300 — a figure appearing
+      nowhere else at that point, neither as the system size nor the
+      manual one. A node now takes the cable of the run that ARRIVES at
+      it; a run leaving is the next length of cable and has its own node
+      further on.
+
+    Worth stating as one lesson: **both were assumptions about geometry
+    that nothing wrote down**, and both survived every fixture because
+    every fixture put the box where the assumption held. The second
+    fixture, `drawing-2202-043-box-moved.json`, exists to keep the
+    awkward shape in the suite.
+
+48. **"The same place" is not the same string.** The override carry
+    (fault 28) keyed a hand-set cable size on the run's arrival
+    quantised to centimetres, and looked it up EXACTLY. A rebuild
+    re-routes, so the same junction comes back a few centimetres off,
+    and an exact key does not match.
+
+    Measured on a live drawing before the fix: **two of five hand-set
+    sizes would have been lost by a rebuild.** One run came back at
+    286.484 where it had ended at 286.46 — a cable size dropped over
+    24 mm. The trunk was worse: its terminus moved 0.55 m when the link
+    box became the end of the run, taking a 300 with it.
+
+    Nearest arrival on the same circuit within two metres now, which is
+    far tighter than the gap between two stops and far looser than the
+    noise of re-routing. Same drawing after: nine of nine carried.
+
+    The lesson is about the shape of the first fix rather than the fix
+    itself. **Keying on a position is right; comparing positions by
+    equality is not.** Anywhere a coordinate is used as an identity,
+    the comparison wants a tolerance — and the tolerance wants a reason,
+    not a round number.
+
+49. **Two correct fixes, both deployed, both unable to work.** The
+    build flattens every part's sections into one list for the runs to
+    be laid from, and did it by writing that list ONTO the trunk part:
+    `r.sections = sections`. The marks are read from each part's
+    sections a few lines further down — so the trunk was filtered
+    against sections covering the whole circuit, which filters nothing,
+    and its terminus came out as the last point of the last section on
+    the drawing rather than the link box it ends at.
+
+    `marksOnPart` and `partEndMark` were both live and correct. Neither
+    could do anything. On the drawing the bend kept its numbered point
+    and the box was never adopted — the exact symptoms of neither fix
+    being deployed, which is what four rounds were spent chasing.
+
+    **A shared object edited for one reader's convenience is read by
+    every other reader too.** The flat list goes to `planned` directly
+    now and no part is mutated.
+
+    Two things worth carrying from how long this took:
+
+    - **A simulation that re-implements the caller proves nothing about
+      the caller.** Every check ran the two functions on the real
+      drawing and they answered correctly, because the harness never did
+      the one assignment that broke them. Drive the real path, or accept
+      that a passing check only covers what it actually calls.
+
+    - When behaviour on screen contradicts a passing check, the
+      assumption to question first is the harness, not the deployment.
+      The status marker added mid-hunt — `partsSaid`, printed in the
+      build's own banner — is what finally separated "not deployed" from
+      "deployed and wrong", and it did so in one line. **Anything that
+      changes the shape of an answer should say so while it happens.**
+
+**A note on writing checks.** Three checks this session were anchored on
+a string that appears more than once in the file, or sliced by a
+character count that fell short of the block. Each reported a fault that
+did not exist, and each took a round trip to work out. **Anchor on
+something that appears once, and slice to a marker rather than a
+length** — these files carry more comment than code, so a few thousand
+characters is a hundred lines of prose and no rules at all.
+
+44. **Length_m had two writers and one meaning too few — CLOSED.**
+    `gis_length_trg` maintains it from the geometry on every change; the
+    Feature Editor offered the same attribute as a "Measured length"
+    override. Both were doing what they were written to do, and the
+    result was that **every line arrived carrying a measurement equal to
+    its drawn length**: labels read "299.8 m entered" about their own
+    geometry, the panel announced that calculations read 299.8 m instead
+    of the drawn 299.8 m, and a genuine measurement would have been
+    overwritten by the next drag.
+
+    Two columns, since it is two facts. `Measured_Length_m` is written
+    by a person and by nothing else, so its presence means what it says.
+    `Length_m` goes back to being the trigger's own mirror of the
+    drawing — the bill of materials reads it in SQL and is untouched;
+    **nothing in the client reads it any more**, which `checkmeasuredlength`
+    holds across all seven GIS modules.
+
+    The drawn length is computed from the geometry every time and never
+    stored. That is what makes a line rubber-banded by a joint or a
+    meter being dragged show its new length as it moves — a stored
+    figure is a snapshot of where the line used to be.
+
+    `lengths.js` holds all of it. The rule had been written out in eight
+    places (`electric.js` twice, `feeder.js` three times, `routing.js`,
+    `gasNetwork.js`, `waterNetwork.js`, the canvas label), which is why
+    it could be half-right for years.
+
+    **No migration, deliberately.** Every `Length_m` on a drawing today
+    was written by the trigger and equals the drawn length, so ignoring
+    it changes no figure. If anybody had genuinely measured a line, that
+    entry reverts to the drawn length and must be typed again — there is
+    no way to tell one from the other, which was the fault.
+
+    **And a measured line that is redrawn asks.** A measurement is a
+    deliberate statement about the world, so it does not move when the
+    drawing does — but once the line is not the line that was measured,
+    only the person who entered it can say which of three things they
+    meant. Keeping it silently leaves a stale figure every calculation
+    trusts; clearing it silently throws away something somebody went out
+    and measured. Both are worse than asking, so it asks: keep, remove,
+    or update to a figure they type.
+
+    Watched over `features` rather than hooked into the ten places that
+    save geometry — an effect catches all of them, including undo, and
+    cannot be forgotten by the eleventh. The baseline is a ref, moved on
+    whether or not anybody answers, or the comparison stays true and the
+    dialog returns on every render. No backdrop dismissal: dismissing
+    would silently pick one of three different answers.
+
+    Nothing is written on "keep" — the measurement is already what it
+    should be.
+
+    The trigger body is still not in the repo and did not need to be:
+    the fix works whatever it does, because the client no longer reads
+    the column it writes.
+
+    **And redrawing a line that carries one asks.** A measurement is a
+    statement about the world, so when the line moves the app cannot
+    know what was meant: the run may be unchanged and the drawing merely
+    tidied, or the run may be the thing that just changed. Keeping it
+    silently leaves a stale figure every calculation trusts; clearing it
+    silently throws away something somebody went out and measured. Three
+    answers — keep, remove, update — and no fourth way out of the
+    dialog, because dismissing it would silently pick one of three
+    different designs.
+
+    Watched by an effect over `features` rather than hooked into the ten
+    places that save geometry. It catches all of them including undo,
+    and cannot be forgotten by the eleventh. Gated on `drag.current`
+    (mid-drag the length is still moving) and on a centimetre of
+    tolerance (a round trip through the database is not a redraw), and
+    the new length becomes the baseline whether or not anybody answers,
+    so a line is asked about once per redraw.
+ The
+attribute was maintained by `gis_length_trg` AND written by hand from
+the Feature Editor. Closed — see recurring fault 44, which splits it
+into two columns and takes the client off the trigger's one entirely.
 
 **A seed is three points.** The symbol, the boundary position, then
 where the service trench ends — and only then its meters. The boundary

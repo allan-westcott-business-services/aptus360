@@ -264,6 +264,37 @@ if (typeof planFeederPoints !== "function") {
   if (fp.partEndMark?.(model, [])) fail("a part with no sections marked a stop");
 }
 
+/* ── A part's sections must still be its own when the marks are read ──
+
+   The build flattens every part's sections into one list for the runs
+   to be laid from, and did it by writing that list ONTO the trunk part.
+   The marks are worked out from each part's sections a few lines
+   later — so the trunk was filtered against sections covering the whole
+   circuit, which filters nothing, and its terminus came out as the last
+   point of the last section on the drawing instead of the link box.
+
+   Both fixes were deployed and neither could work. On a live drawing
+   the bend kept its numbered point and the box was never adopted, which
+   read for an hour as though the file had not deployed at all.
+
+   Held as a source rule because it cannot be driven: the fault was one
+   assignment between two correct functions, and every unit test of
+   those functions passed. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (/r\.sections = sections;/.test(canvas)) {
+    fail("the whole circuit's sections are written onto one part again — "
+      + "the marks are then filtered against every section there is, so "
+      + "marksOnPart filters nothing and partEndMark finds the wrong end");
+  }
+  const at = canvas.indexOf("planned.push({");
+  if (at < 0) fail("the build no longer plans circuits");
+  else if (!/planned\.push\(\{\s*\n\s*circuit: c,[\s\S]{0,400}?\n\s*sections,/.test(canvas)) {
+    fail("the flat section list is not passed to planned directly, so "
+      + "something is being mutated to carry it");
+  }
+}
+
 /* And the build consumes it, rather than keeping a second copy of the
    rule beside the one under test. */
 {

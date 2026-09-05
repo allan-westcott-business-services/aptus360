@@ -13725,7 +13725,24 @@ export default function GISCanvasPage() {
         const r = good.find((x) => x.via === "origin")
           || good.find((x) => x.via === "trunk")
           || good[0];
-        r.sections = sections;
+        /* ── The parts keep their own sections ──
+
+           This assigned the WHOLE circuit's sections onto the trunk
+           part, because what gets laid below wants them in one list.
+           The marks are worked out from each part's sections a few
+           lines further on, and the trunk's had just been replaced by
+           everything — so `marksOnPart` filtered a part whose sections
+           covered the entire circuit, which filters nothing, and
+           `partEndMark` took the last point of the last section on the
+           drawing instead of the box the trunk ends at.
+
+           Both fixes were live and neither could work. The bend kept
+           its numbered point and the link box never got one, which read
+           for an hour as though the file had not deployed.
+
+           So the flat list is passed to `planned` directly and no part
+           is mutated. **A shared object edited for one reader's
+           convenience is read by every other reader too.** */
 
         /* Junctions and ends together. A junction is where the feeder
            divides; an end is where it stops, and that far point is what
@@ -13799,12 +13816,15 @@ export default function GISCanvasPage() {
 
         planned.push({
           circuit: c,
+          /* Every part's sections, in one list, for the runs to be laid
+             from — without writing them onto a part that is also read
+             for its own. */
+          sections,
           /* How many parts this circuit was laid in \u2014 one where there
              is no box, trunk plus outputs where there is. Reported at
              the end, because it is the fact that decides everything
              else about the routing and numbering. */
           parts: good.length,
-          sections: r.sections,
           nodes: [
             ...(originAt ? [{ point: originAt, kind: "origin", seq: 0 }] : []),
             ...walked,

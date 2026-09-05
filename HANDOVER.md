@@ -1387,6 +1387,15 @@ produced and the other adds the end of a part's cable, and the model has
 never heard of the joint. Without it the joint is never adopted, never
 numbered, and carries no levels.
 
+**It wears its code.** C2, C3 — a feeder end point belongs in the
+sequence, so a designer reading the drawing can find it in the schedule
+and quote a level at it. Beside the symbol rather than over it: a node's
+code is white inside its own circle, and a joint's symbol is a small
+diamond drawn with the features, so writing over it would bury the
+fitting. The editor shows the same code, but only once the walk has
+adopted it — a blank one would read as a number missing rather than one
+not yet assigned.
+
 **One in, one out — said, not refused.** Three cables at one is a
 breech and one is a bottle end, and the editor names the fitting it
 actually is. It does not block: a drawing is mid-edit for most of its

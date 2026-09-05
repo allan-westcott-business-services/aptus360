@@ -179,6 +179,36 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
+/* ── And it wears its code ──
+
+   A feeder end point belongs in the sequence, so a designer reading the
+   drawing can find it in the schedule and quote a level at it. C2, C3,
+   like every other stop.
+
+   Beside the symbol, not over it: a node's code is white inside its own
+   circle, and a joint's symbol is a small diamond drawn with the
+   features \u2014 writing over it would bury the fitting. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/if \(code && f\.Feature_Role === "joint" && view\.scale > 1\.2\)/.test(canvas)) {
+    fail("a straight joint carries a span code and does not show it, so it "
+      + "cannot be found in the schedule from the drawing");
+  }
+  if (!/ctx\.strokeText\(code, q\.x, jy\);/.test(canvas)) {
+    fail("the joint's code has no halo, so it is unreadable over a trench");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/feature\.Feature_Role === "joint"\n\s*&& String\(f\.Attributes\.Joint_Type/.test(editor)) {
+    fail("the editor does not show a straight joint its place on the run");
+  }
+  /* Only once adopted. A blank code would read as a number missing
+     rather than one not yet assigned. */
+  if (!/&& f\.Attributes\.Span_Seq != null\)\) && \(/.test(editor)) {
+    fail("the panel offers a blank code before the walk has numbered it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Straight joints behave (a stop on the run, one cable in and one out).");
 process.exit(bad ? 1 : 0);

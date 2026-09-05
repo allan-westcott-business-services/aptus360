@@ -6043,6 +6043,30 @@ export default function GISCanvasPage() {
         ctx.textBaseline = "alphabetic";
       }
 
+      /* ── A straight joint wears its code beside its symbol ──
+
+         It is a feeder end point like any other and belongs in the
+         sequence, so a designer reading the drawing can find it in the
+         schedule and quote a level at it. What it cannot do is carry
+         the code the way a node does: a node's is white inside its own
+         circle, and a joint's symbol is a small diamond drawn with the
+         features — writing over it would bury the fitting.
+
+         So it goes above, in the circuit's colour with a white halo, at
+         the same zoom the other codes appear at. */
+      if (code && f.Feature_Role === "joint" && view.scale > 1.2) {
+        const jf = Math.max(9, Math.min(13, Math.round(r * 1.6)));
+        ctx.font = `700 ${jf}px ui-monospace, Menlo, monospace`;
+        ctx.textAlign = "center";
+        ctx.textBaseline = "alphabetic";
+        const jy = q.y - r - 4;
+        ctx.lineWidth = 3;
+        ctx.strokeStyle = "#fff";
+        ctx.strokeText(code, q.x, jy);
+        ctx.fillStyle = circuitColour ?? "#0f172a";
+        ctx.fillText(code, q.x, jy);
+      }
+
       /* ── The pressure at this node ──
 
          Beside the node rather than in the report only: a designer

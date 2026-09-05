@@ -1517,7 +1517,16 @@ export default function FeatureEditor({
                would be offering a code that means nothing until a
                cable reaches it. */
             || (feature.Feature_Role === "linkbox"
-              && f.Attributes.Circuit_ID != null)) && (
+              && f.Attributes.Circuit_ID != null)
+            /* A straight joint is a feeder end point: one cable ends
+               there and the next begins, so it has a place in the
+               sequence and the levels are quoted at it. Shown once the
+               walk has adopted it \u2014 before that it has no code, and
+               offering a blank one would suggest the number is missing
+               rather than not yet assigned. */
+            || (feature.Feature_Role === "joint"
+              && String(f.Attributes.Joint_Type ?? "").toLowerCase() === "straight"
+              && f.Attributes.Span_Seq != null)) && (
             <div className="fld">
               {f.Attributes.Circuit_ID != null ? (
                 <>

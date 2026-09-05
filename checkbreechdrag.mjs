@@ -39,12 +39,30 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const drag = at < 0 || end < 0 ? "" : canvas.slice(at, end);
   if (!drag) fail("the joint drag rule has gone");
   else {
-    if (!/const isBreech = String\(pt\.Attributes\?\.Joint_Type \?\? ""\)/.test(drag)) {
-      fail("a breech is not told apart from a joint that sits on a run");
+    /* ── Joints that JOIN CABLE ENDS ──
+
+       A service joint is a fitting let into a run: one cable passes
+       through it. A breech and a STRAIGHT joint are places where cables
+       END and are joined inside the fitting — a breech takes an
+       incoming main and sends several out, a straight joint takes two
+       ends and makes them one run.
+
+       Both belong to the same rule, so the test is a list rather than
+       "is not a service joint": a joint kind added later should have to
+       say which it is rather than inheriting by default. */
+    if (!/const joinsEnds = \["breech", "straight"\]\.includes\(/.test(drag)) {
+      fail("joints that join cable ends are not told apart from one that "
+        + "sits on a run");
     }
-    if (!/isFeeder && !isBreech\s*\n\s*&& Number\(line\.Feature_ID\) !== Number\(jointFeeder/.test(drag)) {
-      fail("a breech still moves only one of the cables that meet it — "
-        + "dragging it tears the joint apart");
+    for (const kind of ["breech", "straight"]) {
+      if (!new RegExp(`"${kind}"`).test(drag)) {
+        fail(`a ${kind} joint is not in the join-ends list, so dragging one `
+          + "leaves the cables it holds together behind");
+      }
+    }
+    if (!/isFeeder && !joinsEnds\s*\n\s*&& Number\(line\.Feature_ID\) !== Number\(jointFeeder/.test(drag)) {
+      fail("a joint that joins ends still moves only one of the cables that "
+        + "meet it \u2014 dragging it tears the joint apart");
     }
     /* The narrowing must survive for everything else, or a service
        joint at a shared tee drags two circuits' mains again. */
@@ -54,8 +72,9 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
     }
     /* And a breech takes ends, not every vertex: offering it interior
        points would let it claim a cable that merely passes close. */
-    if (!/isJoint && isFeeder && !isBreech/.test(drag)) {
-      fail("a breech is offered every vertex of a passing cable");
+    if (!/isJoint && isFeeder && !joinsEnds/.test(drag)) {
+      fail("a joint that joins ends is offered every vertex of a passing "
+        + "cable, and can claim one that merely runs close by");
     }
   }
 }

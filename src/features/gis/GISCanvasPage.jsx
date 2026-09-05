@@ -7062,15 +7062,34 @@ export default function GISCanvasPage() {
              So the narrowing is for joints that sit on a run. A breech
              takes every feeder that meets it — still on its own circuit,
              and still only the vertices actually at it. */
-          const isBreech = String(pt.Attributes?.Joint_Type ?? "")
-            .toLowerCase() === "breech";
-          if (jointFeeder !== undefined && isFeeder && !isBreech
+          /* ── Joints that JOIN CABLE ENDS ──
+
+             A service joint is a fitting let into a run: one cable
+             passes through it, and narrowing to that single cable is
+             right, because two circuits share a trench and the joint
+             would otherwise drag both.
+
+             A breech and a STRAIGHT joint are not that. Both are places
+             where cables END and are joined inside the fitting — a
+             breech takes an incoming main and sends several out, a
+             straight joint takes two ends and makes them one run. Every
+             cable meeting them is genuinely attached, so narrowing to
+             one leaves the rest behind and dragging the fitting tears
+             the cable apart at the thing whose purpose is holding it
+             together.
+
+             Listed rather than tested for "is not a service joint": a
+             joint kind added later should have to say which it is,
+             rather than inheriting a rule by default. */
+          const joinsEnds = ["breech", "straight"].includes(
+            String(pt.Attributes?.Joint_Type ?? "").toLowerCase());
+          if (jointFeeder !== undefined && isFeeder && !joinsEnds
             && Number(line.Feature_ID) !== Number(jointFeeder?.Feature_ID)) continue;
 
           /* A breech joins cable ENDS. Offering it every vertex would
              let it claim an interior point of a cable that merely
              passes close by, and pull a run out of shape. */
-          const candidates = isJoint && isFeeder && !isBreech
+          const candidates = isJoint && isFeeder && !joinsEnds
             ? g.map((_, i) => i)
             : [0, g.length - 1];
 
@@ -20159,12 +20178,18 @@ export default function GISCanvasPage() {
                           lands because that is what a joint is. */}
                       <MenuItem label={jointFor
                         ? "Click the cable\u2026 (Esc to stop)"
-                        : "+ Joint on a Cable"} indent
+                        : "+ Straight Joint on a Cable"} indent
                         active={!!jointFor}
                         hint={"Click where the joint goes \u2014 the cable says ON LINE, and breaks there"}
                         disabled={!!busy || !projectId}
                         onClick={() => {
-                          setJointFor(jointFor ? null : "service");
+                          /* A straight joint: two cable ends brought
+                             into one fitting, which is exactly what
+                             breaking a run and joining it there is. A
+                             service joint is a fitting let into a run
+                             to take a service off it, and that is a
+                             different thing. */
+                          setJointFor(jointFor ? null : "straight");
                           setSelected([]); setDraft([]);
                         }} />
                       <MenuItem label="+ Service Joint" indent

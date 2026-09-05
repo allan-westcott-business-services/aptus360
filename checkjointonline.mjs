@@ -47,6 +47,13 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!fn) fail("placeAt has gone");
   else {
     if (!/Feature_Role: "joint"/.test(fn)) fail("no joint is created");
+    /* A STRAIGHT joint: two cable ends brought into one fitting, which
+       is exactly what breaking a run and joining it there is. A service
+       joint is a fitting let into a run to take a service off it — a
+       different thing, and what this placed at first. */
+    if (!/setJointFor\(jointFor \? null : "straight"\)/.test(canvas)) {
+      fail("the mode places something other than a straight joint");
+    }
     /* Feeders only: a joint on a trench or a service is a fitting in a
        place no main runs, and the levels check reads joints off the
        feeders. */

@@ -1297,7 +1297,8 @@ folder rather than a named file, so it keeps working when the next
 rewrite lands, and it holds both halves: the markers stay off and the
 plant stays on.
 
-**A joint can be clicked onto a cable, and the cable breaks there.**
+**A STRAIGHT joint can be clicked onto a cable, and the cable breaks
+there.**
 `+ Joint on a Cable` arms a placement: the cable says ON LINE under the
 pointer, the click puts the fitting on it, and `breakLineAt` splits the
 run at the same point.
@@ -1314,6 +1315,22 @@ half: the ON LINE badge is the existing edge snap, and the split is the
 same `breakLineAt` that breaking a line by hand uses — which recomputes
 `Connects` for both halves and for everything that touched them, rather
 than copying the old list onto two runs that no longer go where it says.
+
+**A straight joint, not a service joint** — `STR` in the catalogue,
+"two cable ends brought into one fitting". A service joint is a fitting
+let into a run to take a service off it, which is a different thing.
+This placed a service joint at first and it was wrong.
+
+**And the two ends follow it when it is dragged.** The drag narrows a
+joint to a single feeder, which is right for a service joint — one
+cable passes through it, and two circuits share a trench. A breech and
+a straight joint are not that: both are places where cables END and are
+joined inside the fitting. Every cable meeting them is genuinely
+attached, so narrowing to one leaves the rest behind and dragging the
+fitting tears the cable apart at the thing whose purpose is holding it
+together. The test is a LIST of kinds rather than "is not a service
+joint", so a kind added later has to say which it is rather than
+inheriting a rule by default.
 
 The menu's other three joint items are unchanged. They drop one in the
 middle of the view and snap it to the nearest feeder, which answers

@@ -144,6 +144,7 @@ caught a fault that had already shipped at least once.
 | `node checkrealdrawing.mjs` | A real site still gives the answers recorded for it |
 | `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
+| `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
 | `node checkspaneditor.mjs` | Mounts the span node editor; both sizes shown, override read |
 | `node checkbottleends.mjs` | Bottle ends at feeder ends only, not on every dead end |
 | `node checkmigrations.mjs` | Numbering against a policed baseline; seeded style scopes that collide under the unique index; endpoint column lists against `ADD COLUMN` |
@@ -1275,6 +1276,25 @@ input, not the trenches, not another circuit. Somebody reading output 3
 wants to see what feeds it and where it runs. An unstamped feature
 stays, because "not known to be on another output" is not "on this
 one", and hiding on a guess loses work.
+
+**Feeder end points are off the bill — migration 0204, NOT YET RUN.**
+A feeder end point says where the build breaks a run; it is made and
+deleted by Build LV Network on every run and nobody orders one. That is
+the third point of its kind: 0058 took plot seeds off, 0075 took span
+nodes off, 0204 takes these. All three say WHERE something is measured
+rather than WHAT is to be bought.
+
+A link box standing exactly where a feeder end point would be is still
+counted, because it is a `linkbox` and not a `feederpoint` — it is a
+chamber with fuses in it.
+
+`gis_bom` is one SQL function, so 0204 is 0167 rebuilt with one role
+added to the exclusion list rather than a patch. **It has to be pasted
+into Supabase** like every migration here; the folder is the only record
+the schema has. `checkbomroles` reads the newest definition in the
+folder rather than a named file, so it keeps working when the next
+rewrite lands, and it holds both halves: the markers stay off and the
+plant stays on.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

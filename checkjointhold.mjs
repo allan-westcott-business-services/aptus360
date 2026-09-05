@@ -386,6 +386,51 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   }
 }
 
+// 9. The panel says what changed, and names cables readably.
+//
+//    The editor renders `editing`, a snapshot taken when it was opened,
+//    not the live row. So Connect wrote, the drawing changed, and the
+//    open panel went on showing the list from before — which reads as
+//    the button doing nothing at all.
+//
+//    And `#46157` is a database row number: not on the drawing, not on
+//    any sheet, and no help at all in telling one of two cables from
+//    the other, which is the question the list exists to answer.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const writers = canvas.split("setEditing((e) => (e && e.Feature_ID === j.Feature_ID").length - 1;
+  if (writers < 2) {
+    fail(`${writers} of the two connection writers refresh the open panel, `
+      + "so the button looks dead");
+  }
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/const cableName = useCallback\(\(c\) => \{/.test(editor)) {
+    fail("cables are still listed by feature id, which names nothing a "
+      + "reader can see on the drawing");
+  }
+  /* Label, kind, circuit, output, length — a cable the build laid has
+     no Label of its own, and for one of those the kind and the circuit
+     are what tell it from its neighbour. */
+  for (const bit of ["c.Label", "classLabel(c, lineTypes)",
+    "Circuit_Name", "Link_Way", "lineLength(c.Geometry"]) {
+    if (!editor.includes(bit)) {
+      fail(`the cable name leaves out ${bit}, which is part of telling two `
+        + "cables on one route apart");
+    }
+  }
+  /* The id survives as a last resort: a cable with nothing else to say
+     still has to be called something. */
+  if (!/: `#\$\{c\.Feature_ID\}`;/.test(editor)) {
+    fail("a cable with no label, kind or circuit comes out blank");
+  }
+  /* And a cable that has gone says so rather than being named. */
+  if (!/no longer on the drawing/.test(editor)) {
+    fail("a held cable that has been deleted is listed as though it were "
+      + "still there");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Joints hold their cables (joined on the drop, released on purpose).");
 process.exit(bad ? 1 : 0);

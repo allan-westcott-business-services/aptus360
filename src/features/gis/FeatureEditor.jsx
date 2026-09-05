@@ -541,6 +541,35 @@ export default function FeatureEditor({
 
   /* Which output of which box this feature is on, if any \u2014 read the
      way the drawing reads it, not by a second rule written here. */
+  /* ── What to call a cable in a list ──
+
+     `#46157` is a database row number. It is not on the drawing, it is
+     not on any sheet, and somebody reading a joint's connections has no
+     way to tell which of two cables it is \u2014 which is the whole
+     question the list exists to answer.
+
+     So: what the drawing calls it, then what kind it is, then which
+     circuit and output, then how long it is. A cable the build laid has
+     no Label of its own, and for one of those the kind and the circuit
+     are what tell it from its neighbour. The id stays as a last resort,
+     because a cable with nothing else to say still has to be named
+     something. */
+  const cableName = useCallback((c) => {
+    if (!c) return "";
+    const bits = [];
+    if (c.Label) bits.push(c.Label);
+    const kind = classLabel(c, lineTypes);
+    if (kind && kind !== c.Label) bits.push(kind);
+    if (c.Attributes?.Circuit_Name) bits.push(c.Attributes.Circuit_Name);
+    else if (c.Attributes?.Circuit_ID != null) {
+      bits.push(`Circuit ${c.Attributes.Circuit_ID}`);
+    }
+    if (c.Attributes?.Link_Way != null) bits.push(`output ${c.Attributes.Link_Way}`);
+    const m = lineLength(c.Geometry || []);
+    if (m > 0) bits.push(`${m.toFixed(1)} m`);
+    return bits.length ? bits.join(" \u00b7 ") : `#${c.Feature_ID}`;
+  }, [lineTypes]);
+
   const ownWay = useMemo(() => {
     const w = wayOf(feature, metersByPlot(allFeatures || []));
     if (!w) return null;
@@ -1269,10 +1298,7 @@ export default function FeatureEditor({
                     return (
                       <div className="fe-held-row" key={id}>
                         <span className="fe-held-name">
-                          {c?.Label ?? `#${id}`}
-                          {c?.Attributes?.Circuit_Name
-                            ? ` \u00b7 ${c.Attributes.Circuit_Name}` : ""}
-                          {c ? "" : " \u2014 no longer on the drawing"}
+                          {c ? cableName(c) : `#${id} \u2014 no longer on the drawing`}
                         </span>
                         <button type="button" className="btn sm"
                           title="Release this cable. It stays where it is, and stops moving with the joint."
@@ -1298,9 +1324,7 @@ export default function FeatureEditor({
                     .map((c) => (
                       <div className="fe-held-row" key={c.Feature_ID}>
                         <span className="fe-held-name fe-held-off">
-                          {c.Label ?? `#${c.Feature_ID}`}
-                          {c.Attributes?.Circuit_Name
-                            ? ` \u00b7 ${c.Attributes.Circuit_Name}` : ""}
+                          {cableName(c)}
                         </span>
                         <button type="button" className="btn sm"
                           title="Join this cable to the fitting. It moves with the joint from then on."

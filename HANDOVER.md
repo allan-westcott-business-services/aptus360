@@ -1836,6 +1836,25 @@ re-read.** One placed by hand holds what somebody said it holds, and an
 automatic pass is not entitled to a view about that — except to drop an
 id that has gone from the drawing altogether, which is not an opinion.
 
+57. **The editor renders a snapshot, not the live row.** `editing` is
+    taken when the panel opens. Connect wrote the connection, the
+    drawing changed, and the open panel went on showing the list from
+    before — which reads as the button doing nothing at all.
+
+    Both connection writers refresh `editing` as well as `features` now.
+    **Worth remembering for anything else that writes while a panel is
+    open**: updating the drawing is not the same as updating the thing
+    the reader is looking at.
+
+    The cables in that list were named `#46157` — a database row number,
+    which is not on the drawing, not on any sheet, and no help in
+    telling one of two cables from the other, which is the only question
+    the list exists to answer. They read as what the drawing calls them:
+    *"C2 · Electric Main · Circuit 3 · output 1 · 311.1 m"*, or
+    *"Electric Service · 12.8 m"* for one the build laid with no name of
+    its own. The id survives as a last resort, because a cable with
+    nothing else to say still has to be called something.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

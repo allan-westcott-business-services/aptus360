@@ -8381,6 +8381,14 @@ export default function GISCanvasPage() {
       await bulkUpdateFeatures(projectId, [{ Feature_ID: j.Feature_ID, Attributes: attrs }]);
       setFeatures((fs) => fs.map((x) =>
         (x.Feature_ID === j.Feature_ID ? { ...x, Attributes: attrs } : x)));
+      /* ── And the panel's own copy of it ──
+
+         The editor renders `editing`, a snapshot taken when it was
+         opened, not the live row. So the write landed, the drawing
+         changed, and the open panel went on showing the list from
+         before \u2014 which reads as the button doing nothing at all. */
+      setEditing((e) => (e && e.Feature_ID === j.Feature_ID
+        ? { ...e, Attributes: attrs } : e));
       const c = features.find((x) => Number(x.Feature_ID) === Number(cableId));
       setStatus(`${c?.Label ?? "Cable"} released from ${j.Label ?? "the joint"}`);
       setTimeout(() => setStatus(""), 6000);
@@ -8400,6 +8408,14 @@ export default function GISCanvasPage() {
       await bulkUpdateFeatures(projectId, [{ Feature_ID: j.Feature_ID, Attributes: attrs }]);
       setFeatures((fs) => fs.map((x) =>
         (x.Feature_ID === j.Feature_ID ? { ...x, Attributes: attrs } : x)));
+      /* ── And the panel's own copy of it ──
+
+         The editor renders `editing`, a snapshot taken when it was
+         opened, not the live row. So the write landed, the drawing
+         changed, and the open panel went on showing the list from
+         before \u2014 which reads as the button doing nothing at all. */
+      setEditing((e) => (e && e.Feature_ID === j.Feature_ID
+        ? { ...e, Attributes: attrs } : e));
       const c = features.find((x) => Number(x.Feature_ID) === Number(cableId));
       setStatus(`${c?.Label ?? "Cable"} joined to ${j.Label ?? "the joint"}`
         + " \u2014 it moves with it now");

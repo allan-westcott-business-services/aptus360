@@ -1823,6 +1823,19 @@ build's own joints: one somebody placed by hand is theirs.
     `VD_Cable_Size_ID` fault, where the call-off data depends on links
     the build does not write. Worth taking together.
 
+**Laying services updates the joints too.** Only Auto Place Feeder
+Joints recorded what a fitting holds, so laying services AFTERWARDS left
+every existing joint holding a stale list — and re-laying them replaced
+the cables with new rows, leaving joints naming ids that no longer
+exist. A fitting naming a deleted cable moves nothing; one naming a
+REPLACED cable is worse, because an id can be reused.
+
+Both passes now read at the moment they finish, which is the moment the
+drawing is exactly what they laid. **Only the build's own joints are
+re-read.** One placed by hand holds what somebody said it holds, and an
+automatic pass is not entitled to a view about that — except to drop an
+id that has gone from the drawing altogether, which is not an opinion.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -16290,8 +16290,48 @@ export default function GISCanvasPage() {
 
       await recordAction(`Lay ${made.length} ${utility} service(s)`, [], made);
       const fresh = await listGis(projectId);
-      setFeatures(fresh.features || []);
+
+      /* ── The joints catch up with the cables ──
+
+         Only Auto Place Feeder Joints recorded what a fitting holds, so
+         laying services AFTERWARDS left every existing joint holding a
+         stale list \u2014 and re-laying them replaced the cables with new
+         rows, leaving the joints naming ids that no longer exist. A
+         fitting that names a deleted cable moves nothing, and one that
+         names a REPLACED cable is worse: the id can be reused.
+
+         Re-read here for the same reason it is read there, and it is
+         the same moment: the drawing is exactly what the pass just
+         laid.
+
+         Only the build's own joints. One placed by hand holds what
+         somebody said it holds, and an automatic pass is not entitled
+         to a view about that \u2014 except to drop an id that is no longer
+         on the drawing at all, which is not an opinion. */
+      const after = fresh.features || [];
+      const alive = new Set(after.map((f) => Number(f.Feature_ID)));
+      const holdRows = [];
+      for (const j of after) {
+        if (j.Feature_Role !== "joint") continue;
+        const was = (j.Attributes?.Joint_Cables || []).map(Number);
+        const now = j.Attributes?.Generated
+          ? cablesHeldAt(j, after)
+          : was.filter((id) => alive.has(id));
+        if (was.slice().sort().join(",") === now.slice().sort().join(",")) continue;
+        holdRows.push({
+          Feature_ID: j.Feature_ID,
+          Attributes: { ...j.Attributes, Joint_Cables: now },
+        });
+      }
+      for (let i = 0; i < holdRows.length; i += 100) {
+        await bulkUpdateFeatures(projectId, holdRows.slice(i, i + 100));
+      }
+      if (holdRows.length) {
+        const again = await listGis(projectId);
+        setFeatures(again.features || []);
+      } else setFeatures(after);
       setStatus(`${made.length} ${utility} service(s) laid`
+        + (holdRows.length ? ` \u00b7 ${holdRows.length} joint(s) updated` : "")
         /* Said, because it is a fitting on the take-off and work for a
            gang. Zero where they were all already there, which is the
            ordinary case on a second run and worth being able to tell

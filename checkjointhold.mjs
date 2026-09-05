@@ -349,6 +349,43 @@ const joint = (attrs = {}) => ({ Feature_ID: 7, Feature_Role: "joint",
   }
 }
 
+// 8. Laying services updates the joints too.
+//
+//    Only Auto Place Feeder Joints recorded what a fitting holds, so
+//    laying services AFTERWARDS left every existing joint holding a
+//    stale list — and re-laying them replaced the cables with new rows,
+//    leaving joints naming ids that no longer exist. A fitting naming a
+//    deleted cable moves nothing; one naming a REPLACED cable is worse,
+//    because an id can be reused.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const at = canvas.indexOf("async function autoLayServices");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("\n  async function ", at + 10));
+  if (!fn) fail("autoLayServices has gone");
+  else {
+    if (!/cablesHeldAt\(j, after\)/.test(fn)) {
+      fail("laying services does not update what the joints hold, so a "
+        + "fitting placed earlier never learns about the cable now on it");
+    }
+    /* A hand-placed joint holds what somebody SAID it holds. An
+       automatic pass may drop an id that has gone from the drawing —
+       that is not an opinion — and may not decide anything else. */
+    if (!/j\.Attributes\?\.Generated\n\s*\? cablesHeldAt\(j, after\)\n\s*: was\.filter\(\(id\) => alive\.has\(id\)\)/.test(fn)) {
+      fail("the pass either overwrites a hand-placed joint's connections or "
+        + "leaves it naming cables that no longer exist");
+    }
+    /* Written only where it changed. */
+    if (!/if \(was\.slice\(\)\.sort\(\)\.join\(","\) === now\.slice\(\)\.sort\(\)\.join\(","\)\) continue;/.test(fn)) {
+      fail("every joint is rewritten on every run, changed or not");
+    }
+    /* And the drawing on screen is re-read after the write, or the
+       panel shows the list from before it. */
+    if (!/const again = await listGis\(projectId\);/.test(fn)) {
+      fail("the joints are updated and the drawing on screen is not re-read");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Joints hold their cables (joined on the drop, released on purpose).");
 process.exit(bad ? 1 : 0);

@@ -29,7 +29,11 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
 const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
 
-if (!/\+ Link Box \(2 way\)/.test(canvas) || !/\+ Link Box \(4 way\)/.test(canvas)) {
+/* Both ways are offered. They live under a "Link Box" branch that
+   opens to them now, rather than as two rows in a flat list \u2014 the
+   menu groups by the thing and opens to the kinds of it. */
+if (!/<MenuBranch label="Link Box"/.test(canvas)
+  || !/label="\+ 2 Way"/.test(canvas) || !/label="\+ 4 Way"/.test(canvas)) {
   fail("the Electric menu no longer offers both link boxes");
 }
 if (!/placeNode\("linkbox", "electric", \{ ways: 2 \}\)/.test(canvas)

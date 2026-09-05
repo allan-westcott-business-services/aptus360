@@ -64,7 +64,7 @@ const lengthLabel = (f) => (hasMeasured(f)
 import BulkEditor from "./BulkEditor.jsx";
 import BomModal from "./BomModal.jsx";
 import {
-  MenuBar, Menu, MenuGroup, MenuItem, MenuLayer, MenuLabels,
+  MenuBar, Menu, MenuGroup, MenuItem, MenuBranch, MenuLayer, MenuLabels,
 } from "./GisMenus.jsx";
 import {
   LABEL_KINDS, DEFAULT_LABEL_KINDS, labelShown as labelShownFor,
@@ -20382,59 +20382,162 @@ export default function GISCanvasPage() {
                           separated two halves of one job. The same shape
                           as the Gas and Water menus, so three utilities
                           read the same way round. */}
-                      <MenuGroup label="Network" />
+                      {/* ── Grouped by the thing, not the verb ──
+
+                          One row per fitting or cable, opening to the
+                          kinds of it. A flat list of sixteen commands is
+                          a list nobody reads to the bottom of, and the
+                          three questions a designer actually asks —
+                          which cable, which box, which joint — were
+                          spread through it in the order the features
+                          happened to be written.
+
+                          Mains and services are separated for the same
+                          reason: they are two jobs, done at different
+                          points in a design, and the menu now says so.
+                          Nothing is renamed except where the old name
+                          was wrong: "Build LV Network" is one of four
+                          ways to get a feeder cable, so it reads as the
+                          automatic one. */}
+                      <MenuGroup label="Mains Network" />
                       <MenuItem label="+ POC" hint="Snaps to the nearest main"
                         disabled={!projectId} onClick={() => placeNode("poc", "electric")} />
                       <MenuItem label="+ Substation" hint="Snaps to the nearest trench"
                         disabled={!projectId} onClick={() => placeNode("substation", "electric")} />
-                      <MenuItem label="+ Link Box (2 way)"
-                        hint="One input, one fused output — click on the cable run"
-                        disabled={!projectId}
-                        onClick={() => placeNode("linkbox", "electric", { ways: 2 })} />
-                      <MenuItem label="+ Link Box (4 way)"
-                        hint="One input, three fused outputs — click on the cable run"
-                        disabled={!projectId}
-                        onClick={() => placeNode("linkbox", "electric", { ways: 4 })} />
-                      <MenuItem label="+ Feeder End Point"
-                        hint="A break in one circuit's cable — click on the run it belongs to"
-                        disabled={!projectId}
-                        onClick={() => placeNode("feederpoint", "electric")} />
                       <MenuItem label={busy === "route" ? "Routing\u2026" : "Route POC to Substation"}
-                        hint="Shortest path along the trenches, as HV feeder"
-                        disabled={!!busy || !projectId}
+                        hint={hasTrench
+                          ? "Shortest path along the trenches, as HV feeder"
+                          : "No trench drawn yet to route along"}
+                        disabled={!!busy || !projectId || !hasTrench}
                         onClick={routeSupply} />
-                      {/* Under Draw, because that is what it does: the
-                          cable is drawn along a trench rather than by
-                          hand, but it is still drawing. */}
-                      <MenuItem label={busy === "laysvc"
-                        ? "Laying\u2026" : "Auto Lay Service Cable"}
-                        hint="Runs the cable along service trenches already drawn"
-                        disabled={!!busy}
-                        onClick={() => autoLayServices("electric")} />
-                      {/* The three cables that can be drawn by hand.
 
-                          The service is here with the other two rather
-                          than left to Auto Lay Service Cable alone: that
-                          command needs a service trench to run along,
-                          and a cable being added to a drawing that has
-                          none has to be drawable. Same list, same
-                          behaviour, one more entry.
+                      <MenuBranch label="Feeder Cable"
+                        hint="Drawn by hand, or routed along the trenches">
+                        {[["elec_hv", "Manually add HV Cable"],
+                          ["elec_main", "Manually add LV Cable"]].map(([key, label]) => {
+                          /* `elec_service`, not `electric_service` — the
+                             seeded key is the short form, and the long
+                             one matches nothing and renders no button at
+                             all. Which is why this reads from lineTypes
+                             and renders nothing when a type is missing
+                             rather than assuming it is there. */
+                          const t = lineTypes.find((x) => x.Type_Key === key);
+                          return t ? (
+                            <MenuItem key={key} label={label} indent
+                              active={isDrawing(key)} onClick={() => drawAs(key)} />
+                          ) : null;
+                        })}
+                        <MenuItem label={busy === "feeder"
+                          ? "Building\u2026" : "Auto Build LV Network"} indent
+                          /* Two things it cannot do without: a circuit
+                             to route, and a dig to route it along. Named
+                             separately, because they are fixed in
+                             different places and "unavailable" without a
+                             reason is a dead end. */
+                          hint={!hasTrench
+                            ? "No trench drawn yet \u2014 the cables are routed along it"
+                            : circuitsFrom(features).length
+                              ? "Routes each circuit's cables along the trenches"
+                              : "No circuits yet \u2014 draw round the plot seeds with Link to "
+                                + "Circuit first, and this becomes available"}
+                          disabled={busy === "feeder" || !hasTrench
+                            || !circuitsFrom(features).length}
+                          onClick={() => runStep("build",
+                            () => withUndo("Build LV Network", () => buildLvNetwork()))} />
+                        <MenuItem label="+ Feeder End Point" indent
+                          hint="A break in one circuit's cable — click on the run it belongs to"
+                          disabled={!projectId}
+                          onClick={() => placeNode("feederpoint", "electric")} />
+                      </MenuBranch>
 
-                          `elec_service`, not `electric_service` — the
-                          seeded key is the short form, and the long one
-                          matches nothing and renders no button at all,
-                          which is why this reads from lineTypes and
-                          renders nothing when a type is missing rather
-                          than assuming it is there. */}
-                      {[["elec_main", "LV feeder"], ["elec_hv", "HV feeder"],
-                        ["elec_service", "Service cable"]].map(([key, label]) => {
-                        const t = lineTypes.find((x) => x.Type_Key === key);
-                        return t ? (
-                          <MenuItem key={key} label={label}
-                            active={isDrawing(key)} onClick={() => drawAs(key)} />
-                        ) : null;
-                      })}
+                      <MenuBranch label="Link Box"
+                        hint="One input, fused outputs — click on the cable run">
+                        <MenuItem label="+ 2 Way" indent
+                          hint="One input, one fused output"
+                          disabled={!projectId}
+                          onClick={() => placeNode("linkbox", "electric", { ways: 2 })} />
+                        <MenuItem label="+ 4 Way" indent
+                          hint="One input, three fused outputs"
+                          disabled={!projectId}
+                          onClick={() => placeNode("linkbox", "electric", { ways: 4 })} />
+                      </MenuBranch>
 
+                      <MenuBranch label="Joint"
+                        hint="The fittings on a feeder — one at a time, or read off the routed network">
+                        {/* Placed by pointing at the cable. The other
+                            three drop one in the middle of the view and
+                            snap it to the nearest feeder, which answers
+                            "somewhere on this circuit"; this answers
+                            "here", and breaks the cable where it lands
+                            because that is what a joint is. */}
+                        <MenuItem label={jointFor
+                          ? "Click the cable\u2026 (Esc to stop)"
+                          : "+ Straight Joint"} indent
+                          active={!!jointFor}
+                          hint={"Click where it goes \u2014 the cable says ON LINE, and breaks there"}
+                          disabled={!!busy || !projectId}
+                          onClick={() => {
+                            setJointFor(jointFor ? null : "straight");
+                            setSelected([]); setDraft([]);
+                          }} />
+                        <MenuItem label="+ Breech Joint" indent
+                          hint="One joint, snapped to the nearest LV feeder"
+                          disabled={!!busy || !projectId}
+                          onClick={() => withUndo("Place breech joint",
+                            () => placeJoint("breech"))} />
+                        <MenuItem label="+ Bottle End Joint" indent
+                          hint="Seals a feeder that stops here"
+                          disabled={!!busy || !projectId}
+                          onClick={() => withUndo("Place bottle end",
+                            () => placeJoint("bottleend"))} />
+                        <MenuItem label="+ Service Joint" indent
+                          hint="One joint, snapped to the nearest LV feeder"
+                          disabled={!!busy || !projectId}
+                          onClick={() => withUndo("Place service joint",
+                            () => placeJoint("service"))} />
+                        {/* Kept, and kept here: it reads the routed
+                            network and places every joint the design
+                            calls for. The four above exist for the ones
+                            the model cannot know about — an existing
+                            main cut into, a breech left for a phase not
+                            yet drawn. */}
+                        <MenuItem label={busy === "joints"
+                          ? "Working\u2026" : "Auto Place Feeder Joints"} indent
+                          hint={circuitsFrom(features).length
+                            ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
+                            : "No circuits yet \u2014 the joints are read off the routed "
+                              + "network, so the network has to be built first"}
+                          disabled={!!busy || !circuitsFrom(features).length}
+                          onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
+                      </MenuBranch>
+
+                      {/* ── Services ──
+
+                          A separate job from the mains, done after them,
+                          and it was mixed through the same list. */}
+                      <MenuGroup label="Services" />
+                      <MenuBranch label="Cable"
+                        hint="Drawn by hand, or run along the service trenches">
+                        {(() => {
+                          const t = lineTypes.find((x) => x.Type_Key === "elec_service");
+                          return t ? (
+                            <MenuItem label="Manually add Service Cable" indent
+                              active={isDrawing("elec_service")}
+                              onClick={() => drawAs("elec_service")} />
+                          ) : null;
+                        })()}
+                        <MenuItem label={busy === "laysvc"
+                          ? "Laying\u2026" : "Auto Lay Service Cable"} indent
+                          /* It runs cable along service trenches already
+                             drawn. With none there is nothing to run
+                             along, and it can only report finding
+                             nothing to do. */
+                          hint={hasServiceTrench
+                            ? "Runs the cable along service trenches already drawn"
+                            : "No service trenches drawn yet to run along"}
+                          disabled={!!busy || !hasServiceTrench}
+                          onClick={() => autoLayServices("electric")} />
+                      </MenuBranch>
                       <MenuItem label={tool === "circuit" ? "Drawing Circuit\u2026" : "Link to Circuit"}
                         active={tool === "circuit"} disabled={!projectId}
                         /* Says that the rings appear, so a ringed meter
@@ -20445,108 +20548,7 @@ export default function GISCanvasPage() {
                           setTool(tool === "circuit" ? "select" : "circuit");
                           setSelected([]); setDraft([]);
                         }} />
-                      {/* Disabled with the reason on it.
 
-                          A circuit exists once an electric meter carries
-                          a Circuit_ID, which is what Link to Circuit
-                          writes \u2014 so with none drawn yet this is greyed,
-                          and said nothing about why. A greyed control
-                          with no reason is the problem runStep was
-                          written to avoid, one menu along. */}
-                      <MenuItem label={busy === "feeder" ? "Building\u2026" : "Build LV Network"}
-                        /* Two things it cannot do without: a circuit to
-                           route, and a dig to route it along. Named
-                           separately, because they are fixed in
-                           different places and "unavailable" without a
-                           reason is a dead end. */
-                        hint={!hasTrench
-                          ? "No trench drawn yet \u2014 the cables are routed along it"
-                          : circuitsFrom(features).length
-                            ? "Routes each circuit's cables along the trenches"
-                            : "No circuits yet \u2014 draw round the plot seeds with Link to "
-                              + "Circuit first, and this becomes available"}
-                        disabled={busy === "feeder" || !hasTrench
-                          || !circuitsFrom(features).length}
-                        onClick={() => runStep("build",
-                          () => withUndo("Build LV Network", () => buildLvNetwork()))} />
-                      {/* Straight after the build, because it finishes
-                          it: the build sizes each run, and this copies
-                          those sizes onto the span nodes, which is what
-                          the trace actually reads. It sat under Tools &
-                          Reporting, two groups away from the thing it
-                          completes. */}
-                      <MenuItem label="Apply Cable Sizes to Span Nodes"
-                        hint="Sets each span node's cable to match the run feeding it — that is what the trace reads"
-                        disabled={!!busy}
-                        onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)} />
-                      <MenuItem label={busy === "joints" ? "Working\u2026" : "Place Feeder Joints"}
-                        hint={circuitsFrom(features).length
-                          ? "Breech where a feeder divides, service where a service leaves it, straight where the cable changes, bottle end where it stops"
-                          : "No circuits yet \u2014 the joints are read off the routed "
-                            + "network, so the network has to be built first"}
-                        disabled={!!busy || !circuitsFrom(features).length}
-                        onClick={() => withUndo("Place Feeder Joints", () => placeFeederJoints())} />
-                      {/* One at a time, for the joints the model cannot
-                          know about.
-
-                          Place Feeder Joints above reads the routed
-                          network, so it finds every joint the design calls
-                          for and refuses to invent any others \u2014 which
-                          leaves no way at all to record a joint going in
-                          for a reason outside the model: an existing main
-                          being cut into, a breech left for a phase not yet
-                          drawn, a cable sealed off short of anything.
-
-                          Indented under it because they answer the same
-                          question at different grain, and named as the
-                          fittings rather than as "add joint" so the menu
-                          says what will be in the ground. */}
-                      {/* Placed by pointing at the cable. The menu's
-                          other three drop one in the middle of the view
-                          and snap it to the nearest feeder, which
-                          answers "somewhere on this circuit"; this
-                          answers "here", and breaks the cable where it
-                          lands because that is what a joint is. */}
-                      <MenuItem label={jointFor
-                        ? "Click the cable\u2026 (Esc to stop)"
-                        : "+ Straight Joint on a Cable"} indent
-                        active={!!jointFor}
-                        hint={"Click where the joint goes \u2014 the cable says ON LINE, and breaks there"}
-                        disabled={!!busy || !projectId}
-                        onClick={() => {
-                          /* A straight joint: two cable ends brought
-                             into one fitting, which is exactly what
-                             breaking a run and joining it there is. A
-                             service joint is a fitting let into a run
-                             to take a service off it, and that is a
-                             different thing. */
-                          setJointFor(jointFor ? null : "straight");
-                          setSelected([]); setDraft([]);
-                        }} />
-                      <MenuItem label="+ Service Joint" indent
-                        hint="One joint, snapped to the nearest LV feeder"
-                        disabled={!!busy || !projectId}
-                        onClick={() => withUndo("Place service joint",
-                          () => placeJoint("service"))} />
-                      <MenuItem label="+ Breech Joint" indent
-                        hint="One joint, snapped to the nearest LV feeder"
-                        disabled={!!busy || !projectId}
-                        onClick={() => withUndo("Place breech joint",
-                          () => placeJoint("breech"))} />
-                      <MenuItem label="+ Bottle End" indent
-                        hint="Seals a feeder that stops here"
-                        disabled={!!busy || !projectId}
-                        onClick={() => withUndo("Place bottle end",
-                          () => placeJoint("bottleend"))} />
-  {/* The older Place Joints is gone. It grouped coincident line ends
-                          across every utility, so it could not tell a feeder from a
-                          water main, wrote no Feature_Role, and put what it made on
-                          the trench layer — where nothing in the application
-                          recognised it as a joint. Place Feeder Joints above does
-                          the same job from the routed network and writes the layer,
-                          role, type and code properly. */}
-
-                      <div className="gm-sep" />
                       <MenuGroup label="Tools & Reporting" />
                       {/* ── Greyed on the same rule as everything else ──
 

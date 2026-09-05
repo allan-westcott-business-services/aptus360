@@ -144,6 +144,35 @@ export function MenuItem({
   );
 }
 
+/* ── An item that opens to reveal the ones under it ──
+
+   A menu long enough to scroll is a menu nobody reads to the bottom of.
+   Grouping by the thing rather than the verb — one Joint row that opens
+   to four kinds, one Link Box row that opens to two — puts the common
+   case on one screen and keeps the choices a click away.
+
+   Closed by default: the parent names the thing, and somebody who wants
+   a particular kind of it is already looking for a second step.
+
+   `data-keep-open` on the toggle, because opening a branch is not
+   choosing anything and the menu closing under it would be the same
+   fault the layer switches had. */
+export function MenuBranch({ label, hint, disabled, children, defaultOpen = false }) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <>
+      <button className={`gm-item gm-branch${open ? " open" : ""}`}
+        role="menuitem" aria-expanded={open} disabled={disabled}
+        title={hint} data-keep-open
+        onClick={() => setOpen((v) => !v)}>
+        <span>{label}</span>
+        <span className="gm-chev" aria-hidden="true">{open ? "\u2212" : "+"}</span>
+      </button>
+      {open && children}
+    </>
+  );
+}
+
 /* A layer row: the name, and H and S beside it.
 
    H hides just this one. S isolates it — everything else goes, which is
@@ -370,6 +399,13 @@ const CSS = `
   padding: 6px 9px; text-align: left; }
 .gm-item:hover:not(:disabled), .gm-tog:hover { background: var(--bg); }
 .gm-item:disabled { color: var(--muted); cursor: not-allowed; }
+/* A branch: the thing, and a sign that there is more under it. The
+   children are ordinary indented items, so an open branch reads as a
+   list rather than as a different kind of menu. */
+.gm-branch { justify-content: space-between; font-weight: 600; }
+.gm-branch .gm-chev { color: var(--muted); font-weight: 700; font-size: 13px;
+  width: 12px; text-align: center; }
+.gm-branch.open .gm-chev { color: var(--accent); }
 .gm-item.on { background: var(--accent-light); color: var(--accent); font-weight: 700; }
 .gm-item.danger { color: #b91c1c; }
 .gm-item span, .gm-tog .gm-lbl { flex: 1; }

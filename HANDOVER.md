@@ -144,6 +144,8 @@ caught a fault that had already shipped at least once.
 | `node checkrealdrawing.mjs` | A real site still gives the answers recorded for it |
 | `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
+| `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
+| `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
 | `node checkjointonline.mjs` | A joint clicked onto a cable breaks it there |
 | `node checkstraightjoint.mjs` | A straight joint is a stop, one cable in and one out |
@@ -1549,6 +1551,50 @@ places asked "which cable" and only one of them showed the answer:
     this was survivable. **Anchor inside the function being edited, and
     assert the replaced span is the size you expect** — a bounds check
     on the region would have caught it before it was written.
+
+**Nothing is offered that can only report nothing.** Almost everything
+on these menus works on the dig, and on a drawing with no trench they
+can only find nothing — which for a CHECK reads as a pass. "Check
+Services Reach the Mains" on a drawing with no service trenches said
+every service reaches the mains.
+
+Two facts, `hasTrench` and `hasServiceTrench`, computed once so every
+menu agrees, and each guarded item names the missing thing in its hint.
+**Disabling on its own is a dead end**: a grey item with no reason sends
+somebody looking for what they did wrong. Build LV Network names its two
+requirements separately — a circuit to route and a dig to route it
+along — because they are fixed in different places.
+
+`checkmenuguards` holds it. Worth extending as more items are added:
+the test is whether the thing can do anything at all on an empty
+drawing, and if not, whether it says why.
+
+**The Electric menu groups by the thing, not the verb.** One row per
+fitting or cable, opening to the kinds of it — `MenuBranch` in
+GisMenus.jsx, closed by default, `data-keep-open` so opening a branch is
+not choosing anything.
+
+**Mains Network** (POC, Substation, Route POC to Substation, then Feeder
+Cable, Link Box and Joint as branches) and **Services** (Cable, Link to
+Circuit), because they are two jobs done at different points in a
+design and the old flat list mixed them.
+
+Two renames, both because the old name claimed to be the only way:
+**Auto Build LV Network** is one of four ways to get a feeder cable, and
+**Auto Place Feeder Joints** sits beside the four placed by hand.
+
+**"Apply Cable Sizes to Span Nodes" is gone** — removed on request. The
+build already applies the sizes, so the button repeated a step the build
+had taken and could be pressed at the wrong moment. `syncNodeCables` is
+still called by the build, so nothing is orphaned; `checkorphans` would
+say if it were.
+
+Three checks pinned the old shape and were updated rather than worked
+around: `checklinkbox` (the two ways are now under a branch),
+`checkmenuguards` (the rename) and `checkutilitymenus` (the section
+order and the removed item). **A check that names a menu item is a check
+that will fail when the menu is reorganised** — which is right, so long
+as whoever reorganises reads it rather than deleting it.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

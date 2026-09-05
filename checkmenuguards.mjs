@@ -71,8 +71,10 @@ for (const [label, fact, why] of items) {
    separately — they are fixed in different places. */
 {
   let item = "";
-  for (let i = canvas.indexOf('"Build LV Network"'); i >= 0;
-    i = canvas.indexOf('"Build LV Network"', i + 1)) {
+  /* Renamed: it is one of four ways to get a feeder cable, so it reads
+     as the automatic one. */
+  for (let i = canvas.indexOf('"Auto Build LV Network"'); i >= 0;
+    i = canvas.indexOf('"Auto Build LV Network"', i + 1)) {
     const from = canvas.lastIndexOf("<MenuItem", i);
     const to = canvas.indexOf("/>", i);
     if (from < 0 || to < 0 || i - from > 400) continue;
@@ -80,12 +82,12 @@ for (const [label, fact, why] of items) {
     break;
   }
   if (!item.includes("hasTrench") || !item.includes("circuitsFrom")) {
-    fail("Build LV Network does not require both a trench to route along "
-      + "and a circuit to route");
+    fail("Auto Build LV Network does not require both a trench to route "
+      + "along and a circuit to route");
   }
   if (!/No trench drawn yet/.test(item)) {
-    fail("Build LV Network blames the circuits when the trench is what is "
-      + "missing");
+    fail("Auto Build LV Network blames the circuits when the trench is what "
+      + "is missing");
   }
 }
 

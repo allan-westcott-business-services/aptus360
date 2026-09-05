@@ -796,10 +796,25 @@ const onScreen = (keys) => {
     const items = bare.split("<MenuItem").slice(1)
       .map((chunk) => chunk.slice(0, chunk.indexOf("/>") + 2));
 
+    /* ── Renamed and regrouped, not lost ──
+
+       The menu groups by the thing now — a Feeder Cable row that opens
+       to four ways of getting one, a Joint row that opens to five — so
+       several of these are inside a branch and two read differently:
+       "Build LV Network" is "Auto Build LV Network", because it is one
+       of the four ways rather than the only one, and "Place Feeder
+       Joints" is "Auto Place Feeder Joints" beside the four placed by
+       hand.
+
+       "Apply Cable Sizes to Span Nodes" is GONE, deliberately. It was
+       removed on request: the build already applies the sizes, and a
+       button that repeats a step the build has taken is a button that
+       can be pressed at the wrong moment. `syncNodeCables` is still
+       called by the build, so nothing is orphaned. */
     for (const label of [
       "+ POC", "+ Substation", "Route POC to Substation", "Auto Lay Service Cable",
-      "Link to Circuit", "Build LV Network", "Apply Cable Sizes to Span Nodes",
-      "Place Feeder Joints", "Circuit Report", "Run Levels Check",
+      "Link to Circuit", "Auto Build LV Network",
+      "Auto Place Feeder Joints", "Circuit Report", "Run Levels Check",
     ]) {
       const rows = items.filter((row) => row.includes(`"${label}"`)).length;
       if (rows === 0) fail(`the Electric menu lost "${label}"`);
@@ -827,10 +842,11 @@ const onScreen = (keys) => {
       }
     }
 
-    /* The three cables that can be drawn by hand. Service cable is the
-       new one, and it is built from lineTypes so a missing type renders
-       nothing rather than a dead button. */
-    if (!/\["elec_service", "Service cable"\]/.test(bare)) {
+    /* The three cables that can be drawn by hand, still built from
+       lineTypes so a missing type renders nothing rather than a dead
+       button — the mains two under Feeder Cable, the service under
+       Services, because they are two jobs. */
+    if (!/Manually add Service Cable/.test(bare)) {
       fail("the Electric menu cannot draw a service cable");
     }
     if (!/lineTypes\.find\(\(x\) => x\.Type_Key === key\)/.test(bare)) {
@@ -852,12 +868,21 @@ const onScreen = (keys) => {
       fail("Sizes is not at the foot of the left column");
     }
 
-    /* Apply Cable Sizes finishes the build, so it sits with it rather
-       than two groups away under Tools & Reporting. */
-    const buildAt = bare.indexOf('"Build LV Network"');
-    const applyAt = bare.indexOf('"Apply Cable Sizes to Span Nodes"');
-    if (!(buildAt < applyAt && applyAt < toolsAt)) {
-      fail("Apply Cable Sizes to Span Nodes is not under Build LV Network");
+    /* Mains before services, because that is the order the work is
+       done in, and both before Tools & Reporting. */
+    const mainsAt = bare.indexOf('label="Mains Network"');
+    const svcAt = bare.indexOf('label="Services"');
+    if (!(mainsAt >= 0 && svcAt > mainsAt && svcAt < toolsAt)) {
+      fail("the Electric menu is not Mains Network, then Services, then "
+        + "Tools & Reporting");
+    }
+    /* And the build sits inside Feeder Cable, with the other ways of
+       getting one. */
+    const branchAt = bare.indexOf('<MenuBranch label="Feeder Cable"');
+    const autoAt = bare.indexOf('"Auto Build LV Network"');
+    if (!(branchAt >= 0 && autoAt > branchAt)) {
+      fail("Auto Build LV Network is not among the ways of getting a feeder "
+        + "cable");
     }
 
     /* The whole layer governs everything under it, so it is above the

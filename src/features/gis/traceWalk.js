@@ -90,6 +90,22 @@ function weldTees(lines, tol, byJoint = new Map()) {
       let best = null;
       for (const v of verts) {
         if (v.id === id) continue;
+        /* ── One of the pair moves, not both ──
+
+           Snapping every end onto its neighbour, measured against the
+           ORIGINAL positions, made two ends nine centimetres apart swap
+           places: each moved to where the other had been, and they
+           still did not meet. On the live drawing that was the two
+           halves of a cable a straight joint had just broken \u2014 the
+           trace reached the fitting and stopped, with the rest of the
+           output beyond it.
+
+           So the lower id is the anchor and the higher one moves.
+           Arbitrary, and that is the point: any rule that picks the
+           same one every time converges, and picking by distance
+           cannot, because the distance is the same in both
+           directions. */
+        if (v.id > id) continue;
         const d = Math.hypot(v.q[0] - p[0], v.q[1] - p[1]);
         if (d === 0 || d > tol) continue;
 
@@ -415,6 +431,16 @@ export function traceTree(lines = [], startPoint, opts = {}) {
        somebody made, rather than another measurement of cables lying on
        top of each other. */
     joints = [],
+    /* Where a box's outputs legitimately meet the cable feeding them.
+
+       An output and the trunk share a trench for as long as the
+       designer runs them together, and a graph keyed on position welds
+       them at every shared vertex. The trunk names no output, so the
+       walk could step onto it anywhere \u2014 and the trunk is much nearer
+       the source, so a DOWNSTREAM trace stopped dead there.
+
+       They are one network at the box and nowhere else. */
+    hubs = [],
     /* A guard, not a limit anybody should meet: a network that walks
        past this is a network with a loop the edge marking missed, and
        running out of memory is a worse way to find out. */
@@ -429,6 +455,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
   const welded = weldTees(usable, Math.min(reach, 0.35), jointPartners(joints));
   const fromJoints = waysFromJoints(welded, joints);
   const graph = buildGraph(welded, fromJoints.ways, fromJoints.circuits);
+
   /* A vertex first, then anywhere along a line. The vertex is the
      common case \u2014 clicking a joint, an end, a node \u2014 and it is exact;
      the segment search is what makes clicking the MIDDLE of a cable
@@ -521,8 +548,13 @@ export function traceTree(lines = [], startPoint, opts = {}) {
       if (circuitId != null && e.circuitId != null
         && e.circuitId !== circuitId) return false;
       /* And the same output of the same box. Two runs naming different
-         outputs are two cables sharing a dig, not one network. A run
-         naming none \u2014 the trunk, a service \u2014 is followed either way. */
+         outputs are two cables sharing a dig, not one network.
+
+         A run naming NO output \u2014 the trunk \u2014 is joined to an output at
+         the box and nowhere else, however far they share a trench. Off
+         the box, stepping between them is the walk inventing a
+         connection: the trunk is nearer the source, so a downstream
+         trace stepped onto it and stopped. */
       if (wayKey != null && e.wayKey != null && e.wayKey !== wayKey) return false;
       if (depth) {
         const here = depth.get(key);

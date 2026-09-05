@@ -2048,6 +2048,43 @@ everywhere else, and a bigger change than this one.
     is not a fault you can see on a drawing of eighty-four plots; a
     tally by circuit and output is.
 
+64. **Two ends nine centimetres apart, and both of them moved.** The
+    welding snapped every end onto its nearest neighbour, measured
+    against the ORIGINAL positions — so two ends near each other each
+    moved to where the other had been. They swapped, and still did not
+    meet.
+
+    On the live drawing that was the two halves of a cable a straight
+    joint had just broken: **0.093 m apart, no shared vertex**, so the
+    trace reached the fitting and stopped with the rest of the output
+    beyond it. The joint's own record was perfect — both halves, same
+    circuit, same output — and none of it mattered, because the two
+    lines were not connected in the graph.
+
+    The lower id is the anchor and the higher one moves. Arbitrary, and
+    that is the point: **any rule that picks the same one every time
+    converges, and picking by distance cannot**, because the distance is
+    the same in both directions.
+
+**Directional tracing is still wrong on a shared trench — OPEN.** With
+the above fixed, "both ways" from that cable traces the whole output
+correctly: 15 paths, 19 cables, exactly the 14 meters lassoed onto it.
+Upstream and downstream return two cables and stop.
+
+The reason is the one already recorded at fault 58: the graph is keyed
+on POSITION, so an output and the trunk feeding it share every vertex
+along the trench they share. "Downstream" means the distance from the
+source increases, and that distance takes the shortcut, so the ordering
+along the output is not monotonic and the walk stops at the first step
+that measures as going back.
+
+**The honest fix is to stop welding two cables that merely share a
+trench** — joining them only where a fitting or an end says they meet,
+which is the same rule as everywhere else in this file. I tried a
+narrower version (outputs meet their feed only AT the box) and it made
+the traces worse, so it is reverted rather than left in half-working.
+Do it properly or not at all.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -504,6 +504,45 @@ const world = [
   }
 }
 
+// Two ends nine centimetres apart are one point, and ONE of them moves.
+//
+//    The welding snapped every end onto its nearest neighbour, measured
+//    against the ORIGINAL positions — so two ends near each other each
+//    moved to where the other had been, swapped, and still did not
+//    meet. On the live drawing that was the two halves of a cable a
+//    straight joint had just broken: 0.093 m apart, no shared vertex,
+//    and the trace reached the fitting and stopped with the rest of the
+//    output beyond it.
+//
+//    The lower id is the anchor and the higher one moves. Arbitrary,
+//    and that is the point: any rule that picks the same one every time
+//    converges, and picking by distance cannot, because the distance is
+//    the same in both directions.
+{
+  const a = { Feature_ID: 10, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [50, 0]], Attributes: { Line_Type: "elec_main", Circuit_ID: 1 } };
+  /* Starts where a broke, less a hand's breadth. */
+  const b = { Feature_ID: 20, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[50.093, 0], [100, 0]], Attributes: { Line_Type: "elec_main", Circuit_ID: 1 } };
+
+  const r = traceTree([a, b], [25, 0], { direction: "both", sourcePoints: [],
+    reach: 2, startLineId: 10 });
+  if (r.error) fail(`the trace stopped at the break: ${r.error}`);
+  else if (!r.lineIds.includes(20)) {
+    fail("the trace stops at a break of nine centimetres \u2014 both ends moved "
+      + "to where the other had been and they still do not meet");
+  }
+
+  /* Far apart is still far apart: welding must not join two cables that
+     genuinely stop short of each other. */
+  const far = { ...b, Feature_ID: 30, Geometry: [[52, 0], [100, 0]] };
+  const r2 = traceTree([a, far], [25, 0], { direction: "both", sourcePoints: [],
+    reach: 2, startLineId: 10 });
+  if (!r2.error && r2.lineIds.includes(30)) {
+    fail("a cable two metres short of another was welded to it");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

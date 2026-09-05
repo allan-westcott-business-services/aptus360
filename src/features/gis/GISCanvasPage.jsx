@@ -8484,6 +8484,12 @@ export default function GISCanvasPage() {
          the main it is jointed to, which is the only thing on the
          drawing that says which of a box's cables feeds it. */
       joints: features.filter((f) => f.Feature_Role === "joint"),
+      /* Where a box's outputs meet the cable feeding them. They share a
+         trench with it for as long as the designer runs them together,
+         and are one network only at the box itself. */
+      hubs: features.filter((f) => f.Feature_Role === "linkbox")
+        .map((f) => f.Attributes?.Span_Anchor ?? f.Geometry?.[0])
+        .filter(Boolean),
     });
     if (r.error) {
       setError(r.error);

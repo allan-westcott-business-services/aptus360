@@ -149,7 +149,10 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   }
 
   /* The drag prefers what the joint was told. */
-  if (!/const told = new Set\(\(pt\.Attributes\?\.Joint_Cables \|\| \[\]\)\.map\(Number\)\);/.test(canvas)) {
+  /* Through jointCables now, and for ANY joint: a cable snapped to a
+     service joint is held by it too, and the record says so whatever
+     kind of fitting it is. */
+  if (!/const told = new Set\(jointCables\(pt\)\);/.test(canvas)) {
     fail("the drag does not read what the joint was told it holds");
   }
   if (!/if \(told\.size\) \{\n\s*if \(!told\.has\(Number\(line\.Feature_ID\)\)\) continue;/.test(canvas)) {

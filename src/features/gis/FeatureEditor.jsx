@@ -22,7 +22,8 @@ import { heatPumpLabel, sourceTakesHeatPump, kvaSourceText } from "../../lib/hea
 import { circuitColours, feederColourAt } from "./feederColour.js";
 import { sizeIdFor, isOverridden } from "./sizeMode.js";
 import { lvOrigins } from "./electric.js";
-import { servedPlots, JOINT_KINDS, straightJointWarning } from "./joints.js";
+import { servedPlots, JOINT_KINDS, straightJointWarning,
+  jointCables } from "./joints.js";
 import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
@@ -62,6 +63,7 @@ export default function FeatureEditor({
   onSetCircuitOrigin,
   /* Link box outputs: arm the lasso for one, or clear it. */
   onLassoLinkWay, onClearLinkWay, onIsolateWay, isolatedWay,
+  onDisconnectCable,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -1236,6 +1238,50 @@ export default function FeatureEditor({
                   what you have between placing the fitting and drawing
                   the second run. The person who meant to draw it should
                   find out here rather than on site. */}
+              {/* ── What this fitting holds, and how to let go ──
+
+                  A cable snapped to a joint stays joined to it: the
+                  drawing can be moved about and the connection stands,
+                  which is what stops a cable coming adrift from its
+                  fitting by accident.
+
+                  So there has to be a way to say otherwise, and it has
+                  to be deliberate. Named per cable rather than one
+                  "disconnect all", because a breech holds several and
+                  releasing the wrong one silently would be worse than
+                  the accident this prevents. */}
+              {jointCables(feature).length > 0 && (
+                <div className="fe-joint-held">
+                  <span className="hint">
+                    {/* In braces: an escape written straight into JSX
+                        TEXT renders as the characters \\u2014 rather than
+                        as a dash. Fault 34, in a new place. */}
+                    {`Joined to ${jointCables(feature).length} cable`}
+                    {jointCables(feature).length === 1 ? "" : "s"}
+                    {" \u2014 they move with it"}
+                  </span>
+                  {jointCables(feature).map((id) => {
+                    const c = (allFeatures || []).find((x) =>
+                      Number(x.Feature_ID) === Number(id));
+                    return (
+                      <div className="fe-held-row" key={id}>
+                        <span className="fe-held-name">
+                          {c?.Label ?? `#${id}`}
+                          {c?.Attributes?.Circuit_Name
+                            ? ` \u00b7 ${c.Attributes.Circuit_Name}` : ""}
+                          {c ? "" : " \u2014 no longer on the drawing"}
+                        </span>
+                        <button type="button" className="btn sm"
+                          title="Release this cable. It stays where it is, and stops moving with the joint."
+                          onClick={() => onDisconnectCable?.(feature.Feature_ID, id)}>
+                          Disconnect
+                        </button>
+                      </div>
+                    );
+                  })}
+                </div>
+              )}
+
               {straightJointWarning(feature, allFeatures || []) && (
                 <p className="fe-joint-warn">
                   {straightJointWarning(feature, allFeatures || [])}
@@ -3201,6 +3247,12 @@ const CSS = `
   margin-bottom: 10px; display: grid; gap: 4px; }
 .fe-joint-h { display: flex; align-items: baseline; gap: 8px; }
 .fe-joint-h strong { font-size: 12.5px; }
+.fe-joint-held { margin: 6px 0 0; padding: 6px 8px; border-radius: 6px;
+  background: var(--bg); border: 1px solid var(--line); }
+.fe-held-row { display: flex; align-items: center; justify-content: space-between;
+  gap: 8px; margin-top: 5px; }
+.fe-held-name { font-size: 12.5px; min-width: 0; overflow: hidden;
+  text-overflow: ellipsis; white-space: nowrap; }
 .fe-joint-warn { margin: 6px 0 0; padding: 6px 8px; border-radius: 6px;
   background: #fffbeb; border: 1px solid #fde68a; color: #92400e;
   font-size: 12px; line-height: 1.45; }

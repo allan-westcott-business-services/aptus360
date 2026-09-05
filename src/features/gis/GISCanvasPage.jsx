@@ -102,6 +102,7 @@ import {
 } from "./feederColour.js";
 import {
   planJoints, reconcileJoints, JOINT_KINDS, isBottleEnd, bottleEndAngle,
+  jointAtEnd, withCable, withoutCable, jointCables,
 } from "./joints.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -7184,7 +7185,10 @@ export default function GISCanvasPage() {
              Where the joint was told, the telling is the answer. Where
              it was not — a joint from before this, or one the build
              made — the older rules below still apply. */
-          const told = new Set((pt.Attributes?.Joint_Cables || []).map(Number));
+          /* Any joint, not only the ones that join ends: a cable
+             snapped to a service joint is held by it too, and the
+             record says so whatever kind of fitting it is. */
+          const told = new Set(jointCables(pt));
           if (told.size) {
             if (!told.has(Number(line.Feature_ID))) continue;
           } else {
@@ -7729,6 +7733,10 @@ export default function GISCanvasPage() {
           await moveFeatures(projectId, carried);
         }
 
+        /* Dropped on a joint, so it is joined to it \u2014 this is the
+           gesture that says so, and the drop has already snapped. */
+        await joinEndToJoint(f);
+
         /* Said out loud when a ring is shut.
 
            A closed loop and one that is a few centimetres open look
@@ -8098,6 +8106,56 @@ export default function GISCanvasPage() {
      Which cable is passed IN \u2014 chosen by the click, or by the person
      when several lie under it. Never re-derived from geometry here,
      which is what put joints on the wrong run. */
+  /* ── A cable end dropped on a joint is joined to it ──
+
+     Recorded on the JOINT when it happens, because that is the moment
+     somebody says so. From then on the connection is a fact of the
+     drawing rather than something re-derived from where things happen
+     to lie — which is what let a joint drag a cable that merely passed
+     it, and what left half a broken cable behind.
+
+     Released only by Disconnect in the joint's editor. Moving the
+     drawing about does not release it: that is the whole point.
+
+     Silent about doing nothing. A cable end dropped in a field touches
+     no joint and there is nothing to write, and a status for every
+     nothing is a status nobody reads. */
+  /* Letting go, deliberately. The cable stays exactly where it is and
+     stops moving with the fitting \u2014 releasing a connection is not the
+     same as moving anything, and doing both would surprise. */
+  async function disconnectCable(jointId, cableId) {
+    const j = features.find((x) => Number(x.Feature_ID) === Number(jointId));
+    if (!j) return;
+    const attrs = withoutCable(j, cableId);
+    if (attrs === j.Attributes) return;
+    try {
+      await bulkUpdateFeatures(projectId, [{ Feature_ID: j.Feature_ID, Attributes: attrs }]);
+      setFeatures((fs) => fs.map((x) =>
+        (x.Feature_ID === j.Feature_ID ? { ...x, Attributes: attrs } : x)));
+      const c = features.find((x) => Number(x.Feature_ID) === Number(cableId));
+      setStatus(`${c?.Label ?? "Cable"} released from ${j.Label ?? "the joint"}`);
+      setTimeout(() => setStatus(""), 6000);
+    } catch (e) { setError(e.message); }
+  }
+
+  async function joinEndToJoint(line) {
+    const joints = features.filter((f) => f.Feature_Role === "joint");
+    const j = jointAtEnd(line, joints);
+    if (!j) return;
+    const attrs = withCable(j, line.Feature_ID);
+    if (attrs === j.Attributes) return;
+    try {
+      await bulkUpdateFeatures(projectId, [{
+        Feature_ID: j.Feature_ID, Attributes: attrs,
+      }]);
+      setFeatures((fs) => fs.map((x) =>
+        (x.Feature_ID === j.Feature_ID ? { ...x, Attributes: attrs } : x)));
+      setStatus(`${line.Label ?? "Cable"} joined to `
+        + `${j.Label ?? "the joint"} \u2014 it moves with it now`);
+      setTimeout(() => setStatus(""), 6000);
+    } catch (e) { setError(e.message); }
+  }
+
   async function placeJointOnCable(kind, line, at) {
     const spec = JOINT_KINDS[kind];
 
@@ -21782,6 +21840,7 @@ export default function GISCanvasPage() {
           onRenameCircuits={renameCircuits}
           onIsolateCircuit={isolateCircuit}
           onIsolateWay={isolateWay}
+          onDisconnectCable={disconnectCable}
           isolatedWay={isolatedWay}
           onSetCircuitOrigin={setCircuitOrigin}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}

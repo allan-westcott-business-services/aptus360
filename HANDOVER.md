@@ -145,6 +145,7 @@ caught a fault that had already shipped at least once.
 | `node checklevelsgrouping.mjs` | The levels sheet is sectioned by cable, not flattened |
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
 | `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
+| `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
 | `node checkjointonline.mjs` | A joint clicked onto a cable breaks it there |
@@ -1631,6 +1632,27 @@ lies.
     accept**, or it spends its slots on candidates that were going to be
     rejected anyway. Reproduced with three cables and the ids the real
     case produces, before and after.
+
+**A cable is joined to a joint because somebody joined it.** Snapping a
+cable END onto a joint records it on the joint, and the connection then
+stands however the drawing is moved about. Released only by
+**Disconnect** in the joint's editor, named per cable — a breech holds
+several, and releasing the wrong one silently would be worse than the
+accident this prevents.
+
+This generalises what `Joint_Cables` already did for a straight joint to
+EVERY kind of fitting, and the helpers live in joints.js so the canvas,
+the editor and the drag read one definition: `jointCables`, `withCable`,
+`withoutCable`, `jointAtEnd`.
+
+**Ends only.** A cable passing across a fitting is not joined to it, and
+treating it as joined is how a joint came to drag a run that merely
+crosses its position.
+
+The point of the whole thing: **`Connects` is derived from geometry and
+`Joint_Cables` is not.** Everything that read the derived one moved the
+wrong cable sooner or later, on a drawing where cables share a trench.
+A record of what somebody did outlives a guess about what they meant.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

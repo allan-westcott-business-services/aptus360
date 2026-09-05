@@ -878,3 +878,69 @@ export function straightJointWarning(joint, features = [], tol = 0.35) {
   return `${n} cable ends here. A straight joint takes one in and one out `
     + "\u2014 where a run divides, the fitting is a breech joint.";
 }
+
+/* ── A cable is connected to a joint because somebody joined it ──
+
+   Not because its end happens to lie within a quarter of a metre. That
+   inference is what every fault in this area came from: the relink pass
+   derives `Connects` from geometry, so on a shared trench a joint lists
+   cables it has nothing to do with, and a drag reading it moves the
+   wrong run.
+
+   `Joint_Cables` is the record of what a fitting actually holds. It is
+   written when a cable end is SNAPPED to the joint — which is the
+   moment somebody says so — and removed when they say otherwise. In
+   between, the drawing can be moved about and the connection stands.
+
+   Kept here beside the other facts about joints so the canvas, the
+   editor and the drag all read one definition. */
+
+export function jointCables(joint) {
+  const raw = joint?.Attributes?.Joint_Cables;
+  return Array.isArray(raw) ? raw.map(Number).filter(Number.isFinite) : [];
+}
+
+export function holdsCable(joint, cableId) {
+  return jointCables(joint).includes(Number(cableId));
+}
+
+/* Attributes with the cable added, or the same object where it is
+   already held — so a caller can tell whether anything changed and not
+   write for nothing. */
+export function withCable(joint, cableId) {
+  const id = Number(cableId);
+  if (!Number.isFinite(id) || holdsCable(joint, id)) return joint?.Attributes;
+  return { ...(joint?.Attributes || {}), Joint_Cables: [...jointCables(joint), id] };
+}
+
+export function withoutCable(joint, cableId) {
+  const id = Number(cableId);
+  if (!holdsCable(joint, id)) return joint?.Attributes;
+  return {
+    ...(joint?.Attributes || {}),
+    Joint_Cables: jointCables(joint).filter((x) => x !== id),
+  };
+}
+
+/* The joint a cable END has been dropped on, if any.
+
+   Ends only: a cable passing across a fitting is not joined to it, and
+   treating it as joined is how a joint came to drag a run that merely
+   crosses its position. `reach` is the snap distance, so what counts as
+   dropped on it is what the drawing showed as snapping to it. */
+export function jointAtEnd(line, joints = [], reach = 0.35) {
+  const g = line?.Geometry || [];
+  if (g.length < 2) return null;
+  const ends = [g[0], g[g.length - 1]];
+  let best = null;
+  for (const j of joints) {
+    if (j?.Feature_Role !== "joint") continue;
+    const at = j.Attributes?.Span_Anchor ?? j.Geometry?.[0];
+    if (!Array.isArray(at)) continue;
+    for (const e of ends) {
+      const d = Math.hypot(e[0] - at[0], e[1] - at[1]);
+      if (d <= reach && (!best || d < best.d)) best = { d, joint: j };
+    }
+  }
+  return best ? best.joint : null;
+}

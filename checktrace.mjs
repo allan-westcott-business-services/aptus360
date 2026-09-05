@@ -157,6 +157,42 @@ const world = [
   }
 }
 
+// A click in the MIDDLE of a cable starts the trace.
+//
+//    The graph's nodes are the lines' vertices, so a click along a run
+//    is nowhere near one: a twelve metre service has both ends six
+//    metres from where somebody clicked, and a reach of two metres
+//    found nothing. It reported "click on a line" to somebody who had
+//    clicked on a line.
+{
+  const line = { Feature_ID: 1, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[0, 0], [100, 0]], Attributes: { Line_Type: "elec_main" } };
+  const spur = { Feature_ID: 2, Feature_Type: "line", Layer_Key: "electric",
+    Geometry: [[100, 0], [100, 40]], Attributes: { Line_Type: "elec_main" } };
+
+  /* Fifty metres from either end of the first segment, with a reach far
+     smaller than that. */
+  const mid = traceTree([line, spur], [50, 0], { direction: "both", reach: 2 });
+  if (mid.error) {
+    fail(`a click on the middle of a cable was refused: ${mid.error}`);
+  } else if (mid.paths.length < 1) {
+    fail("a click on the middle of a cable traced nothing");
+  }
+
+  /* Still refused where it lands on nothing \u2014 the reach is what says
+     "on a line", and widening it to make the middle work would make a
+     click in a field trace the nearest cable in the county. */
+  const off = traceTree([line, spur], [50, 400], { direction: "both", reach: 2 });
+  if (!off.error) {
+    fail("a click four hundred metres off the network started a trace");
+  }
+
+  /* And a click ON a vertex still starts there, which is the exact
+     case: a joint, an end, a node. */
+  const atEnd = traceTree([line, spur], [100, 0], { direction: "both", reach: 2 });
+  if (atEnd.error) fail(`a click on a vertex was refused: ${atEnd.error}`);
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

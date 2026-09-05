@@ -75,6 +75,45 @@ function nearestNode(graph, point, reach) {
   return best?.key ?? null;
 }
 
+/* ── Where a click ON a line starts from ──
+
+   The graph's nodes are the lines' VERTICES, so a click in the middle
+   of a run is nowhere near one: a service cable ten metres long has its
+   two ends five metres from the point somebody clicked, and a reach of
+   two metres finds nothing. Which reported "click on a line" to
+   somebody who had clicked on a line.
+
+   So the segments are asked instead. The nearest one within reach wins,
+   and the walk starts from whichever of ITS ends the click was nearer —
+   the token appears at a real node and travels from there, which is
+   what it does from a vertex too.
+
+   Not the projected point itself: starting mid-segment would mean
+   splitting an edge and rebuilding the graph around it, for a marker
+   that would sit a couple of metres from where the walk begins anyway. */
+function nearestOnSegments(lines, point, reach) {
+  let best = null;
+  for (const f of lines) {
+    const g = f.Geometry || [];
+    for (let i = 1; i < g.length; i++) {
+      const a = g[i - 1];
+      const b = g[i];
+      const vx = b[0] - a[0];
+      const vy = b[1] - a[1];
+      const l2 = vx * vx + vy * vy;
+      let t = l2 ? ((point[0] - a[0]) * vx + (point[1] - a[1]) * vy) / l2 : 0;
+      t = Math.max(0, Math.min(1, t));
+      const q = [a[0] + vx * t, a[1] + vy * t];
+      const d = dist(q, point);
+      if (d <= reach && (!best || d < best.d)) {
+        /* The nearer end of the segment the click landed on. */
+        best = { d, node: dist(a, point) <= dist(b, point) ? a : b };
+      }
+    }
+  }
+  return best?.node ?? null;
+}
+
 /* Distance from the nearest source, along the network. */
 function fromSource(graph, sourceKeys) {
   const seen = new Map();
@@ -116,7 +155,15 @@ export function traceTree(lines = [], startPoint, opts = {}) {
   if (!usable.length) return { error: "Nothing of that kind is drawn here." };
 
   const graph = buildGraph(usable);
-  const startKey = nearestNode(graph, startPoint, reach);
+  /* A vertex first, then anywhere along a line. The vertex is the
+     common case \u2014 clicking a joint, an end, a node \u2014 and it is exact;
+     the segment search is what makes clicking the MIDDLE of a cable
+     work, which is what most people do. */
+  let startKey = nearestNode(graph, startPoint, reach);
+  if (!startKey) {
+    const onLine = nearestOnSegments(usable, startPoint, reach);
+    if (onLine) startKey = nearestNode(graph, onLine, reach + 1e6);
+  }
   if (!startKey) {
     return { error: "Nothing to trace at that point \u2014 click on a line." };
   }

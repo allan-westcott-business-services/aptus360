@@ -1742,6 +1742,23 @@ the same time. A token that arrives stops being drawn rather than
 sitting on the last point looking like it is still going, so the short
 branches finishing early is the trace showing which way is further.
 
+54. **A click on a line is not a click on a vertex.** The trace walk's
+    graph is built from the lines' VERTICES, and the start was the
+    nearest one within reach. A click in the middle of a run is nowhere
+    near a vertex — a twelve metre service has both ends six metres from
+    where somebody clicked, against a reach of about two — so it
+    reported *"click on a line"* to somebody who had clicked on a line.
+
+    The segments are asked when no vertex is near enough, and the walk
+    starts from whichever end of the segment the click was nearer. Not
+    the projected point itself: starting mid-segment means splitting an
+    edge and rebuilding the graph around it, for a marker that would sit
+    two metres from where the walk begins anyway.
+
+    The reach is unchanged, and deliberately: it is what says "on a
+    line", and widening it to make the middle work would make a click in
+    a field trace the nearest cable in the county.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

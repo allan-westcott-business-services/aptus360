@@ -252,6 +252,22 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
     fail("the fallback is not bounded to two cable ends, which is what a "
       + "straight joint holds");
   }
+  /* ── And it picks from the right pool ──
+
+     Bounded to two, it scanned every feeder main on the drawing — so a
+     cable from ANOTHER circuit ending at the same point took one of the
+     two slots. Ties break by id, and the newer half of a freshly broken
+     cable always loses, so one half followed the joint and the other
+     stayed: which reads as the break having failed rather than as a
+     third cable being counted.
+
+     The loop applies a circuit guard a few lines above. Two filters for
+     one rule is the fault; this is the same rule. */
+  if (!/&& !\(pt\.Attributes\?\.Circuit_ID != null\n\s*&& l\.Attributes\?\.Circuit_ID != null/.test(canvas)) {
+    fail("the two-nearest fallback picks from every circuit's cables, so "
+      + "another circuit's can take a slot and half the broken cable is "
+      + "left behind");
+  }
   /* A breech is NOT bounded this way: it takes an incoming main and
      sends several out, and how many is the designer's business. */
   if (/joinsEnds && !held\.size && isFeeder\s*\n\s*&& String\(pt\.Attributes\?\.Joint_Type \?\? ""\)\.toLowerCase\(\) === "breech"/.test(canvas)) {

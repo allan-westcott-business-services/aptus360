@@ -7229,7 +7229,25 @@ export default function GISCanvasPage() {
                 .filter((l) => l.Feature_Type === "line"
                   && l.Layer_Key === pt.Layer_Key
                   && /main/i.test(String(l.Attributes?.Line_Type ?? ""))
-                  && (l.Geometry || []).length >= 2)
+                  && (l.Geometry || []).length >= 2
+                  /* ── The same circuit the guard above requires ──
+
+                     This scanned every feeder main on the drawing, so a
+                     cable from ANOTHER circuit ending at the same point
+                     could take one of the two slots — and ties break by
+                     id, which the newer half of a freshly broken cable
+                     always loses. One half followed the joint and the
+                     other stayed, which reads as the break having
+                     failed rather than as a third cable being counted.
+
+                     Two filters for one rule was the fault: this is the
+                     rule the loop applies a few lines above, and
+                     applying a looser one here made the narrowing pick
+                     from the wrong pool. */
+                  && !(pt.Attributes?.Circuit_ID != null
+                    && l.Attributes?.Circuit_ID != null
+                    && Number(pt.Attributes.Circuit_ID)
+                      !== Number(l.Attributes.Circuit_ID)))
                 .map((l) => {
                   const lg = l.Geometry;
                   const d = Math.min(

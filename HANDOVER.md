@@ -1615,6 +1615,23 @@ names features, the colour is doing the work of telling them apart, and
 a list that computes it differently from the canvas is a list that
 lies.
 
+52. **Two filters for one rule.** The straight joint's drag falls back
+    to "the two nearest cable ends" where no `Joint_Cables` was
+    recorded. The LOOP guards on circuit a few lines above; the fallback
+    scanned every feeder main on the drawing. So a cable from another
+    circuit ending at the same point took one of the two slots — and
+    ties break by id, which the newer half of a freshly broken cable
+    always loses.
+
+    One half followed the joint and the other stayed, which reads as the
+    break having failed rather than as a third cable being counted. The
+    narrowing was correct and picking from the wrong pool.
+
+    **A narrowing has to select from the same set the caller will
+    accept**, or it spends its slots on candidates that were going to be
+    rejected anyway. Reproduced with three cables and the ids the real
+    case produces, before and after.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

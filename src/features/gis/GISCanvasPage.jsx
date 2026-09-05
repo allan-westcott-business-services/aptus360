@@ -24021,6 +24021,22 @@ const CSS = `
 kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: var(--bg);
   border: 1px solid var(--border); border-radius: 3px; padding: 0 4px; }
 
+/* ── Dragging on a drawing must not select text ──
+
+   A drag on the canvas is a drag on a web page as far as the browser is
+   concerned, so it ran a text selection across whatever UI the pointer
+   passed over. Click near a joint and the picker opens under the
+   cursor already highlighted end to end, every label green, as though
+   the app had done something. Nothing was wrong \u2014 it just looked
+   broken, which for a drawing tool is the same thing.
+
+   Suppressed on the canvas and on the overlays that sit over it. NOT
+   globally: an input whose text cannot be selected is an input nobody
+   can correct. */
+.gis-canvas-wrap, .gis-canvas-wrap canvas, .gis-picker {
+  -webkit-user-select: none; user-select: none; }
+.gis-canvas-wrap input, .gis-canvas-wrap textarea {
+  -webkit-user-select: text; user-select: text; }
 .gis-canvas-wrap { position: relative; border: 1px solid var(--border); border-radius: var(--radius);
   overflow: hidden; background: var(--white); min-height: 0; }
 .gis-canvas-wrap canvas { display: block; width: 100%; height: 100%; cursor: default;

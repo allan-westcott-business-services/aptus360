@@ -146,6 +146,7 @@ caught a fault that had already shipped at least once.
 | `node checklinkwayisolate.mjs` | One output shown on its own, the input and the dig kept |
 | `node checkmenuguards.mjs` | Nothing offered that can only report nothing |
 | `node checkjointhold.mjs` | Joints hold their cables; released only on purpose |
+| `node checkclickdrag.mjs` | Nothing moves until the pointer says it is a drag |
 | `node checkdupes.mjs` | One dialog and one producer per piece of state |
 | `node checkbomroles.mjs` | The bill counts what is bought, not the markers |
 | `node checkjointonline.mjs` | A joint clicked onto a cable breaks it there |
@@ -1686,6 +1687,30 @@ never moves, so they are not in the move's updates and `moveFeatures`
 never sees them. Left out, the leader would follow until the next reload
 and then jump back — **which looks right while being wrong**, and is
 worse than not following at all.
+
+53. **A click is not a drag.** Only the PAN had a movement threshold.
+    Every other mode acted on the first `pointermove`, so a click that
+    wavered by a pixel or two — which most clicks do, and every click on
+    a trackpad does — moved whatever was under it and saved the move on
+    release.
+
+    Worst on a VERTEX, because that path SNAPS: its first move resolves
+    the cursor against everything nearby, so a click on a cable end
+    could jump it metres onto another feature. Reported as the drawing
+    leaping when all somebody did was select something.
+
+    `DRAG_PX`, in SCREEN pixels — the same hand movement at any zoom,
+    where a metre of slack would be a hair at 1:500 and a shove at 1:20.
+    Placed ABOVE every mode branch, because the vertex and anchor
+    branches return before the delta is computed and a check below them
+    would have guarded only the modes least likely to surprise. The pan
+    keeps its own test from the same constant: it moves the view from
+    the first pixel and only records whether the gesture counted, which
+    is the opposite way round.
+
+    Nothing is written for a gesture that never became a drag either —
+    a save of unchanged geometry is still an undo entry and a version
+    bump for having done nothing.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

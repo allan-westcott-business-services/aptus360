@@ -215,6 +215,9 @@ const GRID_M = 5;                 // metres between grid lines
    take part — one no feature will ever produce, which is why it is a
    plain word rather than a "role:" or "layer:" form. */
 const BASEMAP_KEY = "basemap";
+/* How far a pointer must travel before a press becomes a drag. Screen
+   pixels, so it is the same hand movement at any zoom. */
+const DRAG_PX = 3;
 const HIT_PX = 10;
 
 /* The boundary point is drawn in ink rather than in a utility's colour.
@@ -7468,6 +7471,36 @@ export default function GISCanvasPage() {
     const d = drag.current;
     if (!d) return;
 
+    /* ── A click is not a drag ──
+
+       Only the PAN had a threshold. Every other mode acted on the first
+       pointermove, so a click that wavered by a pixel or two — which
+       most clicks do, and every click on a trackpad does — moved
+       whatever was under it and saved the move on release.
+
+       Worst on a VERTEX, which snaps: the first move resolves the
+       cursor against everything nearby, so a click on a cable end could
+       jump it metres onto another feature. That is the drawing
+       appearing to leap when all somebody did was select something.
+
+       Screen pixels rather than metres, so it is the same hand movement
+       at any zoom: a metre of slack is a hair at 1:500 and a shove at
+       1:20. Once it is a drag it stays one for the rest of the gesture,
+       so coming back inside the threshold does not put it down again.
+
+       Above every mode branch, because the vertex and anchor branches
+       return before the delta is ever computed \u2014 a threshold below
+       them would guard the modes that were already the least likely to
+       surprise. */
+    if (d.mode !== "pan" && !d.moved) {
+      if (!d.startPx) {
+        d.startPx = [px, py];
+        return;
+      }
+      if (Math.hypot(px - d.startPx[0], py - d.startPx[1]) <= DRAG_PX) return;
+      d.moved = true;
+    }
+
     /* Vertex first, and the delta after it. A vertex drag follows the
        cursor absolutely rather than by an offset, so it carries no
        startPx — reading one above this branch threw on every move and
@@ -7601,8 +7634,14 @@ export default function GISCanvasPage() {
     const dx = px - d.startPx[0], dy = py - d.startPx[1];
 
     if (d.mode === "pan") {
-      /* Once it has moved, it is a pan and not a click. */
-      if (!d.moved && Math.hypot(px - d.startPx[0], py - d.startPx[1]) > 3) d.moved = true;
+      /* Once it has moved, it is a pan and not a click. Its own test,
+         and deliberately: a pan MOVES the view from the first pixel and
+         only records whether it counted as a gesture, where every other
+         mode does nothing until the threshold is crossed. The same
+         number, from the same constant, so the two cannot drift. */
+      if (!d.moved && Math.hypot(px - d.startPx[0], py - d.startPx[1]) > DRAG_PX) {
+        d.moved = true;
+      }
       const { x: sx, y: sy } = d.startView;
       setView((v) => ({ ...v, x: sx + dx, y: sy + dy }));
       return;
@@ -7913,6 +7952,12 @@ export default function GISCanvasPage() {
     }
 
     if (!d || d.mode !== "move") return;
+    /* A click that never became a drag writes nothing. Belt and braces
+       with the threshold above: the frame update is what moves things,
+       so if it never ran there is nothing to save \u2014 but a save of
+       unchanged geometry is still a write, an undo entry and a version
+       bump for a gesture that did nothing. */
+    if (!d.moved) return;
     /* The lines dragged along by a moved point have to be saved too, or
        they snap back to where they were on the next load and the
        connection is lost. */

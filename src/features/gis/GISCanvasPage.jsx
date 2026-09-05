@@ -8480,6 +8480,10 @@ export default function GISCanvasPage() {
       sourcePoints: traceSources(layerKey, kind),
       reach: Math.max(2, HIT_PX / (view.scale || 1)),
       startLineId,
+      /* What the fittings say they hold: a service takes the output of
+         the main it is jointed to, which is the only thing on the
+         drawing that says which of a box's cables feeds it. */
+      joints: features.filter((f) => f.Feature_Role === "joint"),
     });
     if (r.error) {
       setError(r.error);
@@ -8488,7 +8492,7 @@ export default function GISCanvasPage() {
     setError("");
     setTraceRun({ ...r, layerKey, kind, direction, startLineId });
     setTracedM(0);
-  }, [traceFollow, traceSources, view.scale]);
+  }, [traceFollow, traceSources, view.scale, features]);
 
   /* The frame loop. Speed in metres per second, so a trace across a
      housing estate takes about as long as one down a street rather

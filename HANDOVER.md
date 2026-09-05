@@ -2021,6 +2021,33 @@ everywhere else, and a bigger change than this one.
     "this never works", because their click lands in the same place
     every time.
 
+63. **A trace of one output reported another circuit's plots.** Three
+    things had to be true together, and each was found only by counting
+    what the trace actually reached rather than looking at it:
+
+    - two OUTPUTS of a link box are the same circuit, so the circuit
+      rule let the walk step between them at any shared vertex. Bounded
+      by output as well now: two runs naming different outputs are two
+      cables sharing a dig;
+    - a SERVICE carries no circuit at all, and an unstamped cable is
+      followed from anywhere. The JOINT knows — `Joint_Cables` names the
+      main and the service together, so the service takes the main's
+      circuit AND its output;
+    - the welding that joins a tee to its main (fault 62) snapped an end
+      to the NEAREST vertex, and where two circuits are drawn on the
+      same line every vertex is equally near. Ranked now: a cable the
+      fitting says it is joined to, then the same circuit, then
+      unstamped — and never onto a different named circuit, which is not
+      a near miss but two networks in one trench.
+
+    Measured on the live drawing, tracing output 1: **43 meters reached,
+    of which 29 belonged to another circuit → 14, which is exactly what
+    is lassoed onto it.** Output 2 reaches its 27.
+
+    Counting what was reached is what found this. "It traces everything"
+    is not a fault you can see on a drawing of eighty-four plots; a
+    tally by circuit and output is.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

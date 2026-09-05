@@ -58,7 +58,7 @@ const dist = (a, b) => Math.hypot(a[0] - b[0], a[1] - b[1]);
    the point. Ends only, and other lines only: a line crossing another
    without stopping is not joined to it, and inserting a vertex there
    would invent a connection nobody drew. */
-function weldTees(lines, tol) {
+function weldTees(lines, tol, byJoint = new Map()) {
   /* ── An end NEAR a vertex is that vertex ──
 
      The graph keys nodes on position to the centimetre, so two points a
@@ -72,20 +72,49 @@ function weldTees(lines, tol) {
      because a passing line's middle is not a connection. */
   const verts = [];
   for (const f of lines) {
-    for (const q of f.Geometry || []) verts.push({ id: Number(f.Feature_ID), q });
+    const cid = f.Attributes?.Circuit_ID;
+    for (const q of f.Geometry || []) {
+      verts.push({ id: Number(f.Feature_ID), q, cid: cid == null ? null : Number(cid) });
+    }
   }
   const snapped = lines.map((f) => {
     const g = f.Geometry || [];
     if (g.length < 2) return f;
     const id = Number(f.Feature_ID);
+    const cid = f.Attributes?.Circuit_ID == null
+      ? null : Number(f.Attributes.Circuit_ID);
+    /* Whatever a fitting says this cable is joined to. */
+    const held = byJoint.get(id) ?? null;
+
     const fix = (p) => {
       let best = null;
       for (const v of verts) {
         if (v.id === id) continue;
         const d = Math.hypot(v.q[0] - p[0], v.q[1] - p[1]);
-        if (d > 0 && d <= tol && (!best || d < best.d)) best = { d, q: v.q };
+        if (d === 0 || d > tol) continue;
+
+        /* ── Which vertex to snap to, where several are equally near ──
+
+           Two circuits share a trench and their mains are drawn on the
+           same line, so a service ending on that line is the same
+           distance from BOTH. Taking whichever came first welded a
+           circuit 2 service onto a circuit 3 main, joining two networks
+           that only share a dig \u2014 and a trace of one output then
+           reported twenty-nine of the other circuit's plots.
+
+           Ranked, so distance decides only between equals: a cable the
+           fitting says this one is joined to, then one on the same
+           circuit, then anything. */
+        const rank = held != null && held.has(v.id) ? 0
+          : (cid != null && v.cid === cid) ? 1
+            : (cid == null || v.cid == null) ? 2 : 3;
+        if (!best || rank < best.rank || (rank === best.rank && d < best.d)) {
+          best = { rank, d, q: v.q };
+        }
       }
-      return best ? [best.q[0], best.q[1]] : p;
+      /* Never onto a cable of a different named circuit: that is not a
+         near miss, it is two networks in one trench. */
+      return best && best.rank < 3 ? [best.q[0], best.q[1]] : p;
     };
     const out = [...g];
     out[0] = fix(out[0]);
@@ -134,17 +163,75 @@ function weldTees(lines, tol) {
   });
 }
 
-function buildGraph(lines) {
+/* Which output each cable belongs to, where a fitting says so.
+
+   A service carries no output stamp. The joint that holds it does: it
+   names the main and the service together, and the main names its
+   output. So the service inherits it \u2014 which is the difference between
+   "this cable is in that trench" and "this cable is fed from that
+   output", and only the second is a fact about the network. */
+/* Which cables each fitting says this one is joined to. */
+function jointPartners(joints) {
+  const out = new Map();
+  for (const j of joints || []) {
+    const held = (j?.Attributes?.Joint_Cables || []).map(Number);
+    for (const a of held) {
+      if (!out.has(a)) out.set(a, new Set());
+      for (const b of held) if (b !== a) out.get(a).add(b);
+    }
+  }
+  return out;
+}
+
+function waysFromJoints(lines, joints) {
+  const wayOfLine = new Map();
+  const circuitOfLine = new Map();
+  for (const f of lines) {
+    const id = Number(f.Feature_ID);
+    const w = f.Attributes?.Link_Way;
+    const b = f.Attributes?.Link_Box_ID;
+    if (w != null && b != null) wayOfLine.set(id, `${Number(b)}:${Number(w)}`);
+    const c = f.Attributes?.Circuit_ID;
+    if (c != null) circuitOfLine.set(id, Number(c));
+  }
+
+  /* ── A service takes the CIRCUIT of the main it is jointed to, as
+        well as the output ──
+
+     Output alone was not enough: a circuit with no link box has no
+     output to inherit, so a service on it stayed unstamped \u2014 and an
+     unstamped cable is followed from anywhere, so a trace of one
+     circuit walked twenty-nine of another circuit's services and
+     reported its plots.
+
+     The circuit is the coarser fact and the one every drawing has. The
+     output refines it where there is a box. */
+  const ways = new Map();
+  const circuits = new Map();
+  for (const j of joints || []) {
+    const held = (j?.Attributes?.Joint_Cables || []).map(Number);
+    if (held.length < 2) continue;
+    const key = held.map((id) => wayOfLine.get(id)).find(Boolean);
+    const cid = held.map((id) => circuitOfLine.get(id)).find((c) => c != null);
+    for (const id of held) {
+      if (key && !wayOfLine.has(id)) ways.set(id, key);
+      if (cid != null && !circuitOfLine.has(id)) circuits.set(id, cid);
+    }
+  }
+  return { ways, circuits };
+}
+
+function buildGraph(lines, byJoint = new Map(), circuitByJoint = new Map()) {
   const at = new Map();          // key -> point
   const next = new Map();        // key -> [{ to, pts, lineId }]
-  const add = (a, b, lineId, circuitId) => {
+  const add = (a, b, lineId, circuitId, wayKey) => {
     const ka = KEY(a); const kb = KEY(b);
     if (ka === kb) return;
     at.set(ka, a); at.set(kb, b);
     if (!next.has(ka)) next.set(ka, []);
     if (!next.has(kb)) next.set(kb, []);
-    next.get(ka).push({ to: kb, pts: [a, b], lineId, circuitId });
-    next.get(kb).push({ to: ka, pts: [b, a], lineId, circuitId });
+    next.get(ka).push({ to: kb, pts: [a, b], lineId, circuitId, wayKey });
+    next.get(kb).push({ to: ka, pts: [b, a], lineId, circuitId, wayKey });
   };
   for (const f of lines) {
     const g = f.Geometry || [];
@@ -161,9 +248,32 @@ function buildGraph(lines) {
        fixed by keying the nodes differently: the cables really are at
        the same place, and the drawing is right about that. What is
        wrong is treating being in the same trench as being connected. */
-    const cid = f.Attributes?.Circuit_ID;
+    /* ── And which OUTPUT of a link box ──
+
+       A box's outputs are independent cables leaving one point, and
+       they run together for as long as the designer keeps them in one
+       trench. They are all the same circuit, so the circuit rule lets
+       the walk step between them at any shared vertex \u2014 and a trace of
+       output 1 then reaches output 2's services and reports the lot.
+
+       The build stamps the box and the way on what it lays, so a run
+       says which output it is. Two runs naming different outputs are
+       two cables that happen to share a dig. */
+    const way = f.Attributes?.Link_Way;
+    const box = f.Attributes?.Link_Box_ID;
+    /* A service takes the circuit of the main it is jointed to. Output
+       alone was not enough: a circuit with no link box has no output to
+       inherit, so its services stayed unstamped \u2014 and an unstamped
+       cable is followed from anywhere. */
+    const lineCircuit = f.Attributes?.Circuit_ID
+      ?? circuitByJoint.get(Number(f.Feature_ID)) ?? null;
+    const wayKey = (way != null && box != null)
+      ? `${Number(box)}:${Number(way)}`
+      /* Or the output of the main this one is jointed to. */
+      : (byJoint.get(Number(f.Feature_ID)) ?? null);
     for (let i = 1; i < g.length; i++) {
-      add(g[i - 1], g[i], Number(f.Feature_ID), cid == null ? null : Number(cid));
+      add(g[i - 1], g[i], Number(f.Feature_ID),
+        lineCircuit == null ? null : Number(lineCircuit), wayKey);
     }
   }
   return { at, next };
@@ -292,6 +402,19 @@ export function traceTree(lines = [], startPoint, opts = {}) {
        under the pointer the caller asks, and passes the answer here.
        Nothing in this file guesses at it. */
     startLineId = null,
+    /* The fittings, for what they say they hold.
+
+       A SERVICE carries no output stamp \u2014 nothing on it says which of
+       a link box's cables feeds it \u2014 so where two outputs share a
+       trench, a trace of either followed every service teeing onto the
+       shared stretch and reported both outputs' plots.
+
+       The joint knows. `Joint_Cables` is written when the fitting is
+       placed and names the main and the service it joins, so the
+       service takes the output of the main it is jointed to. A record
+       somebody made, rather than another measurement of cables lying on
+       top of each other. */
+    joints = [],
     /* A guard, not a limit anybody should meet: a network that walks
        past this is a network with a loop the edge marking missed, and
        running out of memory is a worse way to find out. */
@@ -303,7 +426,9 @@ export function traceTree(lines = [], startPoint, opts = {}) {
 
   /* Tees welded before the graph is built, so a service that ends part
      way along a main is connected to it. */
-  const graph = buildGraph(weldTees(usable, Math.min(reach, 0.35)));
+  const welded = weldTees(usable, Math.min(reach, 0.35), jointPartners(joints));
+  const fromJoints = waysFromJoints(welded, joints);
+  const graph = buildGraph(welded, fromJoints.ways, fromJoints.circuits);
   /* A vertex first, then anywhere along a line. The vertex is the
      common case \u2014 clicking a joint, an end, a node \u2014 and it is exact;
      the segment search is what makes clicking the MIDDLE of a cable
@@ -384,7 +509,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
   const paths = [];
   const lineIds = new Set();
 
-  const step = (key, trail, ids, circuitId) => {
+  const step = (key, trail, ids, circuitId, wayKey) => {
     if (paths.length >= maxPaths) return;
     const outs = (graph.next.get(key) || []).filter((e) => {
       if (walked.has(edgeKey(key, e.to))) return false;
@@ -395,6 +520,10 @@ export function traceTree(lines = [], startPoint, opts = {}) {
          a connection nobody drew. */
       if (circuitId != null && e.circuitId != null
         && e.circuitId !== circuitId) return false;
+      /* And the same output of the same box. Two runs naming different
+         outputs are two cables sharing a dig, not one network. A run
+         naming none \u2014 the trunk, a service \u2014 is followed either way. */
+      if (wayKey != null && e.wayKey != null && e.wayKey !== wayKey) return false;
       if (depth) {
         const here = depth.get(key);
         const there = depth.get(e.to);
@@ -418,7 +547,7 @@ export function traceTree(lines = [], startPoint, opts = {}) {
          stays there, and an unnamed length \u2014 a service \u2014 does not
          lose it. */
       step(e.to, [...trail, e.pts[1]], new Set([...ids, e.lineId]),
-        e.circuitId ?? circuitId);
+        e.circuitId ?? circuitId, e.wayKey ?? wayKey);
     }
   };
 
@@ -435,7 +564,13 @@ export function traceTree(lines = [], startPoint, opts = {}) {
      the walk picks the circuit up from the first named length it
      meets. */
   const startCircuit = traceCircuit;
-  step(startKey, [graph.at.get(startKey)], new Set(), startCircuit);
+  /* The output the trace is on, from the cable that settled the
+     circuit: the same answer to the same question. */
+  const startWay = (startOn?.Attributes?.Link_Way != null
+    && startOn?.Attributes?.Link_Box_ID != null)
+    ? `${Number(startOn.Attributes.Link_Box_ID)}:${Number(startOn.Attributes.Link_Way)}`
+    : null;
+  step(startKey, [graph.at.get(startKey)], new Set(), startCircuit, startWay);
 
   if (!paths.length) {
     return {

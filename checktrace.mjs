@@ -450,6 +450,60 @@ const world = [
   }
 }
 
+// A trace of one output reaches that output, and nothing else.
+//
+//    Two outputs of a link box share a trench and are the same circuit,
+//    so the circuit rule let the walk step between them. And a SERVICE
+//    carries no circuit at all, so an unstamped cable was followed from
+//    anywhere: a trace of one output reported twenty-nine of a
+//    NEIGHBOURING circuit's plots.
+//
+//    The joint is what knows. `Joint_Cables` names the main and the
+//    service together, so the service takes the main's circuit and its
+//    output — a record somebody made, rather than another measurement
+//    of cables lying on top of each other.
+{
+  const main = (id, cid, way) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: [[0, 0], [100, 0]],
+    Attributes: { Line_Type: "elec_main", Circuit_ID: cid,
+      ...(way != null ? { Link_Box_ID: 9, Link_Way: way } : {}) } });
+  const svc = (id, at) => ({ Feature_ID: id, Feature_Type: "line",
+    Layer_Key: "electric", Geometry: [[at, 0], [at, 8]],
+    Attributes: { Line_Type: "elec_service" } });
+
+  /* One trench, three cables: two outputs of a box and another
+     circuit's main, all drawn on the same line. */
+  const way1 = main(1, 3, 1);
+  const way2 = main(2, 3, 2);
+  const other = main(3, 2, null);
+  const s1 = svc(11, 30);   // jointed to way 1
+  const s2 = svc(12, 60);   // jointed to way 2
+  const s3 = svc(13, 90);   // jointed to the other circuit
+  const joints = [
+    { Feature_Role: "joint", Attributes: { Joint_Cables: [1, 11] } },
+    { Feature_Role: "joint", Attributes: { Joint_Cables: [2, 12] } },
+    { Feature_Role: "joint", Attributes: { Joint_Cables: [3, 13] } },
+  ];
+  const world = [way1, way2, other, s1, s2, s3];
+
+  const r = traceTree(world, [10, 0], { direction: "both", sourcePoints: [],
+    reach: 2, startLineId: 1, joints });
+  if (r.error) fail(`output 1 would not trace: ${r.error}`);
+  else {
+    if (!r.lineIds.includes(11)) {
+      fail("output 1 does not reach its own service");
+    }
+    if (r.lineIds.includes(2) || r.lineIds.includes(12)) {
+      fail("a trace of output 1 reached output 2 \u2014 two cables of one "
+        + "circuit sharing a trench are not one network");
+    }
+    if (r.lineIds.includes(3) || r.lineIds.includes(13)) {
+      fail("a trace of output 1 reached another circuit \u2014 an unstamped "
+        + "service was followed from anywhere");
+    }
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The trace behaves (one token to the fork, two after it).");
 process.exit(bad ? 1 : 0);

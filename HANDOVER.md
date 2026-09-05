@@ -1400,7 +1400,29 @@ the relink pass now, which repairs every one already placed on the next
 build, and a joint placed on a cable writes its own links as it is
 made.
 
-**And it drags only the cables it holds.** Lifting the single-feeder
+**And it drags exactly the two cables it holds.** Where `Connects`
+exists it answers. Where it does not — and no joint on any drawing had
+one until the relink pass was widened — the fallback is bounded by what
+the fitting IS: the two NEAREST cable ends, and no third. The halves
+have a vertex on the joint, so they are nearer than anything merely
+ending close to it, and the rule needs no record to be right. A breech
+is deliberately not bounded this way: how many cables leave it is the
+designer's business.
+
+**And the bound applies whatever the record says.** `Connects` is
+computed from GEOMETRY — `connectedTo` takes anything with a vertex
+within a quarter of a metre — so the relink pass writes a passing cable
+into a joint's list as readily as the two it holds. Treating that list
+as the answer put the bug straight back on the next build, with the
+record now agreeing with it.
+
+**A record derived from the same geometry that was wrong cannot correct
+it.** The fitting's own definition can: one cable in, one out. So the
+bound is unconditional and the list may only narrow it further. Where a
+fact about a thing is fixed, say the fact rather than reading it back
+out of the drawing.
+
+**The earlier note on Connects:** Lifting the single-feeder
 narrowing for breech and straight joints let in anything with a vertex
 within reach — and where cables share a trench that is not only the two
 the fitting holds. A straight joint dragged took a cable that merely
@@ -1417,7 +1439,32 @@ Worth stating generally, because this is the third time it has come up:
 **proximity is evidence of connection, not connection.** Where the
 drawing records the fact, read the record.
 
-**The fitting and the stop are two things.** A straight joint is a
+**The fitting and the stop are two OBJECTS.** A straight joint is a
+fitting, and there is a feeder end point on the run where it sits. The
+diamond says what is in the ground; the circle says where this is on the
+cable; and a designer wants to move each without the other.
+
+Adopting the joint AS the stop fused them into one thing that could only
+be dragged together, and three drawing shapes were tried on top of that
+mistake before the mistake itself was the answer: the code as loose text
+beside the diamond, the circle drawn OVER the diamond (which made the
+fitting vanish), and the circle offset on a leader (which still moved
+with the joint, because it still WAS the joint).
+
+**A breech had it right all along**: the fitting is a joint and the
+build makes a separate feeder point beside it. A straight joint works
+the same way — `jointMarks` offers the stop, nothing adopts it, and the
+build creates a point there like any other. The joint is out of the
+levels pass, out of `isStopFeature`, and out of the editor's span-code
+panel.
+
+The lesson is about where a fix goes. Each of those three attempts was a
+drawing change answering a complaint about drawing, and the fault was in
+the model: two things had been made one. **When the third attempt at
+presenting something still looks wrong, the thing being presented is
+probably wrong.**
+
+**The old note, kept because the reasoning still holds:** A straight joint is a
 fitting AND a feeder end point: the diamond says what is in the ground,
 the circle says where this is on the run. Two wrong answers were tried
 before the right one — a code as loose text beside the diamond, which

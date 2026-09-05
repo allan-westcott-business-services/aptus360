@@ -57,8 +57,19 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
-// 2. The walk adopts it, as it adopts a link box: it is a fitting placed
-//    by hand that the cable stops at.
+// 2. The fitting and the stop are TWO objects.
+//
+//    A straight joint is a fitting, and there is a stop on the run
+//    where it sits — the diamond says what is in the ground, the circle
+//    says where this is on the cable, and a designer wants to move each
+//    without the other. Adopting the joint AS the stop fused them into
+//    one thing that could only be dragged together, and drew a circle
+//    that looked glued to the diamond.
+//
+//    A breech has had it right all along: the fitting is a joint and
+//    the build makes a separate feeder point beside it. `jointMarks`
+//    offers the stop; nothing adopts it; the build creates a point
+//    there like any other.
 {
   const nodes = [
     { point: [0, 0], kind: "origin" },
@@ -68,24 +79,17 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
     nodes, existing: [joint({ Circuit_ID: 1 })],
     circuit: { id: 1, name: "Circuit 1", letter: "A" },
   });
-  const w = (plan.adopt || []).find((x) => x.Feature_ID === 7);
-  if (!w) {
-    fail("a straight joint is not adopted onto the stop it stands at, so "
-      + "no levels are quoted there");
-  } else {
-    if (w.Attributes.Span_Label !== "A1") {
-      fail(`the joint was numbered ${w.Attributes.Span_Label}, wanted A1`);
-    }
-    /* Its own name is its own: "Straight Joint" is what it is called,
-       and the span code is what it is called ON the run. */
-    if (w.Label !== "Straight Joint") {
-      fail(`the joint was renamed to ${w.Label}`);
-    }
+  if ((plan.adopt || []).some((x) => x.Feature_ID === 7)) {
+    fail("the joint is adopted as the feeder end point, which fuses the "
+      + "fitting and the stop into one object");
   }
-  /* And nothing is created on top of it. */
-  if ((plan.create || []).some((p) =>
-    Math.hypot(p.Geometry[0][0] - 50, p.Geometry[0][1]) < 1)) {
-    fail("a feeder point was created where the joint already stands");
+  const made = (plan.create || []).filter((p) =>
+    Math.hypot(p.Geometry[0][0] - 50, p.Geometry[0][1]) < 1);
+  if (made.length !== 1) {
+    fail(`${made.length} feeder point(s) made at the joint, expected one `
+      + "separate point beside the fitting");
+  } else if (made[0].Attributes.Span_Label !== "A1") {
+    fail(`the point was numbered ${made[0].Attributes.Span_Label}, wanted A1`);
   }
 }
 
@@ -158,105 +162,101 @@ const run = (id, a, b) => ({ Feature_ID: id, Feature_Type: "line",
   }
 }
 
-/* The trace stops there, and the drawing shows the figures. */
+/* ── The drawing keeps them apart ──
+
+   The joint is not in the levels pass and is not a stop in the trace.
+   The separate feeder point the build makes at it carries the code, the
+   circle and the figures, exactly as at a breech — and is dragged on
+   its own, which is the whole point of them being two objects.
+
+   Three wrong shapes were tried before this one: the code as loose text
+   beside the diamond; the circle drawn OVER the diamond, which made the
+   fitting vanish; and the circle offset on a leader, which still moved
+   with the joint because it was still the joint. */
 {
-  const fdr = readFileSync("./src/features/gis/feeder.js", "utf8");
-  if (!/Joint_Type \?\? ""\)\.toLowerCase\(\) === "straight"/.test(fdr)) {
-    fail("spanTrace does not treat a straight joint as a stop, so the leg "
-      + "runs straight through it and reports one cable size for two");
-  }
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
-  if (!/for \(const jm of jointMarks\(src, pt\.model, pt\.sections\)\)/.test(canvas)) {
-    fail("the build does not offer a stop at a straight joint, so it is "
-      + "never adopted and never carries levels");
+  const fdr = readFileSync("./src/features/gis/feeder.js", "utf8");
+
+  /* The levels pass takes span nodes, feeder points and the box \u2014 and
+     not joints. The box's clause was once deleted along with the line
+     it shared, and its levels vanished from every drawing: a filter is
+     a list of what is wanted. */
+  /* The region, not the exact layout: a long comment sits between the
+     clauses, and a regex demanding adjacent lines reported the filter
+     missing when only the formatting had changed. */
+  const passAt = canvas.indexOf('if (f.Feature_Role !== "spannode"\n        && f.Feature_Role !== "feederpoint"');
+  const filter = passAt < 0 ? "" : canvas.slice(passAt, canvas.indexOf("continue;", passAt));
+  if (!filter) fail("the levels pass filter has gone");
+  else {
+    for (const role of ["spannode", "feederpoint", "linkbox"]) {
+      if (!filter.includes(`!== "${role}"`)) {
+        fail(`the levels pass no longer takes ${role}s \u2014 that kind of stop `
+          + "shows no figures at all");
+      }
+    }
+    if (/Joint_Type/.test(filter)) {
+      fail("a joint is back in the levels pass, so the fitting and the stop "
+        + "are drawn as one object again");
+    }
   }
-  if (!/&& !\(f\.Feature_Role === "joint"/.test(canvas)) {
-    fail("the levels are not drawn at a straight joint");
+  if (/const isJointFep/.test(canvas)) {
+    fail("the joint is still drawn as a feeder end point, so the fitting and "
+      + "the stop cannot be moved apart");
   }
-  if (!/\|\| f\.Feature_Role === "joint"\);/.test(canvas)) {
-    fail("moving a joint or changing a cable at one does not re-run the "
-      + "levels, so the figures beside it go stale");
+
+  /* Nor is it a stop in the trace: the separate point is. */
+  if (/Joint_Type \?\? ""\)\.toLowerCase\(\) === "straight"[\s\S]{0,200}?isStopFeature/.test(fdr)) {
+    fail("spanTrace still treats the joint itself as a stop");
+  }
+
+  /* The editor does not offer the joint a span code either \u2014 the code
+     belongs to the point beside it. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (/feature\.Feature_Role === "joint"\s*\n\s*&& String\(f\.Attributes\.Joint_Type/.test(editor)) {
+    fail("the editor still shows the joint a span code that belongs to the "
+      + "feeder point beside it");
   }
 }
 
-/* ── And it wears its code ──
+/* ── Dragging it moves the two cables it holds, and no third ──
 
-   A feeder end point belongs in the sequence, so a designer reading the
-   drawing can find it in the schedule and quote a level at it. C2, C3,
-   like every other stop.
+   A straight joint holds exactly two cable ends: one in, one out. That
+   is a fact the drawing cannot contradict, so the rule says it rather
+   than trusting a record that may not have been written.
 
-   Beside the symbol, not over it: a node's code is white inside its own
-   circle, and a joint's symbol is a small diamond drawn with the
-   features \u2014 writing over it would bury the fitting. */
+   Where `Connects` exists it answers. Where it does not, the fallback
+   is bounded by what the fitting IS — the two NEAREST cable ends, and
+   no third. The halves have a vertex on the joint, so they are nearer
+   than anything merely ending close to it. */
 {
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* ── Bounded whatever the record says ──
 
-  /* ── The fitting and the stop are two things ──
+     `Connects` is computed from GEOMETRY: connectedTo takes anything
+     with a vertex within a quarter of a metre. So the relink pass
+     writes a passing cable into the joint's list as readily as the two
+     it holds, and treating the list as the answer put the bug back on
+     the next build with the record now agreeing with it.
 
-     A straight joint is a fitting AND a feeder end point. The diamond
-     says what is in the ground; the circle says where this is on the
-     run. Drawing the circle OVER the diamond made the fitting vanish —
-     a joint that looks like a node is a joint nobody can see — and
-     leaving the code as loose text beside the diamond made the stop
-     look like a different kind of thing from every other stop.
-
-     So the circle stands beside it on a leader, exactly as a generated
-     feeder point does at a breech. */
-  if (!/const isBox = f\.Feature_Role === "linkbox";/.test(canvas)) {
-    fail("the link box's own-symbol rule has been widened again, which puts "
-      + "a circle over the joint's diamond");
+     A record derived from the same geometry that was wrong cannot
+     correct it. The fitting's definition can. */
+  if (/joinsEnds && !held\.size && isFeeder/.test(canvas)) {
+    fail("the two-cable bound applies only where no Connects was written \u2014 "
+      + "the relink pass writes one from geometry, so the next build puts "
+      + "the passing cable back");
   }
-  if (!/const isJointFep = f\.Feature_Role === "joint";/.test(canvas)) {
-    fail("a straight joint is not told apart, so its circle sits on top of "
-      + "the fitting instead of beside it");
+  if (!/if \(joinsEnds && isFeeder\n\s*&& String\(pt\.Attributes\?\.Joint_Type \?\? ""\)\.toLowerCase\(\) === "straight"\)/.test(canvas)) {
+    fail("a straight joint is not bounded to the two cables it holds");
   }
-  if (!/const q = isJointFep\n\s*\? \{ x: at0\.x \+ jointStep, y: at0\.y - jointStep \}/.test(canvas)) {
-    fail("the FEP circle is not offset from the joint");
+  if (!/\.slice\(0, 2\)/.test(canvas)) {
+    fail("the fallback is not bounded to two cable ends, which is what a "
+      + "straight joint holds");
   }
-  /* Off the style's symbol size, not off `r` — `r` is the circle's own
-     radius and is declared far below. Reading it there throws on render
-     and takes the canvas out, which the build does not catch. */
-  if (/y: at0\.y - Math\.max\(14, r \+ 8\)/.test(canvas)) {
-    fail("the offset reads `r` before it is declared \u2014 the canvas throws "
-      + "on render");
-  }
-  /* And a leader, or the circle is a node floating beside a joint. */
-  if (!/if \(isJointFep\) \{\n\s*ctx\.save\(\);\n\s*ctx\.setLineDash\(\[2, 3\]\);/.test(canvas)) {
-    fail("no leader from the circle back to the fitting it belongs to");
-  }
-  /* The output's colour where the cable it holds has one, so the stop
-     reads as part of that output rather than as a stray node. */
-  if (!/\.map\(\(id\) => feederPlan\.get\(Number\(id\)\)\?\.colour\)/.test(canvas)) {
-    fail("the circle does not take the colour of the cable it holds");
-  }
-  /* And sized as a node. The box formula made the joint's circle and
-     figures larger than every other stop's, for no reason a reader
-     could see. */
-  if (!/const r = isBox\s*\n\s*\? Math\.max\(5, \(on \? 1\.3 : 1\) \* ps\.symbolPx\)/.test(canvas)) {
-    fail("a joint is sized by the link box's formula, so its text comes out "
-      + "bigger than every other stop's");
-  }
-
-  /* ── The link box is still in the pass ──
-
-     Adding the joint, the `linkbox` clause was deleted with the line it
-     shared: the box dropped out of the filter entirely and its levels
-     vanished from the drawing. A filter is a list of what is wanted,
-     and editing one by rewriting the line before it is how an entry
-     goes missing. */
-  if (!/&& f\.Feature_Role !== "linkbox"\n\s*&& !\(f\.Feature_Role === "joint"/.test(canvas)) {
-    fail("the link box is no longer in the levels pass, so a box shows no "
-      + "figures at all");
-  }
-
-  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
-  if (!/feature\.Feature_Role === "joint"\n\s*&& String\(f\.Attributes\.Joint_Type/.test(editor)) {
-    fail("the editor does not show a straight joint its place on the run");
-  }
-  /* Only once adopted. A blank code would read as a number missing
-     rather than one not yet assigned. */
-  if (!/&& f\.Attributes\.Span_Seq != null\)\) && \(/.test(editor)) {
-    fail("the panel offers a blank code before the walk has numbered it");
+  /* A breech is NOT bounded this way: it takes an incoming main and
+     sends several out, and how many is the designer's business. */
+  if (/joinsEnds && !held\.size && isFeeder\s*\n\s*&& String\(pt\.Attributes\?\.Joint_Type \?\? ""\)\.toLowerCase\(\) === "breech"/.test(canvas)) {
+    fail("a breech is bounded to two cables, and it is not a two-cable "
+      + "fitting");
   }
 }
 

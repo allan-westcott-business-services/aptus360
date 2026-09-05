@@ -5764,9 +5764,7 @@ export default function GISCanvasPage() {
            ends there and the next begins, so the figures are quoted at
            it like any other stop. A service joint is not \u2014 one cable
            passes through it and nothing about the run changes. */
-        && f.Feature_Role !== "linkbox"
-        && !(f.Feature_Role === "joint"
-          && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight")) continue;
+        && f.Feature_Role !== "linkbox") continue;
 
       /* Only the BOX keeps its own symbol here. Adding the joint to
          this pass, the `linkbox` clause above was deleted with the
@@ -5776,18 +5774,11 @@ export default function GISCanvasPage() {
          how an entry goes missing. */
       const isBox = f.Feature_Role === "linkbox";
 
-      /* ── A straight joint keeps its own symbol ──
-
-         It is a fitting AND a feeder end point, and those are two
-         things: the diamond says what is in the ground, the circle says
-         where this is on the run. Drawing the circle over the diamond
-         made the fitting disappear \u2014 a joint that looks like a node is
-         a joint nobody can see.
-
-         So the FEP circle stands BESIDE it, on a leader, exactly as a
-         generated feeder point does at a breech. The diamond is
-         untouched, drawn with the rest of the features. */
-      const isJointFep = f.Feature_Role === "joint";
+      /* A joint is NOT in this pass. The build makes a feeder point
+         where a straight joint sits — a separate feature, as at a
+         breech — and that point carries the code and the figures like
+         any other. Drawing them on the joint as well fused the fitting
+         and the stop into one object nobody could move apart. */
       const g = f.Geometry || [];
       if (!g.length) continue;
       const on = selected.includes(f.Feature_ID);
@@ -5798,30 +5789,8 @@ export default function GISCanvasPage() {
          the fallback for a point whose circuit has no colour yet.
          Span nodes keep the style's trench brown: they are points on
          the dig. */
-      const circuitColour = (f.Feature_Role === "feederpoint" || f.Feature_Role === "joint")
-        /* A joint's circle wears the colour of the cable it holds \u2014 the
-           link box output's colour where the run has one, so the stop
-           reads as part of that output rather than as a stray node.
-           The circuit's colour where it does not. */
-        ? (((f.Attributes?.Connects || [])
-          .map((id) => feederPlan.get(Number(id))?.colour)
-          .find(Boolean))
-          /* Connects is written by the link passes and by breakLineAt,
-             and a joint placed before either ran has none. Falling
-             straight through to the circuit's colour there put a stop
-             on a coloured output in the circuit's colour, which reads
-             as belonging to something else — so the cables ENDING at it
-             are asked directly before giving up. */
-          || (isJointFep ? visible
-            .filter((l) => l.Feature_Type === "line"
-              && l.Layer_Key === "electric"
-              && /main/i.test(String(l.Attributes?.Line_Type ?? ""))
-              && (l.Geometry || []).some((qq) =>
-                Math.hypot(qq[0] - g[0][0], qq[1] - g[0][1]) <= CONNECT_M))
-            .map((l) => feederPlan.get(Number(l.Feature_ID))?.colour)
-            .find(Boolean) : null)
-          || ringColours?.get?.(Number(f.Attributes?.Circuit_ID))
-          || null)
+      const circuitColour = f.Feature_Role === "feederpoint"
+        ? (ringColours?.get?.(Number(f.Attributes?.Circuit_ID)) || null)
         : null;
 
       /* ── The leader back to the trench ──
@@ -5901,55 +5870,8 @@ export default function GISCanvasPage() {
          clicked reads as a deletion. */
       if (!on && !ps.visible) continue;
 
-      const at0 = toPx(g[0]);
-      /* Up and to the right of the fitting, far enough to clear the
-         diamond at any zoom. A fixed screen offset rather than a
-         distance on the ground: this is an annotation, and it should sit
-         the same way at every scale.
-
-         Off the STYLE's symbol size, not off `r` — `r` is the circle's
-         own radius and is declared eighty lines below this. Reading it
-         here throws on render and takes the canvas out, which the build
-         does not catch and checkdeadzone only sees in a hook's
-         dependency array. */
-      /* ── Styled as a feeder end point, because that is what it is ──
-
-         `ps` is the JOINT's style, and reading the circle's size from
-         it made the circle and its figures several times the size of
-         every other stop: a joint's symbol is drawn large and scales
-         with the ground, a feeder point's does not. The circle stands
-         for the point on the run, so it takes the point's style.
-
-         Resolved through the same styleFor everything else uses, on a
-         stand-in feature, so a project that restyles its feeder points
-         restyles these with them rather than leaving one kind behind. */
-      const fepStyle = isJointFep
-        ? styleFor({
-          Feature_Type: "point", Feature_Role: "feederpoint",
-          Layer_Key: "electric", Attributes: {},
-        })
-        : ps;
-
-      const jointStep = Math.max(14, (ps.symbolPx || 7) + 9);
-      const q = isJointFep
-        ? { x: at0.x + jointStep, y: at0.y - jointStep }
-        : at0;
+      const q = toPx(g[0]);
       const code = f.Attributes?.Span_Label ?? "";
-
-      /* The leader back to the fitting it belongs to, so the circle is
-         not a node floating beside a joint. Same faint dotted line the
-         span nodes use for their anchors. */
-      if (isJointFep) {
-        ctx.save();
-        ctx.setLineDash([2, 3]);
-        ctx.strokeStyle = "rgba(15,23,42,.45)";
-        ctx.lineWidth = 1;
-        ctx.beginPath();
-        ctx.moveTo(at0.x, at0.y);
-        ctx.lineTo(q.x, q.y);
-        ctx.stroke();
-        ctx.restore();
-      }
 
       /* ── A node that is carrying future load ──
 
@@ -6009,7 +5931,7 @@ export default function GISCanvasPage() {
          could see. */
       const r = isBox
         ? Math.max(5, (on ? 1.3 : 1) * ps.symbolPx)
-        : Math.max(3, fepStyle.symbolPx) * (on ? 1.25 : 1);
+        : Math.max(3, ps.symbolPx) * (on ? 1.25 : 1);
       /* Floored, and capped at the radius rather than just over it: a
          monospace cap is about 0.72 of its point size, so a font of r
          gives a glyph comfortably inside a circle of diameter 2r. Round
@@ -7212,6 +7134,59 @@ export default function GISCanvasPage() {
           const held = new Set((pt.Attributes?.Connects || []).map(Number));
           if (joinsEnds && held.size
             && !held.has(Number(line.Feature_ID))) continue;
+
+          /* ── A straight joint holds exactly two cable ends ──
+
+             That is what the fitting is, and it is a fact the drawing
+             cannot contradict: one cable in, one out. Where `Connects`
+             has not been written the rule fell back to "any cable end
+             within a quarter of a metre", and on a drawing where cables
+             share a trench that is not only the two it holds — a run
+             passing by, ending near the fitting, was dragged with it.
+
+             So the fallback is bounded by what the fitting IS: the two
+             NEAREST cable ends, and no third. The two halves have a
+             vertex on the joint, so they are nearer than anything that
+             merely ends close to it, and the rule needs no record to be
+             right.
+
+             A breech is not bounded this way \u2014 it takes an incoming
+             main and sends several out, and how many is the designer's
+             business. */
+          /* Always, not only where no record was written.
+
+             `Connects` is computed from GEOMETRY — connectedTo takes
+             anything with a vertex within a quarter of a metre — so the
+             relink pass writes the passing cable into the joint's list
+             as readily as the two it holds. Treating that list as the
+             answer would put the bug straight back on the next build,
+             with the record now agreeing with it.
+
+             A record derived from the same geometry that was wrong
+             cannot correct it. The fitting's own definition can: one
+             cable in, one out. So the bound applies whatever the list
+             says, and the list can only narrow it further. */
+          if (joinsEnds && isFeeder
+            && String(pt.Attributes?.Joint_Type ?? "").toLowerCase() === "straight") {
+            const endsNear = features
+              .filter((l) => l.Feature_Type === "line"
+                && l.Layer_Key === pt.Layer_Key
+                && /main/i.test(String(l.Attributes?.Line_Type ?? ""))
+                && (l.Geometry || []).length >= 2)
+              .map((l) => {
+                const lg = l.Geometry;
+                const d = Math.min(
+                  Math.hypot(lg[0][0] - at[0], lg[0][1] - at[1]),
+                  Math.hypot(lg[lg.length - 1][0] - at[0], lg[lg.length - 1][1] - at[1]),
+                );
+                return { id: Number(l.Feature_ID), d };
+              })
+              .filter((x) => x.d <= CONNECT_M)
+              .sort((a, b) => a.d - b.d || a.id - b.id)
+              .slice(0, 2)
+              .map((x) => x.id);
+            if (!endsNear.includes(Number(line.Feature_ID))) continue;
+          }
 
           if (jointFeeder !== undefined && isFeeder && !joinsEnds
             && Number(line.Feature_ID) !== Number(jointFeeder?.Feature_ID)) continue;

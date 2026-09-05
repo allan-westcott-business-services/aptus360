@@ -2111,26 +2111,13 @@ export function spanTrace(features = [], nodeId, opts = {}) {
      point does, so accepting the role is the whole of it. Only in
      feeder-point mode \u2014 a pre-feeder-point drawing has no boxes with
      circuits on them. */
-  /* ── And a straight joint ──
-
-     A straight joint takes two cable ends into one fitting. The cable
-     genuinely stops there and another starts, which is the whole reason
-     for placing one: to change size on either side of it. So it is a
-     feeder end point like the box is — the levels are quoted AT it, and
-     the two lengths either side are two legs carrying two cable sizes.
-
-     A service joint is not: one cable passes through it and nothing
-     about the run changes. A breech is already a stop by being where a
-     run divides, and the build makes a feeder point there.
-
-     Same test as the box, for the same reason: it carries the span
-     fields once the walk has adopted it, so accepting the role is the
-     whole of it. */
+  /* A joint is not a stop in its own right. The build makes a feeder
+     point where a straight joint sits — a separate feature, as at a
+     breech — and THAT is the stop. The fitting and the point on the run
+     are two objects, and each is moved without the other. */
   const isStopFeature = (f) => f.Feature_Role === stopRole
-    || (stopRole === "feederpoint" && f.Attributes?.Span_Seq != null
-      && (f.Feature_Role === "linkbox"
-        || (f.Feature_Role === "joint"
-          && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight")));
+    || (stopRole === "feederpoint" && f.Feature_Role === "linkbox"
+      && f.Attributes?.Span_Seq != null);
 
   for (const sn of features) {
     if (!isStopFeature(sn)) continue;

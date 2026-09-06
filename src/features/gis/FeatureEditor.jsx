@@ -607,6 +607,19 @@ export default function FeatureEditor({
      full list is shown instead: a picker with nothing in it stops the
      work, and that is worse than one offering too much. */
   const cableUsage = f.Attributes?.Line_Type === "elec_service" ? "service" : "mains";
+  /* ── An HV run is offered HV cable ──
+
+     Both HV and LV mains are "Mains" by usage, so a menu filtered on
+     usage alone offered LV mains cable for a run at eleven kilovolts.
+     The voltage rating is the distinction, and the catalogue has
+     carried it since the seed.
+
+     HV, HV+ and EHV together: a run at one voltage may legitimately be
+     laid in cable rated for a higher one, and the catalogue is where
+     that judgement belongs rather than here. */
+  const cableVoltages = f.Attributes?.Line_Type === "elec_hv"
+    ? ["hv", "hv+", "ehv"]
+    : ["lv"];
 
   /* Which output of which box this feature is on, if any \u2014 read the
      way the drawing reads it, not by a second rule written here. */
@@ -775,8 +788,11 @@ export default function FeatureEditor({
      differing everywhere they had been corrected once. */
   const cableChoices = useMemo(() => cableMenu(
     lookups?.cableSizes || [], lookups?.cableTypes || [],
-    { usage: cableUsage, requireRating: true },
-  ), [lookups, cableUsage]);
+    { usage: cableUsage,
+      requireRating: true,
+      voltages: cableVoltages,
+      voltageRatings: lookups?.voltageRatings || [] },
+  ), [lookups, cableUsage, cableVoltages]);
 
   /* The unit actually chosen, so its figures can be shown rather than
      just its name. */

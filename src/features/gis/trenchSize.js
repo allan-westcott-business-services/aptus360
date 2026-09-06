@@ -187,6 +187,18 @@ export function concurrentCount(items = [], trenchM = null) {
 export function crossSection(items = [], trenchM = null) {
   if (items.length < 2) return items;
 
+  /* ── Grouped by utility here, and only here ──
+
+     The editor's list splits electric into HV and LV, because they are
+     two different cables rather than one cable in two sizes, and it
+     named a trench "3 x HV Cable" when it held two HV and one LV.
+
+     The WIDTH keeps the coarser grouping on purpose. It takes the
+     widest in each group and repeats it, so an LV counted as HV digs a
+     little wide. Splitting them would narrow the dig, and this module's
+     rule is that over-digging is money while under-digging is a pipe
+     that will not fit. The two still agree about how MANY things are in
+     the trench, which is what the editor's note requires. */
   const groups = new Map();
   for (const x of items) {
     const k = x.utility;

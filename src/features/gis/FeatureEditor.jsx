@@ -1,4 +1,4 @@
-import { useState, useMemo, useCallback } from "react";
+import { useEffect, useState, useMemo, useCallback } from "react";
 import { useDragHandle } from "../../lib/useDragHandle.js";
 import Banner from "../../components/Banner.jsx";
 import {
@@ -248,9 +248,29 @@ export default function FeatureEditor({
        concurrentCount is the same rule the width uses, so the list and
        the dimension beside it cannot disagree about how many things are
        in the trench. */
+    /* ── HV and LV are two cables, not one cable in two sizes ──
+
+       Grouping by utility is right for the case its note above gives: a
+       gas main that steps from 180 to 90 part way along is ONE pipe in
+       one slot of the cross-section, however many features the build
+       cut it into.
+
+       Electric is not like that. An HV route and an LV main share a
+       trench as two separate cables, and folding them together reported
+       "3 x HV Cable" for a trench holding two HV and one LV \u2014 the count
+       was of everything electric and the name was of whichever covered
+       most of it. Right total, wrong thing named, and the two together
+       read as a cable that is not there.
+
+       So electric splits on the one distinction that is a different
+       cable rather than a different size. */
+    const kindOf = (r) => (r.utility === "electric"
+      ? `electric:${/hv/i.test(String(r.feature?.Attributes?.Line_Type ?? "")) ? "hv" : "lv"}`
+      : r.utility);
+
     const grouped = [];
     for (const r of rows) {
-      const held = grouped.find((g) => g.utility === r.utility);
+      const held = grouped.find((g) => kindOf(g) === kindOf(r));
       if (held) held.runs.push(r);
       else grouped.push({ ...r, runs: [r] });
     }
@@ -667,6 +687,27 @@ export default function FeatureEditor({
     voltageV: Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400,
   }), [f, msdbServed, msdbAt, msdbTailCable, lookups]);
   const msdbWorst = useMemo(() => worstApartment(msdbLevels), [msdbLevels]);
+
+  /* ── The board's load, written onto the board ──
+
+     The routing counts a board's flats off the board itself: it has no
+     plot list, no house types and no consumption table, and threading
+     them through five layers to reach a number the designer can see
+     here was how this came to fail silently.
+
+     So what this panel works out is kept. The model reads it, sizes the
+     cable to the board by it, and falls back to a per-dwelling default
+     only where nobody has costed the board \u2014 a board that has not been
+     costed still has flats, and counting them as nothing would size its
+     cable for nobody. */
+  useEffect(() => {
+    if (!isMsdb) return;
+    const now = msdbTotals.kva > 0 ? msdbTotals.kva : null;
+    const was = f.Attributes?.MSDB_Total_kVA ?? null;
+    if (Number(was) === Number(now)) return;
+    setF((prev) => ({ ...prev,
+      Attributes: { ...prev.Attributes, MSDB_Total_kVA: now } }));
+  }, [isMsdb, msdbTotals, f.Attributes?.MSDB_Total_kVA]);
   const served = useMemo(
     () => (isJoint
       ? servedPlots(feature, allFeatures || [], {

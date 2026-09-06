@@ -2901,6 +2901,24 @@ printed was the one line that survived. `git checkout` had it back. A
 check that passes after an edit that destroyed it is the worst possible
 result: read what a rewrite leaves behind, not just what it prints.
 
+82. **A right total naming the wrong thing.** The trench editor's "in
+    this trench" list groups by UTILITY, which is right for the case its
+    note gives: a gas main that steps from 180 to 90 part way along is
+    one pipe in one slot, however many features the build cut it into.
+
+    Electric is not like that. A trench holding two HV routes and one LV
+    main reported **"3 × HV Cable"** — the count was of everything
+    electric, the name was of whichever covered most of it, and together
+    they described a cable that is not there. It now reads `2 × HV
+    Cable` and `1 × 3c WAVE 185`.
+
+    **The WIDTH keeps the coarser grouping on purpose.** It takes the
+    widest in each group and repeats it, so an LV counted as HV digs a
+    little wide. Splitting them there would narrow the dig, and that
+    module's rule is that over-digging is money while under-digging is a
+    pipe that will not fit. The two still agree about how many things
+    are in the trench, which is what the list's note requires.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

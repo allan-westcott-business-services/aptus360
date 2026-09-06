@@ -6,6 +6,7 @@
    them rather than the guidance itself — that a trench is sized from
    its contents, that the rules compose the way they should, and that
    the degenerate cases do something sensible. */
+import { readFileSync } from "node:fs";
 import {
   trenchSize, concurrentCount, dominantOf, coverFor, separationFor,
   NJUG_COVER_M, MIN_WIDTH_M, EDGE_MARGIN_M,
@@ -237,6 +238,43 @@ const fail = (m) => { console.log("  FAIL " + m); bad++; };
 //    depend on which was listed first.
 if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
   fail("the separation between two utilities depends on their order");
+}
+
+/* ── HV and LV are two cables, not one cable in two sizes ──
+
+   Grouping the editor's list by utility is right for a gas main that
+   steps from 180 to 90 part way along: one pipe, one slot, however many
+   features the build cut it into.
+
+   Electric is not like that. A trench holding two HV routes and one LV
+   main reported "3 x HV Cable" \u2014 the count was of everything electric
+   and the name was of whichever covered most of it. Right total, wrong
+   thing named, and together they read as a cable that is not there. */
+{
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/const kindOf = \(r\) => \(r\.utility === "electric"/.test(editor)) {
+    fail("the trench list folds HV and LV into one line, so a trench with "
+      + "two HV and one LV is named as three of whichever covers most of it");
+  }
+  if (!/grouped\.find\(\(g\) => kindOf\(g\) === kindOf\(r\)\)/.test(editor)) {
+    fail("the split is worked out and not used for the grouping");
+  }
+
+  /* ── And the WIDTH keeps the coarser grouping ──
+
+     It takes the widest in each group and repeats it, so an LV counted
+     as HV digs a little wide. Splitting them would NARROW the dig, and
+     this module's rule is that over-digging is money while under-digging
+     is a pipe that will not fit. */
+  const sizeSrc = readFileSync("./src/features/gis/trenchSize.js", "utf8");
+  const cs = sizeSrc.slice(sizeSrc.indexOf("export function crossSection"));
+  if (/Line_Type/.test(cs.slice(0, 900))) {
+    fail("crossSection now splits HV from LV, which narrows the dig \u2014 the "
+      + "safe direction here is to over-dig");
+  }
+  if (!/const k = x\.utility;/.test(cs.slice(0, 1200))) {
+    fail("crossSection no longer groups by utility");
+  }
 }
 
 console.log(bad ? `\n${bad} problem(s)`

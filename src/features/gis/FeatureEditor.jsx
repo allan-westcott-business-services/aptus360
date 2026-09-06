@@ -25,6 +25,10 @@ import { lvOrigins } from "./electric.js";
 import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
+  FLOORS, TYPICAL_MAX, apartmentRows, blankApartment, msdbLoad,
+  apartmentLevels, worstApartment,
+} from "./msdb.js";
+import {
   pocUnit, circuitLetter, circuitsFrom, SUB_DEFAULTS, ampsFor,
   moveCircuitToWay, compactWays,
 } from "./electric.js";
@@ -64,6 +68,11 @@ export default function FeatureEditor({
   /* Link box outputs: arm the lasso for one, or clear it. */
   onLassoLinkWay, onClearLinkWay, onIsolateWay, isolatedWay,
   onDisconnectCable, onConnectCable,
+  /* The board's own level from the last levels check, and the cable its
+     tails are run in. Both come from the canvas, which is where the
+     check and the catalogue live \u2014 the editor works out what each flat
+     sees, not what the network does. */
+  levelsAt = null, msdbTailCable = null,
 }) {
   const [f, setF] = useState({
     Label: feature.Label || "",
@@ -589,6 +598,23 @@ export default function FeatureEditor({
      things are drawn — a field that let you type a different one would
      only be a way to disagree with the drawing. */
   const isJoint = feature.Feature_Role === "joint";
+  const isMsdb = feature.Feature_Role === "msdb";
+
+  /* Worked out once for the panel: the load, every flat's level, and the
+     worst of them. `levelsAt` is the board's own figure from the levels
+     check \u2014 absent until one has been run, and the rows say so rather
+     than reporting a tail as though it were a whole level. */
+  const msdbTotals = useMemo(
+    () => msdbLoad(feature, lookups?.consumption || []),
+    [feature, lookups],
+  );
+  const msdbLevels = useMemo(() => apartmentLevels(feature, {
+    at: levelsAt ?? null,
+    cable: msdbTailCable ?? null,
+    consumption: lookups?.consumption || [],
+    voltageV: Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400,
+  }), [feature, levelsAt, msdbTailCable, lookups]);
+  const msdbWorst = useMemo(() => worstApartment(msdbLevels), [msdbLevels]);
   const served = useMemo(
     () => (isJoint
       ? servedPlots(feature, allFeatures || [], {
@@ -1238,6 +1264,172 @@ export default function FeatureEditor({
                   ? "No main was found under this valve, so it is drawn square to the screen."
                   : "Taken from the main it sits on. The valve is drawn across it."}
               </p>
+            </div>
+          )}
+
+          {/* ── A board, and the flats it feeds ──
+
+              A block is not forty-five points on a drawing. One cable
+              arrives, one leaves, and the dwellings hang off tails of a
+              metre or two inside the building. So the board is one
+              object and the flats are a table on it: the drawing
+              carries what is buried, the table carries what is in the
+              building.
+
+              Bedrooms and a distance are all a row is ASKED for.
+              Everything else is derived \u2014 the load from the consumption
+              table, the level from the board's own figure plus the
+              tail. A row that cannot be derived says so rather than
+              showing a zero, because a zero here reads as a flat that
+              draws nothing. */}
+          {isMsdb && (
+            <div className="fe-msdb">
+              <div className="fld">
+                <label htmlFor="fe-msdb-loc">Location</label>
+                <input id="fe-msdb-loc" type="text"
+                  placeholder="Riser cupboard, core B"
+                  value={feature.Attributes?.MSDB_Location ?? ""}
+                  onChange={(e) => setAttr("MSDB_Location")(e.target.value)} />
+              </div>
+
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-msdb-floor">Floor</label>
+                  <select id="fe-msdb-floor"
+                    value={feature.Attributes?.MSDB_Floor ?? ""}
+                    onChange={(e) => setAttr("MSDB_Floor")(e.target.value)}>
+                    <option value="">Not set</option>
+                    {FLOORS.map((f) => <option key={f} value={f}>{f}</option>)}
+                  </select>
+                </div>
+                <div className="fld">
+                  <label htmlFor="fe-msdb-heat">Heat source</label>
+                  {/* One per board rather than one per flat: a block is
+                      built the same way throughout, and asking
+                      forty-five times for one answer is a form nobody
+                      fills in. */}
+                  <select id="fe-msdb-heat"
+                    value={feature.Attributes?.MSDB_Heat_Source_ID ?? ""}
+                    onChange={(e) => setAttr("MSDB_Heat_Source_ID")(
+                      e.target.value === "" ? null : Number(e.target.value))}>
+                    <option value="">Not set</option>
+                    {(lookups?.heatSources || []).map((h) => (
+                      <option key={h.Heat_Source_ID} value={h.Heat_Source_ID}>
+                        {h.Label ?? h.Name ?? `#${h.Heat_Source_ID}`}
+                      </option>
+                    ))}
+                  </select>
+                </div>
+              </div>
+
+              <div className="fe-msdb-h">
+                <strong>Flats</strong>
+                <span className="hint">{msdbLoad(feature,
+                  lookups?.consumption || []).count} of {TYPICAL_MAX}</span>
+                <button type="button" className="btn sm"
+                  onClick={() => {
+                    const rows = apartmentRows(feature);
+                    setAttr("MSDB_Apartments")([...rows,
+                      blankApartment(rows.length + 1)]);
+                  }}>
+                  Add flat
+                </button>
+              </div>
+
+              {apartmentRows(feature).length === 0 ? (
+                <p className="hint">
+                  No flats yet. Each row is a dwelling: its bedrooms decide the
+                  load, its distance decides the drop along its tail.
+                </p>
+              ) : (
+                <table className="fe-msdb-t">
+                  <thead>
+                    <tr>
+                      <th>Flat</th><th>Beds</th><th>Distance</th>
+                      <th>Load</th><th>At the flat</th><th />
+                    </tr>
+                  </thead>
+                  <tbody>
+                    {msdbLevels.map((r, i) => (
+                      <tr key={r.id}>
+                        <td>
+                          <input type="text" value={r.ref}
+                            aria-label={`Flat ${i + 1} reference`}
+                            onChange={(e) => {
+                              const rows = apartmentRows(feature);
+                              rows[i] = { ...rows[i], ref: e.target.value };
+                              setAttr("MSDB_Apartments")(rows);
+                            }} />
+                        </td>
+                        <td>
+                          <input type="number" min="0" max="9" value={r.bedrooms}
+                            aria-label={`Flat ${i + 1} bedrooms`}
+                            onChange={(e) => {
+                              const rows = apartmentRows(feature);
+                              rows[i] = { ...rows[i], bedrooms: Number(e.target.value) };
+                              setAttr("MSDB_Apartments")(rows);
+                            }} />
+                        </td>
+                        <td>
+                          <input type="number" min="0" step="0.1" value={r.distanceM}
+                            aria-label={`Flat ${i + 1} distance in metres`}
+                            onChange={(e) => {
+                              const rows = apartmentRows(feature);
+                              rows[i] = { ...rows[i], distanceM: Number(e.target.value) };
+                              setAttr("MSDB_Apartments")(rows);
+                            }} />
+                        </td>
+                        <td className="num">
+                          {r.missingLoad
+                            ? <span className="fe-msdb-none"
+                              title="No consumption figure for that many bedrooms with this heat source">
+                                no figure
+                            </span>
+                            : `${r.kva.toFixed(1)} kVA`}
+                        </td>
+                        <td className="num">
+                          {r.pct == null
+                            ? <span className="fe-msdb-none"
+                              title="Run the levels check, and give the board a heat source and its flats a bedroom count">
+                                &mdash;
+                            </span>
+                            : `${r.pct.toFixed(2)}%`}
+                        </td>
+                        <td>
+                          <button type="button" className="fe-x sm"
+                            aria-label={`Remove flat ${r.ref || i + 1}`}
+                            onClick={() => {
+                              const rows = apartmentRows(feature);
+                              rows.splice(i, 1);
+                              setAttr("MSDB_Apartments")(rows);
+                            }}>&times;</button>
+                        </td>
+                      </tr>
+                    ))}
+                  </tbody>
+                  <tfoot>
+                    <tr>
+                      <td colSpan={3}><strong>{msdbTotals.count} flat
+                        {msdbTotals.count === 1 ? "" : "s"}</strong></td>
+                      <td className="num"><strong>{msdbTotals.kva.toFixed(1)} kVA</strong></td>
+                      <td className="num">
+                        {msdbWorst ? `${msdbWorst.pct.toFixed(2)}% worst` : "\u2014"}
+                      </td>
+                      <td />
+                    </tr>
+                  </tfoot>
+                </table>
+              )}
+
+              {msdbTotals.missing.length > 0 && (
+                <p className="fe-msdb-warn">
+                  {msdbTotals.missing.length} flat
+                  {msdbTotals.missing.length === 1 ? "" : "s"} have no consumption
+                  figure for their bedrooms and this heat source, so they are not
+                  in the total. That is a row missing from the specs rather than a
+                  flat that draws nothing.
+                </p>
+              )}
             </div>
           )}
 

@@ -152,6 +152,7 @@ caught a fault that had already shipped at least once.
 | `node checkprint.mjs` | A metre on the ground is 1000/N mm on the paper |
 | `node checkzoomfloor.mjs` | The zoom stops at the drawing's own extents |
 | `node checkshadow.mjs` | No name added across `draw` is one it already used |
+| `node checkmsdb.mjs` | Flats on a table; load and levels derived, never guessed |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2361,6 +2362,39 @@ or a count of what could NOT be done.
     **The routine is too long to hold in your head, which is exactly why
     a name added across all of it has to be checked rather than
     assumed.** The mechanical rename was right; the name was not.
+
+**The MSDB — a block of flats as one object.** One cable arrives at a
+board in a riser cupboard, one leaves it for the next, and the dwellings
+hang off tails of a metre or two inside the building. Drawn as
+forty-five service points it is unreadable, unmovable, and wrong about
+what is in the ground.
+
+**The drawing carries what is buried; the table carries what is in the
+building.** A row is asked for two things — bedrooms and a distance —
+and everything else is derived: the load from `House_Type_Consumption`
+on bedrooms AND heat source, the level from the board's own figure plus
+that flat's tail, which is exactly how a plot meter's cut-out figure is
+reached.
+
+Heat source is one field on the board rather than one per row: a block
+is built the same way throughout, and asking forty-five times for one
+answer is a form nobody fills in.
+
+**Nothing is guessed.** A bedroom count with no row in the consumption
+table contributes nothing and is REPORTED — a zero there reads as a flat
+that draws nothing, which is a flat nobody sizes a cable for. A flat
+with no load figure, no tail cable, or no levels check behind it shows a
+dash rather than a number: **a figure that leaves out everything before
+the board looks passable when it is not.**
+
+Drawn as an upright square with DB in it — a thing in a building, and a
+building does not lean with the trench. `msdb.js` holds the model,
+`checkmsdb` holds the rules.
+
+**Not done yet:** the board is a point on the drawing but the feeder
+model does not treat it as a stop, so it takes no level of its own from
+the levels check and the flats therefore show a dash. That is the next
+piece: `spanTrace` has to claim it the way it claims a feeder point.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

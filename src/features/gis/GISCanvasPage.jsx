@@ -525,6 +525,16 @@ export default function GISCanvasPage() {
      open. Held here rather than in the dialogue because the canvas is
      what draws it. */
   const [printFrame, setPrintFrame] = useState(null);
+
+  /* The service cable this scheme uses, for a board's tails where it
+     names none of its own. The same setting Auto Lay Service Cable
+     reads, so a tail and a service are sized the same way. */
+  const scopeServiceCableId = useMemo(() => {
+    const layer = layers.find((l) => l.Layer_Key === "electric");
+    const scope = scopeDefaults.find((sc) =>
+      Number(sc.Utility_ID) === Number(layer?.Utility_ID));
+    return scope?.Default_Service_Cable_Size_ID ?? null;
+  }, [layers, scopeDefaults]);
   /* Rings round the meters, coloured by circuit.
 
      After grouping — or after any circuit is made by hand — the only
@@ -4362,6 +4372,42 @@ export default function GISCanvasPage() {
             /* Nothing else to draw: the bar is the symbol. Returning
                here skips the fill and stroke below, which would put a
                circle on top of it. */
+            return;
+          }
+          if (f.Feature_Role === "msdb") {
+            /* ── A square with DB in it ──
+
+               A board in a riser cupboard, not a fitting in the ground:
+               drawn square and upright rather than rotated to the cable,
+               because it is a thing in a building and a building does
+               not lean with the trench.
+
+               The letters are the symbol. A board carries no colour of
+               its own \u2014 it is one object on one circuit, and the cable
+               either side says which. */
+            const half = Math.max(7, ps.symbolPx * 1.05);
+            ctx.save();
+            ctx.lineWidth = on ? 2.4 : 1.6;
+            ctx.fillStyle = "#fff";
+            ctx.strokeStyle = on ? "var(--accent)" : "#0f172a";
+            ctx.beginPath();
+            ctx.rect(p.x - half, p.y - half, half * 2, half * 2);
+            ctx.fill();
+            ctx.stroke();
+            if (half >= 9) {
+              ctx.fillStyle = on ? "var(--accent)" : "#0f172a";
+              ctx.font = `700 ${Math.round(half * 1.05)}px system-ui, sans-serif`;
+              ctx.textAlign = "center";
+              ctx.textBaseline = "middle";
+              /* A hair low: the cap height of DB sits above the middle
+                 of the glyph box, and centring on the box reads high. */
+              ctx.fillText("DB", p.x, p.y + half * 0.06);
+              ctx.textAlign = "left";
+              ctx.textBaseline = "alphabetic";
+            }
+            ctx.restore();
+            /* The square is the symbol; the circle below would sit on
+               top of it. */
             return;
           }
           if (f.Feature_Role === "linkbox") {
@@ -21772,6 +21818,11 @@ export default function GISCanvasPage() {
                           onClick={() => placeNode("feederpoint", "electric")} />
                       </MenuBranch>
 
+                      <MenuItem label={"+ MSDB\u2026"}
+                        hint="Multi service distribution board — one cable in, one out, the flats on a table"
+                        disabled={!projectId}
+                        onClick={() => placeNode("msdb", "electric")} />
+
                       <MenuBranch label="Link Box"
                         hint="One input, fused outputs — click on the cable run">
                         <MenuItem label="+ 2 Way" indent
@@ -23372,6 +23423,17 @@ export default function GISCanvasPage() {
           onIsolateWay={isolateWay}
           onDisconnectCable={disconnectCable}
           onConnectCable={connectCable}
+          /* The board's own figure from the last levels check, so the
+             flats on it can be given a level the same way a plot meter
+             is. Null until a check has run, which the panel says. */
+          levelsAt={editing?.Feature_Role === "msdb"
+            ? (elecLevelsAt?.get?.(Number(editing.Feature_ID)) ?? null)
+            : null}
+          msdbTailCable={editing?.Feature_Role === "msdb"
+            ? (lookups?.cableSizes || []).find((c) => Number(c.Cable_Size_ID)
+              === Number(editing.Attributes?.MSDB_Tail_Cable_ID
+                ?? scopeServiceCableId)) ?? null
+            : null}
           isolatedWay={isolatedWay}
           onSetCircuitOrigin={setCircuitOrigin}
           onUpstreamSize={(edited, size) => enforceUpstreamSize(edited, size)}
@@ -26466,6 +26528,20 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .dt .gt-on, .gt-tbl tr.gt-dead { color: var(--muted); font-style: italic; }
 /* A section heading inside the table: the trunk, then each output. Quiet
    enough to read as a divider rather than as another leg. */
+/* ── The MSDB panel ── */
+.fe-msdb { margin: 10px 0 0; }
+.fe-msdb-h { display: flex; align-items: center; gap: 10px; margin: 12px 0 6px; }
+.fe-msdb-h .hint { margin-right: auto; }
+.fe-msdb-t { width: 100%; border-collapse: collapse; font-size: 12.5px; }
+.fe-msdb-t th { text-align: left; font-size: 10.5px; letter-spacing: .05em;
+  text-transform: uppercase; color: var(--muted); padding: 0 6px 4px 0; font-weight: 700; }
+.fe-msdb-t td { padding: 2px 6px 2px 0; border-top: 1px solid var(--line); }
+.fe-msdb-t td.num { text-align: right; white-space: nowrap; }
+.fe-msdb-t input { width: 100%; min-width: 44px; padding: 3px 5px; font: inherit;
+  border: 1px solid var(--border); border-radius: 5px; background: var(--white); }
+.fe-msdb-t tfoot td { border-top: 2px solid var(--line); padding-top: 5px; }
+.fe-msdb-none { color: var(--muted); font-style: italic; }
+.fe-msdb-warn { margin: 8px 0 0; font-size: 12px; color: #b91c1c; }
 .gt-way-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
   margin-right: 7px; vertical-align: -1px; border: 1px solid rgba(15,23,42,.2); }
 .gt-sect td { padding: 12px 8px 4px; font-size: 11px; font-weight: 700;

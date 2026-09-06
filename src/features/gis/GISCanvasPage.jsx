@@ -526,6 +526,84 @@ export default function GISCanvasPage() {
      what draws it. */
   const [printFrame, setPrintFrame] = useState(null);
 
+  /* ── What a hand-drawn cable inherits from what it touches ──
+
+     A joint, a feeder point, a link box or another main all name their
+     circuit. A cable drawn from one is on that circuit, and arriving
+     with nothing meant its editor showed none of the circuit fields and
+     the levels never saw it.
+
+     Only where the ends AGREE, or only one of them names anything. Two
+     ends on two different circuits is a cable joining two networks:
+     stamping either would be picking one at random, and the drawing
+     should be corrected rather than guessed at.
+
+     Mains only. A trench belongs to no circuit, and a service takes its
+     circuit from the main it tees into rather than from whatever its
+     far end happens to touch. */
+  const inheritedCircuit = useCallback((geometry, lineType) => {
+    /* A MAINS CABLE, not a mains trench. `trench_mains` contains the
+       word and is not a cable: a trench belongs to no circuit, and
+       stamping one would put a dig on a network. */
+    if (isTrenchType(lineType, lineTypes)) return {};
+    if (!/main/i.test(String(lineType ?? ""))) return {};
+    const ends = [geometry?.[0], geometry?.[geometry.length - 1]].filter(Boolean);
+    if (!ends.length) return {};
+
+    const seen = new Map();
+    for (const e of ends) {
+      for (const f of features) {
+        if (f.Layer_Key !== "electric") continue;
+        /* ── Things a cable can actually be connected to ──
+
+           A circuit's lasso is a SHAPE carrying that circuit's id, and
+           several of them overlap at any point on a dense drawing. Left
+           in, a breech joint on circuit 2 and two circuit-3 outlines
+           round it looked like three circuits meeting, and the cable
+           inherited nothing at all.
+
+           A shape is where a circuit was drawn, not something a cable
+           joins to. Fittings and cables only. */
+        const role = String(f.Feature_Role ?? "");
+        const isFitting = ["joint", "feederpoint", "linkbox", "spannode",
+          "poc", "substation", "msdb"].includes(role);
+        /* ── A lasso is not a cable ──
+
+           A circuit's outline is stored as a LINE with Line_Type
+           `elec_main`, exactly like the cable it encloses: only its
+           role says otherwise. Matching on the type alone found three
+           overlapping outlines round the breech joint, called them
+           three circuits meeting, and inherited nothing.
+
+           So the role has to be absent, which is what a drawn cable
+           has \u2014 anything with a role is a shape, a seed or a fitting. */
+        const isMain = f.Feature_Type === "line" && !role
+          && /main/i.test(String(f.Attributes?.Line_Type ?? ""));
+        if (!isFitting && !isMain) continue;
+
+        const a = f.Attributes || {};
+        if (a.Circuit_ID == null) continue;
+        const near = f.Feature_Type === "point"
+          ? [(a.Span_Anchor ?? f.Geometry?.[0])]
+          : (f.Geometry || []);
+        if (!near.some((q) => Array.isArray(q)
+          && Math.hypot(q[0] - e[0], q[1] - e[1]) <= JOIN_REACH_M)) continue;
+        seen.set(Number(a.Circuit_ID), {
+          Circuit_ID: Number(a.Circuit_ID),
+          Circuit_Name: a.Circuit_Name ?? null,
+          Circuit_Letter: a.Circuit_Letter ?? null,
+          /* The output too, where what it touches is on one: a cable
+             leaving a box's output is on that output, and without it
+             the run is on the circuit but on no particular way. */
+          Link_Box_ID: a.Link_Box_ID ?? null,
+          Link_Way: a.Link_Way ?? null,
+        });
+      }
+    }
+    if (seen.size !== 1) return {};
+    return [...seen.values()][0];
+  }, [features, lineTypes]);
+
   /* The service cable this scheme uses, for a board's tails where it
      names none of its own. The same setting Auto Lay Service Cable
      reads, so a tail and a service are sized the same way. */
@@ -9559,6 +9637,19 @@ export default function GISCanvasPage() {
                status of its own. */
             Build_Status: isTrenchType(lineType, lineTypes) ? "planned" : undefined,
             Site: run.site,
+            /* ── Which circuit a hand-drawn cable is on ──
+
+               A cable drawn from a breech joint is on that joint's
+               circuit. The joint knows; the cable was arriving with
+               nothing, so its editor showed none of the circuit fields
+               and the levels never saw it \u2014 a cable somebody had just
+               drawn onto a circuit was not on it.
+
+               Taken from what the ends TOUCH, and only where the two
+               ends agree or only one names a circuit. Two ends on two
+               different circuits is a cable joining two networks, which
+               is a thing to be told about rather than guessed at. */
+            ...inheritedCircuit(run.geometry, lineType),
             // Recorded at draw time using the metre tolerance, not the
             // pixel one — what it touches, not what it looked near.
             Connects: connectedTo(run.geometry, features, null),

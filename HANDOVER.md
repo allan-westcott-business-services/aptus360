@@ -153,6 +153,7 @@ caught a fault that had already shipped at least once.
 | `node checkzoomfloor.mjs` | The zoom stops at the drawing's own extents |
 | `node checkshadow.mjs` | No name added across `draw` is one it already used |
 | `node checkmsdb.mjs` | Flats on a table; load and levels derived, never guessed |
+| `node checkinherit.mjs` | A drawn cable takes the circuit it was drawn from |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2530,6 +2531,33 @@ Measured: fifteen metres carrying 24 kVA costs **1.11%**. Left out,
 every flat in the block reads better than it is — by the same amount, in
 the same direction, on every board. A figure wrong the same way every
 time is the hardest kind to notice.
+
+**A cable drawn from a fitting is on that fitting's circuit.** A
+hand-drawn LV cable arrived with nothing: its editor showed none of the
+circuit fields a built cable has, and the levels never saw it — somebody
+had drawn a cable onto a circuit and it was not on it.
+
+Taken from what the ends TOUCH — a joint, a feeder point, a link box, or
+the cable already there — and the link box output travels with it, since
+a cable leaving an output is on that output and not merely on the
+circuit. Only where the ends agree or only one names anything: two ends
+on two different circuits is a cable joining two networks, and stamping
+either would be picking one at random.
+
+72. **A circuit's lasso is stored as a cable.** `Feature_Type: "line"`,
+    `Line_Type: "elec_main"` — identical to the cable it encloses, and
+    only `Feature_Role: "shape"` says otherwise. Matching on the type
+    found three overlapping outlines round the breech joint, called them
+    three circuits meeting, and inherited nothing at all.
+
+    So a drawn cable is a line with NO role: anything carrying one is a
+    shape, a seed or a fitting. Found by printing everything within two
+    metres of the joint rather than by reading the rule again — the rule
+    looked right, and the data was not what it assumed.
+
+    The same check then caught a second hole unprompted: `trench_mains`
+    contains the word "main", so a mains TRENCH drawn from a joint would
+    have been put on the circuit. A trench belongs to no network.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

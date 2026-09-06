@@ -1402,9 +1402,33 @@ export function circuitReport(features = [], opts = {}) {
      answer for the same reason it always was. */
   const dist = new Map();
   const originOf = new Map();
+  /* ── Measured from the station it is assigned to ──
+
+     "First origin wins a tie" is right where nobody has said otherwise,
+     and wrong the moment somebody has. Two substations on one site are
+     normally drawn on one trench network, so every meter is reachable
+     from both and the first claimed all of them: a scheme deliberately
+     split across two stations measured the whole of it from one, and
+     the distance column named a station the plot is not on.
+
+     So a meter that NAMES its station is measured from that one,
+     whatever else could reach it. */
+  const statedOrigin = new Map();
+  for (const m of features) {
+    if (m.Feature_Role !== "meter" || m.Layer_Key !== "electric") continue;
+    const o = m.Attributes?.Circuit_Origin_ID;
+    if (o != null) statedOrigin.set(Number(m.Feature_ID), Number(o));
+  }
+
   for (const o of stations) {
     const d = distancesFrom(features, o.Feature_ID);
     for (const [id, v] of d) {
+      const said = statedOrigin.get(Number(id));
+      /* Stated and this is it: take it, over anything already found. */
+      if (said != null) {
+        if (Number(said) === Number(o.Feature_ID)) { dist.set(id, v); originOf.set(id, o); }
+        continue;
+      }
       if (!dist.has(id)) { dist.set(id, v); originOf.set(id, o); }
     }
     /* The primary origin's own gap to the network, kept: it is the one
@@ -1535,10 +1559,29 @@ export function circuitReport(features = [], opts = {}) {
          build and the report all agree to look. */
       linkBoxId: m.Attributes?.Link_Box_ID ?? null,
       linkWay: m.Attributes?.Link_Way ?? null,
-      originLabel: d != null && stations.length > 1
-        ? (originOf.get(Number(m.Feature_ID))?.Label
-          || (originOf.get(Number(m.Feature_ID))?.Feature_Role === "substation"
-            ? "Substation" : `POC #${originOf.get(Number(m.Feature_ID))?.Feature_ID}`))
+      /* ── Which station feeds this meter ──
+
+         What somebody ASSIGNED, where they assigned one. The walk's
+         answer is what reached the meter first, and where two stations
+         share a trench network \u2014 which is the normal way to draw two
+         substations on one site \u2014 the first one claims every meter on
+         it. A scheme deliberately split across two substations reported
+         one name down the whole sheet, contradicting the choice made in
+         the heading two lines above.
+
+         State beats inference. The walk is consulted only where nobody
+         has said, which is what it is good for. */
+      originLabel: stations.length > 1
+        ? (() => {
+          const stated = m.Attributes?.Circuit_Origin_ID;
+          const src = stated != null
+            ? features.find((f) => Number(f.Feature_ID) === Number(stated))
+            : (d != null ? originOf.get(Number(m.Feature_ID)) : null);
+          if (!src) return null;
+          return src.Label
+            || (src.Feature_Role === "substation"
+              ? "Substation" : `POC #${src.Feature_ID}`);
+        })()
         : null,
       circuitId: m.Attributes?.Circuit_ID ?? null,
       circuitName: m.Attributes?.Circuit_Name ?? null,

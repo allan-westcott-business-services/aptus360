@@ -61,15 +61,53 @@ const rep = circuitReport(raw.features, { lineTypes: raw.lineTypes || [] });
      as it stands. On this fixture circuit 3 is assigned to POC 2 and
      every one of its meters is still reached from POC 1 — which is
      worth seeing rather than smoothing over. */
-  const c3 = (rep.circuits || []).find((c) => Number(c.id) === 3);
-  if (c3) {
-    const differ = (c3.meters || [])
-      .filter((m) => m.originLabel && c3.originLabel
-        && m.originLabel !== c3.originLabel);
-    if (!differ.length) {
-      fail("the fixture no longer shows a circuit assigned to one station and "
-        + "reached from another, so this case is untested");
+  /* Two circuits on this fixture name different stations, which is the
+     case that was reported broken. */
+  const named = (rep.circuits || [])
+    .filter((c) => c.originLabel).map((c) => c.originLabel);
+  if (new Set(named).size < 2) {
+    fail("the fixture no longer has two circuits on two different stations, "
+      + "so the case this check exists for is untested");
+  }
+}
+
+// 3b. What somebody ASSIGNED beats what the walk reached.
+//
+//     Two substations on one site are normally drawn on one trench
+//     network, so every meter is reachable from both. "First origin
+//     wins a tie" is right where nobody has said otherwise and wrong
+//     the moment somebody has: a scheme deliberately split across two
+//     stations reported ONE name down the whole sheet, contradicting
+//     the choice made in the heading two lines above.
+{
+  for (const c of rep.circuits || []) {
+    if (c.id === "unlinked" || c.originLabel == null) continue;
+    const rows = (c.meters || []).filter((m) => m.circuitOriginId != null);
+    const wrong = rows.filter((m) => m.originLabel !== c.originLabel);
+    if (wrong.length) {
+      fail(`${wrong.length} meters on ${c.name} say they are fed from `
+        + `"${wrong[0].originLabel}" while the circuit is assigned to `
+        + `"${c.originLabel}"`);
     }
+  }
+
+  /* And the DISTANCE is measured from that station too: the column is
+     headed "from substation", and measuring from one the plot is not on
+     names the wrong thing. */
+  const src = readFileSync("./src/features/gis/electric.js", "utf8");
+  if (!/const statedOrigin = new Map\(\);/.test(src)) {
+    fail("distances are measured from whichever origin reached the meter "
+      + "first, not from the one it is assigned to");
+  }
+  if (!/if \(Number\(said\) === Number\(o\.Feature_ID\)\) \{ dist\.set\(id, v\); originOf\.set\(id, o\); \}/
+    .test(src)) {
+    fail("a meter that names its station is not measured from it");
+  }
+  /* The walk still answers where nobody has said, which is what it is
+     good for. */
+  if (!/if \(!dist\.has\(id\)\) \{ dist\.set\(id, v\); originOf\.set\(id, o\); \}/
+    .test(src)) {
+    fail("an unassigned meter no longer gets a distance at all");
   }
 }
 
@@ -96,10 +134,10 @@ const rep = circuitReport(raw.features, { lineTypes: raw.lineTypes || [] });
   if (!/Way: m\.linkWay != null/.test(view)) {
     fail("the export does not say which way a meter is on");
   }
-  /* The mismatch is flagged, not hidden. */
-  if (!/Assigned to \$\{c\.originLabel\}, reached from /.test(view)) {
-    fail("a meter reached from a station other than the one its circuit is "
-      + "assigned to is shown as though it agreed");
+  /* No mismatch flag: the row and the heading are now the same fact,
+     and a warning that fires on every row is noise. */
+  if (/reached from \$\{m\.originLabel\}/.test(view)) {
+    fail("the row still warns about a mismatch it can no longer have");
   }
 }
 

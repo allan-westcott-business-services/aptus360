@@ -2799,15 +2799,24 @@ FIRST origin on the drawing, into the Substation column of every row. A
 scheme served from two exported one name for all of it. The column
 existed and was answering a question nobody had asked.
 
-Each row now carries the station it is actually reached from, the one
-its circuit is assigned to, and its way.
+Each row now carries the station it is assigned to and its way.
 
-78. **Assigned to is not the same as fed from.** On the live drawing
-    circuit 3 is assigned to POC 2 and **all 41 of its meters are still
-    reached from POC 1** — the assignment moves on the next build, and
-    the report reads the drawing as it stands. The two are shown
-    separately and the difference is flagged, rather than one being
-    quietly shown as the other.
+78. **"First origin wins a tie" was answering the wrong question.** Two
+    substations on one site are normally drawn on ONE trench network, so
+    every meter is reachable from both and the first claimed all of
+    them. A scheme deliberately split across two substations reported
+    one name down the whole sheet — contradicting the choice made in the
+    heading two lines above it — and measured every distance from a
+    station half those plots are not on.
+
+    The tie-break is right where nobody has said otherwise and wrong the
+    moment somebody has. A meter that NAMES its station is now labelled
+    and measured from that one; the walk answers only where nothing was
+    stated, which is what it is good for.
+
+    **State beats inference, and the inference had a comment explaining
+    exactly why it was safe.** It was safe until two substations shared
+    a trench, which is the normal way to draw them.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

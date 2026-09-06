@@ -195,13 +195,10 @@ export default function CircuitReport({
              substations exported one name for all of it. The column
              was there and it was answering a question nobody asked.
 
-             Falls back to the scheme's only station where there is one,
-             which is what it always meant on a one-station drawing. */
+             `m.originLabel` is what the meter is ASSIGNED to. Falls
+             back to the scheme's only station where there is one, which
+             is what it always meant on a one-station drawing. */
           Substation: m.originLabel ?? c.originLabel ?? report.station,
-          /* And what it is assigned to, where that differs from what
-             the routing actually reached: the assignment moves on the
-             next build and the sheet is read before then. */
-          "Assigned to": c.originLabel ?? "",
           Way: m.linkWay != null ? `Way ${m.linkWay}` : "",
           Meter: m.meter, Plot: m.plot, "House type": m.houseType,
           /* Numeric, not "400.8 m" — a column of text returns zero from
@@ -789,16 +786,23 @@ export default function CircuitReport({
                               the drawing as it stands. Worth seeing
                               rather than smoothing over. */}
                           {report.origins?.length > 1 && (
-                            <td className={m.originLabel
-                              && c.originLabel
-                              && m.originLabel !== c.originLabel
-                              ? "mono cr-gap" : "mono"}
-                            title={m.originLabel && c.originLabel
-                              && m.originLabel !== c.originLabel
-                              ? `Assigned to ${c.originLabel}, reached from `
-                                + `${m.originLabel} \u2014 run Build LV Network to `
-                                + "re-route it"
-                              : undefined}>
+                            /* What the meter is assigned to, which is
+                               what the heading says. It read the WALK's
+                               answer before \u2014 whichever station reached
+                               it first \u2014 and where two stations share a
+                               trench network the first claimed every
+                               meter on it, so a scheme split across two
+                               substations showed one name down the whole
+                               sheet.
+
+                               No mismatch flag: the row and the heading
+                               are now the same fact, and a warning that
+                               fires on every row is noise. */
+                            <td className="mono"
+                              title={m.circuitOriginId == null
+                                ? "No station assigned \u2014 this is the one the "
+                                  + "build reached it from"
+                                : undefined}>
                               {m.originLabel ?? "\u2014"}
                             </td>
                           )}

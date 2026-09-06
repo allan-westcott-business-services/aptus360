@@ -2767,6 +2767,25 @@ find one.
     **The figures were all there and nothing joined them up.** Ten rows
     reading one number is the kind of wrong that looks deliberate.
 
+**A board's stop label carries the worst flat.** The figure at a board
+is the figure at the bottom of the riser, where nobody lives. What has
+to pass is the flat at the end of the longest tail.
+
+On the live drawing:
+
+    stop reads    4.42%
+    at the board  5.44%   (15 m riser, 22 kVA through it)
+    worst flat    5.63%   at 1010, 28 m of tail
+
+So the label reads `4.42% · 0.159Ω → 5.63% at 1010`. **Over the 5%
+limit, behind a label that said everything was fine** — which is what
+the drawing showed before this.
+
+Worked from the same functions the editor uses — `riserDrop` then
+`apartmentLevels` — so the drawing and the panel cannot disagree, and
+the stop is matched to its board by the id the build stamps rather than
+by position alone.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

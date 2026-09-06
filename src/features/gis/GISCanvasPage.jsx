@@ -108,7 +108,10 @@ import {
 } from "./joints.js";
 import { alpha } from "../../lib/colour.js";
 import PrintModal from "./PrintModal.jsx";
-import { withAssumedMeters } from "./msdb.js";
+import {
+  withAssumedMeters, servedFlats, flatsFromPlots, apartmentLoad,
+  apartmentLevels, worstApartment, riserDrop,
+} from "./msdb.js";
 import { printView, drawnBounds } from "./printSheet.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
@@ -1857,6 +1860,53 @@ export default function GISCanvasPage() {
      at. So the nearest stop with a figure, within a couple of metres,
      which is the same distance the build's own "did it reach" test
      uses. */
+  /* ── The worst flat on a board, for the drawing ──
+
+     A stop standing on a board reports the figure at the bottom of the
+     riser, where nobody lives. The flat at the end of the longest tail
+     is the one that has to pass.
+
+     Worked from the same functions the editor uses \u2014 `riserDrop` then
+     `apartmentLevels` \u2014 so the label and the panel cannot disagree. The
+     stop is matched to its board by the id the build stamps, falling
+     back to position for boards stopped before that existed. */
+  const worstFlatAt = useCallback((stop) => {
+    if (stop?.Feature_Role !== "feederpoint") return null;
+    const at = stop.Attributes?.Span_Anchor ?? stop.Geometry?.[0];
+    const stamped = stop.Attributes?.At_Joint_ID;
+    const board = features.find((f) => f.Feature_Role === "msdb"
+      && (stamped != null
+        ? Number(f.Feature_ID) === Number(stamped)
+        : (Array.isArray(at) && Array.isArray(f.Geometry?.[0])
+          && Math.hypot(f.Geometry[0][0] - at[0], f.Geometry[0][1] - at[1]) <= 1)));
+    if (!board) return null;
+
+    const flats = servedFlats(board, flatsFromPlots({
+      plotList,
+      configs: lookups?.propertyConfigs || [],
+      propertyTypes: lookups?.propertyTypes || [],
+    }));
+    if (!flats.length) return null;
+
+    const consumption = lookups?.houseTypeConsumption || [];
+    const cable = (lookups?.cableSizes || []).find((c) => Number(c.Cable_Size_ID)
+      === Number(board.Attributes?.MSDB_Tail_Cable_ID ?? scopeServiceCableId)) ?? null;
+    const voltageV = Number(lookups?.vdSettings?.[0]?.Nominal_Voltage_V) || 400;
+    const vd = elecLevelsAt?.get(Number(stop.Feature_ID));
+    if (!vd) return null;
+
+    const rows = flats.map((r) => ({
+      ...r,
+      kva: apartmentLoad(r, r.heatSourceId, consumption).kva,
+    }));
+    const kva = rows.reduce((t, r) => t + (r.kva || 0), 0);
+    const atBoard = riserDrop(board, { at: vd, cable, kva, voltageV });
+    if (atBoard?.pct == null) return null;
+    const worst = worstApartment(apartmentLevels(board, rows,
+      { at: atBoard, cable, consumption, voltageV }));
+    return worst ? { pct: worst.pct, label: worst.ref || "flat" } : null;
+  }, [features, plotList, lookups, elecLevelsAt, scopeServiceCableId]);
+
   const levelsAtBoard = useCallback((board) => {
     if (!elecLevelsAt || !board) return null;
     const at = board.Attributes?.Span_Anchor ?? board.Geometry?.[0];
@@ -6767,7 +6817,19 @@ export default function GISCanvasPage() {
              sits on, and it is in the figure either way. */
           const shownPct = vdBasis === "own" && vd.pctOwn != null
             ? vd.pctOwn : vd.pct;
-          const text = `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`;
+          /* ── And the worst flat, where this stop is a board's ──
+
+             The figure at a board is the figure at the bottom of the
+             riser. Nobody lives there. What has to pass is the flat at
+             the end of the longest tail, and until it was on the label
+             the drawing showed a comfortable number for a board whose
+             top flat might be over.
+
+             Read off the same worked figures the editor shows, so the
+             drawing and the panel cannot disagree. */
+          const worst = worstFlatAt(f);
+          const text = `${shownPct.toFixed(2)}% · ${vd.ohms.toFixed(3)}Ω`
+            + (worst ? `  → ${worst.pct.toFixed(2)}% at ${worst.label}` : "");
           ctx.font = `600 ${Math.max(9, fontPx - 1)}px system-ui, sans-serif`;
           ctx.textAlign = "left";
           ctx.textBaseline = "middle";

@@ -985,6 +985,67 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
+// 23. The board's label carries the worst flat.
+//
+//     The figure at a board is the figure at the bottom of the riser,
+//     where nobody lives. On the live drawing the stop reads 4.42% and
+//     the top flat is at 5.63% \u2014 over the limit, behind a label saying
+//     everything is fine.
+{
+  const raw = JSON.parse(readFileSync("./fixtures/drawing-2202-043-msdb.json", "utf8"));
+  const bd = raw.features.find((x) => x.Feature_Role === "msdb");
+  const pids = bd.Attributes.MSDB_Plot_IDs || [];
+  const cable = { Loop_Impedance_Ohm: 0.9785, Volt_Drop_Base: 3094 };
+  const cons = [{ Bedrooms: 1, Heat_Source_ID: 2, Consumption_kVA: 2.2 }];
+  const flats = servedFlats(bd, flatsFromPlots({
+    plotList: pids.map((id, i) => ({ plot_id: id, plot_number: `10${i + 1}`,
+      Property_Config_ID: 500, Heat_Source_ID: 2 })),
+    configs: [{ Property_Config_ID: 500, Bedrooms: 1, Property_Type_ID: 7 }],
+    propertyTypes: [{ Property_Type_ID: 7, Property_Type: "Flat" }],
+  })).map((r) => ({ ...r, kva: 2.2 }));
+
+  const vd = { pct: 4.42, ohms: 0.159 };
+  const kva = flats.reduce((t, r) => t + r.kva, 0);
+  const atBoard = riserDrop(bd, { at: vd, cable, kva });
+  const worst = worstApartment(apartmentLevels(bd, flats,
+    { at: atBoard, cable, consumption: cons }));
+
+  if (!worst) fail("no worst flat could be worked out for the board");
+  else {
+    /* Worse than the stop, or the label adds nothing. */
+    if (!(worst.pct > vd.pct)) {
+      fail("the worst flat reads no worse than the stop below it, so the "
+        + "riser and the tails are not in the figure");
+    }
+    /* The riser is in it: the board is up a shaft the drawing stops
+       short of, and every flat is beyond it. */
+    if (!(atBoard.pct > vd.pct)) {
+      fail("the figure at the board equals the figure at the stop, so the "
+        + "riser counts for nothing");
+    }
+    /* And it is the WORST, not just any. */
+    const all = apartmentLevels(bd, flats, { at: atBoard, cable, consumption: cons });
+    if (all.some((r) => r.pct > worst.pct + 1e-9)) {
+      fail("a flat reads worse than the one the label names");
+    }
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/const worst = worstFlatAt\(f\);/.test(canvas)) {
+    fail("the stop's label does not carry the worst flat on the board");
+  }
+  /* Worked from the same functions the editor uses, so the drawing and
+     the panel cannot disagree. */
+  if (!/riserDrop\(board, \{ at: vd, cable, kva, voltageV \}\)/.test(canvas)) {
+    fail("the label works the board's figure out its own way rather than "
+      + "the way the editor does");
+  }
+  /* Matched by the id the build stamps, not by position alone. */
+  if (!/Number\(f\.Feature_ID\) === Number\(stamped\)/.test(canvas)) {
+    fail("the stop is matched to its board by position only");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

@@ -2251,6 +2251,22 @@ draw body is for.
 canvas, and a browser hands back a BLANK canvas rather than an error. A
 blank A0 at the printers is an expensive way to find that out.
 
+**The sheet is outlined on the drawing while the dialogue is open.**
+"What size and what scale" are two questions whose real answer is a
+rectangle on the ground, and until it was drawn the only way to see
+whether it covered the work was to print it.
+
+**Two rectangles, not one.** The outer, faint, is the paper — what comes
+out of the printer. The inner, dashed, is what lands on it. They differ
+by the margin, and drawing only the paper would promise ten millimetres
+of coverage all round that the sheet does not have.
+
+Never drawn on the sheet itself: `over` is the print pass, and a printed
+plan with a dashed line round the edge showing where the paper is would
+be a joke at the reader's expense. Cleared when the dialogue closes,
+including when it closes because the print succeeded — an outline left
+behind is a line somebody would try to select.
+
 **And the sheet carries a scale bar.** Printing "fit to page" rescales
 everything and makes the stated scale a lie; nothing in the app can
 prevent that. The bar is drawn in the same transform as the drawing, so

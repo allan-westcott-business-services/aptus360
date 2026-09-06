@@ -521,6 +521,10 @@ export default function GISCanvasPage() {
   const [traceEnds, setTraceEnds] = useState(false);
   const [schematic, setSchematic] = useState(false);
   const [printOpen, setPrintOpen] = useState(false);
+  /* The sheet's footprint on the ground, while the print dialogue is
+     open. Held here rather than in the dialogue because the canvas is
+     what draws it. */
+  const [printFrame, setPrintFrame] = useState(null);
   /* Rings round the meters, coloured by circuit.
 
      After grouping — or after any circuit is made by hand — the only
@@ -6573,7 +6577,57 @@ export default function GISCanvasPage() {
     paintCallOff();
     paintStep();
     paintGaps();
-  }, [visible, selected, view, toPx, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
+
+    /* ── Where the paper falls ──
+
+       A print dialogue asking for a size and a scale is asking two
+       questions whose answer is a rectangle on the ground, and the only
+       way to see whether that rectangle covers the work was to print
+       it. Drawn while the dialogue is open: the sheet's own footprint,
+       dashed, so it reads as a guide rather than as something on the
+       drawing.
+
+       Never on the sheet itself \u2014 `over` is the print pass, and a
+       printed plan with a dashed line round the edge showing where the
+       paper is would be a joke at the reader's expense. */
+    if (!over && printFrame) {
+      const rect = (wM, hM) => {
+        const a = at([printFrame.centre[0] - wM / 2, printFrame.centre[1] - hM / 2]);
+        const b = at([printFrame.centre[0] + wM / 2, printFrame.centre[1] + hM / 2]);
+        return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
+      };
+      ctx.save();
+      /* The paper's own edge, faint: what comes out of the printer. */
+      if (printFrame.paperW) {
+        const p2 = rect(printFrame.paperW, printFrame.paperH);
+        ctx.setLineDash([4, 4]);
+        ctx.lineWidth = 1;
+        ctx.strokeStyle = "rgba(29,78,216,.45)";
+        ctx.strokeRect(p2.x, p2.y, p2.w, p2.h);
+      }
+      /* And what lands on it, which is the paper less the margin. Two
+         lines because they are two different edges, and one of them
+         would promise coverage the sheet does not have. */
+      const a = rect(printFrame.w, printFrame.h);
+      ctx.setLineDash([9, 6]);
+      ctx.lineWidth = 1.5;
+      ctx.strokeStyle = "#1d4ed8";
+      ctx.strokeRect(a.x, a.y, a.w, a.h);
+      /* Named on the frame, because the dialogue is over the drawing and
+         somebody comparing the two is looking at the rectangle. */
+      ctx.setLineDash([]);
+      ctx.font = "600 12px system-ui, sans-serif";
+      ctx.textBaseline = "bottom";
+      const label = `${printFrame.paper}`
+        + `${printFrame.landscape ? " landscape" : " portrait"} \u00b7 1:${printFrame.scaleDenom}`;
+      const tw = ctx.measureText(label).width;
+      ctx.fillStyle = "rgba(255,255,255,.85)";
+      ctx.fillRect(a.x, a.y - 17, tw + 10, 17);
+      ctx.fillStyle = "#1d4ed8";
+      ctx.fillText(label, a.x + 5, a.y - 4);
+      ctx.restore();
+    }
+  }, [visible, selected, view, toPx, printFrame, layerOf, styleFor, seedStyle, draft, cursor, snapHit, lineTypes, editVertex, typeOf, lineType, bgImage, basemap, showBasemap, showLabels, labelKinds, labelShown, showGrid, isPdfMap, pdf.tile, pdf.size, placing, awaitingClick, jointFor, traceRun, tracedM, meterFor, boundaryFor, trenchEndFor, nrsName, nextPlot, utilities, boundaryShown, boundaryStyle, waterColour, trace, traceLeg, traceOver, elecLevelsAt, vdBasis, hidden, circuitRings, tool, ringColours, proposedGroup, routePlan, gapList, stepAt, callOffOpen, callOff, pick, calledOffSpans, marking, markFrom, inspect, serviceOpen, servicePlots, priorServices, plotSupply, hatchLayers, servicePairOffset, slpSet, slpNrsSet, layers]);
 
   useEffect(() => {
     const cv = canvasRef.current, wrap = wrapRef.current;
@@ -23241,6 +23295,7 @@ export default function GISCanvasPage() {
       {printOpen && (
         <PrintModal features={features}
           onRender={printSheet}
+          onFrame={setPrintFrame}
           onClose={() => setPrintOpen(false)} />
       )}
 

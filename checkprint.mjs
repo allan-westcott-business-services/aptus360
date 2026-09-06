@@ -151,6 +151,45 @@ for (const dpi of [96, 150, 300]) {
   }
 }
 
+// 8. The sheet is outlined on the drawing before it is printed.
+//
+//    "What size and what scale" are two questions whose real answer is
+//    a rectangle on the ground, and until it was drawn the only way to
+//    see whether it covered the work was to print it.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  const modal = readFileSync("./src/features/gis/PrintModal.jsx", "utf8");
+
+  if (!/if \(!over && printFrame\) \{/.test(canvas)) {
+    fail("the sheet's footprint is never drawn on the canvas");
+  }
+  /* NOT on the sheet itself. `over` is the print pass, and a printed
+     plan with a dashed line round the edge showing where the paper is
+     would be a joke at the reader's expense. */
+  if (!/!over && printFrame/.test(canvas)) {
+    fail("the paper outline is drawn onto the printed sheet as well");
+  }
+  /* Two edges: the paper, and what lands on it. Drawing only the paper
+     promises a margin's worth of coverage the sheet does not have. */
+  if (!/printFrame\.paperW/.test(canvas)) {
+    fail("only one rectangle is drawn, so the margin is invisible and the "
+      + "outline promises coverage the sheet does not have");
+  }
+  if (!/ctx\.setLineDash\(\[9, 6\]\)/.test(canvas)) {
+    fail("the outline is not dashed, so it reads as something drawn");
+  }
+  /* Reported as the settings change, and cleared when the dialogue
+     goes \u2014 an outline left behind is a line somebody would try to
+     select. */
+  if (!/onFrame\?\.\(\{/.test(modal)) {
+    fail("the dialogue does not report its footprint, so the outline cannot "
+      + "follow the paper and scale being chosen");
+  }
+  if (!/useEffect\(\(\) => \(\) => onFrame\?\.\(null\)/.test(modal)) {
+    fail("the outline is not cleared when the dialogue closes");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "Printing behaves (A4 to A0, and a metre lands where a metre belongs).");
 process.exit(bad ? 1 : 0);

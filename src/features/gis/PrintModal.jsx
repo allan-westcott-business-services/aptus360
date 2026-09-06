@@ -1,4 +1,4 @@
-import { useMemo, useState } from "react";
+import { useEffect, useMemo, useState } from "react";
 import {
   PAPER, SCALES, sheetMm, groundCovered, printView, drawnBounds, scaleToFit,
   tooBig, mmPerMetre,
@@ -27,7 +27,7 @@ import {
    "fit to page" it is not, and nothing here can prevent that — which is
    why the sheet carries the scale, the paper size, and a bar to check
    it against. */
-export default function PrintModal({ features, onRender, onClose }) {
+export default function PrintModal({ features, onRender, onFrame, onClose }) {
   const [paper, setPaper] = useState("A1");
   const [landscape, setLandscape] = useState(true);
   const [dpi, setDpi] = useState(150);
@@ -39,8 +39,40 @@ export default function PrintModal({ features, onRender, onClose }) {
     () => scaleToFit(drawnBounds(features || []), "A1", true),
   );
 
-  const covered = groundCovered(paper, landscape, scaleDenom);
   const sheet = sheetMm(paper, landscape);
+  const covered = groundCovered(paper, landscape, scaleDenom);
+
+  /* ── The sheet, on the drawing ──
+
+     Reported up as it changes so the canvas can outline it. Two
+     questions \u2014 what size and what scale \u2014 whose real answer is a
+     rectangle on the ground, and until it was drawn the only way to see
+     whether it covered the work was to print it.
+
+     Cleared when this closes, including when it closes because the
+     print succeeded: an outline left on the drawing afterwards is a
+     line somebody would try to select. */
+  useEffect(() => {
+    /* Two rectangles, because they are two different edges and the
+       difference is the margin. The outer one is the PAPER \u2014 what
+       comes out of the printer. The inner is what actually lands on it.
+       Drawing only the paper would promise ten millimetres of coverage
+       all round that the sheet does not have. */
+    const k = mmPerMetre(scaleDenom);
+    onFrame?.({
+      centre: bounds?.centre ?? [0, 0],
+      w: covered.w,
+      h: covered.h,
+      paperW: sheet.w / k,
+      paperH: sheet.h / k,
+      paper,
+      landscape,
+      scaleDenom,
+    });
+  }, [onFrame, bounds, covered.w, covered.h, sheet.w, sheet.h,
+    paper, landscape, scaleDenom]);
+
+  useEffect(() => () => onFrame?.(null), [onFrame]);
   const fits = !bounds || (bounds.w <= covered.w && bounds.h <= covered.h);
   const size = printView({ paper, landscape, scaleDenom, dpi });
   const refuse = tooBig(paper, landscape, dpi);

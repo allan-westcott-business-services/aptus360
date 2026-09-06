@@ -2257,6 +2257,24 @@ blank A0 at the printers is an expensive way to find that out.
 rectangle on the ground, and until it was drawn the only way to see
 whether it covered the work was to print it.
 
+**And it tiles.** *Cover the drawing* divides the ground into as many
+sheets as it takes at the chosen size and scale, outlines every one of
+them on the canvas numbered across then down, and prints them as
+separate pages. A site at 1:200 does not fit on anything, and the honest
+answer is several sheets rather than a scale nobody can read — the live
+site is 1 sheet at A1 1:500, 9 at A1 1:200, 25 at A3 1:200.
+
+An **overlap** can be asked for: a common strip on both sides of a join
+for trimming and taping, and because a plotter that under-scales
+slightly leaves a white seam without one. Zero is a legitimate answer,
+so it is offered rather than assumed.
+
+One canvas, redrawn per sheet — twenty-five A3s at 150 dpi is more than
+a gigabyte if each keeps its own. Each carries its own scale bar and
+**sheet N of M**, because a pile of A3s with no numbers is a puzzle. And
+`break-after:page`, or the browser flows the second onto what is left of
+the first and cuts it in half.
+
 **Two rectangles, not one.** The outer, faint, is the paper — what comes
 out of the printer. The inner, dashed, is what lands on it. They differ
 by the margin, and drawing only the paper would promise ten millimetres

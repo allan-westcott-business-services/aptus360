@@ -173,3 +173,64 @@ export function tooBig(paper, landscape, dpi) {
   }
   return null;
 }
+
+/* ── More ground than one sheet holds ──
+
+   A site at 1:200 does not fit on anything, and the honest answer is
+   several sheets rather than a smaller scale nobody can read. So the
+   ground is divided into a grid of sheets, each covering what one sheet
+   covers, and every one of them is drawn on screen before any of them
+   is printed.
+
+   Numbered across then down, the way somebody lays them out on a table.
+
+   ── Overlap ──
+
+   Sheets butt exactly by default: each covers its own patch and
+   together they cover the lot. An overlap can be asked for, because
+   trimming to a line and taping is easier when there is a common strip
+   on both sides \u2014 and because a plotter that under-scales slightly
+   leaves a white seam otherwise. */
+export function sheetGrid({
+  bounds,
+  paper = "A3",
+  landscape = true,
+  scaleDenom = 500,
+  marginMm = 10,
+  overlapM = 0,
+}) {
+  if (!bounds) return null;
+  const cover = groundCovered(paper, landscape, scaleDenom, marginMm);
+  /* What each sheet ADDS once the overlap is taken off both joins. */
+  const stepW = Math.max(0.001, cover.w - overlapM);
+  const stepH = Math.max(0.001, cover.h - overlapM);
+
+  const cols = Math.max(1, Math.ceil((bounds.w - overlapM) / stepW));
+  const rows = Math.max(1, Math.ceil((bounds.h - overlapM) / stepH));
+
+  /* Centred on the work as a whole, so a drawing that needs two sheets
+     gets one either side of the middle rather than one on it and one
+     mostly empty. */
+  const totalW = cols * stepW + overlapM;
+  const totalH = rows * stepH + overlapM;
+  const left = bounds.centre[0] - totalW / 2;
+  const top = bounds.centre[1] - totalH / 2;
+
+  const tiles = [];
+  for (let r = 0; r < rows; r++) {
+    for (let c = 0; c < cols; c++) {
+      tiles.push({
+        row: r,
+        col: c,
+        n: r * cols + c + 1,
+        centre: [
+          left + c * stepW + cover.w / 2,
+          top + r * stepH + cover.h / 2,
+        ],
+        w: cover.w,
+        h: cover.h,
+      });
+    }
+  }
+  return { cols, rows, tiles, cover, count: tiles.length };
+}

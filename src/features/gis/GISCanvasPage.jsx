@@ -6602,15 +6602,50 @@ export default function GISCanvasPage() {
        printed plan with a dashed line round the edge showing where the
        paper is would be a joke at the reader's expense. */
     if (!over && printFrame) {
-      const rect = (wM, hM) => {
-        const a = pxOf([printFrame.centre[0] - wM / 2, printFrame.centre[1] - hM / 2]);
-        const b = pxOf([printFrame.centre[0] + wM / 2, printFrame.centre[1] + hM / 2]);
+      const rect = (centre, wM, hM) => {
+        const a = pxOf([centre[0] - wM / 2, centre[1] - hM / 2]);
+        const b = pxOf([centre[0] + wM / 2, centre[1] + hM / 2]);
         return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
       };
+
+      /* ── Every sheet, before any of them is printed ──
+
+         A site at 1:200 does not fit on anything, and the honest answer
+         is several sheets rather than a scale nobody can read. Drawn as
+         a grid with each sheet numbered the way they will come out of
+         the printer, so "how many, and what is on each" is answered by
+         looking rather than by printing.
+
+         The one being described in the dialogue is drawn solid below;
+         these are its neighbours. */
+      if (printFrame.tiles?.length > 1) {
+        ctx.save();
+        for (const t of printFrame.tiles) {
+          const r = rect(t.centre, t.w, t.h);
+          ctx.setLineDash([6, 5]);
+          ctx.lineWidth = 1;
+          ctx.strokeStyle = "rgba(29,78,216,.5)";
+          ctx.strokeRect(r.x, r.y, r.w, r.h);
+          /* Numbered in the corner rather than the middle: the middle
+             is where the drawing is. */
+          if (r.w > 40 && r.h > 26) {
+            ctx.setLineDash([]);
+            ctx.font = "600 12px system-ui, sans-serif";
+            ctx.textBaseline = "top";
+            const tag = String(t.n);
+            const tw = ctx.measureText(tag).width;
+            ctx.fillStyle = "rgba(29,78,216,.12)";
+            ctx.fillRect(r.x + 3, r.y + 3, tw + 10, 17);
+            ctx.fillStyle = "#1d4ed8";
+            ctx.fillText(tag, r.x + 8, r.y + 6);
+          }
+        }
+        ctx.restore();
+      }
       ctx.save();
       /* The paper's own edge, faint: what comes out of the printer. */
       if (printFrame.paperW) {
-        const p2 = rect(printFrame.paperW, printFrame.paperH);
+        const p2 = rect(printFrame.centre, printFrame.paperW, printFrame.paperH);
         ctx.setLineDash([4, 4]);
         ctx.lineWidth = 1;
         ctx.strokeStyle = "rgba(29,78,216,.45)";
@@ -6619,7 +6654,7 @@ export default function GISCanvasPage() {
       /* And what lands on it, which is the paper less the margin. Two
          lines because they are two different edges, and one of them
          would promise coverage the sheet does not have. */
-      const a = rect(printFrame.w, printFrame.h);
+      const a = rect(printFrame.centre, printFrame.w, printFrame.h);
       ctx.setLineDash([9, 6]);
       ctx.lineWidth = 1.5;
       ctx.strokeStyle = "#1d4ed8";
@@ -10083,9 +10118,16 @@ export default function GISCanvasPage() {
      a document somebody can see, and a sheet that appears and vanishes
      gives no chance to notice it is wrong before it is on paper. */
   const printSheet = useCallback(async (opts) => {
-    const { widthPx, heightPx, sheetW, sheetH, marginMm, view: pv, pxPerMm } =
-      printView(opts);
+    const { widthPx, heightPx, sheetW, sheetH, marginMm, pxPerMm } = printView(opts);
 
+    /* Every sheet the drawing needs, or the one asked for. */
+    const tiles = opts.tiles?.length
+      ? opts.tiles
+      : [{ n: 1, centre: opts.centre ?? [0, 0] }];
+
+    /* One canvas, redrawn per sheet. Twenty-five A3s at 150 dpi is
+       eleven hundred megabytes if each keeps its own; reusing it costs
+       one redraw and nothing else. */
     const cv = document.createElement("canvas");
     cv.width = widthPx;
     cv.height = heightPx;
@@ -10093,48 +10135,58 @@ export default function GISCanvasPage() {
        throwing, so it is checked before anything is drawn on it. */
     const probe = cv.getContext("2d");
     if (!probe) throw new Error("The sheet is too large for this browser to draw.");
-    probe.fillStyle = "#fff";
-    probe.fillRect(0, 0, widthPx, heightPx);
 
-    draw({ canvas: cv, view: pv });
+    const pages = [];
+    for (const tile of tiles) {
+      const pv = printView({ ...opts, centre: tile.centre }).view;
+      probe.setTransform(1, 0, 0, 1, 0, 0);
+      probe.fillStyle = "#fff";
+      probe.fillRect(0, 0, widthPx, heightPx);
 
-    /* The scale bar, drawn on the sheet itself.
+      draw({ canvas: cv, view: pv });
 
-       The one thing that cannot be enforced from here is somebody
-       printing "fit to page", which rescales everything and makes the
-       stated scale a lie. A bar is measured against a rule and settles
-       it in two seconds \u2014 and it is drawn in the same transform as the
-       drawing, so if the sheet is rescaled the bar is rescaled with it
-       and stops matching its own label. */
-    const barM = [1, 2, 5, 10, 20, 50, 100, 200]
-      .find((m) => m * pv.scale > widthPx * 0.08) ?? 100;
-    const barPx = barM * pv.scale;
-    const bx = marginMm * pxPerMm;
-    const by = heightPx - marginMm * pxPerMm;
-    const ctx = probe;
-    ctx.save();
-    ctx.lineWidth = Math.max(1, pxPerMm * 0.4);
-    ctx.strokeStyle = "#0f172a";
-    ctx.fillStyle = "#0f172a";
-    ctx.beginPath();
-    ctx.moveTo(bx, by);
-    ctx.lineTo(bx + barPx, by);
-    ctx.stroke();
-    for (const t of [0, 1]) {
+      /* The scale bar, drawn on the sheet itself.
+
+         The one thing that cannot be enforced from here is somebody
+         printing "fit to page", which rescales everything and makes the
+         stated scale a lie. A bar is measured against a rule and settles
+         it in two seconds \u2014 and it is drawn in the same transform as the
+         drawing, so if the sheet is rescaled the bar is rescaled with it
+         and stops matching its own label. */
+      const barM = [1, 2, 5, 10, 20, 50, 100, 200]
+        .find((m) => m * pv.scale > widthPx * 0.08) ?? 100;
+      const barPx = barM * pv.scale;
+      const bx = marginMm * pxPerMm;
+      const by = heightPx - marginMm * pxPerMm;
+      const ctx = probe;
+      ctx.save();
+      ctx.lineWidth = Math.max(1, pxPerMm * 0.4);
+      ctx.strokeStyle = "#0f172a";
+      ctx.fillStyle = "#0f172a";
       ctx.beginPath();
-      ctx.moveTo(bx + barPx * t, by - pxPerMm * 1.6);
-      ctx.lineTo(bx + barPx * t, by + pxPerMm * 1.6);
+      ctx.moveTo(bx, by);
+      ctx.lineTo(bx + barPx, by);
       ctx.stroke();
-    }
-    ctx.font = `${Math.round(pxPerMm * 3)}px system-ui, sans-serif`;
-    ctx.textBaseline = "bottom";
-    ctx.fillText(`${barM} m`, bx, by - pxPerMm * 2.4);
-    ctx.fillText(`1:${opts.scaleDenom}  \u00b7  ${opts.paper}`
-      + `${opts.landscape ? " landscape" : " portrait"}`,
-    bx, by + pxPerMm * 6);
-    ctx.restore();
+      for (const t of [0, 1]) {
+        ctx.beginPath();
+        ctx.moveTo(bx + barPx * t, by - pxPerMm * 1.6);
+        ctx.lineTo(bx + barPx * t, by + pxPerMm * 1.6);
+        ctx.stroke();
+      }
+      ctx.font = `${Math.round(pxPerMm * 3)}px system-ui, sans-serif`;
+      ctx.textBaseline = "bottom";
+      ctx.fillText(`${barM} m`, bx, by - pxPerMm * 2.4);
+        /* And which sheet this is, where there is more than one:
+           a pile of A3s with no numbers is a puzzle. */
+        ctx.fillText(`1:${opts.scaleDenom}  \u00b7  ${opts.paper}`
+          + `${opts.landscape ? " landscape" : " portrait"}`
+          + (tiles.length > 1 ? `  \u00b7  sheet ${tile.n} of ${tiles.length}` : ""),
+        bx, by + pxPerMm * 6);
+      ctx.restore();
 
-    const url = cv.toDataURL("image/png");
+      pages.push({ n: tile.n, url: cv.toDataURL("image/png") });
+    }
+
     const win = window.open("", "_blank");
     if (!win) throw new Error("The print window was blocked. Allow pop-ups and try again.");
     /* ── Where the printer is chosen ──
@@ -10153,8 +10205,13 @@ export default function GISCanvasPage() {
       + `Drawing 1:${opts.scaleDenom} ${opts.paper}</title>`
       + `<style>@page{size:${sheetW}mm ${sheetH}mm;margin:0}`
       + `html,body{margin:0;padding:0;background:#f1f5f9}`
-      + `img{width:${sheetW}mm;height:${sheetH}mm;display:block;margin:0 auto;`
-      + `box-shadow:0 2px 18px rgba(15,23,42,.25);background:#fff}`
+      + `img{width:${sheetW}mm;height:${sheetH}mm;display:block;margin:0 auto 18px;`
+      + `box-shadow:0 2px 18px rgba(15,23,42,.25);background:#fff;`
+      /* One sheet per page. Without this a browser flows the second
+         image onto whatever is left of the first page and cuts it in
+         half. */
+      + `break-after:page;page-break-after:always}`
+      + `img:last-child{break-after:auto;page-break-after:auto;margin-bottom:0}`
       + `.bar{position:sticky;top:0;z-index:2;display:flex;gap:12px;`
       + `align-items:center;padding:10px 14px;background:#1e293b;color:#fff;`
       + `font:14px system-ui,sans-serif}`
@@ -10168,12 +10225,15 @@ export default function GISCanvasPage() {
       + `<div class="bar">`
       + `<button onclick="window.print()">Print…</button>`
       + `<b>${opts.paper}${opts.landscape ? " landscape" : " portrait"} `
-      + `· 1:${opts.scaleDenom}</b>`
+      + `· 1:${opts.scaleDenom}`
+      + (pages.length > 1 ? ` · ${pages.length} sheets` : "") + `</b>`
       + `<span class="note">Choose the printer in the dialogue. `
       + `Set scale to 100% or Actual size — not Fit to page, which makes `
-      + `the drawing scale wrong. Paper: ${opts.paper}.</span>`
+      + `the drawing scale wrong. Paper: ${opts.paper}.`
+      + (pages.length > 1 ? ` Sheets are numbered on each drawing.` : "")
+      + `</span>`
       + `</div>`
-      + `<img src="${url}" alt="Drawing">`
+      + pages.map((pg) => `<img src="${pg.url}" alt="Sheet ${pg.n}">`).join("")
       + `</body></html>`);
     win.document.close();
     /* The dialogue is opened by the button rather than from here.

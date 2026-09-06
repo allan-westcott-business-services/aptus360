@@ -1,7 +1,7 @@
 import { useEffect, useMemo, useState } from "react";
 import {
   PAPER, SCALES, sheetMm, groundCovered, printView, drawnBounds, scaleToFit,
-  tooBig, mmPerMetre,
+  tooBig, mmPerMetre, sheetGrid,
 } from "./printSheet.js";
 
 /* Printing the drawing to a sheet somebody can measure.
@@ -39,8 +39,21 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
     () => scaleToFit(drawnBounds(features || []), "A1", true),
   );
 
+  const [tiled, setTiled] = useState(false);
+  const [overlapM, setOverlapM] = useState(0);
+
   const sheet = sheetMm(paper, landscape);
   const covered = groundCovered(paper, landscape, scaleDenom);
+
+  /* ── One sheet, or as many as it takes ──
+
+     A site at 1:200 does not fit on anything, and the honest answer is
+     several sheets rather than a scale nobody can read. */
+  const grid = useMemo(
+    () => (bounds ? sheetGrid({ bounds, paper, landscape, scaleDenom, overlapM }) : null),
+    [bounds, paper, landscape, scaleDenom, overlapM],
+  );
+  const tiles = tiled && grid ? grid.tiles : null;
 
   /* ── The sheet, on the drawing ──
 
@@ -60,7 +73,8 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
        all round that the sheet does not have. */
     const k = mmPerMetre(scaleDenom);
     onFrame?.({
-      centre: bounds?.centre ?? [0, 0],
+      tiles: tiles ?? null,
+      centre: (tiles?.[0]?.centre) ?? bounds?.centre ?? [0, 0],
       w: covered.w,
       h: covered.h,
       paperW: sheet.w / k,
@@ -70,7 +84,7 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
       scaleDenom,
     });
   }, [onFrame, bounds, covered.w, covered.h, sheet.w, sheet.h,
-    paper, landscape, scaleDenom]);
+    paper, landscape, scaleDenom, tiles]);
 
   useEffect(() => () => onFrame?.(null), [onFrame]);
   const fits = !bounds || (bounds.w <= covered.w && bounds.h <= covered.h);
@@ -83,7 +97,8 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
     setErr("");
     try {
       await onRender({ paper, landscape, scaleDenom, dpi,
-        centre: bounds?.centre ?? [0, 0] });
+        centre: bounds?.centre ?? [0, 0],
+        tiles: tiles ?? null });
       onClose();
     } catch (e) {
       setErr(e?.message || "The sheet could not be drawn.");
@@ -157,6 +172,34 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
             </div>
           </div>
 
+          <div className="fld">
+            <span className="fe-lab">Coverage</span>
+            <div className="pr-row">
+              {[[false, "One sheet"], [true, "Cover the drawing"]].map(([v, label]) => (
+                <button key={label} className={`btn sm${tiled === v ? " accent" : " ghost"}`}
+                  disabled={!bounds}
+                  title={v
+                    ? "As many sheets as the drawing needs at this size and scale"
+                    : "A single sheet, centred on the drawing"}
+                  onClick={() => setTiled(v)}>{label}</button>
+              ))}
+              {tiled && (
+                <>
+                  {/* A common strip on both sides of a join, for
+                      trimming and taping \u2014 and because a plotter that
+                      under-scales slightly leaves a white seam without
+                      one. Zero is a legitimate answer, so it is
+                      offered. */}
+                  <span className="pr-lab">Overlap</span>
+                  {[0, 2, 5].map((m) => (
+                    <button key={m} className={`btn sm${overlapM === m ? " accent" : " ghost"}`}
+                      onClick={() => setOverlapM(m)}>{m} m</button>
+                  ))}
+                </>
+              )}
+            </div>
+          </div>
+
           {/* ── What this will actually give you ──
 
               Said before printing rather than found on the sheet. The
@@ -171,11 +214,23 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
               )}
             </div>
             <div className="hint">{size.widthPx} &times; {size.heightPx} pixels</div>
-            {!fits && (
+            {tiled && grid && (
+              <div><strong>{grid.cols} &times; {grid.rows} = {grid.count} sheet
+                {grid.count === 1 ? "" : "s"}</strong>, numbered across then down
+              </div>
+            )}
+            {!fits && !tiled && (
               <div className="pr-warn">
                 The drawing is bigger than this sheet at this scale &mdash; the
-                edges will be cut off. Use Fit, a larger sheet, or a smaller
-                scale.
+                edges will be cut off. Use Fit, a larger sheet, a smaller scale,
+                or Cover the drawing.
+              </div>
+            )}
+            {/* Said before printing, not discovered at the printer. */}
+            {tiled && grid && grid.count > 12 && (
+              <div className="pr-warn">
+                {grid.count} sheets is a lot of paper. A larger size or a
+                smaller scale would take fewer.
               </div>
             )}
             {refuse && <div className="pr-warn">{refuse}</div>}
@@ -205,7 +260,9 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
         <div className="fe-foot">
           <button className="btn ghost" onClick={onClose}>Cancel</button>
           <button className="btn accent" disabled={busy || !!refuse} onClick={go}>
-            {busy ? "Drawing\u2026" : "Open the sheet"}
+            {busy
+              ? (tiles?.length > 1 ? `Drawing ${tiles.length} sheets\u2026` : "Drawing\u2026")
+              : (tiles?.length > 1 ? `Open ${tiles.length} sheets` : "Open the sheet")}
           </button>
         </div>
       </div>
@@ -216,6 +273,7 @@ export default function PrintModal({ features, onRender, onFrame, onClose }) {
 .pr-sum { margin-top: 12px; padding: 10px 12px; border-radius: 8px;
   background: var(--bg); border: 1px solid var(--line); font-size: 13px;
   display: flex; flex-direction: column; gap: 4px; }
+.pr-lab { font-size: 12px; color: var(--muted); align-self: center; }
 .pr-warn { color: #b91c1c; font-weight: 600; }
       `}</style>
     </div>

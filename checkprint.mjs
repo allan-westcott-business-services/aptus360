@@ -10,7 +10,7 @@
 import { readFileSync } from "node:fs";
 import {
   PAPER, SCALES, mmPerMetre, sheetMm, groundCovered, printView, drawnBounds,
-  scaleToFit, tooBig, MAX_SIDE,
+  scaleToFit, tooBig, MAX_SIDE, sheetGrid,
 } from "./src/features/gis/printSheet.js";
 
 let bad = 0;
@@ -222,6 +222,81 @@ for (const dpi of [96, 150, 300]) {
   if (!/browser&rsquo;s print dialogue/.test(modal)) {
     fail("the dialogue does not say where the printer is chosen, so somebody "
       + "goes looking for a control it cannot have");
+  }
+}
+
+// 10. More ground than one sheet holds.
+//
+//     A site at 1:200 does not fit on anything, and the honest answer
+//     is several sheets rather than a scale nobody can read.
+{
+  const b = { w: 368, h: 258, minX: 0, minY: 0, maxX: 368, maxY: 258, centre: [184, 129] };
+
+  /* The grid covers the work, whatever the sheet. */
+  for (const [paper, sc] of [["A1", 500], ["A1", 200], ["A3", 200], ["A0", 200]]) {
+    const g = sheetGrid({ bounds: b, paper, landscape: true, scaleDenom: sc });
+    if (!g) { fail(`no grid for ${paper} 1:${sc}`); continue; }
+    if (g.cols * g.cover.w < b.w - 0.01 || g.rows * g.cover.h < b.h - 0.01) {
+      fail(`${paper} 1:${sc} gives ${g.cols}x${g.rows} sheets covering `
+        + `${(g.cols * g.cover.w).toFixed(0)}x${(g.rows * g.cover.h).toFixed(0)} m `
+        + `for a ${b.w}x${b.h} m drawing \u2014 part of it would be missing`);
+    }
+    /* And not wastefully more than it needs. */
+    if ((g.cols - 1) * g.cover.w >= b.w || (g.rows - 1) * g.cover.h >= b.h) {
+      fail(`${paper} 1:${sc} uses ${g.count} sheets where fewer would cover it`);
+    }
+  }
+
+  /* One sheet where one is enough. */
+  const one = sheetGrid({ bounds: b, paper: "A1", landscape: true, scaleDenom: 500 });
+  if (one.count !== 1) fail(`a drawing that fits one sheet was given ${one.count}`);
+
+  /* Centred on the work, so two sheets sit either side of the middle
+     rather than one on it and one mostly empty. */
+  const two = sheetGrid({ bounds: b, paper: "A0", landscape: true, scaleDenom: 200 });
+  const midX = two.tiles.reduce((n, t) => n + t.centre[0], 0) / two.tiles.length;
+  if (Math.abs(midX - b.centre[0]) > 0.5) {
+    fail(`the sheets are centred on ${midX.toFixed(1)} rather than on the `
+      + `drawing's ${b.centre[0]}`);
+  }
+
+  /* Overlap costs sheets, which is the trade being made. */
+  const tight = sheetGrid({ bounds: b, paper: "A3", landscape: true, scaleDenom: 200 });
+  const lapped = sheetGrid({ bounds: b, paper: "A3", landscape: true,
+    scaleDenom: 200, overlapM: 5 });
+  if (!(lapped.count >= tight.count)) {
+    fail("an overlap took fewer sheets than butting them exactly, which cannot be");
+  }
+
+  /* Numbered across then down, the way somebody lays them on a table. */
+  if (two.tiles[0].n !== 1 || two.tiles[1].col !== 1 || two.tiles[1].row !== 0) {
+    fail("the sheets are not numbered across then down");
+  }
+
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  /* Every sheet drawn on screen before any is printed. */
+  if (!/printFrame\.tiles\?\.length > 1/.test(canvas)) {
+    fail("only one outline is drawn, so how many sheets and what is on each "
+      + "can only be found by printing");
+  }
+  /* Every sheet rendered, on one canvas: twenty-five A3s at 150 dpi is
+     more than a gigabyte if each keeps its own. */
+  if (!/for \(const tile of tiles\)/.test(canvas)) {
+    fail("only one sheet is rendered");
+  }
+  if (!/probe\.setTransform\(1, 0, 0, 1, 0, 0\)/.test(canvas)) {
+    fail("the canvas is not reset between sheets, so each is drawn over the "
+      + "one before it");
+  }
+  /* One sheet per page, or the browser flows the second onto what is
+     left of the first and cuts it in half. */
+  if (!/break-after:page/.test(canvas)) {
+    fail("the sheets are not forced onto separate pages");
+  }
+  /* And each says which it is. A pile of A3s with no numbers is a
+     puzzle. */
+  if (!/sheet \$\{tile\.n\} of \$\{tiles\.length\}/.test(canvas)) {
+    fail("the sheets are not numbered on the drawings themselves");
   }
 }
 

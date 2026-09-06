@@ -523,8 +523,26 @@ export function jointMarks(features = [], model, sections = [], tol = 0.5) {
 
   const out = [];
   for (const f of features) {
-    if (f.Feature_Role !== "joint") continue;
-    if (String(f.Attributes?.Joint_Type ?? "").toLowerCase() !== "straight") continue;
+    /* ── Fittings the run has to stop at ──
+
+       A straight joint breaks the cable, so the run stops there. A
+       BOARD is the same kind of thing for the same reason: one cable
+       arrives, one leaves, and everything the block draws is taken off
+       in between.
+
+       While a board sat at the end of a spur it got a stop for free \u2014
+       the end of a run is always marked. Run a cable onward from it to
+       serve plots beyond and it becomes a point mid-span, which nothing
+       marked: no stop, so no figure, so no level at the board and a
+       dash against every flat. The drawing looked right and the numbers
+       silently stopped.
+
+       Nothing about being mid-span makes a board less of a stop. */
+    const role = String(f.Feature_Role ?? "");
+    const isBoard = role === "msdb";
+    const isStraight = role === "joint"
+      && String(f.Attributes?.Joint_Type ?? "").toLowerCase() === "straight";
+    if (!isBoard && !isStraight) continue;
     const a = f.Attributes?.Span_Anchor;
     const at = (Array.isArray(a) && a.length === 2) ? a : (f.Geometry || [])[0];
     if (!Array.isArray(at) || !onSections(at)) continue;

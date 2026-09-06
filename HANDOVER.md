@@ -2674,15 +2674,56 @@ nothing is the failure that looks most like success.**
     broken than the thing it is testing.** Two rounds of "it must be the
     membership, it must be the pruning" came out of believing it.
 
-**The MSDB chain is proved end to end**, on the drawing it failed on,
-now in `fixtures/drawing-2202-043-msdb.json`:
+**A board's flats are counted off the BOARD.** They were reaching the
+model as synthesised meters, through the plot list, the house types, the
+consumption table and two membership rules — five things that each had
+to be right for a number the designer typed into one field, and any one
+of them failing left the column blank with no error anywhere.
 
-    without the fix:  B2 -> B3 terminal  0, 43 meters on the circuit
-    with the fix:     B2 -> B3 terminal 10, 53 meters on the circuit
+The model counts them at the board's node instead. No plot list, no
+house types, no consumption table:
 
-`checkmsdb` runs the real model over that fixture and asserts the leg to
-the board carries its flats. Proved by removing `bySelf` and watching it
+    without it:  B2 -> B3 terminal  0, 43 meters on the circuit
+    with it:     B2 -> B3 terminal 10, 53 meters on the circuit
+
+The synthesised meters still earn their place — they carry each flat's
+own tail for the levels — but **the count no longer depends on any of
+that machinery being right.** Ten flats on a board is ten, whatever the
+specs say about bedrooms.
+
+**A board is load, not a customer.** It is counted in `meterCount` and
+`meterKva` and deliberately NOT pushed into `metersAt`, which feeds the
+service-tail machinery: for every entry there, the levels go looking for
+that customer's own service cable. A board has none — its flats hang off
+it inside the building — so listing it there would make a well-served
+leg report "no service".
+
+**And a cable may leave a board to serve plots beyond it.** The board is
+counted before the roll-up, so its flats and everything downstream both
+reach the legs above: 53 where 43 were, and 54 with a further plot past
+it. Counted after the roll-up, the flats would vanish from every leg
+upstream.
+
+The whole chain runs against `fixtures/drawing-2202-043-msdb.json` —
+the drawing it failed on. Proved by zeroing the count and watching it
 fail.
+
+76. **A board at the end of a run got its stop for free.** The end of a
+    run is always marked, so while the MSDB sat on a spur it had a
+    feeder point, a figure, and levels for its flats. Run a cable onward
+    from it to serve plots beyond and it becomes a point MID-SPAN, which
+    nothing marked: no stop, no figure, no level at the board, and a
+    dash against every flat.
+
+    **The drawing looked right and the numbers silently stopped.** On
+    the live drawing the board's feeder point had moved fifty-six metres
+    away and the board sat at vertex 1 of 6 on a cable.
+
+    `jointMarks` already existed for exactly this — a straight joint is
+    a fitting mid-run that the run must stop at — and a board is the
+    same kind of thing for the same reason: one cable arrives, one
+    leaves, and everything the block draws is taken off in between.
+    Nothing about being mid-span makes a board less of a stop.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

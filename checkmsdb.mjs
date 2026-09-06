@@ -16,6 +16,7 @@ import {
 } from "./src/features/gis/msdb.js";
 import { circuitsFrom } from "./src/features/gis/electric.js";
 import { circuitMembership, spanTrace } from "./src/features/gis/feeder.js";
+import { jointMarks } from "./src/features/gis/feederPoints.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -725,13 +726,13 @@ const served = (b) => servedFlats(b, flats);
     if (!b) fail("the fixture has no board on it");
     else {
       const ids = b.Attributes.MSDB_Plot_IDs || [];
-      const src = withAssumedMeters(f, {
-        plotList: ids.map((id, i) => ({ plot_id: id, plot_number: `10${i + 1}`,
-          Property_Config_ID: 500, Heat_Source_ID: 2 })),
-        configs: [{ Property_Config_ID: 500, Bedrooms: 1, Property_Type_ID: 7 }],
-        propertyTypes: [{ Property_Type_ID: 7, Property_Type: "Flat" }],
-        consumption: [{ Bedrooms: 1, Heat_Source_ID: 2, Consumption_kVA: 2.2 }],
-      });
+      /* ── Nothing but the drawing ──
+
+         No plot list, no house types, no consumption table, no
+         synthesised meters. The board says how many flats it has; the
+         routing counts them. Everything this used to depend on is the
+         reason it failed silently for four rounds. */
+      const src = f;
       const { seedIds, meterIds } = circuitMembership(src, 2);
       const origin = f.find((x) => x.Feature_Role === "feederpoint"
         && Number(x.Attributes?.Circuit_ID) === 2
@@ -744,14 +745,41 @@ const served = (b) => servedFlats(b, flats);
       if (!Array.isArray(M.attached)) {
         fail("spanTrace no longer reports what it attached, on the model");
       }
-      /* `attached` is a list of plain ids, not objects. Reading `.id`
-         off a number gives undefined and filters everything out \u2014 the
-         same shape of mistake that made this take three rounds. */
-      const flats = (M.attached || []).filter((id) => Number(id) < 0);
-      if (flats.length !== ids.length) {
-        fail(`${flats.length} of the board's ${ids.length} flats attached to `
-          + "the dig \u2014 the leg to the board arrives carrying nothing");
+      /* The board itself is what attached: its flats are counted off it
+         rather than synthesised into meters. */
+      if (!(M.attached || []).includes(Number(b.Feature_ID))) {
+        fail("the board did not attach to the dig, so its flats are counted "
+          + "nowhere");
       }
+      /* ── Load, not a customer ──
+
+         `metersAt` feeds the service-tail machinery: for each entry it
+         looks for that customer's own service cable. A board has none —
+         its flats hang off it inside the building — so pushing it in
+         would make a well-served leg report "no service". */
+      const inTees = (M.metersAt || []).some((list) => (list || [])
+        .some((x) => x?.meter?.Feature_Role === "msdb"));
+      if (inTees) {
+        fail("the board is listed as a customer with a service tee, so the "
+          + "levels will report a leg with no service");
+      }
+
+      /* ── A cable may leave the board to serve plots beyond it ──
+
+         The board is counted BEFORE the roll-up, so its flats and
+         everything downstream of it both reach the legs above. If the
+         count moved after the roll-up, the flats would vanish from
+         every leg upstream. */
+      const upstream = (r.legs || []).find((l) => l.from === "B0");
+      const withoutBoard = (r.legs || [])
+        .filter((l) => l.to !== "B3")
+        .reduce((n, l) => n + (l.to === "B1" ? 0 : 0), 0);
+      if (upstream && upstream.terminal <= ids.length) {
+        fail(`the first leg carries ${upstream.terminal} meters, which is no `
+          + "more than the board's flats alone — the rest of the circuit has "
+          + "been lost");
+      }
+
       /* And the leg that ends at the board carries them. */
       const at = b.Attributes?.Span_Anchor ?? b.Geometry[0];
       const stop = f.find((x) => x.Feature_Role === "feederpoint"
@@ -763,6 +791,49 @@ const served = (b) => servedFlats(b, flats);
           + `${ids.length} flats \u2014 TERM reads 0 on the levels sheet`);
       }
     }
+  }
+}
+
+// 19. A board mid-run is still a stop.
+//
+//     While a board sat at the end of a spur it got a stop for free:
+//     the end of a run is always marked. Run a cable onward from it to
+//     serve plots beyond and it becomes a point mid-span, which nothing
+//     marked \u2014 no stop, so no figure, so no level at the board and a
+//     dash against every flat.
+//
+//     The drawing looked right and the numbers silently stopped.
+{
+  const model = { nodes: [[0, 0], [50, 0], [100, 0]] };
+  const sections = [{ pts: [[0, 0], [50, 0], [100, 0]] }];
+  const board = { Feature_ID: 900, Feature_Role: "msdb", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[50, 0]], Attributes: { Circuit_ID: 2 } };
+
+  const marks = jointMarks([board], model, sections);
+  if (!marks.length) {
+    fail("a board part way along a run is offered no stop, so it has no "
+      + "level and every flat on it shows a dash");
+  }
+
+  /* A straight joint still gets one: this adds a case, it does not
+     replace one. */
+  const joint = { Feature_ID: 901, Feature_Role: "joint", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[50, 0]],
+    Attributes: { Joint_Type: "straight" } };
+  if (!jointMarks([joint], model, sections).length) {
+    fail("a straight joint no longer gets a stop");
+  }
+  /* And something that is neither does not. */
+  const other = { Feature_ID: 902, Feature_Role: "joint", Feature_Type: "point",
+    Layer_Key: "electric", Geometry: [[50, 0]],
+    Attributes: { Joint_Type: "service" } };
+  if (jointMarks([other], model, sections).length) {
+    fail("a service joint is marked as a stop, which it is not");
+  }
+  /* A board nowhere near the run is not on it. */
+  const away = { ...board, Geometry: [[50, 40]] };
+  if (jointMarks([away], model, sections).length) {
+    fail("a board forty metres off the run was given a stop on it");
   }
 }
 

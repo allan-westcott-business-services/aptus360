@@ -2161,6 +2161,28 @@ the pair — with a leader back to the meter so a figure dragged clear
 still says which plot it belongs to. Saved by the label drag's existing
 path, which writes the whole attributes object.
 
+**The levels report sorts three ways and wears the drawing's colours.**
+By node, by output, or along the cable, cycled from one button because
+the panel is narrow and the orders are exclusive. Grouping by output
+puts the trunk first — everything hangs off it — then each output, with
+node order kept INSIDE each part rather than abandoned.
+
+A boxed circuit is several independent runs sharing a sheet, and node
+order interleaves them: C2, C3, C6, C7 reads down the page as one run
+when it is two.
+
+**And the rows are tinted with their output's colour**, from the box's
+own `Way_Colours` so the drawing and the table cannot disagree. Pastel
+at 14% — a row is a background behind black text, not a marker, and
+these colours are chosen to stand out on a plan. The section heading
+carries a full-strength swatch, because the tint is too pale to name a
+colour by and the heading is where somebody learns which is which.
+
+Keyed on the box's **id**, not its label: two boxes on a site can share
+a name, and a colour from the wrong box is worse than no colour. An
+unknown box or an output with no colour set gets no tint rather than a
+guess.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

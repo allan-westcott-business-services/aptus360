@@ -106,6 +106,7 @@ import {
   jointAtEnd, jointAtPoint, withCable, withoutCable, jointCables,
   JOIN_REACH_M, cablesHeldAt,
 } from "./joints.js";
+import { alpha } from "../../lib/colour.js";
 import { inLightingView } from "./lightingView.js";
 import { utilityMenuPress, utilityTint } from "./utilityMenu.js";
 import { routePocToSubstation } from "./route.js";
@@ -19319,6 +19320,29 @@ export default function GISCanvasPage() {
     return tracedCircuits.includes(traceCircuit) ? traceCircuit : tracedCircuits[0];
   }, [tracedCircuits, traceCircuit]);
 
+  /* ── The colour of the output a leg belongs to ──
+
+     The outputs are coloured on the drawing, and the sheet listing them
+     was uniformly white \u2014 so matching a row to the run it describes
+     meant reading the heading above it and remembering. A tint carries
+     the same fact the canvas already carries.
+
+     From the box's own `Way_Colours`, which is where the runs get
+     theirs, so the drawing and the table cannot disagree. */
+  const wayTint = useCallback((leg) => {
+    if (!leg || leg.part === "trunk" || leg.part === "origin") return null;
+    if (leg.way == null) return null;
+    const box = features.find((f) => f.Feature_Role === "linkbox"
+      && (leg.boxId != null
+        ? Number(f.Feature_ID) === Number(leg.boxId)
+        : (leg.boxLabel && f.Label === leg.boxLabel)));
+    const c = box?.Attributes?.Way_Colours?.[String(leg.way)];
+    /* Pastel: the row is a background behind black text, not a marker.
+       At full strength these colours are picked to stand out on a plan,
+       which is the opposite of what a table row wants. */
+    return c ? alpha(c, 14) : null;
+  }, [features]);
+
   const tracePlan = useMemo(() => {
     if (!trace?.legs) return [];
     /* One circuit at a time where several were checked. */
@@ -19347,17 +19371,38 @@ export default function GISCanvasPage() {
     };
 
     if (ordered) return originFirst(traceEnds ? endsOnly(ordered) : ordered);
+    /* ── By output ──
+
+       A boxed circuit is several independent runs sharing a sheet, and
+       "which of these belong to output 2" is the question a designer
+       asks when one output fails. Node order interleaves them: C2, C3,
+       C6, C7 reads down the page as one run when it is two.
+
+       The trunk first, because everything hangs off it, then the
+       outputs in their own order, and node order inside each \u2014 the
+       existing sort, applied within a part instead of across the lot. */
+    const byNode = (a, b) => {
+      const [al, an] = nodeOrder(a.leg.from);
+      const [bl, bn] = nodeOrder(b.leg.from);
+      if (al !== bl) return al < bl ? -1 : 1;
+      if (an !== bn) return an - bn;
+      const [tl, tn] = nodeOrder(a.leg.to);
+      const [ul, un] = nodeOrder(b.leg.to);
+      if (tl !== ul) return tl < ul ? -1 : 1;
+      return tn - un;
+    };
+    const partRank = (l) => (l?.part === "trunk" ? -1
+      : l?.part === "origin" ? -2 : (Number(l?.way) || 0));
+
     const sorted = legs
       .map((leg, i) => ({ leg, i: trace.legs.indexOf(leg) }))
       .sort((a, b) => {
-        const [al, an] = nodeOrder(a.leg.from);
-        const [bl, bn] = nodeOrder(b.leg.from);
-        if (al !== bl) return al < bl ? -1 : 1;
-        if (an !== bn) return an - bn;
-        const [tl, tn] = nodeOrder(a.leg.to);
-        const [ul, un] = nodeOrder(b.leg.to);
-        if (tl !== ul) return tl < ul ? -1 : 1;
-        return tn - un;
+        if (traceOrder === "output") {
+          const pa = partRank(a.leg);
+          const pb = partRank(b.leg);
+          if (pa !== pb) return pa - pb;
+        }
+        return byNode(a, b);
       });
     return originFirst(traceEnds ? endsOnly(sorted) : sorted);
     /* traceOrder and traceEnds are in here because the body reads them.
@@ -20007,6 +20052,11 @@ export default function GISCanvasPage() {
         part: p.via ?? "origin",
         way: p.way ?? null,
         boxLabel: p.box?.Label ?? p.box?.Attributes?.Span_Label ?? null,
+        /* The id as well as the name. Two boxes on a site can share a
+           label, and anything looking one up by name would take the
+           first \u2014 the report's colours are keyed on the box, and a
+           colour from the wrong box is worse than none. */
+        boxId: p.box?.Feature_ID ?? null,
         /* `Way_Fuse_A` is a map of way number to rating \u2014 the A is
            AMPS, not a way letter. Reading it as `Way_Fuse_` plus a
            letter built from the way number handed output 1 the whole
@@ -25245,12 +25295,22 @@ export default function GISCanvasPage() {
                     onClick={() => setTraceEnds(!traceEnds)}>
                     {traceEnds ? "Ends only" : "All legs"}
                   </button>
+                  {/* Three orders, cycled: by the node a leg starts at,
+                      by which output it belongs to, and along the cable.
+                      A cycle rather than three buttons because the panel
+                      is narrow and the orders are exclusive \u2014 the label
+                      says which one is on, and the title says what comes
+                      next. */}
                   <button className="btn sm tr-ord"
                     title={traceOrder === "chain"
                       ? "Ordered along the cable \u2014 switch to node order"
-                      : "Ordered by node \u2014 switch to follow the cable"}
-                    onClick={() => setTraceOrder(traceOrder === "chain" ? "label" : "chain")}>
-                    {traceOrder === "chain" ? "Along the cable" : "By node"}
+                      : traceOrder === "output"
+                        ? "Grouped by link box output \u2014 switch to follow the cable"
+                        : "Ordered by node \u2014 switch to group by output"}
+                    onClick={() => setTraceOrder(traceOrder === "label" ? "output"
+                      : traceOrder === "output" ? "chain" : "label")}>
+                    {traceOrder === "chain" ? "Along the cable"
+                      : traceOrder === "output" ? "By output" : "By node"}
                   </button>
                   {/* ── Which volt drop the %VD column shows ──
 
@@ -25436,8 +25496,24 @@ export default function GISCanvasPage() {
                             and reads exactly as it always did. */}
                         {l.part && l.part !== "origin"
                           && l.part !== (tracePlan[at - 1]?.leg?.part) && (
-                          <tr className="gt-sect">
+                          <tr className="gt-sect"
+                            style={wayTint(l) ? { background: wayTint(l) } : undefined}>
                             <td colSpan={12}>
+                              {/* A swatch on the heading as well, at full
+                                  strength: the tint on the rows is too
+                                  pale to name a colour by, and this is
+                                  where somebody looks to learn which is
+                                  which. */}
+                              {l.part !== "trunk" && wayTint(l) && (
+                                <span className="gt-way-sw" style={{
+                                  background: features.find((f) =>
+                                    f.Feature_Role === "linkbox"
+                                    && (l.boxId != null
+                                      ? Number(f.Feature_ID) === Number(l.boxId)
+                                      : f.Label === l.boxLabel))
+                                    ?.Attributes?.Way_Colours?.[String(l.way)],
+                                }} />
+                              )}
                               {l.part === "trunk"
                                 ? `Input to ${l.boxLabel || "the link box"}`
                                 : `${l.boxLabel || "Link box"} \u00b7 output ${l.way}`}
@@ -25445,7 +25521,9 @@ export default function GISCanvasPage() {
                             </td>
                           </tr>
                         )}
-                      <tr className={traceLeg === i ? "gt-on" : undefined}>
+                      <tr className={traceLeg === i ? "gt-on" : undefined}
+                        style={traceLeg === i ? undefined
+                          : (wayTint(l) ? { background: wayTint(l) } : undefined)}>
                         {trace.hasVd && (
                           <td className="num gt-v">
                             {l.volts != null ? `${l.volts.toFixed(1)} V` : "\u2014"}
@@ -26002,6 +26080,8 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .dt .gt-on, .gt-tbl tr.gt-dead { color: var(--muted); font-style: italic; }
 /* A section heading inside the table: the trunk, then each output. Quiet
    enough to read as a divider rather than as another leg. */
+.gt-way-sw { display: inline-block; width: 10px; height: 10px; border-radius: 3px;
+  margin-right: 7px; vertical-align: -1px; border: 1px solid rgba(15,23,42,.2); }
 .gt-sect td { padding: 12px 8px 4px; font-size: 11px; font-weight: 700;
   letter-spacing: .05em; text-transform: uppercase; color: var(--muted);
   border-top: 1px solid var(--line); background: none; }

@@ -18,8 +18,13 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
 /* Each leg knows which part laid it. */
 {
+  /* To the end of the gather, not a fixed 900 characters: adding one
+     field to the leg pushed `wayFuse` outside the window and reported
+     it missing. Fault 33 again \u2014 a bound that depends on something
+     unrelated staying the same size. */
   const at = canvas.indexOf("legs: parts.flatMap(");
-  const gather = at < 0 ? "" : canvas.slice(at, at + 900);
+  const ends = canvas.indexOf("\n      })),", at);
+  const gather = at < 0 ? "" : canvas.slice(at, ends > at ? ends : at + 3000);
   if (!gather) fail("legs are no longer gathered from the parts");
   else {
     for (const field of ["part:", "way:", "boxLabel:", "wayFuse:"]) {
@@ -78,6 +83,67 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   if (!/: "",/.test(rows)) {
     fail("the Part column is filled in on a circuit with no link box, where "
       + "there is only one answer and the column is noise");
+  }
+}
+
+/* ── Sorted by output, and coloured like the drawing ──
+
+   A boxed circuit is several independent runs sharing a sheet, and node
+   order interleaves them: C2, C3, C6, C7 reads down the page as one run
+   when it is two. "Which of these belong to output 2" is the question
+   somebody asks when one output fails.
+
+   And the outputs are coloured on the DRAWING while the sheet listing
+   them was uniformly white, so matching a row to the run it describes
+   meant reading the heading above it and remembering. */
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+
+  /* Three orders, cycled, and the label says which is on. */
+  if (!/traceOrder === "label" \? "output"/.test(canvas)) {
+    fail("there is no way to group the report by link box output");
+  }
+  if (!/const partRank = \(l\) =>/.test(canvas)) {
+    fail("nothing orders the parts, so an output sort has no order to use");
+  }
+  /* The trunk before the outputs: everything hangs off it. */
+  if (!/l\?\.part === "trunk" \? -1/.test(canvas)) {
+    fail("the trunk is not put before the outputs it feeds");
+  }
+  /* Node order INSIDE a part, or grouping by output loses the order
+     within each one. */
+  if (!/if \(pa !== pb\) return pa - pb;\n\s*\}\n\s*return byNode\(a, b\);/.test(canvas)) {
+    fail("grouping by output abandons node order within each output");
+  }
+
+  /* The tint comes from the box's own Way_Colours, so the drawing and
+     the table cannot disagree. */
+  const at = canvas.indexOf("const wayTint = useCallback");
+  const fn = at < 0 ? "" : canvas.slice(at, canvas.indexOf("}, [features]);", at));
+  if (!fn) fail("the report's rows carry no colour from their output");
+  else {
+    if (!/Way_Colours\?\.\[String\(leg\.way\)\]/.test(fn)) {
+      fail("the tint is not read from the box's own output colours");
+    }
+    /* Pastel: a row is a background behind black text, not a marker. */
+    if (!/alpha\(c, 14\)/.test(fn)) {
+      fail("the row takes the output colour at full strength, which is "
+        + "picked to stand out on a plan and is unreadable behind text");
+    }
+    /* The trunk has no output and takes no colour. */
+    if (!/leg\.part === "trunk" \|\| leg\.part === "origin"/.test(fn)) {
+      fail("the trunk is tinted as though it were an output");
+    }
+    /* By id, not by name: two boxes can share a label, and a colour
+       from the wrong box is worse than none. */
+    if (!/leg\.boxId != null/.test(fn)) {
+      fail("the box is found by name, so two boxes sharing a label give "
+        + "one of them the other's colours");
+    }
+  }
+  if (!/boxId: p\.box\?\.Feature_ID \?\? null,/.test(canvas)) {
+    fail("a leg does not carry its box's id, so the tint cannot be keyed "
+      + "on the box");
   }
 }
 

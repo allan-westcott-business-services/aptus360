@@ -100,8 +100,13 @@ const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
   const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
 
   /* Three orders, cycled, and the label says which is on. */
-  if (!/traceOrder === "label" \? "output"/.test(canvas)) {
+  /* Radios now, not a cycling button: three orders behind one button
+     meant pressing it twice to see what the third was. */
+  if (!/\["output", "By output"\]/.test(canvas)) {
     fail("there is no way to group the report by link box output");
+  }
+  if (!/name="gt-ord"/.test(canvas)) {
+    fail("the orders are not offered as exclusive choices");
   }
   if (!/const partRank = \(l\) =>/.test(canvas)) {
     fail("nothing orders the parts, so an output sort has no order to use");

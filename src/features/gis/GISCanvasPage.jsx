@@ -25161,191 +25161,175 @@ export default function GISCanvasPage() {
             {trace && traceOpen && (
               <div className={trace.hasVd ? "gis-trace gt-wide gt-vd" : "gis-trace gt-wide"}
                 role="dialog" aria-label={trace.levels ? "Levels check" : "Full trace"}>
-                <div className="gt-head">
-                  <div>
-                    <strong>
-                      {trace.levels
-                        ? (trace.advanced ? "Advanced levels check" : "Levels check")
-                        : "Full trace"} from {trace.from}
-                    </strong>
-                    <p className="gt-sub">
-                      {trace.circuitName} &middot; {trace.legs.length} leg(s) &middot;{" "}
-                      {trace.totalMeters} meter(s) beyond this point
-                      {/* ── How many cut-out figures reached the drawing ──
+                {/* ── The head: what is being read, and how ──
 
-                          The percentage at a customer's cut-out is drawn
-                          beside their meter, and whether it appears
-                          depends on three things being true at once: the
-                          levels ran, the stop found a service, and that
-                          service names a cable with figures. When
-                          nothing appeared there was no way to tell which
-                          had failed, and reading the code for it took
-                          longer than the feature.
+                    This was a paragraph of running text with the
+                    controls scattered after it. The paragraph said
+                    things that matter \u2014 stranded meters, an assumed
+                    voltage \u2014 but they were mixed in with a leg count and
+                    a title, so the warnings read as part of the
+                    furniture and nobody saw them.
 
-                          A number is an answer; an empty drawing is a
-                          question. */}
-                      {cutoutAtMeter.why && (
-                        <> &middot; {cutoutAtMeter.size} cut-out figure
-                          {cutoutAtMeter.size === 1 ? "" : "s"} on the drawing
-                          {cutoutAtMeter.why.noService
-                            ? `, ${cutoutAtMeter.why.noService} leg(s) with no service`
-                            : ""}
-                          {cutoutAtMeter.why.noSpec
-                            ? `, ${cutoutAtMeter.why.noSpec} with no cable figures`
-                            : ""}
-                        </>
-                      )}
-                      {/* Said where the figures are read.
+                    Three groups instead: which circuit, how to view it,
+                    and what is wrong. The warnings keep their own line
+                    below, where a thing that is only sometimes there is
+                    not competing with a thing that is always there. */}
+                <div className="gt-head gt-head-v2">
+                  <div className="gt-h-grp">
+                    <span className="gt-h-lab">Select circuit</span>
+                    {/* `shownCircuit` is derived from `traceCircuit`, which
+                        is the one somebody chose: there is no setter for
+                        the derived value, and writing one would give the
+                        panel two places to remember the same thing.
 
-                          The voltage was a literal nobody could see, and
-                          every amp and percentage in this table is
-                          worked out against it. Shown only when nothing
-                          on the drawing states it, so a network that
-                          does carry one is not nagged about it. */}
-                      {trace.voltageAssumed && (
-                        <> &middot; <span className="gt-assumed"
-                          title="Nothing on the drawing states it. Set the output
-                            voltage on the POC, or on the substation, if this
-                            connection is at anything else.">
-                          400 V assumed
-                        </span></>
-                      )}
-                      {/* Meters the model could not reach.
-
-                          Said here, beside the figures, because that is
-                          where somebody is when they would act on them.
-                          A meter more than 12 m from any node on the
-                          network is left out of every number in this
-                          table — so the load reads light, which is
-                          headroom that is not there, and a marginal run
-                          reads as passing.
-
-                          Named, not counted. "3 meters not on the
-                          network" is a number to go looking for. */}
-                      {trace.stranded?.length > 0 && (
-                        <> &middot; <span className="gt-stranded"
-                          title={"Not within reach of the trench network, so left out of "
-                            + "every figure here. Usually a meter placed before the dig "
-                            + "reaches it \u2014 run the service to it and re-run.\n\n"
-                            + trace.stranded.map((m) => m.label || `Feature ${m.id}`).join("\n")}>
-                          {trace.stranded.length} meter
-                          {trace.stranded.length === 1 ? "" : "s"} not on the network
-                        </span></>
-                      )}
-                    </p>
+                        The comment sits OUT here. A JSX comment inside a
+                        ternary branch is an object literal where an
+                        element is expected, and the build fails a line
+                        later on the next word it does not recognise. */}
+                    {tracedCircuits.length > 1 ? (
+                      <select className="tr-circ" value={shownCircuit ?? ""}
+                        onChange={(e) => setTraceCircuit(e.target.value || null)}>
+                        {tracedCircuits.map((name) => (
+                          <option key={name} value={name}>{name}</option>
+                        ))}
+                      </select>
+                    ) : (
+                      <span className="gt-h-one">{trace.circuitName}</span>
+                    )}
                   </div>
-                  <button className="btn accent sm" onClick={exportTrace}>Export</button>
-                  {(traceAt && (traceAt.features !== features || traceAt.lookups !== lookups)) && (
-                    <button className="btn sm tr-stale"
-                      onClick={() => (trace.levels
-                        ? runLevelsCheck({ stopAt: trace.advanced ? "junctions" : "spannodes" })
-                        : runFullTrace())}
-                      title="The drawing has changed since these figures were worked out">
-                      Out of date &mdash; re-run
-                    </button>
-                  )}
-                  {/* Ordered by label, or along the cable.
 
-                      Not a preference to be set once and forgotten:
-                      which reads better depends on the check. The
-                      ordinary levels check has numbered nodes and sorts
-                      well by label; the advanced one is mostly joints
-                      named for plots, where only the cable order makes
-                      sense. */}
-                  {/* The same figures as a network rather than a list.
-                      Beside Export because it is the other way of taking
-                      the check away with you. */}
-                  {/* The figures are computed from the span nodes, so a
-                      cable changed on the run itself is not in them.
-                      Said here, where the figures are being read, rather
-                      than left to be discovered by disbelieving them. */}
-                  {cablesOutOfStep.length > 0 && (
-                    <button className="btn sm tr-stale" disabled={!!busy}
-                      title="Some span nodes hold a different cable from the run feeding them"
-                      onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)}>
-                      {cablesOutOfStep.length} cable{cablesOutOfStep.length === 1 ? "" : "s"} out of step &mdash; fix
-                    </button>
-                  )}
-                  <button className="btn sm tr-ord"
-                    title="Draw this check as a schematic"
-                    onClick={() => setSchematic(true)}>
-                    Schematic
-                  </button>
-                  {tracedCircuits.length > 1 && (
-                    /* One circuit at a time. Levels are per circuit now
-                       \u2014 a point two circuits share has two figures \u2014
-                       and a table interleaving them reads as one network
-                       contradicting itself.
+                  <div className="gt-h-grp gt-h-views">
+                    <span className="gt-h-lab">View options</span>
+                    <div className="gt-h-radios">
+                      {/* Radios rather than a cycling button: three
+                          orders behind one button meant pressing it
+                          twice to see what the third was. These are
+                          exclusive choices and they read as exclusive
+                          choices. */}
+                      <div className="gt-h-set">
+                        {[[false, "All legs"], [true, "Ends only"]].map(([v, label]) => (
+                          <label key={label} className="gt-h-r">
+                            <input type="radio" name="gt-ends" checked={traceEnds === v}
+                              onChange={() => setTraceEnds(v)} />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      <div className="gt-h-set">
+                        {[["label", "By node"], ["output", "By output"],
+                          ["chain", "Along the cable"]].map(([v, label]) => (
+                          <label key={v} className="gt-h-r">
+                            <input type="radio" name="gt-ord" checked={traceOrder === v}
+                              onChange={() => setTraceOrder(v)} />
+                            {label}
+                          </label>
+                        ))}
+                      </div>
+                      {/* Offered only where something upstream exists. On a
+                          substation-fed scheme the two figures are
+                          identical, and a switch between one number and
+                          the same number teaches somebody it does
+                          nothing. The rewrite of this head dropped the
+                          guard and the check caught it. */}
+                      {trace.hasVd
+                        && tracePlan.some((x) => x.leg?.vd?.upstreamPct > 0) && (
+                        <div className="gt-h-set">
+                          {[["total", "Cumulative \u03a3"], ["own", `From ${trace.from}`]]
+                            .map(([v, label]) => (
+                              <label key={v} className="gt-h-r">
+                                <input type="radio" name="gt-vd" checked={vdBasis === v}
+                                  onChange={() => setVdBasis(v)} />
+                                {label}
+                              </label>
+                            ))}
+                        </div>
+                      )}
+                    </div>
+                  </div>
 
-                       Over the circuits rather than the parts: a boxed
-                       circuit is a trunk and one part per output, and
-                       listing the parts named it once per output. */
-                    <select className="tr-circ" value={shownCircuit ?? ""}
-                      title="Which circuit's levels are shown — the export follows"
-                      onChange={(e) => setTraceCircuit(e.target.value)}>
-                      {tracedCircuits.map((name) => (
-                        <option key={name} value={name}>{name}</option>
-                      ))}
-                    </select>
-                  )}
-                  <button className="btn sm tr-ord"
-                    title={traceEnds
-                      ? "Showing where the runs finish \u2014 show every leg"
-                      : "Show only where the runs finish"}
-                    onClick={() => setTraceEnds(!traceEnds)}>
-                    {traceEnds ? "Ends only" : "All legs"}
-                  </button>
-                  {/* Three orders, cycled: by the node a leg starts at,
-                      by which output it belongs to, and along the cable.
-                      A cycle rather than three buttons because the panel
-                      is narrow and the orders are exclusive \u2014 the label
-                      says which one is on, and the title says what comes
-                      next. */}
-                  <button className="btn sm tr-ord"
-                    title={traceOrder === "chain"
-                      ? "Ordered along the cable \u2014 switch to node order"
-                      : traceOrder === "output"
-                        ? "Grouped by link box output \u2014 switch to follow the cable"
-                        : "Ordered by node \u2014 switch to group by output"}
-                    onClick={() => setTraceOrder(traceOrder === "label" ? "output"
-                      : traceOrder === "output" ? "chain" : "label")}>
-                    {traceOrder === "chain" ? "Along the cable"
-                      : traceOrder === "output" ? "By output" : "By node"}
-                  </button>
-                  {/* ── Which volt drop the %VD column shows ──
-
-                      Offered only where there is something upstream to
-                      count. On a substation-fed scheme the two figures
-                      are identical, and a switch between one number and
-                      the same number is a control that teaches somebody
-                      it does nothing.
-
-                      Nothing is recalculated by pressing it: both
-                      figures come back from every leg, so they cannot
-                      disagree and flicking it is instant. */}
-                  {trace.hasVd && tracePlan.some((x) => x.leg?.vd?.upstreamPct > 0) && (
-                    <button className="btn sm tr-vdb"
-                      title={vdBasis === "total"
-                        ? "Showing the whole drop, including what the feeding "
-                          + "network used \u2014 switch to this design only"
-                        : "Showing this design's drop from the origin node \u2014 "
-                          + "switch to the whole drop"}
-                      onClick={() => setVdBasis(vdBasis === "total" ? "own" : "total")}>
-                      {vdBasis === "total" ? "Cumulative \u03a3" : "From E0"}
-                    </button>
-                  )}
-                  {traceOver.size > 0 && (
-                    <button className="btn sm tr-fix"
-                      title="Work out what cable changes would bring the ringed nodes inside their limits"
-                      onClick={runScenario}>
-                      {traceOver.size} out of tolerance &mdash; suggest changes
-                    </button>
-                  )}
+                  <div className="gt-h-grp gt-h-right">
+                    {traceOver.size > 0 && (
+                      <>
+                        <span className="gt-h-over">
+                          {traceOver.size} out of tolerance
+                        </span>
+                        <button className="btn tr-fix"
+                          title="Work out what cable changes would bring the ringed nodes inside their limits"
+                          onClick={runScenario}>
+                          Suggest changes
+                        </button>
+                      </>
+                    )}
+                  </div>
                   <button className="fe-x" onClick={() => { setTraceOpen(false); setScenario(null); }}
                     aria-label="Close">
                     &times;
                   </button>
                 </div>
+
+                {/* ── What is wrong, on its own line ──
+
+                    These were sentences in the middle of a paragraph
+                    that also gave a leg count and a title, so a warning
+                    about meters left out of every figure read as part
+                    of the furniture. Only drawn when there is something
+                    to say, which is what makes it worth reading. */}
+                {(trace.voltageAssumed || trace.stranded?.length > 0
+                  || cablesOutOfStep.length > 0
+                  || (cutoutAtMeter.why?.noService || cutoutAtMeter.why?.noSpec)) && (
+                  <div className="gt-warn">
+                    {trace.voltageAssumed && (
+                      <span className="gt-assumed"
+                        title={"Nothing on the drawing states it. Set the output voltage "
+                          + "on the POC, or on the substation, if this connection is at "
+                          + "anything else."}>
+                        400 V assumed
+                      </span>
+                    )}
+                    {trace.stranded?.length > 0 && (
+                      <span className="gt-stranded"
+                        title={"Not within reach of the trench network, so left out of "
+                          + "every figure here. Usually a meter placed before the dig "
+                          + "reaches it \u2014 run the service to it and re-run.\n\n"
+                          + trace.stranded.map((m) => m.label || `Feature ${m.id}`).join("\n")}>
+                        {trace.stranded.length} meter
+                        {trace.stranded.length === 1 ? "" : "s"} not on the network
+                      </span>
+                    )}
+                    {/* Named, and said which circuit: this warning is
+                        about the drawing rather than about the circuit
+                        on screen, and reading it beside circuit 3's
+                        figures when it concerns circuit 2 is how it
+                        came to mean nothing. */}
+                    {cablesOutOfStep.length > 0 && (
+                      <button className="btn sm tr-stale" disabled={!!busy}
+                        title={"The run and the node it feeds name different cables. The "
+                          + "levels read the node and the schedule reads the run, so they "
+                          + "drift apart.\n\n"
+                          + cablesOutOfStep.map((n) => `${n.Attributes?.Span_Label
+                            ?? n.Label ?? n.Feature_ID}${n.Attributes?.Circuit_ID != null
+                            ? ` (circuit ${n.Attributes.Circuit_ID})` : ""}`).join("\n")}
+                        onClick={() => withUndo("Apply cable sizes to span nodes", syncNodeCables)}>
+                        {cablesOutOfStep.length === 1
+                          ? `${cablesOutOfStep[0].Attributes?.Span_Label
+                            ?? cablesOutOfStep[0].Label ?? "A node"} is out of step with its cable`
+                          : `${cablesOutOfStep.length} nodes out of step with their cables`}
+                        {" \u2014 fix"}
+                      </button>
+                    )}
+                    {(cutoutAtMeter.why?.noService || cutoutAtMeter.why?.noSpec) && (
+                      <span className="gt-assumed"
+                        title={"A cut-out figure needs the leg to find a service and that "
+                          + "service to name a cable with impedance figures."}>
+                        {cutoutAtMeter.why.noService
+                          ? `${cutoutAtMeter.why.noService} leg(s) with no service` : ""}
+                        {cutoutAtMeter.why.noService && cutoutAtMeter.why.noSpec ? ", " : ""}
+                        {cutoutAtMeter.why.noSpec
+                          ? `${cutoutAtMeter.why.noSpec} with no cable figures` : ""}
+                      </span>
+                    )}
+                  </div>
+                )}
 
                 {scenario && (
                   <div className="tr-scn">
@@ -25664,6 +25648,24 @@ export default function GISCanvasPage() {
                     </tr>
                   </tbody>
                 </table>
+
+                {/* ── What to do with it, at the end ──
+
+                    Export and Schematic were beside the title, competing
+                    with the controls that decide what is being read.
+                    They act on the whole check rather than on any part
+                    of it, so they belong after it \u2014 which is also where
+                    somebody is when they have finished reading. */}
+                <div className="gt-foot">
+                  <button className="btn ghost"
+                    onClick={() => { setTraceOpen(false); setScenario(null); }}>
+                    Close
+                  </button>
+                  <button className="btn" onClick={exportTrace}>Export</button>
+                  <button className="btn accent" onClick={() => setSchematic(true)}>
+                    Schematic
+                  </button>
+                </div>
               </div>
             )}
 
@@ -26066,6 +26068,23 @@ kbd { font-family: ui-monospace, Menlo, monospace; font-size: 10px; background: 
 .gt-cable { color: var(--muted); font-size: 11px; white-space: nowrap; }
 .vd-gap { font-size: 10.5px; color: #b45309; font-style: italic; }
 .vd-note { font-size: 10px; color: var(--muted); font-weight: 500; }
+/* ── The head, as three groups ── */
+.gt-head-v2 { display: flex; align-items: flex-start; gap: 22px; flex-wrap: wrap; }
+.gt-h-grp { display: flex; flex-direction: column; gap: 6px; }
+.gt-h-views { flex: 1; }
+.gt-h-right { margin-left: auto; align-items: flex-end; }
+.gt-h-lab { font-size: 11px; font-weight: 700; letter-spacing: .06em;
+  text-transform: uppercase; color: var(--muted); }
+.gt-h-one { font-weight: 600; }
+.gt-h-radios { display: flex; gap: 26px; flex-wrap: wrap; }
+.gt-h-set { display: flex; flex-direction: column; gap: 3px; }
+.gt-h-r { display: flex; align-items: center; gap: 6px; font-size: 13px;
+  cursor: pointer; white-space: nowrap; }
+.gt-h-over { font-size: 12.5px; color: var(--muted); }
+.gt-foot { display: flex; justify-content: flex-end; gap: 8px;
+  padding: 12px 0 2px; }
+.gt-warn { display: flex; gap: 10px; flex-wrap: wrap; align-items: center;
+  padding: 6px 0 0; }
 .gt-sub { margin: 2px 0 0; font-size: 11px; color: var(--muted); }
 /* An assumption, marked as one. Not an error — 400 V is what an LV
    network runs at — but every figure below is worked out against it and

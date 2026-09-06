@@ -2204,6 +2204,29 @@ guess.
     fix: if two circuits in one tree ever stop flattening, the fixture
     has stopped reproducing the thing it was written for and says so.
 
+**The levels head reads as three questions.** Which circuit, how to view
+it, and what is wrong — instead of a paragraph of running text with the
+controls scattered after it.
+
+The paragraph said things that mattered (meters not on the network, an
+assumed voltage, legs with no service) mixed in with a leg count and a
+title, so **the warnings read as part of the furniture**. They have
+their own line now, drawn only when there is something to say, which is
+what makes it worth reading.
+
+The orders are radios rather than a cycling button: three behind one
+button meant pressing it twice to find out what the third was.
+
+Export and Schematic moved to a footer with Close. They act on the whole
+check rather than on any part of it, so they belong after it — which is
+also where somebody is when they have finished reading.
+
+**The rewrite dropped a guard and a check caught it**: the Cumulative /
+From-origin switch is offered only where something upstream exists,
+because on a substation-fed scheme the two figures are identical and a
+switch between one number and the same number teaches somebody it does
+nothing. `checksourceimpedance` failed within a minute of the rewrite.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that

@@ -187,7 +187,22 @@ export default function CircuitReport({
     for (const c of report.circuits) {
       for (const m of c.meters) {
         rows.push({
-          Circuit: c.name, Substation: report.station,
+          Circuit: c.name,
+          /* ── Which substation THIS meter is on ──
+
+             This wrote `report.station` \u2014 the first origin on the
+             drawing \u2014 on every row, so a scheme served from two
+             substations exported one name for all of it. The column
+             was there and it was answering a question nobody asked.
+
+             Falls back to the scheme's only station where there is one,
+             which is what it always meant on a one-station drawing. */
+          Substation: m.originLabel ?? c.originLabel ?? report.station,
+          /* And what it is assigned to, where that differs from what
+             the routing actually reached: the assignment moves on the
+             next build and the sheet is read before then. */
+          "Assigned to": c.originLabel ?? "",
+          Way: m.linkWay != null ? `Way ${m.linkWay}` : "",
           Meter: m.meter, Plot: m.plot, "House type": m.houseType,
           /* Numeric, not "400.8 m" — a column of text returns zero from
              every sum built on it downstream. */
@@ -674,6 +689,11 @@ export default function CircuitReport({
                              column headed "from substation" is naming
                              something the scheme does not have.
                              circuitReport says which it used. */
+                          /* Only where there is a choice to report.
+                             One substation and the column says the same
+                             thing on every row. */
+                          ...(report.origins?.length > 1
+                            ? [["originLabel", "Fed from"]] : []),
                           ["distM", `Dist. from ${originWordOf(report)}`],
                           ["kva", "kVA"]].map(([k, l]) => (
                             <th key={k} onClick={() => setSort((s) => ({
@@ -752,6 +772,36 @@ export default function CircuitReport({
                           <td>{m.meter}</td>
                           <td className="mono">{plotCell(m)}</td>
                           <td className="mono">{m.houseType}</td>
+                          {/* ── Which substation this meter is fed from ──
+
+                              Two groups of plots served from two
+                              substations is one drawing with two
+                              networks on it, and the report is the
+                              sheet that says who is on which. The
+                              circuit names its origin in the heading;
+                              this says what each meter is actually
+                              REACHED from, which is not always the
+                              same thing.
+
+                              They differ when the assignment has been
+                              changed and not rebuilt \u2014 the routing
+                              moves on the next build, the report reads
+                              the drawing as it stands. Worth seeing
+                              rather than smoothing over. */}
+                          {report.origins?.length > 1 && (
+                            <td className={m.originLabel
+                              && c.originLabel
+                              && m.originLabel !== c.originLabel
+                              ? "mono cr-gap" : "mono"}
+                            title={m.originLabel && c.originLabel
+                              && m.originLabel !== c.originLabel
+                              ? `Assigned to ${c.originLabel}, reached from `
+                                + `${m.originLabel} \u2014 run Build LV Network to `
+                                + "re-route it"
+                              : undefined}>
+                              {m.originLabel ?? "\u2014"}
+                            </td>
+                          )}
                           <td className={m.why ? "num cr-gap" : "num"}
                             title={m.why || undefined}>
                             {distF(m.distM)}

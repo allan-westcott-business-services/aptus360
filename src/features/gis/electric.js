@@ -1616,6 +1616,15 @@ export function circuitReport(features = [], opts = {}) {
          and the build cannot mean different things. Null is "the
          build decides", which is a state worth showing, not hiding. */
       originId: origins.length ? namedOriginOf(c.meters) : null,
+      /* Its name as well as its id. The report puts a "Fed from" column
+         on each meter, and comparing what a meter was REACHED from
+         against what its circuit is ASSIGNED to needs both as the same
+         kind of thing \u2014 an id against a label compares nothing. */
+      originLabel: (() => {
+        const id = origins.length ? namedOriginOf(c.meters) : null;
+        return id == null ? null
+          : (origins.find((o) => Number(o.id) === Number(id))?.label ?? null);
+      })(),
     }));
 
   if (unlinked.length) {

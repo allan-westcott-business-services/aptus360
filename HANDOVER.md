@@ -154,6 +154,7 @@ caught a fault that had already shipped at least once.
 | `node checkshadow.mjs` | No name added across `draw` is one it already used |
 | `node checkmsdb.mjs` | Flats on a table; load and levels derived, never guessed |
 | `node checkinherit.mjs` | A drawn cable takes the circuit it was drawn from |
+| `node checktwostations.mjs` | Each meter says which substation and way feeds it |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2785,6 +2786,28 @@ Worked from the same functions the editor uses — `riserDrop` then
 `apartmentLevels` — so the drawing and the panel cannot disagree, and
 the stop is matched to its board by the id the build stamps rather than
 by position alone.
+
+**Two groups of plots from two substations.** One drawing with two
+networks on it, and the circuit report is the sheet that says who is on
+which.
+
+The pieces were mostly there — both POCs and substations are already
+offered as origins, each circuit can be assigned one from its heading,
+and a meter's link box way is already settable per row. What was missing
+was **saying it on the meter**: the export wrote `report.station`, the
+FIRST origin on the drawing, into the Substation column of every row. A
+scheme served from two exported one name for all of it. The column
+existed and was answering a question nobody had asked.
+
+Each row now carries the station it is actually reached from, the one
+its circuit is assigned to, and its way.
+
+78. **Assigned to is not the same as fed from.** On the live drawing
+    circuit 3 is assigned to POC 2 and **all 41 of its meters are still
+    reached from POC 1** — the assignment moves on the next build, and
+    the report reads the drawing as it stands. The two are shown
+    separately and the difference is flagged, rather than one being
+    quietly shown as the other.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

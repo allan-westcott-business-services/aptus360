@@ -300,7 +300,28 @@ export default function FeatureEditor({
          widest either way — see crossSection. */
       const main = dominantOf(g.runs) ?? g;
       const sizes = [...new Set(g.runs.map((r) => r.label))].filter(Boolean);
+      /* ── Every type in the trench, each with its own count ──
+
+         Naming the dominant one and putting the rest in a tooltip is
+         right for a pipe that steps size part way along: one pipe, one
+         slot. It is wrong for a field that is supposed to say what is
+         in the trench, because two different cables read as more of the
+         first one.
+
+         Counted per type, so the parts add up to the whole and a reader
+         can check them against what the dig shows. */
+      const byLabel = [];
+      for (const r of g.runs) {
+        const at = byLabel.find((x) => x.label === (r.label ?? ""));
+        if (at) at.runs.push(r);
+        else byLabel.push({ label: r.label ?? "", runs: [r] });
+      }
+      const parts = byLabel
+        .map((x) => ({ label: x.label, count: concurrentCount(x.runs, res.trenchM) }))
+        .sort((a, b) => (b.count - a.count) || a.label.localeCompare(b.label));
+
       return {
+        parts,
         ...g,
         /* Which field this belongs in. `layerKey` stays what it was, so
            anything else reading these rows by utility is unaffected. */
@@ -3308,36 +3329,54 @@ export default function FeatureEditor({
                     Two cables in a trench are two things to know, and a
                     jointer opening the ground counts both. */}
                 {[
+                  /* Named for the thing, not for one of its properties.
+                     A box headed "Gas Pipe Size" holding "1 x 180mm PE"
+                     promises less than it delivers, and once every box
+                     gives a count as well the word Size is wrong in all
+                     of them. */
                   ["electric:hv", "HV Cable"],
                   ["electric:lv", "LV Cable"],
-                  ["gas", "Gas Pipe Size"],
-                  ["water", "Water Pipe Size"],
+                  ["gas", "Gas Pipe"],
+                  ["water", "Water Pipe"],
                 ].map(([key, label]) => {
                   const c = trenchContents.find((x) => (x.kind ?? x.layerKey) === key);
                   return (
                     <div className="fld" key={key}>
                       <label htmlFor={`fe-in-${key}`}>{label}</label>
                       <input id={`fe-in-${key}`} readOnly
-                        /* ── Not the field's own name back again ──
+                        /* ── Every field answers the same question ──
 
-                           "2 x HV Cable" under a field headed HV Cable
-                           says the same words twice, and at a count of
-                           one it read just "HV Cable" \u2014 which looks
-                           like a label, not an answer.
+                           An attempt to avoid saying "2 x HV Cable"
+                           under a heading of HV Cable left one box
+                           showing a COUNT and the next showing a SIZE.
+                           A reader comparing them has to work out which
+                           kind of thing each is before they can read
+                           either, and "2" beside "3c WAVE 185" invites
+                           reading the second as one cable.
 
-                           Where the size adds nothing to the heading,
-                           the count IS the answer. Where it does \u2014 an
-                           LV main has a real size \u2014 both are shown. */
-                        value={(() => {
-                          if (!c) return "";
-                          const same = String(c.label).trim().toLowerCase()
-                            === label.trim().toLowerCase();
-                          if (same) return String(c.count);
-                          return c.count > 1
-                            ? `${c.count} \u00d7 ${c.label}` : c.label;
-                        })()}
-                        title={c?.alsoSizes?.length
-                          ? `Also drawn as ${c.alsoSizes.join(", ")} along part of it`
+                           Count first, then what it is, in every box.
+                           Saying HV twice is a small price for two
+                           fields that can be read the same way.
+
+                           Where an HV route names no size the label
+                           falls back to "HV Cable" \u2014 which is the
+                           drawing being unspecific, not this panel. */
+                        /* Every type in it, each with its count. One
+                           type reads "2 x HV Cable"; two read
+                           "1 x 3c WAVE 185, 1 x 3c WAVE 95" \u2014 which is
+                           what is in the ground, rather than more of
+                           whichever covers most of it. */
+                        value={c
+                          ? (c.parts?.length
+                            ? c.parts.map((x) => `${x.count} \u00d7 ${x.label}`).join(", ")
+                            : `${c.count} \u00d7 ${c.label}`)
+                          : ""}
+                        /* The sizes are on the face of the field now, so
+                           the tooltip says the one thing they cannot:
+                           that a run changing size part way along is
+                           still one run. */
+                        title={c?.parts?.length > 1 && c.runCount > c.parts.length
+                          ? "A run that changes size part way along is counted once"
                           : undefined} />
                     </div>
                   );

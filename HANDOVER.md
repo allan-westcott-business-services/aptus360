@@ -2938,10 +2938,24 @@ result: read what a rewrite leaves behind, not just what it prints.
     goes at one panel, each fixing the previous fix**, because I checked
     the shape of the data I expected rather than the shape it had.
 
-    The value no longer repeats the field's own name: `2` under **HV
-    Cable**, not `2 × HV Cable`, and at a count of one it read simply
-    "HV Cable", which looks like a label rather than an answer. An LV
-    main has a real size, so that one shows `3 × 3c WAVE 95`.
+85. **Two boxes side by side answering different questions.** Avoiding
+    the repetition in "2 × HV Cable" under a heading of HV Cable left
+    the HV box showing a COUNT and the LV box showing a SIZE. A reader
+    comparing them had to work out which kind of thing each was first,
+    and `2` beside `3c WAVE 185` invites reading the second as one
+    cable. **Saying HV twice is a small price for two fields that can be
+    read the same way.**
+
+86. **And a field naming only the dominant type.** Naming the biggest
+    and hiding the rest in a tooltip is right for a pipe that steps size
+    part way along — one pipe, one slot — and wrong for a field that
+    says what is IN the trench, because two different cables read as
+    more of the first one.
+
+    Every field now lists every type with its own count:
+    `1 × 3c WAVE 185, 1 × 3c WAVE 95`. The gas and water boxes lost the
+    word "Size" from their headings, because a box headed for one
+    property of a thing and holding two says less than it delivers.
 
     **The WIDTH keeps the coarser grouping on purpose.** It takes the
     widest in each group and repeats it, so an LV counted as HV digs a

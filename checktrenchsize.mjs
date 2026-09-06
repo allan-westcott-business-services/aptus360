@@ -283,11 +283,52 @@ if (separationFor("gas", "electric") !== separationFor("electric", "gas")) {
      electric group: splitting the list into HV and LV made a second
      group that nothing rendered, so a trench with two HV and one LV
      showed the HV and dropped the LV out of sight entirely. */
+  /* ── Every box answers the same question ──
+
+     An attempt to avoid saying "2 x HV Cable" under a heading of HV
+     Cable left one box showing a COUNT and the next showing a SIZE. A
+     reader comparing them has to work out which kind of thing each is
+     before they can read either, and "2" beside "3c WAVE 185" invites
+     reading the second as one cable. */
+  if (/const same = String\(c\.label\)/.test(editor)) {
+    fail("the boxes in this row do not all read the same way \u2014 one gives a "
+      + "count and another gives a size");
+  }
+  /* And headed for the thing rather than one of its properties: "Gas
+     Pipe Size" holding "1 x 180mm PE" promises less than it delivers. */
+  /* Matched on the FIELD list, not on any mention of the words: the
+     comment above the list quotes the old heading to explain why it
+     changed, and a check that reads a comment reports on the
+     documentation. */
+  if (/\["gas", "Gas Pipe Size"\]|\["water", "Water Pipe Size"\]/.test(editor)) {
+    fail("a box is headed Size and now carries a count as well");
+  }
+
   if (!/\["electric:hv", "HV Cable"\]/.test(editor)
     || !/\["electric:lv", "LV Cable"\]/.test(editor)) {
     fail("HV and LV share one field, so whichever is grouped second is "
       + "never shown at all");
   }
+  /* ── Every type, each with its count, in every field ──
+
+     Naming the dominant type and hiding the rest in a tooltip is right
+     for a pipe that steps size part way along: one pipe, one slot. It
+     is wrong for a field that says what is IN the trench, because two
+     different cables read as more of the first one.
+
+     And every field has to answer the same question. An attempt to
+     avoid saying "2 x HV Cable" under a heading of HV Cable left one
+     box showing a COUNT and the next showing a SIZE \u2014 a reader
+     comparing them had to work out which kind of thing each was. */
+  if (!/c\.parts\.map\(\(x\) => `\$\{x\.count\} \\u00d7 \$\{x\.label\}`\)\.join\(", "\)/
+    .test(editor)) {
+    fail("a field names one type and hides the others, so two different "
+      + "cables read as more of the first");
+  }
+  if (!/parts,/.test(editor)) {
+    fail("the per-type counts are worked out and not carried to the field");
+  }
+
   if (!/\(x\.kind \?\? x\.layerKey\) === key/.test(editor)) {
     fail("the fields are matched on utility, so both electric fields show "
       + "the same group");

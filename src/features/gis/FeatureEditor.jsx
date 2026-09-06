@@ -1322,6 +1322,32 @@ export default function FeatureEditor({
                 </div>
               </div>
 
+              <div className="fld">
+                <label htmlFor="fe-msdb-tail">Tail cable</label>
+                {/* What the flats are wired in. Its own field because
+                    a riser tail is not the service cable the scheme
+                    lays in the ground, and it goes on the bill as its
+                    own line for the same reason. */}
+                <select id="fe-msdb-tail"
+                  value={feature.Attributes?.MSDB_Tail_Cable_ID ?? ""}
+                  onChange={(e) => setAttr("MSDB_Tail_Cable_ID")(
+                    e.target.value === "" ? null : Number(e.target.value))}>
+                  {/* "Not overridden" rather than "Scheme default":
+                      every other calculated-with-an-override field in
+                      this editor says that, and a field that words it
+                      differently reads as a different kind of thing. */}
+                  <option value="">Not overridden</option>
+                  {(lookups?.cableSizes || [])
+                    .filter((c) => /service/i.test(String(c.Usage ?? ""))
+                      || Number(c.Rating_Amps) > 0)
+                    .map((c) => (
+                      <option key={c.Cable_Size_ID} value={c.Cable_Size_ID}>
+                        {[c.Cable_Type, c.Size_Label].filter(Boolean).join(" ")}
+                      </option>
+                    ))}
+                </select>
+              </div>
+
               <div className="fe-msdb-h">
                 <strong>Flats</strong>
                 <span className="hint">{msdbLoad(feature,

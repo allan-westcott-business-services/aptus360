@@ -169,6 +169,70 @@ const board = (attrs = {}) => ({
   }
 }
 
+// 7. On the bill of materials \u2014 the board, and the tails in it.
+//
+//    A board's flats are rows in an attribute, not lines on the
+//    drawing, so nothing counted the cable inside the building: the
+//    take-off was short by however many metres of riser the block
+//    needs.
+{
+  const sql = readFileSync("./supabase/migrations/0205_bom_msdb.sql", "utf8");
+  const prev = readFileSync(
+    "./supabase/migrations/0204_bom_exclude_feederpoints.sql", "utf8");
+
+  /* ── Rebuilt from the working function, not from memory ──
+
+     gis_bom is one function and there is no replacing half of it, so
+     0205 carries the whole thing. An earlier attempt wrote it out from
+     memory and lost the site, utility and developer columns, the
+     surface handling and most of the water pipe cases. Everything 0204
+     had, 0205 has. */
+  for (const kept of ["Water_Pipe", "developer_name", "surface", "devs AS (",
+    "Electric_Joint", "GIS_Line_Type"]) {
+    const before = prev.split(kept).length - 1;
+    const after = sql.split(kept).length - 1;
+    if (after < before) {
+      fail(`0205 mentions ${kept} ${after} times where 0204 had ${before} \u2014 `
+        + "the rebuild dropped part of the working function");
+    }
+  }
+
+  /* The board is named rather than initcapped: "Msdb" is not what it is
+     called anywhere else in the app. */
+  if (!/WHEN 'msdb' +THEN 'MSDB'/.test(sql)) {
+    fail("the board falls through to initcap and reads Msdb on the sheet");
+  }
+
+  /* The tails are counted, and as their own line: they are ordered with
+     the service cable but cut, pulled and terminated differently. */
+  if (!/tails AS \(/.test(sql)) fail("the tails inside a board are not counted");
+  if (!/'MSDB tails'/.test(sql)) {
+    fail("the tails are folded into another line, so nobody can tell how "
+      + "much of the cable is in the risers");
+  }
+  if (!/UNION ALL SELECT \* FROM tails/.test(sql)) {
+    fail("the tails are worked out and never joined to the bill");
+  }
+  /* A board somebody has half filled in must not take the whole bill
+     down with it. */
+  if (!/jsonb_typeof\(f\."Attributes" -> 'MSDB_Apartments'\) = 'array'/.test(sql)) {
+    fail("a malformed apartment table throws instead of contributing nothing");
+  }
+  /* A length nobody has specified a cable for is still a length
+     somebody has to buy. */
+  if (!/\(cable not set\)/.test(sql)) {
+    fail("a board with no tail cable named contributes nothing, which makes "
+      + "the take-off quietly short");
+  }
+
+  /* And the field exists to set it, or it can never be anything but
+     the default. */
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/MSDB_Tail_Cable_ID/.test(editor)) {
+    fail("there is no way to say what the tails are wired in");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

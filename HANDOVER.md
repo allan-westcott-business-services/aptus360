@@ -2391,6 +2391,26 @@ Drawn as an upright square with DB in it — a thing in a building, and a
 building does not lean with the trench. `msdb.js` holds the model,
 `checkmsdb` holds the rules.
 
+**On the bill — migration `0205_bom_msdb.sql`, NOT YET RUN.** The board
+as a unit named MSDB rather than the "Msdb" that `initcap` produces, and
+the tails inside it as their own line of cable. A board's flats are rows
+in an attribute rather than lines on the drawing, so nothing counted the
+cable in the risers and the take-off was short by the whole block.
+
+Reported separately from the drawn service cable of the same size: they
+are ordered together but cut, pulled and terminated differently. A board
+naming no tail cable still contributes its metres under a name that says
+so, because a length nobody has specified is still a length somebody has
+to buy.
+
+**0205 is 0204 verbatim plus fifty lines.** The first attempt at it
+rewrote `gis_bom` from memory and lost the site, utility and developer
+columns, the surface handling and most of the water pipe cases — it
+would have replaced a working nine-column function with a five-column
+one. `checkmsdb` now compares the two files and fails if 0205 mentions
+anything less often than 0204 did. **A working function is copied, not
+recalled.**
+
 **Not done yet:** the board is a point on the drawing but the feeder
 model does not treat it as a stop, so it takes no level of its own from
 the levels check and the flats therefore show a dash. That is the next

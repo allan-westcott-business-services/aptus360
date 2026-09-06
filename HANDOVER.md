@@ -151,6 +151,7 @@ caught a fault that had already shipped at least once.
 | `node checkschematic.mjs` | The schematic draws one circuit, and says which |
 | `node checkprint.mjs` | A metre on the ground is 1000/N mm on the paper |
 | `node checkzoomfloor.mjs` | The zoom stops at the drawing's own extents |
+| `node checkshadow.mjs` | No name added across `draw` is one it already used |
 | `node checkprogress.mjs` | A routine that takes seconds says what it is doing |
 | `node checkcutout.mjs` | The cut-out figure sits at the meter it belongs to |
 | `node checktrace.mjs` | One token to the fork, two after it |
@@ -2296,6 +2297,26 @@ status line sits above the canvas — so every drag pushed the drawing
 down a line and let it spring back four seconds later. **A message worth
 that jump is one that says something the drawing does not**: a refusal,
 or a count of what could NOT be done.
+
+68. **A name introduced across a long routine that the routine already
+    used.** Giving `draw` an overridable transform for printing, I named
+    it `at`. Five places inside that routine already declare an `at` of
+    their own — a label's anchor, a boundary's anchor, two corner
+    helpers — so **inside those scopes every call meant for the
+    transform found a coordinate array instead.**
+
+    It built. It passed every check. It threw the moment a layer drew
+    one of them, and the name had been minified, so what reached the
+    person was *"when I select the Water menu, J is not a function"* —
+    a message pointing at nothing.
+
+    Renamed `pxOf`, `panX`, `panY`: names that appear nowhere else in
+    140,000 characters. `checkshadow` holds it, proved by putting the
+    name back and watching it fail.
+
+    **The routine is too long to hold in your head, which is exactly why
+    a name added across all of it has to be checked rather than
+    assumed.** The mechanical rename was right; the name was not.
 
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a

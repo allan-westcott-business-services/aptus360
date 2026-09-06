@@ -3390,13 +3390,24 @@ export default function GISCanvasPage() {
     if (!cv) return;
     const ctx = cv.getContext("2d");
     const { width: w, height: h } = cv;
-    const at = over?.view
+    /* ── Named so it cannot be shadowed ──
+
+       This was `at`, and five places inside this routine already
+       declare an `at` of their own \u2014 a label's anchor, a boundary's
+       anchor, two corner helpers. Inside those scopes every call meant
+       for the transform found a coordinate array instead: "at is not a
+       function", on whichever layer happened to draw one of them.
+
+       A name that reads as what it does and appears nowhere else. */
+    const pxOf = over?.view
       ? (m) => ({ x: m[0] * over.view.scale + over.view.x,
         y: m[1] * over.view.scale + over.view.y })
       : toPx;
     const vs = over?.view?.scale ?? view.scale;
-    const vx = over?.view?.x ?? view.x;
-    const vy = over?.view?.y ?? view.y;
+    /* `vx`/`vy` are declared again further down as a perpendicular, so
+       the pan offsets carry names of their own. */
+    const panX = over?.view?.x ?? view.x;
+    const panY = over?.view?.y ?? view.y;
     ctx.clearRect(0, 0, w, h);
 
     // Background plan, under everything, at its calibrated size
@@ -3404,7 +3415,7 @@ export default function GISCanvasPage() {
       const mpp = Number(basemap.Metres_Per_Pixel);
       const ox = Number(basemap.Origin_X) || 0;
       const oy = Number(basemap.Origin_Y) || 0;
-      const o = at([ox, oy]);
+      const o = pxOf([ox, oy]);
 
       ctx.save();
       ctx.globalAlpha = Number(basemap.Opacity ?? 0.6);
@@ -3414,7 +3425,7 @@ export default function GISCanvasPage() {
       if (isPdfMap) {
         // page units -> metres -> screen
         const pageToScreen = (x, y) => {
-          const p = at([ox + x * mpp, oy + y * mpp]);
+          const p = pxOf([ox + x * mpp, oy + y * mpp]);
           return [p.x, p.y];
         };
         drawTile(ctx, pdf.tile, pageToScreen, mpp * vs);
@@ -3432,13 +3443,13 @@ export default function GISCanvasPage() {
       ctx.strokeStyle = "#eef0f4";
       ctx.lineWidth = 1;
       ctx.beginPath();
-      for (let x = vx % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
-      for (let y = vy % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
+      for (let x = panX % step; x < w; x += step) { ctx.moveTo(x, 0); ctx.lineTo(x, h); }
+      for (let y = panY % step; y < h; y += step) { ctx.moveTo(0, y); ctx.lineTo(w, y); }
       ctx.stroke();
     }
 
     // origin
-    const o = at([0, 0]);
+    const o = pxOf([0, 0]);
     ctx.strokeStyle = "#cbd5e1";
     ctx.lineWidth = 1.5;
     ctx.beginPath();
@@ -3481,8 +3492,8 @@ export default function GISCanvasPage() {
       if (!gapList?.length) return;
       ctx.save();
       for (const g of gapList) {
-        const a2 = at(g.at);
-        const b2 = at(g.to);
+        const a2 = pxOf(g.at);
+        const b2 = pxOf(g.to);
 
         ctx.beginPath();
         ctx.setLineDash([4, 3]);
@@ -3531,7 +3542,7 @@ export default function GISCanvasPage() {
     /* Where the length being marked starts. */
     const paintMark = () => {
       if (!markFrom) return;
-      const q = at(markFrom.point);
+      const q = pxOf(markFrom.point);
       ctx.save();
       ctx.beginPath();
       ctx.arc(q.x, q.y, 8, 0, Math.PI * 2);
@@ -3560,7 +3571,7 @@ export default function GISCanvasPage() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         g.forEach((pt, i) => {
-          const q = at(pt);
+          const q = pxOf(pt);
           if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
         });
         ctx.stroke();
@@ -3590,7 +3601,7 @@ export default function GISCanvasPage() {
         ctx.lineJoin = "round";
         ctx.lineCap = "round";
         g.forEach((pt, i) => {
-          const q = at(pt);
+          const q = pxOf(pt);
           if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
         });
         ctx.stroke();
@@ -3627,7 +3638,7 @@ export default function GISCanvasPage() {
             ctx.lineJoin = "round";
             ctx.lineCap = "round";
             g.forEach((pt, i) => {
-              const q = at(pt);
+              const q = pxOf(pt);
               if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
             });
             ctx.stroke();
@@ -3638,7 +3649,7 @@ export default function GISCanvasPage() {
       /* The node waiting for its pair, so a half-made range is obvious
          rather than looking like nothing happened. */
       if (pick) {
-        const q = at(pick.Geometry[0]);
+        const q = pxOf(pick.Geometry[0]);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 13, 0, Math.PI * 2);
         ctx.strokeStyle = "#d97706";
@@ -3687,7 +3698,7 @@ export default function GISCanvasPage() {
           ctx.lineJoin = "round";
           ctx.lineCap = "round";
           pts.forEach((pt, i) => {
-            const q = at(pt);
+            const q = pxOf(pt);
             if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
           });
           ctx.stroke();
@@ -3707,7 +3718,7 @@ export default function GISCanvasPage() {
       /* The substation end, so it is clear the route got there. */
       const rootPt = routePlan.graph.nodes[routePlan.root];
       if (rootPt) {
-        const q = at(rootPt);
+        const q = pxOf(rootPt);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 9, 0, Math.PI * 2);
         ctx.fillStyle = "#7c3aed";
@@ -3719,7 +3730,7 @@ export default function GISCanvasPage() {
 
       /* The meter, ringed, so it is findable even where the route is
          short or hidden under other lines. */
-      const p2 = at((m.Geometry || [])[0] || [0, 0]);
+      const p2 = pxOf((m.Geometry || [])[0] || [0, 0]);
       ctx.beginPath();
       ctx.arc(p2.x, p2.y, 11, 0, Math.PI * 2);
       ctx.strokeStyle = "#7c3aed";
@@ -3744,8 +3755,8 @@ export default function GISCanvasPage() {
         : new Set(routePlan.liveEdges);
       g.edges.forEach((e, i) => {
         if (liveSet.has(i)) return;
-        const a2 = at(g.nodes[e.u]);
-        const b2 = at(g.nodes[e.v]);
+        const a2 = pxOf(g.nodes[e.u]);
+        const b2 = pxOf(g.nodes[e.v]);
         ctx.beginPath();
         ctx.moveTo(a2.x, a2.y);
         ctx.lineTo(b2.x, b2.y);
@@ -3763,8 +3774,8 @@ export default function GISCanvasPage() {
       if (routePlan.traced) {
         const peak = Math.max(1, routePlan.peak);
         for (const e of routePlan.used) {
-          const a2 = at(routePlan.graph.nodes[e.u]);
-          const b2 = at(routePlan.graph.nodes[e.v]);
+          const a2 = pxOf(routePlan.graph.nodes[e.u]);
+          const b2 = pxOf(routePlan.graph.nodes[e.v]);
           const share = e.uses / peak;
           ctx.beginPath();
           ctx.setLineDash(e.generated ? [7, 5] : []);
@@ -3883,7 +3894,7 @@ export default function GISCanvasPage() {
            on the ground. */
         const placed = [];
         for (const g of groups) {
-          const p2 = at(g.at);
+          const p2 = pxOf(g.at);
           const t = String(g.uses);
           const w = ctx.measureText(t).width + 8;
 
@@ -3907,8 +3918,8 @@ export default function GISCanvasPage() {
 
       /* The sections that must be dug. */
       for (const e of routePlan.live || []) {
-        const a2 = at(g.nodes[e.u]);
-        const b2 = at(g.nodes[e.v]);
+        const a2 = pxOf(g.nodes[e.u]);
+        const b2 = pxOf(g.nodes[e.v]);
         ctx.beginPath();
         /* A link the router invented is dashed — it is a proposal about
            where to dig, not a section of something already drawn. */
@@ -3923,7 +3934,7 @@ export default function GISCanvasPage() {
 
       /* Where each run stops. */
       for (const end of routePlan.ends) {
-        const p2 = at(end.point);
+        const p2 = pxOf(end.point);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = "#16a34a";
@@ -3943,7 +3954,7 @@ export default function GISCanvasPage() {
          a different problem — a long service wants a trench nearer, a
          meter with no route wants a junction joining. */
       for (const f of routePlan.flagged || []) {
-        const p2 = at((f.meter.Geometry || [])[0] || [0, 0]);
+        const p2 = pxOf((f.meter.Geometry || [])[0] || [0, 0]);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 8, 0, Math.PI * 2);
         ctx.strokeStyle = "#d97706";
@@ -3953,7 +3964,7 @@ export default function GISCanvasPage() {
 
       for (const u of routePlan.unreachable) {
         const m = u?.meter ?? u;
-        const p2 = at((m.Geometry || [])[0] || [0, 0]);
+        const p2 = pxOf((m.Geometry || [])[0] || [0, 0]);
         ctx.beginPath();
         ctx.arc(p2.x, p2.y, 9, 0, Math.PI * 2);
         ctx.strokeStyle = "#dc2626";
@@ -4007,7 +4018,7 @@ export default function GISCanvasPage() {
        the ground, not the dig. */
     for (const f of features) {
       if (f.Feature_Type !== "line" || !isEasement(f)) continue;
-      const band = easementBand((f.Geometry || []).map(at),
+      const band = easementBand((f.Geometry || []).map(pxOf),
         EASEMENT_WIDTH_M * vs);
       if (band.length < 3) continue;
       ctx.save();
@@ -4077,7 +4088,7 @@ export default function GISCanvasPage() {
          that way; this now agrees with them. */
       const stage = statusOf(f);
 
-      const band = easementBand((f.Geometry || []).map(at),
+      const band = easementBand((f.Geometry || []).map(pxOf),
         /* Narrower than an easement, which is a legal strip. This is
            marking a line, and at easement width two mains in one trench
            would each hatch over the other. */
@@ -4106,7 +4117,7 @@ export default function GISCanvasPage() {
     drawOrder.forEach((f) => {
       const colour = layerOf(f.Layer_Key).Colour;
       const on = selected.includes(f.Feature_ID);
-      const pts = (f.Geometry || []).map(at);
+      const pts = (f.Geometry || []).map(pxOf);
       if (!pts.length) return;
       /* Outside its zoom band, unless it's selected — hiding the thing
          someone just clicked would look like it had been deleted. */
@@ -4483,7 +4494,7 @@ export default function GISCanvasPage() {
                  ARRIVING here, which is a fact about its ends. */
               const anchorPt = f.Attributes?.Span_Anchor || f.Geometry?.[0];
               if (!anchorPt) return;
-              const aPx = at(anchorPt);
+              const aPx = pxOf(anchorPt);
               const reachPx = Math.max(6, half * 1.5);
               const claimOf = (line) => {
                 const lc = line.Attributes?.Link_Connections || {};
@@ -4504,7 +4515,7 @@ export default function GISCanvasPage() {
                 const g2 = line.Geometry || [];
                 if (g2.length < 2) continue;
                 /* An end of this cable, at this anchor. */
-                const ends = [g2[0], g2[g2.length - 1]].map((m2) => at(m2));
+                const ends = [g2[0], g2[g2.length - 1]].map((m2) => pxOf(m2));
                 if (!ends.some((q2) => Math.hypot(q2.x - aPx.x, q2.y - aPx.y) <= reachPx)) {
                   continue;
                 }
@@ -4648,7 +4659,7 @@ export default function GISCanvasPage() {
               const off = f.Attributes?.Cutout_Offset;
               const dragged = Array.isArray(off) && off.length === 2;
               const lp = dragged
-                ? at([f.Geometry[0][0] + off[0], f.Geometry[0][1] + off[1]])
+                ? pxOf([f.Geometry[0][0] + off[0], f.Geometry[0][1] + off[1]])
                 : null;
               const tx = dragged ? lp.x : p.x + r + 5;
               const ty = dragged ? lp.y : p.y;
@@ -4990,7 +5001,7 @@ export default function GISCanvasPage() {
           ctx.lineCap = "butt";
           ctx.lineJoin = "miter";
           for (const cap of caps) {
-            const q = at(cap.at);
+            const q = pxOf(cap.at);
             const nx = -cap.dir[1] * halfPx;
             const ny = cap.dir[0] * halfPx;
             const bx = -cap.dir[0] * armPx;
@@ -5014,7 +5025,7 @@ export default function GISCanvasPage() {
           const mk = st.marker;
           const colour = on ? "#1d4ed8" : (mk.colour ?? st.colour);
           for (const { point, angle } of markerPositions(f.Geometry, mk.stepM)) {
-            const q0 = at(point);
+            const q0 = pxOf(point);
             /* Markers come from the real geometry, so on a run that has
                been nudged aside they would sit beside the cable they
                annotate. Shifted by the same amount, along the same left
@@ -5217,7 +5228,7 @@ export default function GISCanvasPage() {
              which on a run that bends is not the midpoint's angle. */
           const anchorAt = (put) => {
             if (!Array.isArray(put) || put.length !== 2) return midAnchor;
-            const q = at([Number(put[0]), Number(put[1])]);
+            const q = pxOf([Number(put[0]), Number(put[1])]);
             let best = null;
             for (let k = 1; k < pts.length; k++) {
               const a = pts[k - 1];
@@ -5581,7 +5592,7 @@ export default function GISCanvasPage() {
         if (f.Feature_Role !== "plot") continue;
         const at = f.Attributes?.Boundary_At;
         if (!Array.isArray(at) || at.length !== 2) continue;
-        const b = at([Number(at[0]), Number(at[1])]);
+        const b = pxOf([Number(at[0]), Number(at[1])]);
         if (!Number.isFinite(b.x) || !Number.isFinite(b.y)) continue;
         const on = selected.includes(f.Feature_ID);
 
@@ -5591,7 +5602,7 @@ export default function GISCanvasPage() {
         /* A leader back to the seed, only while the seed is there to
            lead to. With the plots hidden it would point at nothing. */
         if (!hidden.includes("plot") && (f.Geometry || []).length) {
-          const p0 = at(f.Geometry[0]);
+          const p0 = pxOf(f.Geometry[0]);
           ctx.beginPath();
           ctx.moveTo(p0.x, p0.y);
           ctx.lineTo(b.x, b.y);
@@ -5661,7 +5672,7 @@ export default function GISCanvasPage() {
        near its middle, and the canvas should say which one you're
        about to do. */
     if (snapHit) {
-      const p = at(snapHit.point);
+      const p = pxOf(snapHit.point);
       const isEnd = snapHit.kind === "end";
 
       /* Starting a run on the end of another run of the same class is
@@ -5678,7 +5689,7 @@ export default function GISCanvasPage() {
       // The line it belongs to, so there's no doubt which one was caught
       const target = visible.find((f) => f.Feature_ID === snapHit.featureId);
       if (target && target.Feature_Type !== "point" && (target.Geometry || []).length > 1) {
-        const tp = target.Geometry.map(at);
+        const tp = target.Geometry.map(pxOf);
         ctx.beginPath();
         tp.forEach((q, i) => (i ? ctx.lineTo(q.x, q.y) : ctx.moveTo(q.x, q.y)));
         if (target.Feature_Type === "polygon") ctx.closePath();
@@ -5783,19 +5794,19 @@ export default function GISCanvasPage() {
            just a smaller number. */
         let run = 0;
         ctx.beginPath();
-        const p0 = at(path.pts[0]);
+        const p0 = pxOf(path.pts[0]);
         ctx.moveTo(p0.x, p0.y);
         for (let i = 1; i < path.pts.length; i++) {
           const seg = Math.hypot(path.pts[i][0] - path.pts[i - 1][0],
             path.pts[i][1] - path.pts[i - 1][1]);
           if (run + seg <= tracedM) {
-            const q = at(path.pts[i]);
+            const q = pxOf(path.pts[i]);
             ctx.lineTo(q.x, q.y);
             run += seg;
           } else {
             const here = pointAlong(path.pts, tracedM);
             if (here) {
-              const q = at(here);
+              const q = pxOf(here);
               ctx.lineTo(q.x, q.y);
             }
             break;
@@ -5810,7 +5821,7 @@ export default function GISCanvasPage() {
       for (const path of traceRun.paths) {
         const here = pointAlong(path.pts, tracedM);
         if (!here) continue;
-        const q = at(here);
+        const q = pxOf(here);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 7, 0, Math.PI * 2);
         ctx.fillStyle = "#1d4ed8";
@@ -5823,7 +5834,7 @@ export default function GISCanvasPage() {
       /* Where it started, so a trace that has run off the top of the
          view still says where the question was asked. */
       if (traceRun.start) {
-        const q = at(traceRun.start);
+        const q = pxOf(traceRun.start);
         ctx.beginPath();
         ctx.arc(q.x, q.y, 5, 0, Math.PI * 2);
         ctx.fillStyle = "#fff";
@@ -5843,7 +5854,7 @@ export default function GISCanvasPage() {
          thing rather than as some general "click somewhere" mode. The
          ON LINE badge from the snap does the rest. */
       if (jointFor) {
-        const c = at(cursor);
+        const c = pxOf(cursor);
         ctx.globalAlpha = 0.85;
         ctx.beginPath();
         ctx.arc(c.x, c.y, 6, 0, Math.PI * 2);
@@ -5860,8 +5871,8 @@ export default function GISCanvasPage() {
            at the cursor. From the boundary rather than from the seed
            because that is where this leg of the dig starts: the route
            runs main, boundary, here. */
-        const c = at(cursor);
-        const origin = at(trenchEndFor.boundaryAt);
+        const c = pxOf(cursor);
+        const origin = pxOf(trenchEndFor.boundaryAt);
 
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
@@ -5896,8 +5907,8 @@ export default function GISCanvasPage() {
         /* A dashed leader back to the seed, and a hollow diamond at the
            cursor: the same language as the meter prompt, in a shape
            that is not a meter. */
-        const c = at(cursor);
-        const origin = at(boundaryFor.seedPoint);
+        const c = pxOf(cursor);
+        const origin = pxOf(boundaryFor.seedPoint);
 
         ctx.globalAlpha = 0.6;
         ctx.beginPath();
@@ -5933,8 +5944,8 @@ export default function GISCanvasPage() {
         ctx.fillStyle = "#fff";
         ctx.fillText(label, c.x, c.y - 20);
       } else if (meterFor) {
-        const c = at(cursor);
-        const origin = at(meterFor.seedPoint);
+        const c = pxOf(cursor);
+        const origin = pxOf(meterFor.seedPoint);
 
         // A leader back to the plot, so it's clear which one this serves
         ctx.globalAlpha = 0.6;
@@ -5967,7 +5978,7 @@ export default function GISCanvasPage() {
         ctx.fillStyle = "#fff";
         ctx.fillText(label, c.x, c.y - 20);
       } else if (nextPlot) {
-        const c = at(cursor);
+        const c = pxOf(cursor);
         ctx.globalAlpha = 0.75;
         symbolPath(ctx, "house", c.x, c.y,
           seedStyle({ Layer_Key: "plot", Feature_Role: "plot", Attributes: {} }, false).symbolPx);
@@ -5992,7 +6003,7 @@ export default function GISCanvasPage() {
 
     // line or boundary in progress
     if (draft.length) {
-      const pts = draft.map(at);
+      const pts = draft.map(pxOf);
 
       /* A delete lasso is drawn in red and shaded, so it cannot be
          mistaken for a boundary being added. The two are the same
@@ -6004,7 +6015,7 @@ export default function GISCanvasPage() {
         ctx.save();
         ctx.beginPath();
         pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-        if (cursor) { const c = at(cursor); ctx.lineTo(c.x, c.y); }
+        if (cursor) { const c = pxOf(cursor); ctx.lineTo(c.x, c.y); }
         ctx.closePath();
         ctx.fillStyle = "rgba(185,28,28,.10)";
         ctx.fill();
@@ -6013,7 +6024,7 @@ export default function GISCanvasPage() {
 
       ctx.beginPath();
       pts.forEach((p, i) => (i ? ctx.lineTo(p.x, p.y) : ctx.moveTo(p.x, p.y)));
-      if (cursor) { const c = at(cursor); ctx.lineTo(c.x, c.y); }
+      if (cursor) { const c = pxOf(cursor); ctx.lineTo(c.x, c.y); }
       ctx.strokeStyle = lasso ? "#b91c1c" : (typeOf(lineType)?.Colour ?? "#0f172a");
       ctx.setLineDash([5, 4]);
       ctx.lineWidth = 2;
@@ -6040,7 +6051,7 @@ export default function GISCanvasPage() {
       ctx.lineJoin = "round";
       ctx.beginPath();
       path.forEach((m, i) => {
-        const q = at(m);
+        const q = pxOf(m);
         if (i === 0) ctx.moveTo(q.x, q.y); else ctx.lineTo(q.x, q.y);
       });
       ctx.stroke();
@@ -6139,8 +6150,8 @@ export default function GISCanvasPage() {
            already dragged \u2014 and the ones worth correcting are exactly
            the ones nobody has touched. */
         if (away > 0.4 || selected.includes(f.Feature_ID)) {
-          const a = at(anchor);
-          const b = at(g[0]);
+          const a = pxOf(anchor);
+          const b = pxOf(g[0]);
           ctx.save();
           ctx.setLineDash([2, 3]);
           ctx.strokeStyle = "rgba(15,23,42,.45)";
@@ -6192,7 +6203,7 @@ export default function GISCanvasPage() {
          clicked reads as a deletion. */
       if (!on && !ps.visible) continue;
 
-      const q = at(g[0]);
+      const q = pxOf(g[0]);
       const code = f.Attributes?.Span_Label ?? "";
 
       /* ── A node that is carrying future load ──
@@ -6426,8 +6437,8 @@ export default function GISCanvasPage() {
              point, and sharing an offset would drag both. */
           const off = f.Attributes?.Pressure_Offset;
           const dragged = Array.isArray(off) && off.length === 2;
-          const x = dragged ? at([g[0][0] + off[0], g[0][1] + off[1]]).x : q.x + r + 5;
-          const y = dragged ? at([g[0][0] + off[0], g[0][1] + off[1]]).y : q.y;
+          const x = dragged ? pxOf([g[0][0] + off[0], g[0][1] + off[1]]).x : q.x + r + 5;
+          const y = dragged ? pxOf([g[0][0] + off[0], g[0][1] + off[1]]).y : q.y;
 
           /* A leader back to the node once it has been moved, for the
              same reason the node has one back to the trench: a figure
@@ -6521,7 +6532,7 @@ export default function GISCanvasPage() {
 
           const off = f.Attributes?.Levels_Offset;
           const dragged = Array.isArray(off) && off.length === 2;
-          const lp = dragged ? at([g[0][0] + off[0], g[0][1] + off[1]]) : null;
+          const lp = dragged ? pxOf([g[0][0] + off[0], g[0][1] + off[1]]) : null;
           /* Beside the node and centred on it, exactly as the gas
              pressure is.
 
@@ -6592,8 +6603,8 @@ export default function GISCanvasPage() {
        paper is would be a joke at the reader's expense. */
     if (!over && printFrame) {
       const rect = (wM, hM) => {
-        const a = at([printFrame.centre[0] - wM / 2, printFrame.centre[1] - hM / 2]);
-        const b = at([printFrame.centre[0] + wM / 2, printFrame.centre[1] + hM / 2]);
+        const a = pxOf([printFrame.centre[0] - wM / 2, printFrame.centre[1] - hM / 2]);
+        const b = pxOf([printFrame.centre[0] + wM / 2, printFrame.centre[1] + hM / 2]);
         return { x: a.x, y: a.y, w: b.x - a.x, h: b.y - a.y };
       };
       ctx.save();

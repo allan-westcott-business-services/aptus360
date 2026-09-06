@@ -282,3 +282,76 @@ export function servedFlats(feature, flats = []) {
   /* `...f` carries heatSourceId and short through: the row the levels
      work on is the flat, not a copy of it with fields dropped. */
 }
+
+/* ── The flats' assumed meters ──
+
+   Every flat has a meter. It is not drawn: forty-five points in a riser
+   cupboard is what this object exists to avoid, and none of them would
+   be anywhere the drawing could show them honestly.
+
+   But a meter is how this application knows a load exists. `circuitsFrom`
+   builds the circuit list out of meters carrying a Circuit_ID; the
+   feeder model sizes cable by the meters a run reaches. A flat with no
+   meter is a flat nothing counts.
+
+   So the board's flats are meters that are ASSUMED rather than placed:
+   real records, carrying the same attributes a drawn meter carries, at
+   the board's own position because that is where their cable actually
+   arrives.
+
+   ── One circuit, from the board ──
+
+   They take the board's circuit and output, because they are fed
+   through the board. A flat on a different circuit from the board that
+   feeds it would be a different building. Where somebody needs that,
+   the answer is a second board.
+
+   Not written to the drawing. These are derived on demand from the
+   board and the Plots tab, so there is one place that says which flats
+   exist and one that says which board they hang off \u2014 a copy written
+   into the features would be a third, and it would go stale the moment
+   somebody edited either. */
+export function assumedMeters(feature, rows = []) {
+  const a = feature?.Attributes || {};
+  const at = a.Span_Anchor ?? feature?.Geometry?.[0] ?? null;
+  const circuitId = a.Circuit_ID ?? null;
+  return (rows || []).map((r) => ({
+    /* Not a Feature_ID: these are not features, and giving them one
+       that looks like a row's id invites something to try to save
+       them. */
+    assumedFor: Number(r.plotId),
+    Feature_Role: "meter",
+    Feature_Type: "point",
+    Layer_Key: "electric",
+    Plot_ID: r.plotId,
+    Label: r.ref ? `Flat ${r.ref}` : "Flat",
+    Geometry: at ? [[at[0], at[1]]] : [],
+    Attributes: {
+      Assumed: true,
+      MSDB_ID: feature?.Feature_ID ?? null,
+      Meter_Utility: "electric",
+      Circuit_ID: circuitId,
+      Circuit_Name: a.Circuit_Name ?? null,
+      Circuit_Letter: a.Circuit_Letter ?? null,
+      Link_Box_ID: a.Link_Box_ID ?? null,
+      Link_Way: a.Link_Way ?? null,
+      /* What it draws and how far its tail runs, so anything reading
+         these does not have to go back to the consumption table. */
+      Assumed_kVA: r.kva ?? null,
+      Assumed_Tail_M: r.distanceM ?? 0,
+    },
+  }));
+}
+
+/* Whether the board has been told what feeds it. Two questions, and the
+   second only applies where the circuit runs through a box: a circuit
+   with no link box has no output to choose. */
+export function msdbSupply(feature) {
+  const a = feature?.Attributes || {};
+  return {
+    circuitId: a.Circuit_ID ?? null,
+    boxId: a.Link_Box_ID ?? null,
+    way: a.Link_Way ?? null,
+    named: a.Circuit_ID != null,
+  };
+}

@@ -12,7 +12,9 @@ import { readFileSync } from "node:fs";
 import {
   FLOORS, apartmentLoad, msdbLoad, apartmentLevels, worstApartment, msdbText,
   flatsFromPlots, servedFlats, isFlatType, shortType, riserDrop,
+  assumedMeters, msdbSupply,
 } from "./src/features/gis/msdb.js";
+import { circuitsFrom } from "./src/features/gis/electric.js";
 
 let bad = 0;
 const fail = (m) => { console.log("  FAIL " + m); bad++; };
@@ -64,6 +66,10 @@ const plotList = [
 const flats = flatsFromPlots({ plotList, configs, propertyTypes });
 
 const board = (attrs = {}) => ({
+  /* An id, because the assumed meters carry it back to their board and
+     a fixture without one tests something no real board is. */
+  Feature_ID: 900,
+  Geometry: [[120, 80]],
   Feature_Role: "msdb", Feature_Type: "point", Layer_Key: "electric",
   Attributes: {
     MSDB_Location: "Core B riser", MSDB_Floor: "2nd",
@@ -454,6 +460,74 @@ const served = (b) => servedFlats(b, flats);
   }
   if (!/lookups\?\.houseTypeConsumption/.test(editor)) {
     fail("the MSDB does not read the consumption table at all");
+  }
+}
+
+// 13. What feeds the board, and the flats' assumed meters.
+//
+//     A board sits on a feeder like any other fitting. Until it says
+//     which one, nothing can size the cable reaching it or count its
+//     flats against a circuit's load.
+//
+//     And every flat has a meter. It is not drawn \u2014 forty-five points
+//     in a riser cupboard is what this object exists to avoid \u2014 but a
+//     meter is how this application knows a load exists: `circuitsFrom`
+//     builds the circuit list out of meters carrying a Circuit_ID.
+{
+  const fed = board({ Circuit_ID: 3, Circuit_Name: "Circuit 3",
+    Circuit_Letter: "C", Link_Box_ID: 44563, Link_Way: 2 });
+  const rows = served(fed).map((r) => ({ ...r, kva: 1.5 }));
+  const meters = assumedMeters(fed, rows);
+
+  if (meters.length !== rows.length) fail("not every flat has a meter");
+
+  /* They must look like meters to the thing that builds circuits, or
+     the flats are a load nothing counts. */
+  const cs = circuitsFrom(meters);
+  if (cs.length !== 1 || cs[0].meters.length !== rows.length) {
+    fail("the assumed meters are not recognised as meters, so the circuit "
+      + "never sees the flats' load");
+  }
+
+  /* One circuit, from the board: they are fed through it. A flat on a
+     different circuit from the board feeding it would be a different
+     building. */
+  if (meters.some((m) => Number(m.Attributes.Circuit_ID) !== 3
+    || Number(m.Attributes.Link_Way) !== 2)) {
+    fail("a flat's meter does not take the board's circuit and output");
+  }
+
+  /* Marked as assumed and tied back to their board, or something will
+     eventually try to save them as drawn features. */
+  if (meters.some((m) => !m.Attributes.Assumed || m.Attributes.MSDB_ID == null)) {
+    fail("an assumed meter does not say it is assumed, or which board it "
+      + "belongs to");
+  }
+  if (meters.some((m) => m.Feature_ID != null)) {
+    fail("an assumed meter carries a Feature_ID, which invites something to "
+      + "save it as a real one");
+  }
+
+  /* At the board: that is where their cable actually arrives. */
+  const at = fed.Geometry?.[0];
+  if (at && meters.some((m) => m.Geometry[0][0] !== at[0])) {
+    fail("an assumed meter is somewhere other than its board");
+  }
+
+  /* A board with nothing set says so rather than claiming a circuit. */
+  if (msdbSupply(board()).named) fail("a board with no circuit claims one");
+
+  const editor = readFileSync("./src/features/gis/FeatureEditor.jsx", "utf8");
+  if (!/fe-msdb-circuit/.test(editor)) fail("there is no way to set the circuit");
+  /* The output only where the circuit runs through a box: a circuit
+     with no box has no output to choose. */
+  if (!/msdbBox && \(/.test(editor)) {
+    fail("the output is offered on circuits that have no link box");
+  }
+  /* A two-way box has ONE output; the input is not one, and offering it
+     would put a board on the cable feeding the box. */
+  if (!/length: n - 1/.test(editor)) {
+    fail("the box's input is offered as an output");
   }
 }
 

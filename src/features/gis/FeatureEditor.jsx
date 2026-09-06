@@ -26,7 +26,7 @@ import { servedPlots, JOINT_KINDS, straightJointWarning,
   jointCables, cableEndsAt, servicesAt } from "./joints.js";
 import {
   FLOORS, msdbLoad, apartmentLevels, worstApartment, flatsFromPlots,
-  servedFlats, riserDrop,
+  servedFlats, riserDrop, msdbSupply,
 } from "./msdb.js";
 import { bedColour } from "../../lib/bedColours.js";
 import {
@@ -618,12 +618,33 @@ export default function FeatureEditor({
     propertyTypes: lookups?.propertyTypes || [],
   }), [plotList, lookups]);
 
+  /* The circuits on this drawing, and the link box on the one chosen.
+     Both read from the features rather than held on the board: a copy
+     of a circuit's name would go stale the moment somebody renamed
+     it. */
+  /* `circuits` above already lists them \u2014 a second call would be a
+     second answer to one question, and they would disagree the first
+     time either was filtered. */
+  const msdbBox = useMemo(() => {
+    if (!isMsdb || f.Attributes?.Circuit_ID == null) return null;
+    return (allFeatures || []).find((x) => x.Feature_Role === "linkbox"
+      && Number(x.Attributes?.Circuit_ID) === Number(f.Attributes.Circuit_ID)) ?? null;
+  }, [isMsdb, allFeatures, f]);
+  const msdbWays = useMemo(() => {
+    const n = Number(msdbBox?.Attributes?.Link_Ways) === 4 ? 4 : 2;
+    /* A two-way box has one output; a four-way has three. The input is
+       not an output, and offering it would put a board on the cable
+       feeding the box rather than on one leaving it. */
+    return Array.from({ length: n - 1 }, (_, i) => i + 1);
+  }, [msdbBox]);
+
   const msdbPicked = useMemo(() => {
     const raw = f.Attributes?.MSDB_Plot_IDs;
     return Array.isArray(raw) ? raw.map(Number) : [];
   }, [f]);
 
   const msdbServed = useMemo(() => servedFlats(f, msdbFlats), [f, msdbFlats]);
+  const msdbSupplyAt = useMemo(() => msdbSupply(f), [f]);
 
   const msdbTotals = useMemo(
     () => msdbLoad(f, msdbServed, lookups?.houseTypeConsumption || []),
@@ -1341,6 +1362,68 @@ export default function FeatureEditor({
                     not be described by one field on the board at all. */}
               </div>
 
+              {/* ── What feeds it ──
+
+                  A board sits on a feeder like any other fitting, and
+                  until it says which one, nothing can size the cable
+                  that reaches it or count its flats against a circuit's
+                  load.
+
+                  The output matters where the circuit runs through a
+                  link box: two outputs are two independent runs, and a
+                  board on the wrong one is counted against the wrong
+                  fuse. A circuit with no box has no output to choose,
+                  so the field is not offered. */}
+              <div className="fe-row">
+                <div className="fld">
+                  <label htmlFor="fe-msdb-circuit">Circuit</label>
+                  <select id="fe-msdb-circuit"
+                    value={f.Attributes?.Circuit_ID ?? ""}
+                    onChange={(e) => {
+                      const id = e.target.value === "" ? null : Number(e.target.value);
+                      const c = circuits.find((x) => x.id === id);
+                      /* Name and letter travel with the id: the flats'
+                         meters carry all three, exactly as a drawn
+                         meter does, and a circuit named in one place
+                         and numbered in another is two answers. */
+                      setF((prev) => ({ ...prev, Attributes: {
+                        ...prev.Attributes,
+                        Circuit_ID: id,
+                        Circuit_Name: c?.name ?? null,
+                        Circuit_Letter: c?.letter ?? null,
+                        ...(id == null ? { Link_Box_ID: null, Link_Way: null } : {}),
+                      } }));
+                    }}>
+                    <option value="">Not set</option>
+                    {circuits.map((c) => (
+                      <option key={c.id} value={c.id}>{c.name}</option>
+                    ))}
+                  </select>
+                </div>
+                {msdbBox && (
+                  <div className="fld">
+                    <label htmlFor="fe-msdb-way">Link box output</label>
+                    <select id="fe-msdb-way"
+                      value={f.Attributes?.Link_Way ?? ""}
+                      onChange={(e) => {
+                        const w = e.target.value === "" ? null : Number(e.target.value);
+                        setF((prev) => ({ ...prev, Attributes: {
+                          ...prev.Attributes,
+                          Link_Way: w,
+                          Link_Box_ID: w == null ? null : msdbBox.Feature_ID,
+                        } }));
+                      }}>
+                      <option value="">Not set</option>
+                      {msdbWays.map((w) => (
+                        <option key={w} value={w}>
+                          {msdbBox.Label ?? "Link box"} &middot; output {w}
+                        </option>
+                      ))}
+                    </select>
+                  </div>
+                )}
+              </div>
+
               <div className="fe-row">
                 <div className="fld">
                   <label htmlFor="fe-msdb-riser">Boundary to MSDB (m)</label>
@@ -1407,6 +1490,17 @@ export default function FeatureEditor({
                 <strong>Flats</strong>
                 <span className="hint">
                   {msdbServed.length} of {msdbFlats.length} on this board
+                  {/* Every flat has a meter. It is not drawn \u2014 that is
+                      what this object exists to avoid \u2014 but a meter is
+                      how the application knows a load exists, so the
+                      flats ARE meters, assumed rather than placed, on
+                      the board's circuit. Said here so nobody wonders
+                      where their forty-five meters went. */}
+                  {msdbSupplyAt.named
+                    ? ` \u00b7 metered on ${f.Attributes?.Circuit_Name
+                      ?? `circuit ${msdbSupplyAt.circuitId}`}`
+                      + (msdbSupplyAt.way != null ? `, output ${msdbSupplyAt.way}` : "")
+                    : " \u00b7 no circuit set, so nothing counts them"}
                 </span>
               </div>
 

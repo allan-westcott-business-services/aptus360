@@ -2446,6 +2446,28 @@ one. `checkmsdb` now compares the two files and fails if 0205 mentions
 anything less often than 0204 did. **A working function is copied, not
 recalled.**
 
+**What feeds it, and what the flats are metered on.** The board names a
+circuit, and a link box output where the circuit runs through one — two
+outputs are two independent runs, and a board on the wrong one is
+counted against the wrong fuse. A circuit with no box has no output to
+choose, so the field is not offered; and a two-way box has ONE output,
+because the input is not one.
+
+**Every flat has an assumed meter.** Not drawn — forty-five points in a
+riser cupboard is what this object exists to avoid — but a meter is how
+this application knows a load exists: `circuitsFrom` builds the circuit
+list out of meters carrying a `Circuit_ID`, and the feeder model sizes
+cable by the meters a run reaches. A flat with no meter is a flat
+nothing counts.
+
+So `assumedMeters` returns real meter records carrying what a drawn
+meter carries, at the board's position, on the board's circuit and
+output. They are **derived on demand**, never written to the drawing:
+one place says which flats exist and one says which board they hang off,
+and a copy in the features would be a third that went stale the moment
+either changed. They carry no `Feature_ID`, so nothing is tempted to
+save them.
+
 **Not done yet:** the board is a point on the drawing but the feeder
 model does not treat it as a stop, so it takes no level of its own from
 the levels check and the flats therefore show a dash. That is the next

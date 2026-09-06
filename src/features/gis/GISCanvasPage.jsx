@@ -15950,7 +15950,46 @@ export default function GISCanvasPage() {
          **Anything that changes the shape of the answer should say so
          while it happens.** */
       const partsSaid = planned.reduce((n, p) => n + (p.parts || 1), 0);
+      /* ── Did the boards get their cable ──
+
+         A board is routed to because its flats are load on the network.
+         Several things have to be true for that \u2014 a circuit named, flats
+         ticked, the board within reach of the dig \u2014 and when it does not
+         happen the build says nothing and the drawing simply has no
+         cable to it.
+
+         Three rounds of this were spent guessing at which condition had
+         failed. A count and a reason turn the next one into a fact.
+
+         Measured from what was actually laid: a board is reached when a
+         cable this build wrote passes within a couple of metres of it,
+         which is the same question somebody asks by looking. */
+      const boards = all.filter((f) => f.Feature_Role === "msdb");
+      const boardSaid = boards.map((b) => {
+        const at = b.Attributes?.Span_Anchor ?? b.Geometry?.[0];
+        const name = b.Label ?? "MSDB";
+        if (b.Attributes?.Circuit_ID == null) return `${name}: no circuit set`;
+        const flats = (b.Attributes?.MSDB_Plot_IDs || []).length;
+        if (!flats) return `${name}: no flats on it`;
+        /* Measured against the drawing as it now stands, which the
+           build has already re-read: what was laid is what is there,
+           and tracking it separately would be a second account of one
+           thing. */
+        const reached = at && all.some((ln) => ln.Feature_Type === "line"
+          && !ln.Feature_Role && /main/i.test(String(ln.Attributes?.Line_Type ?? ""))
+          && (ln.Geometry || []).some((q) => Array.isArray(q)
+            && Math.hypot(q[0] - at[0], q[1] - at[1]) <= 2));
+        return reached ? null : `${name}: not reached \u2014 is it on the trench?`;
+      }).filter(Boolean);
+
       setStatus(`LV network: ${runs} run(s), ${cables} cable(s) across ${planned.length} circuit(s)`
+        + (boards.length
+          ? `, ${boards.length - boardSaid.length} of ${boards.length} board(s) reached`
+            /* Named, and why. A count on its own answers "did it work"
+               and not "what do I change", which is the question
+               somebody has when it did not. */
+            + (boardSaid.length ? ` (${boardSaid.join("; ")})` : "")
+          : "")
         + (partsSaid > planned.length
           ? `, ${partsSaid} part(s) \u2014 link box trunk and outputs`
           : ", no link box in the routing")

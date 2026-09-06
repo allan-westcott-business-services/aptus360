@@ -637,6 +637,39 @@ const served = (b) => servedFlats(b, flats);
   }
 }
 
+// 16. The build says what happened to each board.
+//
+//     A board is routed to because its flats are load on the network.
+//     Several things have to be true for that \u2014 a circuit named, flats
+//     ticked, the board within reach of the dig \u2014 and when it does not
+//     happen the build said nothing and the drawing simply had no cable
+//     to it. Three rounds were spent guessing at which condition had
+//     failed.
+{
+  const canvas = readFileSync("./src/features/gis/GISCanvasPage.jsx", "utf8");
+  if (!/board\(s\) reached/.test(canvas)) {
+    fail("the build does not say whether it reached the boards");
+  }
+  /* A count answers "did it work". The reason answers "what do I
+     change", which is the question somebody has when it did not. */
+  for (const [why, re] of [
+    ["no circuit set", /no circuit set/],
+    ["no flats ticked", /no flats on it/],
+    ["not on the dig", /is it on the trench\?/],
+  ]) {
+    if (!re.test(canvas)) fail(`the build cannot report "${why}"`);
+  }
+  if (!/boardSaid\.join\("; "\)/.test(canvas)) {
+    fail("the reasons are worked out and never shown");
+  }
+  /* Measured against the drawing as re-read, not against a tally kept
+     alongside: what was laid is what is there. */
+  if (!/const boards = all\.filter/.test(canvas)) {
+    fail("the check reads the pre-build features, so a board reached by "
+      + "this very build still reports as missed");
+  }
+}
+
 console.log(bad ? `\n${bad} problem(s)`
   : "The MSDB behaves (flats on a table, load and levels derived).");
 process.exit(bad ? 1 : 0);

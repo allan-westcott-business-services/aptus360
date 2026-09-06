@@ -682,8 +682,21 @@ export function buildFeederModel(features = [], opts = {}) {
        would be dropped from every circuit trace while still showing on
        the drawing. */
     const isNrs = m.Attributes?.NRS_ID != null;
+    /* ── A flat is judged the same way ──
+
+       A board's flats have no plot on the drawing either, for the same
+       reason a supply has none: nobody places forty-five seeds in a
+       riser cupboard. Pruned against seeds they were dropped here \u2014
+       after being made members, which is why the circuit knew about
+       them and the routing still reached nothing.
+
+       Two places asked "is this meter in this circuit" and only one of
+       them had been told about flats. Recurring fault 27: the reader
+       that was not told sees a circuit with fewer things on it and says
+       so plausibly. */
+    const bySelf = isNrs || m.Attributes?.Assumed;
     if (seedIds) {
-      const inCircuit = isNrs
+      const inCircuit = bySelf
         ? !!(meterIds && meterIds.has(Number(m.Feature_ID)))
         : !!(seed && seedIds.has(Number(seed.Feature_ID)));
       if (!inCircuit) continue;

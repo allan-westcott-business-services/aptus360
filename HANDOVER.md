@@ -2602,6 +2602,34 @@ either would be picking one at random.
     outright, so reaching too far costs a cable that inherits nothing,
     exactly as before.
 
+73. **Two readers, one question, and only one was told.** A meter joins
+    a circuit through its plot SEED. A board's flats have no seed —
+    nobody places forty-five in a riser cupboard — so `circuitMembership`
+    was taught to admit them by their own id, the way a non-residential
+    supply is.
+
+    And nothing changed, because `spanTrace` asks the SAME question
+    again when it attaches meters to the dig, and that copy still pruned
+    against seeds. The flats were members of a circuit that then dropped
+    them before routing: the circuit knew about them and the routing
+    reached nothing.
+
+    **Recurring fault 27, exactly**: the reader that was not told sees a
+    circuit with fewer things on it and says so plausibly. Both readers
+    now ask `isNrs || Assumed`.
+
+**The build says what happened to each board.** *"3 run(s), 41 cable(s),
+1 of 2 board(s) reached (MSDB 2: no circuit set)"*. A board is routed to
+because its flats are load on the network, and several things have to be
+true for that — a circuit named, flats ticked, the board within reach of
+the dig. When one is not, the build used to say nothing and the drawing
+simply had no cable to it.
+
+**Three rounds were spent guessing at which condition had failed.** A
+count answers "did it work"; the reason answers "what do I change",
+which is the question somebody has when it did not. Measured against the
+drawing as the build re-reads it, so what was laid is what is counted.
+
 **A note on writing checks.** Three checks this session were anchored on
 a string that appears more than once in the file, or sliced by a
 character count that fell short of the block. Each reported a fault that
